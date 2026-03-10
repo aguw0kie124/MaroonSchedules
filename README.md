@@ -11,6 +11,7 @@ uvicorn main:app --reload --host 0.0.0.0<br>
 ***Make new terminal***<br>
 ***cd to MaroonSchedules if not already***<br>
 npm install expo<br>
+npm install moti react-native-reanimated @clerk/clerk-expo
 npx expo start<br>
 
 <ins>**Languages/Frameworks:**</ins>
