@@ -13,6 +13,7 @@ uvicorn main:app --reload --host 0.0.0.0<br>
 npm install expo<br>
 npm install moti react-native-reanimated @clerk/clerk-expo<br>
 npx expo install expo-secure-store<br>
+npm install expo-secure-store<br>
 npx expo start<br>
 
 <ins>**Languages/Frameworks:**</ins>
