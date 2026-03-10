@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, Switch, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { LogOut } from 'lucide-react-native';
+import { useUser, useClerk } from '@clerk/clerk-expo';
 
 const COLORS = {
     background: '#F5F5F7',
@@ -27,6 +28,9 @@ export function Profile() {
     });
     const [connectionStatus, setConnectionStatus] = useState<string>('Checking...');
 
+    const { user } = useUser();
+    const { signOut } = useClerk();
+
     useEffect(() => {
         console.log(`Attempting to connect to: ${API_URL}`);
         fetch(`${API_URL}/`)
@@ -38,8 +42,9 @@ export function Profile() {
             });
     }, []);
 
-    const handleLogout = () => {
-        navigation.navigate('Onboarding'); // Or standard logout flow
+    const handleLogout = async () => {
+        await signOut();
+        // Clerk handles redirect via the RootNavigator automatically
     };
 
     return (
@@ -52,10 +57,12 @@ export function Profile() {
             {/* Avatar Section */}
             <View style={styles.avatarSection}>
                 <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>R</Text>
+                    <Text style={styles.avatarText}>
+                        {user?.firstName?.[0] || 'U'}
+                    </Text>
                 </View>
-                <Text style={styles.name}>Ritej</Text>
-                <Text style={styles.email}>ritej@tamu.edu</Text>
+                <Text style={styles.name}>{user?.fullName || 'Aggie User'}</Text>
+                <Text style={styles.email}>{user?.primaryEmailAddress?.emailAddress || 'user@tamu.edu'}</Text>
             </View>
 
             {/* Profile Settings */}

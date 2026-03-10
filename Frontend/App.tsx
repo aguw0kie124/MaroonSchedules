@@ -1,8 +1,13 @@
-import 'react-native-gesture-handler';
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/clerk-expo';
+import * as SecureStore from 'expo-secure-store';
+import * as WebBrowser from 'expo-web-browser';
+
+WebBrowser.maybeCompleteAuthSession();
+
 import { Onboarding } from './components/Onboarding';
 import { Dashboard } from './components/Dashboard';
 import { Search } from './components/Search';
@@ -10,7 +15,29 @@ import { Builder } from './components/Builder';
 import { Saved } from './components/Saved';
 import { Profile } from './components/Profile';
 import { CourseDetail } from './components/CourseDetail';
+import { AuthLanding } from './components/AuthLanding';
+import { LoginScreen } from './components/LoginScreen';
+
 import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User } from 'lucide-react-native';
+
+const tokenCache = {
+  async getToken(key: string) {
+    try {
+      return await SecureStore.getItemAsync(key);
+    } catch (err) {
+      return null;
+    }
+  },
+  async saveToken(key: string, value: string) {
+    try {
+      return await SecureStore.setItemAsync(key, value);
+    } catch (err) {
+      return;
+    }
+  },
+};
+
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY || 'pk_test_ZGV2b3RlZC1zdW5maXNoLTMxLmNsZXJrLmFjY291bnRzLmRldiQ'; // replace with default if needed
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -27,7 +54,7 @@ function MainTabs() {
           if (route.name === 'Dashboard') {
             IconName = Calendar;
           } else if (route.name === 'Search') {
-            IconName = SearchIcon; // Renamed to avoid alias conflict if needed
+            IconName = SearchIcon;
           } else if (route.name === 'Builder') {
             IconName = Grid3x3;
           } else if (route.name === 'Saved') {
@@ -36,7 +63,10 @@ function MainTabs() {
             IconName = User;
           }
 
-          return <IconName size={size} color={color} strokeWidth={focused ? 2.5 : 2} />;
+          if (IconName) {
+            return <IconName size={size} color={color} strokeWidth={focused ? 2.5 : 2} />;
+          }
+          return null;
         },
         tabBarActiveTintColor: '#500000',
         tabBarInactiveTintColor: '#666',
@@ -56,20 +86,53 @@ function MainTabs() {
   );
 }
 
+function RootNavigator() {
+  const { isSignedIn, isLoaded } = useAuth();
+
+  if (!isLoaded) {
+    return null;
+  }
+
+  return (
+    <Stack.Navigator id="RootStack" screenOptions={{ headerShown: false }}>
+      {isSignedIn ? (
+        <>
+          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen name="CourseDetail" component={CourseDetail} options={{ headerShown: true }} />
+        </>
+      ) : (
+        <>
+          <Stack.Screen name="Onboarding" component={Onboarding} />
+          <Stack.Screen 
+            name="AuthLanding" 
+            children={(props: any) => (
+              <AuthLanding
+                onLoginPress={() => props.navigation.navigate('Login')}
+              />
+            )} 
+          />
+          <Stack.Screen 
+            name="Login" 
+            children={(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />} 
+          />
+        </>
+      )}
+    </Stack.Navigator>
+  );
+}
 
 import { registerRootComponent } from 'expo';
 
 function App() {
   return (
-    <NavigationContainer>
-      <Stack.Navigator id="RootStack" screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Onboarding" component={Onboarding} />
-        <Stack.Screen name="Main" component={MainTabs} />
-        <Stack.Screen name="CourseDetail" component={CourseDetail} options={{ headerShown: true }} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+      <ClerkLoaded>
+        <NavigationContainer>
+          <RootNavigator />
+        </NavigationContainer>
+      </ClerkLoaded>
+    </ClerkProvider>
   );
 }
 
 registerRootComponent(App);
-
