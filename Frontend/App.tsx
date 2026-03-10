@@ -17,6 +17,8 @@ import { Profile } from './components/Profile';
 import { CourseDetail } from './components/CourseDetail';
 import { AuthLanding } from './components/AuthLanding';
 import { LoginScreen } from './components/LoginScreen';
+import { ChatScreen } from './components/ChatScreen';
+import { UsersScreen } from './components/UsersScreen';
 
 import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User } from 'lucide-react-native';
 
@@ -99,6 +101,16 @@ function RootNavigator() {
         <>
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="CourseDetail" component={CourseDetail} options={{ headerShown: true }} />
+          <Stack.Screen
+            name="ChatScreen"
+            component={ChatScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="UsersScreen"
+            component={UsersScreen}
+            options={{ headerShown: false }}
+          />
         </>
       ) : (
         <>

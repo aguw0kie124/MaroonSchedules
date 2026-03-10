@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, Switch, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { LogOut } from 'lucide-react-native';
+import { LogOut, MessageSquare } from 'lucide-react-native';
 import { useUser, useClerk } from '@clerk/clerk-expo';
 
 const COLORS = {
@@ -114,6 +114,19 @@ export function Profile() {
                     onChange={(checked) => setPreferences({ ...preferences, showOnlineFirst: checked })}
                 />
             </View>
+
+            {/* Message Users Button */}
+            <Pressable
+                onPress={() => navigation.navigate('UsersScreen')}
+                style={({ pressed }) => [
+                    styles.logoutButton,
+                    { marginBottom: 12 },
+                    pressed && styles.pressed,
+                ]}
+            >
+                <MessageSquare size={20} color={COLORS.primary} />
+                <Text style={[styles.logoutText, { color: COLORS.primary }]}>Message Users</Text>
+            </Pressable>
 
             {/* Logout Button */}
             <Pressable
