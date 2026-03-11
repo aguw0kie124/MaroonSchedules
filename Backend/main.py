@@ -1,9 +1,11 @@
+import postgre_test
 from fastapi import Body, FastAPI
 import requests
 from requests import RequestException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import test_func
+import postgre_test
 
 app = FastAPI()
 
@@ -22,6 +24,11 @@ def read_root():
 
 @app.get("/test_func")
 def test():
-    return test_func()
+    return test_func.test_func()
+
+
+@app.get("/test_postgre")
+def test_postgre():
+    return postgre_test.test_postgre_data()
 
 import time
