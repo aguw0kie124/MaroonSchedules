@@ -3,7 +3,7 @@ import psycopg
 
 def test_postgre_data():
     # Connect to an existing database
-    with psycopg.connect("dbname=postgres user=postgres password=admin") as conn:
+    with psycopg.connect("dbname=maroon_schedules user=postgres password=admin") as conn:
 
         # Open a cursor to perform database operations
         with conn.cursor() as cur:
