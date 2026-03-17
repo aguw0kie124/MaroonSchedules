@@ -32,13 +32,13 @@ export function Profile() {
     const { signOut } = useClerk();
 
     useEffect(() => {
-        console.log(`Attempting to connect to: ${API_URL}`);
-        fetch(`${API_URL}/`)
+        console.log(`Attempting to connect to: ${API_URL}/test_postgre`);
+        fetch(`${API_URL}/test_postgre`)
             .then(res => res.json())
-            .then(data => setConnectionStatus(`Backend Status: ${data.message}`))
+            .then(data => setConnectionStatus(`PostgreSQL Data: ${JSON.stringify(data)}`))
             .catch(err => {
                 console.error("Connection error:", err);
-                setConnectionStatus(`Error: ${err.message} \nURL: ${API_URL}`);
+                setConnectionStatus(`Error: ${err.message} \nURL: ${API_URL}/test_postgre`);
             });
     }, []);
 
