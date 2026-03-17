@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Plus } from 'lucide-react-native';
 import { Card } from './Card';
 import { useCourseStore } from '../store/courseStore';
+import { useUser } from '@clerk/clerk-expo';
 
 const { width } = Dimensions.get('window');
 
@@ -20,6 +21,7 @@ const COLORS = {
 export function Dashboard() {
     const navigation = useNavigation<any>();
     const { courses } = useCourseStore();
+    const { user } = useUser();
 
     const currentTerm = 'Spring 2026';
     const totalCredits = courses.reduce((sum, course) => sum + course.credits, 0);
@@ -36,13 +38,15 @@ export function Dashboard() {
                 <View style={styles.header}>
                     <View>
                         <Text style={styles.greeting}>Howdy</Text>
-                        <Text style={styles.name}>Ritej</Text>
+                        <Text style={styles.name}>{user?.firstName || 'Aggie'}</Text>
                     </View>
                     <Pressable
                         style={styles.avatar}
                         onPress={() => navigation.navigate('Profile')}
                     >
-                        <Text style={styles.avatarText}>R</Text>
+                        <Text style={styles.avatarText}>
+                            {user?.firstName?.[0] || 'A'}
+                        </Text>
                     </Pressable>
                 </View>
 
