@@ -5,6 +5,7 @@ from requests import RequestException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import test_func
+from chat import router as chat_router
 import postgre_test
 
 app = FastAPI()
@@ -17,6 +18,8 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
+
+app.include_router(chat_router)
 
 @app.get("/")
 def read_root():

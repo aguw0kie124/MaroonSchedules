@@ -33,17 +33,10 @@ export function Onboarding() {
                 <Button
                     variant="primary"
                     style={styles.button}
-                    onPress={() => navigation.navigate('Main')} // Navigate to Tab Navigator
+                    onPress={() => navigation.navigate('AuthLanding')} // To Auth Flow
                 >
                     Get Started
                 </Button>
-
-                <Pressable
-                    style={styles.linkButton}
-                    onPress={() => navigation.navigate('Main')} // Typically would go to Login, but standard flow here
-                >
-                    <Text style={styles.linkText}>I already have an account</Text>
-                </Pressable>
             </View>
         </View>
     );
