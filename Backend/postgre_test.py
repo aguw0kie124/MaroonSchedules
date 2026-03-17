@@ -39,8 +39,12 @@ def test_postgre_data():
             # of several records, or even iterate on the cursor
             cur.execute("SELECT id, num, data FROM test order by num")
             output = {}
+            """for record in cur:
+                output[record[0]] = (record[1], record[2])"""
+
+            cur.execute("SELECT major_id, major_name FROM majors order by major_id LIMIT 2")
             for record in cur:
-                output[record[0]] = (record[1], record[2])
+                output[record[0]] = record[1]
 
             # Make the changes to the database persistent
             conn.commit()
