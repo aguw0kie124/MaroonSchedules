@@ -1,0 +1,1 @@
+[{"dept":"LING","courseNumber":"310","courseTitle":"HISTORY OF ENGLISH LANGUAGE","credits":"3","professor":{"id":"VGVhY2hlci0yMjAxMjI0","firstName":"David","lastName":"Wilton","avgRating":3.4,"avgDifficulty":2.8,"totalRatings":19,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":30.1,"confidenceScore":43.4}]

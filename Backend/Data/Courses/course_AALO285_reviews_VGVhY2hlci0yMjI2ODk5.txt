@@ -1,0 +1,1 @@
+{"courseCode":"AALO285","professorId":"VGVhY2hlci0yMjI2ODk5","professorName":"Todd Schrader","totalReviews":0,"reviews":[],"pagination":{"limit":10000000000000000,"skip":0,"hasMore":false}}

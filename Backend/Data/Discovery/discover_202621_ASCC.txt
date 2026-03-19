@@ -1,0 +1,1 @@
+[{"dept":"ASCC","courseNumber":"003","courseTitle":"COREQ INTR READ WRITE SUPPORT","credits":"0","professor":{"id":"VGVhY2hlci0yMDM2Nzg1","firstName":"Sharon ","lastName":"Haigler","avgRating":0.0,"avgDifficulty":0.0,"totalRatings":0,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":0.0,"confidenceScore":0.0}]

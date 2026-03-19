@@ -1,0 +1,1 @@
+[{"dept":"MMET","courseNumber":"275","courseTitle":"MECHANICS FOR TECHNOLOGISTS","credits":"3","professor":{"id":"VGVhY2hlci0yNzU2NDUy","firstName":"Bhaskar","lastName":"Vajipeyajula","avgRating":4.3,"avgDifficulty":3.5,"totalRatings":28,"tags":[],"avgGpa":3.1,"percentAB":80.0,"gpaStudentCount":10},"easinessScore":67.2,"confidenceScore":53.0}]

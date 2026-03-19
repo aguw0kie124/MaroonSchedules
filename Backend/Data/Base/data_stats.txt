@@ -1,0 +1,1 @@
+{"reviews_count":88298,"courses_count":5429,"last_updated":"03/17/2026","professors_count":5939,"gpa_data_count":155317,"sections_count":113313}

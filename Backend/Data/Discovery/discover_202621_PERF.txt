@@ -1,0 +1,1 @@
+[{"dept":"PERF","courseNumber":"223","courseTitle":"AESTHETICS OF ACTIVISM","credits":"3","professor":{"id":"VGVhY2hlci0yODUyMzQx","firstName":"Matthew","lastName":"Campbell","avgRating":3.2,"avgDifficulty":2.5,"totalRatings":50,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":31.6,"confidenceScore":56.9}]

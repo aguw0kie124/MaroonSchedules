@@ -1,0 +1,1 @@
+[{"code":"DDDS","name":"DDDS - Doctor Dental Surgery"},{"code":"VLCS","name":"VLCS-Vet Large Animal Clin Sc"},{"code":"VMID","name":"VMID - Vet Medicine-Interdisc"},{"code":"VSCS","name":"VSCS-Vet Small Animal Clin Sc"},{"code":"VTPB","name":"VTPB - Veterinary Pathobiology"}]

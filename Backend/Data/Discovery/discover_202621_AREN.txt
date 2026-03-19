@@ -1,0 +1,1 @@
+[{"dept":"AREN","courseNumber":"399","courseTitle":"HIGH IMPACT EXPERIENCE AREN","credits":"0","professor":{"id":"VGVhY2hlci0yOTk3NjY2","firstName":"Mario","lastName":"Medina","avgRating":4.0,"avgDifficulty":2.0,"totalRatings":1,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":38.5,"confidenceScore":10.0}]

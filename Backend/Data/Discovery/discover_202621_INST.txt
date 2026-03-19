@@ -1,0 +1,1 @@
+[{"dept":"INST","courseNumber":"222","courseTitle":"FOUND EDUC MULTICULTURAL SOCTY","credits":"3","professor":{"id":"VGVhY2hlci0zMTE2NzY2","firstName":"Sheneria","lastName":"Perry","avgRating":5.0,"avgDifficulty":1.3,"totalRatings":4,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":47.8,"confidenceScore":23.3}]

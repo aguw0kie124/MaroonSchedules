@@ -1,0 +1,1 @@
+[{"dept":"VLCS","courseNumber":"485","courseTitle":"DIRECTED STUDIES","credits":"0","professor":{"id":"VGVhY2hlci0yNDgwMjc1","firstName":"Noah","lastName":"Cohen","avgRating":5.0,"avgDifficulty":1.5,"totalRatings":2,"tags":[],"avgGpa":4.0,"percentAB":99.6,"gpaStudentCount":274},"easinessScore":96.2,"confidenceScore":81.4}]

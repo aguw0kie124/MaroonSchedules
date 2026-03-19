@@ -1,0 +1,1 @@
+[{"dept":"NURS","courseNumber":"343","courseTitle":"BLDG HLTHY COMM I - LIFESPAN","credits":"4","professor":{"id":"VGVhY2hlci0yNDEzOTk4","firstName":"Kelly","lastName":"Wilson","avgRating":1.4,"avgDifficulty":3.1,"totalRatings":10,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":19.8,"confidenceScore":34.7}]

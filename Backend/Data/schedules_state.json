@@ -1,0 +1,11 @@
+{
+    "e4638b96-88f3-4357-9c4c-6f483853c986": {
+        "schedule_id": "e4638b96-88f3-4357-9c4c-6f483853c986",
+        "user_id": "test_user_1",
+        "name": "Daddy",
+        "term_code": "Spring 2026",
+        "section_ids": [
+            "202631_10917"
+        ]
+    }
+}

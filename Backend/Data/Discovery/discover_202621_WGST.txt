@@ -1,0 +1,1 @@
+[{"dept":"WGST","courseNumber":"289","courseTitle":"SPTP: INTRODUCTION TO WOMEN’S","credits":"3","professor":{"id":"VGVhY2hlci0zMDIxNzE2","firstName":"Koyel ","lastName":"Khan","avgRating":4.9,"avgDifficulty":1.5,"totalRatings":12,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":45.9,"confidenceScore":37.1}]

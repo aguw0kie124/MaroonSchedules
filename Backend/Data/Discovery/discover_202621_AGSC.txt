@@ -1,0 +1,1 @@
+[{"dept":"AGSC","courseNumber":"380","courseTitle":"WORKSHOP IN AG SCIENCE","credits":"1","professor":{"id":"VGVhY2hlci0yNDI5Mzk1","firstName":"Randy","lastName":"Lund","avgRating":5.0,"avgDifficulty":2.0,"totalRatings":3,"tags":[],"avgGpa":3.95,"percentAB":100.0,"gpaStudentCount":24},"easinessScore":91.9,"confidenceScore":48.2}]

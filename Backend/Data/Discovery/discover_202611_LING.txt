@@ -1,0 +1,1 @@
+[{"dept":"LING","courseNumber":"310","courseTitle":"HISTORY OF ENGLISH LNG","credits":"3","professor":{"id":"VGVhY2hlci0yMTYwNjg1","firstName":"Katayoun","lastName":"Torabi","avgRating":4.9,"avgDifficulty":2.4,"totalRatings":21,"tags":[],"avgGpa":3.6,"percentAB":93.3,"gpaStudentCount":15},"easinessScore":84.1,"confidenceScore":52.3}]

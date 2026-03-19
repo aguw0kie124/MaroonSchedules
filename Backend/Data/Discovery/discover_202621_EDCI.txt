@@ -1,0 +1,1 @@
+[{"dept":"EDCI","courseNumber":"485","courseTitle":"DIRECTED STUDIES","credits":"0","professor":{"id":"VGVhY2hlci0xMDEwOTcw","firstName":"Robin","lastName":"Rackley","avgRating":4.0,"avgDifficulty":2.6,"totalRatings":5,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":34.0,"confidenceScore":25.9}]

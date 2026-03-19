@@ -1,0 +1,1 @@
+[{"dept":"MXET","courseNumber":"375","courseTitle":"APPLIED DYNAMIC SYSTEMS","credits":"3","professor":{"id":"VGVhY2hlci0yODg2MzQz","firstName":"Mohamed","lastName":"Gharib","avgRating":3.0,"avgDifficulty":3.0,"totalRatings":15,"tags":[],"avgGpa":2.83,"percentAB":64.3,"gpaStudentCount":311},"easinessScore":62.4,"confidenceScore":83.8}]

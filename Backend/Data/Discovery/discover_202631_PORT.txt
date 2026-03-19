@@ -1,0 +1,1 @@
+[{"dept":"PORT","courseNumber":"101","courseTitle":"BEGINNING PORTUGUESE I","credits":"4","professor":{"id":"VGVhY2hlci0yNTg0MzUy","firstName":"Solem","lastName":"Minjarez","avgRating":4.8,"avgDifficulty":2.4,"totalRatings":19,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":38.7,"confidenceScore":43.4}]

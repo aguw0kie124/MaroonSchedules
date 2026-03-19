@@ -1,0 +1,1 @@
+[{"dept":"ENDS","courseNumber":"101","courseTitle":"DESIGN PROCESS","credits":"3","professor":{"id":"VGVhY2hlci0xODM0MDg3","firstName":"Jorge","lastName":"Vanegas","avgRating":1.8,"avgDifficulty":3.7,"totalRatings":102,"tags":[],"avgGpa":3.37,"percentAB":84.1,"gpaStudentCount":5107},"easinessScore":59.1,"confidenceScore":100.0}]

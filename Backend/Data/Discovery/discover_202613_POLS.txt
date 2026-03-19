@@ -1,0 +1,1 @@
+[{"dept":"POLS","courseNumber":"207","courseTitle":"STATE & LOCAL GOVT","credits":"3","professor":{"id":"VGVhY2hlci0yODE4MjAx","firstName":"Matthew","lastName":"Haydon","avgRating":3.1,"avgDifficulty":2.7,"totalRatings":28,"tags":[],"avgGpa":3.22,"percentAB":70.2,"gpaStudentCount":684},"easinessScore":69.8,"confidenceScore":95.1}]

@@ -20,6 +20,11 @@ import { LoginScreen } from './components/LoginScreen';
 import { ChatScreen } from './components/ChatScreen';
 import { UsersScreen } from './components/UsersScreen';
 
+import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
+import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
+import { ScheduleListScreen } from './components/ScheduleListScreen';
+import { ScheduleDetailScreen } from './components/ScheduleDetailScreen';
+
 import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User } from 'lucide-react-native';
 
 const tokenCache = {
@@ -111,6 +116,11 @@ function RootNavigator() {
             component={UsersScreen}
             options={{ headerShown: false }}
           />
+          
+          <Stack.Screen name="NewCourseSearch" component={NewCourseSearchScreen} options={{ headerShown: true, title: 'Course Search' }} />
+          <Stack.Screen name="NewCourseDetail" component={NewCourseDetailScreen} options={{ headerShown: true, title: 'Course Details' }} />
+          <Stack.Screen name="ScheduleList" component={ScheduleListScreen} options={{ headerShown: true, title: 'My Schedules' }} />
+          <Stack.Screen name="ScheduleDetail" component={ScheduleDetailScreen} options={{ headerShown: true, title: 'Schedule Details' }} />
         </>
       ) : (
         <>

@@ -1,0 +1,1 @@
+[{"dept":"MARS","courseNumber":"210","courseTitle":"MARINE GEOGRAPHY","credits":"3","professor":{"id":"VGVhY2hlci0yODc1Nzg5","firstName":"Christopher","lastName":"Smith","avgRating":5.0,"avgDifficulty":1.0,"totalRatings":2,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":50.0,"confidenceScore":15.9}]
