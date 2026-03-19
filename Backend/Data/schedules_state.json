@@ -5,5 +5,14 @@
         "name": "Hi",
         "term_code": "A",
         "section_ids": []
+    },
+    "40167bf4-d28c-47ff-b33d-b66e645e6736": {
+        "schedule_id": "40167bf4-d28c-47ff-b33d-b66e645e6736",
+        "user_id": "test_user_1",
+        "name": "B",
+        "term_code": "Fall 2026",
+        "section_ids": [
+            "202631_49905"
+        ]
     }
 }
