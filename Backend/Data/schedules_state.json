@@ -1,1 +1,9 @@
-{}
+{
+    "3919452c-be25-404a-8dea-f759a716ea7e": {
+        "schedule_id": "3919452c-be25-404a-8dea-f759a716ea7e",
+        "user_id": "test_user_1",
+        "name": "Hi",
+        "term_code": "A",
+        "section_ids": []
+    }
+}

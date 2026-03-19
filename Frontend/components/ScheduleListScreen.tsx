@@ -257,16 +257,18 @@ const styles = StyleSheet.create({
     },
     inputLabel: {
         fontSize: 14,
-        fontWeight: '600',
-        color: COLORS.textSecondary,
+        fontWeight: 'bold',
+        color: '#FFFFFF',
         marginBottom: 8,
         marginTop: 16,
     },
     input: { 
-        backgroundColor: COLORS.background, 
+        backgroundColor: '#1E1E1E', // Brighter grey to contrast with surface
         padding: 16, 
         borderRadius: 12, 
+        borderWidth: 1,
+        borderColor: '#404040',
         fontSize: 17, 
-        color: COLORS.textPrimary,
+        color: '#FFFFFF',
     }
 });

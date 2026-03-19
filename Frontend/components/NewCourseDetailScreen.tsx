@@ -81,8 +81,14 @@ export function NewCourseDetailScreen() {
                                 <Text style={styles.scheduleText}>{s.name} ({s.term_code})</Text>
                             </Pressable>
                         ))}
-                        {schedules.length === 0 && <Text style={{ marginBottom: 12 }}>No schedules found. Create one first!</Text>}
-                        <PrimaryButton title="Cancel" variant="outline" onPress={() => setModalVisible(false)} style={{ marginTop: 12 }} />
+                        {schedules.length === 0 && <Text style={{ marginBottom: 12, color: COLORS.textSecondary }}>No schedules found. Create one first!</Text>}
+                        <PrimaryButton 
+                            title="Cancel" 
+                            variant="outline" 
+                            onPress={() => setModalVisible(false)} 
+                            style={{ marginTop: 12, borderColor: COLORS.border }} 
+                            textStyle={{ color: COLORS.textPrimary }}
+                        />
                     </View>
                 </View>
             </Modal>
@@ -97,7 +103,7 @@ const styles = StyleSheet.create({
     subtitle: { fontSize: 14, color: COLORS.textSecondary },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
     modalContent: { backgroundColor: COLORS.surface, padding: 20, borderTopLeftRadius: 16, borderTopRightRadius: 16 },
-    modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16 },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: COLORS.textPrimary },
     scheduleOption: { padding: 16, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-    scheduleText: { fontSize: 16, color: COLORS.primary, fontWeight: '500' }
+    scheduleText: { fontSize: 16, color: COLORS.textPrimary, fontWeight: '500' }
 });
