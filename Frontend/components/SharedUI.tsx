@@ -5,15 +5,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
 export const COLORS = {
-  background: '#000000',     // Pure Black
-  primary: '#500000',        // Aggie Maroon
-  primaryLight: '#2A0000',   // Deep subtle maroon glow
-  textSecondary: '#C7C7CC',  // Brighter grey for A11y high contrast
-  textPrimary: '#FFFFFF',    // Pristine White
-  surface: '#121212',        // Elevated dark grey for cards
-  border: '#2C2C2E',         // Subtle borders
-  danger: '#FF3B30',
-  success: '#32D74B'
+  background: '#000000',      // Pure Black
+  primary: '#500000',         // Aggie Maroon
+  primaryLight: '#3D0000',    // Darker maroon for icon backgrounds
+  accent: '#FF8A8A',          // Bright maroon tint for icons/accents
+  textSecondary: '#D1D1D6',   // High contrast secondary (WCAG AA on #121212)
+  textTertiary: '#8E8E93',    // Muted text for less important info
+  textPrimary: '#FFFFFF',     // Pristine White
+  surface: '#121212',         // Elevated dark grey for cards
+  surfaceElevated: '#1A1A1A', // Slightly lighter surface for nested elements
+  border: '#2C2C2E',          // Subtle borders
+  danger: '#FF453A',          // iOS red
+  success: '#30D158',         // iOS green
+  warning: '#FF9F0A',         // iOS orange
 };
 
 export const useSavedStore = create<any>((set, get) => ({
@@ -130,15 +134,15 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.surface,
     padding: 16,
-    borderRadius: 16, 
+    borderRadius: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: COLORS.primary, // Subtle maroon glow
-    shadowOpacity: 0.15,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 16,
-    elevation: 6,
+    borderColor: '#1E1E1E',
+    shadowColor: '#000',
+    shadowOpacity: 0.4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    elevation: 4,
   },
   button: {
     paddingVertical: 14,

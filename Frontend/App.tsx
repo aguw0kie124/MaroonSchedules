@@ -28,6 +28,11 @@ import { ScheduleDetailScreen } from './components/ScheduleDetailScreen';
 import { CampusMapScreen } from './components/CampusMapScreen';
 import { LocationSearchScreen } from './components/LocationSearchScreen';
 import { ExtrasSidebar } from './components/ExtrasSidebar';
+import { CampusNavigationScreen } from './components/CampusNavigationScreen';
+import { PlaceRecommendationsScreen } from './components/PlaceRecommendationsScreen';
+import { EventsCalendarScreen } from './components/EventsCalendarScreen';
+import { ForYouScreen } from './components/ForYouScreen';
+import { CrowdPingScreen } from './components/CrowdPingScreen';
 
 import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu } from 'lucide-react-native';
 
@@ -145,6 +150,11 @@ function RootNavigator() {
           <Stack.Screen name="ScheduleDetail" component={ScheduleDetailScreen} options={{ headerShown: true, title: 'Schedule Details' }} />
           <Stack.Screen name="CampusMap" component={CampusMapScreen} options={{ headerShown: true, title: 'Campus Traffic Map' }} />
           <Stack.Screen name="LocationSearch" component={LocationSearchScreen} options={{ headerShown: true, title: 'Location Traffic Search' }} />
+          <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="PlaceRecommendations" component={PlaceRecommendationsScreen} options={{ headerShown: true, title: 'Find a Spot' }} />
+          <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: true, title: 'Campus Events' }} />
+          <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: true, title: 'For You' }} />
+          <Stack.Screen name="CrowdPing" component={CrowdPingScreen} options={{ headerShown: true, title: 'CrowdPing' }} />
         </>
       ) : (
         <>

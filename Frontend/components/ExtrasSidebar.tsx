@@ -1,12 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableWithoutFeedback, Animated, Dimensions, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableWithoutFeedback, Animated, Dimensions, Pressable, ScrollView } from 'react-native';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { useUser, SignedIn } from '@clerk/clerk-expo';
-import { Map, MessageSquare, MapPin, X, ChevronRight } from 'lucide-react-native';
+import { Map, MessageSquare, MapPin, X, ChevronRight, Navigation, Sparkles, Calendar, Heart, Radio, Compass, TrendingUp } from 'lucide-react-native';
 import { COLORS } from './SharedUI';
 
 const { width } = Dimensions.get('window');
 const DRAWER_WIDTH = width * 0.85;
+
+// Lighter maroon for icon backgrounds — high contrast
+const ICON_BG = '#3D0000';
+const ICON_COLOR = '#FF8A8A'; // Bright maroon tint for icons
 
 export function ExtrasSidebar({ open, onClose }: { open: boolean, onClose: () => void }) {
     const { user } = useUser();
@@ -61,32 +65,109 @@ export function ExtrasSidebar({ open, onClose }: { open: boolean, onClose: () =>
                     <Animated.View style={[styles.backdrop, { opacity: fadeAnim }]} />
                 </TouchableWithoutFeedback>
                 <Animated.View style={[styles.drawer, { transform: [{ translateX: slideAnim }] }]}>
+                    {/* Header */}
                     <View style={styles.header}>
-                        <View>
-                            <Text style={styles.headerTitle}>The Aggie Map</Text>
-                            <Text style={styles.headerSubtitle}>Aggieland's One Stop Shop</Text>
+                        <View style={styles.headerContent}>
+                            <View style={styles.logoRow}>
+                                <View style={styles.logoBadge}>
+                                    <Compass color="#FFF" size={20} />
+                                </View>
+                                <View>
+                                    <Text style={styles.headerTitle}>The Aggie Map</Text>
+                                    <Text style={styles.headerSubtitle}>Your campus companion</Text>
+                                </View>
+                            </View>
+                            <Pressable onPress={onClose} style={styles.closeBtn}>
+                                <X color="#FFF" size={18} />
+                            </Pressable>
                         </View>
-                        <Pressable onPress={onClose} style={styles.closeBtn}>
-                            <X color={COLORS.textPrimary} size={22} />
-                        </Pressable>
-                    </View>
-                    
-                    <View style={styles.divider} />
-                    
-                    <View style={styles.menuList}>
-                        <MenuButton icon={<Map color={COLORS.primary} size={22} />} label="Campus Traffic Map" onPress={() => navigateTo('CampusMap')} />
-                        <MenuButton icon={<MapPin color={COLORS.primary} size={22} />} label="Location Traffic Search" onPress={() => navigateTo('LocationSearch')} />
-                        <MenuButton icon={<MessageSquare color={COLORS.primary} size={22} />} label="Message Users" onPress={() => navigateTo('UsersScreen')} />
                     </View>
 
-                    <View style={{flex: 1}} />
-                    
+                    <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false}>
+                        {/* Navigate Section */}
+                        <Text style={styles.sectionLabel}>EXPLORE</Text>
+                        <View style={styles.menuGroup}>
+                            <MenuButton
+                                icon={<Navigation color={ICON_COLOR} size={20} />}
+                                label="Campus Navigation"
+                                subtitle="Walking directions & voice nav"
+                                onPress={() => navigateTo('CampusNavigation')}
+                            />
+                            <View style={styles.menuDivider} />
+                            <MenuButton
+                                icon={<Sparkles color={ICON_COLOR} size={20} />}
+                                label="Find a Spot"
+                                subtitle="AI-powered place recommendations"
+                                onPress={() => navigateTo('PlaceRecommendations')}
+                                badge="AI"
+                            />
+                            <View style={styles.menuDivider} />
+                            <MenuButton
+                                icon={<Heart color={ICON_COLOR} size={20} />}
+                                label="For You"
+                                subtitle="Personalized campus feed"
+                                onPress={() => navigateTo('ForYou')}
+                            />
+                        </View>
+
+                        {/* Campus Life Section */}
+                        <Text style={styles.sectionLabel}>CAMPUS LIFE</Text>
+                        <View style={styles.menuGroup}>
+                            <MenuButton
+                                icon={<Calendar color={ICON_COLOR} size={20} />}
+                                label="Events Calendar"
+                                subtitle="Live TAMU events & activities"
+                                onPress={() => navigateTo('EventsCalendar')}
+                            />
+                            <View style={styles.menuDivider} />
+                            <MenuButton
+                                icon={<Radio color={ICON_COLOR} size={20} />}
+                                label="CrowdPing"
+                                subtitle="Crowdsourced campus vibes"
+                                onPress={() => navigateTo('CrowdPing')}
+                                badge="LIVE"
+                            />
+                        </View>
+
+                        {/* Data Section */}
+                        <Text style={styles.sectionLabel}>TRAFFIC DATA</Text>
+                        <View style={styles.menuGroup}>
+                            <MenuButton
+                                icon={<Map color={ICON_COLOR} size={20} />}
+                                label="Traffic Map"
+                                subtitle="Campus-wide occupancy heatmap"
+                                onPress={() => navigateTo('CampusMap')}
+                            />
+                            <View style={styles.menuDivider} />
+                            <MenuButton
+                                icon={<TrendingUp color={ICON_COLOR} size={20} />}
+                                label="Location Search"
+                                subtitle="Search specific building stats"
+                                onPress={() => navigateTo('LocationSearch')}
+                            />
+                        </View>
+
+                        {/* Social Section */}
+                        <Text style={styles.sectionLabel}>SOCIAL</Text>
+                        <View style={styles.menuGroup}>
+                            <MenuButton
+                                icon={<MessageSquare color={ICON_COLOR} size={20} />}
+                                label="Messages"
+                                subtitle="Chat with other Aggies"
+                                onPress={() => navigateTo('UsersScreen')}
+                            />
+                        </View>
+
+                        <View style={{ height: 20 }} />
+                    </ScrollView>
+
+                    {/* Footer */}
                     <SignedIn>
                         <View style={styles.footer}>
                             <View style={styles.avatar}>
                                 <Text style={styles.avatarText}>{user?.firstName?.[0] || 'A'}</Text>
                             </View>
-                            <View>
+                            <View style={{ flex: 1 }}>
                                 <Text style={styles.footerName}>{user?.fullName || 'Aggie User'}</Text>
                                 <Text style={styles.footerEmail}>Signed in</Text>
                             </View>
@@ -98,12 +179,22 @@ export function ExtrasSidebar({ open, onClose }: { open: boolean, onClose: () =>
     );
 }
 
-function MenuButton({ icon, label, onPress }: any) {
+function MenuButton({ icon, label, subtitle, onPress, badge }: any) {
     return (
         <Pressable style={({pressed}) => [styles.menuButton, pressed && styles.menuButtonPressed]} onPress={onPress}>
             <View style={styles.menuIconBox}>{icon}</View>
-            <Text style={styles.menuLabel}>{label}</Text>
-            <ChevronRight color={COLORS.textSecondary} size={20} />
+            <View style={styles.menuTextCol}>
+                <View style={styles.menuLabelRow}>
+                    <Text style={styles.menuLabel}>{label}</Text>
+                    {badge && (
+                        <View style={styles.badge}>
+                            <Text style={styles.badgeText}>{badge}</Text>
+                        </View>
+                    )}
+                </View>
+                {subtitle && <Text style={styles.menuSubtitle}>{subtitle}</Text>}
+            </View>
+            <ChevronRight color="rgba(255,255,255,0.3)" size={16} />
         </Pressable>
     );
 }
@@ -115,121 +206,167 @@ const styles = StyleSheet.create({
     },
     backdrop: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: 'rgba(0,0,0,0.6)',
     },
     drawer: {
         width: DRAWER_WIDTH,
         height: '100%',
-        backgroundColor: COLORS.surface, // Slick dark gray
-        shadowColor: COLORS.primary,
+        backgroundColor: '#0A0A0A',
+        shadowColor: '#000',
         shadowOffset: { width: 10, height: 0 },
-        shadowOpacity: 0.15,
+        shadowOpacity: 0.5,
         shadowRadius: 24,
         elevation: 24,
     },
     header: {
+        paddingTop: 60,
+        paddingBottom: 20,
+        paddingHorizontal: 24,
+        backgroundColor: COLORS.primary,
+    },
+    headerContent: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingTop: 60,
-        paddingHorizontal: 24,
-        paddingBottom: 24,
-        backgroundColor: COLORS.surface,
+    },
+    logoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 14,
+    },
+    logoBadge: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     headerTitle: {
-        fontSize: 24,
+        fontSize: 22,
         fontWeight: '800',
-        color: COLORS.textPrimary,
+        color: '#FFFFFF',
         letterSpacing: -0.5,
     },
     headerSubtitle: {
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: '500',
-        color: COLORS.textSecondary,
-        marginTop: 4,
+        color: 'rgba(255,255,255,0.7)',
+        marginTop: 2,
     },
     closeBtn: {
         padding: 8,
-        backgroundColor: '#1E1E1E',
+        backgroundColor: 'rgba(255,255,255,0.15)',
         borderRadius: 20,
+    },
+    scrollArea: {
+        flex: 1,
+        paddingHorizontal: 20,
+    },
+    sectionLabel: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: 'rgba(255,255,255,0.35)',
+        letterSpacing: 1.2,
+        marginTop: 24,
+        marginBottom: 10,
+        marginLeft: 4,
+    },
+    menuGroup: {
+        backgroundColor: '#141414',
+        borderRadius: 14,
         borderWidth: 1,
-        borderColor: COLORS.border,
+        borderColor: '#1F1F1F',
+        overflow: 'hidden',
     },
-    divider: {
+    menuDivider: {
         height: 1,
-        backgroundColor: COLORS.border,
-    },
-    menuList: {
-        padding: 20,
-        gap: 12,
+        backgroundColor: '#1F1F1F',
+        marginLeft: 60,
     },
     menuButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 16,
-        backgroundColor: COLORS.surface,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        shadowColor: COLORS.primary,
-        shadowOffset: {width: 0, height: 2},
-        shadowOpacity: 0.15,
-        shadowRadius: 10,
-        elevation: 2,
+        paddingVertical: 14,
+        paddingHorizontal: 14,
     },
     menuButtonPressed: {
-        transform: [{scale: 0.98}],
-        backgroundColor: '#1E1E1E',
+        backgroundColor: '#1A1A1A',
     },
     menuIconBox: {
-        width: 44,
-        height: 44,
-        borderRadius: 12,
-        backgroundColor: '#2A0000',
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        backgroundColor: ICON_BG,
         alignItems: 'center',
         justifyContent: 'center',
-        marginRight: 16,
-        borderWidth: 1,
-        borderColor: COLORS.primary,
+        marginRight: 14,
+    },
+    menuTextCol: {
+        flex: 1,
+    },
+    menuLabelRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
     },
     menuLabel: {
-        flex: 1,
         fontSize: 16,
         fontWeight: '600',
-        color: COLORS.textPrimary,
+        color: '#FFFFFF',
+    },
+    menuSubtitle: {
+        fontSize: 12,
+        fontWeight: '400',
+        color: 'rgba(255,255,255,0.45)',
+        marginTop: 2,
+    },
+    badge: {
+        backgroundColor: COLORS.primary,
+        paddingHorizontal: 7,
+        paddingVertical: 2,
+        borderRadius: 6,
+    },
+    badgeText: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: '#FFF',
+        letterSpacing: 0.5,
     },
     footer: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 24,
-        paddingBottom: 48,
-        backgroundColor: COLORS.background, // Match absolute black
+        padding: 20,
+        paddingBottom: 44,
+        backgroundColor: '#0A0A0A',
         borderTopWidth: 1,
-        borderTopColor: COLORS.border,
-        gap: 16,
+        borderTopColor: '#1F1F1F',
+        gap: 14,
     },
     avatar: {
-        width: 52,
-        height: 52,
-        borderRadius: 26,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
         backgroundColor: COLORS.primary,
         alignItems: 'center',
         justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: 'rgba(255,255,255,0.15)',
     },
     avatarText: {
-        color: 'white',
-        fontSize: 20,
-        fontWeight: 'bold',
+        color: '#FFF',
+        fontSize: 18,
+        fontWeight: '700',
     },
     footerName: {
-        fontSize: 17,
+        fontSize: 16,
         fontWeight: '700',
-        color: COLORS.textPrimary,
+        color: '#FFFFFF',
     },
     footerEmail: {
-        fontSize: 14,
-        fontWeight: '500',
-        color: COLORS.textSecondary,
-        marginTop: 2,
-    }
+        fontSize: 13,
+        fontWeight: '400',
+        color: 'rgba(255,255,255,0.45)',
+        marginTop: 1,
+    },
 });
