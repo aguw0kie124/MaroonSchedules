@@ -17,7 +17,11 @@ def get_schedules_for_user(user_id: str) -> List[dict]:
         expanded_sections = []
         for sec_id in sched.get("section_ids", []):
             # Try to grab detailed section metadata if available
-            expanded_sections.append({"section_id": sec_id})
+            sec_metadata = course_repository.get_section_by_id(sec_id)
+            if sec_metadata:
+                expanded_sections.append(sec_metadata)
+            else:
+                expanded_sections.append({"id": sec_id, "section_id": sec_id})
         sched["sections"] = expanded_sections
         
     return schedules

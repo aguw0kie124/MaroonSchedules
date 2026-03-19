@@ -1,4 +1,5 @@
 import React from 'react';
+import { View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -24,8 +25,11 @@ import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
 import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
 import { ScheduleListScreen } from './components/ScheduleListScreen';
 import { ScheduleDetailScreen } from './components/ScheduleDetailScreen';
+import { CampusMapScreen } from './components/CampusMapScreen';
+import { LocationSearchScreen } from './components/LocationSearchScreen';
+import { ExtrasSidebar } from './components/ExtrasSidebar';
 
-import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User } from 'lucide-react-native';
+import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu } from 'lucide-react-native';
 
 const tokenCache = {
   async getToken(key: string) {
@@ -50,10 +54,14 @@ const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function MainTabs() {
+  const [isExtrasOpen, setIsExtrasOpen] = React.useState(false);
+
   return (
-    <Tab.Navigator
-      id="MainTabs"
-      screenOptions={({ route }) => ({
+    <>
+      <ExtrasSidebar open={isExtrasOpen} onClose={() => setIsExtrasOpen(false)} />
+      <Tab.Navigator
+        id="MainTabs"
+        screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ focused, color, size }) => {
           let IconName;
@@ -62,8 +70,10 @@ function MainTabs() {
             IconName = Calendar;
           } else if (route.name === 'Search') {
             IconName = SearchIcon;
-          } else if (route.name === 'Builder') {
+          } else if (route.name === 'Schedules') {
             IconName = Grid3x3;
+          } else if (route.name === 'Extras') {
+            IconName = Menu;
           } else if (route.name === 'Saved') {
             IconName = Bookmark;
           } else if (route.name === 'Profile') {
@@ -81,15 +91,23 @@ function MainTabs() {
           height: 72,
           paddingBottom: 20,
           paddingTop: 10,
+          backgroundColor: '#121212',
+          borderTopColor: '#2C2C2E',
         }
       })}
     >
       <Tab.Screen name="Dashboard" component={Dashboard} options={{ title: 'Schedule' }} />
-      <Tab.Screen name="Search" component={Search} />
-      <Tab.Screen name="Builder" component={Builder} />
-      <Tab.Screen name="Saved" component={Saved} />
+      <Tab.Screen name="Search" component={NewCourseSearchScreen} options={{ headerShown: false }} />
+      <Tab.Screen name="Schedules" component={ScheduleListScreen} options={{ title: 'Schedules', headerShown: true }} />
+      <Tab.Screen name="Extras" component={View} listeners={{
+        tabPress: (e: any) => {
+          e.preventDefault();
+          setIsExtrasOpen(true);
+        }
+      }} />
       <Tab.Screen name="Profile" component={Profile} />
     </Tab.Navigator>
+    </>
   );
 }
 
@@ -101,7 +119,11 @@ function RootNavigator() {
   }
 
   return (
-    <Stack.Navigator id="RootStack" screenOptions={{ headerShown: false }}>
+    <Stack.Navigator id="RootStack" screenOptions={{ 
+        headerShown: false,
+        headerStyle: { backgroundColor: '#000000' },
+        headerTintColor: '#FFFFFF',
+    }}>
       {isSignedIn ? (
         <>
           <Stack.Screen name="Main" component={MainTabs} />
@@ -121,6 +143,8 @@ function RootNavigator() {
           <Stack.Screen name="NewCourseDetail" component={NewCourseDetailScreen} options={{ headerShown: true, title: 'Course Details' }} />
           <Stack.Screen name="ScheduleList" component={ScheduleListScreen} options={{ headerShown: true, title: 'My Schedules' }} />
           <Stack.Screen name="ScheduleDetail" component={ScheduleDetailScreen} options={{ headerShown: true, title: 'Schedule Details' }} />
+          <Stack.Screen name="CampusMap" component={CampusMapScreen} options={{ headerShown: true, title: 'Campus Traffic Map' }} />
+          <Stack.Screen name="LocationSearch" component={LocationSearchScreen} options={{ headerShown: true, title: 'Location Traffic Search' }} />
         </>
       ) : (
         <>

@@ -8,6 +8,8 @@ import {
   Pressable,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  FlatList,
 } from 'react-native';
 import {
   OverlayProvider,
@@ -16,9 +18,11 @@ import {
   MessageList,
   MessageInput,
   useCreateChatClient,
+  Attachment,
 } from 'stream-chat-react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { API_URL } from '../config';
+import { fetchSchedules } from '../api/client';
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -149,6 +153,13 @@ export function ChatScreen({ route, navigation }: Props) {
   const [channel, setChannel] = useState<any>(null);
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
 
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [shareModalVisible, setShareModalVisible] = useState(false);
+
+  useEffect(() => {
+    fetchSchedules("test_user_1").then(setSchedules).catch(console.error);
+  }, []);
+
   // 1. Fetch Stream credentials
   useEffect(() => {
     if (!isLoaded || !user) return;
@@ -243,6 +254,47 @@ export function ChatScreen({ route, navigation }: Props) {
     );
   }
 
+  const shareSchedule = async (schedule: any) => {
+    setShareModalVisible(false);
+    if (channel) {
+      await channel.sendMessage({
+        text: 'Check out my schedule! 📅',
+        attachments: [{
+          type: 'schedule',
+          schedule_id: schedule.schedule_id,
+          name: schedule.name,
+          term: schedule.term_code,
+          enrolled: schedule.section_ids?.length || 0,
+        }]
+      });
+    }
+  };
+
+  const CustomInputButtons = () => (
+    <Pressable onPress={() => setShareModalVisible(true)} style={{ padding: 8, justifyContent: 'center' }}>
+       <Text style={{ fontSize: 24 }}>📅</Text>
+    </Pressable>
+  );
+
+  const CustomAttachment = (props: any) => {
+    const { attachment } = props;
+    if (attachment.type === 'schedule') {
+      return (
+        <Pressable 
+          style={{ backgroundColor: C.maroon, padding: 16, borderRadius: 12, margin: 4, width: 250 }}
+          onPress={() => navigation.navigate('ScheduleDetail', { scheduleId: attachment.schedule_id, scheduleObj: { ...attachment }})}
+        >
+          <Text style={{color: 'white', fontWeight: 'bold', fontSize: 16}}>{attachment.name}</Text>
+          <Text style={{color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 4}}>{attachment.term} • {attachment.enrolled} classes</Text>
+          <View style={{backgroundColor: 'white', padding: 8, borderRadius: 8, marginTop: 12, alignItems: 'center'}}>
+             <Text style={{color: C.maroon, fontWeight: 'bold'}}>View Schedule</Text>
+          </View>
+        </Pressable>
+      );
+    }
+    return <Attachment {...props} />;
+  };
+
   // ── Chat ──────────────────────────────────────────────────────────────────────
   return (
     <View style={styles.screen}>
@@ -257,12 +309,40 @@ export function ChatScreen({ route, navigation }: Props) {
             <Channel
               channel={channel}
               keyboardVerticalOffset={0}
+              Attachment={CustomAttachment}
             >
               <MessageList />
-              <MessageInput />
+              <MessageInput InputButtons={CustomInputButtons} />
             </Channel>
           </Chat>
         </OverlayProvider>
+        
+        <Modal visible={shareModalVisible} transparent animationType="slide">
+            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+                <View style={{ backgroundColor: C.bg, padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%' }}>
+                    <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16}}>
+                        <Text style={{ fontSize: 20, fontWeight: 'bold', color: C.textPrimary }}>Share Schedule</Text>
+                        <Pressable onPress={() => setShareModalVisible(false)}>
+                           <Text style={{fontSize: 18, color: C.textSecondary}}>Close</Text>
+                        </Pressable>
+                    </View>
+                    <FlatList 
+                        data={schedules}
+                        keyExtractor={(s) => s.schedule_id}
+                        renderItem={({item}) => (
+                            <Pressable 
+                              style={{ backgroundColor: C.white, padding: 16, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: C.border }}
+                              onPress={() => shareSchedule(item)}
+                            >
+                                <Text style={{ fontSize: 16, fontWeight: 'bold', color: C.textPrimary }}>{item.name}</Text>
+                                <Text style={{ color: C.textSecondary, marginTop: 4 }}>{item.term_code} • {item.section_ids?.length || 0} enrolled</Text>
+                            </Pressable>
+                        )}
+                        ListEmptyComponent={<Text style={{ textAlign: 'center', marginTop: 20, color: C.textSecondary }}>No schedules found.</Text>}
+                    />
+                </View>
+            </View>
+        </Modal>
       </KeyboardAvoidingView>
     </View>
   );

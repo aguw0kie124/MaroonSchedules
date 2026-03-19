@@ -4,15 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { LogOut, MessageSquare } from 'lucide-react-native';
 import { useUser, useClerk } from '@clerk/clerk-expo';
 
-const COLORS = {
-    background: '#F5F5F7',
-    primary: '#500000',
-    textSecondary: '#666',
-    textPrimary: '#000',
-    surface: '#FFFFFF',
-    border: '#E0E0E0',
-    danger: '#DC2626',
-};
+import { COLORS } from './SharedUI';
 
 import { API_URL } from '../config';
 
@@ -65,34 +57,6 @@ export function Profile() {
                 <Text style={styles.email}>{user?.primaryEmailAddress?.emailAddress || 'user@tamu.edu'}</Text>
             </View>
 
-            {/* Application Tools Shortcuts */}
-            <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Course Tools Tools</Text>
-                
-                <Pressable
-                    onPress={() => navigation.navigate('NewCourseSearch')}
-                    style={({ pressed }) => [
-                        styles.logoutButton,
-                        { marginBottom: 8, backgroundColor: COLORS.primary },
-                        pressed && styles.pressed,
-                    ]}
-                >
-                    <Text style={[styles.logoutText, { color: '#fff' }]}>🔍 Search Courses</Text>
-                </Pressable>
-
-                <Pressable
-                    onPress={() => navigation.navigate('ScheduleList')}
-                    style={({ pressed }) => [
-                        styles.logoutButton,
-                        { backgroundColor: COLORS.primary },
-                        pressed && styles.pressed,
-                    ]}
-                >
-                    <Text style={[styles.logoutText, { color: '#fff' }]}>📅 Manage Schedules</Text>
-                </Pressable>
-            </View>
-
-
             {/* Profile Settings */}
             <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Account Information</Text>
@@ -142,19 +106,6 @@ export function Profile() {
                     onChange={(checked) => setPreferences({ ...preferences, showOnlineFirst: checked })}
                 />
             </View>
-
-            {/* Message Users Button */}
-            <Pressable
-                onPress={() => navigation.navigate('UsersScreen')}
-                style={({ pressed }) => [
-                    styles.logoutButton,
-                    { marginBottom: 12 },
-                    pressed && styles.pressed,
-                ]}
-            >
-                <MessageSquare size={20} color={COLORS.primary} />
-                <Text style={[styles.logoutText, { color: COLORS.primary }]}>Message Users</Text>
-            </Pressable>
 
             {/* Logout Button */}
             <Pressable

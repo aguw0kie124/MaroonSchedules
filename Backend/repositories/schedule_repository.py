@@ -20,9 +20,6 @@ def _save_schedules(schedules: dict):
         json.dump(schedules, f, indent=4)
 
 def create_schedule(user_id: str, name: str, term_code: str) -> dict:
-    """
-    TODO: Replace with PostgreSQL INSERT into schedules table
-    """
     schedules = _load_schedules()
     schedule_id = str(uuid.uuid4())
     new_schedule = {
@@ -37,32 +34,20 @@ def create_schedule(user_id: str, name: str, term_code: str) -> dict:
     return new_schedule
 
 def get_schedules_for_user(user_id: str) -> List[dict]:
-    """
-    TODO: Replace with PostgreSQL SELECT FROM schedules WHERE user_id = %s
-    """
     schedules = _load_schedules()
     return [s for s in schedules.values() if str(s.get("user_id")) == str(user_id)]
 
 def get_schedule(schedule_id: str) -> Optional[dict]:
-    """
-    TODO: Replace with PostgreSQL SELECT FROM schedules WHERE schedule_id = %s
-    """
     schedules = _load_schedules()
     return schedules.get(schedule_id)
 
 def update_schedule(schedule_id: str, schedule_data: dict) -> None:
-    """
-    TODO: Replace with PostgreSQL UPDATE schedules SET ...
-    """
     schedules = _load_schedules()
     if schedule_id in schedules:
         schedules[schedule_id] = schedule_data
         _save_schedules(schedules)
 
 def delete_schedule(schedule_id: str) -> bool:
-    """
-    TODO: Replace with PostgreSQL DELETE FROM schedules
-    """
     schedules = _load_schedules()
     if schedule_id in schedules:
         del schedules[schedule_id]

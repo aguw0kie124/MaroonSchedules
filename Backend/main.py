@@ -6,6 +6,7 @@ from pydantic import BaseModel
 import test_func
 import postgre_test
 from chat import router as chat_router
+from routers.traffic import router as traffic_router
 
 from services import course_service, schedule_service
 from models.search import CourseSearchRequest
@@ -21,6 +22,7 @@ app.add_middleware(
 )
 
 app.include_router(chat_router)
+app.include_router(traffic_router, prefix="/traffic", tags=["Traffic"])
 
 @app.get("/")
 def read_root():
@@ -68,6 +70,19 @@ def create_schedule(req: CreateScheduleRequest = Body(...)):
     """Create a new prospective schedule for a user."""
     try:
         return schedule_service.create_schedule(req.user_id, req.name, req.term_code)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.delete("/schedules/{schedule_id}")
+def delete_schedule(schedule_id: str):
+    """Delete a user's schedule."""
+    try:
+        success = schedule_service.delete_schedule(schedule_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Schedule not found or could not be deleted")
+        return {"status": "success"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 

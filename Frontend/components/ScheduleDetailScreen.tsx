@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, useWindowDimensions, Pressable } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { fetchSchedules, removeSectionFromSchedule } from '../api/client';
 import { COLORS, PrimaryButton, SectionRow, Card } from './SharedUI';
@@ -9,6 +9,37 @@ export function ScheduleDetailScreen() {
     const navigation = useNavigation<any>();
     const { scheduleId, scheduleObj } = route.params;
     const [schedule, setSchedule] = useState<any>(scheduleObj);
+    const { width } = useWindowDimensions();
+
+    const hours = Array.from({ length: 13 }, (_, i) => i + 8); // 8am to 8pm
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+    
+    const ROW_HEIGHT = 64;
+    const TIME_COL_WIDTH = 50;
+    const GRID_WIDTH = width - 32;
+    const DAY_COL_WIDTH = (GRID_WIDTH - TIME_COL_WIDTH) / 5;
+
+    // Helper to turn times into minutes from midnight (handles "am", "pm", "AM", "PM")
+    const parseTimeToMinutes = (timeStr?: string) => {
+        if (!timeStr) return null;
+        let [time, period] = timeStr.split(' ');
+        if (!time) return null;
+        let [hrs, mins] = time.split(':').map(Number);
+        period = period?.toUpperCase() || '';
+        if (period === 'PM' && hrs !== 12) hrs += 12;
+        if (period === 'AM' && hrs === 12) hrs = 0;
+        return hrs * 60 + mins;
+    };
+
+    const getGridDay = (apiDay: string) => {
+        const d = apiDay.toLowerCase();
+        if (d === 'm' || d === 'monday') return 'Mon';
+        if (d === 't' || d === 'tue' || d === 'tuesday') return 'Tue';
+        if (d === 'w' || d === 'wednesday') return 'Wed';
+        if (d === 'r' || d === 'th' || d === 'thursday') return 'Thu';
+        if (d === 'f' || d === 'friday') return 'Fri';
+        return null;
+    };
 
     useEffect(() => {
         loadSchedule();
@@ -39,7 +70,7 @@ export function ScheduleDetailScreen() {
             </View>
 
             <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Sections ({schedule?.sections?.length || 0})</Text>
+                <Text style={styles.sectionTitle}>Courses ({schedule?.sections?.length || 0})</Text>
                 <PrimaryButton 
                     title="+ Add Class" 
                     onPress={() => navigation.navigate('NewCourseSearch')} 
@@ -49,8 +80,8 @@ export function ScheduleDetailScreen() {
 
             {schedule?.sections?.map((sec: any) => (
                 <SectionRow 
-                    key={sec.section_id} 
-                    section={{ id: sec.section_id, section: sec.section_id }} 
+                    key={sec.id || sec.section_id} 
+                    section={sec} 
                     onRemove={handleRemove} 
                 />
             ))}
@@ -62,11 +93,81 @@ export function ScheduleDetailScreen() {
             <View style={styles.weeklyHeader}>
                 <Text style={styles.sectionTitle}>Weekly Grid Layout</Text>
             </View>
-            <Card style={styles.gridCard}>
-                <Text style={{color: COLORS.textSecondary, textAlign: 'center', marginVertical: 40}}>
-                    (Weekly Timetable Layout Placeholder)
-                </Text>
-            </Card>
+            <View style={{ width: GRID_WIDTH, marginBottom: 40, marginTop: 10 }}>
+                {/* Day Headers */}
+                <View style={styles.gridHeader}>
+                    <View style={{ width: TIME_COL_WIDTH }} />
+                    {days.map((day) => (
+                        <View key={day} style={{ width: DAY_COL_WIDTH, alignItems: 'center' }}>
+                            <Text style={styles.dayHeaderText}>{day}</Text>
+                        </View>
+                    ))}
+                </View>
+
+                {/* Grid */}
+                <View style={styles.gridBody}>
+                    {hours.map((hour) => (
+                        <View key={hour} style={styles.gridRow}>
+                            <View style={[styles.timeSlot, { width: TIME_COL_WIDTH }]}>
+                                <Text style={styles.timeText}>
+                                    {hour > 12 ? hour - 12 : hour}
+                                    {hour >= 12 ? 'pm' : 'am'}
+                                </Text>
+                            </View>
+                            {days.map((day) => (
+                                <View key={day} style={[styles.gridCell, { width: DAY_COL_WIDTH }]} />
+                            ))}
+                        </View>
+                    ))}
+
+                    {/* Course Blocks */}
+                    {schedule?.sections?.map((sec: any, idx: number) => {
+                        const meeting = sec.meetings?.[0];
+                        if (!meeting || !meeting.beginTime || !meeting.endTime) return null;
+                        
+                        const startTime = parseTimeToMinutes(meeting.beginTime);
+                        const endTime = parseTimeToMinutes(meeting.endTime);
+                        if (!startTime || !endTime) return null;
+
+                        // Give sections pseudo colors
+                        const colors = ['#500000', '#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6'];
+                        const blockColor = colors[idx % colors.length];
+
+                        return meeting.daysOfWeek?.map((apiDay: string) => {
+                            const gridDay = getGridDay(apiDay);
+                            if (!gridDay) return null;
+                            const dayIndex = days.indexOf(gridDay);
+                            if (dayIndex === -1) return null;
+
+                            const topOffset = ((startTime - 480) / 60) * ROW_HEIGHT;
+                            const height = ((endTime - startTime) / 60) * ROW_HEIGHT;
+                            
+                            // Safe course code display handling empty depts or ids
+                            const courseCode = `${sec.dept || ''} ${sec.courseNumber || ''}`.trim() || sec.id;
+
+                            return (
+                                <View
+                                    key={`${sec.id}-${gridDay}`}
+                                    style={[
+                                        styles.courseBlock,
+                                        {
+                                            left: TIME_COL_WIDTH + dayIndex * DAY_COL_WIDTH + 2,
+                                            top: topOffset,
+                                            width: DAY_COL_WIDTH - 4,
+                                            height: Math.max(height, 24), // Ensure visual block isn't totally collapsed
+                                            backgroundColor: blockColor,
+                                        },
+                                    ]}
+                                >
+                                    <Text style={styles.blockCode} numberOfLines={1}>{courseCode}</Text>
+                                    <Text style={styles.blockText} numberOfLines={1}>{meeting.building} {meeting.room}</Text>
+                                    <Text style={styles.blockText} numberOfLines={1}>{meeting.beginTime}</Text>
+                                </View>
+                            );
+                        });
+                    })}
+                </View>
+            </View>
 
         </ScrollView>
     );
@@ -81,5 +182,25 @@ const styles = StyleSheet.create({
     sectionTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textPrimary },
     empty: { textAlign: 'center', marginTop: 20, color: COLORS.textSecondary, marginBottom: 24 },
     weeklyHeader: { marginTop: 32, marginBottom: 12 },
-    gridCard: { minHeight: 150, justifyContent: 'center' }
+    // Grid Styles
+    gridHeader: { flexDirection: 'row', paddingBottom: 8 },
+    dayHeaderText: { fontSize: 12, fontWeight: '600', color: COLORS.textSecondary },
+    gridBody: { position: 'relative' },
+    gridRow: { flexDirection: 'row', height: 64 },
+    timeSlot: { alignItems: 'flex-end', paddingRight: 8, paddingTop: 0 },
+    timeText: { fontSize: 10, color: COLORS.textSecondary, transform: [{ translateY: -6 }] },
+    gridCell: { borderTopWidth: 1, borderTopColor: '#E0E0E0', backgroundColor: '#FFFFFF' },
+    courseBlock: {
+        position: 'absolute',
+        borderRadius: 8,
+        padding: 4,
+        justifyContent: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    blockCode: { fontSize: 10, fontWeight: '700', color: 'white' },
+    blockText: { fontSize: 8, color: 'white', opacity: 0.9 },
 });

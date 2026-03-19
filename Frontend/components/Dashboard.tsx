@@ -2,21 +2,13 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Plus } from 'lucide-react-native';
-import { Card } from './Card';
+// Removed local Card import in favor of SharedUI Card
 import { useCourseStore } from '../store/courseStore';
 import { useUser } from '@clerk/clerk-expo';
 
 const { width } = Dimensions.get('window');
 
-// Colors matching the web CSS variables
-const COLORS = {
-    background: '#F5F5F7', // Example light gray background
-    textSecondary: '#666',
-    primary: '#500000', // Maroon
-    primaryLight: '#FFE5E5',
-    surface: '#FFFFFF',
-    border: '#E0E0E0',
-};
+import { COLORS, Card } from './SharedUI';
 
 export function Dashboard() {
     const navigation = useNavigation<any>();
@@ -37,7 +29,7 @@ export function Dashboard() {
                 {/* Header */}
                 <View style={styles.header}>
                     <View>
-                        <Text style={styles.greeting}>Howdy</Text>
+                        <Text style={styles.greeting}>Howdy, Ag!</Text>
                         <Text style={styles.name}>{user?.firstName || 'Aggie'}</Text>
                     </View>
                     <Pressable
@@ -58,7 +50,7 @@ export function Dashboard() {
                             <Text style={styles.caption}>
                                 {totalCredits} / {maxCredits} credits
                             </Text>
-                            <Text style={[styles.caption, { color: COLORS.primary }]}>
+                            <Text style={[styles.caption, { color: COLORS.textPrimary, fontWeight: 'bold' }]}>
                                 {maxCredits - totalCredits} remaining
                             </Text>
                         </View>
@@ -99,7 +91,7 @@ export function Dashboard() {
                             ))
                         ) : (
                             <Card>
-                                <Text style={styles.emptyText}>No classes scheduled for today</Text>
+                                <Text style={styles.emptyText}>No classes today! Time to BTHO your homework. 👍</Text>
                             </Card>
                         )}
                     </View>
@@ -146,7 +138,7 @@ const styles = StyleSheet.create({
     name: {
         fontSize: 28,
         fontWeight: 'bold',
-        color: '#000',
+        color: COLORS.textPrimary,
     },
     avatar: {
         width: 36,
@@ -169,6 +161,7 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: '600',
         marginBottom: 16,
+        color: COLORS.textPrimary,
     },
     progressContainer: {
         gap: 8,
@@ -199,7 +192,7 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: '600',
         marginBottom: 16,
-        color: '#000',
+        color: COLORS.textPrimary,
     },
     courseList: {
         gap: 12,
@@ -211,13 +204,16 @@ const styles = StyleSheet.create({
         padding: 16,
         borderRadius: 12,
         gap: 12,
-        shadowColor: '#000',
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        shadowColor: COLORS.primary,
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
+        shadowOpacity: 0.15,
         shadowRadius: 8,
-        elevation: 2,
+        elevation: 4,
     },
     courseItemPressed: {
+        backgroundColor: '#1E1E1E',
         transform: [{ scale: 0.98 }],
     },
     colorStrip: {
@@ -232,21 +228,24 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '600',
         marginBottom: 4,
+        color: COLORS.textPrimary,
     },
     courseName: {
         fontSize: 12,
         color: COLORS.textSecondary,
     },
     timeBadge: {
-        backgroundColor: COLORS.primaryLight,
+        backgroundColor: '#2A0000', // Matches primaryLight from SharedUI
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 16,
+        borderWidth: 1,
+        borderColor: COLORS.primary,
     },
     timeText: {
         fontSize: 12,
-        color: COLORS.primary,
-        fontWeight: '500',
+        color: '#FFFFFF',
+        fontWeight: '600',
     },
     emptyText: {
         textAlign: 'center',
