@@ -1,0 +1,1 @@
+[{"dept":"RELS","courseNumber":"484","courseTitle":"INTERNSHIP","credits":"0","professor":{"id":"VGVhY2hlci0yMjcwMjY1","firstName":"Daniel","lastName":"Bare","avgRating":4.8,"avgDifficulty":2.8,"totalRatings":31,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":35.7,"confidenceScore":50.2}]

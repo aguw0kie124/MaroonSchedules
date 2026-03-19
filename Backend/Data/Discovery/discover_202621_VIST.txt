@@ -1,0 +1,1 @@
+[{"dept":"VIST","courseNumber":"275","courseTitle":"PRODUCTION TECHNIQUES","credits":"3","professor":{"id":"VGVhY2hlci0yOTYzOTYx","firstName":"Emily","lastName":"Bujnoch","avgRating":2.8,"avgDifficulty":3.8,"totalRatings":5,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":20.2,"confidenceScore":25.9}]

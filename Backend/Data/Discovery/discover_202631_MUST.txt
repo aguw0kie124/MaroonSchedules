@@ -1,0 +1,1 @@
+[{"dept":"MUST","courseNumber":"221","courseTitle":"FOUNDATIONS OF MUSEUM STUDIES","credits":"3","professor":{"id":"VGVhY2hlci0yMDIxNjc3","firstName":"Nancy","lastName":"Klein","avgRating":4.7,"avgDifficulty":2.2,"totalRatings":92,"tags":[],"avgGpa":3.01,"percentAB":71.6,"gpaStudentCount":67},"easinessScore":77.4,"confidenceScore":73.5}]

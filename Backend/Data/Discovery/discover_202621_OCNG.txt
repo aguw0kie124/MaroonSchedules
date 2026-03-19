@@ -1,0 +1,1 @@
+[{"dept":"OCNG","courseNumber":"252","courseTitle":"THE BLUE PLANET OCEAN LAB","credits":"1","professor":{"id":"VGVhY2hlci0xOTc1Mzg1","firstName":"Christina","lastName":"Wiederwohl","avgRating":4.3,"avgDifficulty":2.6,"totalRatings":3,"tags":[],"avgGpa":3.54,"percentAB":86.9,"gpaStudentCount":7157},"easinessScore":79.4,"confidenceScore":100.0}]

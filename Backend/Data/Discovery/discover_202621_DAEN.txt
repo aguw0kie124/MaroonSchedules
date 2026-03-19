@@ -1,0 +1,1 @@
+[{"dept":"DAEN","courseNumber":"399","courseTitle":"PROFESSIONAL DEVELOPMENT","credits":"0","professor":{"id":"VGVhY2hlci0yNzYwMTg1","firstName":"Jon","lastName":"Elizondo","avgRating":4.8,"avgDifficulty":2.6,"totalRatings":28,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":37.2,"confidenceScore":48.7}]

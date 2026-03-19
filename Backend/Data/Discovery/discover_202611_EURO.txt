@@ -1,0 +1,1 @@
+[{"dept":"EURO","courseNumber":"443","courseTitle":"CONTEMP RUSSIAN PROSE","credits":"3","professor":{"id":"VGVhY2hlci0yMTEwNDA5","firstName":"Elisabeth","lastName":"Rich","avgRating":3.9,"avgDifficulty":2.0,"totalRatings":11,"tags":[],"avgGpa":3.7,"percentAB":100.0,"gpaStudentCount":10},"easinessScore":84.4,"confidenceScore":44.7}]

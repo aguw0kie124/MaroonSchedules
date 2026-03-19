@@ -1,0 +1,1 @@
+[{"dept":"RUSS","courseNumber":"485","courseTitle":"DIRECTED STUDIES","credits":"1","professor":{"id":"VGVhY2hlci0yNzUwNzkx","firstName":"Petr","lastName":"Kandidatov","avgRating":4.9,"avgDifficulty":2.1,"totalRatings":29,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":41.4,"confidenceScore":49.2}]

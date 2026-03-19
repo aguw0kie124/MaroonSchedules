@@ -1,0 +1,1 @@
+[{"dept":"EPSY","courseNumber":"435","courseTitle":"EDUCATIONAL STATISTICS","credits":"3","professor":{"id":"VGVhY2hlci0zMTEyNDY1","firstName":"Olukayode","lastName":"Apata","avgRating":0.0,"avgDifficulty":0.0,"totalRatings":0,"tags":[],"avgGpa":3.6,"percentAB":90.4,"gpaStudentCount":94},"easinessScore":45.0,"confidenceScore":65.9}]

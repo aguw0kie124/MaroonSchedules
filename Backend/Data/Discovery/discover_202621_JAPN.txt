@@ -1,0 +1,1 @@
+[{"dept":"JAPN","courseNumber":"485","courseTitle":"DIRECTED STUDIES","credits":"3","professor":{"id":"VGVhY2hlci0xNjIyMDc1","firstName":"Yuki","lastName":"Waugh","avgRating":4.9,"avgDifficulty":1.6,"totalRatings":1,"tags":[],"avgGpa":4.0,"percentAB":100.0,"gpaStudentCount":47},"easinessScore":95.1,"confidenceScore":56.3}]

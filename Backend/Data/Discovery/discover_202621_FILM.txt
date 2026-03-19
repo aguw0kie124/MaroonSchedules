@@ -1,0 +1,1 @@
+[{"dept":"FILM","courseNumber":"251","courseTitle":"INTRO TO FILM ANALYSIS","credits":"3","professor":{"id":"VGVhY2hlci0zMTQxNzIx","firstName":"Stephanie","lastName":"Oliver","avgRating":4.3,"avgDifficulty":2.0,"totalRatings":4,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":39.7,"confidenceScore":23.3}]

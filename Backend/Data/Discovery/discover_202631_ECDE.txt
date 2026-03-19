@@ -1,0 +1,1 @@
+[{"dept":"ECDE","courseNumber":"352","courseTitle":"PARTNERING FAMILIES EARLY CHLD","credits":"3","professor":{"id":"VGVhY2hlci0yMTQ3MDUx","firstName":"Xia","lastName":"Hu","avgRating":4.8,"avgDifficulty":4.0,"totalRatings":2,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":26.7,"confidenceScore":15.9}]

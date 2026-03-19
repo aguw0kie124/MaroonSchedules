@@ -1,0 +1,1 @@
+[{"dept":"ITDE","courseNumber":"401","courseTitle":"ITDE CAPSTONE DESIGN I","credits":"3","professor":{"id":"VGVhY2hlci0zMDQxNDQw","firstName":"Andrew","lastName":"Conkey","avgRating":1.3,"avgDifficulty":4.0,"totalRatings":8,"tags":[],"avgGpa":3.68,"percentAB":100.0,"gpaStudentCount":41},"easinessScore":58.7,"confidenceScore":56.6}]

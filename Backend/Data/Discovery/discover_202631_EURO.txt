@@ -1,0 +1,1 @@
+[{"dept":"EURO","courseNumber":"441","courseTitle":"RUSSIAN NOVEL I","credits":"3","professor":{"id":"VGVhY2hlci0zMTM3NDUz","firstName":"Brendan","lastName":"Mooney","avgRating":4.0,"avgDifficulty":3.0,"totalRatings":1,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":31.0,"confidenceScore":10.0}]

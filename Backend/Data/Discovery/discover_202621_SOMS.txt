@@ -1,0 +1,1 @@
+[{"dept":"SOMS","courseNumber":"485","courseTitle":"DIRECTED STUDIES","credits":"0","professor":{"id":"VGVhY2hlci0yNzQzMDkw","firstName":"David","lastName":"Keller","avgRating":0.0,"avgDifficulty":0.0,"totalRatings":0,"tags":[],"avgGpa":4.0,"percentAB":100.0,"gpaStudentCount":6},"easinessScore":50.0,"confidenceScore":28.2}]

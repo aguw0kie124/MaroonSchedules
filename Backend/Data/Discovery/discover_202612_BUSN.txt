@@ -1,0 +1,1 @@
+[{"dept":"BUSN","courseNumber":"203","courseTitle":"STATISTICAL METHODS FOR BUSI","credits":"3","professor":{"id":"VGVhY2hlci0zMDExMDgx","firstName":"Robert","lastName":"Morrison","avgRating":5.0,"avgDifficulty":3.5,"totalRatings":2,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":31.2,"confidenceScore":15.9}]

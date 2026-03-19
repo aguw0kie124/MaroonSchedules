@@ -1,0 +1,1 @@
+[{"dept":"LMAS","courseNumber":"201","courseTitle":"INTRO LATINO MEXICAN AMER STUD","credits":"3","professor":{"id":"VGVhY2hlci0yMDM3MDk4","firstName":"Nancy","lastName":"Videla","avgRating":5.0,"avgDifficulty":3.0,"totalRatings":1,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":35.0,"confidenceScore":10.0}]

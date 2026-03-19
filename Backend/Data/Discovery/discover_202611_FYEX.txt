@@ -1,0 +1,1 @@
+[{"dept":"FYEX","courseNumber":"101","courseTitle":"HULLABALOO U-CEHD TRAILBLAZERS","credits":"0","professor":{"id":"VGVhY2hlci0yNzc3MjU1","firstName":"Victor","lastName":"Castillo","avgRating":0.0,"avgDifficulty":0.0,"totalRatings":0,"tags":[],"avgGpa":null,"percentAB":null,"gpaStudentCount":0},"easinessScore":0.0,"confidenceScore":0.0}]
