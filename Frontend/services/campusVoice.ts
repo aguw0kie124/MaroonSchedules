@@ -9,6 +9,21 @@ import { BUILDINGS, AMENITIES } from '../data/campus';
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 
+// Retry helper for Gemini API calls with exponential backoff
+const fetchWithRetry = async (url: string, options: RequestInit, maxRetries = 3): Promise<Response> => {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, options);
+    if (res.status === 429 && attempt < maxRetries) {
+      const delay = Math.pow(2, attempt + 1) * 1000;
+      console.warn(`[CampusVoice] Rate limited (429), retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      continue;
+    }
+    return res;
+  }
+  throw new Error('Max retries exceeded');
+};
+
 export type VoiceIntent =
   | { type: 'BUILDING'; buildingId: string; raw: string }
   | { type: 'NEAREST'; category: 'restroom' | 'coffee' | 'dining' | 'library' | 'study' | 'parking'; raw: string }
@@ -114,8 +129,8 @@ export async function processVoiceCommand(audioUri: string): Promise<{
     const buildingNames = BUILDINGS.map((b) => `${b.shortName} (${b.name})`).join(', ');
     const amenityTypes = ['restroom', 'coffee', 'dining', 'library', 'study', 'parking'];
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+    const response = await fetchWithRetry(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -13,7 +13,7 @@ export function NewCourseSearchScreen() {
 
     useEffect(() => {
         const delayDebounceFn = setTimeout(() => {
-            if (query.trim().length > 2) {
+            if (query.trim().length > 0) {
                 handleSearch();
             } else if (query.length === 0) {
                 setCourses([]);
@@ -25,14 +25,7 @@ export function NewCourseSearchScreen() {
     const handleSearch = async () => {
         setLoading(true);
         try {
-            const parts = query.trim().split(' ');
-            let params: any = {};
-            if (parts.length > 1) {
-                params.dept = parts[0];
-                params.course_number = parts[1];
-            } else if (parts.length === 1 && parts[0]) {
-                params.dept = parts[0];
-            }
+            let params: any = { dept: query.trim() };
 
             const res = await fetchCourses(params);
             setCourses(res);
@@ -55,7 +48,12 @@ export function NewCourseSearchScreen() {
                 <View style={{ flex: 1 }}>
                     <Text style={styles.courseCode}>{item.code}</Text>
                     <Text style={styles.courseName}>{item.name}</Text>
-                    <Text style={styles.courseCredits}>{item.credits || 3} Credits</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={styles.courseCredits}>{item.credits || 3} Credits</Text>
+                        {item.prerequisites && (
+                            <Text style={styles.coursePrereqs} numberOfLines={1}> • Prereqs: {item.prerequisites}</Text>
+                        )}
+                    </View>
                 </View>
                 <ChevronRight color={COLORS.textSecondary} size={20} />
             </View>
@@ -90,7 +88,7 @@ export function NewCourseSearchScreen() {
                     renderItem={renderItem}
                     contentContainerStyle={styles.listContent}
                     ListEmptyComponent={
-                        query.trim().length > 2 ? (
+                        query.trim().length > 0 ? (
                             <Text style={styles.emptyText}>No courses found matching "{query}".</Text>
                         ) : (
                             <View style={styles.emptyState}>
@@ -199,6 +197,12 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '600',
         color: '#8E8E93',
+    },
+    coursePrereqs: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#FF9F0A',
+        flexShrink: 1,
     },
     emptyState: {
         alignItems: 'center',

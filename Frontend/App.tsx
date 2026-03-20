@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/clerk-expo';
+import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -35,6 +35,28 @@ import { ForYouScreen } from './components/ForYouScreen';
 import { CrowdPingScreen } from './components/CrowdPingScreen';
 
 import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu } from 'lucide-react-native';
+
+import { syncUser } from './api/client';
+
+/**
+ * Invisible component that syncs the signed-in Clerk user to the PostgreSQL
+ * users table on every app load.  Renders its children unchanged.
+ */
+function UserSync({ children }: { children: React.ReactNode }) {
+  const { user } = useUser();
+
+  React.useEffect(() => {
+    if (user) {
+      syncUser(
+        user.id,
+        user.primaryEmailAddress?.emailAddress,
+        user.fullName ?? undefined,
+      ).catch((err: any) => console.warn('UserSync failed:', err));
+    }
+  }, [user]);
+
+  return <>{children}</>;
+}
 
 const tokenCache = {
   async getToken(key: string) {
@@ -123,7 +145,7 @@ function RootNavigator() {
     return null;
   }
 
-  return (
+  const navigator = (
     <Stack.Navigator id="RootStack" screenOptions={{ 
         headerShown: false,
         headerStyle: { backgroundColor: '#000000' },
@@ -175,6 +197,9 @@ function RootNavigator() {
       )}
     </Stack.Navigator>
   );
+
+  // Wrap with UserSync only when signed in so the DB row is created/updated
+  return isSignedIn ? <UserSync>{navigator}</UserSync> : navigator;
 }
 
 import { registerRootComponent } from 'expo';

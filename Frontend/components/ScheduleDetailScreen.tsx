@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, useWindowDimensions, Pressable } from 'react-native';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, useIsFocused } from '@react-navigation/native';
 import { fetchSchedules, removeSectionFromSchedule } from '../api/client';
 import { COLORS, PrimaryButton, SectionRow, Card } from './SharedUI';
+import { useUser } from '@clerk/clerk-expo';
 
 export function ScheduleDetailScreen() {
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
     const { scheduleId, scheduleObj } = route.params;
+    const { user } = useUser();
+    const userId = user?.id || 'anonymous';
     const [schedule, setSchedule] = useState<any>(scheduleObj);
     const { width } = useWindowDimensions();
 
@@ -41,13 +44,34 @@ export function ScheduleDetailScreen() {
         return null;
     };
 
+    const getTermName = (code: string) => {
+        if (!code) return '';
+        const year = code.substring(0, 4);
+        const suffix = code.substring(4);
+        const seasonMap: Record<string, string> = {
+            '11': 'Spring',
+            '21': 'Summer',
+            '22': 'Summer I',
+            '23': 'Summer II',
+            '31': 'Fall',
+            '32': 'Fall (2)',
+            '41': 'Winter',
+        };
+        const season = seasonMap[suffix] || `Term ${suffix}`;
+        return `${season} ${year}`;
+    };
+
+    const isFocused = useIsFocused();
+
     useEffect(() => {
-        loadSchedule();
-    }, []);
+        if (isFocused) {
+            loadSchedule();
+        }
+    }, [isFocused]);
 
     const loadSchedule = async () => {
         try {
-            const data = await fetchSchedules("test_user_1");
+            const data = await fetchSchedules(userId);
             const found = data.find((s: any) => s.schedule_id === scheduleId);
             if (found) setSchedule(found);
         } catch (e) {}
@@ -55,7 +79,7 @@ export function ScheduleDetailScreen() {
 
     const handleRemove = async (sectionId: string) => {
         try {
-            await removeSectionFromSchedule(scheduleId, sectionId, "test_user_1");
+            await removeSectionFromSchedule(scheduleId, sectionId, userId);
             const updated = { ...schedule, sections: schedule.sections.filter((s:any) => s.section_id !== sectionId) };
             setSchedule(updated);
             loadSchedule(); // background fetch sync
@@ -66,7 +90,7 @@ export function ScheduleDetailScreen() {
         <ScrollView style={styles.container} contentContainerStyle={{ padding: 16 }}>
             <View style={styles.header}>
                 <Text style={styles.title}>{schedule?.name}</Text>
-                <Text style={styles.subtitle}>{schedule?.term_code}</Text>
+                <Text style={styles.subtitle}>{getTermName(schedule?.term_code)}</Text>
             </View>
 
             <View style={styles.sectionHeader}>

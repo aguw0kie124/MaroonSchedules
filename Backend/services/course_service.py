@@ -35,3 +35,9 @@ def search_sections(term: Optional[str] = None, course_code: Optional[str] = Non
     Service to search sections based on filters.
     """
     return course_repository.search_sections(term=term, course_code=course_code)[:5]
+
+def get_all_terms() -> List[dict]:
+    """
+    Service to fetch all available terms.
+    """
+    return course_repository.get_all_terms()

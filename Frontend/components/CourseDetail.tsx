@@ -1,9 +1,10 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { ArrowLeft, MapPin, User, Clock, BookOpen } from 'lucide-react-native';
 import { Button } from './Button';
 import { useCourseStore } from '../store/courseStore';
+import { fetchSectionById } from '../api/client';
 
 // Define Param List for Type Safety (Optional but good)
 type RootStackParamList = {
@@ -13,113 +14,7 @@ type RootStackParamList = {
 
 type CourseDetailRouteProp = RouteProp<RootStackParamList, 'CourseDetail'>;
 
-// Duplicating for simplicity or import if shared properly
-const allCourses = [
-    {
-        id: '1',
-        code: 'CSCE 221',
-        name: 'Data Structures & Algorithms',
-        credits: 3,
-        professor: 'Dr. Smith',
-        rating: 4.6,
-        time: '10:30-11:45',
-        days: ['M', 'W', 'F'],
-        location: 'HRBB 124',
-        startTime: 630,
-        endTime: 705,
-        prerequisites: 'CSCE 121',
-        description: 'Study of the concepts, implementation, and application of data structures and algorithms. Topics include lists, stacks, queues, trees, graphs, sorting, and searching algorithms.',
-    },
-    {
-        id: '2',
-        code: 'MATH 304',
-        name: 'Linear Algebra',
-        credits: 3,
-        professor: 'Dr. Johnson',
-        rating: 4.2,
-        time: '13:00-14:15',
-        days: ['T', 'Th'],
-        location: 'BLOC 161',
-        startTime: 780,
-        endTime: 855,
-        prerequisites: 'MATH 152',
-        description: 'Vector spaces, linear transformations, matrices, determinants, eigenvalues and eigenvectors, and applications.',
-    },
-    {
-        id: '3',
-        code: 'CSCE 310',
-        name: 'Database Systems',
-        credits: 3,
-        professor: 'Dr. Williams',
-        rating: 4.8,
-        time: '09:00-10:15',
-        days: ['T', 'Th'],
-        location: 'HRBB 113',
-        startTime: 540,
-        endTime: 615,
-        prerequisites: 'CSCE 221',
-        description: 'Database design, SQL, relational database management systems, normalization, and transaction processing.',
-    },
-    {
-        id: '4',
-        code: 'CSCE 314',
-        name: 'Programming Languages',
-        credits: 3,
-        professor: 'Dr. Anderson',
-        rating: 4.5,
-        time: '14:30-15:45',
-        days: ['M', 'W', 'F'],
-        location: 'ZACH 350',
-        startTime: 870,
-        endTime: 945,
-        prerequisites: 'CSCE 221',
-        description: 'Study of programming language concepts including functional, object-oriented, and logic programming paradigms.',
-    },
-    {
-        id: '5',
-        code: 'ENGL 210',
-        name: 'Technical Writing',
-        credits: 3,
-        professor: 'Dr. Martinez',
-        rating: 4.3,
-        time: '11:00-12:15',
-        days: ['T', 'Th'],
-        location: 'BLOCKER 166',
-        startTime: 660,
-        endTime: 735,
-        description: 'Professional and technical writing for engineers. Focus on clarity, organization, and effective communication.',
-    },
-    {
-        id: '6',
-        code: 'CSCE 441',
-        name: 'Computer Graphics',
-        credits: 3,
-        professor: 'Dr. Chen',
-        rating: 4.7,
-        time: '15:00-16:15',
-        days: ['M', 'W'],
-        location: 'HRBB 124',
-        startTime: 900,
-        endTime: 975,
-        prerequisites: 'CSCE 221, MATH 304',
-        description: '3D graphics, rendering algorithms, transformations, lighting models, and OpenGL programming.',
-    },
-    {
-        id: '7',
-        code: 'CSCE 482',
-        name: 'Senior Capstone Design',
-        credits: 3,
-        professor: 'Dr. Thompson',
-        rating: 4.4,
-        time: '16:30-18:00',
-        days: ['M', 'W'],
-        location: 'ZACH 590',
-        startTime: 990,
-        endTime: 1080,
-        prerequisites: 'Senior standing',
-        description: 'Team-based software development project with industry sponsors. Complete design and implementation of a software system.',
-    },
-];
+// Replaced static array with dynamic loading
 
 const COLORS = {
     background: '#F5F5F7',
@@ -137,30 +32,52 @@ export function CourseDetail() {
 
     const { id } = route.params || {};
 
-    const course = allCourses.find((c) => c.id === id);
-    const isAdded = courses.some((c) => c.id === id);
-    const isSaved = savedCourses.some((c) => c.id === id);
+    const [section, setSection] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
 
-    if (!course) {
+    useEffect(() => {
+        if (id) loadSection();
+    }, [id]);
+
+    const loadSection = async () => {
+        try {
+            const res = await fetchSectionById(id);
+            setSection(res);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (loading) {
         return (
-            <View style={styles.container}>
-                <Text>Course not found</Text>
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+                <ActivityIndicator size="large" color={COLORS.primary} />
             </View>
         );
     }
 
-    const handleAddToSchedule = () => {
-        if (!isAdded) {
-            addCourse(course as any);
-        }
-        navigation.navigate('Main', { screen: 'Builder' });
-    };
+    if (!section) {
+        return (
+            <View style={styles.container}>
+                <Text style={{ textAlign: 'center', marginTop: 40, color: COLORS.textPrimary }}>Course Section not found.</Text>
+            </View>
+        );
+    }
 
-    const handleSaveForLater = () => {
-        if (!isSaved) {
-            saveCourse(course as any);
-        }
-    };
+    // Because this isn't adding courses anymore, this logic might be unutilized but kept to compile
+    const isAdded = false;
+    const isSaved = false;
+
+    const handleAddToSchedule = () => {};
+    const handleSaveForLater = () => {};
+
+    const meeting = section.meetings?.[0];
+    const timeStr = meeting?.beginTime ? `${meeting.beginTime} - ${meeting.endTime}` : 'Time TBA';
+    const daysStr = meeting?.daysOfWeek?.length ? meeting.daysOfWeek.join('') : 'Days TBA';
+    const locationStr = meeting?.building ? `${meeting.building} ${meeting.room || ''}`.trim() : 'Location TBA';
+    const prof = section.instructors?.[0];
 
     return (
         <View style={styles.container}>
@@ -170,32 +87,32 @@ export function CourseDetail() {
                     <ArrowLeft size={24} color={COLORS.textPrimary} />
                 </Pressable>
 
-                <Text style={styles.title}>{course.name}</Text>
-                <Text style={styles.subtitle}>{course.code}</Text>
+                <Text style={styles.title}>{section.courseTitle || `${section.dept} ${section.courseNumber}`}</Text>
+                <Text style={styles.subtitle}>{section.dept} {section.courseNumber} - Section {section.sectionNumber || section.section || section.id}</Text>
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 {/* Info Card */}
                 <View style={styles.card}>
-                    <InfoRow icon={BookOpen} label="Credits" value={`${course.credits} credits`} />
-                    <InfoRow icon={User} label="Professor" value={course.professor} />
-                    <InfoRow icon={MapPin} label="Location" value={course.location} />
+                    <InfoRow icon={BookOpen} label="Credits" value={`${section.creditHours || 3} credits`} />
+                    <InfoRow icon={User} label="Professor" value={prof?.name || 'TBA'} />
+                    <InfoRow icon={MapPin} label="Location" value={locationStr} />
                     <InfoRow
                         icon={Clock}
                         label="Meeting Times"
-                        value={`${course.days.join('')} ${course.time}`}
+                        value={`${daysStr} @ ${timeStr}`}
                     />
-                    {course.prerequisites && (
-                        <InfoRow icon={BookOpen} label="Prerequisites" value={course.prerequisites} />
+                    {section.prerequisites && (
+                        <InfoRow icon={BookOpen} label="Prerequisites" value={section.prerequisites} />
                     )}
                 </View>
 
                 {/* Description */}
-                {course.description && (
+                {(section.courseDescription || section.description) && (
                     <View style={styles.card}>
                         <Text style={styles.cardTitle}>Description</Text>
                         <Text style={styles.description}>
-                            {course.description}
+                            {section.courseDescription || section.description}
                         </Text>
                     </View>
                 )}

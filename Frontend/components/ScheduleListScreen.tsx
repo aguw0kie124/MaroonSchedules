@@ -3,17 +3,37 @@ import { View, Text, FlatList, StyleSheet, ActivityIndicator, Modal, TextInput, 
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { fetchSchedules, createSchedule, deleteSchedule } from '../api/client';
 import { COLORS, PrimaryButton } from './SharedUI';
-import { Grid3x3, CheckCircle2, X } from 'lucide-react-native';
+import { useUser } from '@clerk/clerk-expo';
+import { Grid3x3, CheckCircle2, X, Trash2 } from 'lucide-react-native';
 
 export function ScheduleListScreen() {
     const navigation = useNavigation<any>();
     const isFocused = useIsFocused();
+    const { user } = useUser();
+    const userId = user?.id || 'anonymous';
     const [schedules, setSchedules] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [modalVisible, setModalVisible] = useState(false);
     
     const [name, setName] = useState('');
     const [term, setTerm] = useState('');
+
+    const getTermName = (code: string) => {
+        if (!code) return '';
+        const year = code.substring(0, 4);
+        const suffix = code.substring(4);
+        const seasonMap: Record<string, string> = {
+            '11': 'Spring',
+            '21': 'Summer',
+            '22': 'Summer I',
+            '23': 'Summer II',
+            '31': 'Fall',
+            '32': 'Fall (2)',
+            '41': 'Winter',
+        };
+        const season = seasonMap[suffix] || `Term ${suffix}`;
+        return `${season} ${year}`;
+    };
 
     useEffect(() => {
         if (isFocused) {
@@ -23,7 +43,7 @@ export function ScheduleListScreen() {
 
     const loadSchedules = async () => {
         try {
-            const data = await fetchSchedules("test_user_1");
+            const data = await fetchSchedules(userId);
             setSchedules(data);
         } catch (e) {
             console.error(e);
@@ -35,7 +55,7 @@ export function ScheduleListScreen() {
     const handleCreate = async () => {
         if (!name || !term) return alert('Please enter name and term.');
         try {
-            await createSchedule({ user_id: 'test_user_1', name, term_code: term });
+            await createSchedule({ user_id: userId, name, term_code: term });
             setModalVisible(false);
             setName('');
             setTerm('');
@@ -51,7 +71,7 @@ export function ScheduleListScreen() {
                 style: "destructive", 
                 onPress: async () => {
                     try {
-                        await deleteSchedule(id);
+                        await deleteSchedule(id, userId);
                         loadSchedules();
                     } catch(e) { alert("Failed to delete."); }
                 } 
@@ -71,12 +91,22 @@ export function ScheduleListScreen() {
                 style={({pressed}) => [styles.walletCard, { backgroundColor: color }, pressed && styles.cardPressed]}
             >
                 <View style={styles.walletHeader}>
-                    <Text style={styles.walletTerm}>{item.term_code}</Text>
+                    <Text style={styles.walletTerm}>{getTermName(item.term_code)}</Text>
                     <CheckCircle2 color="rgba(255,255,255,0.8)" size={20} />
                 </View>
                 <View style={styles.walletBody}>
-                    <Text style={styles.walletName}>{item.name}</Text>
-                    <Text style={styles.walletDetails}>{item.section_ids?.length || 0} enrolled classes</Text>
+                    <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end'}}>
+                        <View style={{flex: 1}}>
+                            <Text style={styles.walletName}>{item.name}</Text>
+                            <Text style={styles.walletDetails}>{item.section_ids?.length || 0} enrolled classes</Text>
+                        </View>
+                        <Pressable 
+                            onPress={() => handleDelete(item.schedule_id, item.name)}
+                            style={styles.deleteBtn}
+                        >
+                            <Trash2 size={18} color="rgba(255,255,255,0.7)" />
+                        </Pressable>
+                    </View>
                 </View>
             </Pressable>
         );
@@ -137,6 +167,8 @@ export function ScheduleListScreen() {
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
+
+
         </View>
     );
 }
@@ -270,5 +302,10 @@ const styles = StyleSheet.create({
         borderColor: '#404040',
         fontSize: 17, 
         color: '#FFFFFF',
+    },
+    deleteBtn: {
+        padding: 10,
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        borderRadius: 12,
     }
 });

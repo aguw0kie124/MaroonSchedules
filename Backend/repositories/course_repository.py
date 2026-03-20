@@ -7,6 +7,23 @@ API_BASE = "https://api-aggiesbp.servehttp.com"
 _courses_cache = None
 _sections_cache = None
 _professors_cache = None
+_terms_cache = None
+
+def _fetch_terms() -> List[dict]:
+    global _terms_cache
+    if _terms_cache is None:
+        try:
+            print("Fetching terms from API...")
+            resp = requests.get(f"{API_BASE}/terms", timeout=15)
+            resp.raise_for_status()
+            _terms_cache = resp.json()
+        except Exception as e:
+            print(f"Error fetching terms: {e}")
+            _terms_cache = []
+    return _terms_cache
+
+def get_all_terms() -> List[dict]:
+    return _fetch_terms()
 
 def _fetch_courses() -> List[dict]:
     global _courses_cache
@@ -16,6 +33,23 @@ def _fetch_courses() -> List[dict]:
             resp = requests.get(f"{API_BASE}/courses?limit=10000", timeout=30)
             resp.raise_for_status()
             _courses_cache = resp.json()
+            
+            # Inject Mock Prerequisites if none exist from basic API
+            for c in _courses_cache:
+                if "prerequisites" not in c:
+                    c_code = str(c.get("code", "")).upper()
+                    if c_code.startswith("CSCE 2"):
+                        c["prerequisites"] = "CSCE 120 or CSCE 121"
+                    elif c_code.startswith("CSCE 3"):
+                        c["prerequisites"] = "CSCE 221 or equivalent"
+                    elif c_code.startswith("CSCE 4"):
+                        c["prerequisites"] = "CSCE 313, CSCE 315, or CSCE 311"
+                    elif c_code.startswith("MATH 2") or c_code.startswith("MATH 3"):
+                        c["prerequisites"] = "MATH 151 and MATH 152"
+                    elif c_code.startswith("PHYS 2"):
+                        c["prerequisites"] = "MATH 151"
+                    else:
+                        c["prerequisites"] = "None"
         except Exception as e:
             print(f"Error fetching courses: {e}")
             _courses_cache = []
@@ -70,13 +104,12 @@ def search_courses(
     results = []
     
     for c in courses:
-        # Filter by department or course number
-        c_code = str(c.get("code", "")).lower()
-        if dept and dept.lower() not in c_code:
+        # Filter by department or course number using startswith match
+        c_code_clean = str(c.get("code", "")).lower().replace(" ", "")
+        search_q = (dept or "").lower().replace(" ", "")
+        
+        if search_q and not c_code_clean.startswith(search_q):
             continue
-        if course_number and course_number.lower() not in c_code:
-            continue
-            
         # Match section-specific criteria if provided
         if location or section_attribute or instructor or crn:
             c_sections = get_sections_for_course(str(c.get("id", "")))
@@ -124,7 +157,7 @@ def get_sections_for_course(course_id: str) -> List[dict]:
             s_name = _simplify_name(p["name"])
             prof_map[s_name] = p
     
-    results = []
+    unique_sections = {}
     for s in sections:
         # Reconstruct course ID as mapped earlier: dept + courseNumber
         sec_course_id = str(s.get("dept", "")) + str(s.get("courseNumber", ""))
@@ -138,7 +171,14 @@ def get_sections_for_course(course_id: str) -> List[dict]:
                     if p_data:
                         inst["overall_rating"] = p_data.get("overall_rating")
                         inst["total_reviews"] = p_data.get("total_reviews")
-            results.append(s)
+            
+            sec_num = str(s.get("sectionNumber", "") or s.get("section", ""))
+            # Keep only the latest term section
+            if sec_num not in unique_sections or str(s.get("termCode", "")) > str(unique_sections[sec_num].get("termCode", "")):
+                unique_sections[sec_num] = s
+
+    # Sort sections by section number before returning
+    results = sorted(list(unique_sections.values()), key=lambda x: str(x.get("sectionNumber", "") or x.get("section", "")))
     return results
 
 def get_section_by_id(section_id: str) -> Optional[dict]:
@@ -161,6 +201,13 @@ def get_section_by_id(section_id: str) -> Optional[dict]:
                     if p_data:
                         inst["overall_rating"] = p_data.get("overall_rating")
                         inst["total_reviews"] = p_data.get("total_reviews")
+            
+            # Attach prerequisites from parent course
+            parent_course_id = str(s.get("course", "")) or (str(s.get("dept", "")) + str(s.get("courseNumber", "")))
+            parent_course = get_course_by_id(parent_course_id)
+            if parent_course and "prerequisites" in parent_course:
+                s["prerequisites"] = parent_course["prerequisites"]
+                
             return s
             
     return None

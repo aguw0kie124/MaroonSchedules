@@ -14,6 +14,21 @@ import { COLORS, Card } from './SharedUI';
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 
+// Retry helper for Gemini API calls with exponential backoff
+const fetchWithRetry = async (url: string, options: RequestInit, maxRetries = 3): Promise<Response> => {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, options);
+    if (res.status === 429 && attempt < maxRetries) {
+      const delay = Math.pow(2, attempt + 1) * 1000; // 2s, 4s, 8s
+      console.warn(`[PlaceRec] Rate limited (429), retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      continue;
+    }
+    return res;
+  }
+  throw new Error('Max retries exceeded');
+};
+
 const SUGGESTION_CHIPS = [
   'Best study spots right now',
   'Quiet coffee shop near MSC',
@@ -67,8 +82,8 @@ export function PlaceRecommendationsScreen() {
       // Step 2: Use Gemini to pick the best spots based on query + live data
       if (GEMINI_API_KEY && trafficData.length > 0) {
         try {
-          const geminiRes = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+          const geminiRes = await fetchWithRetry(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },

@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, Modal, Pressable } from 'react-native';
-import { useRoute } from '@react-navigation/native';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import { fetchCourseById, fetchSchedules, addSectionToSchedule } from '../api/client';
 import { COLORS, Card, SectionRow, PrimaryButton } from './SharedUI';
+import { useUser } from '@clerk/clerk-expo';
 
 export function NewCourseDetailScreen() {
     const route = useRoute<any>();
+    const navigation = useNavigation<any>();
     const { courseId } = route.params;
+    const { user } = useUser();
+    const userId = user?.id || 'anonymous';
     const [course, setCourse] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
@@ -29,7 +33,7 @@ export function NewCourseDetailScreen() {
 
     const loadSchedules = async () => {
         try {
-            const res = await fetchSchedules("test_user_1"); // hardcoded test user id
+            const res = await fetchSchedules(userId);
             setSchedules(res);
         } catch(e) { console.error(e); }
     };
@@ -42,9 +46,14 @@ export function NewCourseDetailScreen() {
     const confirmAddToSchedule = async (scheduleId: string) => {
         if (!selectedSection) return;
         try {
-            await addSectionToSchedule(scheduleId, selectedSection, "test_user_1");
-            alert("Added section successfully!"); // Optimistic toast placeholder
+            await addSectionToSchedule(scheduleId, selectedSection, userId);
             setModalVisible(false);
+            // Navigate to the schedule detail page
+            const targetSchedule = schedules.find((s: any) => s.schedule_id === scheduleId);
+            navigation.navigate('ScheduleDetail', {
+                scheduleId,
+                scheduleObj: targetSchedule || { schedule_id: scheduleId },
+            });
         } catch (e) {
             alert("Failed to add section.");
         }
@@ -57,7 +66,12 @@ export function NewCourseDetailScreen() {
         <View style={styles.container}>
             <View style={styles.header}>
                 <Text style={styles.title}>{course.code} - {course.name}</Text>
-                <Text style={styles.subtitle}>{course.description || "No description available."}</Text>
+                <Text style={[styles.subtitle, { marginBottom: course.prerequisites ? 6 : 0 }]}>{course.description || "No description available."}</Text>
+                {course.prerequisites && (
+                    <Text style={[styles.subtitle, { color: '#FF9F0A', fontWeight: '600' }]}>
+                        Prerequisites: {course.prerequisites}
+                    </Text>
+                )}
             </View>
 
             <FlatList 
