@@ -123,7 +123,7 @@ function MainTabs() {
         }
       })}
     >
-      <Tab.Screen name="Dashboard" component={Dashboard} options={{ title: 'Schedule' }} />
+      <Tab.Screen name="Dashboard" component={Dashboard} options={{ title: 'Dashboard' }} />
       <Tab.Screen name="Search" component={NewCourseSearchScreen} options={{ headerShown: false }} />
       <Tab.Screen name="Schedules" component={ScheduleListScreen} options={{ title: 'Schedules', headerShown: true }} />
       <Tab.Screen name="Extras" component={View} listeners={{

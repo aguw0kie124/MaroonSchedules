@@ -14,7 +14,7 @@ export function ScheduleListScreen() {
     const [schedules, setSchedules] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [modalVisible, setModalVisible] = useState(false);
-    
+
     const [name, setName] = useState('');
     const [term, setTerm] = useState('');
 
@@ -60,21 +60,21 @@ export function ScheduleListScreen() {
             setName('');
             setTerm('');
             loadSchedules();
-        } catch(e) { alert('Error creating schedule.'); }
+        } catch (e) { alert('Error creating schedule.'); }
     };
 
     const handleDelete = (id: string, schedName: string) => {
         Alert.alert("Delete Schedule", `Are you sure you want to permanently delete "${schedName}"?`, [
             { text: "Cancel", style: "cancel" },
-            { 
-                text: "Delete", 
-                style: "destructive", 
+            {
+                text: "Delete",
+                style: "destructive",
                 onPress: async () => {
                     try {
                         await deleteSchedule(id, userId);
                         loadSchedules();
-                    } catch(e) { alert("Failed to delete."); }
-                } 
+                    } catch (e) { alert("Failed to delete."); }
+                }
             }
         ]);
     };
@@ -85,22 +85,22 @@ export function ScheduleListScreen() {
         const color = `hsl(${hue}, 80%, 40%)`;
 
         return (
-            <Pressable 
+            <Pressable
                 onPress={() => navigation.navigate('ScheduleDetail', { scheduleId: item.schedule_id, scheduleObj: item })}
                 onLongPress={() => handleDelete(item.schedule_id, item.name)}
-                style={({pressed}) => [styles.walletCard, { backgroundColor: color }, pressed && styles.cardPressed]}
+                style={({ pressed }) => [styles.walletCard, { backgroundColor: color }, pressed && styles.cardPressed]}
             >
                 <View style={styles.walletHeader}>
                     <Text style={styles.walletTerm}>{getTermName(item.term_code)}</Text>
                     <CheckCircle2 color="rgba(255,255,255,0.8)" size={20} />
                 </View>
                 <View style={styles.walletBody}>
-                    <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end'}}>
-                        <View style={{flex: 1}}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                        <View style={{ flex: 1 }}>
                             <Text style={styles.walletName}>{item.name}</Text>
                             <Text style={styles.walletDetails}>{item.section_ids?.length || 0} enrolled classes</Text>
                         </View>
-                        <Pressable 
+                        <Pressable
                             onPress={() => handleDelete(item.schedule_id, item.name)}
                             style={styles.deleteBtn}
                         >
@@ -119,15 +119,15 @@ export function ScheduleListScreen() {
                 <PrimaryButton title="+ New" onPress={() => setModalVisible(true)} style={styles.newBtn} />
             </View>
 
-            {loading ? <ActivityIndicator size="large" color={COLORS.primary} style={{marginTop: 40}}/> : (
-                <FlatList 
+            {loading ? <ActivityIndicator size="large" color={COLORS.primary} style={{ marginTop: 40 }} /> : (
+                <FlatList
                     data={schedules}
                     keyExtractor={i => i.schedule_id}
                     renderItem={renderItem}
                     contentContainerStyle={styles.listContainer}
                     ListEmptyComponent={
                         <View style={styles.emptyState}>
-                            <Grid3x3 color={COLORS.border} size={64} style={{marginBottom: 16}} />
+                            <Grid3x3 color={COLORS.border} size={64} style={{ marginBottom: 16 }} />
                             <Text style={styles.emptyTitle}>No Schedules Found</Text>
                             <Text style={styles.emptyText}>Create a new schedule to start organizing sections for your upcoming term.</Text>
                         </View>
@@ -138,31 +138,31 @@ export function ScheduleListScreen() {
             <Modal visible={modalVisible} transparent animationType="fade">
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
-                        <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20}}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                             <Text style={styles.modalTitle}>New Schedule</Text>
                             <Pressable onPress={() => setModalVisible(false)} style={styles.closeBtn}>
                                 <X size={20} color={COLORS.textSecondary} />
                             </Pressable>
                         </View>
-                        
+
                         <Text style={styles.inputLabel}>Schedule Name</Text>
-                        <TextInput 
-                            style={styles.input} 
-                            placeholderTextColor={COLORS.textSecondary} 
-                            placeholder="e.g. Plan A" 
-                            value={name} 
-                            onChangeText={setName} 
+                        <TextInput
+                            style={styles.input}
+                            placeholderTextColor={COLORS.textSecondary}
+                            placeholder="e.g. Plan A"
+                            value={name}
+                            onChangeText={setName}
                         />
-                        
+
                         <Text style={styles.inputLabel}>Term Code</Text>
-                        <TextInput 
-                            style={styles.input} 
-                            placeholderTextColor={COLORS.textSecondary} 
-                            placeholder="e.g. 202611" 
-                            value={term} 
-                            onChangeText={setTerm} 
+                        <TextInput
+                            style={styles.input}
+                            placeholderTextColor={COLORS.textSecondary}
+                            placeholder="e.g. 202611"
+                            value={term}
+                            onChangeText={setTerm}
                         />
-                        
+
                         <PrimaryButton title="Create" onPress={handleCreate} style={{ marginTop: 24 }} />
                     </View>
                 </KeyboardAvoidingView>
@@ -174,14 +174,14 @@ export function ScheduleListScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { 
-        flex: 1, 
-        backgroundColor: COLORS.background 
+    container: {
+        flex: 1,
+        backgroundColor: COLORS.background
     },
-    header: { 
-        flexDirection: 'row', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
+    header: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         paddingHorizontal: 20,
         paddingTop: Platform.OS === 'ios' ? 60 : 40,
         paddingBottom: 16,
@@ -189,11 +189,11 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: COLORS.border,
     },
-    title: { 
-        fontSize: 34, 
-        fontWeight: '800', 
+    title: {
+        fontSize: 34,
+        fontWeight: '800',
         letterSpacing: -1,
-        color: COLORS.textPrimary 
+        color: COLORS.textPrimary
     },
     newBtn: {
         paddingVertical: 8,
@@ -205,7 +205,7 @@ const styles = StyleSheet.create({
         paddingBottom: 40,
         gap: 16,
     },
-    walletCard: { 
+    walletCard: {
         height: 140,
         borderRadius: 20, // Apple smooth geometry
         padding: 20,
@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
     },
     cardPressed: {
-        transform: [{scale: 0.97}],
+        transform: [{ scale: 0.97 }],
         opacity: 0.9,
     },
     walletHeader: {
@@ -235,21 +235,21 @@ const styles = StyleSheet.create({
     walletBody: {
         marginTop: 'auto',
     },
-    walletName: { 
-        fontSize: 26, 
+    walletName: {
+        fontSize: 26,
         fontWeight: '800',
         letterSpacing: -0.5,
         color: '#FFFFFF',
         marginBottom: 4,
     },
-    walletDetails: { 
-        fontSize: 15, 
-        color: 'rgba(255,255,255,0.9)', 
-        fontWeight: '500', 
+    walletDetails: {
+        fontSize: 15,
+        color: 'rgba(255,255,255,0.9)',
+        fontWeight: '500',
     },
-    emptyState: { 
-        alignItems: 'center', 
-        marginTop: 80, 
+    emptyState: {
+        alignItems: 'center',
+        marginTop: 80,
         paddingHorizontal: 32,
     },
     emptyTitle: {
@@ -264,20 +264,20 @@ const styles = StyleSheet.create({
         color: COLORS.textSecondary,
         lineHeight: 22,
     },
-    modalOverlay: { 
-        flex: 1, 
-        backgroundColor: 'rgba(0,0,0,0.6)', 
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.6)',
         justifyContent: 'flex-end',
     },
-    modalContent: { 
-        backgroundColor: COLORS.surface, 
-        padding: 24, 
+    modalContent: {
+        backgroundColor: COLORS.surface,
+        padding: 24,
         paddingBottom: Platform.OS === 'ios' ? 40 : 24,
         borderTopLeftRadius: 24,
         borderTopRightRadius: 24,
     },
-    modalTitle: { 
-        fontSize: 22, 
+    modalTitle: {
+        fontSize: 22,
         fontWeight: '800',
         letterSpacing: -0.5,
         color: COLORS.textPrimary,
@@ -294,13 +294,13 @@ const styles = StyleSheet.create({
         marginBottom: 8,
         marginTop: 16,
     },
-    input: { 
+    input: {
         backgroundColor: '#1E1E1E', // Brighter grey to contrast with surface
-        padding: 16, 
-        borderRadius: 12, 
+        padding: 16,
+        borderRadius: 12,
         borderWidth: 1,
         borderColor: '#404040',
-        fontSize: 17, 
+        fontSize: 17,
         color: '#FFFFFF',
     },
     deleteBtn: {

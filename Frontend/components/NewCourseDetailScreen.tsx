@@ -27,7 +27,7 @@ export function NewCourseDetailScreen() {
         try {
             const res = await fetchCourseById(courseId);
             setCourse(res);
-        } catch(e) { console.error(e); }
+        } catch (e) { console.error(e); }
         setLoading(false);
     };
 
@@ -35,7 +35,7 @@ export function NewCourseDetailScreen() {
         try {
             const res = await fetchSchedules(userId);
             setSchedules(res);
-        } catch(e) { console.error(e); }
+        } catch (e) { console.error(e); }
     };
 
     const handleAddSectionClick = (sectionId: string) => {
@@ -74,14 +74,14 @@ export function NewCourseDetailScreen() {
                 )}
             </View>
 
-            <FlatList 
+            <FlatList
                 data={course.sections || []}
                 keyExtractor={item => item.id}
                 contentContainerStyle={{ padding: 16 }}
                 renderItem={({ item }) => (
-                    <SectionRow 
-                        section={item} 
-                        onAdd={handleAddSectionClick} 
+                    <SectionRow
+                        section={item}
+                        onAdd={handleAddSectionClick}
                     />
                 )}
             />
@@ -96,11 +96,11 @@ export function NewCourseDetailScreen() {
                             </Pressable>
                         ))}
                         {schedules.length === 0 && <Text style={{ marginBottom: 12, color: COLORS.textSecondary }}>No schedules found. Create one first!</Text>}
-                        <PrimaryButton 
-                            title="Cancel" 
-                            variant="outline" 
-                            onPress={() => setModalVisible(false)} 
-                            style={{ marginTop: 12, borderColor: COLORS.border }} 
+                        <PrimaryButton
+                            title="Cancel"
+                            variant="outline"
+                            onPress={() => setModalVisible(false)}
+                            style={{ marginTop: 12, borderColor: COLORS.border }}
                             textStyle={{ color: COLORS.textPrimary }}
                         />
                     </View>

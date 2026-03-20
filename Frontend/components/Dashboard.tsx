@@ -18,12 +18,15 @@ export function Dashboard() {
     const [dropdownVisible, setDropdownVisible] = useState(false);
 
     useEffect(() => {
-        if (isFocused) loadSchedules();
-    }, [isFocused]);
+        if (isFocused && user) {
+            loadSchedules();
+        }
+    }, [isFocused, user]);
 
     const loadSchedules = async () => {
+        if (!user) return;
         try {
-            const res = await fetchSchedules("test_user_1");
+            const res = await fetchSchedules(user.id);
             setSchedules(res);
             if (res.length > 0) {
                 setSelectedSchedule((prev: any) => prev ? (res.find((s: any) => s.schedule_id === prev.schedule_id) || res[0]) : res[0]);
@@ -42,12 +45,12 @@ export function Dashboard() {
             name: sec.courseTitle || 'Class',
             time: timeStr,
             days: meeting?.daysOfWeek || [],
-            credits: sec.creditHours || 3,
+            credits: Number(sec.credit_hours || sec.creditHours || 3),
             color: `hsl(${(index * 50) % 360}, 65%, 45%)`
         };
     }) : [];
 
-    const totalCredits = displayCourses.reduce((sum: number, course: any) => sum + course.credits, 0);
+    const totalCredits = displayCourses.reduce((sum: number, course: any) => sum + (course.credits || 0), 0);
     const maxCredits = 15;
     const todaysCourses = displayCourses.filter((course: any) => course.days && course.days.includes('M'));
 

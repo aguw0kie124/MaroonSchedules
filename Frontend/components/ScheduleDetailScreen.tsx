@@ -16,7 +16,7 @@ export function ScheduleDetailScreen() {
 
     const hours = Array.from({ length: 13 }, (_, i) => i + 8); // 8am to 8pm
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-    
+
     const ROW_HEIGHT = 64;
     const TIME_COL_WIDTH = 50;
     const GRID_WIDTH = width - 32;
@@ -74,16 +74,16 @@ export function ScheduleDetailScreen() {
             const data = await fetchSchedules(userId);
             const found = data.find((s: any) => s.schedule_id === scheduleId);
             if (found) setSchedule(found);
-        } catch (e) {}
+        } catch (e) { }
     };
 
     const handleRemove = async (sectionId: string) => {
         try {
             await removeSectionFromSchedule(scheduleId, sectionId, userId);
-            const updated = { ...schedule, sections: schedule.sections.filter((s:any) => s.section_id !== sectionId) };
+            const updated = { ...schedule, sections: schedule.sections.filter((s: any) => s.section_id !== sectionId) };
             setSchedule(updated);
             loadSchedule(); // background fetch sync
-        } catch(e) { alert("Failed to remove."); }
+        } catch (e) { alert("Failed to remove."); }
     };
 
     return (
@@ -95,18 +95,18 @@ export function ScheduleDetailScreen() {
 
             <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Courses ({schedule?.sections?.length || 0})</Text>
-                <PrimaryButton 
-                    title="+ Add Class" 
-                    onPress={() => navigation.navigate('NewCourseSearch')} 
+                <PrimaryButton
+                    title="+ Add Class"
+                    onPress={() => navigation.navigate('NewCourseSearch')}
                     style={{ paddingVertical: 8, paddingHorizontal: 16 }}
                 />
             </View>
 
             {schedule?.sections?.map((sec: any) => (
-                <SectionRow 
-                    key={sec.id || sec.section_id} 
-                    section={sec} 
-                    onRemove={handleRemove} 
+                <SectionRow
+                    key={sec.id || sec.section_id}
+                    section={sec}
+                    onRemove={handleRemove}
                 />
             ))}
 
@@ -148,7 +148,7 @@ export function ScheduleDetailScreen() {
                     {schedule?.sections?.map((sec: any, idx: number) => {
                         const meeting = sec.meetings?.[0];
                         if (!meeting || !meeting.beginTime || !meeting.endTime) return null;
-                        
+
                         const startTime = parseTimeToMinutes(meeting.beginTime);
                         const endTime = parseTimeToMinutes(meeting.endTime);
                         if (!startTime || !endTime) return null;
@@ -165,7 +165,7 @@ export function ScheduleDetailScreen() {
 
                             const topOffset = ((startTime - 480) / 60) * ROW_HEIGHT;
                             const height = ((endTime - startTime) / 60) * ROW_HEIGHT;
-                            
+
                             // Safe course code display handling empty depts or ids
                             const courseCode = `${sec.dept || ''} ${sec.courseNumber || ''}`.trim() || sec.id;
 

@@ -157,8 +157,10 @@ export function ChatScreen({ route, navigation }: Props) {
   const [shareModalVisible, setShareModalVisible] = useState(false);
 
   useEffect(() => {
-    fetchSchedules("test_user_1").then(setSchedules).catch(console.error);
-  }, []);
+    if (user) {
+      fetchSchedules(user.id).then(setSchedules).catch(console.error);
+    }
+  }, [user]);
 
   // 1. Fetch Stream credentials
   useEffect(() => {
