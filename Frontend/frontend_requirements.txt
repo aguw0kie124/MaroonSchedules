@@ -25,3 +25,4 @@ react-native-worklets-core
 stream-chat
 stream-chat-react-native
 zustand
+react-native-maps
