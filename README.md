@@ -19,4 +19,4 @@ npx expo start --clear<br>
 
 **Backend:** Python, FastApi
 
-**Database:** SQL
+**Database:** PostgreSQL
