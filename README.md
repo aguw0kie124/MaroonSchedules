@@ -11,7 +11,7 @@ uvicorn main:app --reload --host 0.0.0.0<br>
 ***Make new terminal***<br>
 ***cd to MaroonSchedules if not already***<br>
 npm install expo<br>
-npx expo start<br>
+npx expo start --clear<br>
 
 <ins>**Languages/Frameworks:**</ins>
 
