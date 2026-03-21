@@ -35,7 +35,8 @@ import { ForYouScreen } from './components/ForYouScreen';
 import { CrowdPingScreen } from './components/CrowdPingScreen';
 import { GPACalculatorScreen } from './components/GPACalculatorScreen';
 
-import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu } from 'lucide-react-native';
+import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu, Compass, MessageSquare } from 'lucide-react-native';
+import { COLORS } from './components/SharedUI';
 
 import { syncUser } from './api/client';
 
@@ -87,13 +88,11 @@ if (!publishableKey) {
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-function MainTabs() {
-  const [isExtrasOpen, setIsExtrasOpen] = React.useState(false);
+import { CampusScreen } from './components/CampusScreen';
 
+function MainTabs() {
   return (
-    <>
-      <ExtrasSidebar open={isExtrasOpen} onClose={() => setIsExtrasOpen(false)} />
-      <Tab.Navigator
+    <Tab.Navigator
         id="MainTabs"
         screenOptions={({ route }) => ({
         headerShown: false,
@@ -102,16 +101,12 @@ function MainTabs() {
 
           if (route.name === 'Dashboard') {
             IconName = Calendar;
+          } else if (route.name === 'Campus') {
+            IconName = Compass;
           } else if (route.name === 'Search') {
             IconName = SearchIcon;
-          } else if (route.name === 'Schedules') {
-            IconName = Grid3x3;
-          } else if (route.name === 'Extras') {
-            IconName = Menu;
-          } else if (route.name === 'Saved') {
-            IconName = Bookmark;
-          } else if (route.name === 'Profile') {
-            IconName = User;
+          } else if (route.name === 'Messages') {
+            IconName = MessageSquare;
           }
 
           if (IconName) {
@@ -119,29 +114,27 @@ function MainTabs() {
           }
           return null;
         },
-        tabBarActiveTintColor: '#500000',
-        tabBarInactiveTintColor: '#666',
+        tabBarActiveTintColor: COLORS.accent,
+        tabBarInactiveTintColor: 'rgba(255,255,255,0.4)',
         tabBarStyle: {
-          height: 72,
-          paddingBottom: 20,
-          paddingTop: 10,
-          backgroundColor: '#121212',
-          borderTopColor: '#2C2C2E',
+          height: 84,
+          paddingBottom: 28,
+          paddingTop: 12,
+          backgroundColor: '#0A0A0A',
+          borderTopColor: '#1F1F1F',
+          borderTopWidth: 1,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
         }
       })}
     >
-      <Tab.Screen name="Dashboard" component={Dashboard} options={{ title: 'Dashboard' }} />
-      <Tab.Screen name="Search" component={NewCourseSearchScreen} options={{ headerShown: false }} />
-      <Tab.Screen name="Schedules" component={ScheduleListScreen} options={{ title: 'Schedules', headerShown: true }} />
-      <Tab.Screen name="Extras" component={View} listeners={{
-        tabPress: (e: any) => {
-          e.preventDefault();
-          setIsExtrasOpen(true);
-        }
-      }} />
-      <Tab.Screen name="Profile" component={Profile} />
+      <Tab.Screen name="Dashboard" component={Dashboard} options={{ title: 'Home' }} />
+      <Tab.Screen name="Campus" component={CampusScreen} options={{ title: 'Campus' }} />
+      <Tab.Screen name="Search" component={NewCourseSearchScreen} options={{ title: 'Search' }} />
+      <Tab.Screen name="Messages" component={UsersScreen} options={{ title: 'Messages' }} />
     </Tab.Navigator>
-    </>
   );
 }
 

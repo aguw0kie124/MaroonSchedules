@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions, Modal, TouchableWithoutFeedback } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
-import { Plus, ChevronDown, CheckCircle2 } from 'lucide-react-native';
+import { Plus, ChevronDown, CheckCircle2, Clock, ArrowRight, MapPin, TrendingUp, GraduationCap, Radio, Map as MapIcon, Sparkles, ChevronRight } from 'lucide-react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { fetchSchedules } from '../api/client';
 import { COLORS, Card } from './SharedUI';
@@ -16,6 +16,12 @@ export function Dashboard() {
     const [schedules, setSchedules] = useState<any[]>([]);
     const [selectedSchedule, setSelectedSchedule] = useState<any>(null);
     const [dropdownVisible, setDropdownVisible] = useState(false);
+    const [currentTime, setCurrentTime] = useState(new Date());
+
+    useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(new Date()), 60000);
+        return () => clearInterval(timer);
+    }, []);
 
     useEffect(() => {
         if (isFocused && user) {
@@ -30,10 +36,13 @@ export function Dashboard() {
             setSchedules(res);
             if (res.length > 0) {
                 setSelectedSchedule((prev: any) => prev ? (res.find((s: any) => s.schedule_id === prev.schedule_id) || res[0]) : res[0]);
-            } else {
-                setSelectedSchedule(null);
             }
         } catch(e) { console.error(e); }
+    };
+
+    const getDayString = () => {
+        const days = ['U', 'M', 'T', 'W', 'R', 'F', 'S'];
+        return days[new Date().getDay()];
     };
 
     const displayCourses = selectedSchedule?.sections ? selectedSchedule.sections.map((sec: any, index: number) => {
@@ -44,15 +53,47 @@ export function Dashboard() {
             code: `${sec.dept || ''} ${sec.courseNumber || ''}`.trim() || `Section ${sec.section_id}`,
             name: sec.courseTitle || 'Class',
             time: timeStr,
+            beginTime: meeting?.beginTime,
+            endTime: meeting?.endTime,
             days: meeting?.daysOfWeek || [],
             credits: Number(sec.credit_hours || sec.creditHours || 3),
-            color: `hsl(${(index * 50) % 360}, 65%, 45%)`
+            location: meeting?.building ? `${meeting.building} ${meeting.room || ''}`.trim() : 'TBA',
+            color: `hsl(${(index * 55) % 360}, 65%, 45%)`
         };
     }) : [];
 
     const totalCredits = displayCourses.reduce((sum: number, course: any) => sum + (course.credits || 0), 0);
-    const maxCredits = 15;
-    const todaysCourses = displayCourses.filter((course: any) => course.days && course.days.includes('M'));
+    const todaysCourses = displayCourses.filter((course: any) => course.days && course.days.includes(getDayString()));
+
+    // Find next class
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    const nextClass = todaysCourses
+        .filter(c => {
+            if (!c.beginTime) return false;
+            const [time, period] = c.beginTime.split(' ');
+            let [h, m] = time.split(':').map(Number);
+            if (period === 'PM' && h !== 12) h += 12;
+            if (period === 'AM' && h === 12) h = 0;
+            return (h * 60 + m) > currentMinutes;
+        })
+        .sort((a, b) => {
+            const timeToMins = (t: string) => {
+                const [time, period] = t.split(' ');
+                let [h, m] = time.split(':').map(Number);
+                if (period === 'PM' && h !== 12) h += 12;
+                return h * 60 + m;
+            };
+            return timeToMins(a.beginTime) - timeToMins(b.beginTime);
+        })[0];
+
+    const quickActions = [
+        { id: 'GPACalculator', label: 'GPA Calc', icon: <GraduationCap color="#FFF" size={20} />, screen: 'GPACalculator' },
+        { id: 'CampusMap', label: 'Traffic', icon: <MapIcon color="#FFF" size={20} />, screen: 'CampusMap' },
+        { id: 'CrowdPing', label: 'Vibes', icon: <Radio color="#FFF" size={20} />, screen: 'CrowdPing' },
+        { id: 'LocationSearch', label: 'Search', icon: <Sparkles color="#FFF" size={20} />, screen: 'LocationSearch' },
+    ];
 
     return (
         <View style={styles.container}>
@@ -63,99 +104,123 @@ export function Dashboard() {
                         <Text style={styles.greeting}>Howdy, Ag!</Text>
                         <Text style={styles.name}>{user?.firstName || 'Aggie'}</Text>
                     </View>
-                    <Pressable
-                        style={styles.avatar}
-                        onPress={() => navigation.navigate('Profile')}
-                    >
-                        <Text style={styles.avatarText}>
-                            {user?.firstName?.[0] || 'A'}
-                        </Text>
+                    <Pressable style={styles.avatar} onPress={() => navigation.navigate('Profile')}>
+                        <Text style={styles.avatarText}>{user?.firstName?.[0] || 'A'}</Text>
                     </Pressable>
                 </View>
 
-                {/* Current Term Card / Schedule Dropdown */}
-                <Pressable onPress={() => setDropdownVisible(true)}>
-                    <Card style={styles.termCard}>
-                        <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 16}}>
-                            <Text style={styles.cardTitle}>{selectedSchedule ? `${selectedSchedule.name} (${selectedSchedule.term_code})` : 'No Schedule Selected'}</Text>
-                            <ChevronDown size={20} color={COLORS.textPrimary} style={{marginLeft: 8, marginTop: -14}} />
+                {/* Next Class Widget */}
+                {nextClass ? (
+                    <Card style={styles.nextClassCard}>
+                        <View style={styles.nextClassRow}>
+                            <View style={[styles.nextClassStrip, { backgroundColor: nextClass.color }]} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.nextClassLabel}>NEXT CLASS</Text>
+                                <Text style={styles.nextClassTitle}>{nextClass.code}</Text>
+                                <View style={styles.nextClassDetailRow}>
+                                    <Clock size={14} color={COLORS.textTertiary} />
+                                    <Text style={styles.nextClassDetail}>{nextClass.time}</Text>
+                                    <MapPin size={14} color={COLORS.textTertiary} style={{ marginLeft: 8 }} />
+                                    <Text style={styles.nextClassDetail} numberOfLines={1}>{nextClass.location}</Text>
+                                </View>
+                            </View>
+                            <Pressable 
+                                style={styles.nextClassAction}
+                                onPress={() => navigation.navigate('CourseDetail', { id: nextClass.id })}
+                            >
+                                <ArrowRight color="#FFF" size={20} />
+                            </Pressable>
                         </View>
-                    <View style={styles.progressContainer}>
-                        <View style={styles.progressLabels}>
-                            <Text style={styles.caption}>
-                                {totalCredits} / {maxCredits} credits
-                            </Text>
-                            <Text style={[styles.caption, { color: COLORS.textPrimary, fontWeight: 'bold' }]}>
-                                {maxCredits - totalCredits} remaining
-                            </Text>
+                    </Card>
+                ) : (
+                    <Card style={styles.noClassCard}>
+                        <Text style={styles.noClassText}>Done for today! BTHO Homework. 👍</Text>
+                    </Card>
+                )}
+
+                {/* Quick Actions */}
+                <View style={styles.section}>
+                    <Text style={styles.sectionLabel}>QUICK ACTIONS</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsContainer}>
+                        {quickActions.map(action => (
+                            <Pressable 
+                                key={action.id} 
+                                style={styles.quickActionItem}
+                                onPress={() => navigation.navigate(action.screen)}
+                            >
+                                <View style={styles.quickActionIcon}>{action.icon}</View>
+                                <Text style={styles.quickActionLabel}>{action.label}</Text>
+                            </Pressable>
+                        ))}
+                    </ScrollView>
+                </View>
+
+                {/* Current Schedule Selector */}
+                <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionLabel}>PLANNER</Text>
+                        <Pressable onPress={() => setDropdownVisible(true)} style={styles.scheduleSwitcher}>
+                            <Text style={styles.scheduleSwitcherText}>{selectedSchedule?.name || 'Select Schedule'}</Text>
+                            <ChevronDown size={14} color={COLORS.primary} />
+                        </Pressable>
+                    </View>
+                    
+                    <Card style={styles.progressCard}>
+                        <View style={styles.progressHeader}>
+                            <Text style={styles.progressTitle}>{totalCredits} Credits</Text>
+                            <Text style={styles.progressSubtitle}>{Math.round((totalCredits/15)*100)}% of goal</Text>
                         </View>
                         <View style={styles.progressBarBg}>
-                            <View
-                                style={[
-                                    styles.progressBarFill,
-                                    { width: `${Math.min((totalCredits / maxCredits) * 100, 100)}%` },
-                                ]}
-                            />
+                            <View style={[styles.progressBarFill, { width: `${Math.min((totalCredits / 15) * 100, 100)}%` }]} />
                         </View>
-                    </View>
-                </Card>
-                </Pressable>
+                    </Card>
+                </View>
 
                 {/* Today's Classes */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Today</Text>
+                    <Text style={styles.sectionLabel}>TODAY'S SCHEDULE</Text>
                     <View style={styles.courseList}>
                         {todaysCourses.length > 0 ? (
                             todaysCourses.map((course) => (
                                 <Pressable
                                     key={course.id}
                                     onPress={() => navigation.navigate('CourseDetail', { id: course.id })}
-                                    style={({ pressed }) => [
-                                        styles.courseItem,
-                                        pressed && styles.courseItemPressed,
-                                    ]}
+                                    style={styles.courseItem}
                                 >
-                                    <View style={[styles.colorStrip, { backgroundColor: course.color }]} />
-                                    <View style={styles.courseInfo}>
+                                    <View style={[styles.courseColor, { backgroundColor: course.color }]} />
+                                    <View style={styles.courseContent}>
                                         <Text style={styles.courseCode}>{course.code}</Text>
-                                        <Text style={styles.courseName}>{course.name}</Text>
+                                        <Text style={styles.courseName} numberOfLines={1}>{course.name}</Text>
+                                        <View style={styles.courseMeta}>
+                                            <Clock size={12} color={COLORS.textTertiary} />
+                                            <Text style={styles.courseMetaText}>{course.time}</Text>
+                                        </View>
                                     </View>
-                                    <View style={styles.timeBadge}>
-                                        <Text style={styles.timeText}>{course.time}</Text>
-                                    </View>
+                                    <ChevronRight color={COLORS.border} size={18} />
                                 </Pressable>
                             ))
                         ) : (
-                            <Card>
-                                <Text style={styles.emptyText}>No classes today! Time to BTHO your homework. 👍</Text>
-                            </Card>
+                            <Text style={styles.emptyText}>No classes today.</Text>
                         )}
                     </View>
                 </View>
 
-                {/* Spacer for FAB */}
                 <View style={{ height: 100 }} />
             </ScrollView>
 
-            {/* Floating Action Button */}
-            <Pressable
-                onPress={() => navigation.navigate('Search')} // Assuming 'Search' is the route name
-                style={({ pressed }) => [
-                    styles.fab,
-                    pressed && styles.fabPressed,
-                ]}
-            >
-                <Plus size={28} color="#fff" strokeWidth={2.5} />
+            {/* Fab */}
+            <Pressable style={styles.fab} onPress={() => navigation.navigate('Search')}>
+                <Plus size={28} color="#FFF" />
             </Pressable>
-            
+
             {/* Modal for Selecting Schedule */}
-            <Modal visible={dropdownVisible} transparent animationType="fade">
+            <Modal visible={dropdownVisible} transparent animationType="slide">
                 <TouchableWithoutFeedback onPress={() => setDropdownVisible(false)}>
                     <View style={styles.modalOverlay}>
                         <TouchableWithoutFeedback>
                             <View style={styles.modalContent}>
-                                <Text style={styles.modalTitle}>Your Schedules</Text>
-                                <ScrollView style={{maxHeight: 300}}>
+                                <Text style={styles.modalTitle}>Switch Schedule</Text>
+                                <ScrollView showsVerticalScrollIndicator={false}>
                                     {schedules.map(s => (
                                         <Pressable 
                                             key={s.schedule_id} 
@@ -165,19 +230,12 @@ export function Dashboard() {
                                                 setDropdownVisible(false);
                                             }}
                                         >
-                                            <Text style={[styles.scheduleText, selectedSchedule?.schedule_id === s.schedule_id && { color: COLORS.primary }]}>
-                                                {s.name} ({s.term_code})
+                                            <Text style={[styles.scheduleText, selectedSchedule?.schedule_id === s.schedule_id && { color: COLORS.primary, fontWeight: '700' }]}>
+                                                {s.name}
                                             </Text>
-                                            {selectedSchedule?.schedule_id === s.schedule_id && (
-                                                <CheckCircle2 color={COLORS.primary} size={20} />
-                                            )}
+                                            {selectedSchedule?.schedule_id === s.schedule_id && <CheckCircle2 color={COLORS.primary} size={20} />}
                                         </Pressable>
                                     ))}
-                                    {schedules.length === 0 && (
-                                        <Text style={{textAlign: 'center', color: COLORS.textSecondary, marginTop: 20}}>
-                                            No schedules found.
-                                        </Text>
-                                    )}
                                 </ScrollView>
                             </View>
                         </TouchableWithoutFeedback>
@@ -195,7 +253,7 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         padding: 16,
-        paddingTop: 60, // Safe area padding
+        paddingTop: 60,
     },
     header: {
         flexDirection: 'row',
@@ -214,58 +272,165 @@ const styles = StyleSheet.create({
         color: COLORS.textPrimary,
     },
     avatar: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
         backgroundColor: COLORS.primary,
         alignItems: 'center',
         justifyContent: 'center',
+        borderWidth: 2,
+        borderColor: 'rgba(255,255,255,0.1)',
     },
     avatarText: {
         color: '#fff',
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    termCard: {
-        marginBottom: 24,
-        padding: 20,
-    },
-    cardTitle: {
         fontSize: 18,
-        fontWeight: '600',
-        marginBottom: 16,
+        fontWeight: '700',
+    },
+    nextClassCard: {
+        marginBottom: 24,
+        padding: 0,
+        overflow: 'hidden',
+        backgroundColor: COLORS.surface,
+        borderColor: COLORS.border,
+    },
+    nextClassRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    nextClassStrip: {
+        width: 8,
+        height: '100%',
+    },
+    nextClassLabel: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: COLORS.accent,
+        letterSpacing: 1,
+        marginTop: 16,
+        marginLeft: 16,
+    },
+    nextClassTitle: {
+        fontSize: 22,
+        fontWeight: '800',
         color: COLORS.textPrimary,
+        marginLeft: 16,
+        marginTop: 2,
     },
-    progressContainer: {
-        gap: 8,
+    nextClassDetailRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginLeft: 16,
+        marginTop: 6,
+        marginBottom: 16,
     },
-    progressLabels: {
+    nextClassDetail: {
+        fontSize: 12,
+        color: COLORS.textTertiary,
+        marginLeft: 4,
+    },
+    nextClassAction: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: COLORS.primary,
+        marginRight: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    noClassCard: {
+        marginBottom: 24,
+        padding: 24,
+        alignItems: 'center',
+        backgroundColor: COLORS.surface,
+    },
+    noClassText: {
+        color: COLORS.textSecondary,
+        fontWeight: '500',
+    },
+    section: {
+        marginBottom: 28,
+    },
+    sectionHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        marginBottom: 8,
+        alignItems: 'center',
+        marginBottom: 12,
     },
-    caption: {
+    sectionLabel: {
         fontSize: 12,
+        fontWeight: '800',
+        color: 'rgba(255,255,255,0.3)',
+        letterSpacing: 1.5,
+        marginBottom: 12,
+    },
+    quickActionsContainer: {
+        gap: 12,
+        paddingRight: 16,
+    },
+    quickActionItem: {
+        width: 80,
+        alignItems: 'center',
+        gap: 8,
+    },
+    quickActionIcon: {
+        width: 50,
+        height: 50,
+        borderRadius: 15,
+        backgroundColor: COLORS.primaryLight,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: COLORS.primary,
+    },
+    quickActionLabel: {
+        fontSize: 11,
+        fontWeight: '600',
         color: COLORS.textSecondary,
     },
+    scheduleSwitcher: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: COLORS.primaryLight,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: 'rgba(80,0,0,0.5)',
+    },
+    scheduleSwitcherText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: COLORS.primary,
+    },
+    progressCard: {
+        backgroundColor: COLORS.surface,
+        padding: 16,
+    },
+    progressHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-end',
+        marginBottom: 8,
+    },
+    progressTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: COLORS.textPrimary,
+    },
+    progressSubtitle: {
+        fontSize: 12,
+        color: COLORS.textTertiary,
+    },
     progressBarBg: {
-        height: 8,
-        backgroundColor: COLORS.border,
-        borderRadius: 4,
+        height: 6,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        borderRadius: 3,
         overflow: 'hidden',
     },
     progressBarFill: {
         height: '100%',
         backgroundColor: COLORS.primary,
-    },
-    section: {
-        marginBottom: 24,
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: '600',
-        marginBottom: 16,
-        color: COLORS.textPrimary,
     },
     courseList: {
         gap: 12,
@@ -274,110 +439,91 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: COLORS.surface,
-        padding: 16,
-        borderRadius: 12,
-        gap: 12,
+        borderRadius: 16,
+        padding: 12,
         borderWidth: 1,
         borderColor: COLORS.border,
-        shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.15,
-        shadowRadius: 8,
-        elevation: 4,
     },
-    courseItemPressed: {
-        backgroundColor: '#1E1E1E',
-        transform: [{ scale: 0.98 }],
+    courseColor: {
+        width: 4,
+        height: 40,
+        borderRadius: 2,
     },
-    colorStrip: {
-        width: 6,
-        height: 48,
-        borderRadius: 3,
-    },
-    courseInfo: {
+    courseContent: {
         flex: 1,
+        marginLeft: 12,
     },
     courseCode: {
-        fontSize: 16,
-        fontWeight: '600',
-        marginBottom: 4,
+        fontSize: 15,
+        fontWeight: '700',
         color: COLORS.textPrimary,
     },
     courseName: {
         fontSize: 12,
-        color: COLORS.textSecondary,
+        color: COLORS.textTertiary,
+        marginTop: 2,
     },
-    timeBadge: {
-        backgroundColor: '#2A0000', // Matches primaryLight from SharedUI
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 16,
-        borderWidth: 1,
-        borderColor: COLORS.primary,
+    courseMeta: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 4,
+        gap: 4,
     },
-    timeText: {
-        fontSize: 12,
-        color: '#FFFFFF',
-        fontWeight: '600',
+    courseMetaText: {
+        fontSize: 11,
+        color: COLORS.textTertiary,
     },
     emptyText: {
+        color: COLORS.textTertiary,
         textAlign: 'center',
-        color: COLORS.textSecondary,
-        padding: 16,
+        padding: 20,
     },
     fab: {
         position: 'absolute',
-        bottom: 32, // bottom-24 -> ~96px / 3? adjusted for native
-        right: 16,
-        width: 56,
-        height: 56,
-        borderRadius: 28,
+        bottom: 24,
+        right: 24,
+        width: 60,
+        height: 60,
+        borderRadius: 30,
         backgroundColor: COLORS.primary,
         alignItems: 'center',
         justifyContent: 'center',
         shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 6,
-    },
-    fabPressed: {
-        transform: [{ scale: 0.95 }],
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 12,
+        elevation: 10,
     },
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'center',
-        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        justifyContent: 'flex-end',
     },
     modalContent: {
-        backgroundColor: COLORS.surface,
-        width: '80%',
-        borderRadius: 16,
-        padding: 20,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.25,
-        shadowRadius: 16,
-        elevation: 8,
+        backgroundColor: '#1C1C1E',
+        borderTopLeftRadius: 32,
+        borderTopRightRadius: 32,
+        padding: 24,
+        paddingBottom: 40,
+        maxHeight: '70%',
     },
     modalTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: COLORS.textPrimary,
-        marginBottom: 16,
+        fontSize: 20,
+        fontWeight: '800',
+        color: '#FFF',
+        marginBottom: 20,
+        textAlign: 'center',
     },
     scheduleOption: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: 14,
+        paddingVertical: 16,
         borderBottomWidth: 1,
-        borderBottomColor: COLORS.border,
+        borderBottomColor: 'rgba(255,255,255,0.05)',
     },
     scheduleText: {
-        fontSize: 16,
-        color: COLORS.textPrimary,
-        fontWeight: '500',
-    }
+        fontSize: 17,
+        color: 'rgba(255,255,255,0.6)',
+    },
 });
