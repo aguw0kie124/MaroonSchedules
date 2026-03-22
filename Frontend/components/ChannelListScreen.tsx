@@ -18,25 +18,32 @@ import { useNavigation } from '@react-navigation/native';
 import { MessageSquarePlus } from 'lucide-react-native';
 import { API_URL } from '../config';
 
-// ─── Design Tokens (Matching UsersScreen/ChatScreen) ───────────────────────────
+// ─── Design Tokens (dark mode, matching the rest of the app) ──────────────────
 const C = {
   maroon: '#500000',
   white: '#FFFFFF',
-  bg: '#FAFAFA',
-  textPrimary: '#111111',
+  bg: '#0A0A0A',
+  surface: '#141414',
+  textPrimary: '#FFFFFF',
   textSecondary: '#8A8A8A',
-  border: '#F0F0F0',
+  border: '#1F1F1F',
 };
 
 const streamTheme = {
   colors: {
     accent_blue: C.maroon,
     bg_gradient_start: C.bg,
-    bg_gradient_end: C.white,
-    black: C.textPrimary,
+    bg_gradient_end: C.surface,
+    black: C.textPrimary,        // used for text
     border: C.border,
     grey: C.textSecondary,
-    white: C.white,
+    grey_whisper: C.surface,
+    icon_background: C.surface,
+    white: C.surface,            // used for preview row backgrounds
+    white_smoke: C.bg,
+    white_snow: C.bg,
+    blue_alice: '#2A0808',       // selected / highlighted rows
+    overlay: 'rgba(0,0,0,0.75)',
   },
 } as any;
 
@@ -152,9 +159,9 @@ export function ChannelListScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
-  centerFull: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg },
-  loadingText: { marginTop: 12, color: C.textSecondary, fontSize: 14 },
-  errorText: { color: C.maroon, fontSize: 15, textAlign: 'center', paddingHorizontal: 24 },
+  centerFull: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg, gap: 12 },
+  loadingText: { marginTop: 4, color: C.textSecondary, fontSize: 14 },
+  errorText: { color: '#FF453A', fontSize: 15, textAlign: 'center', paddingHorizontal: 24 },
   
   header: {
     backgroundColor: C.maroon,
