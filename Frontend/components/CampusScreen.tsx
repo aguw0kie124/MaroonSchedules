@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Map, MessageSquare, Sparkles, Calendar, Heart, Radio, Navigation, TrendingUp, GraduationCap, ChevronRight, Compass } from 'lucide-react-native';
+import { Map, MessageSquare, Sparkles, Calendar, Heart, Rss, Navigation, TrendingUp, GraduationCap, ChevronRight, Compass } from 'lucide-react-native';
 import { COLORS } from './SharedUI';
 
 const { width } = Dimensions.get('window');
@@ -25,7 +25,7 @@ export function CampusScreen() {
             title: 'CAMPUS LIFE',
             items: [
                 { id: 'EventsCalendar', label: 'Events Calendar', subtitle: 'Live TAMU events & activities', icon: <Calendar color={ICON_COLOR} size={22} /> },
-                { id: 'CrowdPing', label: 'CrowdPing', subtitle: 'Crowdsourced campus vibes', icon: <Radio color={ICON_COLOR} size={22} />, badge: 'LIVE' },
+                { id: 'CampusFeed', label: 'Campus Feed', subtitle: 'Photos, videos, and updates from campus', icon: <Rss color={ICON_COLOR} size={22} />, badge: 'LIVE' },
             ]
         },
         {

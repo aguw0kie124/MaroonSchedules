@@ -33,7 +33,7 @@ import { CampusNavigationScreen } from './components/CampusNavigationScreen';
 import { PlaceRecommendationsScreen } from './components/PlaceRecommendationsScreen';
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
 import { ForYouScreen } from './components/ForYouScreen';
-import { CrowdPingScreen } from './components/CrowdPingScreen';
+import { CampusFeedScreen } from './components/CampusFeedScreen';
 import { GPACalculatorScreen } from './components/GPACalculatorScreen';
 import { CampusScreen } from './components/CampusScreen';
 
@@ -182,9 +182,9 @@ function RootNavigator() {
           <Stack.Screen name="LocationSearch" component={LocationSearchScreen} options={{ headerShown: true, title: 'Location Traffic Search' }} />
           <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
           <Stack.Screen name="PlaceRecommendations" component={PlaceRecommendationsScreen} options={{ headerShown: true, title: 'Find a Spot' }} />
-          <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: true, title: 'Campus Events' }} />
-          <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: true, title: 'For You' }} />
-          <Stack.Screen name="CrowdPing" component={CrowdPingScreen} options={{ headerShown: true, title: 'CrowdPing' }} />
+          <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="CampusFeed" component={CampusFeedScreen} options={{ headerShown: false }} />
           <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Profile" component={Profile} options={{ headerShown: true }} />
         </>
