@@ -141,6 +141,7 @@ type Props = {
       memberIds?: string[];
       groupName?: string;
       isGroup?: boolean;
+      channelId?: string;
     };
   };
   navigation: any;
@@ -154,7 +155,8 @@ export function ChatScreen({ route, navigation }: Props) {
     otherUserImageUrl,
     memberIds,
     groupName,
-    isGroup = false
+    isGroup = false,
+    channelId
   } = route.params;
   
   const displayName = isGroup ? (groupName || 'Group Chat') : otherUserName;
@@ -179,11 +181,16 @@ export function ChatScreen({ route, navigation }: Props) {
   // 1. Fetch Stream credentials
   useEffect(() => {
     if (!isLoaded || !user) return;
+    const other_ids = isGroup && memberIds 
+      ? memberIds 
+      : (otherUserClerkId ? [otherUserClerkId] : []);
+
     fetch(`${API_URL}/chat/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         clerk_user_id: user.id,
+        other_clerk_user_ids: other_ids,
       }),
     })
       .then(r => { if (!r.ok) throw new Error(`Token fetch failed: ${r.status}`); return r.json(); })
@@ -215,10 +222,12 @@ export function ChatScreen({ route, navigation }: Props) {
           ? [userId, ...memberIds] 
           : [userId, otherUserClerkId!];
           
-        const c = chatClient.channel('messaging', { 
-          members,
-          name: isGroup ? displayName : undefined
-        } as any);
+        const c = channelId 
+          ? chatClient.channel('messaging', channelId)
+          : chatClient.channel('messaging', { 
+              members,
+              name: isGroup ? displayName : undefined
+            } as any);
         
         const timeout = new Promise<never>((_, rej) =>
           setTimeout(() => rej(new Error('Connection timed out. Is the backend running?')), 15000)

@@ -20,6 +20,7 @@ import { AuthLanding } from './components/AuthLanding';
 import { LoginScreen } from './components/LoginScreen';
 import { ChatScreen } from './components/ChatScreen';
 import { UsersScreen } from './components/UsersScreen';
+import { ChannelListScreen } from './components/ChannelListScreen';
 
 import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
 import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
@@ -134,7 +135,7 @@ function MainTabs() {
       <Tab.Screen name="Dashboard" component={Dashboard} options={{ title: 'Home' }} />
       <Tab.Screen name="Campus" component={CampusScreen} options={{ title: 'Campus' }} />
       <Tab.Screen name="Search" component={NewCourseSearchScreen} options={{ title: 'Search' }} />
-      <Tab.Screen name="Messages" component={UsersScreen} options={{ title: 'Messages' }} />
+      <Tab.Screen name="Messages" component={ChannelListScreen} options={{ title: 'Messages' }} />
     </Tab.Navigator>
   );
 }
@@ -159,6 +160,11 @@ function RootNavigator() {
           <Stack.Screen
             name="ChatScreen"
             component={ChatScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="ChannelListScreen"
+            component={ChannelListScreen}
             options={{ headerShown: false }}
           />
           <Stack.Screen
