@@ -14,6 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import { Check, Users, Plus, X } from 'lucide-react-native';
 import { API_URL } from '../config';
+import { KeyboardAvoidingView, Platform, Modal } from 'react-native';
 
 type ClerkUser = { id: string; name: string; email: string; profile_image_url?: string };
 
@@ -102,6 +103,10 @@ export function UsersScreen() {
   // Selection Mode State
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState<ClerkUser[]>([]);
+  
+  // Group Name Modal State
+  const [nameModalVisible, setNameModalVisible] = useState(false);
+  const [groupNameInput, setGroupNameInput] = useState('');
 
   useEffect(() => {
     fetch(`${API_URL}/chat/users?exclude_id=${user?.id ?? ''}`)
@@ -140,14 +145,21 @@ export function UsersScreen() {
     }
   };
 
-  const createGroupChat = () => {
+  const handleCreateGroupPress = () => {
     if (selectedUsers.length < 2) return;
+    const defaultName = selectedUsers.map(u => u.name.split(' ')[0]).join(', ');
+    setGroupNameInput(`Group: ${defaultName}`);
+    setNameModalVisible(true);
+  };
+
+  const createGroupChat = () => {
+    setNameModalVisible(false);
     const memberIds = selectedUsers.map(u => u.id);
-    const groupName = selectedUsers.map(u => u.name.split(' ')[0]).join(', ');
+    const finalName = groupNameInput.trim() || `Group Chat (${selectedUsers.length} members)`;
     
     navigation.navigate('ChatScreen', { 
       memberIds, 
-      groupName: `Group: ${groupName}`,
+      groupName: finalName,
       isGroup: true
     });
   };
@@ -231,11 +243,36 @@ export function UsersScreen() {
 
       {/* ── Floating Action Button ── */}
       {selectionMode && selectedUsers.length >= 2 && (
-        <Pressable style={styles.fab} onPress={createGroupChat}>
+        <Pressable style={styles.fab} onPress={handleCreateGroupPress}>
           <Text style={styles.fabText}>Create Group ({selectedUsers.length})</Text>
           <Plus color={C.white} size={24} />
         </Pressable>
       )}
+
+      {/* ── Group Name Modal ── */}
+      <Modal visible={nameModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Name your group</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={groupNameInput}
+              onChangeText={setGroupNameInput}
+              placeholder="e.g. CSCE 313 Study Group"
+              placeholderTextColor={C.textSecondary}
+              autoFocus
+            />
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelBtn} onPress={() => setNameModalVisible(false)}>
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable style={styles.modalCreateBtn} onPress={createGroupChat}>
+                <Text style={styles.modalCreateText}>Create</Text>
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -389,4 +426,15 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '700',
   },
+
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContent: { backgroundColor: C.white, width: '100%', borderRadius: 20, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20, elevation: 10 },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: C.textPrimary, marginBottom: 16 },
+  modalInput: { backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: C.textPrimary, marginBottom: 24 },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12 },
+  modalCancelBtn: { paddingVertical: 10, paddingHorizontal: 16 },
+  modalCancelText: { fontSize: 15, fontWeight: '600', color: C.textSecondary },
+  modalCreateBtn: { backgroundColor: C.maroon, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 20 },
+  modalCreateText: { fontSize: 15, fontWeight: '700', color: C.white },
 });
