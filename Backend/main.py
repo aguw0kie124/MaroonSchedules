@@ -8,8 +8,6 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-import test_func
-import postgre_test
 from chat import router as chat_router
 from routers.traffic import router as traffic_router
 
@@ -32,14 +30,6 @@ app.include_router(traffic_router, prefix="/traffic", tags=["Traffic"])
 @app.get("/")
 def read_root():
     return {"message": "hi"}
-
-@app.get("/test_func")
-def test():
-    return test_func.test_func()
-
-@app.get("/test_postgre")
-def test_postgre():
-    return postgre_test.test_postgre_data()
 
 # ============================================================
 # Users

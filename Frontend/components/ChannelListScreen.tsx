@@ -120,9 +120,27 @@ export function ChannelListScreen() {
             filters={filters}
             sort={sort}
             onSelect={(channel) => {
+              const channelData = channel.data as any;
+              const isGroup = !!channelData?.name;
+
+              // For DMs, find the other member's display info from the channel state
+              let otherUserName: string | undefined;
+              let otherUserImageUrl: string | undefined;
+              if (!isGroup && chatClient) {
+                const members = Object.values(channel.state?.members ?? {});
+                const other = members.find((m: any) => m.user?.id !== userId);
+                if (other) {
+                  otherUserName = (other as any).user?.name;
+                  otherUserImageUrl = (other as any).user?.image;
+                }
+              }
+
               navigation.navigate('ChatScreen', {
                 channelId: channel.id,
-                isGroup: !!(channel.data as any)?.name,
+                isGroup,
+                groupName: isGroup ? channelData?.name : undefined,
+                otherUserName: otherUserName,
+                otherUserImageUrl: otherUserImageUrl,
               });
             }}
           />

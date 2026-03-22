@@ -35,6 +35,7 @@ import { EventsCalendarScreen } from './components/EventsCalendarScreen';
 import { ForYouScreen } from './components/ForYouScreen';
 import { CrowdPingScreen } from './components/CrowdPingScreen';
 import { GPACalculatorScreen } from './components/GPACalculatorScreen';
+import { CampusScreen } from './components/CampusScreen';
 
 import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu, Compass, MessageSquare } from 'lucide-react-native';
 import { COLORS } from './components/SharedUI';
@@ -90,7 +91,7 @@ if (!publishableKey) {
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-import { CampusScreen } from './components/CampusScreen';
+
 
 function MainTabs() {
   return (
@@ -186,7 +187,6 @@ function RootNavigator() {
           <Stack.Screen name="CrowdPing" component={CrowdPingScreen} options={{ headerShown: true, title: 'CrowdPing' }} />
           <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Profile" component={Profile} options={{ headerShown: true }} />
-          <Stack.Screen name="profile" component={Profile} options={{ headerShown: true }} />
         </>
       ) : (
         <>

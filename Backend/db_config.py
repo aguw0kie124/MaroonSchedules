@@ -9,7 +9,7 @@ load_dotenv()
 
 DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
 DB_NAME = os.getenv("DB_NAME", "maroon_schedules")
-DB_USER = os.getenv("DB_USER", "dev_rian")
+DB_USER = os.getenv("DB_USER", "dev_sid")
 DB_PASS = os.getenv("DB_PASS", "admin")
 
 CONNECTION_PARAMS = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"

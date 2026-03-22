@@ -34,8 +34,7 @@ interface Course {
   grade: Grade;
 }
 
-let _idCounter = 0;
-const makeId = () => `course-${++_idCounter}`;
+const makeId = () => `course-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
 const DEFAULT_COURSES: Course[] = [
   { id: makeId(), name: '', credits: '3', grade: 'A' },
@@ -115,7 +114,6 @@ export function GPACalculatorScreen() {
         text: 'Reset',
         style: 'destructive',
         onPress: () => {
-          _idCounter = 0;
           setCourses([
             { id: makeId(), name: '', credits: '3', grade: 'A' },
           ]);

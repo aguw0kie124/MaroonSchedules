@@ -64,6 +64,10 @@ const GRADUATION_YEAR_OPTIONS = [
     '2025', '2026', '2027', '2028', '2029', '2030', '2031',
 ];
 
+const PREFERRED_TIME_OPTIONS = ['Morning', 'Afternoon', 'Evening', 'No Preference'];
+
+const MAX_CREDITS_OPTIONS = ['12', '15', '18', '21'];
+
 export function Profile() {
     const navigation = useNavigation<any>();
     const [preferences, setPreferences] = useState({
@@ -76,7 +80,7 @@ export function Profile() {
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [pickerVisible, setPickerVisible] = useState<'major' | 'gradYear' | null>(null);
+    const [pickerVisible, setPickerVisible] = useState<'major' | 'gradYear' | 'prefTime' | null>(null);
 
     const { user } = useUser();
     const { signOut } = useClerk();
@@ -119,6 +123,12 @@ export function Profile() {
         setPreferences(prev => ({ ...prev, graduationYear: value }));
         setPickerVisible(null);
         saveField({ graduation_year: value });
+    };
+
+    const handlePrefTimeSelect = (value: string) => {
+        setPreferences(prev => ({ ...prev, preferredTime: value }));
+        setPickerVisible(null);
+        saveField({ preferred_time: value });
     };
 
     const handleSave = async () => {
@@ -238,18 +248,36 @@ export function Profile() {
                     onPress={() => setPickerVisible('gradYear')}
                 />
 
-                <InputField
+                <DropdownField
                     label="Preferred Time of Day"
-                    value={preferences.preferredTime}
-                    onChange={(value) => setPreferences({ ...preferences, preferredTime: value })}
+                    value={preferences.preferredTime || 'Select preference'}
+                    onPress={() => setPickerVisible('prefTime')}
                 />
 
-                <InputField
-                    label="Max Credits Per Term"
-                    value={preferences.maxCredits}
-                    onChange={(value) => setPreferences({ ...preferences, maxCredits: value })}
-                    keyboardType="numeric"
-                />
+                {/* Max credits segmented control */}
+                <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Max Credits Per Term</Text>
+                    <View style={styles.segmentedRow}>
+                        {MAX_CREDITS_OPTIONS.map(opt => (
+                            <Pressable
+                                key={opt}
+                                style={[
+                                    styles.segmentBtn,
+                                    preferences.maxCredits === opt && styles.segmentBtnActive,
+                                ]}
+                                onPress={() => {
+                                    setPreferences(prev => ({ ...prev, maxCredits: opt }));
+                                    saveField({ max_credits: opt });
+                                }}
+                            >
+                                <Text style={[
+                                    styles.segmentText,
+                                    preferences.maxCredits === opt && styles.segmentTextActive,
+                                ]}>{opt}</Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                </View>
             </View>
 
             {/* Preferences */}
@@ -314,6 +342,14 @@ export function Profile() {
                 options={GRADUATION_YEAR_OPTIONS}
                 selectedValue={preferences.graduationYear}
                 onSelect={handleGradYearSelect}
+                onClose={() => setPickerVisible(null)}
+            />
+            <PickerModal
+                visible={pickerVisible === 'prefTime'}
+                title="Preferred Time of Day"
+                options={PREFERRED_TIME_OPTIONS}
+                selectedValue={preferences.preferredTime}
+                onSelect={handlePrefTimeSelect}
                 onClose={() => setPickerVisible(null)}
             />
         </ScrollView>
@@ -641,5 +677,32 @@ const styles = StyleSheet.create({
     optionTextSelected: {
         color: COLORS.primary,
         fontWeight: '600',
+    },
+    // Segmented control (max credits)
+    segmentedRow: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    segmentBtn: {
+        flex: 1,
+        height: 44,
+        borderRadius: 12,
+        backgroundColor: COLORS.surface,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    segmentBtnActive: {
+        backgroundColor: COLORS.primary,
+        borderColor: COLORS.primary,
+    },
+    segmentText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: COLORS.textSecondary,
+    },
+    segmentTextActive: {
+        color: '#FFFFFF',
     },
 });

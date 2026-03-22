@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions, Modal, Touch
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { Plus, ChevronDown, CheckCircle2, Clock, ArrowRight, MapPin, TrendingUp, GraduationCap, Radio, Map as MapIcon, Sparkles, ChevronRight } from 'lucide-react-native';
 import { useUser } from '@clerk/clerk-expo';
-import { fetchSchedules } from '../api/client';
+import { fetchSchedules, fetchUserProfile } from '../api/client';
 import { COLORS, Card } from './SharedUI';
 
 const { width } = Dimensions.get('window');
@@ -17,6 +17,7 @@ export function Dashboard() {
     const [selectedSchedule, setSelectedSchedule] = useState<any>(null);
     const [dropdownVisible, setDropdownVisible] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
+    const [maxCreditGoal, setMaxCreditGoal] = useState(15);
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 60000);
@@ -26,6 +27,13 @@ export function Dashboard() {
     useEffect(() => {
         if (isFocused && user) {
             loadSchedules();
+            // Load max_credits preference from user profile
+            fetchUserProfile(user.id)
+                .then(data => {
+                    const mc = parseInt(data?.max_credits || '15', 10);
+                    setMaxCreditGoal(isNaN(mc) ? 15 : mc);
+                })
+                .catch(() => { }); // silently keep default
         }
     }, [isFocused, user]);
 
@@ -37,7 +45,7 @@ export function Dashboard() {
             if (res.length > 0) {
                 setSelectedSchedule((prev: any) => prev ? (res.find((s: any) => s.schedule_id === prev.schedule_id) || res[0]) : res[0]);
             }
-        } catch(e) { console.error(e); }
+        } catch (e) { console.error(e); }
     };
 
     const getDayString = () => {
@@ -63,30 +71,34 @@ export function Dashboard() {
     }) : [];
 
     const totalCredits = displayCourses.reduce((sum: number, course: any) => sum + (course.credits || 0), 0);
-    const todaysCourses = displayCourses.filter((course: any) => course.days && course.days.includes(getDayString()));
+
+    // Helper to convert a "H:MM AM/PM" string to total minutes for sorting
+    const timeToMins = (t: string): number => {
+        if (!t) return Infinity;
+        const [time, period] = t.split(' ');
+        let [h, m] = time.split(':').map(Number);
+        if (period === 'PM' && h !== 12) h += 12;
+        if (period === 'AM' && h === 12) h = 0;
+        return h * 60 + (m || 0);
+    };
+
+    const todaysCourses = displayCourses
+        .filter((course: any) => course.days && course.days.includes(getDayString()))
+        .sort((a: any, b: any) => timeToMins(a.beginTime) - timeToMins(b.beginTime));
 
     // Find next class
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
     const nextClass = todaysCourses
-        .filter(c => {
+        .filter((c: any) => {
             if (!c.beginTime) return false;
             const [time, period] = c.beginTime.split(' ');
             let [h, m] = time.split(':').map(Number);
             if (period === 'PM' && h !== 12) h += 12;
             if (period === 'AM' && h === 12) h = 0;
             return (h * 60 + m) > currentMinutes;
-        })
-        .sort((a, b) => {
-            const timeToMins = (t: string) => {
-                const [time, period] = t.split(' ');
-                let [h, m] = time.split(':').map(Number);
-                if (period === 'PM' && h !== 12) h += 12;
-                return h * 60 + m;
-            };
-            return timeToMins(a.beginTime) - timeToMins(b.beginTime);
-        })[0];
+        })[0]; // todaysCourses is already sorted, so first match = next class
 
     const quickActions = [
         { id: 'GPACalculator', label: 'GPA Calc', icon: <GraduationCap color="#FFF" size={20} />, screen: 'GPACalculator' },
@@ -128,7 +140,7 @@ export function Dashboard() {
                                     <Text style={styles.nextClassDetail} numberOfLines={1}>{nextClass.location}</Text>
                                 </View>
                             </View>
-                            <Pressable 
+                            <Pressable
                                 style={styles.nextClassAction}
                                 onPress={() => navigation.navigate('CourseDetail', { id: nextClass.id })}
                             >
@@ -147,8 +159,8 @@ export function Dashboard() {
                     <Text style={styles.sectionLabel}>QUICK ACTIONS</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsContainer}>
                         {quickActions.map(action => (
-                            <Pressable 
-                                key={action.id} 
+                            <Pressable
+                                key={action.id}
                                 style={styles.quickActionItem}
                                 onPress={() => navigation.navigate(action.screen)}
                             >
@@ -168,14 +180,14 @@ export function Dashboard() {
                             <ChevronDown size={14} color={COLORS.primary} />
                         </Pressable>
                     </View>
-                    
+
                     <Card style={styles.progressCard}>
                         <View style={styles.progressHeader}>
-                            <Text style={styles.progressTitle}>{totalCredits} Credits</Text>
-                            <Text style={styles.progressSubtitle}>{Math.round((totalCredits/15)*100)}% of goal</Text>
+                            <Text style={styles.progressTitle}>{totalCredits} / {maxCreditGoal} Credits</Text>
+                            <Text style={styles.progressSubtitle}>{Math.round((totalCredits / maxCreditGoal) * 100)}% of goal</Text>
                         </View>
                         <View style={styles.progressBarBg}>
-                            <View style={[styles.progressBarFill, { width: `${Math.min((totalCredits / 15) * 100, 100)}%` }]} />
+                            <View style={[styles.progressBarFill, { width: `${Math.min((totalCredits / maxCreditGoal) * 100, 100)}%` }]} />
                         </View>
                     </Card>
                 </View>
@@ -226,8 +238,8 @@ export function Dashboard() {
                                 <Text style={styles.modalTitle}>Switch Schedule</Text>
                                 <ScrollView showsVerticalScrollIndicator={false}>
                                     {schedules.map(s => (
-                                        <Pressable 
-                                            key={s.schedule_id} 
+                                        <Pressable
+                                            key={s.schedule_id}
                                             style={styles.scheduleOption}
                                             onPress={() => {
                                                 setSelectedSchedule(s);

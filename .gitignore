@@ -6,3 +6,8 @@ __pycache__/
 # Environment variables
 .env
 .env.local
+
+# TypeScript build logs
+tsc_errors.log
+tsc_output.txt
+tsc_final.log
