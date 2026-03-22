@@ -80,6 +80,7 @@ async def list_users(exclude_id: str = ""):
                 "id": u["id"],
                 "name": f"{first} {last}".strip() or email,
                 "email": email,
+                "profile_image_url": u.get("image_url"),
             })
         return result
     except Exception as e:

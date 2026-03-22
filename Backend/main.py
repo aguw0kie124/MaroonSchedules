@@ -49,11 +49,12 @@ class SyncUserRequest(BaseModel):
     clerk_id: str
     email: Optional[str] = None
     full_name: Optional[str] = None
+    profile_image_url: Optional[str] = None
 
 @app.post("/users/sync")
 def sync_user(req: SyncUserRequest = Body(...)):
     """Create or update a user row when they sign in."""
-    return user_service.sync_user(req.clerk_id, req.email, req.full_name)
+    return user_service.sync_user(req.clerk_id, req.email, req.full_name, req.profile_image_url)
 
 @app.get("/users/{clerk_id}")
 def get_user(clerk_id: str):

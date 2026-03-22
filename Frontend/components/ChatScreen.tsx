@@ -10,6 +10,7 @@ import {
   Platform,
   Modal,
   FlatList,
+  Image,
 } from 'react-native';
 import {
   OverlayProvider,
@@ -136,6 +137,7 @@ type Props = {
     params: {
       otherUserClerkId?: string;
       otherUserName?: string;
+      otherUserImageUrl?: string;
       memberIds?: string[];
       groupName?: string;
       isGroup?: boolean;
@@ -149,6 +151,7 @@ export function ChatScreen({ route, navigation }: Props) {
   const { 
     otherUserClerkId, 
     otherUserName = 'Aggie',
+    otherUserImageUrl,
     memberIds,
     groupName,
     isGroup = false
@@ -195,7 +198,11 @@ export function ChatScreen({ route, navigation }: Props) {
   // 2. Create Stream client
   const chatClient = useCreateChatClient({
     apiKey: apiKey || '',
-    userData: { id: userId || 'placeholder', name: user?.fullName || 'Aggie' },
+    userData: { 
+      id: userId || 'placeholder', 
+      name: user?.fullName || 'Aggie',
+      image: user?.imageUrl || undefined
+    },
     tokenOrProvider: userToken || '',
   });
 
@@ -234,7 +241,11 @@ export function ChatScreen({ route, navigation }: Props) {
       </Pressable>
 
       <View style={styles.headerAvatar}>
-        <Text style={styles.headerAvatarText}>{initials}</Text>
+        {otherUserImageUrl && !isGroup ? (
+          <Image source={{ uri: otherUserImageUrl }} style={styles.headerAvatarImage} />
+        ) : (
+          <Text style={styles.headerAvatarText}>{initials}</Text>
+        )}
         {!isGroup && <View style={styles.headerOnlineDot} />}
       </View>
       
@@ -394,6 +405,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.3)',
+    overflow: 'hidden',
+  },
+  headerAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   headerAvatarText: { color: C.white, fontWeight: '700', fontSize: 15 },
   headerOnlineDot: {

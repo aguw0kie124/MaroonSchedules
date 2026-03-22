@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, Switch, Platform, ActivityIndicator, Alert, Modal, FlatList } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, Switch, Platform, ActivityIndicator, Alert, Modal, FlatList, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { LogOut, Save, ChevronDown } from 'lucide-react-native';
+import { LogOut, Save, ChevronDown, Camera } from 'lucide-react-native';
 import { useUser, useClerk } from '@clerk/clerk-expo';
+import * as ImagePicker from 'expo-image-picker';
 
 import { COLORS } from './SharedUI';
 
@@ -143,6 +144,51 @@ export function Profile() {
     const handleLogout = async () => {
         await signOut();
     };
+    
+    const handleAvatarPress = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permission Denied', 'We need camera roll permissions to upload a profile picture.');
+            return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.5,
+            base64: true,
+        });
+
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+            const asset = result.assets[0];
+            if (!user) return;
+            
+            setSaving(true);
+            try {
+                // Clerk's setProfileImage can accept a base64 string directly.
+                // This is often more reliable in React Native/Expo than Blob conversion.
+                const base64Data = asset.base64;
+                const mimeType = asset.mimeType || 'image/jpeg';
+                
+                if (base64Data) {
+                    await user.setProfileImage({ 
+                        file: `data:${mimeType};base64,${base64Data}` 
+                    });
+                    Alert.alert('Success', 'Profile picture updated successfully!');
+                } else if (asset.uri) {
+                    // Fallback to URI if base64 is missing
+                    await user.setProfileImage({ file: asset.uri });
+                    Alert.alert('Success', 'Profile picture updated successfully!');
+                }
+            } catch (err) {
+                console.error('Failed to upload image:', err);
+                Alert.alert('Error', 'Failed to update profile picture.');
+            } finally {
+                setSaving(false);
+            }
+        }
+    };
 
     if (loading) {
         return (
@@ -158,11 +204,20 @@ export function Profile() {
 
             {/* Avatar Section */}
             <View style={styles.avatarSection}>
-                <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                        {user?.firstName?.[0] || 'U'}
-                    </Text>
-                </View>
+                <Pressable onPress={handleAvatarPress} style={styles.avatarWrapper}>
+                    <View style={styles.avatar}>
+                        {user?.imageUrl ? (
+                            <Image source={{ uri: user.imageUrl }} style={styles.avatarImage} />
+                        ) : (
+                            <Text style={styles.avatarText}>
+                                {user?.firstName?.[0] || 'U'}
+                            </Text>
+                        )}
+                        <View style={styles.cameraIconBadge}>
+                            <Camera size={14} color="#fff" />
+                        </View>
+                    </View>
+                </Pressable>
                 <Text style={styles.name}>{user?.fullName || 'Aggie User'}</Text>
                 <Text style={styles.email}>{user?.primaryEmailAddress?.emailAddress || 'user@tamu.edu'}</Text>
             </View>
@@ -407,6 +462,27 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 12,
+        overflow: 'hidden',
+    },
+    avatarImage: {
+        width: '100%',
+        height: '100%',
+    },
+    avatarWrapper: {
+        position: 'relative',
+    },
+    cameraIconBadge: {
+        position: 'absolute',
+        bottom: 12,
+        right: 0,
+        backgroundColor: COLORS.primary,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        borderWidth: 3,
+        borderColor: COLORS.background,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     avatarText: {
         fontSize: 32,

@@ -10,23 +10,24 @@ from db_config import CONNECTION_PARAMS
 # User CRUD
 # ---------------------------------------------------------------------------
 
-def upsert_user(clerk_id: str, email: str = None, full_name: str = None) -> dict:
+def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile_image_url: str = None) -> dict:
     """Insert a new user row or update email/full_name if the clerk_id already exists."""
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO users (clerk_id, email, full_name)
-                VALUES (%s, %s, %s)
+                INSERT INTO users (clerk_id, email, full_name, profile_image_url)
+                VALUES (%s, %s, %s, %s)
                 ON CONFLICT (clerk_id) DO UPDATE
-                    SET email      = COALESCE(EXCLUDED.email, users.email),
-                        full_name  = COALESCE(EXCLUDED.full_name, users.full_name),
-                        updated_at = NOW()
-                RETURNING id, clerk_id, email, full_name, major, graduation_year,
+                    SET email             = COALESCE(EXCLUDED.email, users.email),
+                        full_name         = COALESCE(EXCLUDED.full_name, users.full_name),
+                        profile_image_url = COALESCE(EXCLUDED.profile_image_url, users.profile_image_url),
+                        updated_at        = NOW()
+                RETURNING id, clerk_id, email, full_name, profile_image_url, major, graduation_year,
                           preferred_time, max_credits, avoid_friday, show_online_first,
                           schedules, created_at, updated_at
                 """,
-                (clerk_id, email, full_name),
+                (clerk_id, email, full_name, profile_image_url),
             )
             row = cur.fetchone()
         conn.commit()
@@ -39,7 +40,7 @@ def get_user(clerk_id: str) -> dict | None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, clerk_id, email, full_name, major, graduation_year,
+                SELECT id, clerk_id, email, full_name, profile_image_url, major, graduation_year,
                        preferred_time, max_credits, avoid_friday, show_online_first,
                        schedules, created_at, updated_at
                 FROM users WHERE clerk_id = %s
@@ -57,6 +58,7 @@ def update_profile(clerk_id: str, fields: dict) -> dict | None:
     allowed = {
         "major", "graduation_year", "preferred_time",
         "max_credits", "avoid_friday", "show_online_first",
+        "profile_image_url",
     }
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
@@ -71,7 +73,7 @@ def update_profile(clerk_id: str, fields: dict) -> dict | None:
                 f"""
                 UPDATE users SET {set_clause}, updated_at = NOW()
                 WHERE clerk_id = %s
-                RETURNING id, clerk_id, email, full_name, major, graduation_year,
+                RETURNING id, clerk_id, email, full_name, profile_image_url, major, graduation_year,
                           preferred_time, max_credits, avoid_friday, show_online_first,
                           schedules, created_at, updated_at
                 """,
@@ -126,7 +128,7 @@ def _row_to_dict(row) -> dict:
     """Map a SELECT row tuple to a dict."""
     if not row:
         return {}
-    schedules = row[10]
+    schedules = row[11]
     if isinstance(schedules, str):
         schedules = json.loads(schedules)
     return {
@@ -134,13 +136,14 @@ def _row_to_dict(row) -> dict:
         "clerk_id": row[1],
         "email": row[2],
         "full_name": row[3],
-        "major": row[4],
-        "graduation_year": row[5],
-        "preferred_time": row[6],
-        "max_credits": row[7],
-        "avoid_friday": row[8],
-        "show_online_first": row[9],
+        "profile_image_url": row[4],
+        "major": row[5],
+        "graduation_year": row[6],
+        "preferred_time": row[7],
+        "max_credits": row[8],
+        "avoid_friday": row[9],
+        "show_online_first": row[10],
         "schedules": schedules or [],
-        "created_at": str(row[11]) if row[11] else None,
-        "updated_at": str(row[12]) if row[12] else None,
+        "created_at": str(row[12]) if row[12] else None,
+        "updated_at": str(row[13]) if row[13] else None,
     }

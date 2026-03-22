@@ -4,11 +4,16 @@ import { API_URL } from '../config';
 // User endpoints
 // ============================================================
 
-export const syncUser = async (clerkId: string, email?: string, fullName?: string) => {
+export const syncUser = async (clerkId: string, email?: string, fullName?: string, profileImageUrl?: string) => {
     const response = await fetch(`${API_URL}/users/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clerk_id: clerkId, email, full_name: fullName }),
+        body: JSON.stringify({
+            clerk_id: clerkId,
+            email,
+            full_name: fullName,
+            profile_image_url: profileImageUrl
+        }),
     });
     if (!response.ok) throw new Error('Failed to sync user');
     return response.json();

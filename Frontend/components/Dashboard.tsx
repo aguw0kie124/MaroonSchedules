@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions, Modal, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions, Modal, TouchableWithoutFeedback, Image } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { Plus, ChevronDown, CheckCircle2, Clock, ArrowRight, MapPin, TrendingUp, GraduationCap, Radio, Map as MapIcon, Sparkles, ChevronRight } from 'lucide-react-native';
 import { useUser } from '@clerk/clerk-expo';
@@ -105,7 +105,11 @@ export function Dashboard() {
                         <Text style={styles.name}>{user?.firstName || 'Aggie'}</Text>
                     </View>
                     <Pressable style={styles.avatar} onPress={() => navigation.navigate('Profile')}>
-                        <Text style={styles.avatarText}>{user?.firstName?.[0] || 'A'}</Text>
+                        {user?.imageUrl ? (
+                            <Image source={{ uri: user.imageUrl }} style={styles.avatarImage} />
+                        ) : (
+                            <Text style={styles.avatarText}>{user?.firstName?.[0] || 'A'}</Text>
+                        )}
                     </Pressable>
                 </View>
 
@@ -280,6 +284,11 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         borderWidth: 2,
         borderColor: 'rgba(255,255,255,0.1)',
+        overflow: 'hidden',
+    },
+    avatarImage: {
+        width: '100%',
+        height: '100%',
     },
     avatarText: {
         color: '#fff',

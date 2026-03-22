@@ -27,7 +27,7 @@ import { ScheduleListScreen } from './components/ScheduleListScreen';
 import { ScheduleDetailScreen } from './components/ScheduleDetailScreen';
 import { CampusMapScreen } from './components/CampusMapScreen';
 import { LocationSearchScreen } from './components/LocationSearchScreen';
-import { ExtrasSidebar } from './components/ExtrasSidebar';
+// import { ExtrasSidebar } from './components/ExtrasSidebar';
 import { CampusNavigationScreen } from './components/CampusNavigationScreen';
 import { PlaceRecommendationsScreen } from './components/PlaceRecommendationsScreen';
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
@@ -53,6 +53,7 @@ function UserSync({ children }: { children: React.ReactNode }) {
         user.id,
         user.primaryEmailAddress?.emailAddress,
         user.fullName ?? undefined,
+        user.imageUrl ?? undefined,
       ).catch((err: any) => console.warn('UserSync failed:', err));
     }
   }, [user]);
@@ -178,6 +179,8 @@ function RootNavigator() {
           <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: true, title: 'For You' }} />
           <Stack.Screen name="CrowdPing" component={CrowdPingScreen} options={{ headerShown: true, title: 'CrowdPing' }} />
           <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Profile" component={Profile} options={{ headerShown: true }} />
+          <Stack.Screen name="profile" component={Profile} options={{ headerShown: true }} />
         </>
       ) : (
         <>

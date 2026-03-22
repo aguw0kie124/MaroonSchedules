@@ -8,13 +8,14 @@ import {
   ActivityIndicator,
   TextInput,
   StatusBar,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import { Check, Users, Plus, X } from 'lucide-react-native';
 import { API_URL } from '../config';
 
-type ClerkUser = { id: string; name: string; email: string };
+type ClerkUser = { id: string; name: string; email: string; profile_image_url?: string };
 
 // ─── Design tokens ──────────────────────────────────────────────────────────
 const C = {
@@ -42,11 +43,16 @@ function getInitials(name: string) {
 }
 
 // ─── Avatar ──────────────────────────────────────────────────────────────────
-function Avatar({ name, userId, selected }: { name: string; userId: string; selected?: boolean }) {
+function Avatar({ name, userId, imageUrl, selected }: { name: string; userId: string; imageUrl?: string; selected?: boolean }) {
   return (
     <View style={[styles.avatar, { backgroundColor: getAvatarColor(userId) }]}>
       {selected ? (
         <Check color={C.white} size={28} strokeWidth={3} />
+      ) : imageUrl ? (
+        <Image 
+          source={{ uri: imageUrl }} 
+          style={styles.avatarImage} 
+        />
       ) : (
         <Text style={styles.avatarInitials}>{getInitials(name)}</Text>
       )}
@@ -67,7 +73,7 @@ function UserRow({ item, onPress, selected, selectionMode }: { item: ClerkUser; 
       onPress={onPress}
       android_ripple={{ color: '#F5EAEA' }}
     >
-      <Avatar name={item.name} userId={item.id} selected={selected} />
+      <Avatar name={item.name} userId={item.id} imageUrl={item.profile_image_url} selected={selected} />
 
       <View style={styles.rowText}>
         <Text style={styles.rowName} numberOfLines={1}>{item.name}</Text>
@@ -128,7 +134,8 @@ export function UsersScreen() {
     } else {
       navigation.navigate('ChatScreen', { 
         otherUserClerkId: u.id, 
-        otherUserName: u.name 
+        otherUserName: u.name,
+        otherUserImageUrl: u.profile_image_url
       });
     }
   };
@@ -312,6 +319,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 16,
     flexShrink: 0,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   avatarInitials: {
     color: C.white,
