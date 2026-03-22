@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, useWindowDimensions, Pressable } from 'react-native';
 import { useRoute, useNavigation, useIsFocused } from '@react-navigation/native';
 import { fetchSchedules, removeSectionFromSchedule } from '../api/client';
-import { COLORS, PrimaryButton, SectionRow, Card } from './SharedUI';
+import { useTheme, PrimaryButton, SectionRow, Card } from './SharedUI';
 import { useUser } from '@clerk/clerk-expo';
 
 export function ScheduleDetailScreen() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
     const { scheduleId, scheduleObj } = route.params;
@@ -197,7 +199,7 @@ export function ScheduleDetailScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
     container: { flex: 1, backgroundColor: COLORS.background },
     header: { marginBottom: 24 },
     title: { fontSize: 26, fontWeight: 'bold', color: COLORS.textPrimary },

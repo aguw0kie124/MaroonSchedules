@@ -11,7 +11,7 @@ import {
   Keyboard,
   RefreshControl,
 } from 'react-native';
-import { COLORS, Card } from './SharedUI';
+import { useTheme, Card } from './SharedUI';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
 
@@ -58,6 +58,8 @@ function timeAgo(ts: number): string {
 }
 
 export function CrowdPingScreen() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
   const [pings, setPings] = useState<CrowdPing[]>(localPings);
   const [showForm, setShowForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -280,7 +282,7 @@ export function CrowdPingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: {
     paddingTop: 20, paddingHorizontal: 20, paddingBottom: 16,

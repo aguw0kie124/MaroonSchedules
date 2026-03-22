@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
@@ -38,7 +37,7 @@ import { GPACalculatorScreen } from './components/GPACalculatorScreen';
 import { CampusScreen } from './components/CampusScreen';
 
 import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu, Compass, MessageSquare, MapPin, Radio } from 'lucide-react-native';
-import { COLORS } from './components/SharedUI';
+import { useTheme } from './components/SharedUI';
 
 import { syncUser } from './api/client';
 
@@ -94,6 +93,7 @@ const Tab = createBottomTabNavigator();
 
 
 function MainTabs() {
+  const { COLORS } = useTheme();
   return (
     <Tab.Navigator
       id="MainTabs"
@@ -119,15 +119,15 @@ function MainTabs() {
           }
           return null;
         },
-        tabBarActiveTintColor: COLORS.accent, // Back to bright Maroon
-        tabBarInactiveTintColor: 'rgba(255,255,255,0.4)',
+        tabBarActiveTintColor: COLORS.accent, 
+        tabBarInactiveTintColor: COLORS.textTertiary,
         tabBarStyle: {
           height: 84,
           paddingBottom: 28,
           paddingTop: 12,
-          backgroundColor: '#000000', // Pure black nav bar
+          backgroundColor: COLORS.background, // Dynamic background
           borderTopColor: COLORS.border,
-          borderTopWidth: StyleSheet.hairlineWidth, // Thin sleek border
+          borderTopWidth: StyleSheet.hairlineWidth,
         },
         tabBarLabelStyle: {
           fontSize: 11,
@@ -145,6 +145,7 @@ function MainTabs() {
 }
 
 function RootNavigator() {
+  const { COLORS } = useTheme();
   const { isSignedIn, isLoaded } = useAuth();
 
   if (!isLoaded) {
@@ -154,8 +155,8 @@ function RootNavigator() {
   const navigator = (
     <Stack.Navigator id="RootStack" screenOptions={{
       headerShown: false,
-      headerStyle: { backgroundColor: '#000000' },
-      headerTintColor: '#FFFFFF',
+      headerStyle: { backgroundColor: COLORS.background },
+      headerTintColor: COLORS.textPrimary,
     }}>
       {isSignedIn ? (
         <>
@@ -212,13 +213,16 @@ function RootNavigator() {
   return isSignedIn ? <UserSync>{navigator}</UserSync> : navigator;
 }
 
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { registerRootComponent } from 'expo';
 
 function App() {
+  const { theme } = useTheme();
+  
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <ClerkLoaded>
-        <NavigationContainer>
+        <NavigationContainer theme={theme === 'dark' ? DarkTheme : DefaultTheme}>
           <RootNavigator />
         </NavigationContainer>
       </ClerkLoaded>

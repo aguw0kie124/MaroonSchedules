@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Map, MessageSquare, Sparkles, Calendar, Heart, Rss, Navigation, TrendingUp, GraduationCap, ChevronRight, Compass } from 'lucide-react-native';
-import { COLORS } from './SharedUI';
+import { useTheme } from './SharedUI';
 
 const { width } = Dimensions.get('window');
 
@@ -10,6 +10,8 @@ const ICON_BG = '#3D0000';
 const ICON_COLOR = '#FF8A8A';
 
 export function CampusScreen() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     const navigation = useNavigation<any>();
 
     const menuItems = [
@@ -93,7 +95,7 @@ export function CampusScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: COLORS.background,

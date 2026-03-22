@@ -18,45 +18,37 @@ import { useNavigation } from '@react-navigation/native';
 import { MessageSquarePlus } from 'lucide-react-native';
 import { API_URL } from '../config';
 
-// ─── Design Tokens (dark mode, matching the rest of the app) ──────────────────
-const C = {
-  maroon: '#500000',
-  white: '#FFFFFF',
-  bg: '#0A0A0A',
-  surface: '#141414',
-  textPrimary: '#FFFFFF',
-  textSecondary: '#8A8A8A',
-  border: '#1F1F1F',
-};
-
-const streamTheme = {
-  colors: {
-    accent_blue: C.maroon,
-    bg_gradient_start: C.bg,
-    bg_gradient_end: C.surface,
-    black: C.textPrimary,        // used for text
-    border: C.border,
-    grey: C.textSecondary,
-    grey_whisper: C.surface,
-    icon_background: C.surface,
-    white: C.surface,            // used for preview row backgrounds
-    white_smoke: C.bg,
-    white_snow: C.bg,
-    blue_alice: '#2A0808',       // selected / highlighted rows
-    overlay: 'rgba(0,0,0,0.75)',
-  },
-} as any;
+import { useTheme } from './SharedUI';
 
 export function ChannelListScreen() {
   const navigation = useNavigation<any>();
   const { user, isLoaded } = useUser();
+  const { COLORS } = useTheme();
+  const styles = getStyles(COLORS);
+  
+  const streamTheme = {
+    colors: {
+      accent_blue: COLORS.primary,
+      bg_gradient_start: COLORS.background,
+      bg_gradient_end: COLORS.surface,
+      black: COLORS.textPrimary,
+      border: COLORS.border,
+      grey: COLORS.textSecondary,
+      grey_whisper: COLORS.surfaceElevated,
+      icon_background: COLORS.surface,
+      white: COLORS.surface,
+      white_smoke: COLORS.background,
+      white_snow: COLORS.background,
+      blue_alice: COLORS.primary + '1A',
+      overlay: 'rgba(0,0,0,0.75)',
+    },
+  } as any;
 
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [userToken, setUserToken] = useState<string | null>(null);
   const [errorStatus, setErrorStatus] = useState<string | null>(null);
 
-  // 1. Fetch Stream credentials
   useEffect(() => {
     if (!isLoaded || !user) return;
     fetch(`${API_URL}/chat/token`, {
@@ -97,7 +89,7 @@ export function ChannelListScreen() {
   if (!chatClient || !userId) {
     return (
       <View style={styles.centerFull}>
-        <ActivityIndicator size="large" color={C.maroon} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
         <Text style={styles.loadingText}>Connecting to Chat…</Text>
       </View>
     );
@@ -108,7 +100,7 @@ export function ChannelListScreen() {
 
   return (
     <View style={styles.screen}>
-      <StatusBar barStyle="light-content" backgroundColor={C.maroon} />
+      <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
       
       {/* ── Header ── */}
       <View style={styles.header}>
@@ -117,7 +109,7 @@ export function ChannelListScreen() {
           style={styles.actionBtn} 
           onPress={() => navigation.navigate('UsersScreen')}
         >
-          <MessageSquarePlus color={C.white} size={24} />
+        <MessageSquarePlus color={COLORS.textPrimary} size={24} />
         </Pressable>
       </View>
 
@@ -157,32 +149,32 @@ export function ChannelListScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.bg },
-  centerFull: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: C.bg, gap: 12 },
-  loadingText: { marginTop: 4, color: C.textSecondary, fontSize: 14 },
-  errorText: { color: '#FF453A', fontSize: 15, textAlign: 'center', paddingHorizontal: 24 },
+const getStyles = (COLORS: any) => StyleSheet.create({
+  screen: { flex: 1, backgroundColor: COLORS.background },
+  centerFull: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, gap: 12 },
+  loadingText: { marginTop: 4, color: COLORS.textSecondary, fontSize: 14 },
+  errorText: { color: COLORS.danger, fontSize: 15, textAlign: 'center', paddingHorizontal: 24 },
   
   header: {
-    backgroundColor: C.maroon,
-    paddingTop: 60,
+    backgroundColor: COLORS.background,
+    paddingTop: 50,
     paddingHorizontal: 20,
-    paddingBottom: 18,
+    paddingBottom: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
   },
   headerTitle: {
     fontSize: 28,
     fontWeight: '800',
-    color: C.white,
+    color: COLORS.textPrimary,
     letterSpacing: -0.5,
   },
   actionBtn: {
     width: 44,
     height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
   },

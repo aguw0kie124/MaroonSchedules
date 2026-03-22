@@ -8,7 +8,7 @@ import { useUser } from '@clerk/clerk-expo';
 import { Camera, Image as ImageIcon, Video, Heart, MapPin, X, ChevronLeft, MoreHorizontal, MessageCircle, Calendar } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
-import { COLORS } from './SharedUI';
+import { useTheme } from './SharedUI';
 import { API_URL } from '../config';
 
 // Replace these with your actual Cloudinary credentials from your .env
@@ -31,6 +31,8 @@ interface Post {
 }
 
 export function CampusFeedScreen() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     const { user } = useUser();
     const navigation = useNavigation<any>();
     
@@ -272,7 +274,7 @@ export function CampusFeedScreen() {
             )}
 
             <Pressable style={styles.fab} onPress={() => setModalVisible(true)}>
-                <Camera color="#000" size={24} />
+                <Camera color={COLORS.surface} size={24} />
             </Pressable>
 
             {/* Create Post Modal */}
@@ -348,7 +350,7 @@ export function CampusFeedScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
     container: { flex: 1, backgroundColor: COLORS.background },
     header: {
         flexDirection: 'row',
@@ -376,12 +378,12 @@ const styles = StyleSheet.create({
     postHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
     avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surfaceElevated, marginRight: 12 },
     postHeaderText: { flex: 1 },
-    postAuthor: { fontSize: 16, fontWeight: '700', color: '#FFF', marginBottom: 2 },
+    postAuthor: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 2 },
     postTime: { fontSize: 13, color: COLORS.textSecondary },
     postLocation: { fontSize: 12, fontWeight: '600', color: COLORS.primary },
     moreBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
     
-    postCaption: { fontSize: 15, color: '#FFF', lineHeight: 22, marginBottom: 12 },
+    postCaption: { fontSize: 15, color: COLORS.textPrimary, lineHeight: 22, marginBottom: 12 },
     postImage: { width: '100%', height: 250, borderRadius: 16, marginBottom: 16, backgroundColor: COLORS.surfaceElevated },
     
     postFooter: { flexDirection: 'row', gap: 24, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 12 },
@@ -389,7 +391,7 @@ const styles = StyleSheet.create({
     actionText: { fontSize: 14, fontWeight: '600', color: COLORS.textSecondary },
     
     emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 80, paddingHorizontal: 40 },
-    emptyTitle: { fontSize: 20, fontWeight: '700', color: '#FFF', marginTop: 16, marginBottom: 8 },
+    emptyTitle: { fontSize: 20, fontWeight: '700', color: COLORS.textPrimary, marginTop: 16, marginBottom: 8 },
     emptySubtitle: { fontSize: 15, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 22 },
     
     fab: {
@@ -409,11 +411,11 @@ const styles = StyleSheet.create({
     modalContent: { backgroundColor: COLORS.surface, borderTopLeftRadius: 32, borderTopRightRadius: 32, minHeight: '80%', padding: 20 },
     modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingBottom: 16 },
     modalCancelText: { fontSize: 16, color: COLORS.textSecondary },
-    modalTitle: { fontSize: 18, fontWeight: '700', color: '#FFF' },
+    modalTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary },
     modalPostText: { fontSize: 16, fontWeight: '700', color: COLORS.primary },
     modalCloseBtn: { paddingVertical: 4 },
     
-    captionInput: { fontSize: 17, color: '#FFF', minHeight: 120, textAlignVertical: 'top', marginBottom: 20 },
+    captionInput: { fontSize: 17, color: COLORS.textPrimary, minHeight: 120, textAlignVertical: 'top', marginBottom: 20 },
     
     mediaPreviewContainer: { position: 'relative', marginBottom: 20 },
     mediaPreview: { width: '100%', height: 200, borderRadius: 16, backgroundColor: COLORS.surfaceElevated },
@@ -424,5 +426,5 @@ const styles = StyleSheet.create({
     mediaBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(80,0,0,0.15)', alignItems: 'center', justifyContent: 'center' },
     
     locationInputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.background, paddingHorizontal: 12, height: 40, borderRadius: 20, gap: 8, flex: 1, marginLeft: 16 },
-    locationInput: { flex: 1, color: '#FFF', fontSize: 14 },
+    locationInput: { flex: 1, color: COLORS.textPrimary, fontSize: 14 },
 });

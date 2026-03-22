@@ -1,8 +1,10 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { SectionRow, COLORS, useSavedStore, Card } from './SharedUI';
+import { SectionRow, useTheme, useSavedStore, Card } from './SharedUI';
 
 export function Saved() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     const { savedSections, loadSaved } = useSavedStore();
 
     useEffect(() => {
@@ -36,7 +38,7 @@ export function Saved() {
     );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: COLORS.background,

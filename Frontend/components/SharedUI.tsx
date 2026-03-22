@@ -4,21 +4,51 @@ import { MapPin, Bookmark } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
-export const COLORS = {
-  background: '#000000',      // Pure Black (Uber/Instagram dark mode base)
-  primary: '#500000',         // Aggie Maroon for primary buttons/accents
-  primaryLight: '#3D0000',    // Darker maroon for icons
-  accent: '#FF8A8A',          // Bright maroon for selected states
-  textSecondary: '#A0A0A5',   // Sleek minimal gray
-  textTertiary: '#636366',    // Deep muted gray
-  textPrimary: '#FFFFFF',     // Pristine White
-  surface: '#000000',         // Surface is now black, we separate with lines
-  surfaceElevated: '#111111', // Slightly elevated for modals
-  border: '#2C2C2E',          // Subtle hairline borders
+export const DARK_COLORS = {
+  background: '#000000',      // Pure Black
+  primary: '#500000',         // Aggie Maroon
+  primaryLight: '#3D0000',
+  accent: '#FF8A8A',
+  textSecondary: '#A0A0A5',
+  textTertiary: '#636366',
+  textPrimary: '#FFFFFF',
+  surface: '#000000',
+  surfaceElevated: '#111111',
+  border: '#2C2C2E',
   danger: '#FF453A',
   success: '#30D158',
   warning: '#FF9F0A',
 };
+
+export const LIGHT_COLORS = {
+  background: '#FAFAFA',      // Barely off-white
+  primary: '#500000',         // Aggie Maroon
+  primaryLight: '#FFFFFF',    // Bright white for buttons
+  accent: '#500000',          // Maroon accent against light bg
+  textSecondary: '#666666',   // High contrast grey
+  textTertiary: '#8E8E93',    // Light grey
+  textPrimary: '#000000',     // Pitch Black
+  surface: '#FFFFFF',         // Crisp white cards
+  surfaceElevated: '#F2F2F7', // iOS grey system color
+  border: '#E5E5EA',          // Hairline grey
+  danger: '#FF3B30',
+  success: '#34C759',
+  warning: '#FF9500',
+};
+
+// Zustand Theme Store
+export const useThemeStore = create<any>((set) => ({
+  theme: 'dark', // 'dark' | 'light'
+  setTheme: (newTheme: string) => set({ theme: newTheme })
+}));
+
+export const useTheme = () => {
+  const theme = useThemeStore((s: any) => s.theme);
+  const COLORS = theme === 'dark' ? DARK_COLORS : LIGHT_COLORS;
+  return { COLORS, theme, setTheme: useThemeStore.getState().setTheme };
+};
+
+export const COLORS = DARK_COLORS; // Fallback for static usage
 
 export const useSavedStore = create<any>((set, get) => ({
   savedSections: [],
@@ -35,13 +65,19 @@ export const useSavedStore = create<any>((set, get) => ({
   }
 }));
 
-export const Card = ({ children, style }: any) => (
-  <View style={[styles.card, style]}>
-    {children}
-  </View>
-);
+export const Card = ({ children, style }: any) => {
+  const { COLORS } = useTheme();
+  const styles = getStyles(COLORS);
+  return (
+    <View style={[styles.card, style]}>
+      {children}
+    </View>
+  );
+};
 
 export const PrimaryButton = ({ title, onPress, style, textStyle, isLoading, variant = 'primary' }: any) => {
+  const { COLORS } = useTheme();
+  const styles = getStyles(COLORS);
   const isPrimary = variant === 'primary';
   const getBgColor = () => {
     if (variant === 'danger') return COLORS.danger;
@@ -73,6 +109,8 @@ export const PrimaryButton = ({ title, onPress, style, textStyle, isLoading, var
 };
 
 export const SectionRow = ({ section, onAdd, onRemove, isAdded }: any) => {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     const { savedSections, toggleSave } = useSavedStore();
     const isSaved = savedSections.some((s:any) => s.id === section.id);
 
@@ -136,7 +174,7 @@ export const SectionRow = ({ section, onAdd, onRemove, isAdded }: any) => {
     );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
   card: {
     backgroundColor: COLORS.surface,
     paddingVertical: 16,

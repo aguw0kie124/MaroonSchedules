@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import MapView, { Marker, Circle, Callout } from 'react-native-maps';
 import axios from 'axios';
-import { COLORS } from './SharedUI';
+import { useTheme } from './SharedUI';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
 
@@ -67,6 +67,8 @@ function getRadius(percent: number) {
 }
 
 export function CampusMapScreen() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     const [locations, setLocations] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -162,7 +164,7 @@ export function CampusMapScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: COLORS.background,

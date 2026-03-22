@@ -9,7 +9,7 @@ import {
   Alert,
 } from 'react-native';
 import { Trash2, PlusCircle } from 'lucide-react-native';
-import { COLORS } from './SharedUI';
+import { useTheme } from './SharedUI';
 
 // ─── Grade map ───────────────────────────────────────────────
 const GRADES = ['A', 'B+', 'B', 'C+', 'C', 'D+', 'D', 'F'] as const;
@@ -61,6 +61,8 @@ function gpaLabel(gpa: number): string {
 
 // ─── Component ───────────────────────────────────────────────
 export function GPACalculatorScreen() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
   const [courses, setCourses] = useState<Course[]>(DEFAULT_COURSES);
 
   // ── Derived GPA ──────────────────────────────────────────
@@ -291,7 +293,7 @@ export function GPACalculatorScreen() {
 }
 
 // ─── Styles ──────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0A0A0A' },
 
   // Header

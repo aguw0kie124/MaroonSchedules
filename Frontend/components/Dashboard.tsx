@@ -4,7 +4,7 @@ import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { Plus, ChevronDown, CheckCircle2, Clock, ArrowRight, MapPin, TrendingUp, GraduationCap, Radio, Map as MapIcon, Sparkles, ChevronRight } from 'lucide-react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { fetchSchedules, fetchUserProfile } from '../api/client';
-import { COLORS, Card } from './SharedUI';
+import { useTheme, Card } from './SharedUI';
 
 const { width } = Dimensions.get('window');
 
@@ -17,6 +17,8 @@ const WEEK_DAYS = [
 ];
 
 export function Dashboard() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     const navigation = useNavigation<any>();
     const isFocused = useIsFocused();
     const { user } = useUser();
@@ -274,7 +276,7 @@ export function Dashboard() {
     );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: COLORS.background,

@@ -5,7 +5,7 @@ import { LogOut, Save, ChevronDown, Camera, GraduationCap, Search, Calendar as C
 import { useUser, useClerk } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
 
-import { COLORS } from './SharedUI';
+import { useTheme } from './SharedUI';
 
 import { fetchUserProfile, updateUserProfile } from '../api/client';
 
@@ -81,6 +81,8 @@ export function Profile() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [pickerVisible, setPickerVisible] = useState<'major' | 'gradYear' | 'prefTime' | null>(null);
+    const { COLORS, theme, setTheme } = useTheme();
+    const styles = getStyles(COLORS);
 
     const { user } = useUser();
     const { signOut } = useClerk();
@@ -328,6 +330,28 @@ export function Profile() {
                 </Pressable>
             </View>
 
+            {/* Appearance Settings */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Appearance</Text>
+                <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Application Theme</Text>
+                    <View style={styles.segmentedRow}>
+                        <Pressable
+                            style={[styles.segmentBtn, theme === 'light' && styles.segmentBtnActive]}
+                            onPress={() => setTheme('light')}
+                        >
+                            <Text style={[styles.segmentText, theme === 'light' && styles.segmentTextActive]}>Light</Text>
+                        </Pressable>
+                        <Pressable
+                            style={[styles.segmentBtn, theme === 'dark' && styles.segmentBtnActive]}
+                            onPress={() => setTheme('dark')}
+                        >
+                            <Text style={[styles.segmentText, theme === 'dark' && styles.segmentTextActive]}>Dark</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            </View>
+
             {/* Save Button */}
             <Pressable
                 onPress={handleSave}
@@ -388,6 +412,8 @@ export function Profile() {
 // ─── Reusable sub-components ─────────────────────────────────────────────
 
 function DropdownField({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     return (
         <View style={styles.inputContainer}>
             <Text style={styles.label}>{label}</Text>
@@ -416,6 +442,8 @@ function PickerModal({
     onSelect: (value: string) => void;
     onClose: () => void;
 }) {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     return (
         <Modal visible={visible} transparent animationType="slide">
             <Pressable style={styles.modalOverlay} onPress={onClose}>
@@ -460,6 +488,8 @@ function InputField({
     onChange: (value: string) => void;
     keyboardType?: 'default' | 'numeric';
 }) {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     return (
         <View style={styles.inputContainer}>
             <Text style={styles.label}>{label}</Text>
@@ -484,6 +514,8 @@ function ToggleField({
     checked: boolean;
     onChange: (checked: boolean) => void;
 }) {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     return (
         <View style={styles.toggleContainer}>
             <View style={styles.toggleInfo}>
@@ -500,7 +532,7 @@ function ToggleField({
     );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: COLORS.background,

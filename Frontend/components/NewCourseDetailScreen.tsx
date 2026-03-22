@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, Modal, Pressable } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { fetchCourseById, fetchSchedules, addSectionToSchedule } from '../api/client';
-import { COLORS, Card, SectionRow, PrimaryButton } from './SharedUI';
+import { useTheme, Card, SectionRow, PrimaryButton } from './SharedUI';
 import { useUser } from '@clerk/clerk-expo';
 
 export function NewCourseDetailScreen() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
     const { courseId } = route.params;
@@ -110,7 +112,7 @@ export function NewCourseDetailScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
     container: { flex: 1, backgroundColor: COLORS.background },
     header: { padding: 16, backgroundColor: COLORS.surface, borderBottomWidth: 1, borderBottomColor: COLORS.border },
     title: { fontSize: 22, fontWeight: 'bold', color: COLORS.textPrimary, marginBottom: 8 },

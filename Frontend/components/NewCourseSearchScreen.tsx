@@ -3,9 +3,11 @@ import { View, Text, TextInput, FlatList, StyleSheet, Pressable, ActivityIndicat
 import { useNavigation } from '@react-navigation/native';
 import { Search as SearchIcon, ChevronRight } from 'lucide-react-native';
 import { fetchCourses } from '../api/client';
-import { COLORS } from './SharedUI';
+import { useTheme } from './SharedUI';
 
 export function NewCourseSearchScreen() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     const navigation = useNavigation<any>();
     const [query, setQuery] = useState('');
     const [courses, setCourses] = useState<any[]>([]);
@@ -104,7 +106,7 @@ export function NewCourseSearchScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
     container: { 
         flex: 1, 
         backgroundColor: COLORS.background 

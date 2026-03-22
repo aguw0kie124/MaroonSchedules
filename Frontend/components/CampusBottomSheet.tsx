@@ -6,7 +6,7 @@ import {
   ScrollView,
   Pressable,
 } from 'react-native';
-import { COLORS } from './SharedUI';
+import { useTheme } from './SharedUI';
 import { CampusSearchResult } from '../services/campusSearch';
 import { formatDistance } from '../services/campusDirections';
 import { getBuildingEmoji, getAmenityEmoji } from '../data/campus';
@@ -34,6 +34,8 @@ export function CampusBottomSheet({
   onClearRoute,
   onStartDirections,
 }: CampusBottomSheetProps) {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
   const getIcon = (item: CampusSearchResult) => {
     if (item.kind === 'command') {
       switch (item.commandType) {
@@ -125,7 +127,7 @@ export function CampusBottomSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
   container: {
     position: 'absolute',
     bottom: 0,

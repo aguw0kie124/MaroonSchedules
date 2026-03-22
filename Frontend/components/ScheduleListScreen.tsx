@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, Modal, TextInput, Pressable, Alert, Platform, KeyboardAvoidingView } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { fetchSchedules, createSchedule, deleteSchedule } from '../api/client';
-import { COLORS, PrimaryButton } from './SharedUI';
+import { useTheme, PrimaryButton } from './SharedUI';
 import { useUser } from '@clerk/clerk-expo';
 import { Grid3x3, CheckCircle2, X, Trash2 } from 'lucide-react-native';
 
 export function ScheduleListScreen() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     const navigation = useNavigation<any>();
     const isFocused = useIsFocused();
     const { user } = useUser();
@@ -173,7 +175,7 @@ export function ScheduleListScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: COLORS.background
