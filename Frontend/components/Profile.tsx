@@ -507,7 +507,7 @@ const styles = StyleSheet.create({
     },
     contentContainer: {
         padding: 16,
-        paddingTop: 60,
+        paddingTop: 40, // Reduced from 60
     },
     title: {
         fontSize: 24,

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -119,15 +119,15 @@ function MainTabs() {
           }
           return null;
         },
-        tabBarActiveTintColor: COLORS.accent,
+        tabBarActiveTintColor: COLORS.accent, // Back to bright Maroon
         tabBarInactiveTintColor: 'rgba(255,255,255,0.4)',
         tabBarStyle: {
           height: 84,
           paddingBottom: 28,
           paddingTop: 12,
-          backgroundColor: '#0A0A0A',
-          borderTopColor: '#1F1F1F',
-          borderTopWidth: 1,
+          backgroundColor: '#000000', // Pure black nav bar
+          borderTopColor: COLORS.border,
+          borderTopWidth: StyleSheet.hairlineWidth, // Thin sleek border
         },
         tabBarLabelStyle: {
           fontSize: 11,

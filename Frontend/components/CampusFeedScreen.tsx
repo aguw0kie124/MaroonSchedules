@@ -244,7 +244,7 @@ export function CampusFeedScreen() {
                 <View style={{ width: 44 }} />
                 <Text style={styles.headerTitle}>Campus Life</Text>
                 <Pressable onPress={() => navigation.navigate('EventsCalendar')} style={styles.eventsBtn}>
-                    <Calendar color="#FFF" size={24} />
+                    <Calendar color={COLORS.textPrimary} size={24} />
                 </Pressable>
             </View>
 
@@ -272,7 +272,7 @@ export function CampusFeedScreen() {
             )}
 
             <Pressable style={styles.fab} onPress={() => setModalVisible(true)}>
-                <Camera color="#FFF" size={24} />
+                <Camera color="#000" size={24} />
             </Pressable>
 
             {/* Create Post Modal */}
@@ -354,25 +354,24 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: COLORS.primary,
-        paddingTop: 60,
-        paddingBottom: 20,
+        backgroundColor: COLORS.background, // Match background for clean look
+        paddingTop: 50, // Reduced from 60
+        paddingBottom: 16,
         paddingHorizontal: 20,
-        borderBottomLeftRadius: 24,
-        borderBottomRightRadius: 24,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: COLORS.border,
     },
     eventsBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-end', marginRight: -8 },
-    headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFF' },
+    headerTitle: { fontSize: 20, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.5 },
     centerFull: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    listContent: { padding: 16, paddingBottom: 100 },
+    listContent: { paddingBottom: 100 }, // removed horizontal padding to allow edge-to-edge
     
     postCard: {
-        backgroundColor: COLORS.surface,
-        borderRadius: 20,
-        padding: 16,
-        marginBottom: 16,
-        borderWidth: 1,
-        borderColor: COLORS.border,
+        backgroundColor: COLORS.background,
+        paddingVertical: 16,
+        paddingHorizontal: 16, // internal padding instead of container padding
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: COLORS.border,
     },
     postHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
     avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surfaceElevated, marginRight: 12 },
@@ -400,14 +399,9 @@ const styles = StyleSheet.create({
         width: 60,
         height: 60,
         borderRadius: 30,
-        backgroundColor: COLORS.primary,
+        backgroundColor: COLORS.primary, // White button on black background
         alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 6,
     },
     
     // Modal

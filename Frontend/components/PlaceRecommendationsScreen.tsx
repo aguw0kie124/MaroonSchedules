@@ -9,6 +9,8 @@ import {
   Pressable,
   Keyboard,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { Map } from 'lucide-react-native';
 import { COLORS, Card } from './SharedUI';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
@@ -46,6 +48,7 @@ interface Recommendation {
 }
 
 export function PlaceRecommendationsScreen() {
+  const navigation = useNavigation<any>();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -183,8 +186,16 @@ Return ONLY a JSON array, no markdown fences, no explanation. Each object:
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>🔍 Find a Spot</Text>
-        <Text style={styles.subtitle}>AI-powered campus recommendations</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>🔍 Find a Spot</Text>
+          <Text style={styles.subtitle}>AI-powered recommendations</Text>
+        </View>
+        <Pressable 
+          style={styles.mapBtn} 
+          onPress={() => navigation.navigate('CampusMap')}
+        >
+          <Map color="#FFF" size={24} />
+        </Pressable>
       </View>
 
       {/* Search */}
@@ -279,8 +290,13 @@ Return ONLY a JSON array, no markdown fences, no explanation. Each object:
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: {
-    paddingTop: 20, paddingHorizontal: 20, paddingBottom: 16,
+    paddingTop: 50, paddingHorizontal: 20, paddingBottom: 16,
     backgroundColor: COLORS.primary, borderBottomLeftRadius: 20, borderBottomRightRadius: 20,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+  },
+  mapBtn: {
+    width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center', justifyContent: 'center',
   },
   title: { fontSize: 26, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 },
   subtitle: { fontSize: 14, color: 'rgba(255,255,255,0.7)', marginTop: 4 },

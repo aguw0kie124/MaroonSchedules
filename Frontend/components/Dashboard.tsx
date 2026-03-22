@@ -138,9 +138,8 @@ export function Dashboard() {
                 {nextClass ? (
                     <Card style={styles.nextClassCard}>
                         <View style={styles.nextClassRow}>
-                            <View style={[styles.nextClassStrip, { backgroundColor: nextClass.color }]} />
                             <View style={{ flex: 1 }}>
-                                <Text style={styles.nextClassLabel}>NEXT CLASS</Text>
+                                <Text style={styles.nextClassLabel}>UP NEXT</Text>
                                 <Text style={styles.nextClassTitle}>{nextClass.code}</Text>
                                 <View style={styles.nextClassDetailRow}>
                                     <Clock size={14} color={COLORS.textTertiary} />
@@ -166,11 +165,11 @@ export function Dashboard() {
                 {/* Campus Highlights Promo */}
                 <Pressable style={styles.promoCard} onPress={() => navigation.navigate('Places')}>
                     <View style={styles.promoIconBg}>
-                        <MapPin color={COLORS.primary} size={24} />
+                        <MapPin color={COLORS.textPrimary} size={22} />
                     </View>
                     <View style={{ flex: 1, marginLeft: 16 }}>
                         <Text style={styles.promoTitle}>Campus Places</Text>
-                        <Text style={styles.promoSub}>Check live occupancy and menus before you go.</Text>
+                        <Text style={styles.promoSub}>Check live occupancy before you go.</Text>
                     </View>
                     <ChevronRight color={COLORS.border} size={20} />
                 </Pressable>
@@ -217,7 +216,6 @@ export function Dashboard() {
                                     onPress={() => navigation.navigate('CourseDetail', { id: course.id })}
                                     style={styles.courseItem}
                                 >
-                                    <View style={[styles.courseColor, { backgroundColor: course.color }]} />
                                     <View style={styles.courseContent}>
                                         <Text style={styles.courseCode}>{course.code}</Text>
                                         <Text style={styles.courseName} numberOfLines={1}>{course.name}</Text>
@@ -283,7 +281,7 @@ const styles = StyleSheet.create({
     },
     scrollContent: {
         padding: 16,
-        paddingTop: 60,
+        paddingTop: 40, // Reduced from 60
     },
     header: {
         flexDirection: 'row',
@@ -292,13 +290,15 @@ const styles = StyleSheet.create({
         marginBottom: 24,
     },
     greeting: {
-        fontSize: 14,
+        fontSize: 15,
+        fontWeight: '600',
         color: COLORS.textSecondary,
-        marginBottom: 4,
+        marginBottom: 2,
     },
     name: {
-        fontSize: 28,
-        fontWeight: 'bold',
+        fontSize: 34, // Larger, more impressive header
+        fontWeight: '800',
+        letterSpacing: -1,
         color: COLORS.textPrimary,
     },
     avatar: {
@@ -322,41 +322,35 @@ const styles = StyleSheet.create({
         fontWeight: '700',
     },
     nextClassCard: {
-        marginBottom: 24,
-        padding: 0,
-        overflow: 'hidden',
-        backgroundColor: COLORS.surface,
-        borderColor: COLORS.border,
+        marginBottom: 16,
+        paddingHorizontal: 0,
+        backgroundColor: 'transparent',
+        borderBottomWidth: 0, // removed bottom divider for next class
     },
     nextClassRow: {
         flexDirection: 'row',
         alignItems: 'center',
-    },
-    nextClassStrip: {
-        width: 8,
-        height: '100%',
+        backgroundColor: COLORS.surfaceElevated,
+        padding: 20,
+        borderRadius: 20, // keep soft rounded corners just for this hero card
     },
     nextClassLabel: {
-        fontSize: 10,
-        fontWeight: '800',
-        color: COLORS.accent,
-        letterSpacing: 1,
-        marginTop: 16,
-        marginLeft: 16,
+        fontSize: 11,
+        fontWeight: '700',
+        color: COLORS.textSecondary,
+        letterSpacing: 1.5,
+        marginBottom: 4,
     },
     nextClassTitle: {
-        fontSize: 22,
+        fontSize: 26,
         fontWeight: '800',
         color: COLORS.textPrimary,
-        marginLeft: 16,
-        marginTop: 2,
+        letterSpacing: -0.5,
     },
     nextClassDetailRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginLeft: 16,
         marginTop: 6,
-        marginBottom: 16,
     },
     nextClassDetail: {
         fontSize: 12,
@@ -401,18 +395,16 @@ const styles = StyleSheet.create({
     promoCard: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: COLORS.surface,
-        borderRadius: 16,
-        padding: 16,
-        marginBottom: 28,
-        borderWidth: 1,
-        borderColor: COLORS.border,
+        paddingVertical: 16,
+        marginBottom: 24,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: COLORS.border,
     },
     promoIconBg: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: COLORS.primaryLight,
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        backgroundColor: COLORS.surfaceElevated,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -430,17 +422,15 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 6,
-        backgroundColor: COLORS.primaryLight,
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: 'rgba(80,0,0,0.5)',
+        backgroundColor: COLORS.surfaceElevated,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 16,
     },
     scheduleSwitcherText: {
-        fontSize: 12,
-        fontWeight: '700',
-        color: COLORS.primary,
+        fontSize: 13,
+        fontWeight: '600',
+        color: COLORS.textPrimary,
     },
     progressCard: {
         backgroundColor: COLORS.surface,
@@ -475,17 +465,15 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         marginBottom: 16,
-        backgroundColor: COLORS.surface,
-        borderRadius: 16,
-        padding: 8,
-        borderWidth: 1,
-        borderColor: COLORS.border,
+        paddingBottom: 12,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: COLORS.border,
     },
     dayButton: {
         flex: 1,
         alignItems: 'center',
-        paddingVertical: 8,
-        borderRadius: 10,
+        paddingVertical: 10,
+        borderRadius: 8,
     },
     dayButtonActive: {
         backgroundColor: COLORS.primary,
@@ -504,20 +492,12 @@ const styles = StyleSheet.create({
     courseItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: COLORS.surface,
-        borderRadius: 16,
-        padding: 12,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-    },
-    courseColor: {
-        width: 4,
-        height: 40,
-        borderRadius: 2,
+        paddingVertical: 16,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: COLORS.border,
     },
     courseContent: {
         flex: 1,
-        marginLeft: 12,
     },
     courseCode: {
         fontSize: 15,

@@ -5,19 +5,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
 export const COLORS = {
-  background: '#000000',      // Pure Black
-  primary: '#500000',         // Aggie Maroon
-  primaryLight: '#3D0000',    // Darker maroon for icon backgrounds
-  accent: '#FF8A8A',          // Bright maroon tint for icons/accents
-  textSecondary: '#D1D1D6',   // High contrast secondary (WCAG AA on #121212)
-  textTertiary: '#8E8E93',    // Muted text for less important info
+  background: '#000000',      // Pure Black (Uber/Instagram dark mode base)
+  primary: '#500000',         // Aggie Maroon for primary buttons/accents
+  primaryLight: '#3D0000',    // Darker maroon for icons
+  accent: '#FF8A8A',          // Bright maroon for selected states
+  textSecondary: '#A0A0A5',   // Sleek minimal gray
+  textTertiary: '#636366',    // Deep muted gray
   textPrimary: '#FFFFFF',     // Pristine White
-  surface: '#121212',         // Elevated dark grey for cards
-  surfaceElevated: '#1A1A1A', // Slightly lighter surface for nested elements
-  border: '#2C2C2E',          // Subtle borders
-  danger: '#FF453A',          // iOS red
-  success: '#30D158',         // iOS green
-  warning: '#FF9F0A',         // iOS orange
+  surface: '#000000',         // Surface is now black, we separate with lines
+  surfaceElevated: '#111111', // Slightly elevated for modals
+  border: '#2C2C2E',          // Subtle hairline borders
+  danger: '#FF453A',
+  success: '#30D158',
+  warning: '#FF9F0A',
 };
 
 export const useSavedStore = create<any>((set, get) => ({
@@ -42,10 +42,11 @@ export const Card = ({ children, style }: any) => (
 );
 
 export const PrimaryButton = ({ title, onPress, style, textStyle, isLoading, variant = 'primary' }: any) => {
+  const isPrimary = variant === 'primary';
   const getBgColor = () => {
     if (variant === 'danger') return COLORS.danger;
     if (variant === 'outline') return 'transparent';
-    return COLORS.primary;
+    return isPrimary ? COLORS.primary : COLORS.primaryLight;
   };
   
   return (
@@ -53,7 +54,7 @@ export const PrimaryButton = ({ title, onPress, style, textStyle, isLoading, var
       style={({ pressed }) => [
         styles.button, 
         { backgroundColor: getBgColor() },
-        variant === 'outline' && { borderWidth: 1, borderColor: COLORS.primary },
+        variant === 'outline' && { borderWidth: 1, borderColor: COLORS.border },
         style,
         pressed && styles.pressed
       ]} 
@@ -61,7 +62,12 @@ export const PrimaryButton = ({ title, onPress, style, textStyle, isLoading, var
       disabled={isLoading}
     >
       {isLoading ? <ActivityIndicator color="#fff" /> : 
-      <Text style={[styles.buttonText, variant === 'outline' && { color: COLORS.primary }, textStyle]}>{title}</Text>}
+      <Text style={[
+          styles.buttonText, 
+          { color: '#FFFFFF' }, // Always white text on maroon buttons
+          variant === 'outline' && { color: COLORS.primary },
+          textStyle
+      ]}>{title}</Text>}
     </Pressable>
   );
 };
@@ -133,33 +139,21 @@ export const SectionRow = ({ section, onAdd, onRemove, isAdded }: any) => {
 const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.surface,
-    padding: 16,
-    borderRadius: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#1E1E1E',
-    shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
-    elevation: 4,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
   },
   button: {
-    paddingVertical: 14,
+    paddingVertical: 16,
     paddingHorizontal: 24,
-    borderRadius: 12, 
+    borderRadius: 8, // Sharper, more modern corners
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
   },
   buttonText: {
-    color: '#fff',
-    fontWeight: '700', // Harder weight
+    fontWeight: '600', // Cleaner weight for san-serif
     fontSize: 16,
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
   pressed: {
     opacity: 0.8,
