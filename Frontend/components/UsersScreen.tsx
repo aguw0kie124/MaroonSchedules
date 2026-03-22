@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
+import { Check, Users, Plus, X } from 'lucide-react-native';
 import { API_URL } from '../config';
 
 type ClerkUser = { id: string; name: string; email: string };
@@ -41,33 +42,43 @@ function getInitials(name: string) {
 }
 
 // ─── Avatar ──────────────────────────────────────────────────────────────────
-function Avatar({ name, userId }: { name: string; userId: string }) {
+function Avatar({ name, userId, selected }: { name: string; userId: string; selected?: boolean }) {
   return (
     <View style={[styles.avatar, { backgroundColor: getAvatarColor(userId) }]}>
-      <Text style={styles.avatarInitials}>{getInitials(name)}</Text>
-      <View style={styles.onlineBadge} />
+      {selected ? (
+        <Check color={C.white} size={28} strokeWidth={3} />
+      ) : (
+        <Text style={styles.avatarInitials}>{getInitials(name)}</Text>
+      )}
+      {!selected && <View style={styles.onlineBadge} />}
     </View>
   );
 }
 
 // ─── User Row ─────────────────────────────────────────────────────────────────
-function UserRow({ item, onPress }: { item: ClerkUser; onPress: () => void }) {
+function UserRow({ item, onPress, selected, selectionMode }: { item: ClerkUser; onPress: () => void; selected: boolean; selectionMode: boolean }) {
   return (
     <Pressable
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+      style={({ pressed }) => [
+        styles.row, 
+        pressed && styles.rowPressed,
+        selected && { backgroundColor: '#FFF5F5' }
+      ]}
       onPress={onPress}
       android_ripple={{ color: '#F5EAEA' }}
     >
-      <Avatar name={item.name} userId={item.id} />
+      <Avatar name={item.name} userId={item.id} selected={selected} />
 
       <View style={styles.rowText}>
         <Text style={styles.rowName} numberOfLines={1}>{item.name}</Text>
         <Text style={styles.rowEmail} numberOfLines={1}>{item.email}</Text>
       </View>
 
-      <View style={styles.chevronWrap}>
-        <Text style={styles.chevron}>›</Text>
-      </View>
+      {!selectionMode && (
+        <View style={styles.chevronWrap}>
+          <Text style={styles.chevron}>›</Text>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -81,6 +92,10 @@ export function UsersScreen() {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Selection Mode State
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedUsers, setSelectedUsers] = useState<ClerkUser[]>([]);
 
   useEffect(() => {
     fetch(`${API_URL}/chat/users?exclude_id=${user?.id ?? ''}`)
@@ -96,8 +111,39 @@ export function UsersScreen() {
     setFiltered(all.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)));
   };
 
-  const openChat = (other: ClerkUser) =>
-    navigation.navigate('ChatScreen', { otherUserClerkId: other.id, otherUserName: other.name });
+  const toggleUserSelection = (u: ClerkUser) => {
+    setSelectedUsers(prev => {
+      const isSelected = prev.find(item => item.id === u.id);
+      if (isSelected) {
+        return prev.filter(item => item.id !== u.id);
+      } else {
+        return [...prev, u];
+      }
+    });
+  };
+
+  const handleUserPress = (u: ClerkUser) => {
+    if (selectionMode) {
+      toggleUserSelection(u);
+    } else {
+      navigation.navigate('ChatScreen', { 
+        otherUserClerkId: u.id, 
+        otherUserName: u.name 
+      });
+    }
+  };
+
+  const createGroupChat = () => {
+    if (selectedUsers.length < 2) return;
+    const memberIds = selectedUsers.map(u => u.id);
+    const groupName = selectedUsers.map(u => u.name.split(' ')[0]).join(', ');
+    
+    navigation.navigate('ChatScreen', { 
+      memberIds, 
+      groupName: `Group: ${groupName}`,
+      isGroup: true
+    });
+  };
 
   if (loading) return (
     <View style={styles.centerFull}>
@@ -121,10 +167,21 @@ export function UsersScreen() {
           <Pressable onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={12}>
             <Text style={styles.backArrow}>‹</Text>
           </Pressable>
-          <Text style={styles.headerTitle}>Messages</Text>
-          <View style={styles.countBadge}>
-            <Text style={styles.countBadgeText}>{filtered.length}</Text>
-          </View>
+          <Text style={styles.headerTitle}>{selectionMode ? 'New Group' : 'Messages'}</Text>
+          
+          <Pressable 
+            style={styles.actionBtn} 
+            onPress={() => {
+              setSelectionMode(!selectionMode);
+              setSelectedUsers([]);
+            }}
+          >
+            {selectionMode ? (
+              <X color={C.white} size={24} />
+            ) : (
+              <Users color={C.white} size={24} />
+            )}
+          </Pressable>
         </View>
 
         {/* ── Search ── */}
@@ -156,9 +213,22 @@ export function UsersScreen() {
           </View>
         }
         renderItem={({ item }) => (
-          <UserRow item={item} onPress={() => openChat(item)} />
+          <UserRow 
+            item={item} 
+            onPress={() => handleUserPress(item)} 
+            selected={!!selectedUsers.find(u => u.id === item.id)}
+            selectionMode={selectionMode}
+          />
         )}
       />
+
+      {/* ── Floating Action Button ── */}
+      {selectionMode && selectedUsers.length >= 2 && (
+        <Pressable style={styles.fab} onPress={createGroupChat}>
+          <Text style={styles.fabText}>Create Group ({selectedUsers.length})</Text>
+          <Plus color={C.white} size={24} />
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -187,22 +257,19 @@ const styles = StyleSheet.create({
   backBtn: { marginRight: 4 },
   backArrow: { fontSize: 34, color: C.white, lineHeight: 36, marginTop: -4, fontWeight: '300' },
   headerTitle: {
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: '800',
     color: C.white,
     letterSpacing: -0.5,
     flex: 1,
   },
-  countBadge: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  countBadgeText: {
-    color: C.white,
-    fontSize: 13,
-    fontWeight: '600',
+  actionBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // Search
@@ -287,4 +354,27 @@ const styles = StyleSheet.create({
   emptyEmoji: { fontSize: 52, marginBottom: 16 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: C.textPrimary, marginBottom: 6 },
   emptySub: { fontSize: 14, color: C.textSecondary, textAlign: 'center', paddingHorizontal: 32 },
+  fab: {
+    position: 'absolute',
+    bottom: 30,
+    left: 20,
+    right: 20,
+    backgroundColor: C.maroon,
+    height: 56,
+    borderRadius: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  fabText: {
+    color: C.white,
+    fontSize: 17,
+    fontWeight: '700',
+  },
 });

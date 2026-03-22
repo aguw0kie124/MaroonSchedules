@@ -134,8 +134,11 @@ function getInitials(name: string) {
 type Props = {
   route: {
     params: {
-      otherUserClerkId: string;
+      otherUserClerkId?: string;
       otherUserName?: string;
+      memberIds?: string[];
+      groupName?: string;
+      isGroup?: boolean;
     };
   };
   navigation: any;
@@ -143,9 +146,17 @@ type Props = {
 
 // ─── ChatScreen ───────────────────────────────────────────────────────────────
 export function ChatScreen({ route, navigation }: Props) {
-  const { otherUserClerkId, otherUserName = 'Aggie' } = route.params;
+  const { 
+    otherUserClerkId, 
+    otherUserName = 'Aggie',
+    memberIds,
+    groupName,
+    isGroup = false
+  } = route.params;
+  
+  const displayName = isGroup ? (groupName || 'Group Chat') : otherUserName;
   const { user, isLoaded } = useUser();
-  const initials = getInitials(otherUserName);
+  const initials = getInitials(displayName);
 
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -170,7 +181,6 @@ export function ChatScreen({ route, navigation }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         clerk_user_id: user.id,
-        other_clerk_user_id: otherUserClerkId,
       }),
     })
       .then(r => { if (!r.ok) throw new Error(`Token fetch failed: ${r.status}`); return r.json(); })
@@ -194,7 +204,15 @@ export function ChatScreen({ route, navigation }: Props) {
     if (!chatClient || !userId || !userToken) return;
     const run = async () => {
       try {
-        const c = chatClient.channel('messaging', { members: [userId, otherUserClerkId] });
+        const members = isGroup && memberIds 
+          ? [userId, ...memberIds] 
+          : [userId, otherUserClerkId!];
+          
+        const c = chatClient.channel('messaging', { 
+          members,
+          name: isGroup ? displayName : undefined
+        } as any);
+        
         const timeout = new Promise<never>((_, rej) =>
           setTimeout(() => rej(new Error('Connection timed out. Is the backend running?')), 15000)
         );
@@ -205,7 +223,7 @@ export function ChatScreen({ route, navigation }: Props) {
       }
     };
     void run();
-  }, [chatClient, userId, userToken, otherUserClerkId]);
+  }, [chatClient, userId, userToken, otherUserClerkId, memberIds, isGroup]);
 
   // ── Custom Header ────────────────────────────────────────────────────────────
   const CustomHeader = () => (
@@ -217,12 +235,12 @@ export function ChatScreen({ route, navigation }: Props) {
 
       <View style={styles.headerAvatar}>
         <Text style={styles.headerAvatarText}>{initials}</Text>
-        <View style={styles.headerOnlineDot} />
+        {!isGroup && <View style={styles.headerOnlineDot} />}
       </View>
-
+      
       <View style={styles.headerInfo}>
-        <Text style={styles.headerName} numberOfLines={1}>{otherUserName}</Text>
-        <Text style={styles.headerStatus}>Active now</Text>
+        <Text style={styles.headerName} numberOfLines={1}>{displayName}</Text>
+        <Text style={styles.headerStatus}>{isGroup ? `${(memberIds?.length || 0) + 1} members` : 'Active now'}</Text>
       </View>
     </View>
   );

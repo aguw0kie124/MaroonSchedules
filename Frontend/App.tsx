@@ -93,8 +93,8 @@ import { CampusScreen } from './components/CampusScreen';
 function MainTabs() {
   return (
     <Tab.Navigator
-        id="MainTabs"
-        screenOptions={({ route }) => ({
+      id="MainTabs"
+      screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ focused, color, size }) => {
           let IconName;
@@ -146,10 +146,10 @@ function RootNavigator() {
   }
 
   const navigator = (
-    <Stack.Navigator id="RootStack" screenOptions={{ 
-        headerShown: false,
-        headerStyle: { backgroundColor: '#000000' },
-        headerTintColor: '#FFFFFF',
+    <Stack.Navigator id="RootStack" screenOptions={{
+      headerShown: false,
+      headerStyle: { backgroundColor: '#000000' },
+      headerTintColor: '#FFFFFF',
     }}>
       {isSignedIn ? (
         <>
@@ -165,7 +165,7 @@ function RootNavigator() {
             component={UsersScreen}
             options={{ headerShown: false }}
           />
-          
+
           <Stack.Screen name="NewCourseSearch" component={NewCourseSearchScreen} options={{ headerShown: true, title: 'Course Search' }} />
           <Stack.Screen name="NewCourseDetail" component={NewCourseDetailScreen} options={{ headerShown: true, title: 'Course Details' }} />
           <Stack.Screen name="ScheduleList" component={ScheduleListScreen} options={{ headerShown: true, title: 'My Schedules' }} />
@@ -182,17 +182,17 @@ function RootNavigator() {
       ) : (
         <>
           <Stack.Screen name="Onboarding" component={Onboarding} />
-          <Stack.Screen 
-            name="AuthLanding" 
+          <Stack.Screen
+            name="AuthLanding"
             children={(props: any) => (
               <AuthLanding
                 onLoginPress={() => props.navigation.navigate('Login')}
               />
-            )} 
+            )}
           />
-          <Stack.Screen 
-            name="Login" 
-            children={(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />} 
+          <Stack.Screen
+            name="Login"
+            children={(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />}
           />
         </>
       )}
