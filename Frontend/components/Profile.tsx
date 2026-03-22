@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, Switch, Platform, ActivityIndicator, Alert, Modal, FlatList, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { LogOut, Save, ChevronDown, Camera } from 'lucide-react-native';
+import { LogOut, Save, ChevronDown, Camera, GraduationCap, Search, Calendar as CalendarIcon, ChevronRight } from 'lucide-react-native';
 import { useUser, useClerk } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -297,6 +297,35 @@ export function Profile() {
                     checked={preferences.showOnlineFirst}
                     onChange={(checked) => setPreferences({ ...preferences, showOnlineFirst: checked })}
                 />
+            </View>
+
+            {/* Academic Tools */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Academic Tools</Text>
+
+                <Pressable style={styles.toolRow} onPress={() => navigation.navigate('NewCourseSearch')}>
+                    <View style={[styles.toolIconBg, { backgroundColor: COLORS.primaryLight }]}>
+                        <Search size={20} color={COLORS.primary} />
+                    </View>
+                    <Text style={styles.toolTitle}>Course Search</Text>
+                    <ChevronRight size={20} color={COLORS.border} />
+                </Pressable>
+
+                <Pressable style={styles.toolRow} onPress={() => navigation.navigate('ScheduleList')}>
+                    <View style={[styles.toolIconBg, { backgroundColor: COLORS.accent + '20' }]}>
+                        <CalendarIcon size={20} color={COLORS.accent} />
+                    </View>
+                    <Text style={styles.toolTitle}>My Saved Schedules</Text>
+                    <ChevronRight size={20} color={COLORS.border} />
+                </Pressable>
+
+                <Pressable style={styles.toolRow} onPress={() => navigation.navigate('GPACalculator')}>
+                    <View style={[styles.toolIconBg, { backgroundColor: '#4CAF5020' }]}>
+                        <GraduationCap size={20} color="#4CAF50" />
+                    </View>
+                    <Text style={styles.toolTitle}>GPA Calculator</Text>
+                    <ChevronRight size={20} color={COLORS.border} />
+                </Pressable>
             </View>
 
             {/* Save Button */}
@@ -600,6 +629,28 @@ const styles = StyleSheet.create({
     toggleDescription: {
         fontSize: 12,
         color: COLORS.textSecondary,
+    },
+    // Tools
+    toolRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.border,
+    },
+    toolIconBg: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 16,
+    },
+    toolTitle: {
+        flex: 1,
+        fontSize: 16,
+        color: COLORS.textPrimary,
+        fontWeight: '500',
     },
     // Buttons
     saveButton: {

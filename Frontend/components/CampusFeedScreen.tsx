@@ -5,7 +5,7 @@ import {
     Modal, TouchableWithoutFeedback, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
-import { Camera, Image as ImageIcon, Video, Heart, MapPin, X, ChevronLeft, MoreHorizontal, MessageCircle } from 'lucide-react-native';
+import { Camera, Image as ImageIcon, Video, Heart, MapPin, X, ChevronLeft, MoreHorizontal, MessageCircle, Calendar } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { COLORS } from './SharedUI';
@@ -241,11 +241,11 @@ export function CampusFeedScreen() {
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <ChevronLeft color="#FFF" size={28} />
-                </Pressable>
-                <Text style={styles.headerTitle}>Campus Feed</Text>
                 <View style={{ width: 44 }} />
+                <Text style={styles.headerTitle}>Campus Life</Text>
+                <Pressable onPress={() => navigation.navigate('EventsCalendar')} style={styles.eventsBtn}>
+                    <Calendar color="#FFF" size={24} />
+                </Pressable>
             </View>
 
             {loading ? (
@@ -361,7 +361,7 @@ const styles = StyleSheet.create({
         borderBottomLeftRadius: 24,
         borderBottomRightRadius: 24,
     },
-    backBtn: { width: 44, height: 44, justifyContent: 'center', marginLeft: -8 },
+    eventsBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-end', marginRight: -8 },
     headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFF' },
     centerFull: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     listContent: { padding: 16, paddingBottom: 100 },

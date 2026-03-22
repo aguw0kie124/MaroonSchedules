@@ -100,13 +100,6 @@ export function Dashboard() {
             return (h * 60 + m) > currentMinutes;
         })[0]; // todaysCourses is already sorted, so first match = next class
 
-    const quickActions = [
-        { id: 'GPACalculator', label: 'GPA Calc', icon: <GraduationCap color="#FFF" size={20} />, screen: 'GPACalculator' },
-        { id: 'CampusMap', label: 'Traffic', icon: <MapIcon color="#FFF" size={20} />, screen: 'CampusMap' },
-        { id: 'CrowdPing', label: 'Vibes', icon: <Radio color="#FFF" size={20} />, screen: 'CrowdPing' },
-        { id: 'LocationSearch', label: 'Search', icon: <Sparkles color="#FFF" size={20} />, screen: 'LocationSearch' },
-    ];
-
     return (
         <View style={styles.container}>
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -154,22 +147,17 @@ export function Dashboard() {
                     </Card>
                 )}
 
-                {/* Quick Actions */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>QUICK ACTIONS</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickActionsContainer}>
-                        {quickActions.map(action => (
-                            <Pressable
-                                key={action.id}
-                                style={styles.quickActionItem}
-                                onPress={() => navigation.navigate(action.screen)}
-                            >
-                                <View style={styles.quickActionIcon}>{action.icon}</View>
-                                <Text style={styles.quickActionLabel}>{action.label}</Text>
-                            </Pressable>
-                        ))}
-                    </ScrollView>
-                </View>
+                {/* Campus Highlights Promo */}
+                <Pressable style={styles.promoCard} onPress={() => navigation.navigate('Places')}>
+                    <View style={styles.promoIconBg}>
+                        <MapPin color={COLORS.primary} size={24} />
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 16 }}>
+                        <Text style={styles.promoTitle}>Campus Places</Text>
+                        <Text style={styles.promoSub}>Check live occupancy and menus before you go.</Text>
+                    </View>
+                    <ChevronRight color={COLORS.border} size={20} />
+                </Pressable>
 
                 {/* Current Schedule Selector */}
                 <View style={styles.section}>
@@ -384,29 +372,33 @@ const styles = StyleSheet.create({
         letterSpacing: 1.5,
         marginBottom: 12,
     },
-    quickActionsContainer: {
-        gap: 12,
-        paddingRight: 16,
-    },
-    quickActionItem: {
-        width: 80,
+    promoCard: {
+        flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        backgroundColor: COLORS.surface,
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 28,
+        borderWidth: 1,
+        borderColor: COLORS.border,
     },
-    quickActionIcon: {
-        width: 50,
-        height: 50,
-        borderRadius: 15,
+    promoIconBg: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
         backgroundColor: COLORS.primaryLight,
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: COLORS.primary,
     },
-    quickActionLabel: {
-        fontSize: 11,
-        fontWeight: '600',
-        color: COLORS.textSecondary,
+    promoTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: COLORS.textPrimary,
+    },
+    promoSub: {
+        fontSize: 12,
+        color: COLORS.textTertiary,
+        marginTop: 4,
     },
     scheduleSwitcher: {
         flexDirection: 'row',
