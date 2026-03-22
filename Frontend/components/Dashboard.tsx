@@ -8,6 +8,14 @@ import { COLORS, Card } from './SharedUI';
 
 const { width } = Dimensions.get('window');
 
+const WEEK_DAYS = [
+    { label: 'Mon', value: 'M' },
+    { label: 'Tue', value: 'T' },
+    { label: 'Wed', value: 'W' },
+    { label: 'Thu', value: 'R' },
+    { label: 'Fri', value: 'F' },
+];
+
 export function Dashboard() {
     const navigation = useNavigation<any>();
     const isFocused = useIsFocused();
@@ -18,6 +26,15 @@ export function Dashboard() {
     const [dropdownVisible, setDropdownVisible] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
     const [maxCreditGoal, setMaxCreditGoal] = useState(15);
+
+    const getDayString = () => {
+        const days = ['U', 'M', 'T', 'W', 'R', 'F', 'S'];
+        return days[new Date().getDay()];
+    };
+
+    const currentDayStr = getDayString();
+    const defaultDay = ['U', 'S'].includes(currentDayStr) ? 'M' : currentDayStr;
+    const [selectedDay, setSelectedDay] = useState(defaultDay);
 
     useEffect(() => {
         const timer = setInterval(() => setCurrentTime(new Date()), 60000);
@@ -46,11 +63,6 @@ export function Dashboard() {
                 setSelectedSchedule((prev: any) => prev ? (res.find((s: any) => s.schedule_id === prev.schedule_id) || res[0]) : res[0]);
             }
         } catch (e) { console.error(e); }
-    };
-
-    const getDayString = () => {
-        const days = ['U', 'M', 'T', 'W', 'R', 'F', 'S'];
-        return days[new Date().getDay()];
     };
 
     const displayCourses = selectedSchedule?.sections ? selectedSchedule.sections.map((sec: any, index: number) => {
@@ -82,15 +94,19 @@ export function Dashboard() {
         return h * 60 + (m || 0);
     };
 
-    const todaysCourses = displayCourses
-        .filter((course: any) => course.days && course.days.includes(getDayString()))
+    const actualTodaysCourses = displayCourses
+        .filter((course: any) => course.days && course.days.includes(currentDayStr))
+        .sort((a: any, b: any) => timeToMins(a.beginTime) - timeToMins(b.beginTime));
+
+    const visibleCourses = displayCourses
+        .filter((course: any) => course.days && course.days.includes(selectedDay))
         .sort((a: any, b: any) => timeToMins(a.beginTime) - timeToMins(b.beginTime));
 
     // Find next class
     const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-    const nextClass = todaysCourses
+    const nextClass = actualTodaysCourses
         .filter((c: any) => {
             if (!c.beginTime) return false;
             const [time, period] = c.beginTime.split(' ');
@@ -180,12 +196,22 @@ export function Dashboard() {
                     </Card>
                 </View>
 
-                {/* Today's Classes */}
+                {/* Daily Schedule */}
                 <View style={styles.section}>
-                    <Text style={styles.sectionLabel}>TODAY'S SCHEDULE</Text>
+                    <View style={styles.weekStrip}>
+                        {WEEK_DAYS.map(day => (
+                            <Pressable 
+                                key={day.value}
+                                style={[styles.dayButton, selectedDay === day.value && styles.dayButtonActive]}
+                                onPress={() => setSelectedDay(day.value)}
+                            >
+                                <Text style={[styles.dayText, selectedDay === day.value && styles.dayTextActive]}>{day.label}</Text>
+                            </Pressable>
+                        ))}
+                    </View>
                     <View style={styles.courseList}>
-                        {todaysCourses.length > 0 ? (
-                            todaysCourses.map((course) => (
+                        {visibleCourses.length > 0 ? (
+                            visibleCourses.map((course: any) => (
                                 <Pressable
                                     key={course.id}
                                     onPress={() => navigation.navigate('CourseDetail', { id: course.id })}
@@ -204,7 +230,7 @@ export function Dashboard() {
                                 </Pressable>
                             ))
                         ) : (
-                            <Text style={styles.emptyText}>No classes today.</Text>
+                            <Text style={styles.emptyText}>No classes scheduled.</Text>
                         )}
                     </View>
                 </View>
@@ -444,6 +470,33 @@ const styles = StyleSheet.create({
     progressBarFill: {
         height: '100%',
         backgroundColor: COLORS.primary,
+    },
+    weekStrip: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 16,
+        backgroundColor: COLORS.surface,
+        borderRadius: 16,
+        padding: 8,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    dayButton: {
+        flex: 1,
+        alignItems: 'center',
+        paddingVertical: 8,
+        borderRadius: 10,
+    },
+    dayButtonActive: {
+        backgroundColor: COLORS.primary,
+    },
+    dayText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.textSecondary,
+    },
+    dayTextActive: {
+        color: '#FFF',
     },
     courseList: {
         gap: 12,
