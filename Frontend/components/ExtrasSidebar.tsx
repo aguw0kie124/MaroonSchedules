@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableWithoutFeedback, Animated, Dimensions, Pressable, ScrollView } from 'react-native';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { useUser, SignedIn } from '@clerk/clerk-expo';
-import { Map, MessageSquare, MapPin, X, ChevronRight, Navigation, Sparkles, Calendar, Heart, Radio, Compass, TrendingUp } from 'lucide-react-native';
+import { Map, MessageSquare, MapPin, X, ChevronRight, Navigation, Sparkles, Calendar, Heart, Radio, Compass, TrendingUp, GraduationCap } from 'lucide-react-native';
 import { COLORS } from './SharedUI';
 
 const { width } = Dimensions.get('window');
@@ -144,6 +144,17 @@ export function ExtrasSidebar({ open, onClose }: { open: boolean, onClose: () =>
                                 label="Location Search"
                                 subtitle="Search specific building stats"
                                 onPress={() => navigateTo('LocationSearch')}
+                            />
+                        </View>
+
+                        {/* Academics Section */}
+                        <Text style={styles.sectionLabel}>ACADEMICS</Text>
+                        <View style={styles.menuGroup}>
+                            <MenuButton
+                                icon={<GraduationCap color={ICON_COLOR} size={20} />}
+                                label="GPA Calculator"
+                                subtitle="Calculate your semester GPA"
+                                onPress={() => navigateTo('GPACalculator')}
                             />
                         </View>
 

@@ -11,4 +11,3 @@ stream_chat
 protobuf<5.0.0
 jsonschema<3.0.0
 pytz
-perplexity

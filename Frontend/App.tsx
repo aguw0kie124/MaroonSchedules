@@ -33,6 +33,7 @@ import { PlaceRecommendationsScreen } from './components/PlaceRecommendationsScr
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
 import { ForYouScreen } from './components/ForYouScreen';
 import { CrowdPingScreen } from './components/CrowdPingScreen';
+import { GPACalculatorScreen } from './components/GPACalculatorScreen';
 
 import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu } from 'lucide-react-native';
 
@@ -75,7 +76,13 @@ const tokenCache = {
   },
 };
 
-const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY || 'pk_test_ZGV2b3RlZC1zdW5maXNoLTMxLmNsZXJrLmFjY291bnRzLmRldiQ'; // replace with default if needed
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+if (!publishableKey) {
+  throw new Error('Missing Publishable Key. Please set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in your .env file.');
+} else {
+  console.log('Clerk Publishable Key detected:', publishableKey.substring(0, 12) + '...');
+}
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -177,6 +184,7 @@ function RootNavigator() {
           <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: true, title: 'Campus Events' }} />
           <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: true, title: 'For You' }} />
           <Stack.Screen name="CrowdPing" component={CrowdPingScreen} options={{ headerShown: true, title: 'CrowdPing' }} />
+          <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
         </>
       ) : (
         <>
