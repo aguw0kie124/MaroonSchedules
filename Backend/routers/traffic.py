@@ -14,6 +14,36 @@ try:
 except ImportError:
     Perplexity = None
 
+# Centralized coordinate mapping for TAMU Facilities
+LOCATION_DATA = {
+    # Rec Centers
+    "Student Rec": {"lat": 30.6094, "lng": -96.3400, "type": "Rec"},
+    "Southside Rec": {"lat": 30.6105, "lng": -96.3364, "type": "Rec"},
+    "Polo Rd Rec": {"lat": 30.6225, "lng": -96.3353, "type": "Rec"},
+
+    # Libraries
+    "Evans Library": {"lat": 30.6171, "lng": -96.3387, "type": "Library"},
+    "Annex Library": {"lat": 30.6171, "lng": -96.3387, "type": "Library"},
+    "Cushing Library": {"lat": 30.6166, "lng": -96.3386, "type": "Library"},
+    "West Campus Library": {"lat": 30.6146, "lng": -96.3426, "type": "Library"},
+    "Medical Science Library": {"lat": 30.6120, "lng": -96.3533, "type": "Library"},
+    "PSEL": {"lat": 30.6151, "lng": -96.3510, "type": "Library"},
+
+    # Dining
+    "Sbisa Dining Hall": {"lat": 30.6175, "lng": -96.3395, "type": "Dining"},
+    "The Commons": {"lat": 30.6102, "lng": -96.3369, "type": "Dining"},
+    "MSC Food Court": {"lat": 30.6123, "lng": -96.3415, "type": "Dining"},
+    "Polo Road Dining": {"lat": 30.6225, "lng": -96.3353, "type": "Dining"},
+    "Pavilion": {"lat": 30.6146, "lng": -96.3418, "type": "Dining"},
+    "Duncan Dining Hall": {"lat": 30.6100, "lng": -96.3410, "type": "Dining"},
+
+    # Study/General
+    "Zachry Engineering": {"lat": 30.6213, "lng": -96.3403, "type": "Study"},
+    "Wisenbaker": {"lat": 30.6202, "lng": -96.3400, "type": "Study"},
+    "Rudder Tower": {"lat": 30.6130, "lng": -96.3406, "type": "Study"},
+    "Langford Architecture": {"lat": 30.6186, "lng": -96.3381, "type": "Study"},
+}
+
 router = APIRouter()
 
 class TAMUFacilityTracker:
@@ -93,28 +123,104 @@ class TAMUFacilityTracker:
             "events": self.fetch_event_data(limit=50)
         }
 
-    def get_all_locations_with_events(self) -> List[Dict[str, float]]:
+    def get_all_locations_with_events(self) -> List[Dict[str, Any]]:
         result = []
+        live_stats = []
+
+        # 1. Fetch live data for averaging/estimation
+        rec_data = self.fetch_rec_data()
+        lib_data = self.fetch_library_data()
+
         # Rec Facilities
-        for f in self.fetch_rec_data():
+        for f in rec_data:
             name = f.get("LocationName") or "Unknown"
             current = f.get("LastCount", 0)
             total = f.get("TotalCapacity", 1)
             percent = round((current / total) * 100, 1)
-            result.append({"location": name, "percent_full": percent})
+            live_stats.append(percent)
+            # Attach coordinates
+            coord = next((info for loc, info in LOCATION_DATA.items() if loc.lower() in name.lower() or name.lower() in loc.lower()), None)
+            
+            result.append({
+                "location": name, 
+                "percent_full": percent, 
+                "type": "Rec", 
+                "is_live": True,
+                "available_seats": total - current,
+                "coord": coord.copy() if coord else None
+            })
+
         # Libraries
-        for lib in self.fetch_library_data():
+        for lib in lib_data:
             name = lib.get("name") or "Unknown"
             max_cap = int(lib.get("max", 1)) or 1
             remaining = int(lib.get("remaining", 0))
             current = max_cap - remaining
             percent = round((current / max_cap) * 100, 1)
-            result.append({"location": name, "percent_full": percent})
-        # Events
-        for event in self.fetch_event_data(limit=50):
+            live_stats.append(percent)
+            # Attach coordinates
+            coord = next((info for loc, info in LOCATION_DATA.items() if loc.lower() in name.lower() or name.lower() in loc.lower()), None)
+
+            result.append({
+                "location": name, 
+                "percent_full": percent, 
+                "type": "Library", 
+                "is_live": True,
+                "available_seats": remaining,
+                "coord": coord.copy() if coord else None
+            })
+
+        # Calculate average campus occupancy for "AI Estimation"
+        avg_occupancy = sum(live_stats) / len(live_stats) if live_stats else 30.0
+
+        # 2. Add Dining/Study spots with "AI Estimation"
+        for loc_name, info in LOCATION_DATA.items():
+            # Skip if already added via live data
+            if any(r["location"].lower() in loc_name.lower() or loc_name.lower() in r["location"].lower() for r in result):
+                continue
+            
+            # Use average occupancy + some jitter for AI estimation
+            est_percent = round(min(95, max(5, avg_occupancy + random.uniform(-10, 15))), 1)
+            
+            result.append({
+                "location": loc_name,
+                "percent_full": est_percent,
+                "type": info["type"],
+                "is_live": False,
+                "available_seats": None,
+                "coord": info.copy()
+            })
+
+        # 3. Events (Filter out generic garbage, no random occupancy)
+        for event in self.fetch_event_data(limit=30):
             location_name = event.get("location") or "Unknown Event Location"
-            percent = round(random.uniform(10, 100), 1)
-            result.append({"location": location_name, "percent_full": percent})
+            if "online" in location_name.lower() or "zoom" in location_name.lower():
+                continue
+                
+            # If we have coords for this event location, add it as a "Study/General" spot
+            coord = None
+            for key, val in LOCATION_DATA.items():
+                if key.lower() in location_name.lower() or location_name.lower() in key.lower():
+                    coord = {"lat": val["lat"], "lng": val["lng"]}
+                    break
+            
+            # Only add if it's a "real" place we can pin
+            if coord:
+                # Check if we already have this location
+                existing = next((r for r in result if r["location"] == location_name), None)
+                if not existing:
+                    result.append({
+                        "location": location_name,
+                        "percent_full": round(avg_occupancy, 1),
+                        "type": "Study",
+                        "is_live": False,
+                        "available_seats": None,
+                        "coord": coord,
+                        "current_event": event.get("title")
+                    })
+                elif "current_event" not in existing:
+                    existing["current_event"] = event.get("title")
+
         return result
 
     def ask_perplexity(self, prompt: str) -> str:
