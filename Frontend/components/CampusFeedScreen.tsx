@@ -1,20 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
     View, Text, StyleSheet, FlatList, Pressable, 
     Image, TextInput, ActivityIndicator, Alert,
     Modal, TouchableWithoutFeedback, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
-import { Camera, Image as ImageIcon, Video, Heart, MapPin, X, ChevronLeft, MoreHorizontal, MessageCircle, Calendar } from 'lucide-react-native';
+import { Camera, Image as ImageIcon, Video, Heart, MapPin, X, MoreHorizontal, MessageCircle, Calendar, Send, Film } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from './SharedUI';
-import { API_URL } from '../config';
-
-// Replace these with your actual Cloudinary credentials from your .env
-// e.g. EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME
-const CLOUDINARY_URL = `https://api.cloudinary.com/v1_1/${process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME || 'demo'}/upload`;
-const CLOUDINARY_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'unsigned_preset';
+import {
+    connectFeedsUser,
+    getCampusFeed,
+    addPost,
+    toggleLike,
+    addComment,
+    getComments,
+    uploadStreamFile,
+    uploadStreamImage,
+    deletePost
+} from '../services/streamFeeds';
+import { Trash2 } from 'lucide-react-native';
 
 interface Post {
     id: string;
@@ -27,7 +33,34 @@ interface Post {
     location_tag: string | null;
     likes: number;
     liked_by: string[];
+    reply_count: number;
     created_at: string;
+    reaction_counts?: any;
+    own_reactions?: any;
+}
+
+function mapActivityToPost(activity: any): Post {
+    const custom = activity.custom || {};
+    const attachments = activity.attachments || [];
+    const media = attachments[0] || {};
+    const actor = activity.actor || {};
+    
+    return {
+        id: activity.id || Date.now().toString(),
+        user_id: actor.id || activity.actor || '',
+        user_name: custom.user_name || actor.data?.name || actor.id || 'Aggie',
+        user_image: custom.user_image || actor.data?.image || null,
+        caption: activity.text || null,
+        media_url: media.image_url || media.asset_url || null,
+        media_type: media.type === 'video' ? 'video' : (media.type === 'image' ? 'image' : null),
+        location_tag: custom.location_tag || null,
+        likes: activity.reaction_counts?.like || activity.reaction_count || 0,
+        liked_by: (activity.own_reactions?.like || []).length > 0 ? [activity.own_reactions.like[0].user?.id || 'own'] : [],
+        reply_count: activity.reaction_counts?.comment || 0,
+        created_at: activity.time || activity.created_at || new Date().toISOString(),
+        reaction_counts: activity.reaction_counts,
+        own_reactions: activity.own_reactions,
+    };
 }
 
 export function CampusFeedScreen() {
@@ -39,6 +72,8 @@ export function CampusFeedScreen() {
     const [posts, setPosts] = useState<Post[]>([]);
     const [refreshing, setRefreshing] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [feedConnected, setFeedConnected] = useState(false);
+    const [streamError, setStreamError] = useState<string | null>(null);
     
     // Create Post Modal State
     const [modalVisible, setModalVisible] = useState(false);
@@ -48,19 +83,43 @@ export function CampusFeedScreen() {
     const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
     const [isPosting, setIsPosting] = useState(false);
 
+    // Comment Modal State
+    const [commentModalVisible, setCommentModalVisible] = useState(false);
+    const [commentPostId, setCommentPostId] = useState<string | null>(null);
+    const [commentPostCaption, setCommentPostCaption] = useState('');
+    const [comments, setComments] = useState<any[]>([]);
+    const [commentText, setCommentText] = useState('');
+    const [loadingComments, setLoadingComments] = useState(false);
+    const [sendingComment, setSendingComment] = useState(false);
+
     useEffect(() => {
-        fetchPosts();
-    }, []);
+        if (user) {
+            connectFeedsUser(user.id, user.fullName || 'Aggie', user.imageUrl)
+                .then(() => {
+                    setFeedConnected(true);
+                    setStreamError(null);
+                    fetchPosts();
+                })
+                .catch((e) => {
+                    console.warn('[CampusFeed] Stream connection failed:', e);
+                    setStreamError('Could not connect to Stream Feeds.');
+                    setLoading(false);
+                });
+        }
+    }, [user]);
 
     const fetchPosts = async () => {
         try {
-            const res = await fetch(`${API_URL}/posts?limit=50`);
-            if (res.ok) {
-                const data = await res.json();
-                setPosts(data);
+            const activities = await getCampusFeed(50);
+            setPosts(activities.map(mapActivityToPost));
+            setStreamError(null);
+        } catch (e: any) {
+            console.warn('[CampusFeed] Stream fetch failed:', e);
+            if (e.message?.includes('Feed group with ID "flat" not found')) {
+                 setStreamError('The "flat" feed group needs to be created in the Stream Dashboard online first.');
+            } else {
+                 setStreamError('Failed to load posts from Stream.');
             }
-        } catch (e) {
-            console.warn("Failed to fetch posts:", e);
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -69,7 +128,10 @@ export function CampusFeedScreen() {
 
     const handleRefresh = () => {
         setRefreshing(true);
-        fetchPosts();
+        if (feedConnected) fetchPosts();
+        else {
+            setRefreshing(false);
+        }
     };
 
     const pickMedia = async (type: 'Images' | 'Videos') => {
@@ -85,26 +147,10 @@ export function CampusFeedScreen() {
         }
     };
 
-    const uploadToCloudinary = async (uri: string, type: 'image' | 'video') => {
-        const data = new FormData();
-        data.append('file', {
-            uri,
-            type: type === 'image' ? 'image/jpeg' : 'video/mp4',
-            name: `upload.${type === 'image' ? 'jpg' : 'mp4'}`,
-        } as any);
-        data.append('upload_preset', CLOUDINARY_PRESET);
-
-        const res = await fetch(CLOUDINARY_URL, {
-            method: 'POST',
-            body: data,
-        });
-        const clData = await res.json();
-        return clData.secure_url;
-    };
-
     const handlePost = async () => {
-        if (!user) return;
-        if (!caption.trim() && !mediaUri) {
+        if (!user || !feedConnected) return;
+        const _captionTrimmed = caption.trim();
+        if (!_captionTrimmed && !mediaUri) {
             Alert.alert("Empty Post", "Add a photo, video, or caption to post.");
             return;
         }
@@ -113,47 +159,37 @@ export function CampusFeedScreen() {
         try {
             let uploadedMediaUrl = null;
             if (mediaUri && mediaType) {
-                uploadedMediaUrl = await uploadToCloudinary(mediaUri, mediaType);
+                uploadedMediaUrl = await uploadStreamImage(mediaUri); // use Stream File Upload
             }
 
-            const newPost = {
-                user_id: user.id,
-                user_name: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Aggie',
-                user_image: user.imageUrl,
-                caption: caption.trim() || null,
-                media_url: uploadedMediaUrl,
-                media_type: uploadedMediaUrl ? mediaType : null,
-                location_tag: locationTag.trim() || null,
-            };
-
-            const res = await fetch(`${API_URL}/posts`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(newPost),
+            await addPost({
+                userId: user.id,
+                userName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Aggie',
+                userImage: user.imageUrl,
+                caption: caption.trim() || undefined,
+                mediaUrl: uploadedMediaUrl || undefined,
+                mediaType: uploadedMediaUrl ? mediaType || undefined : undefined,
+                locationTag: locationTag.trim() || undefined,
             });
 
-            if (res.ok) {
-                setModalVisible(false);
-                setCaption('');
-                setMediaUri(null);
-                setMediaType(null);
-                setLocationTag('');
-                fetchPosts(); // Reload feed
-            } else {
-                Alert.alert("Error", "Failed to create post.");
-            }
-        } catch (e) {
+            setModalVisible(false);
+            setCaption('');
+            setMediaUri(null);
+            setMediaType(null);
+            setLocationTag('');
+            handleRefresh();
+        } catch (e: any) {
             console.error(e);
-            Alert.alert("Error", "Something went wrong.");
+            Alert.alert("Error", e.message || "Something went wrong posting to Stream.");
         } finally {
             setIsPosting(false);
         }
     };
 
-    const toggleLike = async (postId: string) => {
-        if (!user) return;
+    const handleToggleLike = async (postId: string) => {
+        if (!user || !feedConnected) return;
         
-        // Optimistic ui update
+        // Optimistic update
         setPosts(prev => prev.map(p => {
             if (p.id === postId) {
                 const isLiked = p.liked_by.includes(user.id);
@@ -166,22 +202,66 @@ export function CampusFeedScreen() {
             return p;
         }));
 
+        await toggleLike(postId, user.id).catch(() => handleRefresh());
+    };
+
+    const openComments = async (postId: string, postCaption: string) => {
+        if (!feedConnected) return;
+        setCommentPostId(postId);
+        setCommentPostCaption(postCaption);
+        setCommentModalVisible(true);
+        setLoadingComments(true);
+        
+        const result = await getComments(postId);
+        setComments(result);
+        setLoadingComments(false);
+    };
+
+    const handleSendComment = async () => {
+        if (!commentText.trim() || !commentPostId || !user || !feedConnected) return;
+        setSendingComment(true);
         try {
-            await fetch(`${API_URL}/posts/${postId}/like`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: user.id }),
-            });
+            await addComment(commentPostId, commentText.trim());
+            const updated = await getComments(commentPostId);
+            setComments(updated);
+            setCommentText('');
+            // Optimistically update comment count
+            setPosts(prev => prev.map(p => 
+                p.id === commentPostId ? { ...p, reply_count: p.reply_count + 1 } : p
+            ));
         } catch (e) {
-            // Revert on failure
-            fetchPosts();
+            console.warn('[Comments] Failed:', e);
+            Alert.alert('Error', 'Could not post comment.');
+        } finally {
+            setSendingComment(false);
         }
+    };
+
+    const handleDeletePost = (postId: string) => {
+        Alert.alert(
+            "Delete Post",
+            "Are you sure you want to permanently delete this post?",
+            [
+                { text: "Cancel", style: "cancel" },
+                { 
+                    text: "Delete", 
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            setPosts(prev => prev.filter(p => p.id !== postId)); 
+                            await deletePost(postId);
+                        } catch (e) {
+                            Alert.alert('Error', 'Could not delete the post.');
+                            handleRefresh();
+                        }
+                    } 
+                }
+            ]
+        );
     };
 
     const renderPost = ({ item }: { item: Post }) => {
         const isLiked = user ? item.liked_by.includes(user.id) : false;
-        
-        // Format time ago
         const date = new Date(item.created_at);
         const hoursAgo = Math.floor((new Date().getTime() - date.getTime()) / (1000 * 60 * 60));
         const timeStr = hoursAgo < 1 ? 'Just now' : hoursAgo < 24 ? `${hoursAgo}h ago` : `${Math.floor(hoursAgo/24)}d ago`;
@@ -189,10 +269,7 @@ export function CampusFeedScreen() {
         return (
             <View style={styles.postCard}>
                 <View style={styles.postHeader}>
-                    <Image 
-                        source={{ uri: item.user_image || 'https://via.placeholder.com/40' }} 
-                        style={styles.avatar} 
-                    />
+                    <Image source={{ uri: item.user_image || 'https://via.placeholder.com/40' }} style={styles.avatar} />
                     <View style={styles.postHeaderText}>
                         <Text style={styles.postAuthor}>{item.user_name}</Text>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -201,16 +278,22 @@ export function CampusFeedScreen() {
                                 <>
                                     <Text style={styles.postTime}>•</Text>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                                        <MapPin color={COLORS.primary} size={10} />
+                                        <MapPin color={COLORS.accent || COLORS.primary} size={10} />
                                         <Text style={styles.postLocation}>{item.location_tag}</Text>
                                     </View>
                                 </>
                             )}
                         </View>
                     </View>
-                    <Pressable style={styles.moreBtn}>
-                        <MoreHorizontal color={COLORS.textSecondary} size={20} />
-                    </Pressable>
+                    {item.user_id === user?.id ? (
+                        <Pressable style={styles.moreBtn} onPress={() => handleDeletePost(item.id)}>
+                            <Trash2 color="#FF453A" size={20} />
+                        </Pressable>
+                    ) : (
+                        <Pressable style={styles.moreBtn}>
+                            <MoreHorizontal color={COLORS.textSecondary} size={20} />
+                        </Pressable>
+                    )}
                 </View>
 
                 {item.caption && <Text style={styles.postCaption}>{item.caption}</Text>}
@@ -219,7 +302,6 @@ export function CampusFeedScreen() {
                     <Image source={{ uri: item.media_url }} style={styles.postImage} />
                 )}
                 
-                {/* For video, a real app would use expo-av Video component here */}
                 {item.media_url && item.media_type === 'video' && (
                     <View style={[styles.postImage, { backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' }]}>
                         <Video color="rgba(255,255,255,0.5)" size={48} />
@@ -227,13 +309,13 @@ export function CampusFeedScreen() {
                 )}
 
                 <View style={styles.postFooter}>
-                    <Pressable style={styles.actionBtn} onPress={() => toggleLike(item.id)}>
-                        <Heart color={isLiked ? COLORS.primary : COLORS.textSecondary} fill={isLiked ? COLORS.primary : 'transparent'} size={22} />
-                        <Text style={[styles.actionText, isLiked && { color: COLORS.primary }]}>{item.likes}</Text>
+                    <Pressable style={styles.actionBtn} onPress={() => handleToggleLike(item.id)}>
+                        <Heart color={isLiked ? '#FF453A' : COLORS.textSecondary} fill={isLiked ? '#FF453A' : 'transparent'} size={22} />
+                        <Text style={[styles.actionText, isLiked && { color: '#FF453A' }]}>{item.likes}</Text>
                     </Pressable>
-                    <Pressable style={styles.actionBtn}>
+                    <Pressable style={styles.actionBtn} onPress={() => openComments(item.id, item.caption || '')}>
                         <MessageCircle color={COLORS.textSecondary} size={22} />
-                        <Text style={styles.actionText}>Reply</Text>
+                        <Text style={styles.actionText}>{item.reply_count} Replies</Text>
                     </Pressable>
                 </View>
             </View>
@@ -245,14 +327,39 @@ export function CampusFeedScreen() {
             <View style={styles.header}>
                 <View style={{ width: 44 }} />
                 <Text style={styles.headerTitle}>Campus Life</Text>
-                <Pressable onPress={() => navigation.navigate('EventsCalendar')} style={styles.eventsBtn}>
-                    <Calendar color={COLORS.textPrimary} size={24} />
-                </Pressable>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <Pressable onPress={() => navigation.navigate('Reels')} style={styles.headerBtn}>
+                        <Film color={COLORS.textPrimary} size={24} />
+                    </Pressable>
+                    <Pressable onPress={() => navigation.navigate('EventsCalendar')} style={styles.headerBtn}>
+                        <Calendar color={COLORS.textPrimary} size={24} />
+                    </Pressable>
+                </View>
             </View>
 
             {loading ? (
                 <View style={styles.centerFull}>
                     <ActivityIndicator color={COLORS.primary} size="large" />
+                </View>
+            ) : streamError ? (
+                <View style={styles.centerFull}>
+                    <Text style={[styles.emptySubtitle, { color: '#FF453A', marginBottom: 16 }]}>❗ Stream API Error</Text>
+                    <Text style={[styles.emptySubtitle, { marginHorizontal: 30, marginBottom: 24 }]}>{streamError}</Text>
+                    
+                    <Pressable 
+                        style={{ backgroundColor: COLORS.primary, paddingHorizontal: 20, paddingVertical: 12, borderRadius: 24 }}
+                        onPress={() => {
+                            if (user) {
+                                setLoading(true);
+                                connectFeedsUser(user.id, true).then(() => {
+                                    setFeedConnected(true);
+                                    fetchPosts();
+                                }).catch(() => setLoading(false));
+                            }
+                        }}
+                    >
+                        <Text style={{ color: '#FFF', fontWeight: 'bold' }}>Reconnect to Stream</Text>
+                    </Pressable>
                 </View>
             ) : (
                 <FlatList
@@ -273,17 +380,14 @@ export function CampusFeedScreen() {
                 />
             )}
 
-            <Pressable style={styles.fab} onPress={() => setModalVisible(true)}>
-                <Camera color={COLORS.surface} size={24} />
+            <Pressable style={styles.fab} onPress={() => setModalVisible(true)} disabled={!feedConnected || !!streamError}>
+                <Camera color="#FFF" size={24} />
             </Pressable>
 
             {/* Create Post Modal */}
             <Modal visible={modalVisible} animationType="slide" transparent>
                 <View style={styles.modalBg}>
-                    <KeyboardAvoidingView 
-                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                        style={styles.modalContent}
-                    >
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContent}>
                         <View style={styles.modalHeader}>
                             <Pressable onPress={() => setModalVisible(false)} style={styles.modalCloseBtn}>
                                 <Text style={styles.modalCancelText}>Cancel</Text>
@@ -291,12 +395,12 @@ export function CampusFeedScreen() {
                             <Text style={styles.modalTitle}>New Post</Text>
                             <Pressable 
                                 onPress={handlePost} 
-                                disabled={isPosting || (!caption.trim() && !mediaUri)}
+                                disabled={Boolean(isPosting || (!caption.trim() && !mediaUri))}
                             >
                                 {isPosting ? (
                                     <ActivityIndicator color={COLORS.primary} size="small" />
                                 ) : (
-                                    <Text style={[styles.modalPostText, (!caption.trim() && !mediaUri) && { opacity: 0.5 }]}>Post</Text>
+                                    <Text style={[styles.modalPostText, (!caption.trim() && !mediaUri) ? { opacity: 0.5 } : {}]}>Post</Text>
                                 )}
                             </Pressable>
                         </View>
@@ -305,8 +409,7 @@ export function CampusFeedScreen() {
                             style={styles.captionInput}
                             placeholder="What's happening on campus?"
                             placeholderTextColor={COLORS.textTertiary}
-                            multiline
-                            maxLength={500}
+                            multiline maxLength={500}
                             value={caption}
                             onChangeText={setCaption}
                             autoFocus
@@ -346,85 +449,139 @@ export function CampusFeedScreen() {
                     </KeyboardAvoidingView>
                 </View>
             </Modal>
+
+            {/* Comments Modal */}
+            <Modal visible={commentModalVisible} animationType="slide" transparent>
+                <View style={styles.modalBg}>
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.commentsModal}>
+                        <View style={styles.commentsHeader}>
+                            <Text style={styles.commentsTitle}>Comments</Text>
+                            <Pressable onPress={() => { setCommentModalVisible(false); setComments([]); }}>
+                                <X color={COLORS.textSecondary} size={24} />
+                            </Pressable>
+                        </View>
+
+                        {commentPostCaption ? (
+                            <View style={styles.commentOriginalPost}>
+                                <Text style={styles.commentOriginalText} numberOfLines={2}>{commentPostCaption}</Text>
+                            </View>
+                        ) : null}
+
+                        {loadingComments ? (
+                            <View style={styles.centerFull}>
+                                <ActivityIndicator color={COLORS.primary} />
+                            </View>
+                        ) : (
+                            <FlatList
+                                data={comments}
+                                keyExtractor={(item, i) => item.id || String(i)}
+                                style={{ flex: 1 }}
+                                contentContainerStyle={{ paddingBottom: 16 }}
+                                renderItem={({ item }) => (
+                                    <View style={styles.commentRow}>
+                                        <View style={styles.commentAvatar}>
+                                            <Text style={styles.commentAvatarText}>{(item.user?.id || 'A').slice(0, 2).toUpperCase()}</Text>
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.commentUser}>{item.user?.id || 'Aggie'}</Text>
+                                            <Text style={styles.commentBody}>{item.comment || item.text || ''}</Text>
+                                        </View>
+                                    </View>
+                                )}
+                                ListEmptyComponent={
+                                    <View style={styles.emptyState}>
+                                        <Text style={styles.emptySubtitle}>No comments yet. Be the first!</Text>
+                                    </View>
+                                }
+                            />
+                        )}
+
+                        <View style={styles.commentInputRow}>
+                            <TextInput
+                                style={styles.commentInput}
+                                placeholder="Write a comment..."
+                                placeholderTextColor={COLORS.textTertiary}
+                                value={commentText}
+                                onChangeText={setCommentText}
+                                maxLength={300}
+                            />
+                            <Pressable 
+                                style={[styles.commentSendBtn, !commentText.trim() && { opacity: 0.5 }]} 
+                                onPress={handleSendComment}
+                                disabled={!commentText.trim() || sendingComment}
+                            >
+                                {sendingComment ? (
+                                    <ActivityIndicator color="#FFF" size="small" />
+                                ) : (
+                                    <Send color="#FFF" size={18} />
+                                )}
+                            </Pressable>
+                        </View>
+                    </KeyboardAvoidingView>
+                </View>
+            </Modal>
         </View>
     );
 }
 
 const getStyles = (COLORS: any) => StyleSheet.create({
     container: { flex: 1, backgroundColor: COLORS.background },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        backgroundColor: COLORS.background, // Match background for clean look
-        paddingTop: 50, // Reduced from 60
-        paddingBottom: 16,
-        paddingHorizontal: 20,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: COLORS.border,
-    },
-    eventsBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-end', marginRight: -8 },
-    headerTitle: { fontSize: 20, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.5 },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.background, paddingTop: 50, paddingBottom: 16, paddingHorizontal: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border },
+    headerBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+    headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 },
     centerFull: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    listContent: { paddingBottom: 100 }, // removed horizontal padding to allow edge-to-edge
+    listContent: { paddingBottom: 100 },
     
-    postCard: {
-        backgroundColor: COLORS.background,
-        paddingVertical: 16,
-        paddingHorizontal: 16, // internal padding instead of container padding
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: COLORS.border,
-    },
+    postCard: { backgroundColor: COLORS.background, paddingVertical: 16, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border },
     postHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-    avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surfaceElevated, marginRight: 12 },
+    avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surfaceElevated || COLORS.surface, marginRight: 12 },
     postHeaderText: { flex: 1 },
-    postAuthor: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 2 },
+    postAuthor: { fontSize: 16, fontWeight: '700', color: '#FFFFFF', marginBottom: 2 },
     postTime: { fontSize: 13, color: COLORS.textSecondary },
-    postLocation: { fontSize: 12, fontWeight: '600', color: COLORS.primary },
+    postLocation: { fontSize: 12, fontWeight: '600', color: COLORS.accent || COLORS.primary },
     moreBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
     
-    postCaption: { fontSize: 15, color: COLORS.textPrimary, lineHeight: 22, marginBottom: 12 },
-    postImage: { width: '100%', height: 250, borderRadius: 16, marginBottom: 16, backgroundColor: COLORS.surfaceElevated },
+    postCaption: { fontSize: 15, color: '#FFFFFF', lineHeight: 22, marginBottom: 12 },
+    postImage: { width: '100%', height: 250, borderRadius: 16, marginBottom: 16, backgroundColor: COLORS.surfaceElevated || COLORS.surface },
     
     postFooter: { flexDirection: 'row', gap: 24, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 12 },
     actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     actionText: { fontSize: 14, fontWeight: '600', color: COLORS.textSecondary },
     
     emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 80, paddingHorizontal: 40 },
-    emptyTitle: { fontSize: 20, fontWeight: '700', color: COLORS.textPrimary, marginTop: 16, marginBottom: 8 },
+    emptyTitle: { fontSize: 20, fontWeight: '700', color: '#FFFFFF', marginTop: 16, marginBottom: 8 },
     emptySubtitle: { fontSize: 15, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 22 },
     
-    fab: {
-        position: 'absolute',
-        bottom: 30,
-        right: 20,
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        backgroundColor: COLORS.primary, // White button on black background
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
+    fab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.4, shadowOffset: { width: 0, height: 4 }, shadowRadius: 12, elevation: 8 },
     
-    // Modal
     modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
     modalContent: { backgroundColor: COLORS.surface, borderTopLeftRadius: 32, borderTopRightRadius: 32, minHeight: '80%', padding: 20 },
     modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingBottom: 16 },
     modalCancelText: { fontSize: 16, color: COLORS.textSecondary },
-    modalTitle: { fontSize: 18, fontWeight: '700', color: COLORS.textPrimary },
-    modalPostText: { fontSize: 16, fontWeight: '700', color: COLORS.primary },
+    modalTitle: { fontSize: 18, fontWeight: '700', color: '#FFFFFF' },
+    modalPostText: { fontSize: 16, fontWeight: '700', color: COLORS.accent || COLORS.primary },
     modalCloseBtn: { paddingVertical: 4 },
-    
-    captionInput: { fontSize: 17, color: COLORS.textPrimary, minHeight: 120, textAlignVertical: 'top', marginBottom: 20 },
-    
+    captionInput: { fontSize: 17, color: '#FFFFFF', minHeight: 120, textAlignVertical: 'top', marginBottom: 20 },
     mediaPreviewContainer: { position: 'relative', marginBottom: 20 },
-    mediaPreview: { width: '100%', height: 200, borderRadius: 16, backgroundColor: COLORS.surfaceElevated },
+    mediaPreview: { width: '100%', height: 200, borderRadius: 16, backgroundColor: COLORS.surfaceElevated || COLORS.surface },
     removeMediaBtn: { position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
-    
     actionBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.border },
     mediaBtns: { flexDirection: 'row', gap: 16 },
     mediaBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(80,0,0,0.15)', alignItems: 'center', justifyContent: 'center' },
-    
     locationInputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.background, paddingHorizontal: 12, height: 40, borderRadius: 20, gap: 8, flex: 1, marginLeft: 16 },
-    locationInput: { flex: 1, color: COLORS.textPrimary, fontSize: 14 },
+    locationInput: { flex: 1, color: '#FFFFFF', fontSize: 14 },
+
+    commentsModal: { backgroundColor: COLORS.surface, borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: '75%', minHeight: '50%' },
+    commentsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+    commentsTitle: { fontSize: 18, fontWeight: '800', color: '#FFFFFF' },
+    commentOriginalPost: { paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: 'rgba(80,0,0,0.1)' },
+    commentOriginalText: { fontSize: 14, color: COLORS.textSecondary, fontStyle: 'italic' },
+    commentRow: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, gap: 12 },
+    commentAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center' },
+    commentAvatarText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+    commentUser: { fontSize: 14, fontWeight: '700', color: '#FFFFFF', marginBottom: 2 },
+    commentBody: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 20 },
+    commentInputRow: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: COLORS.border, gap: 10, alignItems: 'center' },
+    commentInput: { flex: 1, backgroundColor: COLORS.background, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, color: '#FFFFFF', fontSize: 14 },
+    commentSendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' }
 });

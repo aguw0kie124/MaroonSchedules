@@ -138,3 +138,93 @@ def delete_post(post_id: str, user_id: str = Query(...)):
     except Exception as e:
         print(f"Error deleting post: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# ─── Reels ──────────────────────────────────────────────────────────────────────
+
+class CreateReelRequest(BaseModel):
+    user_id: str
+    user_name: str
+    user_image: Optional[str] = None
+    caption: Optional[str] = None
+    video_url: str
+
+@router.get("/reels")
+def get_reels(limit: int = 30, offset: int = 0):
+    try:
+        with psycopg.connect(CONNECTION_PARAMS) as conn:
+            with conn.cursor() as cur:
+                # Create table if not exists
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS campus_reels (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        user_id TEXT NOT NULL,
+                        user_name TEXT NOT NULL,
+                        user_image TEXT,
+                        caption TEXT,
+                        video_url TEXT NOT NULL,
+                        likes INTEGER DEFAULT 0,
+                        liked_by TEXT[] DEFAULT '{}',
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """)
+                conn.commit()
+
+                cur.execute("""
+                    SELECT id, user_id, user_name, user_image, caption,
+                           video_url, likes, liked_by, created_at
+                    FROM campus_reels
+                    ORDER BY created_at DESC
+                    LIMIT %s OFFSET %s
+                """, (limit, offset))
+
+                reels = []
+                for row in cur.fetchall():
+                    reels.append({
+                        "id": str(row[0]),
+                        "user_id": row[1],
+                        "user_name": row[2],
+                        "user_image": row[3],
+                        "caption": row[4],
+                        "video_url": row[5],
+                        "likes": row[6],
+                        "liked_by": row[7] or [],
+                        "created_at": row[8].isoformat() if row[8] else None
+                    })
+                return reels
+    except Exception as e:
+        print(f"Error fetching reels: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/reels")
+def create_reel(req: CreateReelRequest):
+    try:
+        with psycopg.connect(CONNECTION_PARAMS) as conn:
+            with conn.cursor() as cur:
+                # Ensure table exists
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS campus_reels (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        user_id TEXT NOT NULL,
+                        user_name TEXT NOT NULL,
+                        user_image TEXT,
+                        caption TEXT,
+                        video_url TEXT NOT NULL,
+                        likes INTEGER DEFAULT 0,
+                        liked_by TEXT[] DEFAULT '{}',
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """)
+                cur.execute("""
+                    INSERT INTO campus_reels
+                    (user_id, user_name, user_image, caption, video_url)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (req.user_id, req.user_name, req.user_image, req.caption, req.video_url))
+                reel_id = cur.fetchone()[0]
+                conn.commit()
+                return {"status": "success", "reel_id": str(reel_id)}
+    except Exception as e:
+        print(f"Error creating reel: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+

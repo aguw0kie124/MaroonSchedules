@@ -3,7 +3,7 @@ Migration script: Create the 'users' table in PostgreSQL.
 Run once:  python create_users_table.py
 """
 import psycopg
-from db_config import CONNECTION_PARAMS
+from db_config import get_db_connection
 
 SQL = """
 CREATE TABLE IF NOT EXISTS users (
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 def main():
     print("Connecting to PostgreSQL...")
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor() as cur:
             cur.execute(SQL)
         conn.commit()

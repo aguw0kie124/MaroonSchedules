@@ -5,8 +5,8 @@ from pydantic import BaseModel
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Force reload from .env dynamically bypassing terminal memory
+load_dotenv(override=True)
 
 from chat import router as chat_router
 from routers.traffic import router as traffic_router

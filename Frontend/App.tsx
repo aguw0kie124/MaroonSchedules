@@ -33,6 +33,7 @@ import { PlaceRecommendationsScreen } from './components/PlaceRecommendationsScr
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
 import { ForYouScreen } from './components/ForYouScreen';
 import { CampusFeedScreen } from './components/CampusFeedScreen';
+import { ReelsScreen } from './components/ReelsScreen';
 import { GPACalculatorScreen } from './components/GPACalculatorScreen';
 import { CampusScreen } from './components/CampusScreen';
 
@@ -188,6 +189,7 @@ function RootNavigator() {
           <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
           <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: false }} />
           <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Reels" component={ReelsScreen} options={{ headerShown: false }} />
         </>
       ) : (
         <>

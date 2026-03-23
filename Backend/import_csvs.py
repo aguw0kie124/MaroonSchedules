@@ -3,7 +3,7 @@ import sys
 import psycopg
 import csv
 
-CONNECTION_PARAMS = "host=10.246.145.251 dbname=maroon_schedules user=dev_rian password=admin"
+from db_config import get_db_connection
 OUTPUT_DIR = r"c:\MaroonSchedules\Backend\csv_output"
 
 # Mapping logic for types based on column names
@@ -86,7 +86,7 @@ def main():
         return
 
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with psycopg.connect(get_db_connection()) as conn:
             with conn.cursor() as cur:
                 for csv_file in csv_files:
                     table_name = os.path.splitext(csv_file)[0]
