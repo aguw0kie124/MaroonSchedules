@@ -10,6 +10,9 @@ import {
   Platform,
   Modal,
   FlatList,
+  Image,
+  ScrollView,
+  Alert,
 } from 'react-native';
 import {
   OverlayProvider,
@@ -21,6 +24,7 @@ import {
   Attachment,
 } from 'stream-chat-react-native';
 import { useUser } from '@clerk/clerk-expo';
+import { LogOut, UserPlus, ChevronLeft, Check, X } from 'lucide-react-native';
 import { API_URL } from '../config';
 import { fetchSchedules } from '../api/client';
 
@@ -134,8 +138,13 @@ function getInitials(name: string) {
 type Props = {
   route: {
     params: {
-      otherUserClerkId: string;
+      otherUserClerkId?: string;
       otherUserName?: string;
+      otherUserImageUrl?: string;
+      memberIds?: string[];
+      groupName?: string;
+      isGroup?: boolean;
+      channelId?: string;
     };
   };
   navigation: any;
@@ -143,9 +152,19 @@ type Props = {
 
 // ─── ChatScreen ───────────────────────────────────────────────────────────────
 export function ChatScreen({ route, navigation }: Props) {
-  const { otherUserClerkId, otherUserName = 'Aggie' } = route.params;
+  const { 
+    otherUserClerkId, 
+    otherUserName = 'Aggie',
+    otherUserImageUrl,
+    memberIds,
+    groupName,
+    isGroup = false,
+    channelId
+  } = route.params;
+  
+  const displayName = isGroup ? (groupName || 'Group Chat') : otherUserName;
   const { user, isLoaded } = useUser();
-  const initials = getInitials(otherUserName);
+  const initials = getInitials(displayName);
 
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -156,6 +175,14 @@ export function ChatScreen({ route, navigation }: Props) {
   const [schedules, setSchedules] = useState<any[]>([]);
   const [shareModalVisible, setShareModalVisible] = useState(false);
 
+  // Group Management State
+  const [infoModalVisible, setInfoModalVisible] = useState(false);
+  const [addMembersMode, setAddMembersMode] = useState(false);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [selectedNewMembers, setSelectedNewMembers] = useState<string[]>([]);
+  const [isLeaving, setIsLeaving] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
+
   useEffect(() => {
     if (user) {
       fetchSchedules(user.id).then(setSchedules).catch(console.error);
@@ -165,12 +192,16 @@ export function ChatScreen({ route, navigation }: Props) {
   // 1. Fetch Stream credentials
   useEffect(() => {
     if (!isLoaded || !user) return;
+    const other_ids = isGroup && memberIds 
+      ? memberIds 
+      : (otherUserClerkId ? [otherUserClerkId] : []);
+
     fetch(`${API_URL}/chat/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         clerk_user_id: user.id,
-        other_clerk_user_id: otherUserClerkId,
+        other_clerk_user_ids: other_ids,
       }),
     })
       .then(r => { if (!r.ok) throw new Error(`Token fetch failed: ${r.status}`); return r.json(); })
@@ -185,7 +216,11 @@ export function ChatScreen({ route, navigation }: Props) {
   // 2. Create Stream client
   const chatClient = useCreateChatClient({
     apiKey: apiKey || '',
-    userData: { id: userId || 'placeholder', name: user?.fullName || 'Aggie' },
+    userData: { 
+      id: userId || 'placeholder', 
+      name: user?.fullName || 'Aggie',
+      image: user?.imageUrl || undefined
+    },
     tokenOrProvider: userToken || '',
   });
 
@@ -194,7 +229,17 @@ export function ChatScreen({ route, navigation }: Props) {
     if (!chatClient || !userId || !userToken) return;
     const run = async () => {
       try {
-        const c = chatClient.channel('messaging', { members: [userId, otherUserClerkId] });
+        const members = isGroup && memberIds 
+          ? [userId, ...memberIds] 
+          : [userId, otherUserClerkId!];
+          
+        const c = channelId 
+          ? chatClient.channel('messaging', channelId)
+          : chatClient.channel('messaging', { 
+              members,
+              name: isGroup ? displayName : undefined
+            } as any);
+        
         const timeout = new Promise<never>((_, rej) =>
           setTimeout(() => rej(new Error('Connection timed out. Is the backend running?')), 15000)
         );
@@ -205,27 +250,43 @@ export function ChatScreen({ route, navigation }: Props) {
       }
     };
     void run();
-  }, [chatClient, userId, userToken, otherUserClerkId]);
+  }, [chatClient, userId, userToken, otherUserClerkId, memberIds, isGroup]);
 
   // ── Custom Header ────────────────────────────────────────────────────────────
-  const CustomHeader = () => (
-    <View style={styles.header}>
-      <StatusBar barStyle="light-content" backgroundColor={C.maroon} />
-      <Pressable onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={12}>
-        <Text style={styles.backArrow}>‹</Text>
-      </Pressable>
+  const CustomHeader = () => {
+    const isGroupChat = isGroup || (channel && Object.keys(channel.state.members).length > 2);
+    
+    return (
+      <View style={styles.header}>
+        <StatusBar barStyle="light-content" backgroundColor={C.maroon} />
+        <Pressable onPress={() => navigation.goBack()} style={styles.backBtn} hitSlop={12}>
+          <Text style={styles.backArrow}>‹</Text>
+        </Pressable>
 
-      <View style={styles.headerAvatar}>
-        <Text style={styles.headerAvatarText}>{initials}</Text>
-        <View style={styles.headerOnlineDot} />
+        <Pressable 
+          style={styles.headerContent} 
+          onPress={() => isGroupChat && setInfoModalVisible(true)}
+          disabled={!isGroupChat}
+        >
+          <View style={styles.headerAvatar}>
+            {otherUserImageUrl && !isGroup ? (
+              <Image source={{ uri: otherUserImageUrl }} style={styles.headerAvatarImage} />
+            ) : (
+              <Text style={styles.headerAvatarText}>{initials}</Text>
+            )}
+            {!isGroup && <View style={styles.headerOnlineDot} />}
+          </View>
+          
+          <View style={styles.headerInfo}>
+            <Text style={styles.headerName} numberOfLines={1}>{displayName}</Text>
+            <Text style={styles.headerStatus}>
+              {channel ? `${Object.keys(channel.state.members).length} members` : (isGroup ? `${(memberIds?.length || 0) + 1} members` : 'Active now')}
+            </Text>
+          </View>
+        </Pressable>
       </View>
-
-      <View style={styles.headerInfo}>
-        <Text style={styles.headerName} numberOfLines={1}>{otherUserName}</Text>
-        <Text style={styles.headerStatus}>Active now</Text>
-      </View>
-    </View>
-  );
+    );
+  };
 
   // ── Loading ───────────────────────────────────────────────────────────────────
   if (!channel && !errorStatus) {
@@ -297,6 +358,83 @@ export function ChatScreen({ route, navigation }: Props) {
     return <Attachment {...props} />;
   };
 
+  // ── Group Management Handlers ─────────────────────────────────────────────────
+  const fetchClerkUsers = async () => {
+    try {
+      const res = await fetch(`${API_URL}/chat/users?exclude_id=${user?.id ?? ''}`);
+      if (res.ok) {
+        const data = await res.json();
+        setAllUsers(data);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch users for adding to group", e);
+    }
+  };
+
+  const openAddMembers = () => {
+    fetchClerkUsers();
+    setAddMembersMode(true);
+    setSelectedNewMembers([]);
+  };
+
+  const closeGroupInfo = () => {
+    setInfoModalVisible(false);
+    setAddMembersMode(false);
+    setSelectedNewMembers([]);
+  };
+
+  const handleLeaveGroup = () => {
+    Alert.alert(
+      "Leave Group",
+      "Are you sure you want to leave this group chat?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Leave", 
+          style: "destructive",
+          onPress: async () => {
+            if (!channel || !user) return;
+            setIsLeaving(true);
+            try {
+              await channel.removeMembers([user.id]);
+              setInfoModalVisible(false);
+              navigation.goBack();
+            } catch (e) {
+              Alert.alert("Error", "Could not leave group.");
+            } finally {
+              setIsLeaving(false);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleConfirmAddMembers = async () => {
+    if (!channel || selectedNewMembers.length === 0 || !user) return;
+    setIsAdding(true);
+    try {
+      // Ensure users exist in Stream Chat before adding them
+      await fetch(`${API_URL}/chat/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clerk_user_id: user.id,
+          other_clerk_user_ids: selectedNewMembers,
+        }),
+      });
+
+      await channel.addMembers(selectedNewMembers);
+      setAddMembersMode(false);
+      setSelectedNewMembers([]);
+    } catch (e: any) {
+      console.warn("Add members failed:", e);
+      Alert.alert("Error", `Could not add members: ${e.message || 'Unknown error'}`);
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
   // ── Chat ──────────────────────────────────────────────────────────────────────
   return (
     <View style={styles.screen}>
@@ -319,6 +457,7 @@ export function ChatScreen({ route, navigation }: Props) {
           </Chat>
         </OverlayProvider>
         
+        {/* Share Schedule Modal */}
         <Modal visible={shareModalVisible} transparent animationType="slide">
             <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
                 <View style={{ backgroundColor: C.bg, padding: 20, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '80%' }}>
@@ -345,6 +484,111 @@ export function ChatScreen({ route, navigation }: Props) {
                 </View>
             </View>
         </Modal>
+
+        {/* Group Info Modal */}
+        <Modal visible={infoModalVisible} transparent animationType="slide">
+          <View style={styles.modalBg}>
+            <View style={styles.modalContent}>
+              
+              {!addMembersMode ? (
+                <>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Group Info</Text>
+                    <Pressable onPress={closeGroupInfo} style={styles.modalCloseBtn}>
+                      <X color={C.textSecondary} size={24} />
+                    </Pressable>
+                  </View>
+                  
+                  <ScrollView style={styles.membersList} showsVerticalScrollIndicator={false}>
+                    <Text style={styles.sectionHeader}>MEMBERS</Text>
+                    {channel && Object.values(channel.state.members).map((m: any) => (
+                      <View key={m.user.id} style={styles.memberRow}>
+                        <View style={[styles.memberAvatar, { backgroundColor: C.maroon }]}>
+                          {m.user.image ? (
+                            <Image source={{ uri: m.user.image }} style={styles.memberAvatarImg} />
+                          ) : (
+                            <Text style={styles.memberAvatarText}>{getInitials(m.user.name || 'A')}</Text>
+                          )}
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.memberName}>{m.user.name}</Text>
+                          {m.role === 'owner' && <Text style={styles.memberRole}>Owner</Text>}
+                        </View>
+                      </View>
+                    ))}
+                  </ScrollView>
+
+                  <View style={styles.groupActions}>
+                    <Pressable style={styles.groupActionBtn} onPress={openAddMembers}>
+                      <UserPlus color={C.maroon} size={20} />
+                      <Text style={styles.groupActionText}>Add Members</Text>
+                    </Pressable>
+                    <Pressable style={[styles.groupActionBtn, { borderTopWidth: 1, borderColor: C.border }]} onPress={handleLeaveGroup} disabled={isLeaving}>
+                      {isLeaving ? <ActivityIndicator color="#FF3B30" size="small" /> : <LogOut color="#FF3B30" size={20} />}
+                      <Text style={[styles.groupActionText, { color: '#FF3B30' }]}>Leave Group</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={styles.modalHeader}>
+                    <Pressable onPress={() => setAddMembersMode(false)} style={styles.modalBackBtn}>
+                      <ChevronLeft color={C.maroon} size={28} />
+                    </Pressable>
+                    <Text style={[styles.modalTitle, { flex: 1, textAlign: 'center', marginRight: 28 }]}>Add Members</Text>
+                  </View>
+
+                  <ScrollView style={styles.membersList}>
+                    {allUsers
+                      .filter(u => !(channel?.state?.members as any)?.[u.id])
+                      .map(u => {
+                        const isSelected = selectedNewMembers.includes(u.id);
+                        return (
+                          <Pressable 
+                            key={u.id} 
+                            style={[styles.memberRow, isSelected && { backgroundColor: '#FFF5F5' }]}
+                            onPress={() => setSelectedNewMembers(prev => 
+                              isSelected ? prev.filter(id => id !== u.id) : [...prev, u.id]
+                            )}
+                          >
+                            <View style={[styles.memberAvatar, { backgroundColor: C.maroon }]}>
+                              {u.profile_image_url ? (
+                                <Image source={{ uri: u.profile_image_url }} style={styles.memberAvatarImg} />
+                              ) : (
+                                <Text style={styles.memberAvatarText}>{getInitials(u.name)}</Text>
+                              )}
+                              {isSelected && (
+                                <View style={styles.checkOverlay}>
+                                  <Check color="#FFF" size={16} strokeWidth={3} />
+                                </View>
+                              )}
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.memberName}>{u.name}</Text>
+                              <Text style={styles.memberRole}>{u.email}</Text>
+                            </View>
+                          </Pressable>
+                        );
+                    })}
+                    {allUsers.filter(u => !(channel?.state?.members as any)?.[u.id]).length === 0 && (
+                      <Text style={{ textAlign: 'center', color: C.textSecondary, marginTop: 40 }}>All users are already in this group.</Text>
+                    )}
+                  </ScrollView>
+
+                  <Pressable 
+                    style={[styles.confirmAddBtn, selectedNewMembers.length === 0 && { opacity: 0.5 }]} 
+                    disabled={selectedNewMembers.length === 0 || isAdding}
+                    onPress={handleConfirmAddMembers}
+                  >
+                    {isAdding ? <ActivityIndicator color="#FFF" /> : <Text style={styles.confirmAddText}>Add {selectedNewMembers.length} to Group</Text>}
+                  </Pressable>
+                </>
+              )}
+              
+            </View>
+          </View>
+        </Modal>
+
       </KeyboardAvoidingView>
     </View>
   );
@@ -376,6 +620,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.3)',
+    overflow: 'hidden',
+  },
+  headerAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   headerAvatarText: { color: C.white, fontWeight: '700', fontSize: 15 },
   headerOnlineDot: {
@@ -390,6 +639,7 @@ const styles = StyleSheet.create({
     borderColor: C.maroon,
   },
   headerInfo: { flex: 1 },
+  headerContent: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
   headerName: { color: C.white, fontWeight: '700', fontSize: 17, letterSpacing: -0.2 },
   headerStatus: { color: 'rgba(255,255,255,0.65)', fontSize: 12, marginTop: 1 },
 
@@ -409,4 +659,29 @@ const styles = StyleSheet.create({
     borderRadius: 24,
   },
   retryText: { color: C.white, fontWeight: '700', fontSize: 15 },
+  
+  // Group Info Modal
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: C.white, borderTopLeftRadius: 24, borderTopRightRadius: 24, minHeight: '50%', maxHeight: '90%', paddingBottom: 30 },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: C.border },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: C.textPrimary },
+  modalCloseBtn: { padding: 4, marginRight: -4 },
+  modalBackBtn: { padding: 4, marginLeft: -8 },
+  
+  membersList: { flex: 1 },
+  sectionHeader: { fontSize: 12, fontWeight: '700', color: C.textSecondary, marginTop: 20, marginBottom: 8, paddingHorizontal: 20, letterSpacing: 0.5 },
+  memberRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
+  memberAvatar: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: 12, overflow: 'hidden' },
+  memberAvatarImg: { width: '100%', height: '100%' },
+  memberAvatarText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
+  checkOverlay: { position: 'absolute', width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  memberName: { fontSize: 16, fontWeight: '600', color: C.textPrimary },
+  memberRole: { fontSize: 13, color: C.textSecondary, marginTop: 2 },
+  
+  groupActions: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 20, marginTop: 10 },
+  groupActionBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, gap: 12 },
+  groupActionText: { fontSize: 16, fontWeight: '600', color: C.maroon },
+  
+  confirmAddBtn: { backgroundColor: C.maroon, marginHorizontal: 20, marginTop: 16, padding: 16, borderRadius: 12, alignItems: 'center' },
+  confirmAddText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
 });

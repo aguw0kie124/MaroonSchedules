@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import * as Location from 'expo-location';
 import MapView, { Marker, Polyline, Region, PROVIDER_GOOGLE } from 'react-native-maps';
-import { COLORS } from './SharedUI';
+import { useTheme } from './SharedUI';
 import { CampusSearchBar } from './CampusSearchBar';
 import { CampusDirectionsPanel } from './CampusDirectionsPanel';
 import { CampusBottomSheet } from './CampusBottomSheet';
@@ -63,6 +63,8 @@ import {
 type NavMode = 'idle' | 'selected' | 'navigating';
 
 export function CampusNavigationScreen() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
   // ─── State ──────────────────────────────────────────────────
   const [navMode, setNavMode] = useState<NavMode>('idle');
   const [destination, setDestination] = useState<{
@@ -561,7 +563,7 @@ export function CampusNavigationScreen() {
 }
 
 // ─── Styles ─────────────────────────────────────────────────
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,

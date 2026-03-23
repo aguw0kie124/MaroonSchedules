@@ -9,7 +9,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { Search, X } from 'lucide-react-native';
-import { COLORS } from './SharedUI';
+import { useTheme } from './SharedUI';
 import { CampusSearchResult, searchCampus, getPinnedItems } from '../services/campusSearch';
 import { getAmenityEmoji, getBuildingEmoji } from '../data/campus';
 import { formatDistance } from '../services/campusDirections';
@@ -20,6 +20,8 @@ interface CampusSearchBarProps {
 }
 
 export function CampusSearchBar({ userCoord, onSelect }: CampusSearchBarProps) {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CampusSearchResult[]>([]);
   const [isFocused, setIsFocused] = useState(false);
@@ -145,7 +147,7 @@ export function CampusSearchBar({ userCoord, onSelect }: CampusSearchBarProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
   container: {
     zIndex: 1000,
   },

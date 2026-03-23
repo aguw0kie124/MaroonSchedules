@@ -1,13 +1,21 @@
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Centralized Postgres database configuration
-# Using the connection parameters provided previously for transition readiness.
+# Using environment variables for flexibility between dev/prod.
 
-CONNECTION_PARAMS = "host=10.246.145.251 dbname=maroon_schedules user=dev_rian password=admin"
+DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
+DB_NAME = os.getenv("DB_NAME", "maroon_schedules")
+DB_USER = os.getenv("DB_USER", "dev_sid")
+DB_PASS = os.getenv("DB_PASS", "admin")
+
+CONNECTION_PARAMS = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
 
 def get_db_connection():
     """
-    TODO: Replace JSON file loading with actual psycopg connection later.
-    Currently returns the connection string.
+    Returns the connection string constructed from environment variables.
     """
     return CONNECTION_PARAMS

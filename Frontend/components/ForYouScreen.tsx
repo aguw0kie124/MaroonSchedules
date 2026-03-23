@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { COLORS, Card } from './SharedUI';
+import { useTheme, Card } from './SharedUI';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
 
@@ -56,6 +56,8 @@ function getTimeRecommendation(): string {
 }
 
 export function ForYouScreen() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
   const [locations, setLocations] = useState<ForYouItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -214,7 +216,7 @@ export function ForYouScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   center: { justifyContent: 'center', alignItems: 'center' },
   loadingText: { color: COLORS.textSecondary, marginTop: 12, fontSize: 15 },

@@ -1,6 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { View, StyleSheet } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
@@ -20,6 +19,7 @@ import { AuthLanding } from './components/AuthLanding';
 import { LoginScreen } from './components/LoginScreen';
 import { ChatScreen } from './components/ChatScreen';
 import { UsersScreen } from './components/UsersScreen';
+import { ChannelListScreen } from './components/ChannelListScreen';
 
 import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
 import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
@@ -27,15 +27,17 @@ import { ScheduleListScreen } from './components/ScheduleListScreen';
 import { ScheduleDetailScreen } from './components/ScheduleDetailScreen';
 import { CampusMapScreen } from './components/CampusMapScreen';
 import { LocationSearchScreen } from './components/LocationSearchScreen';
-import { ExtrasSidebar } from './components/ExtrasSidebar';
+// import { ExtrasSidebar } from './components/ExtrasSidebar';
 import { CampusNavigationScreen } from './components/CampusNavigationScreen';
 import { PlaceRecommendationsScreen } from './components/PlaceRecommendationsScreen';
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
 import { ForYouScreen } from './components/ForYouScreen';
-import { CrowdPingScreen } from './components/CrowdPingScreen';
+import { CampusFeedScreen } from './components/CampusFeedScreen';
 import { GPACalculatorScreen } from './components/GPACalculatorScreen';
+import { CampusScreen } from './components/CampusScreen';
 
-import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu } from 'lucide-react-native';
+import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu, Compass, MessageSquare, MapPin, Radio } from 'lucide-react-native';
+import { useTheme } from './components/SharedUI';
 
 import { syncUser } from './api/client';
 
@@ -52,6 +54,7 @@ function UserSync({ children }: { children: React.ReactNode }) {
         user.id,
         user.primaryEmailAddress?.emailAddress,
         user.fullName ?? undefined,
+        user.imageUrl ?? undefined,
       ).catch((err: any) => console.warn('UserSync failed:', err));
     }
   }, [user]);
@@ -87,29 +90,26 @@ if (!publishableKey) {
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-function MainTabs() {
-  const [isExtrasOpen, setIsExtrasOpen] = React.useState(false);
 
+
+function MainTabs() {
+  const { COLORS } = useTheme();
   return (
-    <>
-      <ExtrasSidebar open={isExtrasOpen} onClose={() => setIsExtrasOpen(false)} />
-      <Tab.Navigator
-        id="MainTabs"
-        screenOptions={({ route }) => ({
+    <Tab.Navigator
+      id="MainTabs"
+      screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ focused, color, size }) => {
           let IconName;
 
           if (route.name === 'Dashboard') {
             IconName = Calendar;
-          } else if (route.name === 'Search') {
-            IconName = SearchIcon;
-          } else if (route.name === 'Schedules') {
-            IconName = Grid3x3;
-          } else if (route.name === 'Extras') {
-            IconName = Menu;
-          } else if (route.name === 'Saved') {
-            IconName = Bookmark;
+          } else if (route.name === 'Places') {
+            IconName = MapPin;
+          } else if (route.name === 'Social') {
+            IconName = Radio;
+          } else if (route.name === 'Messages') {
+            IconName = MessageSquare;
           } else if (route.name === 'Profile') {
             IconName = User;
           }
@@ -119,33 +119,33 @@ function MainTabs() {
           }
           return null;
         },
-        tabBarActiveTintColor: '#500000',
-        tabBarInactiveTintColor: '#666',
+        tabBarActiveTintColor: COLORS.accent, 
+        tabBarInactiveTintColor: COLORS.textTertiary,
         tabBarStyle: {
-          height: 72,
-          paddingBottom: 20,
-          paddingTop: 10,
-          backgroundColor: '#121212',
-          borderTopColor: '#2C2C2E',
+          height: 84,
+          paddingBottom: 28,
+          paddingTop: 12,
+          backgroundColor: COLORS.background, // Dynamic background
+          borderTopColor: COLORS.border,
+          borderTopWidth: StyleSheet.hairlineWidth,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
         }
       })}
     >
-      <Tab.Screen name="Dashboard" component={Dashboard} options={{ title: 'Dashboard' }} />
-      <Tab.Screen name="Search" component={NewCourseSearchScreen} options={{ headerShown: false }} />
-      <Tab.Screen name="Schedules" component={ScheduleListScreen} options={{ title: 'Schedules', headerShown: true }} />
-      <Tab.Screen name="Extras" component={View} listeners={{
-        tabPress: (e: any) => {
-          e.preventDefault();
-          setIsExtrasOpen(true);
-        }
-      }} />
-      <Tab.Screen name="Profile" component={Profile} />
+      <Tab.Screen name="Dashboard" component={Dashboard} options={{ title: 'Home' }} />
+      <Tab.Screen name="Places" component={PlaceRecommendationsScreen} options={{ title: 'Places' }} />
+      <Tab.Screen name="Social" component={CampusFeedScreen} options={{ title: 'Social' }} />
+      <Tab.Screen name="Messages" component={ChannelListScreen} options={{ title: 'Messages' }} />
+      <Tab.Screen name="Profile" component={Profile} options={{ title: 'Profile' }} />
     </Tab.Navigator>
-    </>
   );
 }
 
 function RootNavigator() {
+  const { COLORS } = useTheme();
   const { isSignedIn, isLoaded } = useAuth();
 
   if (!isLoaded) {
@@ -153,10 +153,10 @@ function RootNavigator() {
   }
 
   const navigator = (
-    <Stack.Navigator id="RootStack" screenOptions={{ 
-        headerShown: false,
-        headerStyle: { backgroundColor: '#000000' },
-        headerTintColor: '#FFFFFF',
+    <Stack.Navigator id="RootStack" screenOptions={{
+      headerShown: false,
+      headerStyle: { backgroundColor: COLORS.background },
+      headerTintColor: COLORS.textPrimary,
     }}>
       {isSignedIn ? (
         <>
@@ -168,11 +168,16 @@ function RootNavigator() {
             options={{ headerShown: false }}
           />
           <Stack.Screen
+            name="ChannelListScreen"
+            component={ChannelListScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
             name="UsersScreen"
             component={UsersScreen}
             options={{ headerShown: false }}
           />
-          
+
           <Stack.Screen name="NewCourseSearch" component={NewCourseSearchScreen} options={{ headerShown: true, title: 'Course Search' }} />
           <Stack.Screen name="NewCourseDetail" component={NewCourseDetailScreen} options={{ headerShown: true, title: 'Course Details' }} />
           <Stack.Screen name="ScheduleList" component={ScheduleListScreen} options={{ headerShown: true, title: 'My Schedules' }} />
@@ -180,26 +185,24 @@ function RootNavigator() {
           <Stack.Screen name="CampusMap" component={CampusMapScreen} options={{ headerShown: true, title: 'Campus Traffic Map' }} />
           <Stack.Screen name="LocationSearch" component={LocationSearchScreen} options={{ headerShown: true, title: 'Location Traffic Search' }} />
           <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="PlaceRecommendations" component={PlaceRecommendationsScreen} options={{ headerShown: true, title: 'Find a Spot' }} />
-          <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: true, title: 'Campus Events' }} />
-          <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: true, title: 'For You' }} />
-          <Stack.Screen name="CrowdPing" component={CrowdPingScreen} options={{ headerShown: true, title: 'CrowdPing' }} />
+          <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: false }} />
           <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
         </>
       ) : (
         <>
           <Stack.Screen name="Onboarding" component={Onboarding} />
-          <Stack.Screen 
-            name="AuthLanding" 
+          <Stack.Screen
+            name="AuthLanding"
             children={(props: any) => (
               <AuthLanding
                 onLoginPress={() => props.navigation.navigate('Login')}
               />
-            )} 
+            )}
           />
-          <Stack.Screen 
-            name="Login" 
-            children={(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />} 
+          <Stack.Screen
+            name="Login"
+            children={(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />}
           />
         </>
       )}
@@ -210,13 +213,16 @@ function RootNavigator() {
   return isSignedIn ? <UserSync>{navigator}</UserSync> : navigator;
 }
 
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { registerRootComponent } from 'expo';
 
 function App() {
+  const { theme } = useTheme();
+  
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <ClerkLoaded>
-        <NavigationContainer>
+        <NavigationContainer theme={theme === 'dark' ? DarkTheme : DefaultTheme}>
           <RootNavigator />
         </NavigationContainer>
       </ClerkLoaded>

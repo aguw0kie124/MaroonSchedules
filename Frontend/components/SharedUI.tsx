@@ -4,21 +4,51 @@ import { MapPin, Bookmark } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
-export const COLORS = {
+export const DARK_COLORS = {
   background: '#000000',      // Pure Black
   primary: '#500000',         // Aggie Maroon
-  primaryLight: '#3D0000',    // Darker maroon for icon backgrounds
-  accent: '#FF8A8A',          // Bright maroon tint for icons/accents
-  textSecondary: '#D1D1D6',   // High contrast secondary (WCAG AA on #121212)
-  textTertiary: '#8E8E93',    // Muted text for less important info
-  textPrimary: '#FFFFFF',     // Pristine White
-  surface: '#121212',         // Elevated dark grey for cards
-  surfaceElevated: '#1A1A1A', // Slightly lighter surface for nested elements
-  border: '#2C2C2E',          // Subtle borders
-  danger: '#FF453A',          // iOS red
-  success: '#30D158',         // iOS green
-  warning: '#FF9F0A',         // iOS orange
+  primaryLight: '#3D0000',
+  accent: '#FF8A8A',
+  textSecondary: '#A0A0A5',
+  textTertiary: '#636366',
+  textPrimary: '#FFFFFF',
+  surface: '#000000',
+  surfaceElevated: '#111111',
+  border: '#2C2C2E',
+  danger: '#FF453A',
+  success: '#30D158',
+  warning: '#FF9F0A',
 };
+
+export const LIGHT_COLORS = {
+  background: '#FAFAFA',      // Barely off-white
+  primary: '#500000',         // Aggie Maroon
+  primaryLight: '#FFFFFF',    // Bright white for buttons
+  accent: '#500000',          // Maroon accent against light bg
+  textSecondary: '#666666',   // High contrast grey
+  textTertiary: '#8E8E93',    // Light grey
+  textPrimary: '#000000',     // Pitch Black
+  surface: '#FFFFFF',         // Crisp white cards
+  surfaceElevated: '#F2F2F7', // iOS grey system color
+  border: '#E5E5EA',          // Hairline grey
+  danger: '#FF3B30',
+  success: '#34C759',
+  warning: '#FF9500',
+};
+
+// Zustand Theme Store
+export const useThemeStore = create<any>((set) => ({
+  theme: 'dark', // 'dark' | 'light'
+  setTheme: (newTheme: string) => set({ theme: newTheme })
+}));
+
+export const useTheme = () => {
+  const theme = useThemeStore((s: any) => s.theme);
+  const COLORS = theme === 'dark' ? DARK_COLORS : LIGHT_COLORS;
+  return { COLORS, theme, setTheme: useThemeStore.getState().setTheme };
+};
+
+export const COLORS = DARK_COLORS; // Fallback for static usage
 
 export const useSavedStore = create<any>((set, get) => ({
   savedSections: [],
@@ -35,17 +65,24 @@ export const useSavedStore = create<any>((set, get) => ({
   }
 }));
 
-export const Card = ({ children, style }: any) => (
-  <View style={[styles.card, style]}>
-    {children}
-  </View>
-);
+export const Card = ({ children, style }: any) => {
+  const { COLORS } = useTheme();
+  const styles = getStyles(COLORS);
+  return (
+    <View style={[styles.card, style]}>
+      {children}
+    </View>
+  );
+};
 
 export const PrimaryButton = ({ title, onPress, style, textStyle, isLoading, variant = 'primary' }: any) => {
+  const { COLORS } = useTheme();
+  const styles = getStyles(COLORS);
+  const isPrimary = variant === 'primary';
   const getBgColor = () => {
     if (variant === 'danger') return COLORS.danger;
     if (variant === 'outline') return 'transparent';
-    return COLORS.primary;
+    return isPrimary ? COLORS.primary : COLORS.primaryLight;
   };
   
   return (
@@ -53,7 +90,7 @@ export const PrimaryButton = ({ title, onPress, style, textStyle, isLoading, var
       style={({ pressed }) => [
         styles.button, 
         { backgroundColor: getBgColor() },
-        variant === 'outline' && { borderWidth: 1, borderColor: COLORS.primary },
+        variant === 'outline' && { borderWidth: 1, borderColor: COLORS.border },
         style,
         pressed && styles.pressed
       ]} 
@@ -61,12 +98,19 @@ export const PrimaryButton = ({ title, onPress, style, textStyle, isLoading, var
       disabled={isLoading}
     >
       {isLoading ? <ActivityIndicator color="#fff" /> : 
-      <Text style={[styles.buttonText, variant === 'outline' && { color: COLORS.primary }, textStyle]}>{title}</Text>}
+      <Text style={[
+          styles.buttonText, 
+          { color: '#FFFFFF' }, // Always white text on maroon buttons
+          variant === 'outline' && { color: COLORS.primary },
+          textStyle
+      ]}>{title}</Text>}
     </Pressable>
   );
 };
 
 export const SectionRow = ({ section, onAdd, onRemove, isAdded }: any) => {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     const { savedSections, toggleSave } = useSavedStore();
     const isSaved = savedSections.some((s:any) => s.id === section.id);
 
@@ -130,36 +174,24 @@ export const SectionRow = ({ section, onAdd, onRemove, isAdded }: any) => {
     );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
   card: {
     backgroundColor: COLORS.surface,
-    padding: 16,
-    borderRadius: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#1E1E1E',
-    shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 8,
-    elevation: 4,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
   },
   button: {
-    paddingVertical: 14,
+    paddingVertical: 16,
     paddingHorizontal: 24,
-    borderRadius: 12, 
+    borderRadius: 8, // Sharper, more modern corners
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
   },
   buttonText: {
-    color: '#fff',
-    fontWeight: '700', // Harder weight
+    fontWeight: '600', // Cleaner weight for san-serif
     fontSize: 16,
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
   pressed: {
     opacity: 0.8,

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, Switch, Platform, ActivityIndicator, Alert, Modal, FlatList } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, Switch, Platform, ActivityIndicator, Alert, Modal, FlatList, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { LogOut, Save, ChevronDown } from 'lucide-react-native';
+import { LogOut, Save, ChevronDown, Camera, GraduationCap, Search, Calendar as CalendarIcon, ChevronRight } from 'lucide-react-native';
 import { useUser, useClerk } from '@clerk/clerk-expo';
+import * as ImagePicker from 'expo-image-picker';
 
-import { COLORS } from './SharedUI';
+import { useTheme } from './SharedUI';
 
 import { fetchUserProfile, updateUserProfile } from '../api/client';
 
@@ -63,6 +64,10 @@ const GRADUATION_YEAR_OPTIONS = [
     '2025', '2026', '2027', '2028', '2029', '2030', '2031',
 ];
 
+const PREFERRED_TIME_OPTIONS = ['Morning', 'Afternoon', 'Evening', 'No Preference'];
+
+const MAX_CREDITS_OPTIONS = ['12', '15', '18', '21'];
+
 export function Profile() {
     const navigation = useNavigation<any>();
     const [preferences, setPreferences] = useState({
@@ -75,7 +80,9 @@ export function Profile() {
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [pickerVisible, setPickerVisible] = useState<'major' | 'gradYear' | null>(null);
+    const [pickerVisible, setPickerVisible] = useState<'major' | 'gradYear' | 'prefTime' | null>(null);
+    const { COLORS, theme, setTheme } = useTheme();
+    const styles = getStyles(COLORS);
 
     const { user } = useUser();
     const { signOut } = useClerk();
@@ -120,6 +127,12 @@ export function Profile() {
         saveField({ graduation_year: value });
     };
 
+    const handlePrefTimeSelect = (value: string) => {
+        setPreferences(prev => ({ ...prev, preferredTime: value }));
+        setPickerVisible(null);
+        saveField({ preferred_time: value });
+    };
+
     const handleSave = async () => {
         if (!user) return;
         setSaving(true);
@@ -143,6 +156,51 @@ export function Profile() {
     const handleLogout = async () => {
         await signOut();
     };
+    
+    const handleAvatarPress = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permission Denied', 'We need camera roll permissions to upload a profile picture.');
+            return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.5,
+            base64: true,
+        });
+
+        if (!result.canceled && result.assets && result.assets.length > 0) {
+            const asset = result.assets[0];
+            if (!user) return;
+            
+            setSaving(true);
+            try {
+                // Clerk's setProfileImage can accept a base64 string directly.
+                // This is often more reliable in React Native/Expo than Blob conversion.
+                const base64Data = asset.base64;
+                const mimeType = asset.mimeType || 'image/jpeg';
+                
+                if (base64Data) {
+                    await user.setProfileImage({ 
+                        file: `data:${mimeType};base64,${base64Data}` 
+                    });
+                    Alert.alert('Success', 'Profile picture updated successfully!');
+                } else if (asset.uri) {
+                    // Fallback to URI if base64 is missing
+                    await user.setProfileImage({ file: asset.uri });
+                    Alert.alert('Success', 'Profile picture updated successfully!');
+                }
+            } catch (err) {
+                console.error('Failed to upload image:', err);
+                Alert.alert('Error', 'Failed to update profile picture.');
+            } finally {
+                setSaving(false);
+            }
+        }
+    };
 
     if (loading) {
         return (
@@ -158,11 +216,20 @@ export function Profile() {
 
             {/* Avatar Section */}
             <View style={styles.avatarSection}>
-                <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>
-                        {user?.firstName?.[0] || 'U'}
-                    </Text>
-                </View>
+                <Pressable onPress={handleAvatarPress} style={styles.avatarWrapper}>
+                    <View style={styles.avatar}>
+                        {user?.imageUrl ? (
+                            <Image source={{ uri: user.imageUrl }} style={styles.avatarImage} />
+                        ) : (
+                            <Text style={styles.avatarText}>
+                                {user?.firstName?.[0] || 'U'}
+                            </Text>
+                        )}
+                        <View style={styles.cameraIconBadge}>
+                            <Camera size={14} color="#fff" />
+                        </View>
+                    </View>
+                </Pressable>
                 <Text style={styles.name}>{user?.fullName || 'Aggie User'}</Text>
                 <Text style={styles.email}>{user?.primaryEmailAddress?.emailAddress || 'user@tamu.edu'}</Text>
             </View>
@@ -183,18 +250,36 @@ export function Profile() {
                     onPress={() => setPickerVisible('gradYear')}
                 />
 
-                <InputField
+                <DropdownField
                     label="Preferred Time of Day"
-                    value={preferences.preferredTime}
-                    onChange={(value) => setPreferences({ ...preferences, preferredTime: value })}
+                    value={preferences.preferredTime || 'Select preference'}
+                    onPress={() => setPickerVisible('prefTime')}
                 />
 
-                <InputField
-                    label="Max Credits Per Term"
-                    value={preferences.maxCredits}
-                    onChange={(value) => setPreferences({ ...preferences, maxCredits: value })}
-                    keyboardType="numeric"
-                />
+                {/* Max credits segmented control */}
+                <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Max Credits Per Term</Text>
+                    <View style={styles.segmentedRow}>
+                        {MAX_CREDITS_OPTIONS.map(opt => (
+                            <Pressable
+                                key={opt}
+                                style={[
+                                    styles.segmentBtn,
+                                    preferences.maxCredits === opt && styles.segmentBtnActive,
+                                ]}
+                                onPress={() => {
+                                    setPreferences(prev => ({ ...prev, maxCredits: opt }));
+                                    saveField({ max_credits: opt });
+                                }}
+                            >
+                                <Text style={[
+                                    styles.segmentText,
+                                    preferences.maxCredits === opt && styles.segmentTextActive,
+                                ]}>{opt}</Text>
+                            </Pressable>
+                        ))}
+                    </View>
+                </View>
             </View>
 
             {/* Preferences */}
@@ -214,6 +299,57 @@ export function Profile() {
                     checked={preferences.showOnlineFirst}
                     onChange={(checked) => setPreferences({ ...preferences, showOnlineFirst: checked })}
                 />
+            </View>
+
+            {/* Academic Tools */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Academic Tools</Text>
+
+                <Pressable style={styles.toolRow} onPress={() => navigation.navigate('NewCourseSearch')}>
+                    <View style={[styles.toolIconBg, { backgroundColor: COLORS.primaryLight }]}>
+                        <Search size={20} color={COLORS.primary} />
+                    </View>
+                    <Text style={styles.toolTitle}>Course Search</Text>
+                    <ChevronRight size={20} color={COLORS.border} />
+                </Pressable>
+
+                <Pressable style={styles.toolRow} onPress={() => navigation.navigate('ScheduleList')}>
+                    <View style={[styles.toolIconBg, { backgroundColor: COLORS.accent + '20' }]}>
+                        <CalendarIcon size={20} color={COLORS.accent} />
+                    </View>
+                    <Text style={styles.toolTitle}>My Saved Schedules</Text>
+                    <ChevronRight size={20} color={COLORS.border} />
+                </Pressable>
+
+                <Pressable style={styles.toolRow} onPress={() => navigation.navigate('GPACalculator')}>
+                    <View style={[styles.toolIconBg, { backgroundColor: '#4CAF5020' }]}>
+                        <GraduationCap size={20} color="#4CAF50" />
+                    </View>
+                    <Text style={styles.toolTitle}>GPA Calculator</Text>
+                    <ChevronRight size={20} color={COLORS.border} />
+                </Pressable>
+            </View>
+
+            {/* Appearance Settings */}
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Appearance</Text>
+                <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Application Theme</Text>
+                    <View style={styles.segmentedRow}>
+                        <Pressable
+                            style={[styles.segmentBtn, theme === 'light' && styles.segmentBtnActive]}
+                            onPress={() => setTheme('light')}
+                        >
+                            <Text style={[styles.segmentText, theme === 'light' && styles.segmentTextActive]}>Light</Text>
+                        </Pressable>
+                        <Pressable
+                            style={[styles.segmentBtn, theme === 'dark' && styles.segmentBtnActive]}
+                            onPress={() => setTheme('dark')}
+                        >
+                            <Text style={[styles.segmentText, theme === 'dark' && styles.segmentTextActive]}>Dark</Text>
+                        </Pressable>
+                    </View>
+                </View>
             </View>
 
             {/* Save Button */}
@@ -261,6 +397,14 @@ export function Profile() {
                 onSelect={handleGradYearSelect}
                 onClose={() => setPickerVisible(null)}
             />
+            <PickerModal
+                visible={pickerVisible === 'prefTime'}
+                title="Preferred Time of Day"
+                options={PREFERRED_TIME_OPTIONS}
+                selectedValue={preferences.preferredTime}
+                onSelect={handlePrefTimeSelect}
+                onClose={() => setPickerVisible(null)}
+            />
         </ScrollView>
     );
 }
@@ -268,6 +412,8 @@ export function Profile() {
 // ─── Reusable sub-components ─────────────────────────────────────────────
 
 function DropdownField({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     return (
         <View style={styles.inputContainer}>
             <Text style={styles.label}>{label}</Text>
@@ -296,6 +442,8 @@ function PickerModal({
     onSelect: (value: string) => void;
     onClose: () => void;
 }) {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     return (
         <Modal visible={visible} transparent animationType="slide">
             <Pressable style={styles.modalOverlay} onPress={onClose}>
@@ -340,6 +488,8 @@ function InputField({
     onChange: (value: string) => void;
     keyboardType?: 'default' | 'numeric';
 }) {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     return (
         <View style={styles.inputContainer}>
             <Text style={styles.label}>{label}</Text>
@@ -364,6 +514,8 @@ function ToggleField({
     checked: boolean;
     onChange: (checked: boolean) => void;
 }) {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     return (
         <View style={styles.toggleContainer}>
             <View style={styles.toggleInfo}>
@@ -380,14 +532,14 @@ function ToggleField({
     );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: COLORS.background,
     },
     contentContainer: {
         padding: 16,
-        paddingTop: 60,
+        paddingTop: 40, // Reduced from 60
     },
     title: {
         fontSize: 24,
@@ -407,6 +559,27 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 12,
+        overflow: 'hidden',
+    },
+    avatarImage: {
+        width: '100%',
+        height: '100%',
+    },
+    avatarWrapper: {
+        position: 'relative',
+    },
+    cameraIconBadge: {
+        position: 'absolute',
+        bottom: 12,
+        right: 0,
+        backgroundColor: COLORS.primary,
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        borderWidth: 3,
+        borderColor: COLORS.background,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     avatarText: {
         fontSize: 32,
@@ -489,6 +662,28 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: COLORS.textSecondary,
     },
+    // Tools
+    toolRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.border,
+    },
+    toolIconBg: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 16,
+    },
+    toolTitle: {
+        flex: 1,
+        fontSize: 16,
+        color: COLORS.textPrimary,
+        fontWeight: '500',
+    },
     // Buttons
     saveButton: {
         backgroundColor: COLORS.primary,
@@ -565,5 +760,32 @@ const styles = StyleSheet.create({
     optionTextSelected: {
         color: COLORS.primary,
         fontWeight: '600',
+    },
+    // Segmented control (max credits)
+    segmentedRow: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    segmentBtn: {
+        flex: 1,
+        height: 44,
+        borderRadius: 12,
+        backgroundColor: COLORS.surface,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    segmentBtnActive: {
+        backgroundColor: COLORS.primary,
+        borderColor: COLORS.primary,
+    },
+    segmentText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: COLORS.textSecondary,
+    },
+    segmentTextActive: {
+        color: '#FFFFFF',
     },
 });

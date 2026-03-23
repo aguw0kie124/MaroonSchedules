@@ -9,7 +9,9 @@ import {
   Pressable,
   Keyboard,
 } from 'react-native';
-import { COLORS, Card } from './SharedUI';
+import { useNavigation } from '@react-navigation/native';
+import { Map } from 'lucide-react-native';
+import { useTheme, Card } from './SharedUI';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
@@ -46,6 +48,9 @@ interface Recommendation {
 }
 
 export function PlaceRecommendationsScreen() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
+  const navigation = useNavigation<any>();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Recommendation[]>([]);
   const [loading, setLoading] = useState(false);
@@ -183,8 +188,16 @@ Return ONLY a JSON array, no markdown fences, no explanation. Each object:
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>🔍 Find a Spot</Text>
-        <Text style={styles.subtitle}>AI-powered campus recommendations</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>🔍 Find a Spot</Text>
+          <Text style={styles.subtitle}>AI-powered recommendations</Text>
+        </View>
+        <Pressable 
+          style={styles.mapBtn} 
+          onPress={() => navigation.navigate('CampusMap')}
+        >
+          <Map color={COLORS.textPrimary} size={24} />
+        </Pressable>
       </View>
 
       {/* Search */}
@@ -276,18 +289,24 @@ Return ONLY a JSON array, no markdown fences, no explanation. Each object:
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   header: {
-    paddingTop: 20, paddingHorizontal: 20, paddingBottom: 16,
-    backgroundColor: COLORS.primary, borderBottomLeftRadius: 20, borderBottomRightRadius: 20,
+    paddingTop: 50, paddingHorizontal: 20, paddingBottom: 16,
+    backgroundColor: COLORS.background,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border,
   },
-  title: { fontSize: 26, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 },
-  subtitle: { fontSize: 14, color: 'rgba(255,255,255,0.7)', marginTop: 4 },
+  mapBtn: {
+    width: 44, height: 44,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  title: { fontSize: 26, fontWeight: '800', color: COLORS.textPrimary, letterSpacing: -0.5 },
+  subtitle: { fontSize: 14, color: COLORS.textSecondary, marginTop: 4 },
   searchRow: { flexDirection: 'row', padding: 16, gap: 10 },
   searchInput: {
     flex: 1, height: 48, backgroundColor: COLORS.surface, borderRadius: 12, paddingHorizontal: 16,
-    fontSize: 16, color: '#FFFFFF', borderWidth: 1, borderColor: '#2A2A2A',
+    fontSize: 16, color: COLORS.textPrimary, borderWidth: 1, borderColor: COLORS.border,
   },
   searchBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   searchBtnText: { color: '#FFF', fontWeight: '700', fontSize: 16 },
@@ -295,9 +314,9 @@ const styles = StyleSheet.create({
   chipsContent: { gap: 8, flexDirection: 'row' },
   chip: {
     backgroundColor: COLORS.surface, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8,
-    borderWidth: 1, borderColor: '#2A2A2A',
+    borderWidth: 1, borderColor: COLORS.border,
   },
-  chipText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
+  chipText: { color: COLORS.textPrimary, fontSize: 13, fontWeight: '600' },
   resultsScroll: { flex: 1 },
   resultsContent: { padding: 16, gap: 12 },
   queryLabel: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '700', marginBottom: 4, textTransform: 'uppercase', letterSpacing: 1 },
@@ -307,9 +326,9 @@ const styles = StyleSheet.create({
   resultHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginBottom: 10 },
   resultRank: { fontSize: 26, fontWeight: '900', color: '#FF8A8A', minWidth: 34 },
   resultNameRow: { flex: 1 },
-  resultName: { fontSize: 17, fontWeight: '700', color: '#FFFFFF' },
+  resultName: { fontSize: 17, fontWeight: '700', color: COLORS.textPrimary },
   resultCapacity: { fontSize: 13, color: COLORS.textSecondary, marginTop: 3 },
-  capacityBarBg: { height: 5, backgroundColor: '#1E1E1E', borderRadius: 3, overflow: 'hidden', marginBottom: 8 },
+  capacityBarBg: { height: 5, backgroundColor: COLORS.surfaceElevated, borderRadius: 3, overflow: 'hidden', marginBottom: 8 },
   capacityBarFill: { height: '100%', borderRadius: 3 },
   resultSeats: { fontSize: 14, color: COLORS.textSecondary, fontWeight: '500' },
   resultReason: { fontSize: 13, color: COLORS.textSecondary, fontStyle: 'italic', marginTop: 6, lineHeight: 18 },

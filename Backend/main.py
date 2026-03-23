@@ -2,11 +2,15 @@ from fastapi import FastAPI, HTTPException, Body, Query
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
 from pydantic import BaseModel
+import os
+from dotenv import load_dotenv
 
-import test_func
-import postgre_test
+# Load environment variables
+load_dotenv()
+
 from chat import router as chat_router
 from routers.traffic import router as traffic_router
+from routers.posts import router as posts_router
 
 from services import course_service, schedule_service, user_service
 from models.search import CourseSearchRequest
@@ -23,18 +27,11 @@ app.add_middleware(
 
 app.include_router(chat_router)
 app.include_router(traffic_router, prefix="/traffic", tags=["Traffic"])
+app.include_router(posts_router)
 
 @app.get("/")
 def read_root():
     return {"message": "hi"}
-
-@app.get("/test_func")
-def test():
-    return test_func.test_func()
-
-@app.get("/test_postgre")
-def test_postgre():
-    return postgre_test.test_postgre_data()
 
 # ============================================================
 # Users
@@ -44,11 +41,12 @@ class SyncUserRequest(BaseModel):
     clerk_id: str
     email: Optional[str] = None
     full_name: Optional[str] = None
+    profile_image_url: Optional[str] = None
 
 @app.post("/users/sync")
 def sync_user(req: SyncUserRequest = Body(...)):
     """Create or update a user row when they sign in."""
-    return user_service.sync_user(req.clerk_id, req.email, req.full_name)
+    return user_service.sync_user(req.clerk_id, req.email, req.full_name, req.profile_image_url)
 
 @app.get("/users/{clerk_id}")
 def get_user(clerk_id: str):

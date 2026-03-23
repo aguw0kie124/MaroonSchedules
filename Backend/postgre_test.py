@@ -1,9 +1,9 @@
-# Note: the module name is psycopg, not psycopg3
 import psycopg
 import sys
+from db_config import get_db_connection
 
 def test_postgre_data():
-    connection_params = "host=10.246.145.251 dbname=maroon_schedules user=dev_rian password=admin"
+    connection_params = get_db_connection()
     print(f"DEBUG: Attempting to connect to database with params: {connection_params}")
     
     try:

@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, ScrollView, ActivityIndicator, Pressable } from 'react-native';
 import axios from 'axios';
-import { COLORS, Card } from './SharedUI';
+import { useTheme, Card } from './SharedUI';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
 
 export function LocationSearchScreen() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
     const [searchQuery, setSearchQuery] = useState('');
     const [locations, setLocations] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -87,7 +89,7 @@ export function LocationSearchScreen() {
     );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: COLORS.background,

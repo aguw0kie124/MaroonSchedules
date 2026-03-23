@@ -9,7 +9,7 @@ import {
   Linking,
   TextInput,
 } from 'react-native';
-import { COLORS, Card } from './SharedUI';
+import { useTheme, Card } from './SharedUI';
 
 const TAMU_EVENTS_API = 'https://calendar.tamu.edu/live/json/events';
 
@@ -78,6 +78,8 @@ function generateGoogleCalendarLink(event: TAMUEvent): string {
 }
 
 export function EventsCalendarScreen() {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
   const [events, setEvents] = useState<TAMUEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -313,7 +315,7 @@ export function EventsCalendarScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   center: { justifyContent: 'center', alignItems: 'center' },
   header: {

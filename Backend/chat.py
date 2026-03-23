@@ -13,7 +13,7 @@ STREAM_API_SECRET = os.environ.get("STREAM_API_SECRET", "")
 
 class ChatTokenRequest(BaseModel):
     clerk_user_id: str
-    other_clerk_user_id: str | None = None
+    other_clerk_user_ids: list[str] | None = None
 
 class ChatTokenResponse(BaseModel):
     stream_user_id: str
@@ -34,10 +34,13 @@ async def get_chat_token(body: ChatTokenRequest):
     chat_client = StreamChat(api_key=api_key, api_secret=api_secret)
 
     try:
-        # Upsert both users so Stream knows about them before channel creation
+        # Upsert provided users so Stream knows about them before channel creation
         users_to_upsert = [{"id": stream_user_id}]
-        if body.other_clerk_user_id:
-            users_to_upsert.append({"id": body.other_clerk_user_id})
+        if body.other_clerk_user_ids is not None:
+            for other_id in body.other_clerk_user_ids:
+                if other_id:
+                    users_to_upsert.append({"id": other_id})
+        
         chat_client.upsert_users(users_to_upsert)
 
         # Create a user token for this user
@@ -80,6 +83,7 @@ async def list_users(exclude_id: str = ""):
                 "id": u["id"],
                 "name": f"{first} {last}".strip() or email,
                 "email": email,
+                "profile_image_url": u.get("image_url"),
             })
         return result
     except Exception as e:

@@ -8,7 +8,7 @@ import {
   Animated,
 } from 'react-native';
 import { Volume2, X as XIcon } from 'lucide-react-native';
-import { COLORS } from './SharedUI';
+import { useTheme } from './SharedUI';
 import { DirectionStep } from '../services/campusDirections';
 import { speakStep, stopSpeech } from '../services/campusTTS';
 
@@ -27,6 +27,8 @@ export function CampusDirectionsPanel({
   steps,
   onEnd,
 }: CampusDirectionsPanelProps) {
+    const { COLORS } = useTheme();
+    const styles = getStyles(COLORS);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -95,7 +97,7 @@ export function CampusDirectionsPanel({
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.surface,
