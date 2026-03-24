@@ -9,6 +9,11 @@ from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/dining", tags=["Dining"])
 
+@router.get("/health")
+def dining_health():
+    return {"status": "ok", "message": "Dining router is active"}
+
+
 # ============================================================
 # Models
 # ============================================================
@@ -73,7 +78,11 @@ def update_dining_profile(clerk_id: str, req: UpdateDiningProfileRequest = Body(
     return {"status": "success"}
 
 @router.post("/optimize/day")
-def optimize_day(clerk_id: str, dining_hall: str = "Sbisa", options: Dict = Body(...)):
+def optimize_day(
+    clerk_id: str = Query(...), 
+    dining_hall: str = Query("Sbisa"), 
+    options: Dict = Body(...)
+):
     # 1. Get Profile
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
@@ -91,7 +100,27 @@ def optimize_day(clerk_id: str, dining_hall: str = "Sbisa", options: Dict = Body
     cal_target = dining_service.caloric_target(profile, current_weight)
     macros = dining_service.macro_targets(current_weight, profile['activity_level'], cal_target['targetCalories'])
 
-    # 3. Fetch Live Menu
+    # 3. Check if it's a retail location
+    retail_restaurants = ["Chick-fil-A", "Panda Express", "Shake Smart", "Houston Street Subs", "Salata", "Abu Omar Halal"]
+    if dining_hall in retail_restaurants:
+        # For retail, we optimize for a single meal under $11
+        m_target_cals = (cal_target['targetCalories'] / 3) + 200
+        res = dining_service.optimize_combo(dining_hall, m_target_cals)
+        meal = options.get('selected_meals', ['lunch'])[0]
+        return {
+            "status": "success",
+            "plan": {
+                meal: {
+                    "calories": m_target_cals,
+                    "restaurant": dining_hall,
+                    "restaurantPlans": {dining_hall: res}
+                }
+            },
+            "profile": {"targetCalories": cal_target['targetCalories'], "macros": macros}
+        }
+
+    # 4. Fetch Live Menu or DB foods for Dining Hall
+    foods = []
     menu_result = dining_service.fetch_dine_on_campus_menu(dining_hall)
     if not menu_result['success']:
         # Fallback to DB foods
@@ -99,10 +128,12 @@ def optimize_day(clerk_id: str, dining_hall: str = "Sbisa", options: Dict = Body
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute("SELECT * FROM food_items WHERE location = %s AND active = TRUE", (dining_hall,))
                 foods = cur.fetchall()
+                # Clean/Enrich DB foods if they don't have macros
+                foods = dining_service.enrich_items(foods)
     else:
         foods = menu_result['items']
 
-    # 4. Generate plans for each selected meal
+    # 5. Generate plans for each selected meal
     selected_meals = options.get('selected_meals', ['breakfast', 'lunch', 'dinner'])
     include_rest = options.get('include_restaurant_alts', True)
     
@@ -124,7 +155,9 @@ def optimize_day(clerk_id: str, dining_hall: str = "Sbisa", options: Dict = Body
         rest_plans = {}
         if include_rest:
             for r_name in dining_service.RESTAURANTS.keys():
-                rest_plans[r_name] = dining_service.get_restaurant_plan(r_name, m_target_cals)
+                # For alternate restaurants, we also use the optimized combo logic
+                # to ensure we give a valid $11 option if possible
+                rest_plans[r_name] = dining_service.optimize_combo(r_name, m_target_cals)
 
         meal_plans[m] = {
             "calories": m_target_cals,
@@ -142,6 +175,29 @@ def optimize_day(clerk_id: str, dining_hall: str = "Sbisa", options: Dict = Body
         },
         "liveMenu": {"fetched": menu_result['success'], "count": len(foods), "hall": dining_hall}
     }
+
+@router.post("/optimize/combo")
+def optimize_retail_combo(clerk_id: str = Query(...), dining_hall: str = Query(...)):
+    # 1. Get Profile
+    with psycopg.connect(get_db_connection()) as conn:
+        with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+            cur.execute("SELECT * FROM dining_profiles WHERE clerk_id = %s", (clerk_id,))
+            prof = cur.fetchone()
+            if not prof:
+                raise HTTPException(status_code=404, detail="Profile not found")
+            
+            # Get latest weight
+            cur.execute("SELECT weight_lbs FROM weight_log WHERE clerk_id = %s ORDER BY date DESC LIMIT 1", (clerk_id,))
+            latest_w = cur.fetchone()
+            current_weight = latest_w['weight_lbs'] if latest_w else prof['weight_lbs']
+            
+            targets = dining_service.caloric_target(prof, current_weight)
+            
+    # Target 1/3 of daily calories + some buffer
+    target_cal = (targets['targetCalories'] / 3) + 200
+    res = dining_service.optimize_combo(dining_hall, target_cal)
+    return {"status": "success", "result": res}
+
 
 @router.post("/tracker/{clerk_id}")
 def log_meal(clerk_id: str, req: LogMealRequest = Body(...)):

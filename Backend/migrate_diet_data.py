@@ -17,9 +17,15 @@ def migrate():
     print("Connecting to PostgreSQL...")
     with psycopg.connect(get_db_connection()) as pg_conn:
         with pg_conn.cursor() as pg_cur:
-            # 1. Get first user in Postgres to map data to
-            pg_cur.execute("SELECT clerk_id FROM users LIMIT 1")
+            # 1. Target specific user or fallback
+            target_clerk_id = 'user_3AludirWjYWkIdR9mVEVvT6na8h'
+            pg_cur.execute("SELECT clerk_id FROM users WHERE clerk_id = %s", (target_clerk_id,))
             user_row = pg_cur.fetchone()
+            if not user_row:
+                print(f"⚠️ User {target_clerk_id} not found, falling back to first user.")
+                pg_cur.execute("SELECT clerk_id FROM users LIMIT 1")
+                user_row = pg_cur.fetchone()
+            
             if not user_row:
                 print("❌ No users found in PostgreSQL. Run App/Sync user first.")
                 return

@@ -1,37 +1,111 @@
 import math
 import requests
-import psycopg2
-import psycopg2.extras
-from datetime import datetime
+import psycopg
 from typing import Optional, Dict, List, Any
 from pulp import LpMaximize, LpProblem, LpVariable, lpSum, value as pulp_value, PULP_CBC_CMD
-
-# DB Credentials (hardcoded for now to ensure consistency with migration script)
-DB_HOST = "10.246.145.251"
-DB_NAME = "maroon_schedules"
-DB_USER = "dev_rian"
-DB_PASS = "admin"
+from datetime import datetime
+from db_config import get_db_connection
 
 def get_db_conn():
-    return psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASS)
+    return psycopg.connect(get_db_connection())
 
 RESTAURANTS = {
-    'Chick-fil-A': {},
-    'Panda Express': {},
-    'Shake Smart': {},
-    'Houston Street Subs': {},
-    'Einstein Bros. Bagels': {},
-    'Abu Omar Halal': {},
-    'Salata': {},
-    '1876 Burgers': {},
-    "Rev's American Grill": {},
-    'Cabo Grill': {},
-    "Spin 'N Stone Pizza": {},
-    'Smoothie King': {},
-    "Copperhead Jack's": {},
-    'Whoop Coop': {},
-    'Bagel Block': {}
+    'Chick-fil-A': {'fullName': 'Chick-Fil-A - MSC Food Court', 'apiId': None},
+    'Panda Express': {'fullName': 'Panda Express - MSC', 'apiId': None},
+    'Shake Smart': {'fullName': 'Shake Smart - MSC', 'apiId': None},
+    'Houston Street Subs': {'fullName': 'Houston Street Subs - MSC', 'apiId': None},
+    'Salata': {'fullName': 'Salata', 'apiId': None},
+    'Abu Omar Halal': {'fullName': 'Abu Omar Halal - MSC', 'apiId': None},
+    '1876 Burgers': {'fullName': '1876 Burgers - Sbisa Complex', 'apiId': None},
+    "Rev's American Grill": {'fullName': "Rev's American Grill - MSC", 'apiId': None},
+    'Cabo Grill': {'fullName': 'Cabo Grill - MSC', 'apiId': None},
+    "Spin 'N Stone Pizza": {'fullName': "Spin 'N Stone Pizza - MSC", 'apiId': None},
+    'Smoothie King': {'fullName': 'Smoothie King - Sbisa Underground Food Court', 'apiId': None},
+    "Copperhead Jack's": {'fullName': "Copperhead Jack's - Sbisa Complex", 'apiId': None},
+    'Whoop Coop': {'fullName': 'Whoop Coop', 'apiId': None},
+    'Bagel Block': {'fullName': 'Bagel Block', 'apiId': None},
+    'Einstein Bros. Bagels': {'fullName': 'Einstein Bros. Bagels - Sbisa Complex', 'apiId': None}
 }
+
+HEURISTICS = [
+    {'kw': ['grilled chicken', 'chicken breast', 'roasted chicken', 'baked chicken', 'rotisserie'], 'p': 0.35, 'f': 0.10, 'c': 0.00},
+    {'kw': ['chicken', 'turkey', 'tuna', 'salmon', 'tilapia', 'fish', 'beef', 'pork', 'steak', 'shrimp', 'lamb', 'brisket', 'sausage', 'ham', 'meatball'], 'p': 0.25, 'f': 0.15, 'c': 0.05},
+    {'kw': ['egg salad', 'tuna salad', 'egg'], 'p': 0.12, 'f': 0.10, 'c': 0.02},
+    {'kw': ['rice', 'fried rice'], 'p': 0.04, 'f': 0.02, 'c': 0.22},
+    {'kw': ['pasta', 'noodle', 'spaghetti', 'penne', 'lo mein', 'chow mein'], 'p': 0.07, 'f': 0.05, 'c': 0.25},
+    {'kw': ['bread', 'toast', 'bagel', 'roll', 'bun', 'croissant', 'tortilla', 'wrap'], 'p': 0.04, 'f': 0.02, 'c': 0.20},
+    {'kw': ['salad', 'greens', 'lettuce', 'spinach', 'kale'], 'p': 0.03, 'f': 0.02, 'c': 0.05},
+    {'kw': ['broccoli', 'vegetable', 'veggie'], 'p': 0.04, 'f': 0.03, 'c': 0.08},
+    {'kw': ['soup', 'chili', 'stew', 'chowder', 'bolognese'], 'p': 0.08, 'f': 0.05, 'c': 0.10},
+    {'kw': ['pizza'], 'p': 0.12, 'f': 0.12, 'c': 0.28},
+    {'kw': ['burger', 'sandwich', 'club', 'sub', 'taco', 'burrito', 'quesadilla'], 'p': 0.14, 'f': 0.14, 'c': 0.22},
+    {'kw': ['yogurt', 'cottage'], 'p': 0.10, 'f': 0.04, 'c': 0.08},
+    {'kw': ['milk', 'cheese'], 'p': 0.08, 'f': 0.08, 'c': 0.06},
+    {'kw': ['fruit', 'apple', 'orange', 'banana', 'berry', 'melon', 'pear'], 'p': 0.01, 'f': 0.00, 'c': 0.15},
+    {'kw': ['potato', 'fries', 'wedges', 'hash'], 'p': 0.02, 'f': 0.08, 'c': 0.20},
+    {'kw': ['oatmeal', 'oat', 'granola', 'cereal'], 'p': 0.05, 'f': 0.04, 'c': 0.17},
+    {'kw': ['bean', 'lentil', 'chickpea', 'hummus', 'edamame', 'tofu'], 'p': 0.09, 'f': 0.04, 'c': 0.15},
+    {'kw': ['cake', 'cookie', 'brownie', 'dessert', 'pie', 'muffin', 'waffle', 'pancake'], 'p': 0.03, 'f': 0.14, 'c': 0.30},
+    {'kw': ['dressing', 'mayo', 'aioli', 'alfredo', 'sauce', 'gravy', 'syrup', 'oil', 'vinegar', 'seasoning'], 'p': 0.00, 'f': 0.12, 'c': 0.04},
+]
+
+CONDIMENT_KW = [
+    'sauce', 'dressing', 'mayo', 'aioli', 'vinegar', 'oil', 'syrup', 'gravy',
+    'seasoning', 'relish', 'mustard', 'ketchup', 'salsa', 'pesto', 'sriracha',
+    'soy sauce', 'hot sauce', 'buffalo sauce',
+    'shredded lettuce', 'sliced tomato', 'sliced pickle', 'sliced onion',
+    'diced onion', 'diced pepper', 'chopped jalapeno', 'chopped garlic',
+    'sliced mushroom', 'sliced cucumber', 'sliced bell pepper', 'sliced red onion',
+    'shredded cabbage', 'shredded carrot', 'julienne', 'crouton', 'cranberries dried',
+    'parmesan cheese grated', 'feta crumbled', 'cheddar cheese slice', 'pepper',
+    'crushed red pepper', 'celery sticks', 'carrot sticks', 'cauliflower florets',
+    'grape tomatoes', 'baby corn', 'fresh ginger', 'ginger root', 'saltine',
+]
+
+def clean_name(raw: str) -> str:
+    if not raw: return ''
+    import re
+    name = raw.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').strip()
+    # Concatenated description heuristic (lowerCase+UpperCase)
+    match = re.search(r'([a-z])([A-Z][a-z]{3,})', name)
+    if match: name = name[:match.start(1)+1]
+    name = re.sub(r'\s*[-–]\s*.+$', '', name)
+    name = re.sub(r'\s*\(.+', '', name)
+    return name.strip()
+
+def is_condiment(name: str, cal: float) -> bool:
+    lo = clean_name(name).lower()
+    if cal <= 15 and len(lo) < 30: return True
+    return any(k in lo for k in CONDIMENT_KW)
+
+def apply_heuristic(name: str, cal: float) -> Dict:
+    if cal <= 0: return {'protein': 0, 'fat': 0, 'carbs': 0, 'fiber': 0, 'sodium': 0}
+    lo = name.lower()
+    h = next((r for r in HEURISTICS if any(k in lo for k in r['kw'])), None)
+    p, f, c = (h['p'], h['f'], h['c']) if h else (0.08, 0.08, 0.15)
+    return {
+        'protein': round(cal * p / 4),
+        'fat': round(cal * f / 9),
+        'carbs': round(cal * c / 4),
+        'fiber': round(cal * 0.015),
+        'sodium': round(cal * 1.2)
+    }
+
+def enrich_items(raw_items: List[Dict]) -> List[Dict]:
+    seen = set()
+    result = []
+    for it in raw_items:
+        it['name'] = clean_name(it['name'])
+        if not it['name'] or it['name'] in seen: continue
+        if is_condiment(it['name'], it.get('calories', 0)): continue
+        seen.add(it['name'])
+        
+        if not it.get('protein') and not it.get('carbs'):
+            macros = apply_heuristic(it['name'], it.get('calories', 0))
+            it.update(macros)
+            it['source'] = 'live+heuristic'
+        result.append(it)
+    return result
 
 def body_fat_navy(gender: str, waist_in: float, neck_in: float, height_in: float, hip_in: Optional[float] = None) -> Optional[float]:
     if not waist_in or not neck_in or not height_in: return None
@@ -90,32 +164,87 @@ def macro_targets(weight_lbs: float, activity_level: str, target_calories: int) 
 
 def optimize_diet(foods: List[Dict], targets: Dict, options: Dict = {}) -> Dict:
     usable = [f for f in foods if (f.get('calories') or 0) > 0]
-    if not usable: return {"success": False, "error": "No data", "items": []}
-    cal_tgt, prot_tgt, fat_tgt = targets.get('calories', 2000), targets.get('protein', 150), targets.get('fat', 55)
+    if not usable: return {"success": False, "error": "No foods with data", "items": []}
+    
+    cal_tgt = targets.get('calories', 2000)
+    prot_tgt = targets.get('protein', 150)
+    fat_tgt = targets.get('fat', 55)
     budget = targets.get('budget')
-    max_serv = 1 if budget else 3
+    
     prob = LpProblem("Diet", LpMaximize)
+    
+    # 0 to 2 servings max for retail/budget, otherwise 3
+    max_serv = options.get('max_servings', 2 if budget else 3)
     vars = [LpVariable(f"x{i}", 0, max_serv, 'Integer') for i in range(len(usable))]
+    
+    # Objective: Maximize Protein + small bonuses for micro-dense items
     def score(f):
-        return (f.get('protein', 0) or 0) * 5.0 + (f.get('fiber', 0) or 0) * 2.0 + (f.get('vitamin_c', 0) or 0) * 1.0
+        return (f.get('protein', 0) or 0) * 5.0 + \
+               (f.get('fiber', 0) or 0) * 2.0 + \
+               (f.get('vitamin_c', 0) or 0) * 1.0 + \
+               (f.get('calcium', 0) or 0) / 100.0
+               
     prob += lpSum([vars[i] * score(usable[i]) for i in range(len(usable))])
-    prob += lpSum([vars[i] * usable[i]['calories'] for i in range(len(usable))]) <= cal_tgt * 1.05
-    prob += lpSum([vars[i] * usable[i]['calories'] for i in range(len(usable))]) >= cal_tgt * 0.8
-    if budget: prob += lpSum([vars[i] * usable[i].get('cost', 0) for i in range(len(usable))]) <= budget
-    try: prob.solve(PULP_CBC_CMD(msg=0))
-    except: return {"success": False, "error": "Solver error", "items": []}
+    
+    # Constraints
+    prob += lpSum([vars[i] * usable[i]['calories'] for i in range(len(usable))]) <= cal_tgt * 1.10
+    prob += lpSum([vars[i] * usable[i]['calories'] for i in range(len(usable))]) >= cal_tgt * 0.70
+    
+    if budget:
+        prob += lpSum([vars[i] * (usable[i].get('cost', 0) or 0) for i in range(len(usable))]) <= budget
+        
+    try:
+        prob.solve(PULP_CBC_CMD(msg=0))
+    except:
+        return {"success": False, "error": "Solver error", "items": []}
+        
     selected = []
     for i in range(len(usable)):
         v = pulp_value(vars[i])
         if v and v >= 0.5:
-            item = dict(usable[i]); item['quantity'] = round(v)
-            item['scaledNutrients'] = {k: round((item.get(k,0) or 0)*v, 2) for k in ['calories','protein','carbs','fat']}
+            item = dict(usable[i])
+            item['quantity'] = round(v)
+            # Scale nutrients for display
+            item['scaledNutrients'] = {
+                k: round((item.get(k, 0) or 0) * v, 2) 
+                for k in ['calories','protein','carbs','fat','fiber','sodium','calcium','iron','potassium','magnesium','vitamin_c','vitamin_d']
+            }
             selected.append(item)
-    if not selected: # Greedy fallback
+            
+    if not selected:
+        # Simple greedy fallback
         for f in sorted(usable, key=score, reverse=True):
-            if f['calories'] <= cal_tgt:
-                item = dict(f); item['quantity'] = 1; selected.append(item); break
-    return {"success": len(selected)>0, "items": selected, "totals": compute_totals(selected)}
+            if f['calories'] <= cal_tgt and (not budget or (f.get('cost', 0) or 0) <= budget):
+                item = dict(f)
+                item['quantity'] = 1
+                item['scaledNutrients'] = {
+                    k: round((item.get(k, 0) or 0), 2)
+                    for k in ['calories','protein','carbs','fat']
+                }
+                selected.append(item)
+                break
+                
+    return {
+        "success": len(selected) > 0, 
+        "items": selected, 
+        "totals": compute_totals(selected)
+    }
+
+def optimize_combo(location: str, target_cal: float, budget: float = 11.0) -> Dict:
+    """Specialized optimizer for retail combos like Chick-fil-A."""
+    conn = get_db_conn()
+    try:
+        # Using RealDictRow equivalent for psycopg (v3)
+        cur = conn.cursor(row_factory=psycopg.rows.dict_row)
+        cur.execute("SELECT * FROM food_items WHERE location = %s AND location_type = 'restaurant'", (location,))
+        foods = cur.fetchall()
+        if not foods:
+            return {"success": False, "error": f"No foods found for {location}", "items": []}
+        
+        # Retail combos should be simple (max 2 items usually)
+        return optimize_diet(foods, {"calories": target_cal, "budget": budget}, {"max_servings": 2})
+    finally:
+        conn.close()
 
 def generate_variants(foods: List[Dict], target_cals: float, targets: Dict):
     res = []
@@ -162,5 +291,9 @@ def fetch_dine_on_campus_menu(location_key: str, date_str: str = None) -> Dict:
                 for k in ['categories', 'items', 'menu']:
                     if k in obj: extract(obj[k], mp)
         extract(data.get('menu', {}))
+        
+        # Apply enrichment (heuristics + cleaning)
+        items = enrich_items(items)
+        
         return {"success": True, "items": items, "location": location_key, "date": date_str}
     except Exception as e: return {"success": False, "error": str(e)}

@@ -64,21 +64,21 @@ export default function RetailSwipesScreen({ navigation }: any) {
     if (!user) return;
     setOptLoad(true); setOptResult(null);
     try {
-        // We use the same optimize endpoint but for a retail location
+        // Updated call to match the Query param expectations
         const res = await fetch(`${API_URL}/dining/optimize/day?clerk_id=${user.id}&dining_hall=${selRest}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ selected_meals: [selMeal], include_restaurant_alts: true })
         }).then(r => r.json());
         
-        const mPlan = res.plan?.[selMeal];
-        if (mPlan) {
-            // Find the best variant or restaurant plan
-            const opt = mPlan.restaurantPlans?.[selRest] || (mPlan.variants?.length ? mPlan.variants[0] : null);
-            if (opt) setOptResult({ ...opt, success: true });
-            else setOptResult({ success: false, error: 'No valid combo found under $11.' });
+        if (res.status === 'success' && res.plan?.[selMeal]) {
+            const mPlan = res.plan[selMeal];
+            // The backend for retail now returns the result in restaurantPlans[selRest]
+            const opt = mPlan.restaurantPlans?.[selRest];
+            if (opt && opt.success) setOptResult({ ...opt, success: true });
+            else setOptResult({ success: false, error: opt?.error || 'No valid combo found under $11.' });
         } else {
-            setOptResult({ success: false, error: 'Optimization failed for this meal.' });
+            setOptResult({ success: false, error: res.error || 'Optimization failed for this meal.' });
         }
     } catch (e) { setOptResult({ success: false, error: 'Connection error.' }); }
     setOptLoad(false);

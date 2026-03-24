@@ -35,6 +35,7 @@ export const MacroBar = ({ label, current, target, color }: any) => {
 
 export const ActionButton = ({ label, onPress, disabled, color = '#500000', textColor = '#fff' }: any) => (
   <TouchableOpacity 
+    activeOpacity={0.7}
     style={[styles.actionBtn, { backgroundColor: color }, disabled && { opacity: 0.5 }]} 
     onPress={onPress} 
     disabled={disabled}
@@ -60,25 +61,73 @@ export const Badge = ({ label, color }: any) => (
 );
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: '#111', borderRadius: 16, padding: 16, marginBottom: 15, borderWidth: 1, borderColor: '#222' },
-  sectionLabel: { fontSize: 10, fontWeight: '700', color: '#888', textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 12 },
-  divider: { height: 1, backgroundColor: '#222', marginVertical: 15 },
-  pill: { flex: 1, alignItems: 'center', backgroundColor: '#000', borderRadius: 12, borderWidth: 1, padding: 10 },
-  pillValue: { fontSize: 16, fontWeight: '800' },
-  pillLabel: { fontSize: 9, color: '#666', marginTop: 2, textTransform: 'uppercase' },
-  macroWrap: { marginBottom: 12 },
-  macroHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  macroLabel: { fontSize: 11, color: '#999', fontWeight: '600' },
-  macroVal: { fontSize: 11, fontWeight: '700' },
-  macroTarget: { color: '#444' },
-  track: { height: 4, backgroundColor: '#1a1a1a', borderRadius: 2, overflow: 'hidden' },
-  fill: { height: '100%', borderRadius: 2 },
-  actionBtn: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
-  actionBtnText: { fontWeight: '900', fontSize: 16, textTransform: 'uppercase', letterSpacing: 1 },
-  listItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
-  listLabel: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  listSub: { color: '#555', fontSize: 11, marginTop: 2 },
-  listValue: { color: '#E8922A', fontWeight: 'bold' },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, alignSelf: 'flex-start' },
-  badgeText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  card: { 
+    backgroundColor: '#0a0a0a', 
+    borderRadius: 20, 
+    padding: 20, 
+    marginBottom: 20, 
+    borderWidth: 1, 
+    borderColor: '#1a1a1a',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 15,
+    elevation: 8,
+  },
+  sectionLabel: { 
+    fontSize: 11, 
+    fontWeight: '900', 
+    color: '#E8922A', 
+    textTransform: 'uppercase', 
+    letterSpacing: 2, 
+    marginBottom: 16 
+  },
+  divider: { height: 1, backgroundColor: '#1a1a1a', marginVertical: 20 },
+  pill: { 
+    flex: 1, 
+    alignItems: 'center', 
+    backgroundColor: '#050505', 
+    borderRadius: 16, 
+    borderWidth: 1, 
+    padding: 12,
+    borderColor: '#111'
+  },
+  pillValue: { fontSize: 20, fontWeight: '900', letterSpacing: -0.5 },
+  pillLabel: { fontSize: 10, color: '#444', marginTop: 4, fontWeight: '800', textTransform: 'uppercase' },
+  macroWrap: { marginBottom: 16 },
+  macroHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  macroLabel: { fontSize: 13, color: '#aaa', fontWeight: '700' },
+  macroVal: { fontSize: 13, fontWeight: '800' },
+  macroTarget: { color: '#333' },
+  track: { height: 6, backgroundColor: '#0f0f0f', borderRadius: 3, overflow: 'hidden' },
+  fill: { height: '100%', borderRadius: 3 },
+  actionBtn: { 
+    paddingVertical: 18, 
+    borderRadius: 16, 
+    alignItems: 'center', 
+    marginTop: 12,
+    shadowColor: '#500000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  actionBtnText: { fontWeight: '900', fontSize: 15, textTransform: 'uppercase', letterSpacing: 1.5 },
+  listItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingVertical: 16, 
+    borderBottomWidth: 1, 
+    borderBottomColor: '#0f0f0f' 
+  },
+  listLabel: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  listSub: { color: '#444', fontSize: 12, marginTop: 4 },
+  listValue: { color: '#E8922A', fontWeight: '900', fontSize: 16 },
+  badge: { 
+    paddingHorizontal: 12, 
+    paddingVertical: 6, 
+    borderRadius: 10, 
+    borderWidth: 1.5, 
+    alignSelf: 'flex-start' 
+  },
+  badgeText: { fontSize: 11, fontWeight: '900', textTransform: 'uppercase' },
 });
