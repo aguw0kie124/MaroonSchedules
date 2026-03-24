@@ -2,12 +2,15 @@ fastapi
 uvicorn
 requests
 python-dotenv
-getstream
+stream-python
 pydantic
 pyjwt
-streamlit
 psycopg[binary]
 stream_chat
 protobuf<5.0.0
 jsonschema<3.0.0
 pytz
+PuLP
+pydantic-settings
+typing-extensions
+jwt
