@@ -7,9 +7,9 @@ load_dotenv()
 # Centralized Postgres database configuration
 # Using environment variables for flexibility between dev/prod.
 
-DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
+DB_HOST = os.getenv("DB_HOST", "10.246.145.251")
 DB_NAME = os.getenv("DB_NAME", "maroon_schedules")
-DB_USER = os.getenv("DB_USER", "dev_sid")
+DB_USER = os.getenv("DB_USER", "dev_rian")
 DB_PASS = os.getenv("DB_PASS", "admin")
 
 CONNECTION_PARAMS = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"

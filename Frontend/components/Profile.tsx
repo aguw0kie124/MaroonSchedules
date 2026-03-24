@@ -328,6 +328,14 @@ export function Profile() {
                     <Text style={styles.toolTitle}>GPA Calculator</Text>
                     <ChevronRight size={20} color={COLORS.border} />
                 </Pressable>
+
+                <Pressable style={styles.toolRow} onPress={() => navigation.navigate('DiningDashboard')}>
+                    <View style={[styles.toolIconBg, { backgroundColor: '#E8922A20' }]}>
+                        <Search size={20} color="#E8922A" />
+                    </View>
+                    <Text style={styles.toolTitle}>Campus Dining & Nutrition</Text>
+                    <ChevronRight size={20} color={COLORS.border} />
+                </Pressable>
             </View>
 
             {/* Appearance Settings */}

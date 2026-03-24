@@ -239,7 +239,7 @@ export function Dashboard() {
             </ScrollView>
 
             {/* Fab */}
-            <Pressable style={styles.fab} onPress={() => navigation.navigate('Search')}>
+            <Pressable style={styles.fab} onPress={() => navigation.navigate('NewCourseSearch')}>
                 <Plus size={28} color="#FFF" />
             </Pressable>
 

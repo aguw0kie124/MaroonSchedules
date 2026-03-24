@@ -5,12 +5,13 @@ from pydantic import BaseModel
 import os
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Force reload from .env dynamically bypassing terminal memory
+load_dotenv(override=True)
 
 from chat import router as chat_router
 from routers.traffic import router as traffic_router
 from routers.posts import router as posts_router
+from routers.dining import router as dining_router
 
 from services import course_service, schedule_service, user_service
 from models.search import CourseSearchRequest
@@ -28,6 +29,7 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(traffic_router, prefix="/traffic", tags=["Traffic"])
 app.include_router(posts_router)
+app.include_router(dining_router)
 
 @app.get("/")
 def read_root():

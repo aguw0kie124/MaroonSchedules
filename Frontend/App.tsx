@@ -33,8 +33,17 @@ import { PlaceRecommendationsScreen } from './components/PlaceRecommendationsScr
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
 import { ForYouScreen } from './components/ForYouScreen';
 import { CampusFeedScreen } from './components/CampusFeedScreen';
+import { ReelsScreen } from './components/ReelsScreen';
 import { GPACalculatorScreen } from './components/GPACalculatorScreen';
 import { CampusScreen } from './components/CampusScreen';
+
+import DiningDashboard from './components/dining/DiningDashboard';
+import MealOptimizerScreen from './components/dining/MealOptimizerScreen';
+import MealTrackerScreen from './components/dining/MealTrackerScreen';
+import FoodDatabaseScreen from './components/dining/FoodDatabaseScreen';
+import RetailSwipesScreen from './components/dining/RetailSwipesScreen';
+import DiningSettingsScreen from './components/dining/DiningSettingsScreen';
+import WeightTrackerScreen from './components/dining/WeightTrackerScreen';
 
 import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu, Compass, MessageSquare, MapPin, Radio } from 'lucide-react-native';
 import { useTheme } from './components/SharedUI';
@@ -188,6 +197,15 @@ function RootNavigator() {
           <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
           <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: false }} />
           <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Reels" component={ReelsScreen} options={{ headerShown: false }} />
+          
+          <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: true, title: 'Dining Dashboard', headerStyle: { backgroundColor: '#000' }, headerTintColor: '#fff' }} />
+          <Stack.Screen name="MealOptimizer" component={MealOptimizerScreen} options={{ headerShown: true, title: 'Meal Optimizer', headerStyle: { backgroundColor: '#000' }, headerTintColor: '#fff' }} />
+          <Stack.Screen name="MealTracker" component={MealTrackerScreen} options={{ headerShown: true, title: 'Meal Tracker', headerStyle: { backgroundColor: '#000' }, headerTintColor: '#fff' }} />
+          <Stack.Screen name="FoodDatabase" component={FoodDatabaseScreen} options={{ headerShown: true, title: 'Food Database', headerStyle: { backgroundColor: '#000' }, headerTintColor: '#fff' }} />
+          <Stack.Screen name="RetailSwipes" component={RetailSwipesScreen} options={{ headerShown: true, title: 'Retail Swipes', headerStyle: { backgroundColor: '#000' }, headerTintColor: '#fff' }} />
+          <Stack.Screen name="DiningSettings" component={DiningSettingsScreen} options={{ headerShown: true, title: 'Dining Settings', headerStyle: { backgroundColor: '#000' }, headerTintColor: '#fff' }} />
+          <Stack.Screen name="WeightTracker" component={WeightTrackerScreen} options={{ headerShown: true, title: 'Weight Tracker', headerStyle: { backgroundColor: '#000' }, headerTintColor: '#fff' }} />
         </>
       ) : (
         <>

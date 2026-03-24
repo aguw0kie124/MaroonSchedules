@@ -1,9 +1,9 @@
 import psycopg
-from db_config import CONNECTION_PARAMS
+from db_config import get_db_connection
 
 def create_table():
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with psycopg.connect(get_db_connection()) as conn:
             with conn.cursor() as cur:
                 print("Connected to PostgreSQL.")
 
