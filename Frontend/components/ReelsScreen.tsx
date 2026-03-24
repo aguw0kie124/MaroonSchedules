@@ -14,6 +14,8 @@ import {
     connectFeedsUser,
     getReelsFeed,
     addReel,
+    updateReel,
+    deleteReel,
     toggleLike,
     uploadStreamFile,
     addComment,
@@ -31,6 +33,7 @@ interface Reel {
     video_url: string;
     likes: number;
     liked_by: string[];
+    reply_count: number;
     created_at: string;
 }
 
@@ -49,6 +52,7 @@ function mapActivityToReel(activity: any): Reel {
         video_url: media.asset_url || media.video_url || '',
         likes: activity.reaction_counts?.like || activity.reaction_count || 0,
         liked_by: (activity.own_reactions?.like || []).length > 0 ? [activity.own_reactions.like[0].user?.id || 'own'] : [],
+        reply_count: activity.reaction_counts?.comment || 0,
         created_at: activity.time || activity.created_at || new Date().toISOString(),
     };
 }
@@ -59,17 +63,21 @@ const DEMO_REELS: Reel[] = [
         id: 'demo_1', user_id: 'demo', user_name: 'Aggie Life', user_image: '',
         caption: '🏟 Game day vibes at Kyle Field! #GigEm',
         video_url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-        likes: 142, liked_by: [], created_at: new Date().toISOString(),
+        likes: 142, liked_by: [], reply_count: 5, created_at: new Date().toISOString(),
     },
     {
         id: 'demo_2', user_id: 'demo', user_name: 'TAMU Campus', user_image: '',
         caption: '📚 Late night study session at the Annex',
         video_url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-        likes: 89, liked_by: [], created_at: new Date().toISOString(),
+        likes: 89, liked_by: [], reply_count: 2, created_at: new Date().toISOString(),
     },
 ];
 
-const ReelItem = ({ item, index, currentIndex, user, handleLike, openComments, styles }: any) => {
+const ReelItem = ({ 
+    item, index, currentIndex, user, 
+    handleLike, openComments, openEditReel, handleDeleteReel, 
+    styles 
+}: any) => {
     const isLiked = user ? item.liked_by.includes(user.id) : false;
     const isActive = index === currentIndex;
 
@@ -107,9 +115,9 @@ const ReelItem = ({ item, index, currentIndex, user, handleLike, openComments, s
                     <Text style={styles.rightActionText}>{item.likes}</Text>
                 </Pressable>
 
-                <Pressable style={styles.rightActionItem} onPress={() => openComments(item.id, item.caption)}>
+                <Pressable style={styles.rightActionItem} onPress={() => openComments(item)}>
                     <MessageCircle color="#FFF" size={28} />
-                    <Text style={styles.rightActionText}>Reply</Text>
+                    <Text style={styles.rightActionText}>{item.reply_count || 'Reply'}</Text>
                 </Pressable>
 
                 <Pressable style={styles.rightActionItem}>
@@ -124,7 +132,19 @@ const ReelItem = ({ item, index, currentIndex, user, handleLike, openComments, s
 
             {/* Bottom info */}
             <View style={styles.bottomInfo}>
-                <Text style={styles.reelUsername}>@{item.user_name}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <Text style={styles.reelUsername}>@{item.user_name}</Text>
+                    {user?.id === item.user_id && (
+                        <View style={{ flexDirection: 'row', gap: 12 }}>
+                            <Pressable onPress={() => openEditReel(item)}>
+                                <Plus color="#FFF" size={20} style={{ transform: [{ rotate: '45deg' }] }} />
+                            </Pressable>
+                            <Pressable onPress={() => handleDeleteReel(item.id)}>
+                                <X color="#FF453A" size={20} />
+                            </Pressable>
+                        </View>
+                    )}
+                </View>
                 <Text style={styles.reelCaption} numberOfLines={3}>{item.caption}</Text>
             </View>
         </View>
@@ -175,7 +195,8 @@ export function ReelsScreen() {
         }
 
         try {
-            await connectFeedsUser(user.id);
+            await connectFeedsUser(user.id, user.fullName || 'Aggie', user.imageUrl);
+
             const activities = await getReelsFeed(30);
             const mapped = activities.map(mapActivityToReel).filter(r => r.video_url);
             setReels(mapped.length > 0 ? mapped : DEMO_REELS);
@@ -217,15 +238,36 @@ export function ReelsScreen() {
         if (!streamError) toggleLike(reelId, user.id).catch(() => {});
     };
 
-    const openComments = async (reelId: string, reelCaption: string) => {
-        setCommentPostId(reelId);
-        setCommentPostCaption(reelCaption);
+    const openComments = async (reel: Reel) => {
+        setCommentPostId(reel.id);
+        setCommentPostCaption(reel.caption);
         setCommentModalVisible(true);
         setLoadingComments(true);
         
-        const result = await getComments(reelId);
+        const result = await getComments(reel.id);
         setComments(result);
         setLoadingComments(false);
+    };
+
+    const openEditReel = (reel: Reel) => {
+        setCommentPostId(reel.id);
+        setUploadCaption(reel.caption);
+        setUploadVideoUri(reel.video_url); // Preview existing
+        setUploadModalVisible(true);
+    };
+
+    const handleDeleteReel = (reelId: string) => {
+        Alert.alert("Delete Reel", "Are you sure?", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Delete", style: "destructive", onPress: async () => {
+                try {
+                    setReels(prev => prev.filter(r => r.id !== reelId));
+                    await deleteReel(reelId);
+                } catch (e) {
+                    Alert.alert('Error', 'Failed to delete');
+                }
+            }}
+        ]);
     };
 
     const handleSendComment = async () => {
@@ -236,6 +278,8 @@ export function ReelsScreen() {
             const updated = await getComments(commentPostId);
             setComments(updated);
             setCommentText('');
+            // Update local state count
+            setReels(prev => prev.map(r => r.id === commentPostId ? { ...r, reply_count: r.reply_count + 1 } : r));
         } catch (e) {
             console.warn('[Comments] Failed:', e);
             Alert.alert('Error', 'Could not post comment.');
@@ -267,22 +311,26 @@ export function ReelsScreen() {
         if (!user || !uploadVideoUri) return;
         setIsUploading(true);
         try {
-            // Upload to Stream's native file storage
-            const videoUrl = await uploadStreamFile(uploadVideoUri);
-
-            // Create feed activity
-            await addReel({
-                userId: user.id,
-                userName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Aggie',
-                userImage: user.imageUrl,
-                caption: uploadCaption.trim() || undefined,
-                videoUrl: videoUrl,
-            });
+            if (commentPostId && reels.find(r => r.id === commentPostId)) {
+                // UPDATE
+                await updateReel(commentPostId, uploadCaption.trim());
+                setCommentPostId(null);
+            } else {
+                // CREATE
+                const videoUrl = await uploadStreamFile(uploadVideoUri);
+                await addReel({
+                    userId: user.id,
+                    userName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Aggie',
+                    userImage: user.imageUrl,
+                    caption: uploadCaption.trim() || undefined,
+                    videoUrl: videoUrl,
+                });
+            }
 
             setUploadModalVisible(false);
             setUploadCaption('');
             setUploadVideoUri(null);
-            Alert.alert('Posted! 🎬', 'Your reel has been shared!');
+            Alert.alert('Success! 🎬', 'Your reel has been updated!');
             loadReels();
         } catch (e: any) {
             console.error('[Reels] Upload error:', e);
@@ -300,6 +348,8 @@ export function ReelsScreen() {
             user={user} 
             handleLike={handleLike} 
             openComments={openComments} 
+            openEditReel={openEditReel}
+            handleDeleteReel={handleDeleteReel}
             styles={styles}
         />
     );
@@ -413,15 +463,15 @@ export function ReelsScreen() {
                             contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
                             ListEmptyComponent={() => (
                                 <View style={{ padding: 20, alignItems: 'center' }}>
-                                    <Text style={{ color: '#888' }}>{loadingComments ? 'Loading...' : 'No comments yet. Be the first!'}</Text>
+                                    <Text style={{ color: '#DDD' }}>{loadingComments ? 'Loading...' : 'No comments yet. Be the first!'}</Text>
                                 </View>
                             )}
                             renderItem={({ item }: { item: any }) => (
                                 <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
-                                    <Image source={{ uri: item.user?.data?.image || 'https://via.placeholder.com/40' }} style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#333' }} />
+                                    <Image source={{ uri: item.user?.data?.image || 'https://via.placeholder.com/40' }} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#333', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }} />
                                     <View style={{ flex: 1 }}>
-                                        <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13, marginBottom: 2 }}>{item.user?.data?.name || item.user_id}</Text>
-                                        <Text style={{ color: '#CCC', fontSize: 14 }}>{item.comment}</Text>
+                                        <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 14, marginBottom: 2 }}>{item.user?.data?.name || item.user_id}</Text>
+                                        <Text style={{ color: '#FFFFFF', fontSize: 15, lineHeight: 20 }}>{item.comment || item.text}</Text>
                                     </View>
                                 </View>
                             )}

@@ -19,7 +19,7 @@ export function CampusScreen() {
             title: 'EXPLORE',
             items: [
                 { id: 'CampusNavigation', label: 'Campus Navigation', subtitle: 'Walking directions & voice nav', icon: <Navigation color={ICON_COLOR} size={22} /> },
-                { id: 'PlaceRecommendations', label: 'Find a Spot', subtitle: 'AI-powered place recommendations', icon: <Sparkles color={ICON_COLOR} size={22} />, badge: 'AI' },
+                { id: 'Places', label: 'Find a Spot', subtitle: 'AI-powered place recommendations', icon: <Sparkles color={ICON_COLOR} size={22} />, badge: 'AI' },
                 { id: 'ForYou', label: 'For You', subtitle: 'Personalized campus feed', icon: <Heart color={ICON_COLOR} size={22} /> },
             ]
         },
@@ -27,7 +27,7 @@ export function CampusScreen() {
             title: 'CAMPUS LIFE',
             items: [
                 { id: 'EventsCalendar', label: 'Events Calendar', subtitle: 'Live TAMU events & activities', icon: <Calendar color={ICON_COLOR} size={22} /> },
-                { id: 'CampusFeed', label: 'Campus Feed', subtitle: 'Photos, videos, and updates from campus', icon: <Rss color={ICON_COLOR} size={22} />, badge: 'LIVE' },
+                { id: 'Social', label: 'Campus Feed', subtitle: 'Photos, videos, and updates from campus', icon: <Rss color={ICON_COLOR} size={22} />, badge: 'LIVE' },
             ]
         },
         {

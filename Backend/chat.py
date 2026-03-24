@@ -181,6 +181,26 @@ async def proxy_delete_activity(feed_group: str, feed_id: str, activity_id: str)
         print(f"Stream Proxy Delete Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.put("/feeds/proxy/{feed_group}/{feed_id}/{activity_id}")
+async def proxy_update_activity(feed_group: str, feed_id: str, activity_id: str, body: FeedActivity):
+    api_key = os.environ.get("STREAM_FEEDS_API_KEY", "")
+    api_secret = os.environ.get("STREAM_FEEDS_API_SECRET", "")
+    server_client = stream.connect(api_key, api_secret)
+    try:
+        activities = server_client.get_activities(ids=[activity_id])
+        if not activities or "results" not in activities or not activities["results"]:
+             raise HTTPException(status_code=404, detail="Activity not found")
+        
+        act = activities["results"][0]
+        if "text" in body.activity:
+            act["text"] = body.activity["text"]
+            
+        response = server_client.update_activities([act])
+        return response
+    except Exception as e:
+        print(f"Stream Proxy Update Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/feeds/proxy/reactions")
 async def proxy_add_reaction(body: ReactionPayload):
     api_key = os.environ.get("STREAM_FEEDS_API_KEY", "")

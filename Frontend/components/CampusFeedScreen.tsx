@@ -18,8 +18,10 @@ import {
     getComments,
     uploadStreamFile,
     uploadStreamImage,
-    deletePost
+    deletePost,
+    updatePost
 } from '../services/streamFeeds';
+
 import { Trash2 } from 'lucide-react-native';
 
 interface Post {
@@ -157,20 +159,27 @@ export function CampusFeedScreen() {
 
         setIsPosting(true);
         try {
-            let uploadedMediaUrl = null;
-            if (mediaUri && mediaType) {
-                uploadedMediaUrl = await uploadStreamImage(mediaUri); // use Stream File Upload
-            }
+            if (commentPostId && posts.find(p => p.id === commentPostId)) {
+                // UPDATE existing post
+                await updatePost(commentPostId, caption.trim());
+                setCommentPostId(null);
+            } else {
+                // CREATE new post
+                let uploadedMediaUrl = null;
+                if (mediaUri && mediaType) {
+                    uploadedMediaUrl = await uploadStreamImage(mediaUri); 
+                }
 
-            await addPost({
-                userId: user.id,
-                userName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Aggie',
-                userImage: user.imageUrl,
-                caption: caption.trim() || undefined,
-                mediaUrl: uploadedMediaUrl || undefined,
-                mediaType: uploadedMediaUrl ? mediaType || undefined : undefined,
-                locationTag: locationTag.trim() || undefined,
-            });
+                await addPost({
+                    userId: user.id,
+                    userName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Aggie',
+                    userImage: user.imageUrl,
+                    caption: caption.trim() || undefined,
+                    mediaUrl: uploadedMediaUrl || undefined,
+                    mediaType: uploadedMediaUrl ? mediaType || undefined : undefined,
+                    locationTag: locationTag.trim() || undefined,
+                });
+            }
 
             setModalVisible(false);
             setCaption('');
@@ -237,6 +246,15 @@ export function CampusFeedScreen() {
         }
     };
 
+    const openEditPost = (post: Post) => {
+        setCommentPostId(post.id); // Reusing for edit
+        setCaption(post.caption || '');
+        setLocationTag(post.location_tag || '');
+        setMediaUri(post.media_url);
+        setMediaType(post.media_type);
+        setModalVisible(true);
+    };
+
     const handleDeletePost = (postId: string) => {
         Alert.alert(
             "Delete Post",
@@ -286,9 +304,14 @@ export function CampusFeedScreen() {
                         </View>
                     </View>
                     {item.user_id === user?.id ? (
-                        <Pressable style={styles.moreBtn} onPress={() => handleDeletePost(item.id)}>
-                            <Trash2 color="#FF453A" size={20} />
-                        </Pressable>
+                        <View style={{ flexDirection: 'row', gap: 4 }}>
+                            <Pressable style={styles.moreBtn} onPress={() => openEditPost(item)}>
+                                <MoreHorizontal color={COLORS.textSecondary} size={20} />
+                            </Pressable>
+                            <Pressable style={styles.moreBtn} onPress={() => handleDeletePost(item.id)}>
+                                <Trash2 color="#FF453A" size={18} />
+                            </Pressable>
+                        </View>
                     ) : (
                         <Pressable style={styles.moreBtn}>
                             <MoreHorizontal color={COLORS.textSecondary} size={20} />
@@ -351,10 +374,11 @@ export function CampusFeedScreen() {
                         onPress={() => {
                             if (user) {
                                 setLoading(true);
-                                connectFeedsUser(user.id, true).then(() => {
+                                connectFeedsUser(user.id, user.fullName || 'Aggie', user.imageUrl, true).then(() => {
                                     setFeedConnected(true);
                                     fetchPosts();
                                 }).catch(() => setLoading(false));
+
                             }
                         }}
                     >
