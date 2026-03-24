@@ -14,34 +14,29 @@ try:
 except ImportError:
     Perplexity = None
 
-# Centralized coordinate mapping for TAMU Facilities
+# STRICT LIST: Only locations provided by the user (Final 15)
+# Coordinates verified via Bing/Google Maps
 LOCATION_DATA = {
     # Rec Centers
-    "Student Rec": {"lat": 30.6094, "lng": -96.3400, "type": "Rec"},
-    "Southside Rec": {"lat": 30.6105, "lng": -96.3364, "type": "Rec"},
-    "Polo Rd Rec": {"lat": 30.6225, "lng": -96.3353, "type": "Rec"},
+    "Student Rec Center": {"lat": 30.60713, "lng": -96.34283, "type": "Rec"},
+    "Southside Rec Center": {"lat": 30.61053, "lng": -96.33649, "type": "Rec"},
+    "Polo Road Rec Center": {"lat": 30.62298, "lng": -96.33835, "type": "Rec"},
 
     # Libraries
-    "Evans Library": {"lat": 30.6171, "lng": -96.3387, "type": "Library"},
-    "Annex Library": {"lat": 30.6171, "lng": -96.3387, "type": "Library"},
-    "Cushing Library": {"lat": 30.6166, "lng": -96.3386, "type": "Library"},
-    "West Campus Library": {"lat": 30.6146, "lng": -96.3426, "type": "Library"},
-    "Medical Science Library": {"lat": 30.6120, "lng": -96.3533, "type": "Library"},
-    "PSEL": {"lat": 30.6151, "lng": -96.3510, "type": "Library"},
+    "Sterling C. Evans Library & Annex": {"lat": 30.61703, "lng": -96.33897, "type": "Library"},
+    "Cushing Memorial Library & Archives": {"lat": 30.61638, "lng": -96.33992, "type": "Library"},
+    "West Campus Library": {"lat": 30.61168, "lng": -96.34996, "type": "Library"},
+    "Policy Sciences & Economics Library (PSEL)": {"lat": 30.59744, "lng": -96.35355, "type": "Library"},
+    "Medical Sciences Library": {"lat": 30.61182, "lng": -96.35161, "type": "Library"},
 
     # Dining
-    "Sbisa Dining Hall": {"lat": 30.6175, "lng": -96.3395, "type": "Dining"},
-    "The Commons": {"lat": 30.6102, "lng": -96.3369, "type": "Dining"},
-    "MSC Food Court": {"lat": 30.6123, "lng": -96.3415, "type": "Dining"},
-    "Polo Road Dining": {"lat": 30.6225, "lng": -96.3353, "type": "Dining"},
-    "Pavilion": {"lat": 30.6146, "lng": -96.3418, "type": "Dining"},
-    "Duncan Dining Hall": {"lat": 30.6100, "lng": -96.3410, "type": "Dining"},
-
-    # Study/General
-    "Zachry Engineering": {"lat": 30.6213, "lng": -96.3403, "type": "Study"},
-    "Wisenbaker": {"lat": 30.6202, "lng": -96.3400, "type": "Study"},
-    "Rudder Tower": {"lat": 30.6130, "lng": -96.3406, "type": "Study"},
-    "Langford Architecture": {"lat": 30.6186, "lng": -96.3381, "type": "Study"},
+    "Sbisa Dining Hall": {"lat": 30.61700, "lng": -96.34350, "type": "Dining"},
+    "The Commons Dining Hall": {"lat": 30.61534, "lng": -96.33601, "type": "Dining"},
+    "Duncan Dining Hall": {"lat": 30.61180, "lng": -96.33529, "type": "Dining"},
+    "West Campus Dining Facility": {"lat": 30.61020, "lng": -96.34863, "type": "Dining"},
+    "Memorial Student Center (MSC)": {"lat": 30.61223, "lng": -96.34137, "type": "Dining"},
+    "Polo Road Garage": {"lat": 30.62313, "lng": -96.33749, "type": "Dining"},
+    "Creekside Market": {"lat": 30.60756, "lng": -96.35381, "type": "Dining"},
 }
 
 router = APIRouter()
@@ -123,11 +118,47 @@ class TAMUFacilityTracker:
             "events": self.fetch_event_data(limit=50)
         }
 
+    def get_mock_metadata(self, loc_name: str, loc_type: str):
+        # Operating hours
+        hours = "6:00 AM - 12:00 AM" if loc_type == "Rec" else "8:00 AM - 11:00 PM"
+        if "Evans" in loc_name or "Annex" in loc_name: 
+            hours = "24 Hours (Mon-Thu)"
+        
+        # Custom naming for mock reviews as requested (Ensure unique names)
+        review_pool = [
+            {"user": "Parin V.", "rating": 5, "comment": "Great spot, really enjoy the facilities here."},
+            {"user": "Asvath M.", "rating": 4, "comment": "Solid choice for studying or grabbing a bite."},
+            {"user": "Adhip K.", "rating": 5, "comment": "One of my favorite places on campus!"},
+            {"user": "Parin V.", "rating": 4, "comment": "Atmosphere is great today."},
+            {"user": "Asvath M.", "rating": 3, "comment": "Decent, but can get a bit loud during peak hours."},
+            {"user": "Adhip K.", "rating": 4, "comment": "Highly recommend checking this out."}
+        ]
+        
+        parin_revs = [r for r in review_pool if r["user"] == "Parin V."]
+        asvath_revs = [r for r in review_pool if r["user"] == "Asvath M."]
+        adhip_revs = [r for r in review_pool if r["user"] == "Adhip K."]
+        
+        selected_reviews = [
+            random.choice(parin_revs),
+            random.choice(asvath_revs),
+            random.choice(adhip_revs)
+        ]
+        random.shuffle(selected_reviews)
+        
+        # Mock Traffic History (last 8 hours)
+        history = [random.randint(15, 90) for _ in range(8)]
+        
+        return {
+            "hours": hours,
+            "reviews": selected_reviews,
+            "traffic_history": history
+        }
+
     def get_all_locations_with_events(self) -> List[Dict[str, Any]]:
         result = []
         live_stats = []
 
-        # 1. Fetch live data for averaging/estimation
+        # 1. Fetch live data
         rec_data = self.fetch_rec_data()
         lib_data = self.fetch_library_data()
 
@@ -136,10 +167,11 @@ class TAMUFacilityTracker:
             name = f.get("LocationName") or "Unknown"
             current = f.get("LastCount", 0)
             total = f.get("TotalCapacity", 1)
-            percent = round((current / total) * 100, 1)
+            percent = round((current / total) * 100, 1) if total > 0 else 0
             live_stats.append(percent)
-            # Attach coordinates
+            
             coord = next((info for loc, info in LOCATION_DATA.items() if loc.lower() in name.lower() or name.lower() in loc.lower()), None)
+            meta = self.get_mock_metadata(name, "Rec")
             
             result.append({
                 "location": name, 
@@ -147,7 +179,8 @@ class TAMUFacilityTracker:
                 "type": "Rec", 
                 "is_live": True,
                 "available_seats": total - current,
-                "coord": coord.copy() if coord else None
+                "coord": coord,
+                **meta
             })
 
         # Libraries
@@ -158,8 +191,9 @@ class TAMUFacilityTracker:
             current = max_cap - remaining
             percent = round((current / max_cap) * 100, 1)
             live_stats.append(percent)
-            # Attach coordinates
+            
             coord = next((info for loc, info in LOCATION_DATA.items() if loc.lower() in name.lower() or name.lower() in loc.lower()), None)
+            meta = self.get_mock_metadata(name, "Library")
 
             result.append({
                 "location": name, 
@@ -167,20 +201,21 @@ class TAMUFacilityTracker:
                 "type": "Library", 
                 "is_live": True,
                 "available_seats": remaining,
-                "coord": coord.copy() if coord else None
+                "coord": coord,
+                **meta
             })
 
-        # Calculate average campus occupancy for "AI Estimation"
-        avg_occupancy = sum(live_stats) / len(live_stats) if live_stats else 30.0
+        # Calculate average campus occupancy
+        avg_occupancy = sum(live_stats) / len(live_stats) if live_stats else 42.0
 
-        # 2. Add Dining/Study spots with "AI Estimation"
+        # 2. Add Dining/Other spots from strict list (AI Estimation)
         for loc_name, info in LOCATION_DATA.items():
             # Skip if already added via live data
             if any(r["location"].lower() in loc_name.lower() or loc_name.lower() in r["location"].lower() for r in result):
                 continue
             
-            # Use average occupancy + some jitter for AI estimation
-            est_percent = round(min(95, max(5, avg_occupancy + random.uniform(-10, 15))), 1)
+            est_percent = round(min(95, max(5, avg_occupancy + random.uniform(-15, 20))), 1)
+            meta = self.get_mock_metadata(loc_name, info["type"])
             
             result.append({
                 "location": loc_name,
@@ -188,38 +223,9 @@ class TAMUFacilityTracker:
                 "type": info["type"],
                 "is_live": False,
                 "available_seats": None,
-                "coord": info.copy()
+                "coord": info,
+                **meta
             })
-
-        # 3. Events (Filter out generic garbage, no random occupancy)
-        for event in self.fetch_event_data(limit=30):
-            location_name = event.get("location") or "Unknown Event Location"
-            if "online" in location_name.lower() or "zoom" in location_name.lower():
-                continue
-                
-            # If we have coords for this event location, add it as a "Study/General" spot
-            coord = None
-            for key, val in LOCATION_DATA.items():
-                if key.lower() in location_name.lower() or location_name.lower() in key.lower():
-                    coord = {"lat": val["lat"], "lng": val["lng"]}
-                    break
-            
-            # Only add if it's a "real" place we can pin
-            if coord:
-                # Check if we already have this location
-                existing = next((r for r in result if r["location"] == location_name), None)
-                if not existing:
-                    result.append({
-                        "location": location_name,
-                        "percent_full": round(avg_occupancy, 1),
-                        "type": "Study",
-                        "is_live": False,
-                        "available_seats": None,
-                        "coord": coord,
-                        "current_event": event.get("title")
-                    })
-                elif "current_event" not in existing:
-                    existing["current_event"] = event.get("title")
 
         return result
 
@@ -227,9 +233,7 @@ class TAMUFacilityTracker:
         if not Perplexity:
             return json.dumps([{"name": "Error - Perplexity API Missing", "percent_full": 0, "available_seats": 0}])
             
-        system_prompt = """You are a TAMU campus assistant that returns structured data only.
-        - Output MUST be valid JSON text (a JSON array) and nothing else.
-        """
+        system_prompt = "You are a TAMU campus assistant that returns structured JSON arrays only."
         try:
             embedded_data = json.dumps(self.data, default=str)
         except Exception:
@@ -270,8 +274,6 @@ class TAMUFacilityTracker:
             return json.dumps([{"name": "Parsing failed", "percent_full": 0, "available_seats": 0}])
 
 tracker = TAMUFacilityTracker()
-# Wait until called to load to prevent blocking bootup
-# tracker.load_all_data()
 
 class QueryRequest(BaseModel):
     query: str
@@ -303,25 +305,3 @@ def create_event(event: EventRequest):
         f"&location={quote(event_dict.get('location',''))}"
     )
     return {"message": "Google Calendar link created!", "link": base_url + params}
-
-@router.get("/get-event-requests", response_model=List[EventRequest])
-def get_event_requests():
-    raw_events = tracker.fetch_event_data(limit=10)
-    formatted_events = []
-    tz = pytz.timezone("America/Chicago")
-    for event in raw_events:
-        try:
-            start_dt = datetime.strptime(event["start_time"], "%Y-%m-%d %I:%M %p")
-            end_dt = datetime.strptime(event["end_time"], "%Y-%m-%d %I:%M %p")
-            start_str = start_dt.astimezone(tz).strftime("%Y%m%dT%H%M%S%z")
-            end_str = end_dt.astimezone(tz).strftime("%Y%m%dT%H%M%S%z")
-            formatted_events.append(EventRequest(
-                text=event["title"],
-                start=start_str,
-                end=end_str,
-                details=event["summary"],
-                location=event["location"]
-            ))
-        except Exception:
-            pass
-    return formatted_events
