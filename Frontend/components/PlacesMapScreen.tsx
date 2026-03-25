@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
     View,
     Text,
@@ -12,7 +12,7 @@ import {
 import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import axios from 'axios';
 import { useTheme, Card } from './SharedUI';
-import { Library, Dumbbell, Utensils, Info, Layers, Search, X, Star, Clock, Users, ChevronRight, MapPin } from 'lucide-react-native';
+import { Library, Dumbbell, Utensils, Info, Layers, Search, X, Star, Clock, MapPin, ChevronRight } from 'lucide-react-native';
 import { Platform } from 'react-native';
 
 const { width } = Dimensions.get('window');
@@ -36,6 +36,52 @@ const DARK_MAP_STYLE = [
     { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#000000" }] }
 ];
 
+// AI-estimated campus-wide density zones — independent of registered locations.
+// Densities are tuned by time-of-day and campus geography.
+const CAMPUS_ZONES: Array<{
+    name: string;
+    lat: number;
+    lng: number;
+    // peak: 0-100 density at peak hours; off: at off-peak hours
+    peak: number;
+    off: number;
+    radius: number;
+}> = [
+    { name: 'Academic Building / Rudder Plaza', lat: 30.6129, lng: -96.3408, peak: 95, off: 15, radius: 200 },
+    { name: 'MSC / Aggie Park', lat: 30.6118, lng: -96.3425, peak: 88, off: 20, radius: 250 },
+    { name: 'Evans Library Cluster', lat: 30.6174, lng: -96.3395, peak: 82, off: 18, radius: 180 },
+    { name: 'Sbisa / Duncan Dining Area', lat: 30.6199, lng: -96.3407, peak: 85, off: 30, radius: 200 },
+    { name: 'Zachry / ZACH Engineering', lat: 30.6211, lng: -96.3367, peak: 78, off: 12, radius: 200 },
+    { name: 'BLOC Student Center', lat: 30.6089, lng: -96.3435, peak: 75, off: 40, radius: 200 },
+    { name: 'Student Rec Center', lat: 30.6081, lng: -96.3397, peak: 70, off: 10, radius: 220 },
+    { name: 'North Gate / College Ave', lat: 30.6225, lng: -96.3353, peak: 90, off: 55, radius: 220 },
+    { name: 'Corps Dorms / Dorm Row', lat: 30.6168, lng: -96.3437, peak: 60, off: 25, radius: 200 },
+    { name: 'Kyle Field / Game Day Area', lat: 30.6100, lng: -96.3407, peak: 40, off: 5, radius: 280 },
+    { name: 'West Campus / Architecture', lat: 30.6142, lng: -96.3465, peak: 65, off: 10, radius: 180 },
+    { name: 'CS / HRBB Cluster', lat: 30.6218, lng: -96.3397, peak: 72, off: 12, radius: 180 },
+    { name: 'Commons / Cain Dining', lat: 30.6156, lng: -96.3451, peak: 80, off: 35, radius: 200 },
+    { name: 'Parking Lot / Bus Stops', lat: 30.6245, lng: -96.3415, peak: 55, off: 20, radius: 200 },
+    { name: 'TAMU Research Park Area', lat: 30.5983, lng: -96.3410, peak: 35, off: 8, radius: 220 },
+];
+
+/** Returns 0-1 scaling factor based on time of day */
+function getTimeOfDayFactor(): number {
+    const hour = new Date().getHours();
+    // Peak: 9-11am, 11am-1pm lunch, 2-5pm afternoon classes
+    if (hour >= 8 && hour < 9) return 0.55;
+    if (hour >= 9 && hour < 11) return 0.95;
+    if (hour >= 11 && hour < 14) return 1.0;
+    if (hour >= 14 && hour < 17) return 0.85;
+    if (hour >= 17 && hour < 19) return 0.60;
+    if (hour >= 19 && hour < 22) return 0.45;
+    return 0.12; // late night / early morning
+}
+
+function getZoneDensity(zone: typeof CAMPUS_ZONES[0]): number {
+    const factor = getTimeOfDayFactor();
+    return Math.round(zone.off + (zone.peak - zone.off) * factor);
+}
+
 type LocationType = 'Rec' | 'Library' | 'Dining' | 'Study' | 'General';
 
 interface CampusLocation {
@@ -57,6 +103,21 @@ const CATEGORIES = [
     { id: 'Rec', label: 'Gyms', icon: <Dumbbell size={18} /> },
     { id: 'Dining', label: 'Food', icon: <Utensils size={18} /> },
 ];
+
+const getCategoryIcon = (type: LocationType) => {
+    switch (type) {
+        case 'Library': return <Library />;
+        case 'Rec': return <Dumbbell />;
+        case 'Dining': return <Utensils />;
+        default: return <Info />;
+    }
+};
+
+const getStatusColor = (pct: number) => {
+    if (pct < 40) return '#32D74B';
+    if (pct < 75) return '#FF9500';
+    return '#FF3B30';
+};
 
 export function PlacesMapScreen() {
     const { COLORS } = useTheme();
@@ -86,7 +147,7 @@ export function PlacesMapScreen() {
     };
 
     const filteredLocations = useMemo(() => {
-        if (activeLayer === 'Heatmap') return locations;
+        if (activeLayer === 'Heatmap') return [];
         return locations.filter(loc => loc.type === activeLayer);
     }, [locations, activeLayer]);
 
@@ -101,7 +162,7 @@ export function PlacesMapScreen() {
         locations.find(l => l.location === selectedId),
         [locations, selectedId]);
 
-    const handleSelectLocation = (loc: CampusLocation) => {
+    const handleSelectLocation = useCallback((loc: CampusLocation) => {
         setSelectedId(loc.location);
         setSearchQuery('');
         setShowSearchResults(false);
@@ -113,13 +174,7 @@ export function PlacesMapScreen() {
                 longitudeDelta: 0.01,
             }, 1000);
         }
-    };
-
-    const getStatusColor = (pct: number) => {
-        if (pct < 40) return '#32D74B';
-        if (pct < 75) return '#FF9500';
-        return '#FF3B30';
-    };
+    }, []);
 
     if (loading) {
         return (
@@ -148,69 +203,88 @@ export function PlacesMapScreen() {
                 }}
                 onMarkerPress={(e) => {
                     const id = e.nativeEvent.id;
-                    if (id) {
-                        setSelectedId(id);
-                    }
+                    if (id) setSelectedId(id);
                 }}
             >
-                {filteredLocations.map((loc) => {
-                    const isSelected = selectedId === loc.location;
-                    const color = getStatusColor(loc.percent_full);
-
-                    const getCategoryIcon = (type: LocationType) => {
-                        switch (type) {
-                            case 'Library': return <Library />;
-                            case 'Rec': return <Dumbbell />;
-                            case 'Dining': return <Utensils />;
-                            case 'Study': return <Info />;
-                            case 'General': return <Info />;
-                            default: return <Info />;
-                        }
-                    };
-                    const catIcon = getCategoryIcon(loc.type);
-
+                {/* Heatmap: AI-estimated campus-wide density zones */}
+                {activeLayer === 'Heatmap' && CAMPUS_ZONES.map((zone, i) => {
+                    const density = getZoneDensity(zone);
+                    const color = getStatusColor(density);
                     return (
-                        <React.Fragment key={loc.location}>
-                            {activeLayer === 'Heatmap' ? (
-                                <Circle
-                                    center={{ latitude: loc.coord.lat, longitude: loc.coord.lng }}
-                                    radius={Math.max(60, (loc.percent_full / 100) * 200)}
-                                    fillColor={getStatusColor(loc.percent_full) + '33'}
-                                    strokeColor={getStatusColor(loc.percent_full) + '66'}
-                                    strokeWidth={3}
-                                />
-                            ) : (
-                                <Marker
-                                    identifier={loc.location}
-                                    coordinate={{ latitude: loc.coord.lat, longitude: loc.coord.lng }}
-                                    tracksViewChanges={true}
-                                    anchor={{ x: 0.5, y: 1 }}
-                                    zIndex={isSelected ? 100 : 1}
-                                >
-                                    <View style={styles.pinContainer} pointerEvents="none">
-                                        <View style={[
-                                            styles.pinHead,
-                                            { backgroundColor: isSelected ? '#FF8A00' : '#800000' }
-                                        ]}>
-                                            <View style={styles.pinInnerCircle}>
-                                                {React.cloneElement(catIcon as React.ReactElement<any>, {
-                                                    size: 12,
-                                                    color: isSelected ? '#FFF' : '#FF8A8A'
-                                                })}
-                                            </View>
-                                        </View>
-                                        <View style={[
-                                            styles.pinTail,
-                                            { borderTopColor: isSelected ? '#FF8A00' : '#800000' }
-                                        ]} />
+                        <Circle
+                            key={`zone-${i}`}
+                            center={{ latitude: zone.lat, longitude: zone.lng }}
+                            radius={zone.radius}
+                            fillColor={color + '2E'}
+                            strokeColor={color + '80'}
+                            strokeWidth={2}
+                        />
+                    );
+                })}
+
+                {/* Category markers — only shown in non-heatmap mode */}
+                {activeLayer !== 'Heatmap' && filteredLocations.map((loc) => {
+                    const isSelected = selectedId === loc.location;
+                    const catIcon = getCategoryIcon(loc.type);
+                    return (
+                        <Marker
+                            key={loc.location}
+                            identifier={loc.location}
+                            coordinate={{ latitude: loc.coord.lat, longitude: loc.coord.lng }}
+                            tracksViewChanges={false}
+                            anchor={{ x: 0.5, y: 1 }}
+                            zIndex={isSelected ? 100 : 1}
+                        >
+                            <View style={styles.pinContainer} pointerEvents="none">
+                                <View style={[
+                                    styles.pinHead,
+                                    { backgroundColor: isSelected ? '#FF8A00' : '#800000' }
+                                ]}>
+                                    <View style={styles.pinInnerCircle}>
+                                        {React.cloneElement(catIcon as React.ReactElement<any>, {
+                                            size: 12,
+                                            color: isSelected ? '#FFF' : '#FF8A8A'
+                                        })}
                                     </View>
-                                </Marker>
-                            )}
-                        </React.Fragment>
+                                </View>
+                                <View style={[
+                                    styles.pinTail,
+                                    { borderTopColor: isSelected ? '#FF8A00' : '#800000' }
+                                ]} />
+                            </View>
+                        </Marker>
                     );
                 })}
             </MapView>
 
+            {/* Layer selector */}
+            <View style={styles.layerSelector} pointerEvents="box-none">
+                {CATEGORIES.map(cat => (
+                    <TouchableOpacity
+                        key={cat.id}
+                        style={[
+                            styles.layerBtn,
+                            activeLayer === cat.id && styles.layerBtnActive
+                        ]}
+                        onPress={() => {
+                            setActiveLayer(cat.id);
+                            setSelectedId(null);
+                        }}
+                    >
+                        {React.cloneElement(cat.icon as React.ReactElement<any>, {
+                            color: activeLayer === cat.id ? '#FF8A8A' : COLORS.textPrimary
+                        })}
+                        <Text style={[
+                            styles.layerText,
+                            activeLayer === cat.id && styles.layerTextActive
+                        ]}>
+                            {cat.label}
+                        </Text>
+                    </TouchableOpacity>
+                ))}
+            </View>
+
+            {/* Search bar */}
             <View style={styles.topContainer} pointerEvents="box-none">
                 <View style={styles.searchBar}>
                     <Search size={22} color={COLORS.textTertiary} />
@@ -252,34 +326,9 @@ export function PlacesMapScreen() {
                 )}
             </View>
 
-            <View style={styles.layerSelector} pointerEvents="box-none">
-                {CATEGORIES.map(cat => (
-                    <TouchableOpacity
-                        key={cat.id}
-                        style={[
-                            styles.layerBtn,
-                            activeLayer === cat.id && styles.layerBtnActive
-                        ]}
-                        onPress={() => {
-                            setActiveLayer(cat.id);
-                            setSelectedId(null);
-                        }}
-                    >
-                        {React.cloneElement(cat.icon as React.ReactElement<any>, {
-                            color: activeLayer === cat.id ? '#FF8A8A' : COLORS.textPrimary
-                        })}
-                        <Text style={[
-                            styles.layerText,
-                            activeLayer === cat.id && styles.layerTextActive
-                        ]}>
-                            {cat.label}
-                        </Text>
-                    </TouchableOpacity>
-                ))}
-            </View>
-
+            {/* Detail card */}
             {selectedLoc && (
-                <View style={styles.detailCardContainer} pointerEvents="box-none">
+                <View style={styles.detailCardContainer}>
                     <Card style={[styles.detailCard, { backgroundColor: '#0A0A0A', borderColor: '#222' }]}>
                         <View style={styles.cardTopRow}>
                             <View style={styles.typeBadge}>
@@ -316,7 +365,6 @@ export function PlacesMapScreen() {
                                 </View>
                             </View>
 
-                            {/* Traffic History Mini-Chart */}
                             <View style={styles.chartContainer}>
                                 <Text style={styles.chartTitle}>EXPERIMENTAL TRAFFIC (8H)</Text>
                                 <View style={styles.chartBars}>
@@ -334,7 +382,6 @@ export function PlacesMapScreen() {
                                 </View>
                             </View>
 
-                            {/* Reviews Section */}
                             <View style={styles.reviewsSection}>
                                 <Text style={styles.sectionTitle}>LATEST REVIEWS</Text>
                                 {(selectedLoc.reviews || [
@@ -367,16 +414,6 @@ export function PlacesMapScreen() {
     );
 }
 
-const MAP_STYLE = [
-    { "featureType": "all", "elementType": "labels.text.fill", "stylers": [{ "color": "#7c93a3" }, { "lightness": "-10" }] },
-    { "featureType": "administrative.country", "elementType": "geometry", "stylers": [{ "visibility": "on" }] },
-    { "featureType": "landscape", "elementType": "geometry", "stylers": [{ "color": "#121212" }, { "lightness": "5" }] },
-    { "featureType": "poi", "elementType": "all", "stylers": [{ "visibility": "off" }] },
-    { "featureType": "road", "elementType": "geometry.fill", "stylers": [{ "color": "#2c2c2c" }] },
-    { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "visibility": "off" }] },
-    { "featureType": "water", "elementType": "geometry", "stylers": [{ "color": "#1D1D1D" }] }
-];
-
 const getStyles = (COLORS: any) => StyleSheet.create({
     container: { flex: 1, backgroundColor: COLORS.background },
     map: { flex: 1, width: '100%' },
@@ -399,7 +436,7 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     layerTextActive: { color: '#FF8A8A' },
 
     topContainer: {
-        position: 'absolute', top: 125, left: 16, right: 16, gap: 8
+        position: 'absolute', top: 130, left: 16, right: 16, gap: 8
     },
     searchBar: {
         flexDirection: 'row', alignItems: 'center',
@@ -412,7 +449,8 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     searchResults: {
         backgroundColor: '#0A0A0A', borderRadius: 15,
         borderWidth: 1, borderColor: '#222',
-        marginTop: 4, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.5, shadowRadius: 12, elevation: 8
+        marginTop: 4, overflow: 'hidden',
+        shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.5, shadowRadius: 12, elevation: 8
     },
     searchItem: {
         flexDirection: 'row', alignItems: 'center', padding: 16,
@@ -437,19 +475,14 @@ const getStyles = (COLORS: any) => StyleSheet.create({
         width: 0, height: 0,
         backgroundColor: 'transparent',
         borderStyle: 'solid',
-        borderLeftWidth: 8,
-        borderRightWidth: 8,
-        borderTopWidth: 12,
-        borderLeftColor: 'transparent',
-        borderRightColor: 'transparent',
+        borderLeftWidth: 8, borderRightWidth: 8, borderTopWidth: 12,
+        borderLeftColor: 'transparent', borderRightColor: 'transparent',
         marginTop: -3,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 2
     },
 
     detailCardContainer: {
         position: 'absolute', bottom: 50, left: 16, right: 16, maxHeight: '50%'
     },
-
     detailCard: {
         backgroundColor: 'rgba(0, 0, 0, 0.9)',
         paddingHorizontal: 20, paddingVertical: 18,
@@ -470,14 +503,14 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     aiText: { color: '#FF9500', fontSize: 12, fontWeight: '800' },
 
     locationName: { fontSize: 24, fontWeight: '900', color: '#FFF', lineHeight: 30, marginBottom: 10 },
-    statsRow: { flexDirection: 'row', alignItems: 'center', gap: 24, marginBottom: 20 },
+    statsRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 },
     statInfo: { gap: 4 },
     occupancyValue: { fontSize: 40, fontWeight: '900', color: '#FFF' },
     statSubText: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '700' },
-    hoursInfo: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-end', marginBottom: 8 },
+    hoursInfo: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
     hoursText: { fontSize: 14, color: COLORS.textSecondary, fontWeight: '600' },
 
-    chartContainer: { backgroundColor: 'rgba(255,255,255,0.04)', padding: 16, borderRadius: 20, marginBottom: 20 },
+    chartContainer: { backgroundColor: 'rgba(255,255,255,0.04)', padding: 16, borderRadius: 12, marginBottom: 20 },
     chartTitle: { fontSize: 12, color: COLORS.textTertiary, fontWeight: '800', letterSpacing: 1.2, marginBottom: 14 },
     chartBars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 45, paddingHorizontal: 6 },
     barWrapper: { width: 12, height: 45, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 8, overflow: 'hidden', justifyContent: 'flex-end' },
@@ -485,16 +518,9 @@ const getStyles = (COLORS: any) => StyleSheet.create({
 
     reviewsSection: { gap: 12 },
     sectionTitle: { fontSize: 13, color: COLORS.textTertiary, fontWeight: '800', letterSpacing: 1.2, marginBottom: 6 },
-    reviewItem: { backgroundColor: 'rgba(255,255,255,0.04)', padding: 18, borderRadius: 20 },
-    reviewMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+    reviewItem: { backgroundColor: 'rgba(255,255,255,0.04)', padding: 14, borderRadius: 12 },
+    reviewMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
     reviewUser: { fontSize: 15, fontWeight: '700', color: '#FFF' },
     reviewStars: { flexDirection: 'row', gap: 4 },
-    reviewComment: { fontSize: 15, color: COLORS.textSecondary, lineHeight: 22 },
-
-    eventBox: {
-        flexDirection: 'row', alignItems: 'center', gap: 10,
-        backgroundColor: 'rgba(255,255,255,0.05)', padding: 14, borderRadius: 14, marginBottom: 16
-    },
-    eventText: { color: COLORS.textPrimary, fontSize: 15, fontWeight: '500', flex: 1 },
-    disclaimer: { fontSize: 12, color: COLORS.textTertiary, marginTop: 12, fontStyle: 'italic', textAlign: 'center' }
+    reviewComment: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 20 },
 });
