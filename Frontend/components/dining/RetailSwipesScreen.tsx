@@ -5,6 +5,7 @@ import { API_URL } from '../../config';
 import { Card, SectionLabel, StatPill, Divider, ActionButton } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
+import { getLocalDateString } from '../../services/dateUtils';
 
 const RESTAURANTS = ['Chick-fil-A', 'Panda Express', 'Shake Smart', 'Houston Street Subs', 'Salata', 'Abu Omar Halal'];
 const SHORT: any = { 'Chick-fil-A': 'CFA', 'Panda Express': 'Panda', 'Shake Smart': 'Shake', 'Houston Street Subs': 'Subs', 'Abu Omar Halal': 'Abu Omar' };
@@ -40,7 +41,7 @@ export default function RetailSwipesScreen({ navigation }: any) {
   const load = async () => {
     if (!user) return;
     try {
-      const resp = await fetch(`${API_URL}/dining/swipes/${user.id}`).then(r => r.json());
+      const resp = await fetch(`${API_URL}/dining/swipes/${user.id}?date=${getLocalDateString()}`).then(r => r.json());
       setInfo(resp);
     } catch {}
   };
@@ -52,7 +53,7 @@ export default function RetailSwipesScreen({ navigation }: any) {
       await fetch(`${API_URL}/dining/swipes/${user.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: new Date().toISOString().split('T')[0], restaurant: logRest, total_cost: +logCost || 11 }),
+        body: JSON.stringify({ date: getLocalDateString(), restaurant: logRest, total_cost: +logCost || 11 }),
       });
       load(); setShowLog(false); setLogCost('');
     } catch { Alert.alert('Error', 'Failed to log swipe'); }

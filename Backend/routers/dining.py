@@ -290,14 +290,21 @@ def search_foods(q: str = Query(""), source: str = Query("all")):
     return results
 
 @router.get("/swipes/{clerk_id}")
-def get_swipes(clerk_id: str):
+def get_swipes(clerk_id: str, date: Optional[str] = Query(None)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT * FROM swipe_log WHERE clerk_id = %s ORDER BY date DESC", (clerk_id,))
             rows = cur.fetchall()
             
             # Simple week calc
-            today = datetime.now().date()
+            if date:
+                try:
+                    today = datetime.strptime(date, '%Y-%m-%d').date()
+                except:
+                    today = datetime.now().date()
+            else:
+                today = datetime.now().date()
+                
             start_of_week = today - timedelta(days=today.weekday())
             used_this_week = sum(1 for r in rows if r['date'] >= start_of_week)
             

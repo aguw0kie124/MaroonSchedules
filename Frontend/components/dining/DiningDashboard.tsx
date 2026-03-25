@@ -15,6 +15,7 @@ import { useUser } from '@clerk/clerk-expo';
 import { API_URL } from '../../config';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
+import { getLocalDateString } from '../../services/dateUtils';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -65,7 +66,7 @@ export default function DiningDashboard({ navigation }: any) {
   const load = useCallback(async () => {
     if (!user) return;
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getLocalDateString();
       const [profRes, trackRes, histRes] = await Promise.all([
         fetch(`${API_URL}/dining/profile/${user.id}`).then(r => r.json()),
         fetch(`${API_URL}/dining/tracker/${user.id}?date=${today}`).then(r => r.json()),

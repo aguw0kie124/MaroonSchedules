@@ -6,6 +6,7 @@ import { API_URL } from '../../config';
 import { Card, SectionLabel, StatPill, ActionButton } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
+import { getLocalDateString } from '../../services/dateUtils';
 
 const SW = Dimensions.get('window').width;
 
@@ -16,7 +17,7 @@ export default function WeightTrackerScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [newWt, setNewWt] = useState('');
-  const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newDate, setNewDate] = useState(getLocalDateString());
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { load(); }, []);

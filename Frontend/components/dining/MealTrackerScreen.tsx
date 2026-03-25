@@ -6,6 +6,7 @@ import { API_URL } from '../../config';
 import { Card, SectionLabel, MacroBar, Divider } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
+import { getLocalDateString } from '../../services/dateUtils';
 
 const MICROS: any = { vitamin_c: 90, calcium: 1000, iron: 8, potassium: 3400, magnesium: 420, sodium: 2300 };
 
@@ -15,7 +16,7 @@ export default function MealTrackerScreen({ navigation }: any) {
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
 
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getLocalDateString());
   const [tracker, setTracker] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -46,9 +47,10 @@ export default function MealTrackerScreen({ navigation }: any) {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const shift = (days: number) => {
-    const d = new Date(date);
-    d.setDate(d.getDate() + days);
-    setDate(d.toISOString().split('T')[0]);
+    const [y, m, d] = date.split('-').map(Number);
+    const dt = new Date(y, m - 1, d);
+    dt.setDate(dt.getDate() + days);
+    setDate(getLocalDateString(dt));
   };
 
   const doDelete = (id: any, label: string) => Alert.alert('Remove?', `"${label}"`, [
@@ -66,7 +68,7 @@ export default function MealTrackerScreen({ navigation }: any) {
   const target = profile?.targetCalories || 2000;
   const macros = profile?.macros || { protein: 150, carbs: 200, fat: 60 };
   const calPct = Math.min(1, (totals.calories || 0) / target);
-  const isToday = date === new Date().toISOString().split('T')[0];
+  const isToday = date === getLocalDateString();
 
   const marbleSrc = darkMode
     ? require('../../assets/black_marble.jpg')

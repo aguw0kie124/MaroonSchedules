@@ -5,6 +5,7 @@ import { API_URL } from '../../config';
 import { Card, SectionLabel, Divider, StatPill, ActionButton, Badge } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
+import { getLocalDateString } from '../../services/dateUtils';
 
 const HALLS = [
   { key: 'Sbisa', label: 'Sbisa', sub: 'North Campus' },
@@ -58,7 +59,7 @@ export default function MealOptimizerScreen({ navigation }: any) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          date: new Date().toISOString().split('T')[0],
+          date: getLocalDateString(),
           meal_period: mealPeriod,
           label: variant.label,
           foods: variant.items || [],
