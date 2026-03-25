@@ -447,14 +447,14 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     },
 
     detailCardContainer: {
-        position: 'absolute', bottom: 20, left: 16, right: 16, maxHeight: '50%'
+        position: 'absolute', bottom: 50, left: 16, right: 16, maxHeight: '50%'
     },
 
     detailCard: {
         backgroundColor: 'rgba(0, 0, 0, 0.9)',
         paddingHorizontal: 20, paddingVertical: 18,
         borderWidth: 1.5, borderColor: '#333',
-        borderRadius: 28,
+        borderRadius: 12,
         shadowColor: '#000', shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.7, shadowRadius: 24, elevation: 18,
         overflow: 'hidden'
     },
