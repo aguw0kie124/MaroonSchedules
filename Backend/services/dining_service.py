@@ -2,7 +2,13 @@ import math
 import requests
 import psycopg
 from typing import Optional, Dict, List, Any
-from pulp import LpMaximize, LpProblem, LpVariable, lpSum, value as pulp_value, PULP_CBC_CMD
+try:
+    from pulp import LpMaximize, LpProblem, LpVariable, lpSum, value as pulp_value, PULP_CBC_CMD
+    PULP_AVAILABLE = True
+except ImportError:
+    PULP_AVAILABLE = False
+    LpMaximize = LpProblem = LpVariable = lpSum = pulp_value = PULP_CBC_CMD = None
+
 from datetime import datetime
 from db_config import get_db_connection
 
@@ -163,7 +169,10 @@ def macro_targets(weight_lbs: float, activity_level: str, target_calories: int) 
     return {'protein': protein, 'fat': fat, 'carbs': carbs}
 
 def optimize_diet(foods: List[Dict], targets: Dict, options: Dict = {}) -> Dict:
+    if not PULP_AVAILABLE:
+        return {"success": False, "error": "Optimizer not available (pulp not installed)", "items": []}
     usable = [f for f in foods if (f.get('calories') or 0) > 0]
+
     if not usable: return {"success": False, "error": "No foods with data", "items": []}
     
     cal_tgt = targets.get('calories', 2000)
