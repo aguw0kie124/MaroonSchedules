@@ -19,7 +19,7 @@ export function CampusScreen() {
             title: 'EXPLORE',
             items: [
                 { id: 'CampusNavigation', label: 'Campus Navigation', subtitle: 'Walking directions & voice nav', icon: <Navigation color={ICON_COLOR} size={22} /> },
-                { id: 'Places', label: 'Find a Spot', subtitle: 'AI-powered place recommendations', icon: <Sparkles color={ICON_COLOR} size={22} />, badge: 'AI' },
+                { id: 'Places', label: 'Places Map', subtitle: 'Live occupancy & category maps', icon: <Map color={ICON_COLOR} size={22} />, badge: 'NEW' },
                 { id: 'ForYou', label: 'For You', subtitle: 'Personalized campus feed', icon: <Heart color={ICON_COLOR} size={22} /> },
             ]
         },
