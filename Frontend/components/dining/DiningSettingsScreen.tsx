@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, ActivityIndicator, Alert, SafeAreaView, ImageBackground } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { API_URL } from '../../config';
-import { Card, SectionLabel, Divider } from './DiningUI';
+import { Card, SectionLabel, ActionButton } from './DiningUI';
+import { useTheme } from '../SharedUI';
+import { useDiningTheme } from './DiningTheme';
 
 const ACTIVITY = [
   { value: 'sedentary', label: 'Sedentary', sub: 'Little/no exercise' },
@@ -53,11 +55,29 @@ export default function DiningSettingsScreen({ navigation }: any) {
 
   const upd = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
+  const { theme } = useTheme();
+  const darkMode = theme === 'dark';
+  const T = useDiningTheme(darkMode);
+
+  const marbleSrc = darkMode
+    ? require('../../assets/black_marble.jpg')
+    : require('../../assets/white_marble.jpg');
+
   if (loading) return <ActivityIndicator style={{ flex: 1 }} color="#500000" />;
 
   return (
-    <ScrollView style={s.container} contentContainerStyle={{ padding: 20 }}>
-      <Text style={s.title}>Dining Settings</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      <ImageBackground source={marbleSrc} style={StyleSheet.absoluteFill} resizeMode="cover">
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)' }]} />
+      </ImageBackground>
+
+      <ScrollView style={s.container} contentContainerStyle={{ padding: 20 }}>
+        <View style={s.header}>
+          <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+            <Text style={{ fontSize: 24, color: T.text }}>←</Text>
+          </TouchableOpacity>
+          <Text style={[s.title, { color: T.text }]}>Dining Settings</Text>
+        </View>
 
       <Card>
         <SectionLabel>Biological Metrics</SectionLabel>
@@ -80,31 +100,61 @@ export default function DiningSettingsScreen({ navigation }: any) {
             <Text style={s.label}>Age</Text>
             <TextInput 
               style={s.input} 
-              value={String(form.age)} 
+              value={String(form.age || '')} 
               onChangeText={v => upd('age', +v)} 
               keyboardType="numeric"
             />
           </View>
         </View>
 
+        {form.bodyFat && (
+          <View style={[s.row, { marginTop: 10, justifyContent: 'center' }]}>
+            <View style={[s.statBox, { borderColor: T.sky + '44' }]}>
+               <Text style={[s.statVal, { color: T.sky }]}>{form.bodyFat}%</Text>
+               <Text style={s.statLbl}>EST. BODY FAT</Text>
+            </View>
+          </View>
+        )}
+
         <View style={s.row}>
           <View style={{ flex: 1 }}>
             <Text style={s.label}>Weight (lbs)</Text>
-            <TextInput 
-              style={s.input} 
-              value={String(form.weight_lbs)} 
-              onChangeText={v => upd('weight_lbs', +v)} 
-              keyboardType="numeric"
-            />
+            <TextInput style={s.input} value={String(form.weight_lbs || '')} onChangeText={v => upd('weight_lbs', +v)} keyboardType="numeric" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.label}>Height (in)</Text>
-            <TextInput 
-              style={s.input} 
-              value={String(form.height_in)} 
-              onChangeText={v => upd('height_in', +v)} 
-              keyboardType="numeric"
-            />
+            <TextInput style={s.input} value={String(form.height_in || '')} onChangeText={v => upd('height_in', +v)} keyboardType="numeric" />
+          </View>
+        </View>
+
+        <View style={s.row}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.label}>Waist (in)</Text>
+            <TextInput style={s.input} value={String(form.waist_in || '')} onChangeText={v => upd('waist_in', +v)} keyboardType="numeric" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.label}>Neck (in)</Text>
+            <TextInput style={s.input} value={String(form.neck_in || '')} onChangeText={v => upd('neck_in', +v)} keyboardType="numeric" />
+          </View>
+          {form.gender === 'female' && (
+            <View style={{ flex: 1 }}>
+              <Text style={s.label}>Hip (in)</Text>
+              <TextInput style={s.input} value={String(form.hip_in || '')} onChangeText={v => upd('hip_in', +v)} keyboardType="numeric" />
+            </View>
+          )}
+        </View>
+      </Card>
+
+      <Card>
+        <SectionLabel>Dietary Goals</SectionLabel>
+        <View style={s.row}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.label}>Goal Weight (lbs)</Text>
+            <TextInput style={s.input} value={String(form.goal_weight_lbs || '')} onChangeText={v => upd('goal_weight_lbs', +v)} keyboardType="numeric" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={s.label}>Goal Date</Text>
+            <TextInput style={s.input} value={form.goal_date || ''} onChangeText={v => upd('goal_date', v)} placeholder="YYYY-MM-DD" placeholderTextColor="#666" />
           </View>
         </View>
       </Card>
@@ -126,15 +176,17 @@ export default function DiningSettingsScreen({ navigation }: any) {
       <TouchableOpacity style={s.saveBtn} onPress={save} disabled={saving}>
         {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.saveBtnText}>Save Settings</Text>}
       </TouchableOpacity>
-
       <View style={{ height: 40 }} />
     </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  title: { fontSize: 28, fontWeight: '900', color: '#fff', marginBottom: 20 },
+  container: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  backBtn: { width: 34, height: 34, justifyContent: 'center' },
+  title: { fontSize: 28, fontWeight: '900', color: '#fff', marginLeft: 10, flex: 1 },
   row: { flexDirection: 'row', gap: 15, marginBottom: 15 },
   label: { fontSize: 10, color: '#999', fontWeight: '700', textTransform: 'uppercase', marginBottom: 5 },
   input: { backgroundColor: '#111', borderRadius: 12, padding: 12, color: '#fff', borderWidth: 1, borderColor: '#333' },
@@ -148,4 +200,7 @@ const s = StyleSheet.create({
   actSub: { color: '#666', fontSize: 10, marginTop: 2 },
   saveBtn: { backgroundColor: '#500000', padding: 16, borderRadius: 12, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontWeight: '800', fontSize: 16 },
+  statBox: { padding: 15, borderRadius: 15, borderWidth: 1, alignItems: 'center', backgroundColor: '#ffffff05', flex: 0.8 },
+  statVal: { fontSize: 24, fontWeight: '900' },
+  statLbl: { fontSize: 9, color: '#666', fontWeight: 'bold', marginTop: 4 },
 });

@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     clerk_id          TEXT UNIQUE NOT NULL,
     email             TEXT,
     full_name         TEXT,
+    profile_image_url TEXT,
     major             TEXT DEFAULT '',
     graduation_year   TEXT DEFAULT '',
     preferred_time    TEXT DEFAULT 'Morning',

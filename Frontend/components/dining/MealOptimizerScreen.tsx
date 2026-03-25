@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Switch } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, SafeAreaView, StatusBar, ImageBackground } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { API_URL } from '../../config';
 import { Card, SectionLabel, Divider, StatPill, ActionButton, Badge } from './DiningUI';
+import { useTheme } from '../SharedUI';
+import { useDiningTheme } from './DiningTheme';
 
 const HALLS = [
   { key: 'Sbisa', label: 'Sbisa', sub: 'North Campus' },
@@ -11,10 +13,15 @@ const HALLS = [
 ];
 const MEALS = ['breakfast', 'lunch', 'dinner'];
 const M_ICON: any = { breakfast: '🌅', lunch: '☀️', dinner: '🌙' };
-const M_CLR: any = { breakfast: '#E8922A', lunch: '#5ab0e8', dinner: '#500000' };
 
 export default function MealOptimizerScreen({ navigation }: any) {
   const { user } = useUser();
+  const { theme } = useTheme();
+  const darkMode = theme === 'dark';
+  const T = useDiningTheme(darkMode);
+
+  const M_CLR: any = { breakfast: T.amber, lunch: T.sky, dinner: T.maroonLight };
+
   const [hall, setHall] = useState('Sbisa');
   const [selMeals, setSelMeals] = useState(['breakfast', 'lunch', 'dinner']);
   const [inclRest, setInclRest] = useState(true);
@@ -61,76 +68,108 @@ export default function MealOptimizerScreen({ navigation }: any) {
     } catch { setMsg({ ok: false, text: 'Could not log meal.' }); }
   };
 
+  const marbleSrc = darkMode
+    ? require('../../assets/black_marble.jpg')
+    : require('../../assets/white_marble.jpg');
+
+  const mealPlan = plan?.plan || {};
+
   return (
-    <ScrollView style={s.container} contentContainerStyle={{ padding: 20 }}>
-      <Text style={s.title}>Meal Optimizer</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
+      <ImageBackground source={marbleSrc} style={StyleSheet.absoluteFill} resizeMode="cover">
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)' }]} />
+      </ImageBackground>
 
-      <Card>
-        <SectionLabel>Settings</SectionLabel>
-        <View style={s.chipRow}>
-          {HALLS.map(h => (
-            <TouchableOpacity key={h.key} 
-                style={[s.chip, hall === h.key && s.chipActive]} 
-                onPress={() => setHall(h.key)}>
-              <Text style={[s.chipText, hall === h.key && { color: '#E8922A' }]}>{h.label}</Text>
+      <ScrollView style={s.container} contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
+        <View style={s.header}>
+            <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+                <Text style={{ fontSize: 24, color: T.text }}>←</Text>
             </TouchableOpacity>
-          ))}
+            <Text style={[s.title, { color: T.text }]}>Meal Optimizer</Text>
         </View>
 
-        <Divider />
-        <SectionLabel>Meals</SectionLabel>
-        <View style={s.chipRow}>
-          {MEALS.map(m => (
-            <TouchableOpacity key={m} 
-                style={[s.chip, selMeals.includes(m) && { borderColor: M_CLR[m] }]} 
-                onPress={() => toggle(m)}>
-              <Text style={{ fontSize: 18 }}>{M_ICON[m]}</Text>
-              <Text style={[s.chipText, selMeals.includes(m) && { color: M_CLR[m] }]}>{m}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Divider />
-        <View style={s.switchRow}>
-          <Text style={s.switchLabel}>Restaurant Alternatives</Text>
-          <Switch value={inclRest} onValueChange={setInclRest} />
-        </View>
-
-        <ActionButton label={loading ? "Generating..." : "Generate Plan"} onPress={run} disabled={loading} />
-      </Card>
-
-      {msg && <Badge label={msg.text} color={msg.ok ? '#52d98a' : '#ff4d4d'} />}
-
-      {plan && (
-        <View style={{ marginTop: 20 }}>
-          <View style={s.tabs}>
-            {MEALS.filter(m => selMeals.includes(m)).map(m => (
-              <TouchableOpacity key={m} style={[s.tab, active === m && { borderBottomColor: M_CLR[m], borderBottomWidth: 2 }]} onPress={() => setActive(m)}>
-                <Text style={[s.tabText, active === m && { color: M_CLR[m] }]}>{m}</Text>
+        <Card>
+          <SectionLabel>Settings</SectionLabel>
+          <View style={s.chipRow}>
+            {HALLS.map(h => (
+              <TouchableOpacity key={h.key} 
+                  style={[s.chip, { borderColor: T.border, backgroundColor: T.bg3 }, hall === h.key && { borderColor: T.tamuGold, backgroundColor: T.tamuGold + '18' }]} 
+                  onPress={() => setHall(h.key)}>
+                <Text style={[s.chipText, { color: T.text2 }, hall === h.key && { color: T.tamuGold }]}>{h.label}</Text>
+                <Text style={[s.chipSub, { color: T.text3 }]}>{h.sub}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          {active && plan?.plan?.[active] && (
-            <MealPanel data={plan.plan[active]} color={M_CLR[active]} onAdd={(v: any) => addToTracker(active, v)} />
-          )}
-        </View>
-      )}
-    </ScrollView>
+          <Divider />
+          <SectionLabel>Meals</SectionLabel>
+          <View style={s.chipRow}>
+            {MEALS.map(m => (
+              <TouchableOpacity key={m} 
+                  style={[s.chip, { borderColor: T.border, backgroundColor: T.bg3 }, selMeals.includes(m) && { borderColor: M_CLR[m], backgroundColor: M_CLR[m] + '1a' }]} 
+                  onPress={() => toggle(m)}>
+                <Text style={{ fontSize: 18 }}>{M_ICON[m]}</Text>
+                <Text style={[s.chipText, { color: T.text2 }, selMeals.includes(m) && { color: M_CLR[m] }]}>{m}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Divider />
+          <View style={s.switchRow}>
+            <View style={{flex:1}}>
+              <Text style={{color: T.text2, fontSize:13, fontWeight:'600'}}>Restaurant Alternatives</Text>
+              <Text style={{color: T.text3, fontSize:11, marginTop:2}}>Show $11 swipe options too</Text>
+            </View>
+            <Switch value={inclRest} onValueChange={setInclRest} trackColor={{ false: T.border2, true: T.maroon }} thumbColor={inclRest ? T.tamuGold : T.text3} />
+          </View>
+
+          <View style={{marginTop: 12}}>
+            <ActionButton label={loading ? "Generating..." : "Generate Plan"} onPress={run} disabled={loading} style={{backgroundColor: T.tamuMaroon}} textStyle={{color: T.tamuGold}} />
+          </View>
+        </Card>
+
+        {msg && <Badge label={msg.text} color={msg.ok ? T.sage : T.clay} />}
+
+        {plan && (
+          <View style={{ marginTop: 20 }}>
+            {plan.profile && (
+                <View style={s.pillRow}>
+                    <StatPill label="Target" value={`${plan.profile.targetCalories} kcal`} color={T.amber} style={{flex: 1}} valueStyle={{fontSize: 16}} />
+                    <StatPill label="Protein" value={`${plan.profile.macros?.protein}g`} color={T.sage} style={{flex: 1}} valueStyle={{fontSize: 16}} />
+                    <StatPill label="Mode" value={plan.profile.mode ? plan.profile.mode.charAt(0).toUpperCase() + plan.profile.mode.slice(1) : '—'} color={T.sky} style={{flex: 1}} valueStyle={{fontSize: 10}} />
+                </View>
+            )}
+
+            <View style={[s.tabs, { borderBottomColor: T.border }]}>
+              {MEALS.filter(m => selMeals.includes(m)).map(m => (
+                <TouchableOpacity key={m} style={[s.tab, active === m && { borderBottomColor: M_CLR[m], borderBottomWidth: 2 }]} onPress={() => setActive(m)}>
+                  <Text style={[s.tabText, { color: T.text3 }, active === m && { color: M_CLR[m] }]}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {active && mealPlan[active] && (
+              <MealPanel data={mealPlan[active]} color={M_CLR[active]} onAdd={(v: any) => addToTracker(active, v)} T={T} />
+            )}
+          </View>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
-function MealPanel({ data, color, onAdd }: any) {
+function MealPanel({ data, color, onAdd, T }: any) {
   return (
     <View style={{ marginTop: 15 }}>
       <SectionLabel>Dining Hall Options</SectionLabel>
       {data?.variants?.map((v: any, i: number) => (
         <Card key={i}>
           <View style={s.variantHeader}>
-              <Text style={{ fontSize: 20 }}>{v.emoji}</Text>
+              <Text style={{ fontSize: 20 }}>🍽️</Text>
               <View style={{ flex: 1 }}>
-                <Text style={s.variantLabel}>{v.label}</Text>
-                <Text style={s.variantSub}>{Math.round(v.totals?.calories || 0)} kcal • {Math.round(v.totals?.protein || 0)}g P</Text>
+                <Text style={[s.variantLabel, { color: T.text }]}>{v.label}</Text>
+                <Text style={[s.variantSub, { color: T.text3 }]}>{Math.round(v.totals?.calories || 0)} kcal • {Math.round(v.totals?.protein || 0)}g P</Text>
               </View>
               <TouchableOpacity style={[s.addBtn, { borderColor: color }]} onPress={() => onAdd(v)}>
                 <Text style={{ color, fontWeight: '700', fontSize: 12 }}>+ Add</Text>
@@ -138,7 +177,7 @@ function MealPanel({ data, color, onAdd }: any) {
           </View>
           <Divider />
           {v.items?.map((it: any, j: number) => (
-              <Text key={j} style={s.foodItem}>• {it.name} (x{it.quantity})</Text>
+              <Text key={j} style={[s.foodItem, { color: T.text2 }]}>• {it.name} <Text style={{color: T.amber}}>x{it.quantity}</Text></Text>
           ))}
         </Card>
       ))}
@@ -149,8 +188,10 @@ function MealPanel({ data, color, onAdd }: any) {
               {Object.entries(data.restaurantPlans).map(([name, p]: any) => (
                   <Card key={name}>
                       <View style={s.variantHeader}>
-                        <Text style={s.variantLabel}>{name}</Text>
-                        <Text style={s.variantSub}>{Math.round(p.totals?.calories || 0)} kcal</Text>
+                        <View style={{flex: 1}}>
+                            <Text style={[s.variantLabel, { color: T.text }]}>{name}</Text>
+                            <Text style={[s.variantSub, { color: T.text3 }]}>{Math.round(p.totals?.calories || 0)} kcal</Text>
+                        </View>
                         <TouchableOpacity style={[s.addBtn, { borderColor: '#5ab0e8' }]} onPress={() => onAdd({ ...p, label: name })}>
                             <Text style={{ color: '#5ab0e8', fontWeight: '700', fontSize: 12 }}>+ Add</Text>
                         </TouchableOpacity>
@@ -164,40 +205,34 @@ function MealPanel({ data, color, onAdd }: any) {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  title: { fontSize: 32, fontWeight: '900', color: '#fff', marginBottom: 24, letterSpacing: -0.5 },
-  chipRow: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginBottom: 5 },
+  container: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  backBtn: { width: 44, height: 44, justifyContent: 'center' },
+  title: { fontSize: 32, fontWeight: '900', letterSpacing: -0.5, flex: 1 },
+  chipRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 4 },
   chip: { 
     flex: 1, 
-    minWidth: 100,
+    minWidth: 80,
     alignItems: 'center', 
-    padding: 16, 
-    borderRadius: 16, 
-    borderWidth: 1, 
-    borderColor: '#1a1a1a', 
-    backgroundColor: '#0a0a0a', 
-    gap: 6 
+    padding: 11, 
+    borderRadius: 11, 
+    borderWidth: 1,
+    gap: 3 
   },
-  chipActive: { borderColor: '#E8922A', backgroundColor: '#E8922A11' },
-  chipText: { color: '#444', fontSize: 13, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  chipText: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  chipSub: { fontSize: 10 },
   switchRow: { 
     flexDirection: 'row', 
-    justifyContent: 'space-between', 
     alignItems: 'center', 
-    marginVertical: 12,
-    backgroundColor: '#050505',
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#111'
+    gap: 12 
   },
-  switchLabel: { color: '#aaa', fontWeight: '700', fontSize: 14 },
-  tabs: { flexDirection: 'row', gap: 24, borderBottomWidth: 1, borderBottomColor: '#1a1a1a', marginBottom: 10 },
-  tab: { paddingVertical: 14 },
-  tabText: { color: '#444', fontWeight: '900', textTransform: 'uppercase', fontSize: 12, letterSpacing: 1 },
+  pillRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  tabs: { flexDirection: 'row', gap: 24, borderBottomWidth: 1, marginBottom: 10 },
+  tab: { paddingVertical: 14, flex: 1, alignItems: 'center' },
+  tabText: { fontWeight: '900', textTransform: 'uppercase', fontSize: 12, letterSpacing: 1 },
   variantHeader: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  variantLabel: { color: '#fff', fontWeight: '900', fontSize: 16, letterSpacing: -0.2 },
-  variantSub: { color: '#555', fontSize: 12, marginTop: 2, fontWeight: '600' },
+  variantLabel: { fontWeight: '900', fontSize: 16, letterSpacing: -0.2 },
+  variantSub: { fontSize: 12, marginTop: 2, fontWeight: '600' },
   addBtn: { borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6 },
-  foodItem: { color: '#777', fontSize: 13, marginBottom: 5, paddingLeft: 5 },
+  foodItem: { fontSize: 13, marginBottom: 5, paddingLeft: 5 },
 });

@@ -133,11 +133,36 @@ def tdee(gender: str, weight_lbs: float, height_in: float, age: int, activity_le
     mult = ACTIVITY_MULTIPLIERS.get(activity_level, 1.55)
     return bmr * mult
 
+def bmr_katch_mcardle(weight_lbs: float, bf_pct: float) -> float:
+    lbm_kg = weight_lbs * 0.453592 * (1 - bf_pct / 100)
+    return 370 + (21.6 * lbm_kg)
+
 def caloric_target(profile: Dict, current_weight_lbs: float) -> Dict:
-    gender, height_in, age = profile.get('gender', 'male'), profile.get('height_in', 70), profile.get('age', 18)
-    activity_level = profile.get('activity_level', 'moderate')
-    goal_weight_lbs, goal_date_str = profile.get('goal_weight_lbs'), profile.get('goal_date')
-    tdee_val = tdee(gender, current_weight_lbs, height_in, age, activity_level)
+    gender = profile.get('gender') or 'male'
+    height_in = float(profile.get('height_in') or 70)
+    age = int(profile.get('age') or 18)
+    activity_level = profile.get('activity_level') or 'moderate'
+    waist_in = float(profile.get('waist_in') or 0)
+    neck_in = float(profile.get('neck_in') or 0)
+    hip_in = float(profile.get('hip_in') or 0)
+    
+    goal_weight_lbs = profile.get('goal_weight_lbs')
+    goal_date_str = profile.get('goal_date')
+    
+    # Calculate Body Fat % if metrics available
+    bf_pct = body_fat_navy(gender, waist_in, neck_in, height_in, hip_in)
+    
+    # Use BF for better TDEE if available (Katch-McArdle)
+    if bf_pct:
+        bmr = bmr_katch_mcardle(current_weight_lbs, bf_pct)
+    else:
+        bmr = bmr_mifflin(gender, current_weight_lbs, height_in, age)
+        
+    mult = ACTIVITY_MULTIPLIERS.get(activity_level, 1.55)
+    tdee_val = bmr * mult
+    
+    # If BF is very high, maybe lower the surplus or increase deficit?
+    # Keeping logic simple for now: Mifflin-St Jeor is the base.
     if not goal_weight_lbs or not goal_date_str:
         return {'targetCalories': round(tdee_val), 'deficitPerDay': 0, 'daysRemaining': None, 'weeklyLoss': 0, 'mode': 'maintain', 'TDEE': round(tdee_val)}
     try:
@@ -149,10 +174,11 @@ def caloric_target(profile: Dict, current_weight_lbs: float) -> Dict:
     min_cal = 1500 if gender == 'male' else 1200
     safe_deficit = min(deficit_per_day, min(1000.0, tdee_val - min_cal))
     return {
-        'targetCalories': max(min_cal, round(tdee_val - safe_deficit)),
-        'TDEE': round(tdee_val), 'deficitPerDay': round(safe_deficit),
+        'targetCalories': max(min_cal, int(round(tdee_val - safe_deficit))),
+        'TDEE': int(round(tdee_val)), 'deficitPerDay': int(round(safe_deficit)),
         'daysRemaining': days_remaining, 'weeklyLoss': round((safe_deficit * 7) / 3500, 2),
-        'mode': 'cut' if weight_diff > 0 else ('bulk' if weight_diff < 0 else 'maintain')
+        'mode': 'cut' if weight_diff > 0 else ('bulk' if weight_diff < 0 else 'maintain'),
+        'bodyFat': round(bf_pct, 1) if bf_pct else None
     }
 
 def macro_targets(weight_lbs: float, activity_level: str, target_calories: int) -> Dict:

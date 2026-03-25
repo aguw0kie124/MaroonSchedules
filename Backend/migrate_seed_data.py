@@ -1,13 +1,11 @@
 import os
 import json
-import psycopg2
+import psycopg
 from datetime import datetime
 
-# Database configuration from .env
-DB_HOST = "10.246.145.251"
-DB_NAME = "maroon_schedules"
-DB_USER = "dev_rian"
-DB_PASS = "admin"
+from db_config import get_db_connection
+
+# Removed hardcoded credentials
 
 def migrate():
     # Enriched seed data from db.js
@@ -53,12 +51,7 @@ def migrate():
         {"name": "Grilled Teriyaki Chicken", "potassium": 510, "magnesium": 38, "vitamin_d": 0.1},
     ]
 
-    conn = psycopg2.connect(
-        host=DB_HOST,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS
-    )
+    conn = psycopg.connect(get_db_connection())
     cur = conn.cursor()
 
     print(f"Migrating {len(seed_foods)} food items...")

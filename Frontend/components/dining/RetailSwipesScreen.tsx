@@ -1,14 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView, SafeAreaView, StatusBar, ImageBackground } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { API_URL } from '../../config';
 import { Card, SectionLabel, StatPill, Divider, ActionButton } from './DiningUI';
+import { useTheme } from '../SharedUI';
+import { useDiningTheme } from './DiningTheme';
 
 const RESTAURANTS = ['Chick-fil-A', 'Panda Express', 'Shake Smart', 'Houston Street Subs', 'Salata', 'Abu Omar Halal'];
 const SHORT: any = { 'Chick-fil-A': 'CFA', 'Panda Express': 'Panda', 'Shake Smart': 'Shake', 'Houston Street Subs': 'Subs', 'Abu Omar Halal': 'Abu Omar' };
 
 export default function RetailSwipesScreen({ navigation }: any) {
   const { user } = useUser();
+  const { theme } = useTheme();
+  const darkMode = theme === 'dark';
+  const T = useDiningTheme(darkMode);
+
   const [info, setInfo] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
   const [showLog, setShowLog] = useState(false);
@@ -64,7 +70,6 @@ export default function RetailSwipesScreen({ navigation }: any) {
     if (!user) return;
     setOptLoad(true); setOptResult(null);
     try {
-        // Updated call to match the Query param expectations
         const res = await fetch(`${API_URL}/dining/optimize/day?clerk_id=${user.id}&dining_hall=${selRest}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -73,7 +78,6 @@ export default function RetailSwipesScreen({ navigation }: any) {
         
         if (res.status === 'success' && res.plan?.[selMeal]) {
             const mPlan = res.plan[selMeal];
-            // The backend for retail now returns the result in restaurantPlans[selRest]
             const opt = mPlan.restaurantPlans?.[selRest];
             if (opt && opt.success) setOptResult({ ...opt, success: true });
             else setOptResult({ success: false, error: opt?.error || 'No valid combo found under $11.' });
@@ -86,123 +90,139 @@ export default function RetailSwipesScreen({ navigation }: any) {
 
   const { swipes = [], usedThisWeek = 0, remaining = 7, todayUsed = 0 } = info || {};
 
+  const marbleSrc = darkMode
+    ? require('../../assets/black_marble.jpg')
+    : require('../../assets/white_marble.jpg');
+
   return (
-    <ScrollView style={s.container} contentContainerStyle={{ padding: 20 }}>
-      <Text style={s.title}>Retail Swipes</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
+      <ImageBackground source={marbleSrc} style={StyleSheet.absoluteFill} resizeMode="cover">
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)' }]} />
+      </ImageBackground>
 
-      <Card>
-        <SectionLabel>This Week ($11/swipe · 7/wk)</SectionLabel>
-        <View style={s.pillRow}>
-          <StatPill label="Used" value={`${usedThisWeek}/7`} color={usedThisWeek >= 6 ? '#ff4d4d' : '#E8922A'} />
-          <StatPill label="Left" value={remaining} color="#52d98a" />
-          <StatPill label="Today" value={`${todayUsed}/2`} color="#5ab0e8" />
-        </View>
-
-        <TouchableOpacity style={s.logBtn} onPress={() => setShowLog(!showLog)}>
-          <Text style={s.logText}>{showLog ? '✕ Cancel' : '+ Log Swipe'}</Text>
-        </TouchableOpacity>
-
-        {showLog && (
-          <View style={{ marginTop: 15 }}>
-            <TextInput style={s.input} placeholder="Cost (default $11)" placeholderTextColor="#555" value={logCost} onChangeText={setLogCost} keyboardType="decimal-pad" />
-            <SectionLabel>Restaurant</SectionLabel>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
-              {RESTAURANTS.map(r => (
-                <TouchableOpacity key={r} style={[s.restChip, logRest === r && s.restChipActive]} onPress={() => setLogRest(r)}>
-                  <Text style={[s.restText, logRest === r && { color: '#E8922A' }]}>{SHORT[r] || r}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <ActionButton label="Save Log" onPress={doLog} disabled={saving} />
-          </View>
-        )}
-      </Card>
-
-      <Card>
-        <SectionLabel>Optimize $11 Combo</SectionLabel>
-        <Text style={s.subHeader}>Restaurant</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
-          {RESTAURANTS.map(r => (
-            <TouchableOpacity key={r} style={[s.restChip, selRest === r && s.restChipActive]} onPress={() => setSelRest(r)}>
-              <Text style={[s.restText, selRest === r && { color: '#E8922A' }]}>{SHORT[r] || r}</Text>
+      <ScrollView style={s.container} contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
+        <View style={s.header}>
+            <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+                <Text style={{ fontSize: 24, color: T.text }}>←</Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-        <Text style={s.subHeader}>Meal Period</Text>
-        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
-            {['breakfast', 'lunch', 'dinner'].map(m => (
-                <TouchableOpacity key={m} style={[s.mealChip, selMeal === m && s.mealChipActive]} onPress={() => setSelMeal(m)}>
-                    <Text style={[s.mealText, selMeal === m && { color: '#5ab0e8' }]}>{m.toUpperCase()}</Text>
-                </TouchableOpacity>
-            ))}
+            <Text style={[s.title, { color: T.text }]}>Retail Swipes</Text>
         </View>
 
-        <ActionButton label={optLoad ? "Searching..." : "Optimize Combo"} onPress={doOptimize} disabled={optLoad} />
-
-        {optResult && (
-          <View style={{ marginTop: 15 }}>
-            {optResult.success ? (
-              <View style={s.optCard}>
-                <Text style={s.optMsg}>✓ Best combo found!</Text>
-                {optResult.items.map((it: any, i: number) => (
-                  <View key={i} style={s.optRow}>
-                      <Text style={s.optItemName}>{it.name}</Text>
-                      <Text style={s.optItemQty}>×{it.quantity}</Text>
-                  </View>
-                ))}
-                <Divider />
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={s.optTotal}>{Math.round(optResult.totals?.calories)} kcal</Text>
-                    <Text style={s.optPrice}>${optResult.totals?.cost?.toFixed(2)} / $11</Text>
-                </View>
-              </View>
-            ) : <Text style={{ color: '#ff4d4d', textAlign: 'center' }}>{optResult.error}</Text>}
+        <Card>
+          <SectionLabel>This Week ($11/swipe · 7/wk)</SectionLabel>
+          <View style={s.pillRow}>
+            <StatPill label="Used" value={`${usedThisWeek}/7`} color={usedThisWeek >= 6 ? T.clay : T.amber} style={{flex: 1}} />
+            <StatPill label="Left" value={remaining} color={T.sage} style={{flex: 1}} />
+            <StatPill label="Today" value={`${todayUsed}/2`} color={T.sky} style={{flex: 1}} />
           </View>
-        )}
-      </Card>
 
-      <Card>
-        <SectionLabel>Usage History</SectionLabel>
-        {swipes.length === 0 ? <Text style={{ color: '#555', textAlign: 'center' }}>No history</Text> : 
-          swipes.map((sw: any) => (
-            <View key={sw.id} style={s.historyRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.historyRest}>{sw.restaurant}</Text>
-                <Text style={s.historyDate}>{sw.date}</Text>
-              </View>
-              <Text style={s.historyCost}>${sw.total_cost.toFixed(2)}</Text>
-              <TouchableOpacity onPress={() => doDelete(sw.id)} style={{ marginLeft: 15 }}><Text style={{ color: '#ff4d4d' }}>✕</Text></TouchableOpacity>
+          <TouchableOpacity style={[s.logBtn, { borderColor: T.tamuMaroon, backgroundColor: T.bg3 }]} onPress={() => setShowLog(!showLog)}>
+            <Text style={[s.logText, { color: T.tamuGold }]}>{showLog ? '✕ Cancel' : '+ Log Swipe'}</Text>
+          </TouchableOpacity>
+
+          {showLog && (
+            <View style={{ marginTop: 15 }}>
+              <TextInput style={[s.input, { backgroundColor: T.bg3, borderColor: T.border, color: T.text }]} placeholder="Cost (default $11)" placeholderTextColor={T.text3} value={logCost} onChangeText={setLogCost} keyboardType="decimal-pad" />
+              <SectionLabel>Restaurant</SectionLabel>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
+                {RESTAURANTS.map(r => (
+                  <TouchableOpacity key={r} style={[s.restChip, { backgroundColor: T.bg3, borderColor: T.border }, logRest === r && { borderColor: T.amber, backgroundColor: T.amber + '18' }]} onPress={() => setLogRest(r)}>
+                    <Text style={[s.restText, { color: T.text2 }, logRest === r && { color: T.amber }]}>{SHORT[r] || r}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <ActionButton label="Save Log" onPress={doLog} disabled={saving} style={{backgroundColor: T.tamuMaroon}} textStyle={{color: T.tamuGold}} />
             </View>
-          ))
-        }
-      </Card>
-    </ScrollView>
+          )}
+        </Card>
+
+        <Card>
+          <SectionLabel>Optimize $11 Combo</SectionLabel>
+          <Text style={[s.subHeader, { color: T.text3 }]}>Restaurant</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
+            {RESTAURANTS.map(r => (
+              <TouchableOpacity key={r} style={[s.restChip, { backgroundColor: T.bg3, borderColor: T.border }, selRest === r && { borderColor: T.amber, backgroundColor: T.amber + '18' }]} onPress={() => setSelRest(r)}>
+                <Text style={[s.restText, { color: T.text2 }, selRest === r && { color: T.amber }]}>{SHORT[r] || r}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <Text style={[s.subHeader, { color: T.text3 }]}>Meal Period</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+              {['breakfast', 'lunch', 'dinner'].map(m => (
+                  <TouchableOpacity key={m} style={[s.mealChip, { backgroundColor: T.bg3, borderColor: T.border }, selMeal === m && { borderColor: T.sky, backgroundColor: T.sky + '18' }]} onPress={() => setSelMeal(m)}>
+                      <Text style={[s.mealText, { color: T.text2 }, selMeal === m && { color: T.sky }]}>{m.toUpperCase()}</Text>
+                  </TouchableOpacity>
+              ))}
+          </View>
+
+          <ActionButton label={optLoad ? "Searching..." : "Optimize Combo"} onPress={doOptimize} disabled={optLoad} style={{backgroundColor: T.tamuMaroon}} textStyle={{color: T.tamuGold}} />
+
+          {optResult && (
+            <View style={{ marginTop: 15 }}>
+              {optResult.success ? (
+                <View style={[s.optCard, { backgroundColor: T.card, borderColor: T.border }]}>
+                  <Text style={[s.optMsg, { color: T.sage }]}>✓ Best combo found!</Text>
+                  {optResult.items.map((it: any, i: number) => (
+                    <View key={i} style={s.optRow}>
+                        <Text style={[s.optItemName, { color: T.text }]}>{it.name}</Text>
+                        <Text style={[s.optItemQty, { color: T.amber }]}>×{it.quantity}</Text>
+                    </View>
+                  ))}
+                  <Divider />
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text style={[s.optTotal, { color: T.sky }]}>{Math.round(optResult.totals?.calories)} kcal</Text>
+                      <Text style={[s.optPrice, { color: T.amber }]}>${optResult.totals?.cost?.toFixed(2)} / $11</Text>
+                  </View>
+                </View>
+              ) : <Text style={{ color: T.clay, textAlign: 'center' }}>{optResult.error}</Text>}
+            </View>
+          )}
+        </Card>
+
+        <Card>
+          <SectionLabel>Usage History</SectionLabel>
+          {swipes.length === 0 ? <Text style={{ color: T.text3, textAlign: 'center' }}>No history</Text> : 
+            swipes.map((sw: any) => (
+              <View key={sw.id} style={[s.historyRow, { borderBottomColor: T.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.historyRest, { color: T.text }]}>{sw.restaurant}</Text>
+                  <Text style={[s.historyDate, { color: T.text3 }]}>{sw.date}</Text>
+                </View>
+                <Text style={[s.historyCost, { color: T.amber }]}>${sw.total_cost.toFixed(2)}</Text>
+                <TouchableOpacity onPress={() => doDelete(sw.id)} style={{ marginLeft: 15 }}><Text style={{ color: T.clay }}>✕</Text></TouchableOpacity>
+              </View>
+            ))
+          }
+        </Card>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
-  title: { fontSize: 28, fontWeight: '900', color: '#fff', marginBottom: 20 },
+  container: { flex: 1 },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  backBtn: { width: 44, height: 44, justifyContent: 'center' },
+  title: { fontSize: 32, fontWeight: '900', letterSpacing: -0.5, flex: 1 },
   pillRow: { flexDirection: 'row', gap: 10, marginBottom: 15 },
-  logBtn: { borderWidth: 1, borderColor: '#500000', padding: 12, borderRadius: 12, alignItems: 'center' },
-  logText: { color: '#E8922A', fontWeight: '900', fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 },
-  input: { backgroundColor: '#111', borderRadius: 12, padding: 12, color: '#fff', marginBottom: 15, borderWidth: 1, borderColor: '#222' },
-  subHeader: { fontSize: 10, color: '#888', fontWeight: '800', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 1 },
-  restChip: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 12, backgroundColor: '#111', borderWidth: 1, borderColor: '#222', marginRight: 8 },
-  restChipActive: { borderColor: '#E8922A', backgroundColor: '#E8922A11' },
-  restText: { color: '#555', fontSize: 12, fontWeight: '700' },
-  mealChip: { flex: 1, alignItems: 'center', padding: 10, borderRadius: 10, backgroundColor: '#111', borderWidth: 1, borderColor: '#222' },
-  mealChipActive: { borderColor: '#5ab0e8', backgroundColor: '#5ab0e811' },
-  mealText: { color: '#555', fontSize: 11, fontWeight: '800' },
-  optCard: { padding: 10, backgroundColor: '#080808', borderRadius: 12, borderWidth: 1, borderColor: '#111' },
-  optMsg: { color: '#52d98a', fontWeight: '900', fontSize: 12, marginBottom: 10, textTransform: 'uppercase' },
+  logBtn: { borderWidth: 1, padding: 12, borderRadius: 12, alignItems: 'center' },
+  logText: { fontWeight: '900', fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 },
+  input: { borderRadius: 12, padding: 12, marginBottom: 15, borderWidth: 1 },
+  subHeader: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 1 },
+  restChip: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 12, borderWidth: 1, marginRight: 8 },
+  restText: { fontSize: 12, fontWeight: '700' },
+  mealChip: { flex: 1, alignItems: 'center', padding: 10, borderRadius: 10, borderWidth: 1 },
+  mealText: { fontSize: 11, fontWeight: '800' },
+  optCard: { padding: 12, borderRadius: 12, borderWidth: 1 },
+  optMsg: { fontWeight: '900', fontSize: 12, marginBottom: 10, textTransform: 'uppercase' },
   optRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  optItemName: { color: '#fff', fontSize: 13, flex: 1 },
-  optItemQty: { color: '#E8922A', fontWeight: 'bold', marginLeft: 10 },
-  optTotal: { color: '#5ab0e8', fontWeight: '900' },
-  optPrice: { color: '#E8922A', fontWeight: '900' },
-  historyRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#111' },
-  historyRest: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  historyDate: { color: '#444', fontSize: 11, marginTop: 2 },
-  historyCost: { color: '#E8922A', fontWeight: 'bold' },
+  optItemName: { fontSize: 13, flex: 1 },
+  optItemQty: { fontWeight: 'bold', marginLeft: 10 },
+  optTotal: { fontWeight: '900' },
+  optPrice: { fontWeight: '900' },
+  historyRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
+  historyRest: { fontWeight: '700', fontSize: 14 },
+  historyDate: { fontSize: 11, marginTop: 2 },
+  historyCost: { fontWeight: 'bold' },
 });

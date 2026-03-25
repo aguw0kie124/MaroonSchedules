@@ -49,7 +49,28 @@ def get_dining_profile(clerk_id: str):
             cur.execute("SELECT * FROM dining_profiles WHERE clerk_id = %s", (clerk_id,))
             profile = cur.fetchone()
             if not profile:
-                raise HTTPException(status_code=404, detail="Dining profile not found")
+                # Auto-initialize default profile
+                cur.execute("""
+                    INSERT INTO dining_profiles (clerk_id, gender, weight_lbs, height_in, activity_level, mode, target_calories)
+                    VALUES (%s, 'male', 150, 70, 'moderate', 'maintain', 2000)
+                    RETURNING *
+                """, (clerk_id,))
+                profile = cur.fetchone()
+                conn.commit()
+            
+            # Recalculate live macro targets instead of just sending the raw static row
+            cur.execute("SELECT weight_lbs FROM weight_log WHERE clerk_id = %s ORDER BY date DESC LIMIT 1", (clerk_id,))
+            latest_w = cur.fetchone()
+            current_weight = latest_w['weight_lbs'] if latest_w and latest_w['weight_lbs'] else (profile['weight_lbs'] or 150)
+            cal_target = dining_service.caloric_target(profile, current_weight)
+            macros = dining_service.macro_targets(current_weight, profile['activity_level'], cal_target['targetCalories'])
+            
+            # Attach live values
+            profile['targetCalories'] = cal_target['targetCalories']
+            profile['macros'] = macros
+            profile['mode'] = cal_target['mode']
+            profile['bodyFat'] = cal_target.get('bodyFat')
+
             return profile
 
 @router.post("/profile/{clerk_id}")
@@ -89,12 +110,19 @@ def optimize_day(
             cur.execute("SELECT * FROM dining_profiles WHERE clerk_id = %s", (clerk_id,))
             profile = cur.fetchone()
             if not profile:
-                raise HTTPException(status_code=404, detail="Profile not set up")
+                # Auto-initialize default profile
+                cur.execute("""
+                    INSERT INTO dining_profiles (clerk_id, gender, weight_lbs, height_in, activity_level, mode, target_calories)
+                    VALUES (%s, 'male', 150, 70, 'moderate', 'maintain', 2000)
+                    RETURNING *
+                """, (clerk_id,))
+                profile = cur.fetchone()
+                conn.commit()
 
             # Get latest weight
             cur.execute("SELECT weight_lbs FROM weight_log WHERE clerk_id = %s ORDER BY date DESC LIMIT 1", (clerk_id,))
             latest_w = cur.fetchone()
-            current_weight = latest_w['weight_lbs'] if latest_w else profile['weight_lbs']
+            current_weight = latest_w['weight_lbs'] if latest_w and latest_w['weight_lbs'] else (profile['weight_lbs'] or 150)
 
     # 2. Calc Targets
     cal_target = dining_service.caloric_target(profile, current_weight)
@@ -184,12 +212,18 @@ def optimize_retail_combo(clerk_id: str = Query(...), dining_hall: str = Query(.
             cur.execute("SELECT * FROM dining_profiles WHERE clerk_id = %s", (clerk_id,))
             prof = cur.fetchone()
             if not prof:
-                raise HTTPException(status_code=404, detail="Profile not found")
+                cur.execute("""
+                    INSERT INTO dining_profiles (clerk_id, gender, weight_lbs, height_in, activity_level, mode, target_calories)
+                    VALUES (%s, 'male', 150, 70, 'moderate', 'maintain', 2000)
+                    RETURNING *
+                """, (clerk_id,))
+                prof = cur.fetchone()
+                conn.commit()
             
             # Get latest weight
             cur.execute("SELECT weight_lbs FROM weight_log WHERE clerk_id = %s ORDER BY date DESC LIMIT 1", (clerk_id,))
             latest_w = cur.fetchone()
-            current_weight = latest_w['weight_lbs'] if latest_w else prof['weight_lbs']
+            current_weight = latest_w['weight_lbs'] if latest_w and latest_w['weight_lbs'] else (prof['weight_lbs'] or 150)
             
             targets = dining_service.caloric_target(prof, current_weight)
             
@@ -360,12 +394,13 @@ def get_weight_stats(clerk_id: str):
             rows = cur.fetchall()
             
             # Get goal from profile
-            cur.execute("SELECT weight_lbs as goal FROM dining_profiles WHERE clerk_id = %s", (clerk_id,))
+            cur.execute("SELECT goal_weight_lbs, goal_date FROM dining_profiles WHERE clerk_id = %s", (clerk_id,))
             prof = cur.fetchone()
-            goal = float(prof['goal']) if prof else None
+            goal = float(prof['goal_weight_lbs']) if prof and prof.get('goal_weight_lbs') else None
+            goal_date = prof['goal_date'] if prof else None
 
             if not rows:
-                return {"currentWeight": 0, "goalWeight": goal, "totalChange": 0}
+                return {"currentWeight": 0, "goalWeight": goal, "goalDate": goal_date, "totalChange": 0}
             
             current = float(rows[0]['weight_lbs'])
             prev = float(rows[1]['weight_lbs']) if len(rows) > 1 else current
@@ -373,5 +408,6 @@ def get_weight_stats(clerk_id: str):
             return {
                 "currentWeight": current,
                 "goalWeight": goal,
+                "goalDate": goal_date,
                 "totalChange": current - prev
             }
