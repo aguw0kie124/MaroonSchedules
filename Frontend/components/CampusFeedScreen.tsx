@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
     View, Text, StyleSheet, FlatList, Pressable, 
     Image, TextInput, ActivityIndicator, Alert,
-    Modal, TouchableWithoutFeedback, KeyboardAvoidingView, Platform
+    Modal, TouchableWithoutFeedback, KeyboardAvoidingView, Platform, Keyboard
 } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { Camera, Image as ImageIcon, Video, Heart, MapPin, X, MoreHorizontal, MessageCircle, Calendar, Send, Film } from 'lucide-react-native';
@@ -50,8 +50,8 @@ function mapActivityToPost(activity: any): Post {
     return {
         id: activity.id || Date.now().toString(),
         user_id: actor.id || activity.actor || '',
-        user_name: custom.user_name || actor.data?.name || actor.id || 'Aggie',
-        user_image: custom.user_image || actor.data?.image || null,
+        user_name: actor.data?.name || custom.user_name || actor.id || 'Aggie',
+        user_image: actor.data?.image || custom.user_image || null,
         caption: activity.text || null,
         media_url: media.image_url || media.asset_url || null,
         media_type: media.type === 'video' ? 'video' : (media.type === 'image' ? 'image' : null),
@@ -84,6 +84,7 @@ export function CampusFeedScreen() {
     const [mediaUri, setMediaUri] = useState<string | null>(null);
     const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
     const [isPosting, setIsPosting] = useState(false);
+    const [editingPostId, setEditingPostId] = useState<string | null>(null);
 
     // Comment Modal State
     const [commentModalVisible, setCommentModalVisible] = useState(false);
@@ -96,7 +97,8 @@ export function CampusFeedScreen() {
 
     useEffect(() => {
         if (user) {
-            connectFeedsUser(user.id, user.fullName || 'Aggie', user.imageUrl)
+            const displayName = user.username || user.fullName || user.primaryEmailAddress?.emailAddress?.split('@')[0] || 'Aggie';
+            connectFeedsUser(user.id, displayName, user.imageUrl)
                 .then(() => {
                     setFeedConnected(true);
                     setStreamError(null);
@@ -107,6 +109,12 @@ export function CampusFeedScreen() {
                     setStreamError('Could not connect to Stream Feeds.');
                     setLoading(false);
                 });
+
+            // Real-time effect: poll every 10 seconds
+            const interval = setInterval(() => {
+                if (feedConnected) fetchPosts();
+            }, 10000);
+            return () => clearInterval(interval);
         }
     }, [user]);
 
@@ -157,12 +165,13 @@ export function CampusFeedScreen() {
             return;
         }
 
+        Keyboard.dismiss();
         setIsPosting(true);
         try {
-            if (commentPostId && posts.find(p => p.id === commentPostId)) {
+            if (editingPostId && posts.find(p => p.id === editingPostId)) {
                 // UPDATE existing post
-                await updatePost(commentPostId, caption.trim());
-                setCommentPostId(null);
+                await updatePost(editingPostId, caption.trim());
+                setEditingPostId(null);
             } else {
                 // CREATE new post
                 let uploadedMediaUrl = null;
@@ -186,7 +195,12 @@ export function CampusFeedScreen() {
             setMediaUri(null);
             setMediaType(null);
             setLocationTag('');
-            handleRefresh();
+            // Larger delay for Stream distributed indexing
+            setTimeout(() => {
+                handleRefresh();
+            }, 1500);
+            
+            Alert.alert("Success! 📣", "Your post is now live and will appear shortly.");
         } catch (e: any) {
             console.error(e);
             Alert.alert("Error", e.message || "Something went wrong posting to Stream.");
@@ -228,9 +242,10 @@ export function CampusFeedScreen() {
 
     const handleSendComment = async () => {
         if (!commentText.trim() || !commentPostId || !user || !feedConnected) return;
+        Keyboard.dismiss();
         setSendingComment(true);
         try {
-            await addComment(commentPostId, commentText.trim());
+            await addComment(commentPostId, user, commentText.trim());
             const updated = await getComments(commentPostId);
             setComments(updated);
             setCommentText('');
@@ -247,7 +262,7 @@ export function CampusFeedScreen() {
     };
 
     const openEditPost = (post: Post) => {
-        setCommentPostId(post.id); // Reusing for edit
+        setEditingPostId(post.id); 
         setCaption(post.caption || '');
         setLocationTag(post.location_tag || '');
         setMediaUri(post.media_url);
@@ -408,12 +423,13 @@ export function CampusFeedScreen() {
                 <Camera color="#FFF" size={24} />
             </Pressable>
 
-            {/* Create Post Modal */}
             <Modal visible={modalVisible} animationType="slide" transparent>
-                <View style={styles.modalBg}>
-                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContent}>
+                <TouchableWithoutFeedback onPress={() => { Keyboard.dismiss(); setModalVisible(false); setEditingPostId(null); setCaption(''); setMediaUri(null); setLocationTag(''); }}>
+                    <View style={styles.modalBg}>
+                        <TouchableWithoutFeedback onPress={e => e.stopPropagation()}>
+                            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalContent}>
                         <View style={styles.modalHeader}>
-                            <Pressable onPress={() => setModalVisible(false)} style={styles.modalCloseBtn}>
+                            <Pressable onPress={() => { setModalVisible(false); setEditingPostId(null); setCaption(''); setMediaUri(null); setLocationTag(''); }} style={styles.modalCloseBtn}>
                                 <Text style={styles.modalCancelText}>Cancel</Text>
                             </Pressable>
                             <Text style={styles.modalTitle}>New Post</Text>
@@ -470,14 +486,17 @@ export function CampusFeedScreen() {
                                 />
                             </View>
                         </View>
-                    </KeyboardAvoidingView>
-                </View>
+                            </KeyboardAvoidingView>
+                        </TouchableWithoutFeedback>
+                    </View>
+                </TouchableWithoutFeedback>
             </Modal>
 
-            {/* Comments Modal */}
             <Modal visible={commentModalVisible} animationType="slide" transparent>
-                <View style={styles.modalBg}>
-                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.commentsModal}>
+                <TouchableWithoutFeedback onPress={() => { Keyboard.dismiss(); setCommentModalVisible(false); setComments([]); }}>
+                    <View style={styles.modalBg}>
+                        <TouchableWithoutFeedback onPress={e => e.stopPropagation()}>
+                            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.commentsModal}>
                         <View style={styles.commentsHeader}>
                             <Text style={styles.commentsTitle}>Comments</Text>
                             <Pressable onPress={() => { setCommentModalVisible(false); setComments([]); }}>
@@ -496,28 +515,34 @@ export function CampusFeedScreen() {
                                 <ActivityIndicator color={COLORS.primary} />
                             </View>
                         ) : (
-                            <FlatList
-                                data={comments}
-                                keyExtractor={(item, i) => item.id || String(i)}
-                                style={{ flex: 1 }}
-                                contentContainerStyle={{ paddingBottom: 16 }}
-                                renderItem={({ item }) => (
-                                    <View style={styles.commentRow}>
-                                        <View style={styles.commentAvatar}>
-                                            <Text style={styles.commentAvatarText}>{(item.user?.id || 'A').slice(0, 2).toUpperCase()}</Text>
+                                <FlatList
+                                    data={comments}
+                                    keyExtractor={(item, i) => item.id || String(i)}
+                                    style={{ flex: 1 }}
+                                    contentContainerStyle={{ paddingBottom: 20 }}
+                                    renderItem={({ item }) => {
+                                        const commenterName = item.user?.data?.name || item.data?.name || item.user?.name || item.user_id || item.user?.id || 'Aggie';
+                                        const commenterImage = item.user?.data?.image || item.data?.image || item.user?.image || null;
+                                        
+                                        return (
+                                            <View style={styles.commentRow}>
+                                                <Image 
+                                                    source={{ uri: commenterImage || 'https://via.placeholder.com/40' }} 
+                                                    style={styles.commentAvatar} 
+                                                />
+                                                <View style={styles.commentBubble}>
+                                                    <Text style={styles.commentUser}>{commenterName}</Text>
+                                                    <Text style={styles.commentBody}>{item.data?.text || item.data?.comment || item.comment || item.text || ''}</Text>
+                                                </View>
+                                            </View>
+                                        );
+                                    }}
+                                    ListEmptyComponent={
+                                        <View style={styles.emptyState}>
+                                            <Text style={styles.emptySubtitle}>No comments yet. Be the first!</Text>
                                         </View>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.commentUser}>{item.user?.id || 'Aggie'}</Text>
-                                            <Text style={styles.commentBody}>{item.comment || item.text || ''}</Text>
-                                        </View>
-                                    </View>
-                                )}
-                                ListEmptyComponent={
-                                    <View style={styles.emptyState}>
-                                        <Text style={styles.emptySubtitle}>No comments yet. Be the first!</Text>
-                                    </View>
-                                }
-                            />
+                                    }
+                                />
                         )}
 
                         <View style={styles.commentInputRow}>
@@ -541,8 +566,10 @@ export function CampusFeedScreen() {
                                 )}
                             </Pressable>
                         </View>
-                    </KeyboardAvoidingView>
-                </View>
+                            </KeyboardAvoidingView>
+                        </TouchableWithoutFeedback>
+                    </View>
+                </TouchableWithoutFeedback>
             </Modal>
         </View>
     );
@@ -600,11 +627,11 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     commentsTitle: { fontSize: 18, fontWeight: '800', color: '#FFFFFF' },
     commentOriginalPost: { paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: 'rgba(80,0,0,0.1)' },
     commentOriginalText: { fontSize: 14, color: COLORS.textSecondary, fontStyle: 'italic' },
-    commentRow: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 12, gap: 12 },
-    commentAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center' },
-    commentAvatarText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
-    commentUser: { fontSize: 14, fontWeight: '700', color: '#FFFFFF', marginBottom: 2 },
-    commentBody: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 20 },
+    commentRow: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 8, gap: 12, alignItems: 'flex-start' },
+    commentAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.surfaceElevated || '#222' },
+    commentBubble: { flex: 1, backgroundColor: COLORS.surfaceElevated || '#1A1A1A', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: COLORS.border },
+    commentUser: { fontSize: 13, fontWeight: '800', color: COLORS.accent || COLORS.primary, marginBottom: 2 },
+    commentBody: { fontSize: 14, color: '#FFFFFF', lineHeight: 20 },
     commentInputRow: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: COLORS.border, gap: 10, alignItems: 'center' },
     commentInput: { flex: 1, backgroundColor: COLORS.background, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, color: '#FFFFFF', fontSize: 14 },
     commentSendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     View, Text, StyleSheet, FlatList, Pressable,
     Dimensions, ActivityIndicator, Alert, Modal,
-    TextInput, KeyboardAvoidingView, Platform, Image, StatusBar
+    TextInput, KeyboardAvoidingView, Platform, Image, StatusBar, Keyboard, TouchableWithoutFeedback
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useUser } from '@clerk/clerk-expo';
@@ -46,8 +46,8 @@ function mapActivityToReel(activity: any): Reel {
     return {
         id: activity.id || Date.now().toString(),
         user_id: actor.id || activity.actor || '',
-        user_name: custom.user_name || actor.data?.name || actor.id || 'Aggie',
-        user_image: custom.user_image || actor.data?.image || '',
+        user_name: actor.data?.name || custom.user_name || actor.id || 'Aggie',
+        user_image: actor.data?.image || custom.user_image || '',
         caption: activity.text || '',
         video_url: media.asset_url || media.video_url || '',
         likes: activity.reaction_counts?.like || activity.reaction_count || 0,
@@ -117,7 +117,7 @@ const ReelItem = ({
 
                 <Pressable style={styles.rightActionItem} onPress={() => openComments(item)}>
                     <MessageCircle color="#FFF" size={28} />
-                    <Text style={styles.rightActionText}>{item.reply_count || 'Reply'}</Text>
+                    <Text style={styles.rightActionText}>{item.reply_count}</Text>
                 </Pressable>
 
                 <Pressable style={styles.rightActionItem}>
@@ -167,6 +167,7 @@ export function ReelsScreen() {
     const [uploadCaption, setUploadCaption] = useState('');
     const [uploadVideoUri, setUploadVideoUri] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [editingReelId, setEditingReelId] = useState<string | null>(null);
     const [streamError, setStreamError] = useState<string | null>(null);
 
     const uploadPlayer = useVideoPlayer(uploadVideoUri || '', p => {
@@ -184,7 +185,15 @@ export function ReelsScreen() {
     const [loadingComments, setLoadingComments] = useState(false);
     const [sendingComment, setSendingComment] = useState(false);
 
-    useEffect(() => { loadReels(); }, [user]);
+    useEffect(() => { 
+        loadReels(); 
+        
+        // Real-time effect: poll every 15 seconds for reels
+        const interval = setInterval(() => {
+            loadReels();
+        }, 15000);
+        return () => clearInterval(interval);
+    }, [user]);
 
     const loadReels = async () => {
         setLoading(true);
@@ -195,7 +204,8 @@ export function ReelsScreen() {
         }
 
         try {
-            await connectFeedsUser(user.id, user.fullName || 'Aggie', user.imageUrl);
+            const displayName = user.username || user.fullName || user.primaryEmailAddress?.emailAddress?.split('@')[0] || 'Aggie';
+            await connectFeedsUser(user.id, displayName, user.imageUrl);
 
             const activities = await getReelsFeed(30);
             const mapped = activities.map(mapActivityToReel).filter(r => r.video_url);
@@ -250,7 +260,7 @@ export function ReelsScreen() {
     };
 
     const openEditReel = (reel: Reel) => {
-        setCommentPostId(reel.id);
+        setEditingReelId(reel.id);
         setUploadCaption(reel.caption);
         setUploadVideoUri(reel.video_url); // Preview existing
         setUploadModalVisible(true);
@@ -272,9 +282,10 @@ export function ReelsScreen() {
 
     const handleSendComment = async () => {
         if (!commentText.trim() || !commentPostId || !user) return;
+        Keyboard.dismiss();
         setSendingComment(true);
         try {
-            await addComment(commentPostId, commentText.trim());
+            await addComment(commentPostId, user, commentText.trim());
             const updated = await getComments(commentPostId);
             setComments(updated);
             setCommentText('');
@@ -309,12 +320,13 @@ export function ReelsScreen() {
 
     const handleUploadReel = async () => {
         if (!user || !uploadVideoUri) return;
+        Keyboard.dismiss();
         setIsUploading(true);
         try {
-            if (commentPostId && reels.find(r => r.id === commentPostId)) {
+            if (editingReelId && reels.find(r => r.id === editingReelId)) {
                 // UPDATE
-                await updateReel(commentPostId, uploadCaption.trim());
-                setCommentPostId(null);
+                await updateReel(editingReelId, uploadCaption.trim());
+                setEditingReelId(null);
             } else {
                 // CREATE
                 const videoUrl = await uploadStreamFile(uploadVideoUri);
@@ -330,8 +342,12 @@ export function ReelsScreen() {
             setUploadModalVisible(false);
             setUploadCaption('');
             setUploadVideoUri(null);
-            Alert.alert('Success! 🎬', 'Your reel has been updated!');
-            loadReels();
+            // Larger delay for Stream distributed indexing
+            setTimeout(() => {
+                loadReels();
+            }, 1500);
+            
+            Alert.alert('Success! 🎬', 'Your reel is now live!');
         } catch (e: any) {
             console.error('[Reels] Upload error:', e);
             Alert.alert('Upload Failed', e.message || 'Something went wrong.');
@@ -404,18 +420,19 @@ export function ReelsScreen() {
                 })}
             />
 
-            {/* Upload Modal */}
             <Modal visible={uploadModalVisible} animationType="slide" transparent>
-                <View style={styles.uploadModalBg}>
-                    <KeyboardAvoidingView
-                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                        style={styles.uploadModalContent}
-                    >
+                <TouchableWithoutFeedback onPress={() => { Keyboard.dismiss(); setUploadModalVisible(false); setUploadVideoUri(null); setEditingReelId(null); setUploadCaption(''); }}>
+                    <View style={styles.uploadModalBg}>
+                        <TouchableWithoutFeedback onPress={e => e.stopPropagation()}>
+                            <KeyboardAvoidingView
+                                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                                style={styles.uploadModalContent}
+                            >
                         <View style={styles.uploadModalHeader}>
-                            <Pressable onPress={() => { setUploadModalVisible(false); setUploadVideoUri(null); }}>
+                            <Pressable onPress={() => { setUploadModalVisible(false); setUploadVideoUri(null); setEditingReelId(null); setUploadCaption(''); }}>
                                 <Text style={styles.uploadCancelText}>Cancel</Text>
                             </Pressable>
-                            <Text style={styles.uploadTitle}>New Reel</Text>
+                            <Text style={styles.uploadTitle}>{editingReelId ? 'Edit Reel' : 'New Reel'}</Text>
                             <Pressable onPress={handleUploadReel} disabled={isUploading}>
                                 {isUploading ? (
                                     <ActivityIndicator color={COLORS.accent || COLORS.primary} size="small" />
@@ -441,14 +458,18 @@ export function ReelsScreen() {
                             value={uploadCaption}
                             onChangeText={setUploadCaption}
                         />
-                    </KeyboardAvoidingView>
-                </View>
+                            </KeyboardAvoidingView>
+                        </TouchableWithoutFeedback>
+                    </View>
+                </TouchableWithoutFeedback>
             </Modal>
 
             {/* Comment Modal */}
             <Modal visible={commentModalVisible} animationType="slide" transparent>
-                <View style={[styles.uploadModalBg, { justifyContent: 'flex-end' }]}>
-                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.uploadModalContent, { minHeight: '60%', padding: 0 }]}>
+                <TouchableWithoutFeedback onPress={() => { Keyboard.dismiss(); setCommentModalVisible(false); }}>
+                    <View style={[styles.uploadModalBg, { justifyContent: 'flex-end' }]}>
+                        <TouchableWithoutFeedback onPress={e => e.stopPropagation()}>
+                            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.uploadModalContent, { minHeight: '60%', padding: 0 }]}>
                         <View style={[styles.uploadModalHeader, { paddingHorizontal: 20, paddingTop: 20 }]}>
                             <Pressable onPress={() => setCommentModalVisible(false)}>
                                 <X color="#FFF" size={24} />
@@ -466,15 +487,24 @@ export function ReelsScreen() {
                                     <Text style={{ color: '#DDD' }}>{loadingComments ? 'Loading...' : 'No comments yet. Be the first!'}</Text>
                                 </View>
                             )}
-                            renderItem={({ item }: { item: any }) => (
-                                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
-                                    <Image source={{ uri: item.user?.data?.image || 'https://via.placeholder.com/40' }} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#333', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }} />
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 14, marginBottom: 2 }}>{item.user?.data?.name || item.user_id}</Text>
-                                        <Text style={{ color: '#FFFFFF', fontSize: 15, lineHeight: 20 }}>{item.comment || item.text}</Text>
+                            renderItem={({ item }: { item: any }) => {
+                                // Stream enriched user data is in item.user.data
+                                const commenterName = item.user?.data?.name || item.data?.name || item.user?.name || item.user_id || item.user?.id || 'Aggie';
+                                const commenterImage = item.user?.data?.image || item.data?.image || item.user?.image || null;
+                                
+                                return (
+                                    <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16, alignItems: 'flex-start' }}>
+                                        <Image 
+                                            source={{ uri: commenterImage || 'https://via.placeholder.com/40' }} 
+                                            style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#333', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }} 
+                                        />
+                                        <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 16, padding: 12, borderWidth: 0.5, borderColor: 'rgba(255,255,255,0.1)' }}>
+                                            <Text style={{ color: '#E8922A', fontWeight: '900', fontSize: 13, marginBottom: 4 }}>{commenterName}</Text>
+                                            <Text style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 18 }}>{item.data?.text || item.data?.comment || item.comment || item.text || ''}</Text>
+                                        </View>
                                     </View>
-                                </View>
-                            )}
+                                );
+                            }}
                         />
 
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#333', backgroundColor: '#1A1A1A' }}>
@@ -491,8 +521,10 @@ export function ReelsScreen() {
                                 {sendingComment ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={{ color: '#FF453A', fontWeight: 'bold', fontSize: 16, opacity: !commentText.trim() ? 0.5 : 1 }}>Post</Text>}
                             </Pressable>
                         </View>
-                    </KeyboardAvoidingView>
-                </View>
+                            </KeyboardAvoidingView>
+                        </TouchableWithoutFeedback>
+                    </View>
+                </TouchableWithoutFeedback>
             </Modal>
         </View>
     );

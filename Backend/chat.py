@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel
 from stream_chat import StreamChat
 import os
@@ -97,6 +98,8 @@ async def list_users(exclude_id: str = ""):
 
 class FeedsTokenRequest(BaseModel):
     clerk_user_id: str
+    name: Optional[str] = None
+    image: Optional[str] = None
 
 class FeedsTokenResponse(BaseModel):
     stream_user_id: str
@@ -116,7 +119,11 @@ async def get_feeds_token(body: FeedsTokenRequest):
     chat_client = StreamChat(api_key=api_key, api_secret=api_secret)
 
     try:
-        chat_client.upsert_users([{"id": stream_user_id}])
+        user_data = {"id": stream_user_id}
+        if body.name: user_data["name"] = body.name
+        if body.image: user_data["image"] = body.image
+        
+        chat_client.upsert_users([user_data])
         token = chat_client.create_token(user_id=stream_user_id)
         return FeedsTokenResponse(
             stream_user_id=stream_user_id,
@@ -162,10 +169,13 @@ async def proxy_add_activity(feed_group: str, feed_id: str, body: FeedActivity):
     server_client = stream.connect(api_key, api_secret)
     feed = server_client.feed(feed_group, feed_id)
     try:
+        print(f"[Stream Proxy] Adding activity to {feed_group}:{feed_id}: {body.activity.get('verb')}")
         response = feed.add_activity(body.activity)
+        print(f"[Stream Proxy] Add SUCCESS: {response.get('id')}")
         return response
     except Exception as e:
         print(f"Stream Proxy Add Error: {e}")
+        # Log more detail if it's an API conflict or validation error
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/feeds/proxy/{feed_group}/{feed_id}/{activity_id}")
@@ -207,15 +217,28 @@ async def proxy_add_reaction(body: ReactionPayload):
     api_secret = os.environ.get("STREAM_FEEDS_API_SECRET", "")
     server_client = stream.connect(api_key, api_secret)
     try:
+        # Proactively sync user metadata to Stream's global store if provided in data
+        try:
+            if body.data and ("name" in body.data or "image" in body.data):
+                user_data = {"id": body.user_id}
+                if "name" in body.data: user_data["name"] = body.data["name"]
+                if "image" in body.data: user_data["image"] = body.data["image"]
+                chat_client.upsert_users([user_data])
+        except Exception as ue:
+            print(f"[Stream Proxy] User sync warning (non-fatal): {ue}")
+            
+        print(f"[Stream Proxy] Adding reaction {body.kind} to {body.activity_id} for user {body.user_id}")
         response = server_client.reactions.add(
             body.kind, 
             body.activity_id, 
             user_id=body.user_id,
             data=body.data
         )
+        print(f"[Stream Proxy] Reaction {body.kind} SUCCESS: {response.get('id')}")
         return response
     except Exception as e:
         print(f"Stream Proxy Reaction Error: {e}")
+        # Return the actual error message so the frontend can display it
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/feeds/proxy/reactions/{activity_id}/{kind}")
@@ -224,7 +247,8 @@ async def proxy_get_reactions(activity_id: str, kind: str):
     api_secret = os.environ.get("STREAM_FEEDS_API_SECRET", "")
     server_client = stream.connect(api_key, api_secret)
     try:
-        response = server_client.reactions.filter(activity_id=activity_id, kind=kind)
+        # Use default sort (newest first for comments usually)
+        response = server_client.reactions.filter(activity_id=activity_id, kind=kind, enrich=True)
         return response
     except Exception as e:
         print(f"Stream Proxy GetReactions Error: {e}")

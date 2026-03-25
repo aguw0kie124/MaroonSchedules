@@ -20,7 +20,11 @@ export async function connectFeedsUser(
   const res = await fetch(`${API_URL}/chat/feeds/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ clerk_user_id: clerkUserId }),
+    body: JSON.stringify({ 
+        clerk_user_id: clerkUserId,
+        name: clerkName,
+        image: clerkImage
+    }),
   });
   if (!res.ok) throw new Error('Failed to get feeds token');
   const { stream_api_key, stream_user_token } = await res.json();
@@ -39,6 +43,7 @@ export async function connectFeedsUser(
   connectedUserId = clerkUserId;
   return client;
 }
+
 
 export async function uploadStreamImage(uri: string): Promise<string> {
   if (!feedsClient) throw new Error('Not connected');
@@ -83,10 +88,15 @@ export async function uploadStreamFile(uri: string): Promise<string> {
 }
 
 export async function getCampusFeed(limit = 25): Promise<any[]> {
-  if (!feedsClient) return [];
-  const feed = feedsClient.feed('flat', 'campus_global');
-  await feed.getOrCreate({ limit });
-  return feed.state.getLatestValue().activities || [];
+  try {
+    const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/campus_global?limit=${limit}`);
+    if (!res.ok) throw new Error('Proxy Fetch Error');
+    const data = await res.json();
+    return data.results || [];
+  } catch (e) {
+    console.error('[StreamFeeds] getCampusFeed error:', e);
+    return [];
+  }
 }
 
 export async function addPost(params: {
@@ -128,43 +138,61 @@ export async function addPost(params: {
   
   if (!res.ok) {
     const err = await res.text();
+    console.error(`[StreamFeeds] addPost error: ${err}`);
     throw new Error(`Proxy Post Error: ${err}`);
   }
 }
 
-export async function toggleLike(activityId: string, userId: string): Promise<{ liked: boolean }> {
-  if (!feedsClient) throw new Error('Not connected');
-  try {
-    await feedsClient.addActivityReaction({
-      activity_id: activityId,
-      type: 'like',
-      enforce_unique: true,
+export async function toggleLike(activityId: string, userId: string): Promise<any> {
+    const res = await fetch(`${API_URL}/chat/feeds/proxy/reactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            kind: 'like', 
+            activity_id: activityId, 
+            user_id: userId,
+            data: {}
+        })
     });
-    return { liked: true };
-  } catch (e: any) {
-    return { liked: false };
-  }
+    if (!res.ok) {
+        const err = await res.text();
+        console.error('[StreamFeeds] toggleLike error:', err);
+        throw new Error('Like Proxy Error: ' + err);
+    }
+    return res.json();
 }
 
-export async function addComment(activityId: string, text: string): Promise<any> {
-  if (!feedsClient) throw new Error('Not connected');
-  return feedsClient.addComment({
-    object_id: activityId,
-    object_type: "activity",
-    comment: text,
-  });
+export async function addComment(activityId: string, user: any, text: string): Promise<any> {
+    const res = await fetch(`${API_URL}/chat/feeds/proxy/reactions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            kind: 'comment', 
+            activity_id: activityId, 
+            user_id: user.id || user.userId,
+            data: { 
+                text: text, 
+                comment: text,
+                name: user.fullName || user.username || 'Aggie',
+                image: user.imageUrl || ''
+            }
+        })
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        console.error('[StreamFeeds] addComment error:', err);
+        throw new Error('Comment Proxy Error: ' + err);
+    }
+    return res.json();
 }
 
 export async function getComments(activityId: string): Promise<any[]> {
-  if (!feedsClient) return [];
   try {
-    const response = await feedsClient.getComments({
-      object_id: activityId,
-      object_type: "activity",
-      limit: 50,
-      sort: 'first'
-    });
-    return response.comments || [];
+    const res = await fetch(`${API_URL}/chat/feeds/proxy/reactions/${activityId}/comment`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    // Proxy returns { results: [...] } or direct list
+    return data.results || data.comments || [];
   } catch (e) {
     console.warn('[StreamFeeds] getComments error:', e);
     return [];
@@ -199,7 +227,11 @@ export async function addReel(params: {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ activity })
   });
-  if (!res.ok) throw new Error("Reel Proxy Error");
+  if (!res.ok) {
+    const err = await res.text();
+    console.error(`[StreamFeeds] addReel error: ${err}`);
+    throw new Error("Reel Proxy Error: " + err);
+  }
 }
 
 export async function deletePost(activityId: string) {
@@ -237,10 +269,15 @@ export async function updateReel(activityId: string, caption: string): Promise<a
 }
 
 export async function getReelsFeed(limit = 20): Promise<any[]> {
-  if (!feedsClient) return [];
-  const feed = feedsClient.feed('flat', 'reels_global');
-  await feed.getOrCreate({ limit });
-  return feed.state.getLatestValue().activities || [];
+  try {
+    const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/reels_global?limit=${limit}`);
+    if (!res.ok) throw new Error('Proxy Fetch Error');
+    const data = await res.json();
+    return data.results || [];
+  } catch (e) {
+    console.error('[StreamFeeds] getReelsFeed error:', e);
+    return [];
+  }
 }
 
 export function disconnectFeeds() {
