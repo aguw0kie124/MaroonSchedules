@@ -20,7 +20,7 @@ import { API_URL } from '../config';
 
 import { useTheme } from './SharedUI';
 
-export function ChannelListScreen() {
+export function ChannelListScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const navigation = useNavigation<any>();
   const { user, isLoaded } = useUser();
   const { COLORS } = useTheme();
@@ -103,6 +103,7 @@ export function ChannelListScreen() {
       <StatusBar barStyle="light-content" backgroundColor={COLORS.primary} />
       
       {/* ── Header ── */}
+      {!embedded && (
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Messages</Text>
         <Pressable 
@@ -112,6 +113,7 @@ export function ChannelListScreen() {
         <MessageSquarePlus color={COLORS.textPrimary} size={24} />
         </Pressable>
       </View>
+      )}
 
       <OverlayProvider value={{ style: streamTheme }}>
         <Chat client={chatClient}>

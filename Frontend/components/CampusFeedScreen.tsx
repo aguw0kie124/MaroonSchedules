@@ -65,7 +65,7 @@ function mapActivityToPost(activity: any): Post {
     };
 }
 
-export function CampusFeedScreen() {
+export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = {}) {
     const { COLORS } = useTheme();
     const styles = getStyles(COLORS);
     const { user } = useUser();
@@ -362,6 +362,7 @@ export function CampusFeedScreen() {
 
     return (
         <View style={styles.container}>
+            {!embedded && (
             <View style={styles.header}>
                 <View style={{ width: 44 }} />
                 <Text style={styles.headerTitle}>Campus Life</Text>
@@ -374,6 +375,7 @@ export function CampusFeedScreen() {
                     </Pressable>
                 </View>
             </View>
+            )}
 
             {loading ? (
                 <View style={styles.centerFull}>
