@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions, Modal, TouchableWithoutFeedback, Image } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
-import { Plus, ChevronDown, CheckCircle2, Clock, ArrowRight, MapPin, TrendingUp, GraduationCap, Radio, Map as MapIcon, Sparkles, ChevronRight } from 'lucide-react-native';
+import { Plus, ChevronDown, CheckCircle2, Clock, ArrowRight, MapPin, TrendingUp, GraduationCap, Radio, Map as MapIcon, Sparkles, ChevronRight, Calendar as CalendarIcon } from 'lucide-react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { fetchSchedules, fetchUserProfile } from '../api/client';
 import { useTheme, Card } from './SharedUI';
@@ -27,7 +27,6 @@ export function Dashboard() {
     const [selectedSchedule, setSelectedSchedule] = useState<any>(null);
     const [dropdownVisible, setDropdownVisible] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
-    const [maxCreditGoal, setMaxCreditGoal] = useState(15);
 
     const getDayString = () => {
         const days = ['U', 'M', 'T', 'W', 'R', 'F', 'S'];
@@ -46,13 +45,6 @@ export function Dashboard() {
     useEffect(() => {
         if (isFocused && user) {
             loadSchedules();
-            // Load max_credits preference from user profile
-            fetchUserProfile(user.id)
-                .then(data => {
-                    const mc = parseInt(data?.max_credits || '15', 10);
-                    setMaxCreditGoal(isNaN(mc) ? 15 : mc);
-                })
-                .catch(() => { }); // silently keep default
         }
     }, [isFocused, user]);
 
@@ -83,8 +75,6 @@ export function Dashboard() {
             color: `hsl(${(index * 55) % 360}, 65%, 45%)`
         };
     }) : [];
-
-    const totalCredits = displayCourses.reduce((sum: number, course: any) => sum + (course.credits || 0), 0);
 
     // Helper to convert a "H:MM AM/PM" string to total minutes for sorting
     const timeToMins = (t: string): number => {
@@ -164,41 +154,50 @@ export function Dashboard() {
                     </Card>
                 )}
 
-                {/* Campus Highlights Promo */}
-                <Pressable style={styles.promoCard} onPress={() => navigation.navigate('Places')}>
-                    <View style={styles.promoIconBg}>
-                        <MapPin color={COLORS.textPrimary} size={22} />
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 16 }}>
-                        <Text style={styles.promoTitle}>Campus Places</Text>
-                        <Text style={styles.promoSub}>Check live occupancy before you go.</Text>
-                    </View>
-                    <ChevronRight color={COLORS.border} size={20} />
-                </Pressable>
-
-                {/* Current Schedule Selector */}
+                {/* Campus Pulse (Quick Links) */}
                 <View style={styles.section}>
-                    <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionLabel}>PLANNER</Text>
-                        <Pressable onPress={() => setDropdownVisible(true)} style={styles.scheduleSwitcher}>
-                            <Text style={styles.scheduleSwitcherText}>{selectedSchedule?.name || 'Select Schedule'}</Text>
-                            <ChevronDown size={14} color={COLORS.primary} />
+                    <Text style={styles.sectionLabel}>MAROONLIFE HUB</Text>
+                    <View style={{ flexDirection: 'row', gap: 12, marginBottom: 8 }}>
+                        {/* Map */}
+                        <Pressable style={styles.quickLinkCard} onPress={() => navigation.navigate('Places')}>
+                            <View style={[styles.quickLinkIcon, { backgroundColor: COLORS.primary + '20' }]}>
+                                <MapPin color={COLORS.primary} size={24} />
+                            </View>
+                            <Text style={styles.quickLinkTitle}>Campus Map</Text>
+                            <Text style={styles.quickLinkSub}>Live occupancy</Text>
+                        </Pressable>
+
+                        {/* Social */}
+                        <Pressable style={styles.quickLinkCard} onPress={() => navigation.navigate('CampusFeed')}>
+                            <View style={[styles.quickLinkIcon, { backgroundColor: COLORS.accent + '20' }]}>
+                                <Radio color={COLORS.accent} size={24} />
+                            </View>
+                            <Text style={styles.quickLinkTitle}>Social Feed</Text>
+                            <Text style={styles.quickLinkSub}>Trending on campus</Text>
                         </Pressable>
                     </View>
-
-                    <Card style={styles.progressCard}>
-                        <View style={styles.progressHeader}>
-                            <Text style={styles.progressTitle}>{totalCredits} / {maxCreditGoal} Credits</Text>
-                            <Text style={styles.progressSubtitle}>{Math.round((totalCredits / maxCreditGoal) * 100)}% of goal</Text>
+                    
+                    <Pressable style={styles.promoCard} onPress={() => navigation.navigate('EventsCalendar')}>
+                        <View style={[styles.promoIconBg, { backgroundColor: '#4CAF5020' }]}>
+                            <CalendarIcon size={22} color="#4CAF50" />
                         </View>
-                        <View style={styles.progressBarBg}>
-                            <View style={[styles.progressBarFill, { width: `${Math.min((totalCredits / maxCreditGoal) * 100, 100)}%` }]} />
+                        <View style={{ flex: 1, marginLeft: 16 }}>
+                            <Text style={styles.promoTitle}>Campus Events</Text>
+                            <Text style={styles.promoSub}>See what's happening today</Text>
                         </View>
-                    </Card>
+                        <ChevronRight color={COLORS.border} size={20} />
+                    </Pressable>
                 </View>
 
                 {/* Daily Schedule */}
                 <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionLabel}>MY SCHEDULE</Text>
+                        <Pressable onPress={() => setDropdownVisible(true)} style={styles.scheduleSwitcher}>
+                            <Text style={styles.scheduleSwitcherText}>{selectedSchedule?.name || 'Select'}</Text>
+                            <ChevronDown size={14} color={COLORS.primary} />
+                        </Pressable>
+                    </View>
                     <View style={styles.weekStrip}>
                         {WEEK_DAYS.map(day => (
                             <Pressable 
@@ -434,35 +433,30 @@ const getStyles = (COLORS: any) => StyleSheet.create({
         fontWeight: '600',
         color: COLORS.textPrimary,
     },
-    progressCard: {
-        backgroundColor: COLORS.surface,
+    quickLinkCard: {
+        flex: 1,
+        backgroundColor: COLORS.surfaceElevated,
         padding: 16,
+        borderRadius: 20,
+        gap: 12,
     },
-    progressHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-end',
-        marginBottom: 8,
+    quickLinkIcon: {
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-    progressTitle: {
-        fontSize: 18,
+    quickLinkTitle: {
+        fontSize: 16,
         fontWeight: '700',
         color: COLORS.textPrimary,
     },
-    progressSubtitle: {
+    quickLinkSub: {
         fontSize: 12,
         color: COLORS.textTertiary,
     },
-    progressBarBg: {
-        height: 6,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderRadius: 3,
-        overflow: 'hidden',
-    },
-    progressBarFill: {
-        height: '100%',
-        backgroundColor: COLORS.primary,
-    },
+
     weekStrip: {
         flexDirection: 'row',
         justifyContent: 'space-between',

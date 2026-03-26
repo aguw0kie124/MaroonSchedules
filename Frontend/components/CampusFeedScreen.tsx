@@ -351,7 +351,7 @@ export function CampusFeedScreen() {
                         onPress={() => {
                             if (user) {
                                 setLoading(true);
-                                connectFeedsUser(user.id, true).then(() => {
+                                connectFeedsUser(user.id, user.fullName || 'Aggie', user.imageUrl).then(() => {
                                     setFeedConnected(true);
                                     fetchPosts();
                                 }).catch(() => setLoading(false));

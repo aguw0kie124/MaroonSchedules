@@ -66,7 +66,7 @@ const GRADUATION_YEAR_OPTIONS = [
 
 const PREFERRED_TIME_OPTIONS = ['Morning', 'Afternoon', 'Evening', 'No Preference'];
 
-const MAX_CREDITS_OPTIONS = ['12', '15', '18', '21'];
+
 
 export function Profile() {
     const navigation = useNavigation<any>();
@@ -74,7 +74,6 @@ export function Profile() {
         major: '',
         graduationYear: '',
         preferredTime: 'Morning',
-        maxCredits: '15',
         avoidFriday: false,
         showOnlineFirst: true,
     });
@@ -96,7 +95,6 @@ export function Profile() {
                     major: data.major || '',
                     graduationYear: data.graduation_year || '',
                     preferredTime: data.preferred_time || 'Morning',
-                    maxCredits: data.max_credits || '15',
                     avoidFriday: data.avoid_friday ?? false,
                     showOnlineFirst: data.show_online_first ?? true,
                 });
@@ -141,7 +139,6 @@ export function Profile() {
                 major: preferences.major,
                 graduation_year: preferences.graduationYear,
                 preferred_time: preferences.preferredTime,
-                max_credits: preferences.maxCredits,
                 avoid_friday: preferences.avoidFriday,
                 show_online_first: preferences.showOnlineFirst,
             });
@@ -256,30 +253,7 @@ export function Profile() {
                     onPress={() => setPickerVisible('prefTime')}
                 />
 
-                {/* Max credits segmented control */}
-                <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Max Credits Per Term</Text>
-                    <View style={styles.segmentedRow}>
-                        {MAX_CREDITS_OPTIONS.map(opt => (
-                            <Pressable
-                                key={opt}
-                                style={[
-                                    styles.segmentBtn,
-                                    preferences.maxCredits === opt && styles.segmentBtnActive,
-                                ]}
-                                onPress={() => {
-                                    setPreferences(prev => ({ ...prev, maxCredits: opt }));
-                                    saveField({ max_credits: opt });
-                                }}
-                            >
-                                <Text style={[
-                                    styles.segmentText,
-                                    preferences.maxCredits === opt && styles.segmentTextActive,
-                                ]}>{opt}</Text>
-                            </Pressable>
-                        ))}
-                    </View>
-                </View>
+
             </View>
 
             {/* Preferences */}
