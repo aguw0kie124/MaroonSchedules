@@ -103,15 +103,20 @@ class FeedsTokenResponse(BaseModel):
     stream_user_token: str
     stream_api_key: str
 
+def get_feeds_credentials() -> tuple[str, str]:
+    """Helper to get Feeds API keys with fallback to main Stream keys."""
+    key = os.environ.get("STREAM_FEEDS_API_KEY") or os.environ.get("STREAM_API_KEY", "")
+    secret = os.environ.get("STREAM_FEEDS_API_SECRET") or os.environ.get("STREAM_API_SECRET", "")
+    return key, secret
+
 @router.post("/feeds/token", response_model=FeedsTokenResponse)
 async def get_feeds_token(body: FeedsTokenRequest):
     """Generate a Stream token for Feeds V3 (using dedicated Feeds credentials)."""
     stream_user_id = body.clerk_user_id
-    api_key = os.environ.get("STREAM_FEEDS_API_KEY", "")
-    api_secret = os.environ.get("STREAM_FEEDS_API_SECRET", "")
+    api_key, api_secret = get_feeds_credentials()
     
     if not api_key or not api_secret:
-        raise HTTPException(status_code=500, detail="Feeds API keys not configured")
+        raise HTTPException(status_code=500, detail="Stream API keys not configured")
         
     chat_client = StreamChat(api_key=api_key, api_secret=api_secret)
 
@@ -141,10 +146,9 @@ class ReactionPayload(BaseModel):
 
 @router.get("/feeds/proxy/{feed_group}/{feed_id}")
 async def proxy_get_feed(feed_group: str, feed_id: str, limit: int = 25):
-    api_key = os.environ.get("STREAM_FEEDS_API_KEY", "")
-    api_secret = os.environ.get("STREAM_FEEDS_API_SECRET", "")
+    api_key, api_secret = get_feeds_credentials()
     if not api_key or not api_secret:
-         raise HTTPException(status_code=500, detail="Feeds API keys not configured")
+         raise HTTPException(status_code=500, detail="Stream API keys not configured")
     
     server_client = stream.connect(api_key, api_secret)
     feed = server_client.feed(feed_group, feed_id)
@@ -157,8 +161,9 @@ async def proxy_get_feed(feed_group: str, feed_id: str, limit: int = 25):
 
 @router.post("/feeds/proxy/{feed_group}/{feed_id}")
 async def proxy_add_activity(feed_group: str, feed_id: str, body: FeedActivity):
-    api_key = os.environ.get("STREAM_FEEDS_API_KEY", "")
-    api_secret = os.environ.get("STREAM_FEEDS_API_SECRET", "")
+    api_key, api_secret = get_feeds_credentials()
+    if not api_key or not api_secret:
+         raise HTTPException(status_code=500, detail="Stream API keys not configured")
     server_client = stream.connect(api_key, api_secret)
     feed = server_client.feed(feed_group, feed_id)
     try:
@@ -170,8 +175,9 @@ async def proxy_add_activity(feed_group: str, feed_id: str, body: FeedActivity):
 
 @router.delete("/feeds/proxy/{feed_group}/{feed_id}/{activity_id}")
 async def proxy_delete_activity(feed_group: str, feed_id: str, activity_id: str):
-    api_key = os.environ.get("STREAM_FEEDS_API_KEY", "")
-    api_secret = os.environ.get("STREAM_FEEDS_API_SECRET", "")
+    api_key, api_secret = get_feeds_credentials()
+    if not api_key or not api_secret:
+         raise HTTPException(status_code=500, detail="Stream API keys not configured")
     server_client = stream.connect(api_key, api_secret)
     feed = server_client.feed(feed_group, feed_id)
     try:
@@ -183,8 +189,9 @@ async def proxy_delete_activity(feed_group: str, feed_id: str, activity_id: str)
 
 @router.put("/feeds/proxy/{feed_group}/{feed_id}/{activity_id}")
 async def proxy_update_activity(feed_group: str, feed_id: str, activity_id: str, body: FeedActivity):
-    api_key = os.environ.get("STREAM_FEEDS_API_KEY", "")
-    api_secret = os.environ.get("STREAM_FEEDS_API_SECRET", "")
+    api_key, api_secret = get_feeds_credentials()
+    if not api_key or not api_secret:
+         raise HTTPException(status_code=500, detail="Stream API keys not configured")
     server_client = stream.connect(api_key, api_secret)
     try:
         activities = server_client.get_activities(ids=[activity_id])
@@ -203,8 +210,9 @@ async def proxy_update_activity(feed_group: str, feed_id: str, activity_id: str,
 
 @router.post("/feeds/proxy/reactions")
 async def proxy_add_reaction(body: ReactionPayload):
-    api_key = os.environ.get("STREAM_FEEDS_API_KEY", "")
-    api_secret = os.environ.get("STREAM_FEEDS_API_SECRET", "")
+    api_key, api_secret = get_feeds_credentials()
+    if not api_key or not api_secret:
+         raise HTTPException(status_code=500, detail="Stream API keys not configured")
     server_client = stream.connect(api_key, api_secret)
     try:
         response = server_client.reactions.add(
@@ -220,8 +228,9 @@ async def proxy_add_reaction(body: ReactionPayload):
 
 @router.get("/feeds/proxy/reactions/{activity_id}/{kind}")
 async def proxy_get_reactions(activity_id: str, kind: str):
-    api_key = os.environ.get("STREAM_FEEDS_API_KEY", "")
-    api_secret = os.environ.get("STREAM_FEEDS_API_SECRET", "")
+    api_key, api_secret = get_feeds_credentials()
+    if not api_key or not api_secret:
+         raise HTTPException(status_code=500, detail="Stream API keys not configured")
     server_client = stream.connect(api_key, api_secret)
     try:
         response = server_client.reactions.filter(activity_id=activity_id, kind=kind)

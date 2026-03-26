@@ -13,4 +13,3 @@ pytz
 PuLP
 pydantic-settings
 typing-extensions
-jwt
