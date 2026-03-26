@@ -3,8 +3,7 @@ import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import MapView, { Marker, Circle, Callout } from 'react-native-maps';
 import axios from 'axios';
 import { useTheme } from './SharedUI';
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
+import { API_URL } from '../config';
 
 const TAMU_CENTER = {
     latitude: 30.6153,

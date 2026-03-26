@@ -17,28 +17,41 @@ except ImportError:
 
 # ── Canonical location registry ──────────────────────────────────────────────
 # Display names match exactly what the GoBoard FacilityName or Library API key resolves to.
-# All coordinates verified via Google Maps.
+# All coordinates verified via User provided data.
 LOCATION_DATA = {
-    # Rec Centers  (matched by GoBoard FacilityName)
-    "Student Rec Center":   {"lat": 30.60713, "lng": -96.34283, "type": "Rec"},
-    "Southside Rec Center": {"lat": 30.61053, "lng": -96.33649, "type": "Rec"},
-    "Polo Road Rec Center": {"lat": 30.62298, "lng": -96.33835, "type": "Rec"},
+    # Rec Centers (Gyms)
+    "Student Rec Center":   {"lat": 30.6097, "lng": -96.3455, "type": "Rec"},
+    "Southside Rec Center": {"lat": 30.6093, "lng": -96.3390, "type": "Rec"},
+    "Polo Road Rec Center": {"lat": 30.6237, "lng": -96.3395, "type": "Rec"},
 
-    # Libraries  (matched by LIBRARY_KEY_MAP below)
-    "Evans Library":                          {"lat": 30.61703, "lng": -96.33897, "type": "Library"},
-    "Evans Library Annex":                    {"lat": 30.61720, "lng": -96.33870, "type": "Library"},
-    "West Campus Library":                    {"lat": 30.61168, "lng": -96.34996, "type": "Library"},
+    # Libraries
+    "Evans Library":                          {"lat": 30.6168, "lng": -96.3388, "type": "Library"},
+    "Evans Library Annex":                    {"lat": 30.6168, "lng": -96.3388, "type": "Library"},
+    "West Campus Library":                    {"lat": 30.6095, "lng": -96.3445, "type": "Library"},
     "Cushing Memorial Library":               {"lat": 30.61638, "lng": -96.33992, "type": "Library"},
     "Medical Sciences Library":               {"lat": 30.61182, "lng": -96.35161, "type": "Library"},
     "Policy Sciences & Economics Library":    {"lat": 30.59744, "lng": -96.35355, "type": "Library"},
 
-    # Dining (AI-estimated, no live API)
+    # Dining Hubs (Static coords)
+    "Memorial Student Center (MSC)":  {"lat": 30.6125, "lng": -96.3410, "type": "Hub", "restaurants": [
+        "Chick-fil-A", "Rev's American Grill", "Spin 'n Stone Pizza", "Houston Street Subs", 
+        "Cabo Grill", "Abu Omar", "Shake Smart", "Panda Express"
+    ]},
+    "Polo Road Garage & Rec":         {"lat": 30.6237, "lng": -96.3395, "type": "Hub", "restaurants": [
+        "Shake Smart", "Market at Polo Road Garage", "Houston Street Subs", "Salata", "Panda Express"
+    ]},
+    "Underground Food Court":         {"lat": 30.6128, "lng": -96.3418, "type": "Hub", "restaurants": [
+        "Chick-fil-A (Underground)", "Pizza @ Underground", "Houston Street Subs (Underground)", "Smoothie King (Underground)"
+    ]},
+    "Northside Dining":               {"lat": 30.6205, "lng": -96.3415, "type": "Hub", "restaurants": [
+        "Einstein Bros. Bagels", "1876 Burgers", "Copperhead Jack's"
+    ]},
+
+    # Dining Halls (AI-estimated, no live API)
     "Sbisa Dining Hall":              {"lat": 30.61700, "lng": -96.34350, "type": "Dining"},
     "The Commons Dining Hall":        {"lat": 30.61534, "lng": -96.33601, "type": "Dining"},
     "Duncan Dining Hall":             {"lat": 30.61180, "lng": -96.33529, "type": "Dining"},
     "West Campus Dining Facility":    {"lat": 30.61020, "lng": -96.34863, "type": "Dining"},
-    "Memorial Student Center (MSC)":  {"lat": 30.61223, "lng": -96.34137, "type": "Dining"},
-    "Polo Road Garage":               {"lat": 30.62313, "lng": -96.33749, "type": "Dining"},
     "Creekside Market":               {"lat": 30.60756, "lng": -96.35381, "type": "Dining"},
 }
 
@@ -217,46 +230,55 @@ class TAMUFacilityTracker:
                 **meta,
             })
 
-        # ── 3. Dining: AI-estimated using live campus average ────────────────
+        # ── 3. Dining Halls & Hubs: AI-estimated or Hub info ──────────────────
         avg_occupancy = sum(live_percents) / len(live_percents) if live_percents else 42.0
         live_display_names = {r["location"] for r in result}
 
         for loc_name, info in LOCATION_DATA.items():
-            if info["type"] != "Dining":
+            if info["type"] not in ["Dining", "Hub"]:
                 continue
             if loc_name in live_display_names:
                 continue
+            
+            # For Hubs, we might not want "AI Est." or "Occupancy" if we show restaurants instead
+            # but for consistency with existing UI, we can keep an estimate or set to 0
             est = round(min(95, max(5, avg_occupancy + random.uniform(-15, 20))), 1)
-            meta = self.get_mock_metadata(loc_name, "Dining")
+            meta = self.get_mock_metadata(loc_name, info["type"])
+            
+            # Fetch menu if it's a dining hall
+            hall_menu = None
+            if info["type"] == "Dining" and "Dining Hall" in loc_name:
+                hall_name = loc_name.split(" ")[0] # Sbisa, Commons, Duncan
+                from services import dining_service
+                menu_res = dining_service.fetch_dine_on_campus_menu(hall_name)
+                if menu_res['success']:
+                    hall_menu = [f"{it['name']}" for it in menu_res['items'][:8]] # Top 8 items
+            
             result.append({
                 "location": loc_name,
                 "percent_full": est,
-                "type": "Dining",
+                "type": info["type"],
                 "is_live": False,
                 "available_seats": None,
-                "coord": info,
+                "coord": {"lat": info["lat"], "lng": info["lng"]},
+                "restaurants": info.get("restaurants", []),
+                "menu_snippet": hall_menu,
                 **meta,
             })
 
         return result
 
-    def ask_perplexity(self, prompt: str) -> str:
-        if not Perplexity:
-            return json.dumps([{"name": "Error - Perplexity API Missing", "percent_full": 0, "available_seats": 0}])
+    def ask_openai(self, prompt: str) -> str:
+        from services import openai_service
         system_prompt = "You are a TAMU campus assistant that returns structured JSON arrays only."
         try:
             embedded_data = json.dumps(self.data, default=str)
         except Exception:
             embedded_data = str(self.data)
-        user_message = {"role": "user", "content": f"User Query: {prompt}\nLive Data: {embedded_data}"}
-        messages = [{"role": "system", "content": system_prompt}, user_message]
-        try:
-            client = Perplexity()
-            response = client.chat.completions.create(model="sonar", messages=messages)
-            resp_text = response.choices[0].message.content.strip()
-        except Exception:
-            resp_text = ""
-
+        
+        full_prompt = f"User Query: {prompt}\nLive Data: {embedded_data}"
+        resp_text = openai_service.ask_gpt5(full_prompt, system_prompt)
+        
         def try_parse_json(s: str):
             try:
                 return json.loads(s)
@@ -297,8 +319,8 @@ class EventRequest(BaseModel):
 
 
 @router.post("/ask")
-def ask_perplexity(request: QueryRequest):
-    result = tracker.ask_perplexity(request.query)
+def ask_ai(request: QueryRequest):
+    result = tracker.ask_openai(request.query)
     return {"response": result}
 
 

@@ -159,8 +159,10 @@ async def proxy_get_feed(feed_group: str, feed_id: str, limit: int = 25):
         response = feed.get(limit=limit, enrich=True, reactions={"recent": True, "counts": True})
         return response
     except Exception as e:
-        print(f"Stream Feeds Proxy Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Log to file for developer but return empty results to UI
+        with open("stream_errors.log", "a") as f:
+            f.write(f"[Proxy GET Fallback] {feed_group}:{feed_id} -> {e}\n")
+        return {"results": [], "next": "", "duration": "0ms"}
 
 @router.post("/feeds/proxy/{feed_group}/{feed_id}")
 async def proxy_add_activity(feed_group: str, feed_id: str, body: FeedActivity):

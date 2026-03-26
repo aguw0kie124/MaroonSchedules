@@ -4,6 +4,8 @@
 import { FeedsClient } from '@stream-io/feeds-client';
 import { API_URL } from '../config';
 
+
+
 let feedsClient: FeedsClient | null = null;
 let connectedUserId: string | null = null;
 
@@ -278,6 +280,64 @@ export async function getReelsFeed(limit = 20): Promise<any[]> {
     console.error('[StreamFeeds] getReelsFeed error:', e);
     return [];
   }
+}
+
+export async function getPlaceReviews(placeId: string, limit = 5): Promise<any[]> {
+    const slugify = (text: string) => text.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
+    try {
+        const slug = slugify(placeId);
+        const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/place_review_${slug}?limit=${limit}`);
+        if (!res.ok) throw new Error(`Proxy Fetch Error: ${res.status}`);
+        const data = await res.json();
+        const results = data.results || [];
+        return results.map((act: any) => ({
+            id: act.id,
+            user: act.custom?.user_name || 'Aggie User',
+            rating: act.custom?.rating || 0,
+            comment: act.text || act.custom?.comment || ''
+        }));
+    } catch (e) {
+        console.error(`[StreamFeeds] getPlaceReviews for ${placeId} error:`, e);
+        return [];
+    }
+}
+
+export async function addPlaceReview(params: {
+    userId: string;
+    userName: string;
+    userImage?: string;
+    placeId: string;
+    rating: number;
+    text: string;
+    images?: string[];
+}): Promise<any> {
+    const slugify = (text: string) => text.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
+    const slug = slugify(params.placeId);
+    const activity = {
+        actor: `SU:${params.userId}`,
+        verb: 'review',
+        object: `place:${slug}`,
+        text: params.text,
+        custom: {
+            user_name: params.userName,
+            user_image: params.userImage || '',
+            place_id: slug,
+            rating: params.rating,
+            images: params.images || []
+        }
+    };
+
+    const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/place_review_${slug}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activity })
+    });
+    
+    if (!res.ok) {
+        const err = await res.text();
+        console.error(`[StreamFeeds] addPlaceReview error: ${err}`);
+        throw new Error(`Proxy Review Error: ${err}`);
+    }
 }
 
 export function disconnectFeeds() {

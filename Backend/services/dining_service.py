@@ -33,6 +33,21 @@ RESTAURANTS = {
     'Einstein Bros. Bagels': {'fullName': 'Einstein Bros. Bagels - Sbisa Complex', 'apiId': None}
 }
 
+HUB_DATA = {
+    'msc': {
+        'name': 'Memorial Student Center',
+        'restaurants': ['Chick-fil-A', 'Panda Express', "Rev's American Grill"],
+    },
+    'polo': {
+        'name': 'Polo Road Rec Center',
+        'restaurants': ['Houston Street Subs', 'Panda Express', 'Salata'],
+    },
+    'sbisa': {
+        'name': 'Sbisa Underground',
+        'restaurants': ["Copperhead Jack's", 'Smoothie King', 'Houston Street Subs'],
+    }
+}
+
 HEURISTICS = [
     {'kw': ['grilled chicken', 'chicken breast', 'roasted chicken', 'baked chicken', 'rotisserie'], 'p': 0.35, 'f': 0.10, 'c': 0.00},
     {'kw': ['chicken', 'turkey', 'tuna', 'salmon', 'tilapia', 'fish', 'beef', 'pork', 'steak', 'shrimp', 'lamb', 'brisket', 'sausage', 'ham', 'meatball'], 'p': 0.25, 'f': 0.15, 'c': 0.05},
@@ -279,11 +294,18 @@ def get_restaurant_plan(location: str, target_cal: float):
 
 def fetch_dine_on_campus_menu(location_key: str, date_str: str = None) -> Dict:
     if not date_str: date_str = datetime.now().strftime('%Y-%m-%d')
-    IDS = {'Sbisa': '5d113eed4198d40d488a46ee', 'Commons': '5d113eed4198d40d488a46f2', 'Duncan': '5d113eed4198d40d488a46f3'}
+    IDS = {
+        'Sbisa': '5d113eed4198d40d488a46ee', 
+        'Commons': '5d113eed4198d40d488a46f2', 
+        'Duncan': '5d113eed4198d40d488a46f3',
+        'Creekside': '5d113eed4198d40d488a46f0',
+        'West Campus': '5d8a39744198d4332d773bca'
+    }
     api_id = IDS.get(location_key)
     if not api_id: return {"success": False, "error": "Unknown hall"}
     try:
-        data = requests.get(f"https://api.dineoncampus.com/v1/location/{api_id}/menu", params={"platform": 0, "date": date_str}, timeout=10).json()
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+        data = requests.get(f"https://api.dineoncampus.com/v1/location/{api_id}/menu", params={"platform": 0, "date": date_str}, headers=headers, timeout=10).json()
         items = []
         def extract(obj, mp='all'):
             if isinstance(obj, list):
