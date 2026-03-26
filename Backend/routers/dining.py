@@ -136,12 +136,11 @@ def optimize_day(
     if isinstance(split, str):
         split = json.loads(split)
     
-    # Calculate scaled fractions so they sum to 1.0
-    selected_sum = sum(split.get(m, 33.3) for m in selected_meals)
+    # Calculate absolute daily fractions
+    total_split_sum = sum(split.values()) or 100
     meal_fractions = {}
     for m in selected_meals:
-        raw_val = split.get(m, 33.3)
-        meal_fractions[m] = raw_val / selected_sum if selected_sum > 0 else (1.0 / len(selected_meals))
+        meal_fractions[m] = split.get(m, 33.3) / total_split_sum
 
     # 4. Fetch ALL foods for this dining hall (all periods)
     all_foods = []
@@ -202,11 +201,9 @@ def optimize_day(
             except:
                 pass
         
-        if not m_foods:
-            meal_plans[m] = {"calories": round(m_target_cals), "variants": [], "restaurantPlans": {}, "error": "No menu items available for this period."}
-            continue
-
-        variants = dining_service.generate_variants(m_foods, m_target_cals, macros)
+        variants = []
+        if m_foods:
+            variants = dining_service.generate_variants(m_foods, m_target_cals, macros)
         
         # Restaurant alternatives
         rest_plans = {}

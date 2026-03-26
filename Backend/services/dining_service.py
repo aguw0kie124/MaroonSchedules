@@ -270,6 +270,7 @@ def optimize_diet(foods: List[Dict], targets: Dict, options: Dict = {}) -> Dict[
         vit_c = f.get('vitamin_c', 0) or 0
         mag = f.get('magnesium', 0) or 0
         pot = f.get('potassium', 0) or 0
+        sodium = f.get('sodium', 0) or 0
         
         # Dynamic protein multiplier based on diet goal
         prot_mult = 10
@@ -285,6 +286,9 @@ def optimize_diet(foods: List[Dict], targets: Dict, options: Dict = {}) -> Dict[
         w += (mag / 40) * 100   # Balanced Magnesium weighting (supportive, not dominant)
         w += (pot / 500) * 40
         
+        # Deduct weight for sodium (soft penalty)
+        w -= (sodium / 100) * 10
+        
         if options.get('high_protein'):
             w += prot * 10
             
@@ -294,9 +298,9 @@ def optimize_diet(foods: List[Dict], targets: Dict, options: Dict = {}) -> Dict[
 
     # Calorie constraints
     cal_sum = lpSum([x_vars[i] * (usable[i].get('calories', 0) or 0) for i in range(len(usable))])
-    # For retail, allow a much higher ceiling (250%) since they are fixed massive combos
+    # For retail, allow a much higher ceiling (300%) since they are fixed massive combos
     # For dining halls, keep 110% to ensure sensible portioning
-    cal_ceiling = 2.50 if has_budget else 1.10
+    cal_ceiling = 3.0 if has_budget else 1.10
     prob += cal_sum <= cal_tgt * cal_ceiling
 
     # FIX: For retail/budget plans, use a much lower floor (10%) since menus are limited under $11
@@ -304,9 +308,6 @@ def optimize_diet(foods: List[Dict], targets: Dict, options: Dict = {}) -> Dict[
     cal_floor = 0.10 if has_budget else 0.80
     prob += cal_sum >= cal_tgt * cal_floor
 
-    # Sodium constraint (limit to ~1000mg per meal)
-    sodium_sum = lpSum([x_vars[i] * (usable[i].get('sodium', 0) or 0) for i in range(len(usable))])
-    prob += sodium_sum <= 1000
 
     # Budget constraint for retail
     if has_budget:
@@ -318,25 +319,34 @@ def optimize_diet(foods: List[Dict], targets: Dict, options: Dict = {}) -> Dict[
 
     try:
         prob.solve(PULP_CBC_CMD(msg=0))
-        if prob.status != 1:  # 1 == LpStatusOptimal
-            return {"success": False, "error": "No valid combo found within budget limits", "items": [], "totals": {}}
     except Exception:
-        return {"success": False, "error": "Solver error", "items": [], "totals": {}}
+        pass
 
     selected = []
-    for i in range(len(usable)):
-        v = pulp_value(x_vars[i])
-        if v and v >= 0.5:
-            item = dict(usable[i])
-            item['quantity'] = round(v)
-            item['scaledNutrients'] = {
-                k: round((item.get(k, 0) or 0) * v, 2)
-                for k in ['calories', 'protein', 'carbs', 'fat']
-            }
-            selected.append(item)
+    if prob.status == 1:
+        for i in range(len(usable)):
+            v = pulp_value(x_vars[i])
+            if v and v >= 0.5:
+                item = dict(usable[i])
+                item['quantity'] = round(v)
+                item['scaledNutrients'] = {
+                    k: round(float(item.get(k, 0) or 0) * v, 2)
+                    for k in ['calories', 'protein', 'carbs', 'fat']
+                }
+                selected.append(item)
 
-    success = len(selected) > 0
-    return {"success": success, "items": selected, "totals": compute_totals(selected) if selected else {}}
+    # GREEDY FALLBACK: If solver failed or returned nothing, pick the best item in budget
+    if not selected:
+        for f in sorted(usable, key=get_weight, reverse=True):
+            # Pick a single item that fits the budget (allow up to 4x calorie target for retail swipes)
+            if (not has_budget or (f.get('cost', 0) or 0) <= targets.get('budget', 11)) and f.get('calories', 0) <= cal_tgt * 4.0:
+                item = dict(f)
+                item['quantity'] = 1
+                item['scaledNutrients'] = {k: float(f.get(k, 0) or 0) for k in ['calories','protein','carbs','fat']}
+                selected.append(item)
+                break
+
+    return {"success": len(selected) > 0, "items": selected, "totals": compute_totals(selected) if selected else {}}
 
 
 def compute_totals(foods: List[Dict]) -> Dict[str, float]:
