@@ -55,7 +55,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({ visible, onClose, loca
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
         style={styles.centeredView}
       >
-        <View style={[styles.modalView, { backgroundColor: COLORS.backgroundSecondary }]}>
+        <View style={[styles.modalView, { backgroundColor: COLORS.surface }]}>
           <View style={styles.header}>
             <Text style={[styles.title, { color: COLORS.textPrimary }]}>Rate {locationName}</Text>
             <TouchableOpacity onPress={onClose}>
