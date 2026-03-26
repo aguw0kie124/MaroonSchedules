@@ -214,18 +214,16 @@ function RootNavigator() {
       ) : (
         <>
           <Stack.Screen name="Onboarding" component={Onboarding} />
-          <Stack.Screen
-            name="AuthLanding"
-            children={(props: any) => (
+          <Stack.Screen name="AuthLanding">
+            {(props: any) => (
               <AuthLanding
                 onLoginPress={() => props.navigation.navigate('Login')}
               />
             )}
-          />
-          <Stack.Screen
-            name="Login"
-            children={(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />}
-          />
+          </Stack.Screen>
+          <Stack.Screen name="Login">
+            {(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />}
+          </Stack.Screen>
         </>
       )}
     </Stack.Navigator>

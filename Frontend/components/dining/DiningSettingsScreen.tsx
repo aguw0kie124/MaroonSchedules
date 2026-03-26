@@ -173,6 +173,33 @@ export default function DiningSettingsScreen({ navigation }: any) {
         ))}
       </Card>
 
+      <Card>
+        <SectionLabel>Meal Distribution (%)</SectionLabel>
+        <Text style={{ color: T.text3, fontSize: 11, marginBottom: 12 }}>Divide your target calories across meals (Total must be 100%).</Text>
+        <View style={s.row}>
+            <View style={{ flex: 1 }}>
+                <Text style={s.label}>Breakfast</Text>
+                <TextInput style={s.input} value={String(form.meal_split?.breakfast || 25)} onChangeText={v => upd('meal_split', { ...form.meal_split, breakfast: +v })} keyboardType="numeric" />
+            </View>
+            <View style={{ flex: 1 }}>
+                <Text style={s.label}>Lunch</Text>
+                <TextInput style={s.input} value={String(form.meal_split?.lunch || 35)} onChangeText={v => upd('meal_split', { ...form.meal_split, lunch: +v })} keyboardType="numeric" />
+            </View>
+            <View style={{ flex: 1 }}>
+                <Text style={s.label}>Dinner</Text>
+                <TextInput style={s.input} value={String(form.meal_split?.dinner || 40)} onChangeText={v => upd('meal_split', { ...form.meal_split, dinner: +v })} keyboardType="numeric" />
+            </View>
+        </View>
+        <View style={s.genderRow}>
+            <TouchableOpacity style={s.presetBtn} onPress={() => upd('meal_split', { breakfast: 25, lunch: 35, dinner: 40 })}>
+                <Text style={{ color: T.sky, fontSize: 10, fontWeight: '700' }}>25 / 35 / 40 (Standard)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.presetBtn} onPress={() => upd('meal_split', { breakfast: 33, lunch: 33, dinner: 34 })}>
+                <Text style={{ color: T.amber, fontSize: 10, fontWeight: '700' }}>33 / 33 / 34 (Even)</Text>
+            </TouchableOpacity>
+        </View>
+      </Card>
+
       <TouchableOpacity style={s.saveBtn} onPress={save} disabled={saving}>
         {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.saveBtnText}>Save Settings</Text>}
       </TouchableOpacity>
@@ -203,4 +230,5 @@ const s = StyleSheet.create({
   statBox: { padding: 15, borderRadius: 15, borderWidth: 1, alignItems: 'center', backgroundColor: '#ffffff05', flex: 0.8 },
   statVal: { fontSize: 24, fontWeight: '900' },
   statLbl: { fontSize: 9, color: '#666', fontWeight: 'bold', marginTop: 4 },
+  presetBtn: { flex: 1, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: '#333', alignItems: 'center', backgroundColor: '#ffffff05' },
 });

@@ -160,6 +160,34 @@ export default function MealOptimizerScreen({ navigation }: any) {
   );
 }
 
+// Shorten full location names to compact pill labels
+const LOC_SHORT: Record<string, string> = {
+  'Sbisa Underground Food Court': 'Sbisa UG',
+  'MSC Food Court': 'MSC',
+  'West Campus Food Hall': 'West Campus',
+  'Polo Garage': 'Polo',
+  'Rec Center': 'Rec Center',
+  'Sbisa Complex': 'Sbisa',
+  'Underground Food Court': 'Underground',
+  'Southside': 'Southside',
+  'Evans Library': 'Evans',
+  'The Quad': 'Quad',
+  'Zachry': 'Zachry',
+  'Langford': 'Langford',
+  'Creekside Market': 'Creekside',
+  'RELLIS': 'RELLIS',
+  'Bush Library': 'Bush Lib',
+};
+function shortenLoc(full: string): string {
+  for (const [pattern, short] of Object.entries(LOC_SHORT)) {
+    if (full.includes(pattern)) return short;
+  }
+  // Fallback: take the part after the dash
+  const dash = full.indexOf(' - ');
+  if (dash > 0) return full.substring(dash + 3);
+  return full;
+}
+
 function MealPanel({ data, color, onAdd, T }: any) {
   return (
     <View style={{ marginTop: 15 }}>
@@ -188,15 +216,49 @@ function MealPanel({ data, color, onAdd, T }: any) {
               <SectionLabel>Retail Swipes ($11)</SectionLabel>
               {Object.entries(data.restaurantPlans).map(([name, p]: any) => (
                   <Card key={name}>
-                      <View style={s.variantHeader}>
-                        <View style={{flex: 1}}>
-                            <Text style={[s.variantLabel, { color: T.text }]}>{name}</Text>
-                            <Text style={[s.variantSub, { color: T.text3 }]}>{Math.round(p.totals?.calories || 0)} kcal</Text>
+                      {p.success !== false ? (
+                        <>
+                          <View style={s.variantHeader}>
+                            <View style={{flex: 1}}>
+                                <Text style={[s.variantLabel, { color: T.text }]}>{name}</Text>
+                                <Text style={[s.variantSub, { color: T.text3 }]}>{Math.round(p.totals?.calories || 0)} kcal • ${p.totals?.cost?.toFixed(2) || '0'} / $11</Text>
+                            </View>
+                            <TouchableOpacity style={[s.addBtn, { borderColor: '#5ab0e8' }]} onPress={() => onAdd({ ...p, label: name })}>
+                                <Text style={{ color: '#5ab0e8', fontWeight: '700', fontSize: 12 }}>+ Add</Text>
+                            </TouchableOpacity>
+                          </View>
+
+                          {p.items && p.items.length > 0 && <Divider />}
+                          {p.items?.map((it: any, j: number) => (
+                              <Text key={j} style={[s.foodItem, { color: T.text2 }]}>• {it.name} <Text style={{color: T.amber}}>x{it.quantity}</Text> <Text style={{color: T.text3, fontSize: 10}}>({Math.round(it.calories || 0)} kcal)</Text></Text>
+                          ))}
+                          
+                          {/* Location pills */}
+                          {p.locations && p.locations.length > 0 && (
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
+                              {p.locations.map((loc: string, i: number) => (
+                                <View key={i} style={{ backgroundColor: T.bg3, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: T.border }}>
+                                  <Text style={{ color: T.text3, fontSize: 9, fontWeight: '700' }}>{shortenLoc(loc)}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          )}
+                        </>
+                      ) : (
+                        <View>
+                          <Text style={[s.variantLabel, { color: T.text }]}>{name}</Text>
+                          <Text style={{ color: T.text3, fontSize: 11, marginTop: 4, fontStyle: 'italic' }}>Menu may vary — check location</Text>
+                          {p.locations && p.locations.length > 0 && (
+                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+                              {p.locations.map((loc: string, i: number) => (
+                                <View key={i} style={{ backgroundColor: T.bg3, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: T.border }}>
+                                  <Text style={{ color: T.text3, fontSize: 9, fontWeight: '700' }}>{shortenLoc(loc)}</Text>
+                                </View>
+                              ))}
+                            </View>
+                          )}
                         </View>
-                        <TouchableOpacity style={[s.addBtn, { borderColor: '#5ab0e8' }]} onPress={() => onAdd({ ...p, label: name })}>
-                            <Text style={{ color: '#5ab0e8', fontWeight: '700', fontSize: 12 }}>+ Add</Text>
-                        </TouchableOpacity>
-                      </View>
+                      )}
                   </Card>
               ))}
           </View>

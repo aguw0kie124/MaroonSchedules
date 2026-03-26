@@ -7,8 +7,20 @@ import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
 import { getLocalDateString } from '../../services/dateUtils';
 
-const RESTAURANTS = ['Chick-fil-A', 'Panda Express', 'Shake Smart', 'Houston Street Subs', 'Salata', 'Abu Omar Halal'];
-const SHORT: any = { 'Chick-fil-A': 'CFA', 'Panda Express': 'Panda', 'Shake Smart': 'Shake', 'Houston Street Subs': 'Subs', 'Abu Omar Halal': 'Abu Omar' };
+const RESTAURANTS = ['Chick-fil-A', 'Panda Express', 'Shake Smart', 'Houston Street Subs', 'Salata', 'Abu Omar Halal', 'Copperhead Jack\'s', 'Einstein Bros. Bagels', '1876 Burgers', 'Cabo Grill', 'Rev\'s American Grill', 'Whoop Coop', 'Pizza @ Underground'];
+const SHORT: any = { 'Chick-fil-A': 'CFA', 'Panda Express': 'Panda', 'Shake Smart': 'Shake', 'Houston Street Subs': 'Subs', 'Abu Omar Halal': 'Abu Omar', 'Copperhead Jack\'s': 'CopJacks', 'Einstein Bros. Bagels': 'Einstein', '1876 Burgers': '1876', 'Cabo Grill': 'Cabo', 'Rev\'s American Grill': 'Revs', 'Whoop Coop': 'Whoop', 'Pizza @ Underground': 'Pizza' };
+
+const LOC_SHORT: Record<string, string> = {
+  'Sbisa Underground Food Court': 'Sbisa UG', 'MSC Food Court': 'MSC', 'Polo Garage': 'Polo',
+  'Sbisa Complex': 'Sbisa', 'Underground Food Court': 'Underground', 'Southside': 'Southside',
+  'Evans Library': 'Evans', 'The Quad': 'Quad', 'Zachry': 'Zachry', 'Langford': 'Langford',
+  'Rec Center': 'Rec Center', 'West Campus Food Hall': 'West Campus',
+};
+function shortenLoc(full: string): string {
+  for (const [p, s] of Object.entries(LOC_SHORT)) if (full.includes(p)) return s;
+  const d = full.indexOf(' - ');
+  return d > 0 ? full.substring(d + 3) : full;
+}
 
 export default function RetailSwipesScreen({ navigation }: any) {
   const { user } = useUser();
@@ -71,19 +83,38 @@ export default function RetailSwipesScreen({ navigation }: any) {
     if (!user) return;
     setOptLoad(true); setOptResult(null);
     try {
+        // Pass the BRAND name as dining_hall — the backend will look it up in RESTAURANT_GROUPS
         const res = await fetch(`${API_URL}/dining/optimize/day?clerk_id=${user.id}&dining_hall=${selRest}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ selected_meals: [selMeal], include_restaurant_alts: true })
         }).then(r => r.json());
         
-        if (res.status === 'success' && res.plan?.[selMeal]) {
+        // FIX: Check res.success (not res.status)
+        if (res.success && res.plan?.[selMeal]) {
             const mPlan = res.plan[selMeal];
+            // Look for this brand in restaurantPlans
             const opt = mPlan.restaurantPlans?.[selRest];
-            if (opt && opt.success) setOptResult({ ...opt, success: true });
-            else setOptResult({ success: false, error: opt?.error || 'No valid combo found under $11.' });
+            if (opt && opt.success && opt.items?.length > 0) {
+                setOptResult({ 
+                    ...opt, 
+                    success: true,
+                    locations: opt.locations || [],
+                    topPick: opt.topPick || opt.items[0]?.name || ''
+                });
+            } else {
+                // Try the first successful restaurant plan as fallback
+                const plans = mPlan.restaurantPlans || {};
+                const firstSuccess = Object.entries(plans).find(([_, p]: any) => p.success && p.items?.length > 0);
+                if (firstSuccess) {
+                    const [name, p]: any = firstSuccess;
+                    setOptResult({ ...p, success: true, brandName: name });
+                } else {
+                    setOptResult({ success: false, error: opt?.error || 'No valid combo found under $11.' });
+                }
+            }
         } else {
-            setOptResult({ success: false, error: res.error || 'Optimization failed for this meal.' });
+            setOptResult({ success: false, error: 'Optimization failed. Try a different meal period.' });
         }
     } catch (e) { setOptResult({ success: false, error: 'Connection error.' }); }
     setOptLoad(false);
@@ -164,6 +195,19 @@ export default function RetailSwipesScreen({ navigation }: any) {
               {optResult.success ? (
                 <View style={[s.optCard, { backgroundColor: T.card, borderColor: T.border }]}>
                   <Text style={[s.optMsg, { color: T.sage }]}>✓ Best combo found!</Text>
+
+                  {/* Top Pick Banner */}
+                  {optResult.topPick && (
+                    <View style={{flexDirection: 'row', alignItems: 'center', backgroundColor: T.bg3, padding: 10, borderRadius: 8, marginVertical: 10}}>
+                        <Text style={{fontSize: 20, marginRight: 10}}>🏆</Text>
+                        <View style={{flex: 1}}>
+                            <Text style={{color: T.sky, fontSize: 10, fontWeight: '800'}}>ORDER THIS:</Text>
+                            <Text style={{color: T.text, fontSize: 14, fontWeight: '700'}}>{optResult.topPick}</Text>
+                        </View>
+                    </View>
+                  )}
+
+                  {/* All items */}
                   {optResult.items.map((it: any, i: number) => (
                     <View key={i} style={s.optRow}>
                         <Text style={[s.optItemName, { color: T.text }]}>{it.name}</Text>
@@ -175,8 +219,19 @@ export default function RetailSwipesScreen({ navigation }: any) {
                       <Text style={[s.optTotal, { color: T.sky }]}>{Math.round(optResult.totals?.calories)} kcal</Text>
                       <Text style={[s.optPrice, { color: T.amber }]}>${optResult.totals?.cost?.toFixed(2)} / $11</Text>
                   </View>
+
+                  {/* Location pills */}
+                  {optResult.locations && optResult.locations.length > 0 && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
+                      {optResult.locations.map((loc: string, i: number) => (
+                        <View key={i} style={{ backgroundColor: T.bg3, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: T.border }}>
+                          <Text style={{ color: T.text3, fontSize: 9, fontWeight: '700' }}>{shortenLoc(loc)}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
-              ) : <Text style={{ color: T.clay, textAlign: 'center' }}>{optResult.error}</Text>}
+              ) : <Text style={{ color: T.clay, textAlign: 'center', fontStyle: 'italic' }}>Menu may vary — check location</Text>}
             </View>
           )}
         </Card>

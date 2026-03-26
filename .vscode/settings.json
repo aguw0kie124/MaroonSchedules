@@ -1,0 +1,13 @@
+{
+    "python.defaultInterpreterPath": "/Users/shreyaannath/py-global/bin/python3",
+    "python.analysis.extraPaths": [
+        "./Backend",
+        "/Users/shreyaannath/py-global/lib/python3.13/site-packages",
+        "/opt/homebrew/Cellar/python@3.13/3.13.5/Frameworks/Python.framework/Versions/3.13/lib/python3.13"
+    ],
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.typeCheckingMode": "basic",
+    "python.languageServer": "Pylance",
+    "python.analysis.indexing": true
+}

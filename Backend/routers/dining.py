@@ -110,7 +110,6 @@ def optimize_day(
             cur.execute("SELECT * FROM dining_profiles WHERE clerk_id = %s", (clerk_id,))
             profile = cur.fetchone()
             if not profile:
-                # Auto-initialize default profile
                 cur.execute("""
                     INSERT INTO dining_profiles (clerk_id, gender, weight_lbs, height_in, activity_level, mode, target_calories)
                     VALUES (%s, 'male', 150, 70, 'moderate', 'maintain', 2000)
@@ -119,7 +118,6 @@ def optimize_day(
                 profile = cur.fetchone()
                 conn.commit()
 
-            # Get latest weight
             cur.execute("SELECT weight_lbs FROM weight_log WHERE clerk_id = %s ORDER BY date DESC LIMIT 1", (clerk_id,))
             latest_w = cur.fetchone()
             current_weight = latest_w['weight_lbs'] if latest_w and latest_w['weight_lbs'] else (profile['weight_lbs'] or 150)
@@ -128,67 +126,119 @@ def optimize_day(
     cal_target = dining_service.caloric_target(profile, current_weight)
     macros = dining_service.macro_targets(current_weight, profile['activity_level'], cal_target['targetCalories'])
 
-    # 3. Check if it's a retail location
-    retail_restaurants = ["Chick-fil-A", "Panda Express", "Shake Smart", "Houston Street Subs", "Salata", "Abu Omar Halal"]
-    if dining_hall in retail_restaurants:
-        # For retail, we optimize for a single meal under $11
-        m_target_cals = (cal_target['targetCalories'] / 3) + 200
-        res = dining_service.optimize_combo(dining_hall, m_target_cals)
-        meal = options.get('selected_meals', ['lunch'])[0]
-        return {
-            "status": "success",
-            "plan": {
-                meal: {
-                    "calories": m_target_cals,
-                    "restaurant": dining_hall,
-                    "restaurantPlans": {dining_hall: res}
-                }
-            },
-            "profile": {"targetCalories": cal_target['targetCalories'], "macros": macros}
-        }
+    # 3. Dynamic Reapportionment Logic
+    selected_meals = options.get('selected_meals', ['breakfast', 'lunch', 'dinner'])
+    if not selected_meals:
+        selected_meals = ['lunch']
+    
+    # Base split from profile or default
+    split = profile.get('meal_split') or {'breakfast': 25, 'lunch': 35, 'dinner': 40}
+    if isinstance(split, str):
+        split = json.loads(split)
+    
+    # Calculate scaled fractions so they sum to 1.0
+    selected_sum = sum(split.get(m, 33.3) for m in selected_meals)
+    meal_fractions = {}
+    for m in selected_meals:
+        raw_val = split.get(m, 33.3)
+        meal_fractions[m] = raw_val / selected_sum if selected_sum > 0 else (1.0 / len(selected_meals))
 
-    # 4. Fetch Live Menu or DB foods for Dining Hall
-    foods = []
-    menu_result = dining_service.fetch_dine_on_campus_menu(dining_hall)
-    if not menu_result['success']:
-        # Fallback to DB foods
+    # 4. Fetch ALL foods for this dining hall (all periods)
+    all_foods = []
+    menu_result = {"success": False}
+    
+    # Try fetching each period from the live API for dining halls
+    is_dining_hall = any(dining_hall.lower() in k.lower() for k in dining_service.DINING_LOCATIONS if 'Hall' in k)
+    
+    if is_dining_hall:
+        # For dining halls, try to get foods for each requested period
+        for m in selected_meals:
+            res = dining_service.fetch_dine_on_campus_menu(dining_hall, meal_period=m)
+            if res.get('success') and res.get('items'):
+                menu_result = {"success": True}
+                for item in res['items']:
+                    item['meal_period'] = m  # tag with actual period
+                all_foods.extend(res['items'])
+    
+    # If live fetch failed or returned nothing, fall back to DB
+    if not all_foods:
         with psycopg.connect(get_db_connection()) as conn:
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
-                cur.execute("SELECT * FROM food_items WHERE location = %s AND active = TRUE", (dining_hall,))
-                foods = cur.fetchall()
-                # Clean/Enrich DB foods if they don't have macros
-                foods = dining_service.enrich_items(foods)
-    else:
-        foods = menu_result['items']
+                cur.execute("""
+                    SELECT * FROM food_items 
+                    WHERE (location = %s OR location ILIKE %s) 
+                    AND location_type = 'dining_hall'
+                    AND active = TRUE
+                """, (dining_hall, f"%{dining_hall}%"))
+                all_foods = [dict(r) for r in cur.fetchall()]
+                if all_foods:
+                    menu_result = {"success": True}
 
     # 5. Generate plans for each selected meal
-    selected_meals = options.get('selected_meals', ['breakfast', 'lunch', 'dinner'])
     include_rest = options.get('include_restaurant_alts', True)
-    
     meal_plans = {}
+    
     for m in selected_meals:
-        # Split targets
-        split = profile.get('meal_split', {'breakfast': 0.25, 'lunch': 0.35, 'dinner': 0.4})
-        if isinstance(split, str): split = json.loads(split)
+        m_target_cals = cal_target['targetCalories'] * meal_fractions[m]
         
-        fraction = split.get(m, 0.33)
-        m_target_cals = cal_target['targetCalories'] * fraction
+        # FIX: Use period-aware filtering that includes every-day items
+        m_foods = dining_service.items_for_period(all_foods, m)
         
-        # Filter foods by meal period if available
-        m_foods = [f for f in foods if f.get('meal_period') in [m, 'all']]
-        if not m_foods: m_foods = foods # Fallback
+        # If still no items, try DB with period aliases
+        if not m_foods:
+            aliases = dining_service.PERIOD_ALIASES.get(m, [m])
+            try:
+                with psycopg.connect(get_db_connection()) as conn:
+                    with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+                        placeholders = ','.join(['%s'] * len(aliases))
+                        cur.execute(f"""
+                            SELECT * FROM food_items 
+                            WHERE (location = %s OR location ILIKE %s) 
+                            AND location_type = 'dining_hall'
+                            AND meal_period IN ({placeholders})
+                            AND active = TRUE
+                        """, [dining_hall, f"%{dining_hall}%"] + aliases)
+                        m_foods = [dict(r) for r in cur.fetchall()]
+            except:
+                pass
         
+        if not m_foods:
+            meal_plans[m] = {"calories": round(m_target_cals), "variants": [], "restaurantPlans": {}, "error": "No menu items available for this period."}
+            continue
+
         variants = dining_service.generate_variants(m_foods, m_target_cals, macros)
         
+        # Restaurant alternatives
         rest_plans = {}
         if include_rest:
-            for r_name in dining_service.RESTAURANTS.keys():
-                # For alternate restaurants, we also use the optimized combo logic
-                # to ensure we give a valid $11 option if possible
-                rest_plans[r_name] = dining_service.optimize_combo(r_name, m_target_cals)
+            for brand, locations in dining_service.RESTAURANT_GROUPS.items():
+                best_loc_res = None
+                best_diff = float('inf')
+                for loc in locations:
+                    res = dining_service.optimize_combo(loc, m_target_cals)
+                    if res.get('success') and res.get('items'):
+                        diff = abs(res['totals']['calories'] - m_target_cals)
+                        if diff < best_diff:
+                            best_diff = diff
+                            best_loc_res = res
+                            best_loc_res['location'] = loc
+                
+                if best_loc_res and best_loc_res.get('items'):
+                    # Find the highest-calorie item as the "top pick" / what to order
+                    top_item = max(best_loc_res['items'], key=lambda x: x.get('calories', 0))
+                    rest_plans[brand] = {
+                        "success": True,
+                        "location": best_loc_res['location'],
+                        "locations": locations,  # ALL locations for this brand
+                        "topPick": top_item['name'],
+                        "totals": best_loc_res['totals'],
+                        "items": best_loc_res['items']
+                    }
+                else:
+                    rest_plans[brand] = {"success": False, "error": "No valid combo found", "locations": locations}
 
         meal_plans[m] = {
-            "calories": m_target_cals,
+            "calories": round(m_target_cals),
             "variants": variants,
             "restaurantPlans": rest_plans
         }
@@ -199,13 +249,17 @@ def optimize_day(
         "profile": {
             "targetCalories": cal_target['targetCalories'],
             "macros": macros,
-            "mode": cal_target['mode']
+            "mode": cal_target['mode'],
+            "meal_split": split
         },
-        "liveMenu": {"fetched": menu_result['success'], "count": len(foods), "hall": dining_hall}
+        "liveMenu": {"fetched": menu_result.get('success', False), "count": len(all_foods), "hall": dining_hall}
     }
 
+class OptimizeComboRequest(BaseModel):
+    meal_period: str = "lunch"
+
 @router.post("/optimize/combo")
-def optimize_retail_combo(clerk_id: str = Query(...), dining_hall: str = Query(...)):
+def optimize_retail_combo(req: OptimizeComboRequest, clerk_id: str = Query(...), dining_hall: str = Query(...)):
     # 1. Get Profile
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
@@ -227,10 +281,39 @@ def optimize_retail_combo(clerk_id: str = Query(...), dining_hall: str = Query(.
             
             targets = dining_service.caloric_target(prof, current_weight)
             
-    # Target 1/3 of daily calories + some buffer
-    target_cal = (targets['targetCalories'] / 3) + 200
-    res = dining_service.optimize_combo(dining_hall, target_cal)
-    return {"status": "success", "result": res}
+    # Match logic from optimize_day exactly: use the exact meal split
+    split = {"breakfast": 0.25, "lunch": 0.35, "dinner": 0.40}
+    m = req.meal_period.lower()
+    target_cal = targets['targetCalories'] * split.get(m, 0.35)
+    
+    brand = dining_hall
+    locations = dining_service.RESTAURANT_GROUPS.get(brand, [brand])
+    
+    best_loc_res = None
+    best_diff = float('inf')
+    for loc in locations:
+        res = dining_service.optimize_combo(loc, target_cal)
+        if res.get('success') and res.get('items'):
+            diff = abs(res['totals']['calories'] - target_cal)
+            if diff < best_diff:
+                best_diff = diff
+                best_loc_res = res
+                best_loc_res['location'] = loc
+
+    if best_loc_res and best_loc_res.get('items'):
+        top_item = max(best_loc_res['items'], key=lambda x: x.get('calories', 0))
+        final_res = {
+            "success": True,
+            "location": best_loc_res['location'],
+            "locations": locations,
+            "topPick": top_item['name'],
+            "totals": best_loc_res['totals'],
+            "items": best_loc_res['items']
+        }
+    else:
+        final_res = {"success": False, "error": "No valid combo found", "locations": locations}
+
+    return {"status": "success", "result": final_res}
 
 
 @router.post("/tracker/{clerk_id}")
@@ -360,7 +443,7 @@ def get_tracker(clerk_id: str, date: str = Query(None)):
             entries = cur.fetchall()
 
             # Sum totals
-            totals = {k: 0.0 for k in ['calories','protein','carbs','fat','fiber','sodium']}
+            totals = {k: 0.0 for k in ['calories','protein','carbs','fat','fiber','sodium','potassium','calcium','iron','vitamin_c','vitamin_d','magnesium']}
             for e in entries:
                 for k in totals:
                     totals[k] += (float(e.get(k) or 0))

@@ -1,8 +1,9 @@
+import sys
 import os
 import json
 import psycopg
 from datetime import datetime
-
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from db_config import get_db_connection
 
 # Removed hardcoded credentials

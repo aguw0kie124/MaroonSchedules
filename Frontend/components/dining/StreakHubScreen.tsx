@@ -35,9 +35,9 @@ export default function StreakHubScreen({ navigation }: any) {
       history.slice().reverse().forEach((d: any) => {
           const r = d.calories / target;
           let ok = false;
-          if (mode === 'cut') ok = r >= 0.5 && r <= 1.05;
-          else if (mode === 'bulk') ok = r >= 0.95;
-          else ok = r >= 0.85 && r <= 1.15;
+          if (mode === 'cut') ok = r >= 0.50 && r <= 1.15;
+          else if (mode === 'bulk') ok = r >= 0.85;
+          else ok = r >= 0.80 && r <= 1.20;
           
           if (ok) {
               currentStreak++;
