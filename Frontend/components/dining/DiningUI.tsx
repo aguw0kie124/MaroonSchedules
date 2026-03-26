@@ -11,9 +11,9 @@ export const SectionLabel = ({ children }: any) => (
 
 export const Divider = () => <View style={styles.divider} />;
 
-export const StatPill = ({ label, value, color }: any) => (
+export const StatPill = ({ label, value, color, valueStyle }: any) => (
   <View style={[styles.pill, { borderColor: color + '44' }]}>
-    <Text style={[styles.pillValue, { color }]}>{value}</Text>
+    <Text style={[styles.pillValue, { color }, valueStyle]} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
     <Text style={styles.pillLabel}>{label}</Text>
   </View>
 );

@@ -44,6 +44,8 @@ import FoodDatabaseScreen from './components/dining/FoodDatabaseScreen';
 import RetailSwipesScreen from './components/dining/RetailSwipesScreen';
 import DiningSettingsScreen from './components/dining/DiningSettingsScreen';
 import WeightTrackerScreen from './components/dining/WeightTrackerScreen';
+import TrackerHubScreen from './components/dining/TrackerHubScreen';
+import StreakHubScreen from './components/dining/StreakHubScreen';
 
 import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu, Compass, MessageSquare, MapPin, Radio } from 'lucide-react-native';
 import { useTheme } from './components/SharedUI';
@@ -198,29 +200,29 @@ function RootNavigator() {
           <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Reels" component={ReelsScreen} options={{ headerShown: false }} />
           
-          <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: true, title: 'Dining Dashboard', headerStyle: { backgroundColor: '#000' }, headerTintColor: '#fff' }} />
-          <Stack.Screen name="MealOptimizer" component={MealOptimizerScreen} options={{ headerShown: true, title: 'Meal Optimizer', headerStyle: { backgroundColor: '#000' }, headerTintColor: '#fff' }} />
-          <Stack.Screen name="MealTracker" component={MealTrackerScreen} options={{ headerShown: true, title: 'Meal Tracker', headerStyle: { backgroundColor: '#000' }, headerTintColor: '#fff' }} />
-          <Stack.Screen name="FoodDatabase" component={FoodDatabaseScreen} options={{ headerShown: true, title: 'Food Database', headerStyle: { backgroundColor: '#000' }, headerTintColor: '#fff' }} />
-          <Stack.Screen name="RetailSwipes" component={RetailSwipesScreen} options={{ headerShown: true, title: 'Retail Swipes', headerStyle: { backgroundColor: '#000' }, headerTintColor: '#fff' }} />
-          <Stack.Screen name="DiningSettings" component={DiningSettingsScreen} options={{ headerShown: true, title: 'Dining Settings', headerStyle: { backgroundColor: '#000' }, headerTintColor: '#fff' }} />
-          <Stack.Screen name="WeightTracker" component={WeightTrackerScreen} options={{ headerShown: true, title: 'Weight Tracker', headerStyle: { backgroundColor: '#000' }, headerTintColor: '#fff' }} />
+          <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: false }} />
+          <Stack.Screen name="MealOptimizer" component={MealOptimizerScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="TrackerHub" component={TrackerHubScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="StreakHub" component={StreakHubScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="MealTracker" component={MealTrackerScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="FoodDatabase" component={FoodDatabaseScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="RetailSwipes" component={RetailSwipesScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="DiningSettings" component={DiningSettingsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="WeightTracker" component={WeightTrackerScreen} options={{ headerShown: false }} />
         </>
       ) : (
         <>
           <Stack.Screen name="Onboarding" component={Onboarding} />
-          <Stack.Screen
-            name="AuthLanding"
-            children={(props: any) => (
+          <Stack.Screen name="AuthLanding">
+            {(props: any) => (
               <AuthLanding
                 onLoginPress={() => props.navigation.navigate('Login')}
               />
             )}
-          />
-          <Stack.Screen
-            name="Login"
-            children={(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />}
-          />
+          </Stack.Screen>
+          <Stack.Screen name="Login">
+            {(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />}
+          </Stack.Screen>
         </>
       )}
     </Stack.Navigator>

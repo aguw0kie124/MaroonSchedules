@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Dimensions, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Dimensions, ActivityIndicator, ScrollView, SafeAreaView, StatusBar, ImageBackground } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { useUser } from '@clerk/clerk-expo';
 import { API_URL } from '../../config';
 import { Card, SectionLabel, StatPill, ActionButton } from './DiningUI';
+import { useTheme } from '../SharedUI';
+import { useDiningTheme } from './DiningTheme';
+import { getLocalDateString } from '../../services/dateUtils';
 
 const SW = Dimensions.get('window').width;
 
@@ -14,7 +17,7 @@ export default function WeightTrackerScreen({ navigation }: any) {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [newWt, setNewWt] = useState('');
-  const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newDate, setNewDate] = useState(getLocalDateString());
   const [saving, setSaving] = useState(false);
 
   useEffect(() => { load(); }, []);
@@ -64,26 +67,72 @@ export default function WeightTrackerScreen({ navigation }: any) {
   ]);
 
   const recent = weights.slice(-14);
+  
+  let goalDataset = null;
+  if (stats?.goalWeight && stats?.goalDate && recent.length > 0) {
+      const startW = Number(recent[0].weight_lbs);
+      // Clean dates to ensure valid parsing (slice off T/Z if needed although YYYY-MM-DD works)
+      const startMs = new Date(recent[0].date).getTime();
+      const goalMs = new Date(stats.goalDate).getTime();
+      const goalW = Number(stats.goalWeight);
+      
+      if (goalMs > startMs) {
+          const goalData = recent.map(w => {
+              const curMs = new Date(w.date).getTime();
+              const pct = Math.max(0, Math.min(1, (curMs - startMs) / (goalMs - startMs)));
+              return startW + (goalW - startW) * pct;
+          });
+          if (recent.length === 1) goalData.push(goalW); // Show trajectory
+          
+          goalDataset = {
+              data: goalData,
+              color: () => 'rgba(82, 217, 138, 0.4)', // Faded green trendline
+              strokeWidth: 2,
+              withDots: false
+          };
+      }
+  }
+
   const chartData = recent.length > 0 ? {
-    labels: recent.length === 1 ? [recent[0].date.slice(5), recent[0].date.slice(5)] : recent.map((w, i) => i % 4 === 0 ? w.date.slice(5) : ' '),
-    datasets: [{ 
-      data: recent.length === 1 ? [Number(recent[0].weight_lbs), Number(recent[0].weight_lbs)] : recent.map(w => Number(w.weight_lbs)), 
-      color: () => '#E8922A', 
-      strokeWidth: 2 
-    }],
+    labels: recent.length === 1 ? [recent[0].date.slice(5), stats?.goalDate ? stats.goalDate.slice(5) : recent[0].date.slice(5)] : recent.map((w, i) => i % 4 === 0 ? w.date.slice(5) : ' '),
+    datasets: [
+      { 
+        data: recent.length === 1 ? [Number(recent[0].weight_lbs), Number(recent[0].weight_lbs)] : recent.map(w => Number(w.weight_lbs)), 
+        color: () => '#E8922A', 
+        strokeWidth: 2 
+      },
+      ...(goalDataset ? [goalDataset] : [])
+    ],
   } : null;
 
   const change = stats?.totalChange;
   const changeColor = change < 0 ? '#52d98a' : change > 0 ? '#ff4d4d' : '#999';
 
+  const { theme } = useTheme();
+  const darkMode = theme === 'dark';
+  const T = useDiningTheme(darkMode);
+
+  const marbleSrc = darkMode
+    ? require('../../assets/black_marble.jpg')
+    : require('../../assets/white_marble.jpg');
+
   return (
-    <ScrollView style={s.container} contentContainerStyle={{ padding: 20 }}>
-      <View style={s.header}>
-        <Text style={s.title}>Weight Tracker</Text>
-        <TouchableOpacity onPress={() => setShowAdd(!showAdd)}>
-            <Text style={{ color: '#5ab0e8', fontSize: 24, fontWeight: '200' }}>{showAdd ? '✕' : '+'}</Text>
-        </TouchableOpacity>
-      </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
+      <ImageBackground source={marbleSrc} style={StyleSheet.absoluteFill} resizeMode="cover">
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)' }]} />
+      </ImageBackground>
+
+      <ScrollView style={s.container} contentContainerStyle={{ padding: 20 }}>
+        <View style={s.header}>
+          <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+              <Text style={{ fontSize: 24, color: '#fff' }}>←</Text>
+          </TouchableOpacity>
+          <Text style={s.title}>Weight Tracker</Text>
+          <TouchableOpacity onPress={() => setShowAdd(!showAdd)}>
+              <Text style={{ color: '#5ab0e8', fontSize: 24, fontWeight: '200' }}>{showAdd ? '✕' : '+'}</Text>
+          </TouchableOpacity>
+        </View>
 
       {stats && (
         <View style={s.pillRow}>
@@ -156,13 +205,15 @@ export default function WeightTrackerScreen({ navigation }: any) {
         ))}
       </Card>
     </ScrollView>
+  </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+  container: { flex: 1 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  title: { fontSize: 28, fontWeight: '900', color: '#fff' },
+  backBtn: { width: 34, height: 34, justifyContent: 'center' },
+  title: { fontSize: 28, fontWeight: '900', color: '#fff', flex: 1, marginLeft: 10 },
   pillRow: { flexDirection: 'row', gap: 10, marginBottom: 15 },
   row: { flexDirection: 'row', gap: 10, marginBottom: 15 },
   input: { backgroundColor: '#111', borderRadius: 12, padding: 12, color: '#fff', borderWidth: 1, borderColor: '#333' },

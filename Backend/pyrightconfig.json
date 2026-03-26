@@ -1,0 +1,11 @@
+{
+  "venvPath": "/Users/shreyaannath",
+  "venv": "py-global",
+  "pythonVersion": "3.13",
+  "reportMissingImports": false,
+  "reportMissingModuleSource": false,
+  "extraPaths": [
+    "/Users/shreyaannath/Programming/MaroonSchedules/Backend",
+    "/Users/shreyaannath/py-global/lib/python3.13/site-packages"
+  ]
+}

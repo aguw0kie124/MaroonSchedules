@@ -53,7 +53,7 @@ def search_usda(query: str, page_size: int = 10) -> List[Dict]:
     }
     
     try:
-        resp = requests.get(url, params=params, timeout=10)
+        resp = requests.get(url, params=params, timeout=3)
         data = resp.json()
         foods = data.get('foods', [])
         
@@ -76,7 +76,7 @@ def get_food_by_id(fdc_id: int) -> Optional[Dict]:
     params = {'api_key': API_KEY}
     
     try:
-        resp = requests.get(url, params=params, timeout=10)
+        resp = requests.get(url, params=params, timeout=3)
         data = resp.json()
         return {
             'fdcId': data['fdcId'],
