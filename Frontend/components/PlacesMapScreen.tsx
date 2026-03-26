@@ -146,7 +146,6 @@ export function PlacesMapScreen() {
     const [isPostingReview, setIsPostingReview]   = useState(false);
     const [allReviewsModalVisible, setAllReviewsModalVisible] = useState(false);
     const [hubRestaurants, setHubRestaurants]     = useState<string[]>([]);
-    const [diningMenu, setDiningMenu]             = useState<any[]>([]);
     const [isFetchingDining, setIsFetchingDining] = useState(false);
     const [isFetchingReviews, setIsFetchingReviews] = useState(false);
     const { user }                                = useUser();
@@ -180,7 +179,7 @@ export function PlacesMapScreen() {
             animateSheet(SNAP_HIDDEN);
             setStreamReviews([]);
             setHubRestaurants([]);
-            setDiningMenu([]);
+            setHubRestaurants([]);
         }
     }, [selectedId, animateSheet]);
 
@@ -201,13 +200,7 @@ export function PlacesMapScreen() {
                 setHubRestaurants([]);
             }
 
-            // 2. Try to fetch as HALL MENU
-            const menuRes = await axios.get(menuUrl).catch(() => null);
-            if (menuRes && menuRes.data && (menuRes.data.success || Array.isArray(menuRes.data.items))) {
-                setDiningMenu(menuRes.data.items || []);
-            } else {
-                setDiningMenu([]);
-            }
+
         } catch (e) {
             console.warn("Failed to fetch dining data", e);
         } finally {
@@ -540,40 +533,19 @@ export function PlacesMapScreen() {
                         </View>
 
                         {/* Replace hardcoded occupancy with lists for Hubs/Dining */}
-                        {/* Hub Restaurants / Dining Menus */}
-                        {(hubRestaurants.length > 0 || diningMenu.length > 0) ? (
+                        {/* Hub Restaurants */}
+                        {hubRestaurants.length > 0 ? (
                             <View style={styles.infoBlock}>
-                                {hubRestaurants.length > 0 && (
-                                    <View style={{ marginBottom: 16 }}>
-                                        <Text style={styles.sectionTitle}>Inside this Hub</Text>
-                                        <View style={styles.restaurantChipList}>
-                                            {hubRestaurants.map((r, i) => (
-                                                <View key={i} style={styles.restaurantChip}>
-                                                    <Text style={styles.restaurantChipText}>{r}</Text>
-                                                </View>
-                                            ))}
-                                        </View>
+                                <View style={{ marginBottom: 16 }}>
+                                    <Text style={styles.sectionTitle}>Inside this Hub</Text>
+                                    <View style={styles.restaurantChipList}>
+                                        {hubRestaurants.map((r, i) => (
+                                            <View key={i} style={styles.restaurantChip}>
+                                                <Text style={styles.restaurantChipText}>{r}</Text>
+                                            </View>
+                                        ))}
                                     </View>
-                                )}
-                                {diningMenu.length > 0 && (
-                                    <View style={{ marginBottom: 16 }}>
-                                        <Text style={styles.sectionTitle}>Live Menu Highlights</Text>
-                                        <View style={styles.menuList}>
-                                            {diningMenu.slice(0, 10).map((m: any, i: number) => (
-                                                <View key={i} style={styles.menuItemCard}>
-                                                    <View style={styles.menuItemDetails}>
-                                                        <Text style={styles.menuItemName}>{m.name}</Text>
-                                                        <View style={styles.menuItemMeta}>
-                                                            <Flame size={12} color="#FF9500" />
-                                                            <Text style={styles.menuItemCal}>{Math.round(m.calories)} kcal</Text>
-                                                        </View>
-                                                    </View>
-                                                    <ChevronRight size={16} color="#444" />
-                                                </View>
-                                            ))}
-                                        </View>
-                                    </View>
-                                )}
+                                </View>
                                 <View style={styles.hoursInfo}>
                                     <Clock size={12} color={COLORS.textTertiary} />
                                     <Text style={styles.hoursText}>{selectedLoc.hours || 'Open Today · 7:00 AM – 10:00 PM'}</Text>
