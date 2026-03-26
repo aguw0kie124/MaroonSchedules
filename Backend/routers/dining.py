@@ -7,58 +7,11 @@ from services import dining_service, usda_service
 import json
 from datetime import datetime, timedelta
 
-router = APIRouter(tags=["Dining"])
+router = APIRouter(prefix="/dining", tags=["Dining"])
 
 @router.get("/health")
 def dining_health():
     return {"status": "ok", "message": "Dining router is active"}
-
-@router.get("/hubs/{hub_id}")
-def get_hub_dining(hub_id: str):
-    # Normalize: "Memorial Student Center (MSC)" -> "msc", "Polo Road Garage & Rec" -> "polo"
-    h = hub_id.lower()
-    slug = h
-    if "memorial student center" in h or "(msc)" in h: slug = "msc"
-    elif "polo road" in h: slug = "polo"
-    elif "underground" in h: slug = "sbisa" # Map Underground to Sbisa service
-    
-    data = dining_service.HUB_DATA.get(slug)
-    if not data:
-        raise HTTPException(status_code=404, detail=f"Hub '{hub_id}' not found (mapped to '{slug}')")
-    return data
-
-@router.get("/menus/{location}")
-def get_location_menu(location: str):
-    # Normalize: "Sbisa Dining Hall" -> "Sbisa"
-    l = location.lower()
-    hall_map = {"sbisa": "Sbisa", "commons": "Commons", "duncan": "Duncan", "creekside": "Creekside", "west campus": "West Campus", "wcf": "West Campus"}
-    
-    hall_key = None
-    for k, v in hall_map.items():
-        if k in l:
-            hall_key = v
-            break
-    
-    if not hall_key:
-        hall_key = location # Fallback
-        
-    res = dining_service.fetch_dine_on_campus_menu(hall_key)
-    if not res.get('success'):
-        # Fallback to DB foods if live fetch fails
-        try:
-            with psycopg.connect(get_db_connection()) as conn:
-                with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
-                    # Case-insensitive match for the hall name
-                    cur.execute("SELECT * FROM food_items WHERE (location ILIKE %s OR location ILIKE %s) AND active = TRUE", (f"%{hall_key}%", f"%{location}%"))
-                    foods = cur.fetchall()
-                    if foods:
-                        # Clean/Enrich DB foods if they don't have macros
-                        enriched = dining_service.enrich_items(foods)
-                        return {"success": True, "items": enriched, "location": hall_key, "source": "database_fallback"}
-        except Exception as e:
-            print(f"Menu fallback error: {e}")
-            
-    return res
 
 
 # ============================================================
