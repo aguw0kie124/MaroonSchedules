@@ -81,7 +81,7 @@ export function Profile() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [pickerVisible, setPickerVisible] = useState<'major' | 'gradYear' | 'prefTime' | null>(null);
-    const { COLORS, theme, setTheme } = useTheme();
+    const { COLORS, theme, setTheme, useWallpaper, setUseWallpaper } = useTheme();
     const styles = getStyles(COLORS);
 
     const { user } = useUser();
@@ -212,8 +212,6 @@ export function Profile() {
 
     return (
         <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-            <Text style={styles.title}>Profile & Preferences</Text>
-
             {/* Avatar Section */}
             <View style={styles.avatarSection}>
                 <Pressable onPress={handleAvatarPress} style={styles.avatarWrapper}>
@@ -284,8 +282,6 @@ export function Profile() {
 
             {/* Preferences */}
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Preferences</Text>
-
                 <ToggleField
                     label="Avoid Friday Classes"
                     description="Prioritize schedules without Friday classes"
@@ -328,14 +324,6 @@ export function Profile() {
                     <Text style={styles.toolTitle}>GPA Calculator</Text>
                     <ChevronRight size={20} color={COLORS.border} />
                 </Pressable>
-
-                <Pressable style={styles.toolRow} onPress={() => navigation.navigate('DiningDashboard')}>
-                    <View style={[styles.toolIconBg, { backgroundColor: '#E8922A20' }]}>
-                        <Search size={20} color="#E8922A" />
-                    </View>
-                    <Text style={styles.toolTitle}>Campus Dining & Nutrition</Text>
-                    <ChevronRight size={20} color={COLORS.border} />
-                </Pressable>
             </View>
 
             {/* Appearance Settings */}
@@ -357,6 +345,27 @@ export function Profile() {
                             <Text style={[styles.segmentText, theme === 'dark' && styles.segmentTextActive]}>Dark</Text>
                         </Pressable>
                     </View>
+                </View>
+
+                <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Background Style</Text>
+                    <View style={styles.segmentedRow}>
+                        <Pressable
+                            style={[styles.segmentBtn, useWallpaper && styles.segmentBtnActive]}
+                            onPress={() => setUseWallpaper(true)}
+                        >
+                            <Text style={[styles.segmentText, useWallpaper && styles.segmentTextActive]}>Wallpaper</Text>
+                        </Pressable>
+                        <Pressable
+                            style={[styles.segmentBtn, !useWallpaper && styles.segmentBtnActive]}
+                            onPress={() => setUseWallpaper(false)}
+                        >
+                            <Text style={[styles.segmentText, !useWallpaper && styles.segmentTextActive]}>Solid</Text>
+                        </Pressable>
+                    </View>
+                    <Text style={{ fontSize: 11, color: COLORS.textTertiary, marginTop: 4 }}>
+                        {useWallpaper ? 'Marble wallpaper on supported pages' : `Solid ${theme === 'dark' ? 'black' : 'white'} background`}
+                    </Text>
                 </View>
             </View>
 
@@ -547,7 +556,7 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     },
     contentContainer: {
         padding: 16,
-        paddingTop: 40, // Reduced from 60
+        paddingTop: 85,
     },
     title: {
         fontSize: 24,

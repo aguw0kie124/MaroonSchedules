@@ -13,7 +13,8 @@ import {
     Modal,
     TouchableWithoutFeedback,
     KeyboardAvoidingView,
-    Platform
+    Platform,
+    LayoutAnimation
 } from 'react-native';
 import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import axios from 'axios';
@@ -136,7 +137,9 @@ export function PlacesMapScreen() {
     const [locations, setLocations]               = useState<CampusLocation[]>([]);
     const [loading, setLoading]                   = useState(true);
     const [activeLayer, setActiveLayer]           = useState<string>('Heatmap');
+    const [isSearchExpanded, setIsSearchExpanded] = useState(false);
     const [selectedId, setSelectedId]             = useState<string | null>(null);
+    const indicatorAnim = useRef(new Animated.Value(0)).current;
     const [searchQuery, setSearchQuery]           = useState('');
     const [showSearchResults, setShowSearchResults] = useState(false);
     const [streamReviews, setStreamReviews]       = useState<any[]>([]);
@@ -380,6 +383,11 @@ export function PlacesMapScreen() {
                 onPress={() => {
                     setSelectedId(null);
                     setShowSearchResults(false);
+                    if (isSearchExpanded) {
+                        LayoutAnimation.configureNext({ duration: 250, create: { type: 'easeInEaseOut', property: 'opacity' }, update: { type: 'spring', springDamping: 0.9, initialVelocity: 0.5 }, delete: { type: 'easeOut', property: 'opacity' } });
+                        setIsSearchExpanded(false);
+                        setSearchQuery('');
+                    }
                 }}
                 onMarkerPress={(e) => {
                     const id = e.nativeEvent.id;
@@ -436,44 +444,102 @@ export function PlacesMapScreen() {
                 })}
             </MapView>
 
-            {/* Layer selector */}
-            <View style={styles.layerSelector} pointerEvents="box-none">
-                {CATEGORIES.map(cat => (
-                    <TouchableOpacity
-                        key={cat.id}
-                        style={[styles.layerBtn, activeLayer === cat.id && styles.layerBtnActive]}
-                        onPress={() => { setActiveLayer(cat.id); setSelectedId(null); }}
-                    >
-                        {React.cloneElement(cat.icon as React.ReactElement<any>, {
-                            color: activeLayer === cat.id ? '#FF8A8A' : COLORS.textPrimary
-                        })}
-                        <Text style={[styles.layerText, activeLayer === cat.id && styles.layerTextActive]}>
-                            {cat.label}
-                        </Text>
-                    </TouchableOpacity>
-                ))}
-            </View>
-
-            {/* Search bar */}
+            {/* Unified Top Navigation Pill Bar */}
             <View style={styles.topContainer} pointerEvents="box-none">
-                <View style={styles.searchBar}>
-                    <Search size={22} color={COLORS.textTertiary} />
-                    <TextInput
-                        style={[styles.searchInput, { color: COLORS.textPrimary }]}
-                        placeholder="Search for any location..."
-                        placeholderTextColor={COLORS.textTertiary}
-                        value={searchQuery}
-                        onChangeText={(t) => { setSearchQuery(t); setShowSearchResults(true); }}
-                        onFocus={() => setShowSearchResults(true)}
-                    />
-                    {searchQuery.length > 0 && (
-                        <TouchableOpacity onPress={() => setSearchQuery('')}>
-                            <X size={20} color={COLORS.textTertiary} />
-                        </TouchableOpacity>
+                <View style={[styles.pillBar, isSearchExpanded && { backgroundColor: '#000', borderColor: '#222' }]}>
+                    {isSearchExpanded ? (
+                        <View style={styles.searchExpanded}>
+                            <Search size={20} color={COLORS.textTertiary} />
+                            <TextInput
+                                style={[styles.searchInput, { color: COLORS.textPrimary }]}
+                                placeholder="Search any location..."
+                                placeholderTextColor={COLORS.textTertiary}
+                                value={searchQuery}
+                                onChangeText={(t) => { setSearchQuery(t); setShowSearchResults(true); }}
+                                autoFocus
+                            />
+                            {searchQuery.length > 0 && (
+                                <TouchableOpacity onPress={() => setSearchQuery('')} style={{ marginRight: 12 }}>
+                                    <X size={18} color={COLORS.textTertiary} />
+                                </TouchableOpacity>
+                            )}
+                            <TouchableOpacity onPress={() => {
+                                LayoutAnimation.configureNext({ duration: 250, create: { type: 'easeInEaseOut', property: 'opacity' }, update: { type: 'spring', springDamping: 0.9, initialVelocity: 0.5 }, delete: { type: 'easeOut', property: 'opacity' } });
+                                setIsSearchExpanded(false);
+                                setSearchQuery('');
+                                setShowSearchResults(false);
+                            }}>
+                                <Text style={styles.cancelSearchText}>Cancel</Text>
+                            </TouchableOpacity>
+                        </View>
+                    ) : (
+                        <View style={styles.pillTabsContainer}>
+                            <TouchableOpacity
+                                style={styles.searchIconBtn}
+                                onPress={() => {
+                                        LayoutAnimation.configureNext({ duration: 250, create: { type: 'easeInEaseOut', property: 'opacity' }, update: { type: 'spring', springDamping: 0.9, initialVelocity: 0.5 }, delete: { type: 'easeOut', property: 'opacity' } });
+                                    setIsSearchExpanded(true);
+                                }}
+                            >
+                                <Search size={20} color={COLORS.textTertiary} />
+                            </TouchableOpacity>
+                            <View style={styles.pillDivider} />
+                            
+                            {/* Animated Background Indicator */}
+                            {(() => {
+                                const totalWidth = width - 40;
+                                const searchWidth = 44 + 4 + 1; // button + gap + divider
+                                const availablePillSpace = totalWidth - searchWidth - 8; // minus outer padding
+                                const pillTabWidth = availablePillSpace / CATEGORIES.length;
+                                
+                                const translateX = indicatorAnim.interpolate({
+                                    inputRange: [0, 1, 2, 3],
+                                    outputRange: [0, pillTabWidth, pillTabWidth * 2, pillTabWidth * 3],
+                                });
+
+                                return (
+                                    <>
+                                        <Animated.View 
+                                            style={[
+                                                styles.pillIndicator,
+                                                { width: pillTabWidth, transform: [{ translateX }] }
+                                            ]}
+                                        />
+                                        {CATEGORIES.map((cat, index) => {
+                                            const isActive = activeLayer === cat.id;
+                                            return (
+                                                <TouchableOpacity
+                                                    key={cat.id}
+                                                    style={[styles.pillTab, { width: pillTabWidth }]}
+                                                    onPress={() => {
+                                                        setActiveLayer(cat.id);
+                                                        setSelectedId(null);
+                                                        Animated.spring(indicatorAnim, {
+                                                            toValue: index,
+                                                            useNativeDriver: true,
+                                                            tension: 300,
+                                                            friction: 30,
+                                                        }).start();
+                                                    }}
+                                                >
+                                                    {React.cloneElement(cat.icon as React.ReactElement<any>, {
+                                                        color: isActive ? '#FFFFFF' : COLORS.textTertiary,
+                                                        size: 14
+                                                    })}
+                                                    <Text style={[styles.pillLabel, isActive && styles.pillLabelActive, { marginTop: 2 }]}>
+                                                        {cat.label}
+                                                    </Text>
+                                                </TouchableOpacity>
+                                            );
+                                        })}
+                                    </>
+                                );
+                            })()}
+                        </View>
                     )}
                 </View>
 
-                {showSearchResults && searchResults.length > 0 && (
+                {isSearchExpanded && showSearchResults && searchResults.length > 0 && (
                     <View style={styles.searchResults}>
                         {searchResults.map((loc) => (
                             <TouchableOpacity
@@ -756,36 +822,77 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     loader: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background },
     loaderText: { marginTop: 12, color: COLORS.textSecondary, fontWeight: '600' },
 
-    // ── Layer selector ──────────────────────────────────────────────────────
-    layerSelector: {
-        position: 'absolute', top: 50, left: 16, right: 16,
-        padding: 4, borderRadius: 16, flexDirection: 'row',
-        backgroundColor: COLORS.surface, gap: 4,
-        borderWidth: 1, borderColor: COLORS.border,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 5
+    // ── Unified Top Navigation ──────────────────────────────────────────────
+    topContainer: { position: 'absolute', top: 54, left: 20, right: 20, gap: 8 },
+    pillBar: {
+        flexDirection: 'row',
+        backgroundColor: COLORS.surface,
+        borderRadius: 32,
+        padding: 4,
+        position: 'relative',
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        minHeight: 46,
+        alignItems: 'center',
     },
-    layerBtn: {
-        flex: 1, alignItems: 'center', justifyContent: 'center',
-        paddingVertical: 12, borderRadius: 12, gap: 4
+    searchExpanded: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
     },
-    layerBtnActive: { backgroundColor: '#3D0000' },
-    layerText:      { fontSize: 10, fontWeight: '700', color: COLORS.textSecondary },
-    layerTextActive: { color: '#FF8A8A' },
-
-    // ── Search ──────────────────────────────────────────────────────────────
-    topContainer: { position: 'absolute', top: 130, left: 16, right: 16, gap: 8 },
-    searchBar: {
-        flexDirection: 'row', alignItems: 'center',
-        backgroundColor: '#000', borderRadius: 15,
-        paddingHorizontal: 16, paddingVertical: 14,
-        borderWidth: 1, borderColor: '#222',
-        shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 6
+    cancelSearchText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: COLORS.primary,
+        marginLeft: 8,
     },
-    searchInput:    { flex: 1, fontSize: 18, marginLeft: 12, padding: 0, fontWeight: '500' },
+    pillTabsContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
+    searchIconBtn: {
+        width: 44,
+        height: 36,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    pillDivider: {
+        width: 1,
+        height: 24,
+        backgroundColor: COLORS.border,
+        marginRight: 4,
+    },
+    pillIndicator: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        backgroundColor: '#800000',
+        borderRadius: 26,
+        left: 49,
+    },
+    pillTab: {
+        height: 36,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'row',
+        gap: 6,
+        zIndex: 2,
+    },
+    pillLabel: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: COLORS.textTertiary,
+    },
+    pillLabelActive: {
+        color: '#FFFFFF',
+    },
+    searchInput:    { flex: 1, fontSize: 16, marginLeft: 10, padding: 0, fontWeight: '500' },
     searchResults: {
         backgroundColor: '#0A0A0A', borderRadius: 15,
         borderWidth: 1, borderColor: '#222',
-        marginTop: 4, overflow: 'hidden',
+        overflow: 'hidden',
         shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.5, shadowRadius: 12, elevation: 8
     },
     searchItem: {

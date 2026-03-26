@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions, Modal, TouchableWithoutFeedback, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions, Modal, TouchableWithoutFeedback, Image, ImageBackground, StatusBar } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { Plus, ChevronDown, CheckCircle2, Clock, ArrowRight, MapPin, TrendingUp, GraduationCap, Radio, Map as MapIcon, Sparkles, ChevronRight } from 'lucide-react-native';
 import { useUser } from '@clerk/clerk-expo';
@@ -17,11 +17,13 @@ const WEEK_DAYS = [
 ];
 
 export function Dashboard() {
-    const { COLORS } = useTheme();
-    const styles = getStyles(COLORS);
+    const { COLORS, theme, useWallpaper } = useTheme();
+    const isDark = theme === 'dark';
+    const styles = getStyles(COLORS, isDark);
     const navigation = useNavigation<any>();
     const isFocused = useIsFocused();
     const { user } = useUser();
+
 
     const [schedules, setSchedules] = useState<any[]>([]);
     const [selectedSchedule, setSelectedSchedule] = useState<any>(null);
@@ -118,13 +120,27 @@ export function Dashboard() {
             return (h * 60 + m) > currentMinutes;
         })[0]; // todaysCourses is already sorted, so first match = next class
 
+    const marbleSrc = isDark
+      ? require('../assets/black_marble.jpg')
+      : require('../assets/white_marble.jpg');
+
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, useWallpaper && { backgroundColor: '#000' }]}>
+            <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+            
+            {useWallpaper && (
+                <ImageBackground source={marbleSrc} style={StyleSheet.absoluteFill} resizeMode="cover">
+                    <View style={[StyleSheet.absoluteFill, {
+                        backgroundColor: isDark ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.45)',
+                    }]} />
+                </ImageBackground>
+            )}
+
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 {/* Header */}
                 <View style={styles.header}>
                     <View>
-                        <Text style={styles.greeting}>Howdy, Ag!</Text>
+                        <Text style={styles.greeting}>Howdy,</Text>
                         <Text style={styles.name}>{user?.firstName || 'Aggie'}</Text>
                     </View>
                     <Pressable style={styles.avatar} onPress={() => navigation.navigate('Profile')}>
@@ -276,14 +292,15 @@ export function Dashboard() {
     );
 }
 
-const getStyles = (COLORS: any) => StyleSheet.create({
+const getStyles = (COLORS: any, isDark: boolean = true) => StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: COLORS.background,
     },
     scrollContent: {
         padding: 16,
-        paddingTop: 40, // Reduced from 60
+        paddingTop: 60,
+        paddingBottom: 110,
     },
     header: {
         flexDirection: 'row',

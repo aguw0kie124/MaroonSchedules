@@ -147,6 +147,18 @@ export function ChannelListScreen({ embedded = false }: { embedded?: boolean } =
           />
         </Chat>
       </OverlayProvider>
+
+      {/* ── Floating Action Button for New Chat ── */}
+      {embedded && (
+        <Pressable 
+          style={styles.fab} 
+          onPress={() => {
+            navigation.navigate('UsersScreen');
+          }}
+        >
+          <MessageSquarePlus color="#FFFFFF" size={24} />
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -179,5 +191,22 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  fab: {
+    position: 'absolute',
+    bottom: 110, // Above the global tab bar
+    right: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+    zIndex: 1000,
   },
 });

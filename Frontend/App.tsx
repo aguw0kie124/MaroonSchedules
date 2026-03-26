@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Dimensions, Animated, TouchableOpacity, Text } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createBottomTabNavigator, BottomTabBar } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
@@ -12,6 +12,107 @@ import { Onboarding } from './components/Onboarding';
 import { Dashboard } from './components/Dashboard';
 import { Search } from './components/Search';
 import { Builder } from './components/Builder';
+
+function CustomTabBar({ state, descriptors, navigation }: any) {
+  const { COLORS } = useTheme();
+  const totalW = Dimensions.get('window').width - 40;
+  const tabW = totalW / state.routes.length;
+  const indicatorAnim = React.useRef(new Animated.Value(state.index)).current;
+
+  React.useEffect(() => {
+    Animated.spring(indicatorAnim, {
+      toValue: state.index,
+      useNativeDriver: true,
+      tension: 300,
+      friction: 30,
+    }).start();
+  }, [state.index]);
+
+  const translateX = indicatorAnim.interpolate({
+    inputRange: state.routes.map((_: any, i: number) => i),
+    outputRange: state.routes.map((_: any, i: number) => i * tabW),
+  });
+
+  return (
+    <View style={{
+      position: 'absolute',
+      bottom: 24,
+      left: 0,
+      right: 0,
+      alignItems: 'center',
+      backgroundColor: 'transparent'
+    }} pointerEvents="box-none">
+      <View style={{
+         width: totalW,
+         height: 64,
+         backgroundColor: COLORS.surface,
+         borderRadius: 32,
+         borderWidth: StyleSheet.hairlineWidth,
+         borderColor: COLORS.border,
+         shadowColor: '#000',
+         shadowOffset: { width: 0, height: 8 },
+         shadowOpacity: 0.25,
+         shadowRadius: 20,
+         elevation: 12,
+         flexDirection: 'row',
+         alignItems: 'center',
+         padding: 6,
+      }}>
+        {/* Animated Background Indicator */}
+        <Animated.View style={{
+          position: 'absolute',
+          left: 6,
+          top: 6,
+          bottom: 6,
+          width: tabW - 12,
+          backgroundColor: '#800000', // Maroon
+          borderRadius: 26,
+          transform: [{ translateX }]
+        }} />
+
+        {state.routes.map((route: any, index: number) => {
+          const { options } = descriptors[route.key];
+          const label = options.title !== undefined ? options.title : route.name;
+          const isFocused = state.index === index;
+
+          let IconName: any;
+          if (route.name === 'Dashboard') IconName = Calendar;
+          else if (route.name === 'Places') IconName = MapPin;
+          else if (route.name === 'Social') IconName = Radio;
+          else if (route.name === 'Dining') IconName = UtensilsCrossed;
+          else if (route.name === 'Profile') IconName = User;
+
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate({ name: route.name, merge: true });
+            }
+          };
+
+          return (
+            <TouchableOpacity
+              key={route.key}
+              accessibilityRole="button"
+              accessibilityState={isFocused ? { selected: true } : {}}
+              accessibilityLabel={options.tabBarAccessibilityLabel}
+              testID={options.tabBarTestID}
+              onPress={onPress}
+              style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: '100%', gap: 4 }}
+            >
+              {IconName && <IconName size={22} color={isFocused ? '#FFFFFF' : COLORS.textTertiary} strokeWidth={isFocused ? 2.5 : 2} />}
+              {isFocused && <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF' }}>{label}</Text>}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
 import { Saved } from './components/Saved';
 import { Profile } from './components/Profile';
 import { CourseDetail } from './components/CourseDetail';
@@ -49,7 +150,7 @@ import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 
 import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu, Compass, MessageSquare, MapPin, Radio, UtensilsCrossed } from 'lucide-react-native';
-import { useTheme } from './components/SharedUI';
+import { useTheme, useThemeStore } from './components/SharedUI';
 
 import { syncUser } from './api/client';
 
@@ -61,6 +162,9 @@ function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
 
   React.useEffect(() => {
+    // Load wallpaper preference from storage
+    useThemeStore.getState().loadWallpaperPref?.();
+
     if (user) {
       syncUser(
         user.id,
@@ -109,43 +213,8 @@ function MainTabs() {
   return (
     <Tab.Navigator
       id="MainTabs"
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarIcon: ({ focused, color, size }) => {
-          let IconName;
-
-          if (route.name === 'Dashboard') {
-            IconName = Calendar;
-          } else if (route.name === 'Places') {
-            IconName = MapPin;
-          } else if (route.name === 'Social') {
-            IconName = Radio;
-          } else if (route.name === 'Dining') {
-            IconName = UtensilsCrossed;
-          } else if (route.name === 'Profile') {
-            IconName = User;
-          }
-
-          if (IconName) {
-            return <IconName size={size} color={color} strokeWidth={focused ? 2.5 : 2} />;
-          }
-          return null;
-        },
-        tabBarActiveTintColor: COLORS.accent, 
-        tabBarInactiveTintColor: COLORS.textTertiary,
-        tabBarStyle: {
-          height: 84,
-          paddingBottom: 28,
-          paddingTop: 12,
-          backgroundColor: COLORS.background, // Dynamic background
-          borderTopColor: COLORS.border,
-          borderTopWidth: StyleSheet.hairlineWidth,
-        },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
-        }
-      })}
+      screenOptions={{ headerShown: false }}
+      tabBar={props => <CustomTabBar {...props} />}
     >
       <Tab.Screen name="Dashboard" component={Dashboard} options={{ title: 'Home' }} />
       <Tab.Screen name="Places" component={PlacesMapScreen} options={{ title: 'Places' }} />

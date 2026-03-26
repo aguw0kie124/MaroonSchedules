@@ -22,12 +22,12 @@ const { width: SW, height: SH } = Dimensions.get('window');
 // ── Ring geometry ─────────────────────────────────────────────────────────────
 const RING_STROKE = 18;
 const RING_GAP    = 14; 
-const OUTER_R     = SW * 0.43; // Increased to ensure the text fits in the center
+const OUTER_R     = SW * 0.40; 
 const SVG_W       = SW;
 const CX          = SW / 2;
-const RING_OFFSET = 20;
+const RING_OFFSET = 10;
 const CY          = OUTER_R + RING_OFFSET;
-const SVG_H       = CY + OUTER_R + 20;
+const SVG_H       = CY + OUTER_R + 10;
 
 const RING_DEFS = [
   { key: 'protein', label: 'Protein', unit: 'g',    colorKey: 'ringProtein' },
@@ -47,7 +47,7 @@ const TAB_ITEMS = [
 
 export default function DiningDashboard({ navigation }: any) {
   const { user } = useUser();
-  const { theme } = useTheme();
+  const { theme, useWallpaper: showWallpaper } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
 
@@ -155,42 +155,35 @@ export default function DiningDashboard({ navigation }: any) {
     <SafeAreaView style={[s.safe, { backgroundColor: T.bg }]}>
       <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
 
-      <ImageBackground source={marbleSrc} style={StyleSheet.absoluteFill} resizeMode="cover">
-        <View style={[StyleSheet.absoluteFill, {
-          backgroundColor: darkMode ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.08)',
-        }]} />
-      </ImageBackground>
+      {showWallpaper && (
+        <ImageBackground source={marbleSrc} style={StyleSheet.absoluteFill} resizeMode="cover">
+          <View style={[StyleSheet.absoluteFill, {
+            backgroundColor: darkMode ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.08)',
+          }]} />
+        </ImageBackground>
+      )}
 
       <Animated.View style={[s.container, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         
-        {/* Header */}
-        <View style={s.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginRight: 12 }}>
-            <Text style={{ fontSize: 24, color: T.text }}>←</Text>
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={[s.greeting, { color: T.text }]}>
-              Howdy, {user?.firstName || 'Aggie'}!
-            </Text>
-            <Text style={[s.subtitle, { color: T.text3 }]}>
-              YOUR NUTRITION AT A GLANCE
-            </Text>
-          </View>
-          <TouchableOpacity
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              navigation.navigate('DiningSettings');
-            }}
-            style={[s.gearBtn, {
-              backgroundColor: T.btnBg,
-              borderColor: T.roseGold + '40',
-            }]}
-          >
-            <Text style={{ fontSize: 20 }}>⚙️</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Floating Settings Button */}
+        <TouchableOpacity
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            navigation.navigate('DiningSettings');
+          }}
+          style={[s.gearBtn, {
+            position: 'absolute',
+            top: 16,
+            right: 24,
+            zIndex: 100,
+            backgroundColor: T.btnBg,
+            borderColor: T.roseGold + '40',
+          }]}
+        >
+          <Text style={{ fontSize: 20 }}>⚙️</Text>
+        </TouchableOpacity>
 
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 110 }}>
+        <View style={{ flex: 1, justifyContent: 'space-evenly', paddingBottom: 10 }}>
             {/* Rings */}
             <View style={{ width: SW, height: SVG_H, alignItems: 'center' }}>
             <Svg width={SVG_W} height={SVG_H}>
@@ -284,7 +277,7 @@ export default function DiningDashboard({ navigation }: any) {
                 <ActionBtn icon="🧬" label="Optimize" T={T} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); navigation.navigate('MealOptimizer'); }} />
                 <ActionBtn icon="🔥" label={`${streak}d Streak`} T={T} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); navigation.navigate('StreakHub'); }} />
             </View>
-        </ScrollView>
+        </View>
 
         {/* Tab Bar */}
         <View style={[s.tabBar, { backgroundColor: T.tabBarBg, borderColor: T.roseGold + '30' }]}>
@@ -330,10 +323,11 @@ function ActionBtn({ icon, label, T, onPress }: any) {
 
   return (
     <TouchableOpacity onPressIn={pressIn} onPressOut={pressOut} onPress={onPress} activeOpacity={1} style={{ flex: 1 }}>
-      <Animated.View style={[s.macroPill, { 
+      <Animated.View style={[{ 
+          alignItems: 'center', paddingVertical: 14, borderRadius: 14, borderWidth: 1, width: '100%',
           backgroundColor: T.btnBg, borderColor: T.btnBorder, transform: [{ scale }], 
           overflow: 'hidden', shadowColor: T.btnShadow, shadowOffset: { width: 0, height: 4 }, 
-          shadowOpacity: 0.25, shadowRadius: 8, elevation: 6 
+          shadowOpacity: 0.25, shadowRadius: 8, elevation: 6
       }]}>
         <LinearGradient colors={[T.btnHighlight, 'transparent']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[StyleSheet.absoluteFill, { borderRadius: 14 }]} />
         <Text style={{ fontSize: 24, marginBottom: 2 }}>{icon}</Text>
@@ -353,14 +347,14 @@ const s = StyleSheet.create({
   centerOverlay: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   calNum: { fontSize: 42, fontWeight: '900', fontVariant: ['tabular-nums'], letterSpacing: -2, textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6 },
   calSub: { fontSize: 9, fontWeight: '700', letterSpacing: 2.8, textTransform: 'uppercase', marginTop: 2 },
-  macroRow: { flexDirection: 'row', justifyContent: 'center', gap: 15, paddingHorizontal: 24, marginTop: 18 },
+  macroRow: { flexDirection: 'row', justifyContent: 'center', gap: 15, paddingHorizontal: 24, marginTop: 8 },
   macroPill: { flex: 1, alignItems: 'center', paddingVertical: 10, borderRadius: 14, borderWidth: 1 },
   macroPillVal: { fontSize: 18, fontWeight: '800', fontVariant: ['tabular-nums'] },
   macroPillUnit: { fontSize: 12, fontWeight: '600' },
   macroPillLabel: { fontSize: 8, fontWeight: '700', letterSpacing: 1.2, marginTop: 2, textAlign: 'center' },
-  actionRow: { flexDirection: 'row', justifyContent: 'center', gap: 15, paddingHorizontal: 24, marginTop: 34 },
+  actionRow: { flexDirection: 'row', justifyContent: 'center', gap: 15, paddingHorizontal: 24, marginTop: 12 },
   actionBtnBox: { borderWidth: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 6 },
-  tabBar: { position: 'absolute', bottom: 20, left: 20, right: 20, flexDirection: 'row', borderRadius: 25, borderWidth: 1, paddingVertical: 8, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 8, overflow: 'hidden' },
+  tabBar: { marginHorizontal: 20, marginBottom: 95, marginTop: 5, flexDirection: 'row', borderRadius: 25, borderWidth: 1, paddingVertical: 8, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 12, elevation: 8, overflow: 'hidden' },
   tabIndicator: { position: 'absolute', top: 4, bottom: 4, left: 8, borderRadius: 20, borderWidth: 1 },
   tabItem: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 6, gap: 2 },
   tabLabel: { fontSize: 10, fontWeight: '700', letterSpacing: 0.6 },

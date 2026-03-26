@@ -186,17 +186,17 @@ export function ReelsScreen() {
     const [sendingComment, setSendingComment] = useState(false);
 
     useEffect(() => { 
-        loadReels(); 
+        loadReels(true); 
         
-        // Real-time effect: poll every 15 seconds for reels
+        // Background poll — don't show loading spinner or reset scroll
         const interval = setInterval(() => {
-            loadReels();
+            loadReels(false);
         }, 15000);
         return () => clearInterval(interval);
     }, [user]);
 
-    const loadReels = async () => {
-        setLoading(true);
+    const loadReels = async (showLoading = true) => {
+        if (showLoading) setLoading(true);
         if (!user) {
             setReels(DEMO_REELS);
             setLoading(false);
@@ -220,7 +220,7 @@ export function ReelsScreen() {
             }
             setReels(DEMO_REELS); // Fallback to demos so page isn't empty 
         } finally {
-            setLoading(false);
+            if (showLoading) setLoading(false);
         }
     };
 
