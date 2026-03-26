@@ -54,6 +54,8 @@ def search_usda(query: str, page_size: int = 10) -> List[Dict]:
     
     try:
         resp = requests.get(url, params=params, timeout=3)
+        if resp.status_code != 200:
+            return []
         data = resp.json()
         foods = data.get('foods', [])
         
