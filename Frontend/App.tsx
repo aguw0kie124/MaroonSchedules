@@ -29,7 +29,7 @@ import { CampusMapScreen } from './components/CampusMapScreen';
 import { LocationSearchScreen } from './components/LocationSearchScreen';
 // import { ExtrasSidebar } from './components/ExtrasSidebar';
 import { CampusNavigationScreen } from './components/CampusNavigationScreen';
-import { PlaceRecommendationsScreen } from './components/PlaceRecommendationsScreen';
+import { PlacesMapScreen } from './components/PlacesMapScreen';
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
 import { ForYouScreen } from './components/ForYouScreen';
 import { CampusFeedScreen } from './components/CampusFeedScreen';
@@ -147,7 +147,7 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Dashboard" component={Dashboard} options={{ title: 'Home' }} />
-      <Tab.Screen name="Places" component={PlaceRecommendationsScreen} options={{ title: 'Places' }} />
+      <Tab.Screen name="Places" component={PlacesMapScreen} options={{ title: 'Places' }} />
       <Tab.Screen name="Social" component={CampusFeedScreen} options={{ title: 'Social' }} />
       <Tab.Screen name="Messages" component={ChannelListScreen} options={{ title: 'Messages' }} />
       <Tab.Screen name="Profile" component={Profile} options={{ title: 'Profile' }} />
@@ -193,7 +193,6 @@ function RootNavigator() {
           <Stack.Screen name="NewCourseDetail" component={NewCourseDetailScreen} options={{ headerShown: true, title: 'Course Details' }} />
           <Stack.Screen name="ScheduleList" component={ScheduleListScreen} options={{ headerShown: true, title: 'My Schedules' }} />
           <Stack.Screen name="ScheduleDetail" component={ScheduleDetailScreen} options={{ headerShown: true, title: 'Schedule Details' }} />
-          <Stack.Screen name="CampusMap" component={CampusMapScreen} options={{ headerShown: true, title: 'Campus Traffic Map' }} />
           <Stack.Screen name="LocationSearch" component={LocationSearchScreen} options={{ headerShown: true, title: 'Location Traffic Search' }} />
           <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
           <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />

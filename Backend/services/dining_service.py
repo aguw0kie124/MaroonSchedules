@@ -1,113 +1,52 @@
 import math
 import requests
 import psycopg
-import psycopg.rows
 from typing import Optional, Dict, List, Any
-from pulp import LpMaximize, LpProblem, LpVariable, lpSum, value as pulp_value, PULP_CBC_CMD
+try:
+    from pulp import LpMaximize, LpProblem, LpVariable, lpSum, value as pulp_value, PULP_CBC_CMD
+    PULP_AVAILABLE = True
+except ImportError:
+    PULP_AVAILABLE = False
+    LpMaximize = LpProblem = LpVariable = lpSum = pulp_value = PULP_CBC_CMD = None
+
 from datetime import datetime
 from db_config import get_db_connection
-from services import usda_service
 
 def get_db_conn():
     return psycopg.connect(get_db_connection())
 
-def init_db():
-    conn = get_db_conn()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS food_items (
-                    id SERIAL PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    location TEXT NOT NULL,
-                    location_type TEXT NOT NULL,
-                    calories FLOAT DEFAULT 0,
-                    protein FLOAT DEFAULT 0,
-                    fat FLOAT DEFAULT 0,
-                    carbs FLOAT DEFAULT 0,
-                    usda_calories FLOAT,
-                    cost FLOAT DEFAULT 0,
-                    meal_period TEXT NOT NULL,
-                    date DATE NOT NULL,
-                    active BOOLEAN DEFAULT TRUE,
-                    UNIQUE(name, location, meal_period, date)
-                );
-            """)
-            conn.commit()
-    finally:
-        conn.close()
-
-# Full mapping of TAMU DineOnCampus locations to their API IDs
-DINING_LOCATIONS = {
-    "The Commons Dining Hall (South Campus)": "59972586ee596fe55d2eef75",
-    "Sbisa Dining Hall (North Campus)": "587909deee596f31cedc179c",
-    "Duncan Dining Hall (South Campus/Quad)": "5878eb5cee596f847636f114",
-    "1876 Burgers - Sbisa Complex": "5873c5f43191a200e44eba43",
-    "Chick-Fil-A - Sbisa Underground Food Court": "586d0bf1ee596f6e75049512",
-    "Copperhead Jack's - Sbisa Complex": "5c9a291319e02b0c4cd18d87",
-    "Einstein Bros. Bagels - Sbisa Complex": "586e7f19ee596f4034e1f5d0",
-    "Houston Street Subs - Underground Food Court": "586e7f19ee596f4034e1f5ce",
-    "Bagel Block": "5c9a291319e02b0c4cd18d86",
-    "Pizza @ Underground": "5873c5f33191a200e44eba3c",
-    "Smoothie King - Sbisa Underground Food Court": "5873c5f43191a200e44eba47",
-    "Abu Omar Halal - MSC": "5f1700190101560a2e15d9f3",
-    "Cabo Grill - MSC": "5873c5f33191a200e44eba41",
-    "Chick-Fil-A - MSC Food Court": "5f04e0800101560bba2e7ee1",
-    "Houston Street Subs - MSC": "5f04e0800101560bba2e7ee0",
-    "ILCB Food Truck": "64f0f349351d530701884ace",
-    "Market at Lamar St.": "5f22e7950101560acf6ccd69",
-    "Panda Express - MSC": "586d0bf1ee596f6e75049513",
-    "Rev's American Grill - MSC": "5873c5f43191a200e44eba45",
-    "Starbucks Coffee - Evans Library": "5873c5f43191a200e44eba44",
-    "Shake Smart - MSC": "5873c5f33191a200e44eba42",
-    "Spin 'N Stone Pizza - MSC": "5f173025bf31720a562fbde4",
-    "Whoop Coop": "596f8aecee596f3d85c8afe3",
-    "Starbucks Coffee - The Quad": "5873c5f43191a200e44eba4b",
-    "Houston Street Subs - Southside": "5a81e92c74cebf0aba555f09",
-    "Azimuth Cafe - Langford": "586e7f6fee596f402be1f66f",
-    "Houston Street Subs - Polo Garage": "5ff345be5e42ad12fd7ec506",
-    "Panda Express - Polo Garage": "5ff34e653a585b113c081c17",
-    "Salata": "5ff34f9a3a585b1145e16abd",
-    "Shake Smart - Polo Garage": "5fce607131d1ee1d1f856db1",
-    "Starbucks Coffee - Zachry": "5b520de41178e90996681ef0",
-    "Reynolds and Reynolds Cafe": "677c318cc625af0726676202",
-    "ILSQ Food Truck": "6787e0c6e45d4305db9c02ad",
-    "Chick-fil-A - West Campus Food Hall": "586d0bf1ee596f6e75049511",
-    "Copperhead Jack's - West Campus Food Hall": "61df33dbb63f1e11e3db4c97",
-    "Spin n' Stone Pizza - Creekside Market": "69763b88841457a6d573612d",
-    "Health Science Center Cafe": "586e9bdaee596f4034e2007a",
-    "Houston Street Deli - RELLIS": "62fd0c1fc625af082f64291e",
-    "Houston Street Subs - West Campus Food Hall": "5a296153f56b7af7401398be",
-    "Shake Smart- Rec Center": "5873c5f43191a200e44eba46",
-    "The 41st Club - Bush Library": "58653dc82cc8da820e58aca9",
-    "Vet Med Cafe": "591c65b8ee596f0ff3feea1f"
+RESTAURANTS = {
+    'Chick-fil-A': {'fullName': 'Chick-Fil-A - MSC Food Court', 'apiId': None},
+    'Panda Express': {'fullName': 'Panda Express - MSC', 'apiId': None},
+    'Shake Smart': {'fullName': 'Shake Smart - MSC', 'apiId': None},
+    'Houston Street Subs': {'fullName': 'Houston Street Subs - MSC', 'apiId': None},
+    'Salata': {'fullName': 'Salata', 'apiId': None},
+    'Abu Omar Halal': {'fullName': 'Abu Omar Halal - MSC', 'apiId': None},
+    '1876 Burgers': {'fullName': '1876 Burgers - Sbisa Complex', 'apiId': None},
+    "Rev's American Grill": {'fullName': "Rev's American Grill - MSC", 'apiId': None},
+    'Cabo Grill': {'fullName': 'Cabo Grill - MSC', 'apiId': None},
+    "Spin 'N Stone Pizza": {'fullName': "Spin 'N Stone Pizza - MSC", 'apiId': None},
+    'Smoothie King': {'fullName': 'Smoothie King - Sbisa Underground Food Court', 'apiId': None},
+    "Copperhead Jack's": {'fullName': "Copperhead Jack's - Sbisa Complex", 'apiId': None},
+    'Whoop Coop': {'fullName': 'Whoop Coop', 'apiId': None},
+    'Bagel Block': {'fullName': 'Bagel Block', 'apiId': None},
+    'Einstein Bros. Bagels': {'fullName': 'Einstein Bros. Bagels - Sbisa Complex', 'apiId': None}
 }
 
-# Bundling map for retail restaurants
-RESTAURANT_GROUPS = {
-    "Chick-fil-A": ["Chick-Fil-A - Sbisa Underground Food Court", "Chick-Fil-A - MSC Food Court", "Chick-fil-A - West Campus Food Hall"],
-    "Panda Express": ["Panda Express - MSC", "Panda Express - Polo Garage"],
-    "Shake Smart": ["Shake Smart - MSC", "Shake Smart - Polo Garage", "Shake Smart- Rec Center"],
-    "Houston Street Subs": ["Houston Street Subs - Underground Food Court", "Houston Street Subs - MSC", "Houston Street Subs - Southside", "Houston Street Subs - Polo Garage", "Houston Street Subs - West Campus Food Hall"],
-    "Starbucks": ["Starbucks Coffee - Evans Library", "Starbucks Coffee - The Quad", "Starbucks Coffee - Zachry"],
-    "Copperhead Jack's": ["Copperhead Jack's - Sbisa Complex", "Copperhead Jack's - West Campus Food Hall"],
-    "Spin 'N Stone Pizza": ["Spin 'N Stone Pizza - MSC", "Spin n' Stone Pizza - Creekside Market"],
-    "Abu Omar Halal": ["Abu Omar Halal - MSC"],
-    "Cabo Grill": ["Cabo Grill - MSC"],
-    "Rev's American Grill": ["Rev's American Grill - MSC"],
-    "Whoop Coop": ["Whoop Coop"],
-    "1876 Burgers": ["1876 Burgers - Sbisa Complex"],
-    "Einstein Bros. Bagels": ["Einstein Bros. Bagels - Sbisa Complex"],
-    "Pizza @ Underground": ["Pizza @ Underground"],
-    "Smoothie King": ["Smoothie King - Sbisa Underground Food Court"],
-    "Bagel Block": ["Bagel Block"],
-    "Salata": ["Salata"],
-    "Azimuth Cafe": ["Azimuth Cafe - Langford"],
-    "Market at Lamar St.": ["Market at Lamar St."],
-    "Reynolds and Reynolds Cafe": ["Reynolds and Reynolds Cafe"],
+HUB_DATA = {
+    'msc': {
+        'name': 'Memorial Student Center',
+        'restaurants': ['Chick-fil-A', 'Panda Express', "Rev's American Grill"],
+    },
+    'polo': {
+        'name': 'Polo Road Rec Center',
+        'restaurants': ['Houston Street Subs', 'Panda Express', 'Salata'],
+    },
+    'sbisa': {
+        'name': 'Sbisa Underground',
+        'restaurants': ["Copperhead Jack's", 'Smoothie King', 'Houston Street Subs'],
+    }
 }
-
-MEAT_KWS = ['chicken', 'beef', 'pork', 'turkey', 'fish', 'shrimp', 'salmon', 'ham', 'steak', 'meatball', 'bacon', 'sausage', 'tuna', 'tilapia', 'lamb', 'brisket']
 
 HEURISTICS = [
     {'kw': ['grilled chicken', 'chicken breast', 'roasted chicken', 'baked chicken', 'rotisserie'], 'p': 0.35, 'f': 0.10, 'c': 0.00},
@@ -131,489 +70,261 @@ HEURISTICS = [
     {'kw': ['dressing', 'mayo', 'aioli', 'alfredo', 'sauce', 'gravy', 'syrup', 'oil', 'vinegar', 'seasoning'], 'p': 0.00, 'f': 0.12, 'c': 0.04},
 ]
 
-USDA_CACHE: Dict[str, float] = {}
+CONDIMENT_KW = [
+    'sauce', 'dressing', 'mayo', 'aioli', 'vinegar', 'oil', 'syrup', 'gravy',
+    'seasoning', 'relish', 'mustard', 'ketchup', 'salsa', 'pesto', 'sriracha',
+    'soy sauce', 'hot sauce', 'buffalo sauce',
+    'shredded lettuce', 'sliced tomato', 'sliced pickle', 'sliced onion',
+    'diced onion', 'diced pepper', 'chopped jalapeno', 'chopped garlic',
+    'sliced mushroom', 'sliced cucumber', 'sliced bell pepper', 'sliced red onion',
+    'shredded cabbage', 'shredded carrot', 'julienne', 'crouton', 'cranberries dried',
+    'parmesan cheese grated', 'feta crumbled', 'cheddar cheese slice', 'pepper',
+    'crushed red pepper', 'celery sticks', 'carrot sticks', 'cauliflower florets',
+    'grape tomatoes', 'baby corn', 'fresh ginger', 'ginger root', 'saltine',
+]
 
-def get_usda_calories(name: str) -> Optional[float]:
-    """Get USDA-verified calories for a food item. Checks cache, then DB, then live API."""
-    if name in USDA_CACHE:
-        return USDA_CACHE[name]
-    # Check DB cache first
-    try:
-        with get_db_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT usda_calories FROM food_items WHERE name = %s AND usda_calories IS NOT NULL LIMIT 1", (name,))
-                row = cur.fetchone()
-                if row:
-                    USDA_CACHE[name] = row[0]
-                    return row[0]
-    except:
-        pass
-    # Live USDA lookup
-    try:
-        res = usda_service.search_usda(name, page_size=3)
-        if res:
-            cals = res[0]['nutrients'].get('calories', 0)
-            USDA_CACHE[name] = cals
-            return cals
-    except:
-        pass
-    return None
-
-# ============ NAME CLEANING ============
-# FIX: Previous regex was destroying names. Now we only do safe HTML entity decoding.
 def clean_name(raw: str) -> str:
-    if not raw:
-        return ''
-    name = str(raw).replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').strip()
-    return name
+    if not raw: return ''
+    import re
+    name = raw.replace('&amp;', '&').replace('&lt;', '<').replace('&gt;', '>').strip()
+    # Concatenated description heuristic (lowerCase+UpperCase)
+    match = re.search(r'([a-z])([A-Z][a-z]{3,})', name)
+    if match: name = name[:match.start(1)+1]
+    name = re.sub(r'\s*[-–]\s*.+$', '', name)
+    name = re.sub(r'\s*\(.+', '', name)
+    return name.strip()
 
-def is_vegetarian(name: str) -> bool:
-    lo = name.lower()
-    return not any(kw in lo for kw in MEAT_KWS)
+def is_condiment(name: str, cal: float) -> bool:
+    lo = clean_name(name).lower()
+    if cal <= 15 and len(lo) < 30: return True
+    return any(k in lo for k in CONDIMENT_KW)
 
-def apply_heuristic(name: str, cal: float) -> Dict[str, float]:
-    if cal <= 0:
-        return {'protein': 0.0, 'fat': 0.0, 'carbs': 0.0, 'fiber': 0.0, 'sodium': 0.0}
+def apply_heuristic(name: str, cal: float) -> Dict:
+    if cal <= 0: return {'protein': 0, 'fat': 0, 'carbs': 0, 'fiber': 0, 'sodium': 0}
     lo = name.lower()
     h = next((r for r in HEURISTICS if any(k in lo for k in r['kw'])), None)
-    p_ratio = h['p'] if h else 0.08
-    f_ratio = h['f'] if h else 0.08
-    c_ratio = h['c'] if h else 0.15
+    p, f, c = (h['p'], h['f'], h['c']) if h else (0.08, 0.08, 0.15)
     return {
-        'protein': round(cal * p_ratio / 4),
-        'fat': round(cal * f_ratio / 9),
-        'carbs': round(cal * c_ratio / 4),
+        'protein': round(cal * p / 4),
+        'fat': round(cal * f / 9),
+        'carbs': round(cal * c / 4),
         'fiber': round(cal * 0.015),
         'sodium': round(cal * 1.2)
     }
 
 def enrich_items(raw_items: List[Dict]) -> List[Dict]:
-    """Clean up, deduplicate, verify calories, and add cost heuristics."""
     seen = set()
     result = []
     for it in raw_items:
-        it['name'] = clean_name(it.get('name', ''))
-        if not it['name']:
-            continue
-        # Deduplicate by name + location (not globally, so same item at different locations is kept)
-        dedup_key = (it['name'], it.get('location', ''), it.get('meal_period', ''))
-        if dedup_key in seen:
-            continue
-        seen.add(dedup_key)
-
-        # USDA double-verification
-        usda_cal = get_usda_calories(it['name'])
-        if usda_cal is not None:
-            it['usda_calories'] = usda_cal
-            current = float(it.get('calories', 0) or 0)
-            # If DineOnCampus reports 0 or wildly different, use USDA
-            if current < 10 and usda_cal > 0:
-                it['calories'] = usda_cal
-                it['source'] = 'usda_corrected'
-            elif current > 0 and usda_cal > 0 and abs(current - usda_cal) > current * 0.5:
-                # Large discrepancy - average them for safety
-                it['calories'] = round((current + usda_cal) / 2)
-                it['source'] = 'usda_blended'
-
-        # Fill missing macros with heuristics
+        it['name'] = clean_name(it['name'])
+        if not it['name'] or it['name'] in seen: continue
+        if is_condiment(it['name'], it.get('calories', 0)): continue
+        seen.add(it['name'])
+        
         if not it.get('protein') and not it.get('carbs'):
-            cal = float(it.get('calories', 0) or 0)
-            macros = apply_heuristic(it['name'], cal)
+            macros = apply_heuristic(it['name'], it.get('calories', 0))
             it.update(macros)
-            if 'source' not in it:
-                it['source'] = 'heuristic'
-
-        # Price heuristic for retail items
-        loc = it.get('location', '')
-        if 'Hall' not in loc:
-            lo = it['name'].lower()
-            if any(k in lo for k in ['sandwich', 'burger', 'sub', 'bowl', 'pizza', 'entree', 'halal', 'burrito', 'taco', 'wrap', 'platter', 'combo', 'meal']):
-                it['cost'] = 7.00
-            elif any(k in lo for k in ['side', 'fries', 'wedge', 'chips', 'bagel', 'cookie', 'muffin', 'bread', 'salad']):
-                it['cost'] = 3.00
-            elif any(k in lo for k in ['drink', 'soda', 'tea', 'water', 'shake', 'smoothie', 'coffee', 'espresso', 'lemonade']):
-                it['cost'] = 2.00
-            else:
-                it['cost'] = 3.50
-        else:
-            it['cost'] = 0  # Dining hall meals are covered by swipe
-
+            it['source'] = 'live+heuristic'
         result.append(it)
     return result
 
+def body_fat_navy(gender: str, waist_in: float, neck_in: float, height_in: float, hip_in: Optional[float] = None) -> Optional[float]:
+    if not waist_in or not neck_in or not height_in: return None
+    if gender == 'male':
+        val = 86.01 * math.log10(waist_in - neck_in) - 70.041 * math.log10(height_in) + 36.76
+        return max(2.0, min(60.0, val))
+    else:
+        if not hip_in: return None
+        val = 163.205 * math.log10(waist_in + hip_in - neck_in) - 97.684 * math.log10(height_in) - 78.387
+        return max(8.0, min(60.0, val))
 
-# ============ OPTIMIZATION ============
+def lean_body_mass(weight_lbs: float, bf_pct: float) -> float:
+    return weight_lbs * (1 - bf_pct / 100)
 
-def optimize_diet(foods: List[Dict], targets: Dict, options: Dict = {}) -> Dict[str, Any]:
-    """Linear programming optimizer for meal selection."""
-    usable = list(foods)  # copy
-    if options.get('vegetarian'):
-        usable = [f for f in usable if is_vegetarian(f['name'])]
+def bmr_mifflin(gender: str, weight_lbs: float, height_in: float, age: int) -> float:
+    weight_kg = weight_lbs * 0.453592
+    height_cm = height_in * 2.54
+    base = 10 * weight_kg + 6.25 * height_cm - 5 * age
+    return base + 5 if gender == 'male' else base - 161
 
-    if not usable:
-        return {"success": False, "error": "No foods available", "items": [], "totals": {}}
+ACTIVITY_MULTIPLIERS = {'sedentary': 1.2, 'light': 1.375, 'moderate': 1.55, 'active': 1.725, 'very_active': 1.9}
 
-    cal_tgt = targets.get('calories', 700)
-    has_budget = bool(targets.get('budget'))
+def tdee(gender: str, weight_lbs: float, height_in: float, age: int, activity_level: str) -> float:
+    bmr = bmr_mifflin(gender, weight_lbs, height_in, age)
+    mult = ACTIVITY_MULTIPLIERS.get(activity_level, 1.55)
+    return bmr * mult
+
+def caloric_target(profile: Dict, current_weight_lbs: float) -> Dict:
+    gender, height_in, age = profile.get('gender', 'male'), profile.get('height_in', 70), profile.get('age', 18)
+    activity_level = profile.get('activity_level', 'moderate')
+    goal_weight_lbs, goal_date_str = profile.get('goal_weight_lbs'), profile.get('goal_date')
+    tdee_val = tdee(gender, current_weight_lbs, height_in, age, activity_level)
+    if not goal_weight_lbs or not goal_date_str:
+        return {'targetCalories': round(tdee_val), 'deficitPerDay': 0, 'daysRemaining': None, 'weeklyLoss': 0, 'mode': 'maintain', 'TDEE': round(tdee_val)}
+    try:
+        goal_date = datetime.strptime(goal_date_str, '%Y-%m-%d')
+        days_remaining = max(1, (goal_date - datetime.now()).days)
+    except: days_remaining = 1
+    weight_diff = current_weight_lbs - goal_weight_lbs
+    deficit_per_day = (weight_diff * 3500) / days_remaining
+    min_cal = 1500 if gender == 'male' else 1200
+    safe_deficit = min(deficit_per_day, min(1000.0, tdee_val - min_cal))
+    return {
+        'targetCalories': max(min_cal, round(tdee_val - safe_deficit)),
+        'TDEE': round(tdee_val), 'deficitPerDay': round(safe_deficit),
+        'daysRemaining': days_remaining, 'weeklyLoss': round((safe_deficit * 7) / 3500, 2),
+        'mode': 'cut' if weight_diff > 0 else ('bulk' if weight_diff < 0 else 'maintain')
+    }
+
+def macro_targets(weight_lbs: float, activity_level: str, target_calories: int) -> Dict:
+    prot_mult = 1.0 if activity_level in ['active', 'very_active', 'moderate'] else 0.8
+    protein = round(weight_lbs * prot_mult)
+    fat = round((target_calories * 0.25) / 9)
+    carbs = max(50, round((target_calories - (protein * 4) - (fat * 9)) / 4))
+    return {'protein': protein, 'fat': fat, 'carbs': carbs}
+
+def optimize_diet(foods: List[Dict], targets: Dict, options: Dict = {}) -> Dict:
+    if not PULP_AVAILABLE:
+        return {"success": False, "error": "Optimizer not available (pulp not installed)", "items": []}
+    usable = [f for f in foods if (f.get('calories') or 0) > 0]
+
+    if not usable: return {"success": False, "error": "No foods with data", "items": []}
+    
+    cal_tgt = targets.get('calories', 2000)
+    prot_tgt = targets.get('protein', 150)
+    fat_tgt = targets.get('fat', 55)
+    budget = targets.get('budget')
+    
     prob = LpProblem("Diet", LpMaximize)
-    max_serv = options.get('max_servings', 1 if has_budget else 2)
-    x_vars = [LpVariable(f"x{i}", 0, max_serv, 'Integer') for i in range(len(usable))]
-
-    # Objective: prioritize protein and micronutrients (Vit C, Mag, Pot)
-    def get_weight(f):
-        cal = f.get('calories', 0) or 0
-        if cal < 1:
-            return 0.001
-            
-        prot = f.get('protein', 0) or 0
-        fiber = f.get('fiber', 0) or 0
-        vit_c = f.get('vitamin_c', 0) or 0
-        mag = f.get('magnesium', 0) or 0
-        pot = f.get('potassium', 0) or 0
+    
+    # 0 to 2 servings max for retail/budget, otherwise 3
+    max_serv = options.get('max_servings', 2 if budget else 3)
+    vars = [LpVariable(f"x{i}", 0, max_serv, 'Integer') for i in range(len(usable))]
+    
+    # Objective: Maximize Protein + small bonuses for micro-dense items
+    def score(f):
+        return (f.get('protein', 0) or 0) * 5.0 + \
+               (f.get('fiber', 0) or 0) * 2.0 + \
+               (f.get('vitamin_c', 0) or 0) * 1.0 + \
+               (f.get('calcium', 0) or 0) / 100.0
+               
+    prob += lpSum([vars[i] * score(usable[i]) for i in range(len(usable))])
+    
+    # Constraints
+    prob += lpSum([vars[i] * usable[i]['calories'] for i in range(len(usable))]) <= cal_tgt * 1.10
+    prob += lpSum([vars[i] * usable[i]['calories'] for i in range(len(usable))]) >= cal_tgt * 0.70
+    
+    if budget:
+        prob += lpSum([vars[i] * (usable[i].get('cost', 0) or 0) for i in range(len(usable))]) <= budget
         
-        # Dynamic protein multiplier based on diet goal
-        prot_mult = 10
-        if options.get('high_protein'):
-            prot_mult = 20
-        elif options.get('balanced'):
-            prot_mult = 15
-        elif options.get('cut'):
-            prot_mult = 12
-            
-        w = prot * prot_mult + fiber * 10
-        w += (vit_c / 20) * 40
-        w += (mag / 40) * 100   # Balanced Magnesium weighting (supportive, not dominant)
-        w += (pot / 500) * 40
-        
-        if options.get('high_protein'):
-            w += prot * 10
-            
-        return w
-
-    prob += lpSum([x_vars[i] * get_weight(usable[i]) for i in range(len(usable))]) - 0.5 * lpSum(x_vars)
-
-    # Calorie constraints
-    cal_sum = lpSum([x_vars[i] * (usable[i].get('calories', 0) or 0) for i in range(len(usable))])
-    # For retail, allow a much higher ceiling (250%) since they are fixed massive combos
-    # For dining halls, keep 110% to ensure sensible portioning
-    cal_ceiling = 2.50 if has_budget else 1.10
-    prob += cal_sum <= cal_tgt * cal_ceiling
-
-    # FIX: For retail/budget plans, use a much lower floor (10%) since menus are limited under $11
-    # For dining halls, keep 80%
-    cal_floor = 0.10 if has_budget else 0.80
-    prob += cal_sum >= cal_tgt * cal_floor
-
-    # Sodium constraint (limit to ~1000mg per meal)
-    sodium_sum = lpSum([x_vars[i] * (usable[i].get('sodium', 0) or 0) for i in range(len(usable))])
-    prob += sodium_sum <= 1000
-
-    # Budget constraint for retail
-    if has_budget:
-        prob += lpSum([x_vars[i] * (usable[i].get('cost', 0) or 0) for i in range(len(usable))]) <= targets['budget']
-
-    # Max items total for realism (3 for retail, 6 for dining halls)
-    max_items = options.get('max_items', 6)
-    prob += lpSum(x_vars) <= max_items
-
     try:
         prob.solve(PULP_CBC_CMD(msg=0))
-        if prob.status != 1:  # 1 == LpStatusOptimal
-            return {"success": False, "error": "No valid combo found within budget limits", "items": [], "totals": {}}
-    except Exception:
-        return {"success": False, "error": "Solver error", "items": [], "totals": {}}
-
+    except:
+        return {"success": False, "error": "Solver error", "items": []}
+        
     selected = []
     for i in range(len(usable)):
-        v = pulp_value(x_vars[i])
+        v = pulp_value(vars[i])
         if v and v >= 0.5:
             item = dict(usable[i])
             item['quantity'] = round(v)
+            # Scale nutrients for display
             item['scaledNutrients'] = {
-                k: round((item.get(k, 0) or 0) * v, 2)
-                for k in ['calories', 'protein', 'carbs', 'fat']
+                k: round((item.get(k, 0) or 0) * v, 2) 
+                for k in ['calories','protein','carbs','fat','fiber','sodium','calcium','iron','potassium','magnesium','vitamin_c','vitamin_d']
             }
             selected.append(item)
+            
+    if not selected:
+        # Simple greedy fallback
+        for f in sorted(usable, key=score, reverse=True):
+            if f['calories'] <= cal_tgt and (not budget or (f.get('cost', 0) or 0) <= budget):
+                item = dict(f)
+                item['quantity'] = 1
+                item['scaledNutrients'] = {
+                    k: round((item.get(k, 0) or 0), 2)
+                    for k in ['calories','protein','carbs','fat']
+                }
+                selected.append(item)
+                break
+                
+    return {
+        "success": len(selected) > 0, 
+        "items": selected, 
+        "totals": compute_totals(selected)
+    }
 
-    success = len(selected) > 0
-    return {"success": success, "items": selected, "totals": compute_totals(selected) if selected else {}}
+def optimize_combo(location: str, target_cal: float, budget: float = 11.0) -> Dict:
+    """Specialized optimizer for retail combos like Chick-fil-A."""
+    conn = get_db_conn()
+    try:
+        # Using RealDictRow equivalent for psycopg (v3)
+        cur = conn.cursor(row_factory=psycopg.rows.dict_row)
+        cur.execute("SELECT * FROM food_items WHERE location = %s AND location_type = 'restaurant'", (location,))
+        foods = cur.fetchall()
+        if not foods:
+            return {"success": False, "error": f"No foods found for {location}", "items": []}
+        
+        # Retail combos should be simple (max 2 items usually)
+        return optimize_diet(foods, {"calories": target_cal, "budget": budget}, {"max_servings": 2})
+    finally:
+        conn.close()
 
+def generate_variants(foods: List[Dict], target_cals: float, targets: Dict):
+    res = []
+    for lbl, emo, mult in [("Balanced", "🍱", 1.0), ("High Protein", "🥩", 1.2), ("Light", "🥗", 0.7)]:
+        opt = optimize_diet(foods, {**targets, "calories": target_cals * mult})
+        if opt['success']: res.append({**opt, "label": lbl, "emoji": emo})
+    return res
 
-def compute_totals(foods: List[Dict]) -> Dict[str, float]:
-    keys = ['calories', 'protein', 'carbs', 'fat', 'cost', 'fiber', 'sodium', 'potassium', 'calcium', 'iron', 'vitamin_c', 'vitamin_d', 'magnesium']
+def compute_totals(foods: List[Dict]) -> Dict:
+    keys = ['calories','protein','carbs','fat','fiber','sodium','potassium','calcium','iron','magnesium','vitamin_c','vitamin_d','cost']
     totals = {k: 0.0 for k in keys}
     for f in foods:
         q = f.get('quantity', 1)
-        for k in keys:
-            totals[k] += (f.get(k, 0) or 0) * q
+        for k in keys: totals[k] += (f.get(k, 0) or 0) * q
     return {k: round(v, 2) for k, v in totals.items()}
 
+def get_restaurant_plan(location: str, target_cal: float):
+    conn = get_db_conn(); cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute("SELECT * FROM food_items WHERE location = %s AND location_type = 'restaurant'", (location,))
+    foods = cur.fetchall(); cur.close(); conn.close()
+    if not foods: return None
+    return optimize_diet(foods, {"calories": target_cal, "budget": 11.0})
 
-# ============ PERIOD MATCHING ============
-# Which DB meal_period slugs count for each user-facing meal
-PERIOD_ALIASES = {
-    'breakfast': ['breakfast', 'every-day', 'everyday', 'all-day'],
-    'lunch':     ['lunch', 'every-day', 'everyday', 'all-day'],
-    'dinner':    ['dinner', 'every-day', 'everyday', 'all-day'],
-}
-
-def items_for_period(all_items: List[Dict], period: str) -> List[Dict]:
-    """Filter items to those available during a given meal period.
-    Retail locations only have 'every-day' so they always match every period."""
-    aliases = PERIOD_ALIASES.get(period, [period, 'every-day', 'everyday'])
-    return [f for f in all_items if (f.get('meal_period') or '').lower() in aliases]
-
-
-def optimize_combo(location_name: str, target_cal: float) -> Dict[str, Any]:
-    """Optimize a retail swipe meal at a specific location.
-    Prefers DB data (already synced and USDA-verified) for speed.
-    Falls back to live API only if DB is empty."""
-    foods = []
-
-    # DB FIRST — items were synced with USDA verification already
-    try:
-        with get_db_conn() as conn:
-            with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
-                cur.execute("""
-                    SELECT * FROM food_items 
-                    WHERE (location = %s OR location ILIKE %s) 
-                    AND location_type = 'restaurant'
-                    AND active = TRUE
-                """, (location_name, f"%{location_name}%"))
-                foods = [dict(r) for r in cur.fetchall()]
-    except:
-        pass
-
-    # For retail combos, we ONLY use the curated DB items.
-    # Do not fallback to the live DineOnCampus API because it triggers
-    # slow USDA searches that hit rate limits and returns messy a-la-carte ingredients.
-
-    if not foods:
-        return {"success": False, "error": f"No items found for {location_name}", "items": [], "totals": {}}
-
-    # Retail budget is $11, max 3 items (realistic for swipe)
-    result = optimize_diet(foods, {"calories": target_cal, "budget": 11.0}, {"max_servings": 1, "max_items": 3})
-    return result
-
-
-def generate_variants(foods: List[Dict], target_cal: float, macros: Dict) -> List[Dict]:
-    variants = []
-    res_b = optimize_diet(foods, {"calories": target_cal})
-    if res_b['success']:
-        res_b['label'] = "Balanced"
-        variants.append(res_b)
-    res_p = optimize_diet(foods, {"calories": target_cal}, {"high_protein": True})
-    if res_p['success']:
-        res_p['label'] = "High Protein"
-        variants.append(res_p)
-    res_v = optimize_diet(foods, {"calories": target_cal}, {"vegetarian": True})
-    if res_v['success']:
-        res_v['label'] = "Vegetarian"
-        variants.append(res_v)
-    return variants
-
-
-# ============ DineOnCampus API v4 ============
-
-API_BASE = "https://apiv4.dineoncampus.com"
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Accept": "application/json, text/plain, */*",
-    "Origin": "https://dineoncampus.com",
-    "Referer": "https://dineoncampus.com/"
-}
-
-
-def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_period: str = None) -> Dict[str, Any]:
-    if not date_str:
-        date_str = datetime.now().strftime('%Y-%m-%d')
-
-    # Resolve location ID — try exact match first, then fuzzy
-    location_id = DINING_LOCATIONS.get(location_name)
-    if not location_id:
-        location_id = next((v for k, v in DINING_LOCATIONS.items() if location_name.lower() in k.lower()), None)
-    if not location_id:
-        return {"success": False, "error": f"Unknown location: {location_name}", "items": []}
-
-    try:
-        # Fetch available periods
-        periods_url = f"{API_BASE}/locations/{location_id}/periods/?date={date_str}"
-        resp = requests.get(periods_url, headers=HEADERS, timeout=10)
-        periods = resp.json().get('periods', []) if resp.status_code == 200 else []
-
-        # Match requested period
-        period_id = None
-        matched_slug = None
-        if meal_period and periods:
-            search = meal_period.lower().replace(' ', '-')
-            for p in periods:
-                if p.get('slug') == search or search in p.get('name', '').lower():
-                    period_id = p['id']
-                    matched_slug = p['slug']
-                    break
-
-        # Fallback order
-        if not period_id and periods:
-            fallback_order = ['every-day', 'everyday', 'all-day', 'lunch', 'dinner', 'breakfast']
-            for fb in fallback_order:
-                for p in periods:
-                    if fb in (p.get('slug') or ''):
-                        period_id = p['id']
-                        matched_slug = p['slug']
-                        break
-                if period_id:
-                    break
-            if not period_id:
-                period_id = periods[0]['id']
-                matched_slug = periods[0].get('slug', '')
-
-        if not period_id:
-            return {"success": False, "error": f"No periods for {location_name}", "items": []}
-
-        # Fetch menu for this period
-        menu_url = f"{API_BASE}/locations/{location_id}/menu?date={date_str}&period={period_id}"
-        menu_resp = requests.get(menu_url, headers=HEADERS, timeout=15)
-        data = menu_resp.json()
-        items = []
-
-        period_data = data.get('period', {})
-        for cat in period_data.get('categories', []):
-            cat_name = cat.get('name', 'General')
-            for item in cat.get('items', []):
-                nutrients = {}
-                for n in item.get('nutrients', []):
-                    nutrients[n.get('name', '').lower()] = n.get('valueNumeric', 0)
-
-                def parse_val(v):
-                    if v is None or v == '-':
-                        return 0.0
-                    try:
-                        return float(str(v).replace('+', '').replace('<', '').strip())
-                    except:
-                        return 0.0
-
-                items.append({
-                    "name": (item.get('name') or '').strip(),
-                    "category": cat_name,
-                    "location": location_name,
-                    "meal_period": matched_slug or (meal_period or 'every-day'),
-                    "calories": parse_val(nutrients.get('calories', item.get('calories', 0))),
-                    "protein": parse_val(nutrients.get('protein (g)', 0)),
-                    "carbs": parse_val(nutrients.get('total carbohydrates (g)', 0)),
-                    "fat": parse_val(nutrients.get('total fat (g)', 0)),
-                    "fiber": parse_val(nutrients.get('dietary fiber (g)', 0)),
-                    "sodium": parse_val(nutrients.get('sodium (mg)', 0)),
-                    "potassium": parse_val(nutrients.get('potassium (mg)', 0)),
-                    "calcium": parse_val(nutrients.get('calcium (mg)', 0)),
-                    "iron": parse_val(nutrients.get('iron (mg)', 0)),
-                    "vitamin_c": parse_val(nutrients.get('vitamin c (mg)', 0)),
-                    "vitamin_d": parse_val(nutrients.get('vitamin d (mcg)' ,0)),
-                    "magnesium": parse_val(nutrients.get('magnesium (mg)', 0)),
-                    "source": "dineoncampus_v4"
-                })
-
-        items = enrich_items(items)
-        return {"success": True, "items": items, "location": location_name, "date": date_str, "period": matched_slug}
-    except Exception as e:
-        return {"success": False, "error": str(e), "items": []}
-
-
-def sync_all_locations(date_str: str = None):
-    if not date_str:
-        date_str = datetime.now().strftime('%Y-%m-%d')
-    init_db()
-    with get_db_conn() as conn:
-        with conn.cursor() as cur:
-            for name, loc_id in DINING_LOCATIONS.items():
-                print(f"Syncing {name}...")
-                try:
-                    p_url = f"{API_BASE}/locations/{loc_id}/periods/?date={date_str}"
-                    p_resp = requests.get(p_url, headers=HEADERS, timeout=10)
-                    periods = p_resp.json().get('periods', []) if p_resp.status_code == 200 else []
-                    if not periods:
-                        periods = [{'id': None, 'name': 'Every Day', 'slug': 'every-day'}]
-                except:
-                    periods = [{'id': None, 'name': 'Every Day', 'slug': 'every-day'}]
-
-                for p in periods:
-                    res = fetch_dine_on_campus_menu(name, date_str, p['slug'])
-                    if res.get('success') and res.get('items'):
-                        for it in res['items']:
-                            cur.execute("""
-                                INSERT INTO food_items (name, location, location_type, calories, protein, fat, carbs, fiber, sodium, potassium, calcium, iron, vitamin_c, vitamin_d, magnesium, usda_calories, cost, meal_period, date, active)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
-                                ON CONFLICT (name, location, meal_period, date) DO UPDATE SET
-                                    calories = EXCLUDED.calories, protein = EXCLUDED.protein, fat = EXCLUDED.fat, carbs = EXCLUDED.carbs,
-                                    fiber = EXCLUDED.fiber, sodium = EXCLUDED.sodium, potassium = EXCLUDED.potassium,
-                                    calcium = EXCLUDED.calcium, iron = EXCLUDED.iron, vitamin_c = EXCLUDED.vitamin_c,
-                                    vitamin_d = EXCLUDED.vitamin_d, magnesium = EXCLUDED.magnesium,
-                                    usda_calories = EXCLUDED.usda_calories, cost = EXCLUDED.cost, active = TRUE
-                            """, (
-                                it['name'], name,
-                                'dining_hall' if 'Hall' in name else 'restaurant',
-                                it.get('calories', 0), it.get('protein', 0), it.get('fat', 0), it.get('carbs', 0),
-                                it.get('fiber', 0), it.get('sodium', 0), it.get('potassium', 0),
-                                it.get('calcium', 0), it.get('iron', 0), it.get('vitamin_c', 0),
-                                it.get('vitamin_d', 0), it.get('magnesium', 0),
-                                it.get('usda_calories'), it.get('cost', 0),
-                                p['slug'], date_str
-                            ))
-                conn.commit()
-                print(f"  ✓ Synced {name} ({len(periods)} periods)")
-
-
-# ============ CALORIC TARGETING ============
-# These are used by routers/dining.py
-
-def caloric_target(profile: Dict, current_weight: float) -> Dict:
-    """Calculate daily caloric target based on profile."""
-    gender = (profile.get('gender') or 'male').lower()
-    age = profile.get('age') or 20
-    height_in = profile.get('height_in') or 70
-    weight_kg = current_weight * 0.453592
-    height_cm = height_in * 2.54
-
-    if gender == 'female':
-        bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age - 161
-    else:
-        bmr = 10 * weight_kg + 6.25 * height_cm - 5 * age + 5
-
-    multipliers = {'sedentary': 1.2, 'light': 1.375, 'moderate': 1.55, 'active': 1.725, 'very_active': 1.9}
-    tdee = bmr * multipliers.get(profile.get('activity_level', 'moderate'), 1.55)
-
-    goal_weight = profile.get('goal_weight_lbs')
-    mode = 'maintain'
-    if goal_weight and current_weight:
-        if goal_weight < current_weight - 2:
-            mode = 'cut'
-            tdee -= 500
-        elif goal_weight > current_weight + 2:
-            mode = 'bulk'
-            tdee += 300
-
-    # Body fat estimation (Navy method)
-    body_fat = None
-    waist = profile.get('waist_in')
-    neck = profile.get('neck_in')
-    if waist and neck and height_in:
-        if gender == 'female':
-            hip = profile.get('hip_in') or 36
-            body_fat = round(495 / (1.29579 - 0.35004 * math.log10(waist + hip - neck) + 0.22100 * math.log10(height_in)) - 450, 1)
-        else:
-            body_fat = round(495 / (1.0324 - 0.19077 * math.log10(waist - neck) + 0.15456 * math.log10(height_in)) - 450, 1)
-
-    return {
-        'targetCalories': round(tdee),
-        'mode': mode,
-        'bodyFat': body_fat
+def fetch_dine_on_campus_menu(location_key: str, date_str: str = None) -> Dict:
+    if not date_str: date_str = datetime.now().strftime('%Y-%m-%d')
+    IDS = {
+        'Sbisa': '5d113eed4198d40d488a46ee', 
+        'Commons': '5d113eed4198d40d488a46f2', 
+        'Duncan': '5d113eed4198d40d488a46f3',
+        'Creekside': '5d113eed4198d40d488a46f0',
+        'West Campus': '5d8a39744198d4332d773bca'
     }
-
-
-def macro_targets(weight_lbs: float, activity_level: str, cal_target: float) -> Dict:
-    """Calculate macro targets based on weight and activity."""
-    weight_kg = weight_lbs * 0.453592
-    protein_mult = {'sedentary': 1.2, 'light': 1.4, 'moderate': 1.6, 'active': 1.8, 'very_active': 2.0}
-    protein_g = round(weight_kg * protein_mult.get(activity_level, 1.6))
-    fat_g = round(cal_target * 0.25 / 9)
-    carbs_g = round((cal_target - protein_g * 4 - fat_g * 9) / 4)
-    return {'protein': protein_g, 'fat': fat_g, 'carbs': max(carbs_g, 50)}
+    api_id = IDS.get(location_key)
+    if not api_id: return {"success": False, "error": "Unknown hall"}
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+        data = requests.get(f"https://api.dineoncampus.com/v1/location/{api_id}/menu", params={"platform": 0, "date": date_str}, headers=headers, timeout=10).json()
+        items = []
+        def extract(obj, mp='all'):
+            if isinstance(obj, list):
+                for el in obj: extract(el, mp)
+            elif isinstance(obj, dict):
+                name = obj.get('name') or obj.get('item_name')
+                if name and (obj.get('nutrients') or 'calories' in obj):
+                    n = obj.get('nutrients', {}) or obj
+                    items.append({"name": name.strip(), "meal_period": mp, "calories": float(n.get('calories', 0) or 0), "protein": float(n.get('protein', 0) or 0), "carbs": float(n.get('carbs', 0) or 0), "fat": float(n.get('fat', 0) or 0), "source": "dineoncampus"})
+                if 'periods' in obj:
+                    for p in obj['periods']:
+                        pn = (p.get('name') or '').lower()
+                        extract(p, 'breakfast' if 'breakfast' in pn else ('lunch' if 'lunch' in pn else ('dinner' if 'dinner' in pn else 'all')))
+                for k in ['categories', 'items', 'menu']:
+                    if k in obj: extract(obj[k], mp)
+        extract(data.get('menu', {}))
+        
+        # Apply enrichment (heuristics + cleaning)
+        items = enrich_items(items)
+        
+        return {"success": True, "items": items, "location": location_key, "date": date_str}
+    except Exception as e: return {"success": False, "error": str(e)}

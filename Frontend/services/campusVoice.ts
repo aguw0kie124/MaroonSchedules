@@ -6,23 +6,7 @@
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import { BUILDINGS, AMENITIES } from '../data/campus';
-
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
-
-// Retry helper for Gemini API calls with exponential backoff
-const fetchWithRetry = async (url: string, options: RequestInit, maxRetries = 3): Promise<Response> => {
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const res = await fetch(url, options);
-    if (res.status === 429 && attempt < maxRetries) {
-      const delay = Math.pow(2, attempt + 1) * 1000;
-      console.warn(`[CampusVoice] Rate limited (429), retrying in ${delay / 1000}s... (attempt ${attempt + 1}/${maxRetries})`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      continue;
-    }
-    return res;
-  }
-  throw new Error('Max retries exceeded');
-};
+import { API_URL } from '../config';
 
 export type VoiceIntent =
   | { type: 'BUILDING'; buildingId: string; raw: string }
@@ -104,109 +88,56 @@ function extractLocalIntent(text: string): VoiceIntent {
   return { type: 'UNKNOWN', raw };
 }
 
-// ─── Gemini Transcription + Intent ──────────────────────────
+// ─── OpenAI Backend Proxy ───────────────────────────────────
 export async function processVoiceCommand(audioUri: string): Promise<{
   transcript: string;
   intent: VoiceIntent;
 }> {
-  // Read audio as base64
-  let base64Audio: string;
-  try {
-    base64Audio = await FileSystem.readAsStringAsync(audioUri, {
-      encoding: 'base64',
-    });
-  } catch (e) {
-    console.error('[CampusVoice] Failed to read audio file:', e);
-    return { transcript: '', intent: { type: 'UNKNOWN', raw: '' } };
-  }
-
-  if (!GEMINI_API_KEY) {
-    console.warn('[CampusVoice] No Gemini API key, using local intent extraction');
-    return { transcript: '(no API key)', intent: { type: 'UNKNOWN', raw: '' } };
-  }
-
-  try {
-    const buildingNames = BUILDINGS.map((b) => `${b.shortName} (${b.name})`).join(', ');
-    const amenityTypes = ['restroom', 'coffee', 'dining', 'library', 'study', 'parking'];
-
-    const response = await fetchWithRetry(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  inline_data: {
-                    mime_type: 'audio/m4a',
-                    data: base64Audio,
-                  },
-                },
-                {
-                  text: `You are a Texas A&M campus navigation assistant. Transcribe this audio and extract the navigation intent.
-
-Available buildings: ${buildingNames}
-Available amenity categories: ${amenityTypes.join(', ')}
-
-Respond ONLY with valid JSON (no markdown, no code fences):
-{"transcript": "what the user said", "intent_type": "BUILDING|NEAREST|SEARCH|UNKNOWN", "building_id": "id if BUILDING", "category": "category if NEAREST", "query": "search text if SEARCH"}`,
-                },
-              ],
-            },
-          ],
-        }),
-      },
-    );
-
-    if (!response.ok) {
-      console.warn('[CampusVoice] Gemini API error:', response.status, '— falling back to local intent');
-      // Gemini unavailable (rate limited, etc.) — fall back to local processing
-      // We don't have a transcript, so return a hint to the user
-      return { transcript: '(voice processed locally)', intent: { type: 'UNKNOWN', raw: '(API rate limited — try typing instead)' } };
-    }
-
-    const data = await response.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-    // Parse JSON response
-    const cleaned = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-    let parsed: any;
     try {
-      parsed = JSON.parse(cleaned);
-    } catch {
-      // Try regex extraction
-      const match = cleaned.match(/\{[\s\S]*\}/);
-      if (match) {
-        try { parsed = JSON.parse(match[0]); } catch {}
-      }
+        const formData = new FormData();
+        // @ts-ignore
+        formData.append('file', {
+            uri: audioUri,
+            name: 'recording.m4a',
+            type: 'audio/m4a',
+        });
+
+        const response = await fetch(`${API_URL}/ai/process-voice`, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'multipart/form-data',
+            },
+        });
+
+        if (!response.ok) {
+            const err = await response.text();
+            throw new Error(`Voice Processing Error: ${err}`);
+        }
+
+        const data = await response.json();
+        const transcript = data.transcript || '';
+        const rawIntent = data.intent || {};
+
+        let intent: VoiceIntent;
+        switch (rawIntent.intent_type) {
+            case 'BUILDING':
+                intent = { type: 'BUILDING', buildingId: rawIntent.building_id || '', raw: transcript };
+                break;
+            case 'NEAREST':
+                intent = { type: 'NEAREST', category: rawIntent.category || 'restroom', raw: transcript };
+                break;
+            case 'SEARCH':
+                intent = { type: 'SEARCH', query: rawIntent.query || transcript, raw: transcript };
+                break;
+            default:
+                intent = extractLocalIntent(transcript);
+        }
+
+        return { transcript, intent };
+    } catch (e) {
+        console.error('[CampusVoice] OpenAI Processing Error:', e);
+        return { transcript: '(processing error)', intent: { type: 'UNKNOWN', raw: 'Proxy failed — try typing your destination' } };
     }
-
-    if (!parsed) {
-      return { transcript: text, intent: extractLocalIntent(text) };
-    }
-
-    const transcript = parsed.transcript || '';
-    let intent: VoiceIntent;
-
-    switch (parsed.intent_type) {
-      case 'BUILDING':
-        intent = { type: 'BUILDING', buildingId: parsed.building_id || '', raw: transcript };
-        break;
-      case 'NEAREST':
-        intent = { type: 'NEAREST', category: parsed.category || 'restroom', raw: transcript };
-        break;
-      case 'SEARCH':
-        intent = { type: 'SEARCH', query: parsed.query || transcript, raw: transcript };
-        break;
-      default:
-        intent = extractLocalIntent(transcript);
-    }
-
-    return { transcript, intent };
-  } catch (e) {
-    console.error('[CampusVoice] Gemini processing error:', e);
-    return { transcript: '(processing error)', intent: { type: 'UNKNOWN', raw: 'Voice processing failed — try typing your destination' } };
-  }
 }

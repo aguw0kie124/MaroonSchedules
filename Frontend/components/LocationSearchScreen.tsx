@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TextInput, ScrollView, ActivityIndicator, Press
 import axios from 'axios';
 import { useTheme, Card } from './SharedUI';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
+import { API_URL } from '../config';
 
 export function LocationSearchScreen() {
     const { COLORS } = useTheme();

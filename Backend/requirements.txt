@@ -5,6 +5,8 @@ python-dotenv
 stream-python
 pydantic
 pyjwt
+openai
+python-multipart
 psycopg[binary]
 stream_chat
 protobuf<5.0.0
