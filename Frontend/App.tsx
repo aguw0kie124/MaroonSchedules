@@ -12,53 +12,7 @@ import { Onboarding } from './components/Onboarding';
 import { Dashboard } from './components/Dashboard';
 import { Search } from './components/Search';
 import { Builder } from './components/Builder';
-import { PillTabs } from './components/PillTabs';
 
-function CustomTabBar({ state, descriptors, navigation }: any) {
-  const items = state.routes.map((route: any) => {
-    let icon: any;
-    if (route.name === 'Dashboard') icon = Calendar;
-    else if (route.name === 'Places') icon = MapPin;
-    else if (route.name === 'Social') icon = Radio;
-    else if (route.name === 'Dining') icon = UtensilsCrossed;
-    else if (route.name === 'Grades') icon = BarChart2;
-    else if (route.name === 'Profile') icon = User;
-
-    const { options } = descriptors[route.key];
-    return {
-      key: route.name,
-      label: options.title !== undefined ? options.title : route.name,
-      icon,
-    };
-  });
-
-  return (
-    <View style={styles.tabBarShell} pointerEvents="box-none">
-      <View style={styles.tabBarWidth}>
-        <PillTabs
-          items={items}
-          activeKey={state.routes[state.index]?.name}
-          activeTextMode="active-only"
-          layout="stacked"
-          onChange={(routeName) => {
-            const route = state.routes.find((item: any) => item.name === routeName);
-            if (!route) return;
-
-            const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
-            });
-
-            if (state.routes[state.index]?.name !== routeName && !event.defaultPrevented) {
-              navigation.navigate({ name: routeName, merge: true });
-            }
-          }}
-        />
-      </View>
-    </View>
-  );
-}
 import { Saved } from './components/Saved';
 import { Profile } from './components/Profile';
 import { CampusConnectorScreen } from './components/CampusConnectorScreen';
@@ -160,21 +114,70 @@ if (!publishableKey) {
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-
-
 function MainTabs() {
   const { COLORS } = useTheme();
   return (
     <Tab.Navigator
       id="MainTabs"
-      screenOptions={{ headerShown: false }}
-      tabBar={props => <CustomTabBar {...props} />}
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: '#0C0C0C',
+          borderTopWidth: 1,
+          borderTopColor: '#1F1F1F',
+        },
+        tabBarActiveTintColor: '#500000',
+        tabBarInactiveTintColor: '#888',
+      }}
     >
-      <Tab.Screen name="Dashboard" component={Dashboard} options={{ title: 'Home' }} />
-      <Tab.Screen name="Places" component={PlacesMapScreen} options={{ title: 'Places' }} />
-      <Tab.Screen name="Social" component={SocialHubScreen} options={{ title: 'Social' }} />
-      <Tab.Screen name="Dining" component={DiningDashboard} options={{ title: 'Dining' }} />
-      <Tab.Screen name="Profile" component={Profile} options={{ title: 'Profile' }} />
+      <Tab.Screen
+        name="Dashboard"
+        component={Dashboard}
+        options={{
+          title: 'Home',
+          tabBarIcon: ({ color, size }) => <Calendar color={color} size={size} />
+        }}
+      />
+      <Tab.Screen
+        name="Places"
+        component={PlacesMapScreen}
+        options={{
+          title: 'Places',
+          tabBarIcon: ({ color, size }) => <MapPin color={color} size={size} />
+        }}
+      />
+      <Tab.Screen
+        name="Social"
+        component={SocialHubScreen}
+        options={{
+          title: 'Social',
+          tabBarIcon: ({ color, size }) => <Radio color={color} size={size} />
+        }}
+      />
+      <Tab.Screen
+        name="Dining"
+        component={DiningDashboard}
+        options={{
+          title: 'Dining',
+          tabBarIcon: ({ color, size }) => <UtensilsCrossed color={color} size={size} />
+        }}
+      />
+      <Tab.Screen
+        name="Grades"
+        component={GradesScreen}
+        options={{
+          title: 'Grades',
+          tabBarIcon: ({ color, size }) => <BarChart2 color={color} size={size} />
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={Profile}
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color, size }) => <User color={color} size={size} />
+        }}
+      />
     </Tab.Navigator>
   );
 }
@@ -291,17 +294,4 @@ function App() {
 
 registerRootComponent(App);
 
-const styles = StyleSheet.create({
-  tabBarShell: {
-    position: 'absolute',
-    bottom: 24,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-  },
-  tabBarWidth: {
-    width: '92%',
-    maxWidth: 460,
-  },
-});
+const styles = StyleSheet.create({});
