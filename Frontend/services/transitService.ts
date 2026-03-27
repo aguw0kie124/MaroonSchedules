@@ -16,6 +16,8 @@ export interface BusVehicle {
     lng: number;
     routeId: string;
     heading: number;
+    routeShortName?: string;
+    routeName?: string;
 }
 
 export interface BusStop {
@@ -252,14 +254,20 @@ export const transitService = {
 
             if (!response.ok) return [];
             const data = await response.json() || [];
+            const normalizedRouteId = routeId?.toString().trim().toLowerCase();
             
             const vehicles: any[] = [];
             data.forEach((route: any) => {
-                // Determine if this route block matches our target
-                // AggieSpirit sometimes returns routeKey as the UUID and other times as the ShortName
-                const isMatch = !routeId || 
-                               route.routeKey === routeId || 
-                               route.routeKey?.toString().toLowerCase() === routeId.toString().toLowerCase();
+                const routeIdentifiers = [
+                    route.routeKey,
+                    route.shortName,
+                    route.name,
+                ]
+                    .filter(Boolean)
+                    .map((value: any) => value.toString().trim().toLowerCase());
+
+                // AggieSpirit may identify routes by key, short name, or full name.
+                const isMatch = !normalizedRouteId || routeIdentifiers.includes(normalizedRouteId);
 
                 if (!isMatch) return;
 
@@ -273,7 +281,9 @@ export const transitService = {
                             Heading: v.location.heading,
                             PassengersOnboard: v.passengersOnboard,
                             Capacity: v.passengerCapacity,
-                            RouteKey: route.routeKey
+                            RouteKey: route.routeKey,
+                            RouteShortName: route.shortName,
+                            RouteName: route.name
                         });
                     });
                 });

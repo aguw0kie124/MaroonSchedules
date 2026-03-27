@@ -25,13 +25,14 @@ import {
     Layers, Search, MessageSquarePlus, Bus
 } from 'lucide-react-native';
 import MapView, { Marker, Circle, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import { useRoute } from '@react-navigation/native';
 import { transitService } from '../services/transitService';
 import { useUser } from '@clerk/clerk-expo';
 import * as Haptics from 'expo-haptics';
 import { connectFeedsUser } from '../services/streamFeeds';
 import { API_URL } from '../config';
 
-const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // Snap point translateY values (distance from top of screen)
 const SNAP_PEEK  = SCREEN_HEIGHT * 0.58; // ~42% of screen visible
@@ -116,8 +117,8 @@ interface CampusLocation {
 
 const CATEGORIES = [
     { id: 'Heatmap', label: 'Traffic',    icon: <Layers  size={18} /> },
-    { id: 'Bus',     label: 'Bus',        icon: <Bus     size={18} /> },
-    { id: 'Library', label: 'Libraries',  icon: <Library size={18} /> },
+    { id: 'Bus',     label: 'Transit',    icon: <Bus     size={18} /> },
+    { id: 'Library', label: 'Library',    icon: <Library size={18} /> },
     { id: 'Rec',     label: 'Gyms',       icon: <Dumbbell size={18} /> },
     { id: 'Dining',  label: 'Food',       icon: <Utensils size={18} /> },
 ];
@@ -138,9 +139,93 @@ const getStatusColor = (pct: number) => {
     return '#FF3B30';
 };
 
+function haversineDistanceMeters(
+    startLat: number,
+    startLng: number,
+    endLat: number,
+    endLng: number
+) {
+    const earthRadiusMeters = 6371000;
+    const dLat = ((endLat - startLat) * Math.PI) / 180;
+    const dLng = ((endLng - startLng) * Math.PI) / 180;
+    const startLatRad = (startLat * Math.PI) / 180;
+    const endLatRad = (endLat * Math.PI) / 180;
+
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.sin(dLng / 2) * Math.sin(dLng / 2) * Math.cos(startLatRad) * Math.cos(endLatRad);
+
+    return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function toLocalXY(latitude: number, longitude: number, originLat: number) {
+    const metersPerLat = 111320;
+    const metersPerLng = Math.cos((originLat * Math.PI) / 180) * 111320;
+    return {
+        x: longitude * metersPerLng,
+        y: latitude * metersPerLat,
+    };
+}
+
+function getClosestProgressMeters(
+    routePoints: Array<{ latitude: number; longitude: number }>,
+    target: { latitude: number; longitude: number }
+) {
+    if (routePoints.length === 0) return null;
+    if (routePoints.length === 1) return 0;
+
+    const originLat = target.latitude;
+    const targetXY = toLocalXY(target.latitude, target.longitude, originLat);
+    let traveledMeters = 0;
+    let bestProgressMeters = 0;
+    let bestDistanceMeters = Number.POSITIVE_INFINITY;
+
+    for (let index = 0; index < routePoints.length - 1; index += 1) {
+        const start = routePoints[index];
+        const end = routePoints[index + 1];
+        const startXY = toLocalXY(start.latitude, start.longitude, originLat);
+        const endXY = toLocalXY(end.latitude, end.longitude, originLat);
+        const dx = endXY.x - startXY.x;
+        const dy = endXY.y - startXY.y;
+        const segmentLengthSquared = dx * dx + dy * dy;
+
+        let t = 0;
+        if (segmentLengthSquared > 0) {
+            t = ((targetXY.x - startXY.x) * dx + (targetXY.y - startXY.y) * dy) / segmentLengthSquared;
+            t = Math.max(0, Math.min(1, t));
+        }
+
+        const projectionX = startXY.x + dx * t;
+        const projectionY = startXY.y + dy * t;
+        const distanceToSegment = Math.hypot(targetXY.x - projectionX, targetXY.y - projectionY);
+        const segmentLengthMeters = Math.hypot(dx, dy);
+
+        if (distanceToSegment < bestDistanceMeters) {
+            bestDistanceMeters = distanceToSegment;
+            bestProgressMeters = traveledMeters + segmentLengthMeters * t;
+        }
+
+        traveledMeters += segmentLengthMeters;
+    }
+
+    return {
+        progressMeters: bestProgressMeters,
+        totalRouteMeters: traveledMeters,
+        offsetMeters: bestDistanceMeters,
+    };
+}
+
+function formatBusDistance(distanceMeters: number, etaMinutes: number, busLabel?: string) {
+    const prefix = busLabel ? `${busLabel} · ` : '';
+    if (distanceMeters <= 120) return `${prefix}Arriving now`;
+    if (distanceMeters < 1000) return `${prefix}${Math.round(distanceMeters)} m away · ~${etaMinutes} min`;
+    return `${prefix}${(distanceMeters / 1000).toFixed(1)} km away · ~${etaMinutes} min`;
+}
+
 export function PlacesMapScreen() {
     const { COLORS } = useTheme();
     const styles = getStyles(COLORS);
+    const route = useRoute<any>();
 
     // ── Proximity State ──
     const [selectedStop, setSelectedStop] = useState<any | null>(null);
@@ -151,6 +236,8 @@ export function PlacesMapScreen() {
     const [locations, setLocations]               = useState<CampusLocation[]>([]);
     const [loading, setLoading]                   = useState(true);
     const [activeLayer, setActiveLayer]           = useState<string>('Heatmap');
+    const indicatorAnim                           = useRef(new Animated.Value(0)).current;
+    const [categoryTrackWidth, setCategoryTrackWidth] = useState(0);
 
     // ── Pulse Animation ──
     useEffect(() => {
@@ -164,9 +251,18 @@ export function PlacesMapScreen() {
         }
     }, [activeLayer]);
 
+    useEffect(() => {
+        const activeIndex = Math.max(0, CATEGORIES.findIndex(category => category.id === activeLayer));
+        Animated.spring(indicatorAnim, {
+            toValue: activeIndex,
+            useNativeDriver: true,
+            tension: 260,
+            friction: 28,
+        }).start();
+    }, [activeLayer, indicatorAnim]);
+
     const [isSearchExpanded, setIsSearchExpanded] = useState(false);
     const [selectedId, setSelectedId]             = useState<string | null>(null);
-    const indicatorAnim = useRef(new Animated.Value(0)).current;
     const [searchQuery, setSearchQuery]           = useState('');
     const [showSearchResults, setShowSearchResults] = useState(false);
     const [streamReviews, setStreamReviews]       = useState<any[]>([]);
@@ -184,13 +280,36 @@ export function PlacesMapScreen() {
     const [busVehicles, setBusVehicles] = useState<any[]>([]);
     const [busStops, setBusStops] = useState<any[]>([]);
     const [selectedBusRouteId, setSelectedBusRouteId] = useState<string | null>(null);
-    const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
     const [routePatterns, setRoutePatterns] = useState<any[]>([]);
     const [isFetchingBus, setIsFetchingBus] = useState(false);
     const [isRouteDropdownOpen, setIsRouteDropdownOpen] = useState(false);
     const busPollInterval = useRef<any>(null);
     const { user }                                = useUser();
     const mapRef       = useRef<any>(null);
+    const selectedRoute = useMemo(
+        () => busRoutes.find(route => route.Key === selectedBusRouteId) ?? null,
+        [busRoutes, selectedBusRouteId]
+    );
+    const categorySlotWidth = categoryTrackWidth > 0 ? categoryTrackWidth / CATEGORIES.length : 0;
+    const categoryIndicatorTranslateX = indicatorAnim.interpolate({
+        inputRange: CATEGORIES.map((_, index) => index),
+        outputRange: CATEGORIES.map((_, index) => index * categorySlotWidth + 2),
+    });
+
+    useEffect(() => {
+        const nextLayer = route.params?.initialLayer;
+        const focusToken = route.params?.focusToken;
+        if (!nextLayer || !focusToken) return;
+
+        setActiveLayer(nextLayer);
+        setSelectedId(null);
+        setSelectedStop(null);
+        setSelectedBus(null);
+        setNearestBusInfo(null);
+        setIsSearchExpanded(false);
+        setSearchQuery('');
+        setShowSearchResults(false);
+    }, [route.params?.focusToken, route.params?.initialLayer]);
 
     // ── Bottom sheet animation ──────────────────────────────────────────────
     const sheetY       = useRef(new Animated.Value(SNAP_HIDDEN)).current;
@@ -302,49 +421,82 @@ export function PlacesMapScreen() {
         }
     };
 
-    const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-        const R = 3958.8; // miles
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLon = (lon2 - lon1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-                  Math.sin(dLon/2) * Math.sin(dLon/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        return R * c;
-    };
+    const resolveNearestBusForStop = useCallback((stop: any, vehicles: any[]) => {
+        if (!stop || vehicles.length === 0) {
+            setNearestBusInfo('No buses currently active');
+            return;
+        }
+
+        const stopProgress = getClosestProgressMeters(routePatterns, {
+            latitude: stop.Latitude,
+            longitude: stop.Longitude,
+        });
+
+        const rankedBuses = vehicles
+            .map((bus) => {
+                const directDistanceMeters = haversineDistanceMeters(
+                    bus.Latitude,
+                    bus.Longitude,
+                    stop.Latitude,
+                    stop.Longitude
+                );
+
+                if (!stopProgress) {
+                    return {
+                        bus,
+                        distanceMeters: directDistanceMeters,
+                    };
+                }
+
+                const busProgress = getClosestProgressMeters(routePatterns, {
+                    latitude: bus.Latitude,
+                    longitude: bus.Longitude,
+                });
+
+                if (!busProgress) {
+                    return {
+                        bus,
+                        distanceMeters: directDistanceMeters,
+                    };
+                }
+
+                const routeDelta = Math.abs(stopProgress.progressMeters - busProgress.progressMeters);
+                const wrappedDelta = stopProgress.totalRouteMeters > 0
+                    ? Math.min(routeDelta, stopProgress.totalRouteMeters - routeDelta)
+                    : routeDelta;
+
+                return {
+                    bus,
+                    distanceMeters: Math.min(
+                        directDistanceMeters,
+                        wrappedDelta + stopProgress.offsetMeters + busProgress.offsetMeters
+                    ),
+                };
+            })
+            .sort((first, second) => first.distanceMeters - second.distanceMeters);
+
+        const nearestBus = rankedBuses[0];
+        if (!nearestBus) {
+            setNearestBusInfo('No buses currently active');
+            return;
+        }
+
+        setSelectedBus(nearestBus.bus);
+        const etaMinutes = Math.max(1, Math.round(nearestBus.distanceMeters / 220));
+        const busLabel = nearestBus.bus.RouteShortName
+            ? `Route ${nearestBus.bus.RouteShortName}`
+            : nearestBus.bus.Name
+                ? `Bus ${nearestBus.bus.Name}`
+                : undefined;
+        setNearestBusInfo(formatBusDistance(nearestBus.distanceMeters, etaMinutes, busLabel));
+    }, [routePatterns]);
 
     const handleStopPress = (stop: any) => {
         setSelectedStop(stop);
+        setSelectedBus(null);
+        setNearestBusInfo('Finding closest bus...');
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        
-        // Calculate proximity to nearest bus on this route (Refined Accuracy)
-        if (busVehicles.length > 0) {
-            const busesOnRoute = busVehicles.filter(v => v.RouteKey === selectedBusRouteId);
-            if (busesOnRoute.length > 0) {
-                let minDistance = Infinity;
-                
-                // Find nearest bus by coordinates
-                busesOnRoute.forEach(bus => {
-                    const d = Math.sqrt(
-                        Math.pow(bus.Latitude - stop.Latitude, 2) + 
-                        Math.pow(bus.Longitude - stop.Longitude, 2)
-                    );
-                    if (d < minDistance) minDistance = d;
-                });
-                
-                // Conversions (Roughly 111,000 meters per degree)
-                const meters = minDistance * 111000;
-                const minutes = Math.round(meters / 280); // Rough estimate: 280m/min (10mph avg with stops)
-
-                if (meters < 200) setNearestBusInfo('Arriving Now');
-                else if (meters < 1000) setNearestBusInfo(`${Math.round(meters)}m away (Est. ${minutes}m)`);
-                else setNearestBusInfo(`${(meters/1000).toFixed(1)}km away (Est. ${minutes}m)`);
-            } else {
-                setNearestBusInfo('No buses currently active');
-            }
-        } else {
-            setNearestBusInfo('Searching for buses...');
-        }
+        resolveNearestBusForStop(stop, busVehicles);
     };
 
     const handleSelectBusRoute = async (routeId: string) => {
@@ -411,6 +563,12 @@ export function PlacesMapScreen() {
             fetchBusData();
         }
     }, [activeLayer]);
+
+    useEffect(() => {
+        if (activeLayer === 'Bus' && selectedStop) {
+            resolveNearestBusForStop(selectedStop, busVehicles);
+        }
+    }, [activeLayer, busVehicles, routePatterns, selectedStop, resolveNearestBusForStop]);
 
     const panResponder = useMemo(() => PanResponder.create({
         onMoveShouldSetPanResponder: (_, { dy }) => Math.abs(dy) > 6,
@@ -633,31 +791,46 @@ export function PlacesMapScreen() {
                 ))}
 
                 {/* Transit Layer: Bus Vehicles (MaroonRides Style: Bus Icons with Number) */}
-                {activeLayer === 'Bus' && busVehicles.map((bus) => (
-                    <Marker
-                        key={`bus-${bus.Key}`}
-                        coordinate={{ latitude: bus.Latitude, longitude: bus.Longitude }}
-                        anchor={{ x: 0.5, y: 0.5 }}
-                        zIndex={200}
-                        flat={true}
-                        onPress={() => {
-                            setSelectedBus(bus);
-                            setSelectedStop(null);
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        }}
-                    >
-                        <View style={[
-                            styles.busMarker, 
-                            { transform: [{ rotate: `${bus.Heading}deg` }] }
-                        ]}>
-                            <View style={{ transform: [{ rotate: `-${bus.Heading}deg` }] }}>
-                                <Text style={styles.busMarkerText}>
-                                    {busRoutes.find(r => r.Key === bus.RouteKey)?.ShortName || ''}
-                                </Text>
+                {activeLayer === 'Bus' && busVehicles.map((bus) => {
+                    const isTrackedBus = selectedBus?.Key === bus.Key;
+                    return (
+                        <Marker
+                            key={`bus-${bus.Key}`}
+                            coordinate={{ latitude: bus.Latitude, longitude: bus.Longitude }}
+                            anchor={{ x: 0.5, y: 0.5 }}
+                            zIndex={isTrackedBus ? 240 : 200}
+                            flat={true}
+                            onPress={() => {
+                                setSelectedBus(bus);
+                                setSelectedStop(null);
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                            }}
+                        >
+                            <View style={[
+                                styles.busMarker,
+                                {
+                                    transform: [
+                                        { rotate: `${bus.Heading}deg` },
+                                        { scale: isTrackedBus ? 1.18 : 1 },
+                                    ],
+                                },
+                                isTrackedBus && {
+                                    backgroundColor: '#C99700',
+                                    borderColor: '#FFFFFF',
+                                },
+                            ]}>
+                                <View style={{ transform: [{ rotate: `-${bus.Heading}deg` }] }}>
+                                    <Text style={[
+                                        styles.busMarkerText,
+                                        isTrackedBus && { color: '#2B1100' }
+                                    ]}>
+                                        {bus.RouteShortName || selectedRoute?.ShortName || ''}
+                                    </Text>
+                                </View>
                             </View>
-                        </View>
-                    </Marker>
-                ))}
+                        </Marker>
+                    );
+                })}
 
                 {/* Marker rendering fixes: Ensure markers are always rendered for active categories */}
                 {locations.filter(loc => {
@@ -722,7 +895,7 @@ export function PlacesMapScreen() {
                             </TouchableOpacity>
                         </View>
                     ) : (
-                        <View style={styles.pillTabsContainer}>
+                        <>
                             <TouchableOpacity
                                 style={styles.searchIconBtn}
                                 onPress={() => {
@@ -730,61 +903,58 @@ export function PlacesMapScreen() {
                                     setIsSearchExpanded(true);
                                 }}
                             >
-                                <Search size={20} color={COLORS.textTertiary} />
+                                <Search size={18} color={COLORS.textTertiary} />
                             </TouchableOpacity>
                             <View style={styles.pillDivider} />
-                            
-                            {/* Animated Background Indicator */}
-                            {(() => {
-                                const totalWidth = width - 40;
-                                const searchWidth = 44 + 4 + 1; // button + gap + divider
-                                const availablePillSpace = totalWidth - searchWidth - 8; // minus outer padding
-                                const pillTabWidth = availablePillSpace / CATEGORIES.length;
-                                
-                                const translateX = indicatorAnim.interpolate({
-                                    inputRange: [0, 1, 2, 3, 4],
-                                    outputRange: [0, pillTabWidth, pillTabWidth * 2, pillTabWidth * 3, pillTabWidth * 4],
-                                });
+                            <View
+                                style={styles.pillTabsContainer}
+                                onLayout={(event) => setCategoryTrackWidth(event.nativeEvent.layout.width)}
+                            >
+                                <Animated.View
+                                    style={[
+                                        styles.pillIndicator,
+                                        {
+                                            width: Math.max(categorySlotWidth - 4, 0),
+                                            transform: [{ translateX: categoryIndicatorTranslateX }],
+                                        },
+                                    ]}
+                                />
+                                {CATEGORIES.map((category) => {
+                                    const isActive = category.id === activeLayer;
+                                    const Icon = category.id === 'Heatmap'
+                                        ? Layers
+                                        : category.id === 'Bus'
+                                            ? Bus
+                                            : category.id === 'Library'
+                                                ? Library
+                                                : category.id === 'Rec'
+                                                    ? Dumbbell
+                                                    : Utensils;
 
-                                return (
-                                    <>
-                                        <Animated.View 
-                                            style={[
-                                                styles.pillIndicator,
-                                                { width: pillTabWidth, transform: [{ translateX }] }
-                                            ]}
-                                        />
-                                        {CATEGORIES.map((cat, index) => {
-                                            const isActive = activeLayer === cat.id;
-                                            return (
-                                                <TouchableOpacity
-                                                    key={cat.id}
-                                                    style={[styles.pillTab, { width: pillTabWidth }]}
-                                                    onPress={() => {
-                                                        setActiveLayer(cat.id);
-                                                        setSelectedId(null);
-                                                        Animated.spring(indicatorAnim, {
-                                                            toValue: index,
-                                                            useNativeDriver: true,
-                                                            tension: 300,
-                                                            friction: 30,
-                                                        }).start();
-                                                    }}
-                                                >
-                                                    {React.cloneElement(cat.icon as React.ReactElement<any>, {
-                                                        color: isActive ? '#FFFFFF' : COLORS.textTertiary,
-                                                        size: 14
-                                                    })}
-                                                    <Text style={[styles.pillLabel, isActive && styles.pillLabelActive, { marginTop: 2 }]}>
-                                                        {cat.label}
-                                                    </Text>
-                                                </TouchableOpacity>
-                                            );
-                                        })}
-                                    </>
-                                );
-                            })()}
-                        </View>
+                                    return (
+                                        <TouchableOpacity
+                                            key={category.id}
+                                            style={styles.pillTab}
+                                            onPress={() => {
+                                                setActiveLayer(category.id);
+                                                setSelectedId(null);
+                                            }}
+                                        >
+                                            <Icon
+                                                size={18}
+                                                color={isActive ? '#FFFFFF' : COLORS.textTertiary}
+                                                strokeWidth={isActive ? 2.5 : 2}
+                                            />
+                                            {isActive ? (
+                                                <Text style={[styles.pillLabel, styles.pillLabelActive]} numberOfLines={1}>
+                                                    {category.label}
+                                                </Text>
+                                            ) : null}
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+                        </>
                     )}
                 </View>
 
@@ -886,6 +1056,11 @@ export function PlacesMapScreen() {
                         </View>
                         <View style={{ flex: 1, paddingLeft: 12 }}>
                             <Text style={styles.dockedStopName} numberOfLines={1}>{selectedStop.Name}</Text>
+                            {selectedBus && (
+                                <Text style={styles.busStopHintText} numberOfLines={1}>
+                                    Tracking {selectedBus.RouteShortName ? `route ${selectedBus.RouteShortName}` : `bus ${selectedBus.Name}`}
+                                </Text>
+                            )}
                             <View style={styles.proximityRow}>
                                 <Clock size={12} color={COLORS.textTertiary} style={{ marginRight: 4 }} />
                                 <Text style={styles.dockedStopProximity}>{nearestBusInfo}</Text>
@@ -928,7 +1103,7 @@ export function PlacesMapScreen() {
                             )}
                         </View>
                         <Text style={styles.busInfoRouteName}>
-                            Heading on Route {busRoutes.find(r => r.Key === selectedBus.RouteKey)?.ShortName}
+                            Heading on Route {selectedBus.RouteShortName || selectedRoute?.ShortName || selectedBus.RouteName || 'Bus Route'}
                         </Text>
                     </View>
                     <X size={20} color={COLORS.textTertiary} />
@@ -1201,7 +1376,7 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     loaderText: { marginTop: 12, color: COLORS.textSecondary, fontWeight: '600' },
 
     // ── Unified Top Navigation ──────────────────────────────────────────────
-    topContainer: { position: 'absolute', top: 54, left: 20, right: 20, gap: 8 },
+    topContainer: { position: 'absolute', top: 54, left: 16, right: 16, gap: 10 },
     pillBar: {
         flexDirection: 'row',
         backgroundColor: COLORS.surface,
@@ -1226,37 +1401,41 @@ const getStyles = (COLORS: any) => StyleSheet.create({
         marginLeft: 8,
     },
     pillTabsContainer: {
+        flex: 1,
+        minHeight: 42,
         flexDirection: 'row',
         alignItems: 'center',
-        flex: 1,
+        position: 'relative',
     },
     searchIconBtn: {
         width: 44,
-        height: 36,
-        justifyContent: 'center',
+        height: 38,
         alignItems: 'center',
+        justifyContent: 'center',
     },
     pillDivider: {
         width: 1,
-        height: 24,
+        height: 22,
         backgroundColor: COLORS.border,
         marginRight: 4,
     },
     pillIndicator: {
         position: 'absolute',
-        top: 0,
-        bottom: 0,
-        backgroundColor: '#800000',
-        borderRadius: 26,
-        left: 49,
+        top: 2,
+        bottom: 2,
+        left: 0,
+        backgroundColor: COLORS.primary,
+        borderRadius: 24,
     },
     pillTab: {
-        height: 36,
+        flex: 1,
+        minWidth: 0,
+        minHeight: 38,
         alignItems: 'center',
         justifyContent: 'center',
-        flexDirection: 'row',
-        gap: 6,
-        zIndex: 2,
+        gap: 2,
+        paddingHorizontal: 4,
+        zIndex: 1,
     },
     pillLabel: {
         fontSize: 11,
@@ -1709,6 +1888,12 @@ const getStyles = (COLORS: any) => StyleSheet.create({
         fontSize: 16,
         fontWeight: '800',
         marginBottom: 4,
+    },
+    busStopHintText: {
+        color: '#D3D8E2',
+        fontSize: 12,
+        fontWeight: '600',
+        marginBottom: 6,
     },
     proximityRow: {
         flexDirection: 'row',

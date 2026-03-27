@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Dimensions, Animated, TouchableOpacity, Text } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator, BottomTabBar } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
@@ -12,109 +12,56 @@ import { Onboarding } from './components/Onboarding';
 import { Dashboard } from './components/Dashboard';
 import { Search } from './components/Search';
 import { Builder } from './components/Builder';
+import { PillTabs } from './components/PillTabs';
 
 function CustomTabBar({ state, descriptors, navigation }: any) {
-  const { COLORS } = useTheme();
-  const totalW = Dimensions.get('window').width - 40;
-  const tabW = totalW / state.routes.length;
-  const indicatorAnim = React.useRef(new Animated.Value(state.index)).current;
+  const items = state.routes.map((route: any) => {
+    let icon: any;
+    if (route.name === 'Dashboard') icon = Calendar;
+    else if (route.name === 'Places') icon = MapPin;
+    else if (route.name === 'Social') icon = Radio;
+    else if (route.name === 'Dining') icon = UtensilsCrossed;
+    else if (route.name === 'Profile') icon = User;
 
-  React.useEffect(() => {
-    Animated.spring(indicatorAnim, {
-      toValue: state.index,
-      useNativeDriver: true,
-      tension: 300,
-      friction: 30,
-    }).start();
-  }, [state.index]);
-
-  const translateX = indicatorAnim.interpolate({
-    inputRange: state.routes.map((_: any, i: number) => i),
-    outputRange: state.routes.map((_: any, i: number) => i * tabW),
+    const { options } = descriptors[route.key];
+    return {
+      key: route.name,
+      label: options.title !== undefined ? options.title : route.name,
+      icon,
+    };
   });
 
   return (
-    <View style={{
-      position: 'absolute',
-      bottom: 24,
-      left: 0,
-      right: 0,
-      alignItems: 'center',
-      backgroundColor: 'transparent'
-    }} pointerEvents="box-none">
-      <View style={{
-         width: totalW,
-         height: 64,
-         backgroundColor: COLORS.surface,
-         borderRadius: 32,
-         borderWidth: StyleSheet.hairlineWidth,
-         borderColor: COLORS.border,
-         shadowColor: '#000',
-         shadowOffset: { width: 0, height: 8 },
-         shadowOpacity: 0.25,
-         shadowRadius: 20,
-         elevation: 12,
-         flexDirection: 'row',
-         alignItems: 'center',
-         padding: 6,
-      }}>
-        {/* Animated Background Indicator */}
-        <Animated.View style={{
-          position: 'absolute',
-          left: 6,
-          top: 6,
-          bottom: 6,
-          width: tabW - 12,
-          backgroundColor: '#800000', // Maroon
-          borderRadius: 26,
-          transform: [{ translateX }]
-        }} />
+    <View style={styles.tabBarShell} pointerEvents="box-none">
+      <View style={styles.tabBarWidth}>
+        <PillTabs
+          items={items}
+          activeKey={state.routes[state.index]?.name}
+          activeTextMode="active-only"
+          layout="stacked"
+          onChange={(routeName) => {
+            const route = state.routes.find((item: any) => item.name === routeName);
+            if (!route) return;
 
-        {state.routes.map((route: any, index: number) => {
-          const { options } = descriptors[route.key];
-          const label = options.title !== undefined ? options.title : route.name;
-          const isFocused = state.index === index;
-
-          let IconName: any;
-          if (route.name === 'Dashboard') IconName = Calendar;
-          else if (route.name === 'Places') IconName = MapPin;
-          else if (route.name === 'Social') IconName = Radio;
-          else if (route.name === 'Dining') IconName = UtensilsCrossed;
-          else if (route.name === 'Profile') IconName = User;
-
-          const onPress = () => {
             const event = navigation.emit({
               type: 'tabPress',
               target: route.key,
               canPreventDefault: true,
             });
 
-            if (!isFocused && !event.defaultPrevented) {
-              navigation.navigate({ name: route.name, merge: true });
+            if (state.routes[state.index]?.name !== routeName && !event.defaultPrevented) {
+              navigation.navigate({ name: routeName, merge: true });
             }
-          };
-
-          return (
-            <TouchableOpacity
-              key={route.key}
-              accessibilityRole="button"
-              accessibilityState={isFocused ? { selected: true } : {}}
-              accessibilityLabel={options.tabBarAccessibilityLabel}
-              testID={options.tabBarTestID}
-              onPress={onPress}
-              style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: '100%', gap: 4 }}
-            >
-              {IconName && <IconName size={22} color={isFocused ? '#FFFFFF' : COLORS.textTertiary} strokeWidth={isFocused ? 2.5 : 2} />}
-              {isFocused && <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF' }}>{label}</Text>}
-            </TouchableOpacity>
-          );
-        })}
+          }}
+        />
       </View>
     </View>
   );
 }
 import { Saved } from './components/Saved';
 import { Profile } from './components/Profile';
+import { CampusConnectorScreen } from './components/CampusConnectorScreen';
+import { RecreationFacilitiesScreen } from './components/RecreationFacilitiesScreen';
 import { CourseDetail } from './components/CourseDetail';
 import { AuthLanding } from './components/AuthLanding';
 import { LoginScreen } from './components/LoginScreen';
@@ -269,6 +216,8 @@ function RootNavigator() {
           <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: false }} />
           <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Reels" component={ReelsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="CampusConnector" component={CampusConnectorScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
           
           <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: false }} />
           <Stack.Screen name="MealOptimizer" component={MealOptimizerScreen} options={{ headerShown: false }} />
@@ -320,3 +269,18 @@ function App() {
 }
 
 registerRootComponent(App);
+
+const styles = StyleSheet.create({
+  tabBarShell: {
+    position: 'absolute',
+    bottom: 24,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  tabBarWidth: {
+    width: '92%',
+    maxWidth: 460,
+  },
+});
