@@ -49,6 +49,41 @@ const TAMU_CENTER = {
     longitudeDelta: 0.03,
 };
 
+const CANONICAL_LOCATION_ALIASES: Record<string, string> = {
+    'Student Rec Center': 'Student Recreation Center',
+    'Southside Rec Center': 'Southside Recreation Center',
+    'Polo Road Rec Center': 'Polo Road Recreation Center',
+    'Evans Library': 'Sterling C. Evans Library',
+    'Memorial Student Center (MSC)': 'Memorial Student Center',
+    'The Underground': 'Underground Food Court',
+};
+
+const BUILDING_COORDS = new Map(
+    BUILDINGS.map((building) => [
+        building.name,
+        { lat: building.latitude, lng: building.longitude },
+    ])
+);
+
+const AMENITY_COORDS = new Map(
+    AMENITIES.map((amenity) => [
+        amenity.name,
+        { lat: amenity.latitude, lng: amenity.longitude },
+    ])
+);
+
+function getCanonicalLocationName(name: string): string {
+    return CANONICAL_LOCATION_ALIASES[name] || name;
+}
+
+function getCanonicalCoords(
+    name: string,
+    fallback: { lat: number; lng: number }
+): { lat: number; lng: number } {
+    const canonicalName = getCanonicalLocationName(name);
+    return BUILDING_COORDS.get(canonicalName) || AMENITY_COORDS.get(canonicalName) || fallback;
+}
+
 const DARK_MAP_STYLE = [
     { "elementType": "geometry", "stylers": [{ "color": "#212121" }] },
     { "elementType": "labels.icon", "stylers": [{ "visibility": "off" }] },
@@ -69,20 +104,19 @@ const CAMPUS_ZONES: Array<{
     hours?: string;
 }> = [
     { 
-        name: 'Student Rec Center', 
-        lat: 30.6097, lng: -96.3455, 
+        name: 'Student Recreation Center',
+        ...getCanonicalCoords('Student Recreation Center', { lat: 30.6094, lng: -96.3400 }),
         peak: 70, off: 10, radius: 220, type: 'Rec',
         hours: '6:00 AM – 11:59 PM' // Updated based on March 26 data
     },
-    { name: 'Southside Rec Center',              lat: 30.6093, lng: -96.3390, peak: 65, off: 10, radius: 200, type: 'Rec' },
-    { name: 'Polo Road Rec Center',              lat: 30.6237, lng: -96.3395, peak: 55, off:  8, radius: 200, type: 'Rec' },
-    { name: 'Evans Library',                     lat: 30.6168, lng: -96.3388, peak: 82, off: 18, radius: 160, type: 'Library' },
-    { name: 'Evans Library Annex',               lat: 30.6168, lng: -96.3388, peak: 70, off: 15, radius: 120, type: 'Library' },
-    { name: 'West Campus Library',               lat: 30.6095, lng: -96.3445, peak: 60, off: 14, radius: 160, type: 'Library' },
-    { name: 'Evans Library Annex',               lat: 30.6168, lng: -96.3388, peak: 70, off: 15, radius: 120, type: 'Library' },
-    { name: 'Memorial Student Center',           lat: 30.6125, lng: -96.3410, peak: 85, off: 15, radius: 180, type: 'Dining' },
-    { name: 'Polo Road Garage',                  lat: 30.6237, lng: -96.3395, peak: 80, off: 10, radius: 180, type: 'Dining' },
-    { name: 'Underground Food Court',            lat: 30.6128, lng: -96.3418, peak: 70, off:  5, radius: 150, type: 'Dining' },
+    { name: 'Southside Recreation Center',       ...getCanonicalCoords('Southside Recreation Center', { lat: 30.6093, lng: -96.3390 }), peak: 65, off: 10, radius: 200, type: 'Rec' },
+    { name: 'Polo Road Recreation Center',       ...getCanonicalCoords('Polo Road Recreation Center', { lat: 30.6237, lng: -96.3395 }), peak: 55, off:  8, radius: 200, type: 'Rec' },
+    { name: 'Sterling C. Evans Library',         ...getCanonicalCoords('Sterling C. Evans Library', { lat: 30.6171, lng: -96.3387 }), peak: 82, off: 18, radius: 160, type: 'Library' },
+    { name: 'Evans Library Annex',               ...getCanonicalCoords('Evans Library Annex', { lat: 30.6168, lng: -96.3383 }), peak: 70, off: 15, radius: 120, type: 'Library' },
+    { name: 'West Campus Library',               ...getCanonicalCoords('West Campus Library', { lat: 30.6146, lng: -96.3440 }), peak: 60, off: 14, radius: 160, type: 'Library' },
+    { name: 'Memorial Student Center',           ...getCanonicalCoords('Memorial Student Center', { lat: 30.6123, lng: -96.3415 }), peak: 85, off: 15, radius: 180, type: 'Dining' },
+    { name: 'Polo Road Garage Dining',           ...getCanonicalCoords('Polo Road Garage Dining', { lat: 30.6235, lng: -96.3388 }), peak: 80, off: 10, radius: 180, type: 'Dining' },
+    { name: 'Underground Food Court',            ...getCanonicalCoords('Underground Food Court', { lat: 30.6128, lng: -96.3418 }), peak: 70, off:  5, radius: 150, type: 'Dining' },
 ];
 
 function getTimeOfDayFactor(): number {
@@ -126,9 +160,13 @@ const STATIC_LOCATION_META: Record<string, Partial<CampusLocation>> = {
     'Evans Library Annex': { hours: 'Open daily · check library schedule', description: 'Annex study and overflow library space.' },
     'West Campus Library': { hours: 'Open daily · check library schedule', description: 'Business and west campus study hub.' },
     'Student Recreation Center': { hours: '6:00 AM – 11:59 PM', description: 'Main rec center with fitness, courts, and aquatic areas.' },
+    'Southside Recreation Center': { hours: '5:30 AM – 11:59 PM', description: 'Southside fitness and recreation facility.' },
+    'Polo Road Recreation Center': { hours: '6:00 AM – 9:00 PM weekdays', description: 'North campus rec and fitness destination.' },
     'Sbisa Dining Hall': { hours: 'Breakfast, lunch, and dinner service', description: 'Northside all-you-care-to-eat dining hall.' },
     'The Commons Dining': { hours: 'Breakfast, lunch, and dinner service', description: 'Southside dining hall near the Commons.' },
     'Memorial Student Center': { hours: 'Open daily', description: 'Central student hub, dining, lounges, and events.' },
+    'Polo Road Garage Dining': { hours: 'Check dining schedule', description: 'Dining hub inside the Polo Road Garage complex.' },
+    'Underground Food Court': { hours: 'Check dining schedule', description: 'Food court dining destination near Sbisa.' },
     'Rudder Tower': { hours: 'Open daily', description: 'Event and campus activity landmark adjacent to the MSC.' },
 };
 
@@ -753,9 +791,9 @@ export function PlacesMapScreen() {
             
             // Ensure Hubs are present even if traffic data misses them
             const hubs = [
-                { location: 'Memorial Student Center (MSC)', type: 'Hub', coord: { lat: 30.6123, lng: -96.3415 }, percent_full: 45, is_live: false, hours: '7:00 AM – 10:00 PM' },
-                { location: 'Polo Road Garage', type: 'Hub', coord: { lat: 30.6225, lng: -96.3353 }, percent_full: 30, is_live: false, hours: '7:00 AM – 9:00 PM' },
-                { location: 'The Underground', type: 'Hub', coord: { lat: 30.6120, lng: -96.3408 }, percent_full: 60, is_live: false, hours: '10:00 AM – 8:00 PM' }
+                { location: 'Memorial Student Center', type: 'Hub', coord: getCanonicalCoords('Memorial Student Center', { lat: 30.6123, lng: -96.3415 }), percent_full: 45, is_live: false, hours: '7:00 AM – 10:00 PM' },
+                { location: 'Polo Road Garage Dining', type: 'Hub', coord: getCanonicalCoords('Polo Road Garage Dining', { lat: 30.6235, lng: -96.3388 }), percent_full: 30, is_live: false, hours: '7:00 AM – 9:00 PM' },
+                { location: 'Underground Food Court', type: 'Hub', coord: getCanonicalCoords('Underground Food Court', { lat: 30.6128, lng: -96.3418 }), percent_full: 60, is_live: false, hours: '10:00 AM – 8:00 PM' }
             ];
 
             const combined = [...fetched];
@@ -767,20 +805,35 @@ export function PlacesMapScreen() {
 
             // Merge high-fidelity hours/data from CAMPUS_ZONES
             const trafficLocations = combined.map((loc: any) => {
-                const zone = CAMPUS_ZONES.find(z => z.name === loc.location);
+                const canonicalName = getCanonicalLocationName(loc.location);
+                const zone = CAMPUS_ZONES.find(z => z.name === canonicalName);
+                const resolvedCoord = getCanonicalCoords(canonicalName, loc.coord);
                 if (zone && zone.hours) {
-                    return { ...loc, hours: zone.hours, source: 'traffic' as const };
+                    return {
+                        ...loc,
+                        location: canonicalName,
+                        coord: resolvedCoord,
+                        hours: zone.hours,
+                        source: 'traffic' as const,
+                    };
                 }
-                return { ...loc, source: 'traffic' as const };
+                return {
+                    ...loc,
+                    location: canonicalName,
+                    coord: resolvedCoord,
+                    source: 'traffic' as const,
+                };
             });
             const mergedMap = new Map<string, CampusLocation>();
             fullCampusIndex.forEach((location) => mergedMap.set(location.location, location));
             trafficLocations.forEach((location: CampusLocation) => {
-                const existing = mergedMap.get(location.location);
+                const canonicalName = getCanonicalLocationName(location.location);
+                const existing = mergedMap.get(canonicalName) || mergedMap.get(location.location);
                 mergedMap.set(location.location, {
                     ...existing,
                     ...location,
-                    coord: existing?.coord || location.coord,
+                    location: existing?.location || canonicalName,
+                    coord: existing?.coord || getCanonicalCoords(canonicalName, location.coord),
                     type: existing?.type || location.type || 'General',
                     shortName: existing?.shortName || location.shortName,
                     description: existing?.description || location.description,

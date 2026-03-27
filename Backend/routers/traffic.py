@@ -97,13 +97,13 @@ class TAMUFacilityTracker:
     def get_all_locations_with_events(self) -> List[Dict[str, float]]:
         result = []
         official_lookup = {
-            "Student Rec Center": {"coord": {"lat": 30.6094, "lng": -96.3400}, "type": "Rec", "hours": "6:00 AM – 11:59 PM"},
-            "Southside Rec Center": {"coord": {"lat": 30.6093, "lng": -96.3390}, "type": "Rec", "hours": "5:30 AM – 11:59 PM"},
-            "Polo Road Rec Center": {"coord": {"lat": 30.6237, "lng": -96.3395}, "type": "Rec", "hours": "6:00 AM – 9:00 PM weekdays"},
-            "Sterling C. Evans Library": {"coord": {"lat": 30.6171, "lng": -96.3387}, "type": "Library"},
-            "Evans Library Annex": {"coord": {"lat": 30.6168, "lng": -96.3383}, "type": "Library"},
-            "West Campus Library": {"coord": {"lat": 30.6146, "lng": -96.3440}, "type": "Library"},
-            "Cushing Memorial Library": {"coord": {"lat": 30.6166, "lng": -96.3400}, "type": "Library"},
+            "Student Rec Center": {"coord": {"lat": 30.607120, "lng": -96.345403}, "type": "Rec", "hours": "6:00 AM – 11:59 PM"},
+            "Southside Rec Center": {"coord": {"lat": 30.615185, "lng": -96.334412}, "type": "Rec", "hours": "5:30 AM – 11:59 PM"},
+            "Polo Road Rec Center": {"coord": {"lat": 30.622968, "lng": -96.340926}, "type": "Rec", "hours": "6:00 AM – 9:00 PM weekdays"},
+            "Sterling C. Evans Library": {"coord": {"lat": 30.616607, "lng": -96.339047}, "type": "Library"},
+            "Evans Library Annex": {"coord": {"lat": 30.616300, "lng": -96.338340}, "type": "Library"},
+            "West Campus Library": {"coord": {"lat": 30.611570, "lng": -96.350164}, "type": "Library"},
+            "Cushing Memorial Library": {"coord": {"lat": 30.616360, "lng": -96.339900}, "type": "Library"},
         }
 
         # Rec Facilities
