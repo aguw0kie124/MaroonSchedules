@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator, Modal, Pressable } from 'react-native';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { useRoute, useNavigation, CommonActions } from '@react-navigation/native';
 import { fetchCourseById, fetchSchedules, addSectionToSchedule } from '../api/client';
 import { useTheme, Card, SectionRow, PrimaryButton } from './SharedUI';
 import { useUser } from '@clerk/clerk-expo';
@@ -10,7 +10,7 @@ export function NewCourseDetailScreen() {
     const styles = getStyles(COLORS);
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
-    const { courseId } = route.params;
+    const { courseId, returnTo } = route.params || {};
     const { user } = useUser();
     const userId = user?.id || 'anonymous';
     const [course, setCourse] = useState<any>(null);
@@ -19,6 +19,7 @@ export function NewCourseDetailScreen() {
     const [modalVisible, setModalVisible] = useState(false);
     const [schedules, setSchedules] = useState<any[]>([]);
     const [selectedSection, setSelectedSection] = useState<string | null>(null);
+    const [isAdding, setIsAdding] = useState(false);
 
     useEffect(() => {
         loadCourse();
@@ -46,18 +47,19 @@ export function NewCourseDetailScreen() {
     };
 
     const confirmAddToSchedule = async (scheduleId: string) => {
-        if (!selectedSection) return;
+        if (!selectedSection || isAdding) return;
+        
+        setIsAdding(true);
         try {
             await addSectionToSchedule(scheduleId, selectedSection, userId);
             setModalVisible(false);
-            // Navigate to the schedule detail page
-            const targetSchedule = schedules.find((s: any) => s.schedule_id === scheduleId);
-            navigation.navigate('ScheduleDetail', {
-                scheduleId,
-                scheduleObj: targetSchedule || { schedule_id: scheduleId },
-            });
+            
+            // Show success message and stay on the screen
+            alert("Section added to your schedule!");
         } catch (e) {
             alert("Failed to add section.");
+        } finally {
+            setIsAdding(false);
         }
     };
 
@@ -93,7 +95,12 @@ export function NewCourseDetailScreen() {
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Choose Schedule to Add To</Text>
                         {schedules.map(s => (
-                            <Pressable key={s.schedule_id} style={styles.scheduleOption} onPress={() => confirmAddToSchedule(s.schedule_id)}>
+                            <Pressable 
+                                key={s.schedule_id} 
+                                style={[styles.scheduleOption, isAdding && { opacity: 0.5 }]} 
+                                onPress={() => confirmAddToSchedule(s.schedule_id)}
+                                disabled={isAdding}
+                            >
                                 <Text style={styles.scheduleText}>{s.name} ({s.term_code})</Text>
                             </Pressable>
                         ))}

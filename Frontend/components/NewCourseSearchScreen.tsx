@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, FlatList, StyleSheet, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { Search as SearchIcon, ChevronRight } from 'lucide-react-native';
+import { useNavigation, CommonActions, useRoute } from '@react-navigation/native';
+import { Search as SearchIcon, ChevronRight, ChevronLeft } from 'lucide-react-native';
 import { fetchCourses } from '../api/client';
 import { useTheme } from './SharedUI';
 
@@ -9,9 +9,60 @@ export function NewCourseSearchScreen() {
     const { COLORS } = useTheme();
     const styles = getStyles(COLORS);
     const navigation = useNavigation<any>();
+    const route = useRoute<any>();
+    const { returnTo, scheduleId } = route.params || {};
     const [query, setQuery] = useState('');
     const [courses, setCourses] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
+
+    const handleBackToSchedules = () => {
+        const state = navigation.getState();
+        const schedIndex = state.routes.findIndex((r: any) => r.name === 'ScheduleList');
+        
+        if (schedIndex !== -1) {
+            navigation.dispatch(
+                CommonActions.reset({
+                    index: schedIndex,
+                    routes: state.routes.slice(0, schedIndex + 1),
+                })
+            );
+        } else {
+            const mainRoute = state.routes.find((r: any) => r.name === 'Main') || state.routes[0];
+            const currentRoute = state.routes[state.routes.length - 1];
+            navigation.dispatch(
+                CommonActions.reset({
+                    index: 2,
+                    routes: [
+                        mainRoute,
+                        { name: 'ScheduleList', key: `ScheduleList-${Date.now()}` },
+                        currentRoute,
+                    ],
+                })
+            );
+            setTimeout(() => {
+                navigation.goBack();
+            }, 0);
+        }
+    };
+
+    React.useLayoutEffect(() => {
+        if (returnTo === 'ScheduleDetail') {
+            navigation.setOptions({
+                headerLeft: () => (
+                    <Pressable
+                        onPress={handleBackToSchedules}
+                        style={{ marginLeft: 16, flexDirection: 'row', alignItems: 'center' }}
+                    >
+                        <ChevronLeft size={28} color={COLORS.primary} />
+                        <Text style={{ color: COLORS.primary, fontSize: 17, marginLeft: -4, fontWeight: '500' }}>Schedules</Text>
+                    </Pressable>
+                ),
+            });
+        } else {
+            // Revert back to the native header left (default back arrow) for normal searches
+            navigation.setOptions({ headerLeft: undefined });
+        }
+    }, [navigation, COLORS, returnTo]);
 
     useEffect(() => {
         const delayDebounceFn = setTimeout(() => {
@@ -41,7 +92,7 @@ export function NewCourseSearchScreen() {
     const renderItem = ({ item }: { item: any }) => (
         <Pressable 
             style={({pressed}) => [styles.card, pressed && styles.cardPressed]}
-            onPress={() => navigation.navigate('NewCourseDetail', { courseId: item.id })}
+            onPress={() => navigation.navigate('NewCourseDetail', { courseId: item.id, returnTo, scheduleId })}
         >
             <View style={styles.cardContent}>
                 <View style={styles.cardBadge}>
