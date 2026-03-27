@@ -7,16 +7,20 @@ import {
   Pressable,
   Animated,
 } from 'react-native';
-import { Volume2, X as XIcon } from 'lucide-react-native';
+import { Volume2, VolumeX, X as XIcon } from 'lucide-react-native';
 import { useTheme } from './SharedUI';
 import { DirectionStep } from '../services/campusDirections';
-import { speakStep, stopSpeech } from '../services/campusTTS';
+import { stopSpeech } from '../services/campusTTS';
 
 interface CampusDirectionsPanelProps {
   destinationName: string;
   distanceLabel: string;
   etaLabel: string;
   steps: DirectionStep[];
+  modeLabel: string;
+  routeNote?: string | null;
+  voiceEnabled: boolean;
+  onToggleVoice: () => void;
   onEnd: () => void;
 }
 
@@ -25,6 +29,10 @@ export function CampusDirectionsPanel({
   distanceLabel,
   etaLabel,
   steps,
+  modeLabel,
+  routeNote,
+  voiceEnabled,
+  onToggleVoice,
   onEnd,
 }: CampusDirectionsPanelProps) {
     const { COLORS } = useTheme();
@@ -39,10 +47,6 @@ export function CampusDirectionsPanel({
     }).start();
   }, []);
 
-  const handleSpeak = async (instruction: string) => {
-    await speakStep(instruction);
-  };
-
   const handleEnd = async () => {
     await stopSpeech();
     onEnd();
@@ -50,23 +54,48 @@ export function CampusDirectionsPanel({
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+      <View style={styles.handleBar} />
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerText}>
           <Text style={styles.headerTitle} numberOfLines={1}>
-            Directions to {destinationName}
+            {modeLabel} to {destinationName}
           </Text>
           <Text style={styles.headerSub}>
             {distanceLabel} • {etaLabel}
           </Text>
         </View>
-        <Pressable
-          style={({ pressed }) => [styles.endBtn, pressed && styles.endBtnPressed]}
-          onPress={handleEnd}
-        >
-          <XIcon color="#FFF" size={16} />
-          <Text style={styles.endBtnText}>End</Text>
-        </Pressable>
+      </View>
+
+      <View style={styles.metaRow}>
+        <View style={styles.metaLeft}>
+          <View style={styles.modeBadge}>
+            <Text style={styles.modeBadgeText}>{modeLabel}</Text>
+          </View>
+          {routeNote ? (
+            <Text style={styles.routeNote} numberOfLines={2}>
+              {routeNote}
+            </Text>
+          ) : null}
+        </View>
+        <View style={styles.metaActions}>
+          <Pressable
+            style={({ pressed }) => [styles.voiceBtn, pressed && styles.voiceBtnPressed]}
+            onPress={onToggleVoice}
+          >
+            {voiceEnabled ? <Volume2 color={COLORS.primary} size={16} /> : <VolumeX color={COLORS.textSecondary} size={16} />}
+            <Text style={[styles.voiceBtnText, !voiceEnabled && styles.voiceBtnTextMuted]}>
+              {voiceEnabled ? 'Voice On' : 'Voice Off'}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [styles.endBtn, pressed && styles.endBtnPressed]}
+            onPress={handleEnd}
+          >
+            <XIcon color="#FFF" size={16} />
+            <Text style={styles.endBtnText}>End</Text>
+          </Pressable>
+        </View>
       </View>
 
       {/* Steps */}
@@ -84,12 +113,6 @@ export function CampusDirectionsPanel({
             <View style={styles.stepBody}>
               <Text style={styles.stepInstruction}>{step.instruction}</Text>
             </View>
-            <Pressable
-              style={({ pressed }) => [styles.speakBtn, pressed && styles.speakBtnPressed]}
-              onPress={() => handleSpeak(step.instruction)}
-            >
-              <Volume2 color={COLORS.primary} size={16} />
-            </Pressable>
           </View>
         ))}
       </ScrollView>
@@ -100,25 +123,33 @@ export function CampusDirectionsPanel({
 const getStyles = (COLORS: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: 'rgba(8,8,8,0.96)',
+    borderRadius: 30,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderBottomWidth: 0,
+    borderColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.28,
+    shadowRadius: 24,
+    elevation: 14,
+  },
+  handleBar: {
+    width: 42,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 2,
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingTop: 14,
+    paddingBottom: 12,
   },
   headerText: {
     flex: 1,
-    marginRight: 12,
   },
   headerTitle: {
     fontSize: 17,
@@ -131,6 +162,66 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 2,
   },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  metaLeft: {
+    flex: 1,
+    gap: 8,
+    paddingRight: 6,
+  },
+  metaActions: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  modeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  modeBadgeText: {
+    color: COLORS.textPrimary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  routeNote: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  voiceBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  voiceBtnPressed: {
+    opacity: 0.8,
+  },
+  voiceBtnText: {
+    color: COLORS.primary,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  voiceBtnTextMuted: {
+    color: COLORS.textSecondary,
+  },
   endBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -138,7 +229,7 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     backgroundColor: COLORS.danger,
     paddingVertical: 8,
     paddingHorizontal: 14,
-    borderRadius: 10,
+    borderRadius: 999,
   },
   endBtnPressed: {
     opacity: 0.8,
@@ -182,13 +273,5 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     fontSize: 15,
     color: COLORS.textPrimary,
     lineHeight: 22,
-  },
-  speakBtn: {
-    padding: 8,
-    marginLeft: 4,
-    alignSelf: 'flex-start',
-  },
-  speakBtnPressed: {
-    opacity: 0.6,
   },
 });

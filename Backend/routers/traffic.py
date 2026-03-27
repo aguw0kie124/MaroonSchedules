@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 import requests
 from datetime import datetime
@@ -8,6 +8,7 @@ from urllib.parse import quote
 import pytz
 import json
 import re
+from threading import Lock
 
 try:
     from perplexity import Perplexity
@@ -95,13 +96,33 @@ class TAMUFacilityTracker:
 
     def get_all_locations_with_events(self) -> List[Dict[str, float]]:
         result = []
+        official_lookup = {
+            "Student Rec Center": {"coord": {"lat": 30.6094, "lng": -96.3400}, "type": "Rec", "hours": "6:00 AM – 11:59 PM"},
+            "Southside Rec Center": {"coord": {"lat": 30.6093, "lng": -96.3390}, "type": "Rec", "hours": "5:30 AM – 11:59 PM"},
+            "Polo Road Rec Center": {"coord": {"lat": 30.6237, "lng": -96.3395}, "type": "Rec", "hours": "6:00 AM – 9:00 PM weekdays"},
+            "Sterling C. Evans Library": {"coord": {"lat": 30.6171, "lng": -96.3387}, "type": "Library"},
+            "Evans Library Annex": {"coord": {"lat": 30.6168, "lng": -96.3383}, "type": "Library"},
+            "West Campus Library": {"coord": {"lat": 30.6146, "lng": -96.3440}, "type": "Library"},
+            "Cushing Memorial Library": {"coord": {"lat": 30.6166, "lng": -96.3400}, "type": "Library"},
+        }
+
         # Rec Facilities
         for f in self.fetch_rec_data():
             name = f.get("LocationName") or "Unknown"
             current = f.get("LastCount", 0)
             total = f.get("TotalCapacity", 1)
             percent = round((current / total) * 100, 1)
-            result.append({"location": name, "percent_full": percent})
+            lookup = official_lookup.get(name)
+            if lookup:
+                result.append({
+                    "location": name,
+                    "percent_full": percent,
+                    "type": lookup["type"],
+                    "is_live": True,
+                    "available_seats": max(total - current, 0),
+                    "coord": lookup["coord"],
+                    "hours": lookup.get("hours"),
+                })
         # Libraries
         for lib in self.fetch_library_data():
             name = lib.get("name") or "Unknown"
@@ -109,12 +130,38 @@ class TAMUFacilityTracker:
             remaining = int(lib.get("remaining", 0))
             current = max_cap - remaining
             percent = round((current / max_cap) * 100, 1)
-            result.append({"location": name, "percent_full": percent})
+            lookup = official_lookup.get(name)
+            if lookup:
+                result.append({
+                    "location": name,
+                    "percent_full": percent,
+                    "type": lookup["type"],
+                    "is_live": True,
+                    "available_seats": remaining,
+                    "coord": lookup["coord"],
+                    "hours": lookup.get("hours"),
+                })
         # Events
         for event in self.fetch_event_data(limit=50):
             location_name = event.get("location") or "Unknown Event Location"
-            percent = round(random.uniform(10, 100), 1)
-            result.append({"location": location_name, "percent_full": percent})
+            latitude = event.get("latitude")
+            longitude = event.get("longitude")
+            if latitude in [None, "", "N/A"] or longitude in [None, "", "N/A"]:
+                continue
+            try:
+                lat = float(latitude)
+                lng = float(longitude)
+            except Exception:
+                continue
+            result.append({
+                "location": location_name,
+                "percent_full": 0,
+                "type": "General",
+                "is_live": False,
+                "available_seats": None,
+                "coord": {"lat": lat, "lng": lng},
+                "current_event": event.get("title"),
+            })
         return result
 
     def ask_perplexity(self, prompt: str) -> str:
@@ -167,6 +214,183 @@ tracker = TAMUFacilityTracker()
 # Wait until called to load to prevent blocking bootup
 # tracker.load_all_data()
 
+
+class AggieSpiritProxy:
+    def __init__(self):
+        self.base_url = "https://aggiespirit.ts.tamu.edu"
+        self.session = requests.Session()
+        self._auth_headers = None
+        self._lock = Lock()
+        self._vehicle_cache: Dict[str, List[Dict[str, Any]]] = {}
+        self._route_cache: List[Dict[str, Any]] = []
+        self._active_cache: List[str] = []
+        self._pattern_cache: Dict[str, Dict[str, Any]] = {}
+        self._form_token = None
+
+    def _build_auth_headers(self, force_refresh: bool = False) -> Dict[str, str]:
+        with self._lock:
+            if self._auth_headers and not force_refresh:
+                return self._auth_headers
+
+            response = self.session.get(f"{self.base_url}/RouteMap", timeout=15)
+            response.raise_for_status()
+            html = response.text
+
+            html_token_match = re.search(r'name="__RequestVerificationToken" type="hidden" value="([^"]+)"', html)
+            cookie_token = self.session.cookies.get(".MyRide.RequestVerificationToken")
+
+            if not html_token_match or not cookie_token:
+                raise RuntimeError("Could not initialize AggieSpirit verification token")
+
+            self._form_token = html_token_match.group(1)
+            self._auth_headers = {
+                "requestverificationtoken": f"{cookie_token}:{self._form_token}",
+                "X-Requested-With": "XMLHttpRequest",
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                "Origin": self.base_url,
+                "Referer": f"{self.base_url}/RouteMap",
+            }
+            return self._auth_headers
+
+    def _post(self, path: str, body: str = "", retry: bool = True, content_type: str = "application/x-www-form-urlencoded; charset=UTF-8"):
+        headers = self._build_auth_headers()
+        headers = dict(headers)
+        headers["Content-Type"] = content_type
+        response = self.session.post(f"{self.base_url}{path}", headers=headers, data=body, timeout=20)
+        if response.status_code in (401, 403) and retry:
+            headers = self._build_auth_headers(force_refresh=True)
+            headers = dict(headers)
+            headers["Content-Type"] = content_type
+            response = self.session.post(f"{self.base_url}{path}", headers=headers, data=body, timeout=20)
+        response.raise_for_status()
+        return response.json()
+
+    @staticmethod
+    def _route_color(route_key: str) -> str:
+        palette = ["#500000", "#7E0000", "#B34100", "#0B6E4F", "#165DFF", "#6B3FA0", "#007A78", "#A63D40"]
+        if not route_key:
+            return palette[0]
+        hash_value = 0
+        for char in route_key:
+            hash_value = ((hash_value * 31) + ord(char)) & 0xFFFFFFFF
+        return palette[hash_value % len(palette)]
+
+    def get_active_routes(self) -> List[str]:
+        try:
+            routes = self._post("/Home/GetActiveRoutes", "null", content_type="application/json")
+            if isinstance(routes, list) and routes:
+                self._active_cache = routes
+            return routes if isinstance(routes, list) and routes else self._active_cache
+        except Exception:
+            return self._active_cache
+
+    def get_routes(self) -> List[Dict[str, Any]]:
+        try:
+            data = self._post("/RouteMap/GetBaseData/", "")
+            routes = [{
+                "Key": route.get("key") or route.get("Key"),
+                "Name": route.get("name") or route.get("Name"),
+                "ShortName": route.get("shortName") or route.get("ShortName"),
+                "Color": route.get("color") or route.get("Color") or next((
+                    direction.get("lineColor")
+                    for direction in (route.get("directionList") or [])
+                    if direction.get("lineColor")
+                ), self._route_color(route.get("key") or route.get("shortName") or route.get("name") or "")),
+            } for route in data.get("routes", [])]
+            if routes:
+                self._route_cache = routes
+            return routes if routes else self._route_cache
+        except Exception:
+            return self._route_cache
+
+    def get_pattern(self, route_key: str) -> Dict[str, Any]:
+        try:
+            payload = f"routeKeys%5B%5D={quote(route_key)}"
+            data = self._post("/RouteMap/GetPatternPaths/", payload)
+            points: List[Dict[str, float]] = []
+            stops: List[Dict[str, Any]] = []
+            seen_stops = set()
+            if data:
+                for item in data[0].get("patternPaths", []):
+                    for point in item.get("patternPoints", []):
+                        points.append({
+                            "latitude": point.get("latitude"),
+                            "longitude": point.get("longitude"),
+                        })
+                        stop = point.get("stop")
+                        if stop and stop.get("stopCode") not in seen_stops:
+                            seen_stops.add(stop.get("stopCode"))
+                            stops.append({
+                                "Name": stop.get("name"),
+                                "Latitude": point.get("latitude"),
+                                "Longitude": point.get("longitude"),
+                                "StopCode": stop.get("stopCode"),
+                            })
+            snapshot = {"points": points, "stops": stops}
+            if points or stops:
+                self._pattern_cache[route_key] = snapshot
+            return snapshot if points or stops else self._pattern_cache.get(route_key, {"points": [], "stops": []})
+        except Exception:
+            return self._pattern_cache.get(route_key, {"points": [], "stops": []})
+
+    def get_vehicles(self, route_id: str = "") -> Dict[str, Any]:
+        normalized_route_id = (route_id or "").strip().lower()
+        try:
+            route_keys: List[str] = []
+            route_lookup = {route["Key"]: route for route in self.get_routes() if route.get("Key")}
+            if route_id:
+                route_keys = [route_id]
+            else:
+                route_keys = list(route_lookup.keys())
+
+            if not route_keys:
+                cache_key = normalized_route_id or "__all__"
+                cached = self._vehicle_cache.get(cache_key, [])
+                return {"vehicles": cached, "live": False, "used_cache": bool(cached)}
+
+            payload = "&".join([f"routeKeys%5B%5D={quote(route_key)}" for route_key in route_keys])
+            data = self._post("/RouteMap/GetVehicles/", payload)
+            vehicles: List[Dict[str, Any]] = []
+            for route in data or []:
+                route_meta = route_lookup.get(route.get("routeKey"))
+                identifiers = [
+                    str(route.get("routeKey") or "").strip().lower(),
+                    str(route.get("shortName") or route_meta.get("ShortName") if route_meta else "").strip().lower(),
+                    str(route.get("name") or route_meta.get("Name") if route_meta else "").strip().lower(),
+                ]
+                if normalized_route_id and normalized_route_id not in identifiers:
+                    continue
+                for direction in route.get("vehiclesByDirections", []) or []:
+                    for vehicle in direction.get("vehicles", []) or []:
+                        location = vehicle.get("location") or {}
+                        vehicles.append({
+                            "Key": vehicle.get("key"),
+                            "Name": vehicle.get("name"),
+                            "Latitude": location.get("latitude"),
+                            "Longitude": location.get("longitude"),
+                            "Heading": location.get("heading"),
+                            "PassengersOnboard": vehicle.get("passengersOnboard"),
+                            "Capacity": vehicle.get("passengerCapacity"),
+                            "RouteKey": route.get("routeKey"),
+                            "RouteShortName": route.get("shortName") or (route_meta.get("ShortName") if route_meta else None),
+                            "RouteName": route.get("name") or (route_meta.get("Name") if route_meta else None),
+                            "RouteColor": (route_meta.get("Color") if route_meta else None) or self._route_color(route.get("routeKey") or route.get("shortName") or route.get("name") or ""),
+                        })
+
+            cache_key = normalized_route_id or "__all__"
+            if vehicles:
+                self._vehicle_cache[cache_key] = vehicles
+                self._vehicle_cache["__all__"] = vehicles if not normalized_route_id else self._vehicle_cache.get("__all__", vehicles)
+            cached = self._vehicle_cache.get(cache_key, [])
+            return {"vehicles": vehicles if vehicles else cached, "live": bool(vehicles), "used_cache": not bool(vehicles) and bool(cached)}
+        except Exception:
+            cache_key = normalized_route_id or "__all__"
+            cached = self._vehicle_cache.get(cache_key, [])
+            return {"vehicles": cached, "live": False, "used_cache": bool(cached)}
+
+
+transit_proxy = AggieSpiritProxy()
+
 class QueryRequest(BaseModel):
     query: str
 
@@ -185,6 +409,24 @@ def ask_perplexity(request: QueryRequest):
 @router.get("/retrieve")
 def retrieve_locations():
     return tracker.get_all_locations_with_events()
+
+
+@router.get("/transit/routes")
+def get_transit_routes():
+    return {
+        "routes": transit_proxy.get_routes(),
+        "activeRouteIds": transit_proxy.get_active_routes(),
+    }
+
+
+@router.get("/transit/route/{route_key}")
+def get_transit_route(route_key: str):
+    return transit_proxy.get_pattern(route_key)
+
+
+@router.get("/transit/vehicles")
+def get_transit_vehicles(route_id: str = Query("")):
+    return transit_proxy.get_vehicles(route_id)
 
 @router.post("/create-event")
 def create_event(event: EventRequest):

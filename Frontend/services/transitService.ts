@@ -1,6 +1,8 @@
 import axios from 'axios';
+import { API_URL } from '../config';
 
 const BASE_URL = 'https://aggiespirit.ts.tamu.edu';
+const ROUTE_COLORS = ['#500000', '#7E0000', '#B34100', '#0B6E4F', '#165DFF', '#6B3FA0', '#007A78', '#A63D40'];
 
 export interface BusRoute {
     id: string;
@@ -30,6 +32,11 @@ export interface BusStop {
 export const transitService = {
     auth: null as any,
     cookies: null as string | null,
+    routesCache: [] as any[],
+    activeRoutesCache: [] as string[],
+    patternCache: new Map<string, { points: any[]; stops: any[] }>(),
+    vehicleCache: new Map<string, any[]>(),
+    lastVehiclesSnapshot: [] as any[],
 
     /**
      * Reconstructs the MaroonRides dynamic authentication flow.
@@ -105,26 +112,19 @@ export const transitService = {
      */
     async getActiveRoutes(): Promise<string[]> {
         try {
-            if (!this.auth) await this.initAuth();
-            
-            const response = await fetch(`${BASE_URL}/Home/GetActiveRoutes`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...this.auth
-                },
-                body: null
-            });
-
+            const response = await fetch(`${API_URL}/traffic/transit/routes`);
             if (!response.ok) {
-                console.error(`[TransitService] GetActiveRoutes failed: ${response.status}`);
-                return [];
+                return this.activeRoutesCache;
             }
-
-            return await response.json() || [];
+            const payload = await response.json();
+            const routes = payload.activeRouteIds || [];
+            if (Array.isArray(routes) && routes.length > 0) {
+                this.activeRoutesCache = routes;
+            }
+            return Array.isArray(routes) && routes.length > 0 ? routes : this.activeRoutesCache;
         } catch (error) {
             console.error('[TransitService] Error fetching active routes:', error);
-            return [];
+            return this.activeRoutesCache;
         }
     },
 
@@ -133,29 +133,22 @@ export const transitService = {
      */
     async getRoutesMetadata(): Promise<any[]> {
         try {
-            if (!this.auth) await this.initAuth();
-            
-            // Note: GetBaseData with empty body returns all routes
-            const response = await fetch(`${BASE_URL}/RouteMap/GetBaseData/`, {
-                method: 'POST',
-                headers: {
-                    ...this.auth,
-                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-                },
-                body: ''
-            });
-
-            if (!response.ok) return [];
+            const response = await fetch(`${API_URL}/traffic/transit/routes`);
+            if (!response.ok) return this.routesCache;
             const data = await response.json();
-            // Normalize metadata to PascalCase to match previous implementation patterns
-            return (data.routes || []).map((r: any) => ({
+            const routes = (data.routes || []).map((r: any) => ({
                 Key: r.key || r.Key,
                 Name: r.name || r.Name,
-                ShortName: r.shortName || r.ShortName
+                ShortName: r.shortName || r.ShortName,
+                Color: r.color || r.Color || this.getRouteColor(r.key || r.Key || r.shortName || r.ShortName || r.name || r.Name),
             }));
+            if (routes.length > 0) {
+                this.routesCache = routes;
+            }
+            return routes.length > 0 ? routes : this.routesCache;
         } catch (error) {
             console.error('[TransitService] Error fetching routes metadata:', error);
-            return [];
+            return this.routesCache;
         }
     },
 
@@ -164,48 +157,34 @@ export const transitService = {
      */
     async getRoutePattern(routeId: string): Promise<{ points: any[], stops: any[] }> {
         try {
-            if (!this.auth) await this.initAuth();
-            
-            const body = `routeKeys%5B%5D=${encodeURIComponent(routeId)}`;
-            const response = await fetch(`${BASE_URL}/RouteMap/GetPatternPaths/`, {
-                method: 'POST',
-                headers: {
-                    ...this.auth,
-                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-                },
-                body: body
-            });
-
-            if (!response.ok) return { points: [], stops: [] };
+            const response = await fetch(`${API_URL}/traffic/transit/route/${encodeURIComponent(routeId)}`);
+            if (!response.ok) return this.patternCache.get(routeId) || { points: [], stops: [] };
             const data = await response.json();
             
             const points: any[] = [];
             const stops: any[] = [];
             const seenStops = new Set();
 
-            if (data && data.length > 0) {
-                data[0].patternPaths?.forEach((path: any) => {
-                    path.patternPoints?.forEach((pt: any) => {
-                        points.push({
-                            latitude: pt.latitude,
-                            longitude: pt.longitude
-                        });
-                        if (pt.stop && !seenStops.has(pt.stop.stopCode)) {
-                            seenStops.add(pt.stop.stopCode);
-                            stops.push({
-                                Name: pt.stop.name,
-                                Latitude: pt.latitude,
-                                Longitude: pt.longitude,
-                                StopCode: pt.stop.stopCode
-                            });
-                        }
-                    });
+            (data.points || []).forEach((pt: any) => {
+                points.push({
+                    latitude: pt.latitude,
+                    longitude: pt.longitude
                 });
+            });
+            (data.stops || []).forEach((stop: any) => {
+                if (!seenStops.has(stop.StopCode)) {
+                    seenStops.add(stop.StopCode);
+                    stops.push(stop);
+                }
+            });
+            const pattern = { points, stops };
+            if (points.length > 0 || stops.length > 0) {
+                this.patternCache.set(routeId, pattern);
             }
-            return { points, stops };
+            return points.length > 0 || stops.length > 0 ? pattern : (this.patternCache.get(routeId) || pattern);
         } catch (error) {
             console.error('[TransitService] Error fetching route patterns:', error);
-            return { points: [], stops: [] };
+            return this.patternCache.get(routeId) || { points: [], stops: [] };
         }
     },
 
@@ -240,59 +219,24 @@ export const transitService = {
      */
     async getVehicles(routeId?: string): Promise<any[]> {
         try {
-            if (!this.auth) await this.initAuth();
-            
-            // Empty body often returns all vehicles for this system
-            const response = await fetch(`${BASE_URL}/RouteMap/GetVehicles/`, {
-                method: 'POST',
-                headers: {
-                    ...this.auth,
-                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-                },
-                body: '' 
-            });
+            const query = routeId ? `?route_id=${encodeURIComponent(routeId)}` : '';
+            const response = await fetch(`${API_URL}/traffic/transit/vehicles${query}`);
+            if (!response.ok) {
+                return this.getCachedVehicles(routeId);
+            }
+            const payload = await response.json();
+            const vehicles = payload.vehicles || [];
 
-            if (!response.ok) return [];
-            const data = await response.json() || [];
-            const normalizedRouteId = routeId?.toString().trim().toLowerCase();
-            
-            const vehicles: any[] = [];
-            data.forEach((route: any) => {
-                const routeIdentifiers = [
-                    route.routeKey,
-                    route.shortName,
-                    route.name,
-                ]
-                    .filter(Boolean)
-                    .map((value: any) => value.toString().trim().toLowerCase());
+            if (vehicles.length > 0) {
+                this.lastVehiclesSnapshot = vehicles;
+                const cacheKey = routeId || '__all__';
+                this.vehicleCache.set(cacheKey, vehicles);
+            }
 
-                // AggieSpirit may identify routes by key, short name, or full name.
-                const isMatch = !normalizedRouteId || routeIdentifiers.includes(normalizedRouteId);
-
-                if (!isMatch) return;
-
-                route.vehiclesByDirections?.forEach((dir: any) => {
-                    dir.vehicles?.forEach((v: any) => {
-                        vehicles.push({
-                            Key: v.key,
-                            Name: v.name,
-                            Latitude: v.location.latitude,
-                            Longitude: v.location.longitude,
-                            Heading: v.location.heading,
-                            PassengersOnboard: v.passengersOnboard,
-                            Capacity: v.passengerCapacity,
-                            RouteKey: route.routeKey,
-                            RouteShortName: route.shortName,
-                            RouteName: route.name
-                        });
-                    });
-                });
-            });
-
-            return vehicles;
+            return vehicles.length > 0 ? vehicles : this.getCachedVehicles(routeId);
         } catch (error) {
             console.error('[TransitService] Error fetching vehicles:', error);
-            return [];
+            return this.getCachedVehicles(routeId);
         }
     },
 
@@ -303,5 +247,22 @@ export const transitService = {
     async getRouteStops(routeId: string): Promise<any[]> {
         const { stops } = await this.getRoutePattern(routeId);
         return stops;
+    },
+
+    getCachedVehicles(routeId?: string): any[] {
+        if (routeId) {
+            return this.vehicleCache.get(routeId) || [];
+        }
+        return this.vehicleCache.get('__all__') || this.lastVehiclesSnapshot || [];
+    },
+
+    getRouteColor(routeId?: string): string {
+        const value = (routeId || '').toString();
+        if (!value) return ROUTE_COLORS[0];
+        let hash = 0;
+        for (let index = 0; index < value.length; index += 1) {
+            hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+        }
+        return ROUTE_COLORS[hash % ROUTE_COLORS.length];
     }
 };

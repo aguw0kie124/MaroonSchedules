@@ -121,6 +121,15 @@ export default function RetailSwipesScreen({ navigation }: any) {
   };
 
   const { swipes = [], usedThisWeek = 0, remaining = 7, todayUsed = 0 } = info || {};
+  const openFullMenu = () => {
+    navigation.navigate('FullMenu', {
+      location: selRest,
+      mealPeriod: selMeal,
+      title: `${selRest} ${selMeal.charAt(0).toUpperCase() + selMeal.slice(1)}`,
+      locations: optResult?.locations || [],
+      sourceHint: 'database',
+    });
+  };
 
   const marbleSrc = darkMode
     ? require('../../assets/black_marble.jpg')
@@ -192,6 +201,10 @@ export default function RetailSwipesScreen({ navigation }: any) {
 
           {optResult && (
             <View style={{ marginTop: 15 }}>
+              <TouchableOpacity style={[s.fullMenuBtn, { backgroundColor: T.sky + '14', borderColor: T.sky }]} onPress={openFullMenu}>
+                <Text style={[s.fullMenuText, { color: T.sky }]}>Full Menu</Text>
+              </TouchableOpacity>
+
               {optResult.success ? (
                 <View style={[s.optCard, { backgroundColor: T.card, borderColor: T.border }]}>
                   <Text style={[s.optMsg, { color: T.sage }]}>✓ Best combo found!</Text>
@@ -224,7 +237,7 @@ export default function RetailSwipesScreen({ navigation }: any) {
                   {optResult.locations && optResult.locations.length > 0 && (
                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
                       {optResult.locations.map((loc: string, i: number) => (
-                        <View key={i} style={{ backgroundColor: T.bg3, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: T.border }}>
+                        <View key={i} style={{ backgroundColor: T.bg3, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: T.border }}>
                           <Text style={{ color: T.text3, fontSize: 9, fontWeight: '700' }}>{shortenLoc(loc)}</Text>
                         </View>
                       ))}
@@ -262,15 +275,15 @@ const s = StyleSheet.create({
   backBtn: { width: 44, height: 44, justifyContent: 'center' },
   title: { fontSize: 32, fontWeight: '900', letterSpacing: -0.5, flex: 1 },
   pillRow: { flexDirection: 'row', gap: 10, marginBottom: 15 },
-  logBtn: { borderWidth: 1, padding: 12, borderRadius: 12, alignItems: 'center' },
+  logBtn: { borderWidth: 1, padding: 12, borderRadius: 999, alignItems: 'center' },
   logText: { fontWeight: '900', fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 },
-  input: { borderRadius: 12, padding: 12, marginBottom: 15, borderWidth: 1 },
+  input: { borderRadius: 20, padding: 12, marginBottom: 15, borderWidth: 1 },
   subHeader: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 1 },
-  restChip: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 12, borderWidth: 1, marginRight: 8 },
+  restChip: { paddingHorizontal: 15, paddingVertical: 10, borderRadius: 999, borderWidth: 1, marginRight: 8 },
   restText: { fontSize: 12, fontWeight: '700' },
-  mealChip: { flex: 1, alignItems: 'center', padding: 10, borderRadius: 10, borderWidth: 1 },
+  mealChip: { flex: 1, alignItems: 'center', padding: 12, borderRadius: 999, borderWidth: 1 },
   mealText: { fontSize: 11, fontWeight: '800' },
-  optCard: { padding: 12, borderRadius: 12, borderWidth: 1 },
+  optCard: { padding: 14, borderRadius: 24, borderWidth: 1 },
   optMsg: { fontWeight: '900', fontSize: 12, marginBottom: 10, textTransform: 'uppercase' },
   optRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
   optItemName: { fontSize: 13, flex: 1 },
@@ -281,4 +294,6 @@ const s = StyleSheet.create({
   historyRest: { fontWeight: '700', fontSize: 14 },
   historyDate: { fontSize: 11, marginTop: 2 },
   historyCost: { fontWeight: 'bold' },
+  fullMenuBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginBottom: 14 },
+  fullMenuText: { fontSize: 12, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.2 },
 });

@@ -274,7 +274,7 @@ export default function DiningDashboard({ navigation }: any) {
             {/* Action Buttons: Unified Size and integrated text like MacroPills */}
             <View style={s.actionRow}>
                 <ActionBtn icon="📋" label="Tracker" T={T} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); navigation.navigate('TrackerHub'); }} />
-                <ActionBtn icon="🧬" label="Optimize" T={T} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); navigation.navigate('MealOptimizer'); }} />
+                <ActionBtn icon="🍽️" label="Menus" T={T} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); navigation.navigate('MealOptimizer'); }} />
                 <ActionBtn icon="🔥" label={`${streak}d Streak`} T={T} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); navigation.navigate('StreakHub'); }} />
             </View>
         </View>

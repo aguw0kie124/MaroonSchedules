@@ -88,6 +88,7 @@ import { SocialHubScreen } from './components/SocialHubScreen';
 
 import DiningDashboard from './components/dining/DiningDashboard';
 import MealOptimizerScreen from './components/dining/MealOptimizerScreen';
+import FullMenuScreen from './components/dining/FullMenuScreen';
 import MealTrackerScreen from './components/dining/MealTrackerScreen';
 import FoodDatabaseScreen from './components/dining/FoodDatabaseScreen';
 import RetailSwipesScreen from './components/dining/RetailSwipesScreen';
@@ -221,6 +222,7 @@ function RootNavigator() {
           
           <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: false }} />
           <Stack.Screen name="MealOptimizer" component={MealOptimizerScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="FullMenu" component={FullMenuScreen} options={{ headerShown: false }} />
           <Stack.Screen name="TrackerHub" component={TrackerHubScreen} options={{ headerShown: false }} />
           <Stack.Screen name="StreakHub" component={StreakHubScreen} options={{ headerShown: false }} />
           <Stack.Screen name="MealTracker" component={MealTrackerScreen} options={{ headerShown: false }} />
