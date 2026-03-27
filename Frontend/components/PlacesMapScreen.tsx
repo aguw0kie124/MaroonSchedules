@@ -245,10 +245,10 @@ const CAMPUS_ZONES: Array<{
     type: "Dining",
   },
   {
-    name: "Underground Food Court",
-    ...getCanonicalCoords("Underground Food Court", {
-      lat: 30.6128,
-      lng: -96.3418,
+    name: "Sbisa Dining Hall",
+    ...getCanonicalCoords("Sbisa Dining Hall", {
+      lat: 30.617135,
+      lng: -96.343777,
     }),
     peak: 70,
     off: 5,
@@ -344,10 +344,6 @@ const STATIC_LOCATION_META: Record<string, Partial<CampusLocation>> = {
   "Polo Road Garage Dining": {
     hours: "Check dining schedule",
     description: "Dining hub inside the Polo Road Garage complex.",
-  },
-  "Underground Food Court": {
-    hours: "Check dining schedule",
-    description: "Food court dining destination near Sbisa.",
   },
   "Rudder Tower": {
     hours: "Open daily",
@@ -1103,11 +1099,11 @@ export function PlacesMapScreen() {
           hours: "7:00 AM – 9:00 PM",
         },
         {
-          location: "Underground Food Court",
-          type: "Hub",
-          coord: getCanonicalCoords("Underground Food Court", {
-            lat: 30.6128,
-            lng: -96.3418,
+          location: "Sbisa Dining Hall",
+          type: "Dining",
+          coord: getCanonicalCoords("Sbisa Dining Hall", {
+            lat: 30.617135,
+            lng: -96.343777,
           }),
           percent_full: 60,
           is_live: false,
