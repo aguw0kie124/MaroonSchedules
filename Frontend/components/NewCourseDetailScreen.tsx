@@ -69,7 +69,22 @@ export function NewCourseDetailScreen() {
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.title}>{course.code} - {course.name}</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                    <View style={{ flex: 1, paddingRight: 8 }}>
+                        <Text style={styles.title}>{course.code} - {course.name}</Text>
+                    </View>
+                    <PrimaryButton 
+                        title="View Grades" 
+                        onPress={() => {
+                            const parts = course.code.split(' ');
+                            if (parts.length >= 2) {
+                                navigation.navigate('GradesScreen', { initialSubject: parts[0], initialCourseNum: parts.slice(1).join(' ') });
+                            }
+                        }} 
+                        style={{ paddingHorizontal: 12, paddingVertical: 8 }}
+                        textStyle={{ fontSize: 13 }}
+                    />
+                </View>
                 <Text style={[styles.subtitle, { marginBottom: course.prerequisites ? 6 : 0 }]}>{course.description || "No description available."}</Text>
                 {course.prerequisites && (
                     <Text style={[styles.subtitle, { color: '#FF9F0A', fontWeight: '600' }]}>

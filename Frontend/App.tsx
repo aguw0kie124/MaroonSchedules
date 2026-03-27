@@ -174,7 +174,6 @@ function MainTabs() {
       <Tab.Screen name="Places" component={PlacesMapScreen} options={{ title: 'Places' }} />
       <Tab.Screen name="Social" component={SocialHubScreen} options={{ title: 'Social' }} />
       <Tab.Screen name="Dining" component={DiningDashboard} options={{ title: 'Dining' }} />
-      <Tab.Screen name="Grades" component={GradesScreen} options={{ title: 'Grades' }} />
       <Tab.Screen name="Profile" component={Profile} options={{ title: 'Profile' }} />
     </Tab.Navigator>
   );
@@ -244,6 +243,7 @@ function RootNavigator() {
           <Stack.Screen name="CanvasCourses" component={CanvasCoursesScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CanvasAssignments" component={CanvasAssignmentsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CanvasGrades" component={CanvasGradesScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="GradesScreen" component={GradesScreen} options={{ headerShown: true, title: 'Grade Distributions' }} />
         </>
       ) : (
         <>

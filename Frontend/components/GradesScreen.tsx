@@ -3,7 +3,7 @@
 //
 // Shows: subject + course# search → summary card → section list → detail modal
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
     View,
     Text,
@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { BarChart2, X, ChevronRight, GraduationCap } from 'lucide-react-native';
 
+import { useRoute } from '@react-navigation/native';
 import { useTheme } from './SharedUI';
 import { searchCourseGrades } from '../services/grades';
 import { gpaColor } from '../utils/grades';
@@ -278,16 +279,25 @@ export function GradesScreen() {
     const { COLORS } = useTheme();
     const styles = getStyles(COLORS);
 
-    const [subject, setSubject] = useState('');
-    const [courseNum, setCourseNum] = useState('');
+    const route = useRoute<any>();
+    const { initialSubject, initialCourseNum } = route.params || {};
+
+    const [subject, setSubject] = useState(initialSubject || '');
+    const [courseNum, setCourseNum] = useState(initialCourseNum || '');
     const [screenState, setScreenState] = useState<ScreenState>('idle');
     const [result, setResult] = useState<GradeSearchResult | null>(null);
     const [errorMsg, setErrorMsg] = useState('');
     const [selectedSection, setSelectedSection] = useState<InstructorSectionStat | null>(null);
 
-    const handleSearch = useCallback(async () => {
-        const subj = subject.trim().toUpperCase();
-        const num = courseNum.trim();
+    useEffect(() => {
+        if (initialSubject && initialCourseNum) {
+            performSearch(initialSubject, initialCourseNum);
+        }
+    }, [initialSubject, initialCourseNum]);
+
+    const performSearch = async (subjInput: string, numInput: string) => {
+        const subj = subjInput.trim().toUpperCase();
+        const num = numInput.trim();
         if (!subj || !num) return;
 
         setScreenState('loading');
@@ -302,6 +312,10 @@ export function GradesScreen() {
             setErrorMsg(err?.message ?? 'Unknown error');
             setScreenState('error');
         }
+    };
+
+    const handleSearch = useCallback(() => {
+        performSearch(subject, courseNum);
     }, [subject, courseNum]);
 
     return (
