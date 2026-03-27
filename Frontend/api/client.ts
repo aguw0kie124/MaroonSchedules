@@ -17,7 +17,16 @@ async function requestJson(path: string, init: RequestInit = {}, timeoutMs = DEF
         });
 
         const rawBody = await response.text();
-        const data = rawBody ? JSON.parse(rawBody) : null;
+        let data = null;
+        try {
+            data = rawBody ? JSON.parse(rawBody) : null;
+        } catch (err) {
+            if (!response.ok) {
+                const preview = rawBody.slice(0, 100).replace(/\n/g, ' ');
+                throw new Error(`${init.method || 'GET'} ${path} failed with status ${response.status}: ${preview}`);
+            }
+            throw new Error(`Failed to parse response as JSON: ${err}`);
+        }
 
         if (!response.ok) {
             const message =

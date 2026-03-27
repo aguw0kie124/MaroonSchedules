@@ -256,6 +256,30 @@ export function ChatScreen({ route, navigation }: Props) {
   const CustomHeader = () => {
     const isGroupChat = isGroup || (channel && Object.keys(channel.state.members).length > 2);
     
+    let isOnline = false;
+    let lastActive = null;
+    if (channel && !isGroupChat) {
+      const members = Object.values(channel.state.members) as any[];
+      const otherUser = members.find(m => m.user?.id !== userId);
+      isOnline = otherUser?.user?.online || false;
+      lastActive = otherUser?.user?.last_active;
+    }
+
+    const formatLastActive = (dateStr: string) => {
+      if (!dateStr) return 'Offline';
+      const date = new Date(dateStr);
+      const diff = Math.floor((new Date().getTime() - date.getTime()) / 60000);
+      if (diff < 1) return 'Active just now';
+      if (diff < 60) return `Active ${diff}m ago`;
+      const hours = Math.floor(diff / 60);
+      if (hours < 24) return `Active ${hours}h ago`;
+      return `Active ${Math.floor(hours / 24)}d ago`;
+    };
+
+    const statusText = isGroupChat 
+      ? (channel ? `${Object.keys(channel.state.members).length} members` : `${(memberIds?.length || 0) + 1} members`)
+      : (isOnline ? 'Active now' : (channel ? formatLastActive(lastActive) : 'Connecting...'));
+
     return (
       <View style={styles.header}>
         <StatusBar barStyle="light-content" backgroundColor={C.maroon} />
@@ -274,14 +298,12 @@ export function ChatScreen({ route, navigation }: Props) {
             ) : (
               <Text style={styles.headerAvatarText}>{initials}</Text>
             )}
-            {!isGroup && <View style={styles.headerOnlineDot} />}
+            {!isGroup && isOnline && <View style={styles.headerOnlineDot} />}
           </View>
           
           <View style={styles.headerInfo}>
             <Text style={styles.headerName} numberOfLines={1}>{displayName}</Text>
-            <Text style={styles.headerStatus}>
-              {channel ? `${Object.keys(channel.state.members).length} members` : (isGroup ? `${(memberIds?.length || 0) + 1} members` : 'Active now')}
-            </Text>
+            <Text style={styles.headerStatus}>{statusText}</Text>
           </View>
         </Pressable>
       </View>

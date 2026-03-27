@@ -15,6 +15,7 @@ import { useUser } from '@clerk/clerk-expo';
 import { Check, Users, Plus, X } from 'lucide-react-native';
 import { API_URL } from '../config';
 import { KeyboardAvoidingView, Platform, Modal } from 'react-native';
+import { useCreateChatClient } from 'stream-chat-react-native';
 
 type ClerkUser = { id: string; name: string; email: string; profile_image_url?: string };
 
@@ -44,7 +45,7 @@ function getInitials(name: string) {
 }
 
 // ─── Avatar ──────────────────────────────────────────────────────────────────
-function Avatar({ name, userId, imageUrl, selected }: { name: string; userId: string; imageUrl?: string; selected?: boolean }) {
+function Avatar({ name, userId, imageUrl, selected, isOnline }: { name: string; userId: string; imageUrl?: string; selected?: boolean, isOnline?: boolean }) {
   return (
     <View style={[styles.avatar, { backgroundColor: getAvatarColor(userId) }]}>
       {selected ? (
@@ -57,13 +58,13 @@ function Avatar({ name, userId, imageUrl, selected }: { name: string; userId: st
       ) : (
         <Text style={styles.avatarInitials}>{getInitials(name)}</Text>
       )}
-      {!selected && <View style={styles.onlineBadge} />}
+      {!selected && isOnline && <View style={styles.onlineBadge} />}
     </View>
   );
 }
 
 // ─── User Row ─────────────────────────────────────────────────────────────────
-function UserRow({ item, onPress, selected, selectionMode }: { item: ClerkUser; onPress: () => void; selected: boolean; selectionMode: boolean }) {
+function UserRow({ item, onPress, selected, selectionMode, isOnline }: { item: ClerkUser; onPress: () => void; selected: boolean; selectionMode: boolean; isOnline?: boolean }) {
   return (
     <Pressable
       style={({ pressed }) => [
@@ -74,7 +75,7 @@ function UserRow({ item, onPress, selected, selectionMode }: { item: ClerkUser; 
       onPress={onPress}
       android_ripple={{ color: '#F5EAEA' }}
     >
-      <Avatar name={item.name} userId={item.id} imageUrl={item.profile_image_url} selected={selected} />
+      <Avatar name={item.name} userId={item.id} imageUrl={item.profile_image_url} selected={selected} isOnline={isOnline} />
 
       <View style={styles.rowText}>
         <Text style={styles.rowName} numberOfLines={1}>{item.name}</Text>
@@ -93,12 +94,18 @@ function UserRow({ item, onPress, selected, selectionMode }: { item: ClerkUser; 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export function UsersScreen() {
   const navigation = useNavigation<any>();
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
   const [all, setAll] = useState<ClerkUser[]>([]);
   const [filtered, setFiltered] = useState<ClerkUser[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [presenceMap, setPresenceMap] = useState<Record<string, boolean>>({});
+  
+  // Stream Chat State
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [streamUserId, setStreamUserId] = useState<string | null>(null);
+  const [userToken, setUserToken] = useState<string | null>(null);
   
   // Selection Mode State
   const [selectionMode, setSelectionMode] = useState(false);
@@ -108,13 +115,74 @@ export function UsersScreen() {
   const [nameModalVisible, setNameModalVisible] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState('');
 
+  // 1. Fetch Clerk Users and Stream Token simultaneously
   useEffect(() => {
-    fetch(`${API_URL}/chat/users?exclude_id=${user?.id ?? ''}`)
+    if (!isLoaded || !user) return;
+
+    fetch(`${API_URL}/chat/users?exclude_id=${user.id}`)
       .then(r => { if (!r.ok) throw new Error(`Status ${r.status}`); return r.json(); })
       .then(data => { setAll(data); setFiltered(data); })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
-  }, [user]);
+
+    fetch(`${API_URL}/chat/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clerk_user_id: user.id }),
+    })
+      .then(r => { if (!r.ok) throw new Error(`Token fetch failed: ${r.status}`); return r.json(); })
+      .then(data => {
+        setApiKey(data.stream_api_key);
+        setStreamUserId(data.stream_user_id);
+        setUserToken(data.stream_user_token);
+      })
+      .catch(err => console.warn('Stream token error:', err.message));
+  }, [user, isLoaded]);
+
+  // 2. Initialize Stream Client (if we have credentials)
+  const chatClient = useCreateChatClient({
+    apiKey: apiKey || '',
+    userData: { 
+      id: streamUserId || 'placeholder', 
+      name: user?.fullName || 'Aggie',
+      image: user?.imageUrl || undefined
+    },
+    tokenOrProvider: userToken || '',
+  });
+
+  // 3. Query presence once client is ready and users are loaded
+  useEffect(() => {
+    if (!chatClient || all.length === 0) return;
+    
+    // Subscribe to presence changes
+    const handlePresence = (event: any) => {
+      if (event.user && event.user.id) {
+        setPresenceMap(prev => ({
+          ...prev,
+          [event.user.id]: event.user.online || false
+        }));
+      }
+    };
+    
+    chatClient.on('user.presence.changed', handlePresence);
+
+    // Initial query
+    const ids = all.map(u => u.id);
+    // Slice into batches if many users, but queryUsers supports up to 100 for presence typically
+    chatClient.queryUsers({ id: { $in: ids } }, { id: 1 }, { presence: true })
+      .then(res => {
+        const pm: Record<string, boolean> = {};
+        res.users.forEach((u: any) => {
+          pm[u.id] = u.online || false;
+        });
+        setPresenceMap(prev => ({ ...prev, ...pm }));
+      })
+      .catch(e => console.warn('Failed to query users presence:', e));
+
+    return () => {
+      chatClient.off('user.presence.changed', handlePresence);
+    };
+  }, [chatClient, all]);
 
   const onSearch = (text: string) => {
     setQuery(text);
@@ -237,6 +305,7 @@ export function UsersScreen() {
             onPress={() => handleUserPress(item)} 
             selected={!!selectedUsers.find(u => u.id === item.id)}
             selectionMode={selectionMode}
+            isOnline={presenceMap[item.id]}
           />
         )}
       />
