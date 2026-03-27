@@ -12,8 +12,10 @@ import {
   Keyboard,
   Dimensions,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import MapView, { Marker, Polyline, Region, PROVIDER_GOOGLE } from 'react-native-maps';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from './SharedUI';
 import { CampusSearchBar } from './CampusSearchBar';
 import { CampusDirectionsPanel } from './CampusDirectionsPanel';
@@ -49,7 +51,6 @@ import {
   speakRouteIntro,
   speakStep,
   stopSpeech,
-  getIsSpeaking,
 } from '../services/campusTTS';
 import {
   requestMicPermission,
@@ -59,12 +60,24 @@ import {
   processVoiceCommand,
   VoiceIntent,
 } from '../services/campusVoice';
+import { buildTransitPlan, CampusTransitPlan } from '../services/campusTransitRouting';
 
 type NavMode = 'idle' | 'selected' | 'navigating';
+type TravelMode = 'walk' | 'bus';
+
+type ManualOrigin = {
+  name: string;
+  coordinate: Coordinate;
+};
+
+const VOICE_PREF_KEY = 'campus_navigation_voice_enabled';
+const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 export function CampusNavigationScreen() {
     const { COLORS } = useTheme();
     const styles = getStyles(COLORS);
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   // ─── State ──────────────────────────────────────────────────
   const [navMode, setNavMode] = useState<NavMode>('idle');
   const [destination, setDestination] = useState<{
@@ -73,8 +86,14 @@ export function CampusNavigationScreen() {
     amenity?: CampusAmenity;
     name: string;
   } | null>(null);
+  const [manualOrigin, setManualOrigin] = useState<ManualOrigin | null>(null);
   const [activeRoute, setActiveRoute] = useState<WalkingRoute | null>(null);
+  const [transitPlan, setTransitPlan] = useState<CampusTransitPlan | null>(null);
   const [steps, setSteps] = useState<DirectionStep[]>([]);
+  const [travelMode, setTravelMode] = useState<TravelMode>('walk');
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeNotice, setRouteNotice] = useState<string | null>(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [nearbyItems, setNearbyItems] = useState<CampusSearchResult[]>([]);
   const [voiceState, setVoiceState] = useState<'idle' | 'listening' | 'processing'>('idle');
   const [voiceBanner, setVoiceBanner] = useState<{ text?: string; error?: string } | null>(null);
@@ -87,14 +106,136 @@ export function CampusNavigationScreen() {
   const mapRef = useRef<MapView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
+  const routeGenerationRef = useRef(0);
+  const voicePreferenceReadyRef = useRef(false);
 
   const initialRegion: Region = {
     ...TAMU_CENTER,
   };
 
   const pinnedItems = useMemo(() => getPinnedItems(), []);
+  const seededDestinationRef = useRef(false);
+  const routeStartCoord = manualOrigin?.coordinate || userCoord;
+  const routeStartName = manualOrigin?.name || 'Current Location';
+  const destinationCoord: Coordinate | null = useMemo(() => (
+    destination?.building
+      ? { latitude: destination.building.latitude, longitude: destination.building.longitude }
+      : destination?.amenity
+        ? { latitude: destination.amenity.latitude, longitude: destination.amenity.longitude }
+        : null
+  ), [destination]);
+  const activeTransitPlan = travelMode === 'bus' ? transitPlan : null;
+  const effectiveMode: TravelMode = activeTransitPlan ? 'bus' : 'walk';
+  const hasActiveRoute = !!destination && (!!activeRoute || !!activeTransitPlan);
+  const summaryMode: TravelMode = travelMode === 'bus' && (activeTransitPlan || routeLoading) ? 'bus' : effectiveMode;
+  const displayedDistanceLabel = activeTransitPlan
+    ? formatDistance(activeTransitPlan.distanceMeters)
+    : activeRoute
+      ? formatDistance(activeRoute.distanceMeters)
+      : undefined;
+  const displayedEtaLabel = activeTransitPlan
+    ? formatTime(activeTransitPlan.estimatedTimeMinutes)
+    : activeRoute
+      ? formatTime(activeRoute.estimatedTimeMinutes)
+      : undefined;
+  const displayedRouteTitle = destination
+    ? activeTransitPlan
+      ? `Ride ${activeTransitPlan.routeShortName || 'Bus'} to ${destination.name}`
+      : travelMode === 'bus'
+        ? `Plan a bus trip to ${destination.name}`
+        : `Walk to ${destination.name}`
+    : undefined;
+  const displayedRouteMeta = activeTransitPlan
+    ? `Board at ${activeTransitPlan.originStop.Name} • Exit at ${activeTransitPlan.destinationStop.Name}`
+    : destination
+      ? `From ${routeStartName}`
+      : undefined;
+  const displayedRouteNote = activeTransitPlan
+    ? activeTransitPlan.nearestVehicleLabel
+      ? `${activeTransitPlan.nearestVehicleLabel}. ${formatDistance(activeTransitPlan.walkingToStopMeters)} to the stop.`
+      : `Walk ${formatDistance(activeTransitPlan.walkingToStopMeters)} to ${activeTransitPlan.originStop.Name}, then ride route ${activeTransitPlan.routeShortName}.`
+    : routeNotice;
+
+  const fitMapToCoordinates = (
+    coordinates: Coordinate[],
+    viewport: 'selection' | 'navigating' = 'selection',
+  ) => {
+    if (!mapRef.current || coordinates.length === 0) return;
+
+    const edgePadding = viewport === 'navigating'
+      ? {
+          top: Math.round(SCREEN_HEIGHT * 0.14),
+          right: 56,
+          bottom: Math.round(SCREEN_HEIGHT * 0.34),
+          left: 56,
+        }
+      : {
+          top: Math.round(SCREEN_HEIGHT * 0.22),
+          right: 56,
+          bottom: Math.round(SCREEN_HEIGHT * 0.28),
+          left: 56,
+        };
+
+    if (coordinates.length > 1 && mapRef.current.fitToCoordinates) {
+      Keyboard.dismiss();
+      setTimeout(() => {
+        mapRef.current?.fitToCoordinates(coordinates, {
+          edgePadding,
+          animated: true,
+        });
+      }, 150);
+      return;
+    }
+
+    const latitudes = coordinates.map((point) => point.latitude);
+    const longitudes = coordinates.map((point) => point.longitude);
+    const minLat = Math.min(...latitudes);
+    const maxLat = Math.max(...latitudes);
+    const minLon = Math.min(...longitudes);
+    const maxLon = Math.max(...longitudes);
+
+    const fitRegion: Region = {
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLon + maxLon) / 2,
+      latitudeDelta: Math.max((maxLat - minLat) * 1.6, 0.005),
+      longitudeDelta: Math.max((maxLon - minLon) * 1.6, 0.005),
+    };
+    Keyboard.dismiss();
+    setTimeout(() => mapRef.current?.animateToRegion(fitRegion, 800), 150);
+  };
 
   // ─── Effects ────────────────────────────────────────────────
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(VOICE_PREF_KEY);
+        if (!cancelled && stored != null) {
+          setVoiceEnabled(stored === 'true');
+        }
+      } catch (error) {
+        console.warn('[CampusNav] Failed to load voice preference:', error);
+      } finally {
+        voicePreferenceReadyRef.current = true;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!voicePreferenceReadyRef.current) return;
+    AsyncStorage.setItem(VOICE_PREF_KEY, voiceEnabled ? 'true' : 'false').catch((error) => {
+      console.warn('[CampusNav] Failed to save voice preference:', error);
+    });
+    if (!voiceEnabled) {
+      stopSpeech();
+    }
+  }, [voiceEnabled]);
 
   // Request location permission and start watching GPS
   useEffect(() => {
@@ -164,52 +305,108 @@ export function CampusNavigationScreen() {
   useEffect(() => {
     if (!destination) {
       setActiveRoute(null);
+      setTransitPlan(null);
       setSteps([]);
+      setRouteLoading(false);
+      setRouteNotice(null);
       setNavMode('idle');
       return;
     }
 
-    const destCoord: Coordinate | null = destination.building
-      ? { latitude: destination.building.latitude, longitude: destination.building.longitude }
-      : destination.amenity
-        ? { latitude: destination.amenity.latitude, longitude: destination.amenity.longitude }
-        : null;
+    const destCoord = destinationCoord;
 
     if (!destCoord) return;
 
-    const route = createRoute(userCoord, destCoord);
-    setActiveRoute(route);
-
-    const generatedSteps = buildDirectionSteps(
-      DEFAULT_USER_LOCATION.name,
+    const walkingRoute = createRoute(routeStartCoord, destCoord);
+    const walkingSteps = buildDirectionSteps(
+      routeStartName,
       destination.name,
-      userCoord,
+      routeStartCoord,
       destCoord,
-      route.distanceMeters,
-      route.estimatedTimeMinutes,
+      walkingRoute.distanceMeters,
+      walkingRoute.estimatedTimeMinutes,
     );
-    setSteps(generatedSteps);
+    setActiveRoute(walkingRoute);
+    setSteps(walkingSteps);
 
     if (navMode === 'idle') setNavMode('selected');
+    const generationId = routeGenerationRef.current + 1;
+    routeGenerationRef.current = generationId;
 
-    // Animate map to fit both points
-    if (mapRef.current) {
-      const minLat = Math.min(userCoord.latitude, destCoord.latitude);
-      const maxLat = Math.max(userCoord.latitude, destCoord.latitude);
-      const minLon = Math.min(userCoord.longitude, destCoord.longitude);
-      const maxLon = Math.max(userCoord.longitude, destCoord.longitude);
-      const fitRegion: Region = {
-        latitude: (minLat + maxLat) / 2,
-        longitude: (minLon + maxLon) / 2,
-        latitudeDelta: Math.max((maxLat - minLat) * 1.8, 0.005),
-        longitudeDelta: Math.max((maxLon - minLon) * 1.8, 0.005),
-      };
-      Keyboard.dismiss();
-      setTimeout(() => mapRef.current?.animateToRegion(fitRegion, 800), 200);
+    if (travelMode === 'walk') {
+      setTransitPlan(null);
+      setRouteLoading(false);
+      setRouteNotice(null);
+      fitMapToCoordinates(walkingRoute.polyline);
+      if (Platform.OS !== 'web') Vibration.vibrate(50);
+      return;
     }
 
-    if (Platform.OS !== 'web') Vibration.vibrate(50);
-  }, [destination]);
+    let cancelled = false;
+    setRouteLoading(true);
+    setRouteNotice('Finding the best bus connection...');
+    fitMapToCoordinates(walkingRoute.polyline);
+
+    (async () => {
+      try {
+        const plan = await buildTransitPlan(routeStartCoord, destCoord, routeStartName, destination.name);
+        if (cancelled || generationId !== routeGenerationRef.current) return;
+
+        if (plan) {
+          setTransitPlan(plan);
+          setSteps(plan.steps);
+          setRouteNotice(
+            plan.nearestVehicleLabel
+              ? `${plan.nearestVehicleLabel} near ${plan.originStop.Name}.`
+              : `Walk to ${plan.originStop.Name} and ride route ${plan.routeShortName}.`,
+          );
+          fitMapToCoordinates(plan.polyline);
+        } else {
+          setTransitPlan(null);
+          setSteps(walkingSteps);
+          setRouteNotice('No active bus trip is available right now. Walking directions are ready instead.');
+        }
+      } catch (error) {
+        console.error('[CampusNav] Transit planning error:', error);
+        if (!cancelled && generationId === routeGenerationRef.current) {
+          setTransitPlan(null);
+          setSteps(walkingSteps);
+          setRouteNotice('Bus directions are temporarily unavailable. Walking directions are ready instead.');
+        }
+      } finally {
+        if (!cancelled && generationId === routeGenerationRef.current) {
+          setRouteLoading(false);
+          if (Platform.OS !== 'web') Vibration.vibrate(50);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [destination, destinationCoord, routeStartCoord.latitude, routeStartCoord.longitude, routeStartName, travelMode]);
+
+  useEffect(() => {
+    if (seededDestinationRef.current) return;
+    const initialDestination = route.params?.initialDestination;
+    if (!initialDestination?.name || initialDestination?.latitude == null || initialDestination?.longitude == null) {
+      return;
+    }
+
+    seededDestinationRef.current = true;
+    setDestination({
+      type: 'building',
+      name: initialDestination.name,
+      building: {
+        id: initialDestination.id || `custom-${initialDestination.name}`,
+        name: initialDestination.name,
+        shortName: initialDestination.shortName || initialDestination.name,
+        latitude: initialDestination.latitude,
+        longitude: initialDestination.longitude,
+        type: initialDestination.type || 'landmark',
+      },
+    });
+  }, [route.params?.initialDestination]);
 
   // ─── Handlers ───────────────────────────────────────────────
   const handleSearchSelect = (result: CampusSearchResult) => {
@@ -259,15 +456,74 @@ export function CampusNavigationScreen() {
     }
   };
 
+  const handleOriginSelect = (result: CampusSearchResult) => {
+    if (result.kind === 'command' && result.commandType) {
+      const typeMap: Record<string, CampusAmenity['type']> = {
+        'nearest-restroom': 'restroom',
+        'nearest-coffee': 'coffee',
+        'nearest-library': 'study',
+        'nearest-dining': 'dining',
+      };
+      if (result.commandType === 'nearest-library') {
+        const libs = BUILDINGS.filter((b) => b.type === 'library');
+        let nearest = libs[0];
+        let minD = Infinity;
+        for (const lib of libs) {
+          const d = computeDistanceMeters(userCoord, { latitude: lib.latitude, longitude: lib.longitude });
+          if (d < minD) { minD = d; nearest = lib; }
+        }
+        if (nearest) {
+          setManualOrigin({
+            name: nearest.name,
+            coordinate: { latitude: nearest.latitude, longitude: nearest.longitude },
+          });
+        }
+        return;
+      }
+      const amenityType = typeMap[result.commandType];
+      if (amenityType) {
+        const amenity = findNearestAmenity(userCoord, amenityType);
+        if (amenity) {
+          setManualOrigin({
+            name: amenity.name,
+            coordinate: { latitude: amenity.latitude, longitude: amenity.longitude },
+          });
+        }
+      }
+      return;
+    }
+
+    if (result.building) {
+      setManualOrigin({
+        name: result.building.name,
+        coordinate: { latitude: result.building.latitude, longitude: result.building.longitude },
+      });
+      return;
+    }
+
+    if (result.amenity) {
+      setManualOrigin({
+        name: result.amenity.name,
+        coordinate: { latitude: result.amenity.latitude, longitude: result.amenity.longitude },
+      });
+    }
+  };
+
   const handleStartDirections = async () => {
-    if (!activeRoute || !steps.length) return;
+    const summaryDistance = displayedDistanceLabel;
+    const summaryEta = displayedEtaLabel;
+    if ((!activeRoute && !activeTransitPlan) || !steps.length || !summaryDistance || !summaryEta) return;
     setNavMode('navigating');
+    fitMapToCoordinates(activeTransitPlan?.polyline || activeRoute?.polyline || [], 'navigating');
+    if (!voiceEnabled) return;
+
     try {
       await stopSpeech();
       await speakRouteIntro(
         destination?.name || 'destination',
-        formatDistance(activeRoute.distanceMeters),
-        formatTime(activeRoute.estimatedTimeMinutes),
+        summaryDistance,
+        summaryEta,
+        effectiveMode,
       );
       // Speak first step after intro
       if (steps.length > 0) {
@@ -287,10 +543,25 @@ export function CampusNavigationScreen() {
     await stopSpeech();
     setDestination(null);
     setActiveRoute(null);
+    setTransitPlan(null);
+    setRouteLoading(false);
+    setRouteNotice(null);
     setNavMode('idle');
     setSteps([]);
     if (mapRef.current) {
       mapRef.current.animateToRegion(initialRegion, 800);
+    }
+  };
+
+  const handleToggleVoice = async () => {
+    if (voiceEnabled) {
+      await stopSpeech();
+      setVoiceEnabled(false);
+      return;
+    }
+    setVoiceEnabled(true);
+    if (navMode === 'navigating' && steps.length > 0) {
+      await speakStep(steps[0].instruction);
     }
   };
 
@@ -387,45 +658,12 @@ export function CampusNavigationScreen() {
 
   // ─── Render ─────────────────────────────────────────────────
   const isNavigating = navMode === 'navigating';
+  const showVoiceFab = !hasActiveRoute && !isNavigating;
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <CampusSearchBar userCoord={userCoord} onSelect={handleSearchSelect} />
-      </View>
-
-      {/* Route Banner */}
-      {activeRoute && destination && !isNavigating && (
-        <View style={styles.routeBanner}>
-          <View style={styles.routeInfo}>
-            <Text style={styles.routeTitle} numberOfLines={1}>Walking to {destination.name}</Text>
-            <Text style={styles.routeSub}>
-              {formatDistance(activeRoute.distanceMeters)} • {formatTime(activeRoute.estimatedTimeMinutes)}
-            </Text>
-          </View>
-          <Pressable
-            style={({ pressed }) => [styles.startBtn, pressed && styles.btnPressed]}
-            onPress={handleStartDirections}
-          >
-            <Text style={styles.startBtnText}>Start</Text>
-          </Pressable>
-        </View>
-      )}
-
-      {/* Voice Banner */}
-      {voiceBanner && (
-        <View style={styles.voiceBannerContainer}>
-          {voiceBanner.text && <Text style={styles.voiceBannerText}>🎙 "{voiceBanner.text}"</Text>}
-          {voiceBanner.error && <Text style={styles.voiceBannerError}>⚠️ {voiceBanner.error}</Text>}
-          <Pressable onPress={() => setVoiceBanner(null)} style={styles.voiceDismiss}>
-            <Text style={styles.voiceDismissText}>✕</Text>
-          </Pressable>
-        </View>
-      )}
-
       {/* Map */}
-      <View style={[styles.mapContainer, isNavigating && styles.mapMinimized]}>
+      <View style={styles.mapContainer}>
         <MapView
           ref={mapRef}
           style={styles.map}
@@ -439,12 +677,12 @@ export function CampusNavigationScreen() {
           rotateEnabled={false}
         >
           {/* Route polyline */}
-          {activeRoute && (
+          {(activeTransitPlan || activeRoute) && (
             <Polyline
-              coordinates={activeRoute.polyline}
-              strokeColor={COLORS.primary}
+              coordinates={activeTransitPlan?.polyline || activeRoute?.polyline || []}
+              strokeColor={activeTransitPlan?.routeColor || COLORS.primary}
               strokeWidth={4}
-              lineDashPattern={[6, 4]}
+              lineDashPattern={activeTransitPlan ? undefined : [6, 4]}
             />
           )}
 
@@ -458,6 +696,28 @@ export function CampusNavigationScreen() {
               <Text style={styles.userMarkerText}>📍</Text>
             </Animated.View>
           </Marker>
+          {manualOrigin && (
+            <Marker
+              coordinate={manualOrigin.coordinate}
+              title={`Start: ${manualOrigin.name}`}
+              anchor={{ x: 0.5, y: 0.5 }}
+            >
+              <View style={styles.startMarker}>
+                <Text style={styles.startMarkerText}>S</Text>
+              </View>
+            </Marker>
+          )}
+          {destinationCoord ? (
+            <Marker
+              coordinate={destinationCoord}
+              title={`Destination: ${destination.name}`}
+              anchor={{ x: 0.5, y: 0.5 }}
+            >
+              <View style={styles.destinationMarker}>
+                <Text style={styles.destinationMarkerText}>E</Text>
+              </View>
+            </Marker>
+          ) : null}
           <Marker
             coordinate={{ latitude: userCoord.latitude + 0.00012, longitude: userCoord.longitude }}
             anchor={{ x: 0.5, y: 1 }}
@@ -468,7 +728,7 @@ export function CampusNavigationScreen() {
           </Marker>
 
           {/* Building markers */}
-          {BUILDINGS.map((b) => {
+          {!hasActiveRoute && BUILDINGS.map((b) => {
             const isDestination = destination?.building?.id === b.id;
             return (
               <Marker
@@ -488,7 +748,7 @@ export function CampusNavigationScreen() {
           })}
 
           {/* Amenity markers */}
-          {AMENITIES.map((a) => {
+          {!hasActiveRoute && AMENITIES.map((a) => {
             const isDestination = destination?.amenity?.id === a.id;
             return (
               <Marker
@@ -508,14 +768,105 @@ export function CampusNavigationScreen() {
         </MapView>
       </View>
 
+      {!isNavigating ? (
+        <View style={styles.topOverlay} pointerEvents="box-none">
+          <View style={styles.searchContainer}>
+            <View style={styles.searchHeaderRow}>
+              <Pressable
+                style={({ pressed }) => [styles.backButton, pressed && styles.btnPressed]}
+                onPress={() => {
+                  if (navigation.canGoBack()) {
+                    navigation.goBack();
+                  } else {
+                    navigation.navigate('Places');
+                  }
+                }}
+              >
+                <Text style={styles.backButtonIcon}>‹</Text>
+                <Text style={styles.backButtonText}>Back</Text>
+              </Pressable>
+            </View>
+            <View style={styles.searchStack}>
+              <View style={[styles.searchFieldWrap, styles.originSearchFieldWrap]}>
+                <CampusSearchBar
+                  userCoord={userCoord}
+                  onSelect={handleOriginSelect}
+                  placeholder="Choose a starting point"
+                  showPinnedItems={false}
+                  displayValue={manualOrigin?.name}
+                />
+              </View>
+              <View style={[styles.searchFieldWrap, styles.destinationSearchFieldWrap]}>
+                <CampusSearchBar
+                  userCoord={routeStartCoord}
+                  onSelect={handleSearchSelect}
+                  placeholder="Search destination"
+                  displayValue={destination?.name}
+                />
+              </View>
+            </View>
+            <View style={styles.controlsRow}>
+              <View style={styles.modeSwitch}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.modePill,
+                    travelMode === 'walk' && styles.modePillActive,
+                    pressed && styles.btnPressed,
+                  ]}
+                  onPress={() => setTravelMode('walk')}
+                >
+                  <Text style={[styles.modePillText, travelMode === 'walk' && styles.modePillTextActive]}>
+                    Walk
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.modePill,
+                    travelMode === 'bus' && styles.modePillActive,
+                    pressed && styles.btnPressed,
+                  ]}
+                  onPress={() => setTravelMode('bus')}
+                >
+                  <Text style={[styles.modePillText, travelMode === 'bus' && styles.modePillTextActive]}>
+                    Bus
+                  </Text>
+                </Pressable>
+              </View>
+              <Pressable
+                style={({ pressed }) => [styles.originPill, pressed && styles.btnPressed]}
+                onPress={() => setManualOrigin(null)}
+              >
+                <Text style={styles.originPillText}>
+                  {manualOrigin ? 'Use Current Location' : 'Using Current Location'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {voiceBanner && (
+            <View style={styles.voiceBannerContainer}>
+              {voiceBanner.text && <Text style={styles.voiceBannerText}>🎙 "{voiceBanner.text}"</Text>}
+              {voiceBanner.error && <Text style={styles.voiceBannerError}>⚠️ {voiceBanner.error}</Text>}
+              <Pressable onPress={() => setVoiceBanner(null)} style={styles.voiceDismiss}>
+                <Text style={styles.voiceDismissText}>✕</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+      ) : null}
+
       {/* Directions Panel */}
       {isNavigating && activeRoute && destination && steps.length > 0 && (
         <View style={styles.directionsContainer}>
           <CampusDirectionsPanel
             destinationName={destination.name}
-            distanceLabel={formatDistance(activeRoute.distanceMeters)}
-            etaLabel={formatTime(activeRoute.estimatedTimeMinutes)}
+            distanceLabel={displayedDistanceLabel || ''}
+            etaLabel={displayedEtaLabel || ''}
             steps={steps}
+            modeLabel={effectiveMode === 'bus' ? 'Bus Trip' : 'Walking'}
+            routeNote={displayedRouteNote}
+            voiceEnabled={voiceEnabled}
+            onToggleVoice={handleToggleVoice}
             onEnd={handleEndDirections}
           />
         </View>
@@ -527,37 +878,48 @@ export function CampusNavigationScreen() {
           nearbyItems={nearbyItems}
           pinnedItems={pinnedItems}
           onSelect={handleSearchSelect}
-          hasRoute={!!activeRoute}
+          hasRoute={!!destination && (!!activeRoute || !!activeTransitPlan)}
           destinationName={destination?.name}
-          distanceLabel={activeRoute ? formatDistance(activeRoute.distanceMeters) : undefined}
-          etaLabel={activeRoute ? formatTime(activeRoute.estimatedTimeMinutes) : undefined}
+          routeMode={summaryMode}
+          routeTitle={displayedRouteTitle}
+          distanceLabel={displayedDistanceLabel}
+          etaLabel={displayedEtaLabel}
+          routeMeta={displayedRouteMeta}
+          routeNote={displayedRouteNote}
+          routeAccentColor={activeTransitPlan?.routeColor || COLORS.primary}
+          isLoadingRoute={routeLoading}
+          voiceEnabled={voiceEnabled}
+          onToggleVoice={handleToggleVoice}
           onClearRoute={handleClearRoute}
           onStartDirections={handleStartDirections}
         />
       )}
 
       {/* Voice FAB */}
-      <Pressable
-        style={({ pressed }) => [
-          styles.voiceFab,
-          voiceState === 'listening' && styles.voiceFabListening,
-          voiceState === 'processing' && styles.voiceFabProcessing,
-          pressed && styles.btnPressed,
-        ]}
-        onPress={handleVoicePress}
-        disabled={voiceState === 'processing'}
-      >
-        {voiceState === 'processing' ? (
-          <ActivityIndicator size="small" color="#FFF" />
-        ) : (
-          <Text style={styles.voiceFabIcon}>
-            {voiceState === 'listening' ? '⏹️' : '🎤'}
+      {showVoiceFab ? (
+        <Pressable
+          style={({ pressed }) => [
+            styles.voiceFab,
+            isNavigating ? styles.voiceFabNavigating : styles.voiceFabDocked,
+            voiceState === 'listening' && styles.voiceFabListening,
+            voiceState === 'processing' && styles.voiceFabProcessing,
+            pressed && styles.btnPressed,
+          ]}
+          onPress={handleVoicePress}
+          disabled={voiceState === 'processing'}
+        >
+          {voiceState === 'processing' ? (
+            <ActivityIndicator size="small" color="#FFF" />
+          ) : (
+            <Text style={styles.voiceFabIcon}>
+              {voiceState === 'listening' ? '⏹️' : '🎤'}
+            </Text>
+          )}
+          <Text style={styles.voiceFabText}>
+            {voiceState === 'listening' ? 'Tap to stop' : voiceState === 'processing' ? 'Processing…' : 'Voice'}
           </Text>
-        )}
-        <Text style={styles.voiceFabText}>
-          {voiceState === 'listening' ? 'Tap to stop' : voiceState === 'processing' ? 'Processing…' : 'Voice'}
-        </Text>
-      </Pressable>
+        </Pressable>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -566,47 +928,115 @@ export function CampusNavigationScreen() {
 const getStyles = (COLORS: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: '#000',
   },
-  searchContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 6,
-    backgroundColor: COLORS.background,
+  topOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingTop: 48,
     zIndex: 1000,
   },
-  routeBanner: {
+  searchContainer: {
+    marginHorizontal: 14,
+    padding: 0,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  searchHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    zIndex: 999,
+    marginBottom: 14,
+    zIndex: 25,
   },
-  routeInfo: {
-    flex: 1,
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
   },
-  routeTitle: {
-    color: '#FFF',
-    fontSize: 15,
+  backButtonIcon: {
+    color: COLORS.textPrimary,
+    fontSize: 20,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
+  backButtonText: {
+    color: COLORS.textPrimary,
+    fontSize: 13,
     fontWeight: '700',
   },
-  routeSub: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 12,
-    marginTop: 2,
+  searchStack: {
+    gap: 12,
+    zIndex: 20,
+    overflow: 'visible',
   },
-  startBtn: {
-    backgroundColor: '#FFF',
+  searchFieldWrap: {
+    position: 'relative',
+  },
+  originSearchFieldWrap: {
+    zIndex: 20,
+    elevation: 20,
+  },
+  destinationSearchFieldWrap: {
+    zIndex: 10,
+    elevation: 10,
+  },
+  controlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 14,
+    minHeight: 40,
+    zIndex: 1,
+  },
+  modeSwitch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    padding: 4,
+    gap: 4,
+  },
+  modePill: {
+    borderRadius: 999,
+    paddingHorizontal: 14,
     paddingVertical: 8,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    marginLeft: 12,
   },
-  startBtnText: {
-    color: COLORS.primary,
+  modePillActive: {
+    backgroundColor: COLORS.primary,
+  },
+  modePillText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
     fontWeight: '700',
-    fontSize: 15,
+  },
+  modePillTextActive: {
+    color: '#FFF',
+  },
+  originPill: {
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  originPillText: {
+    color: COLORS.textPrimary,
+    fontSize: 12,
+    fontWeight: '700',
   },
   btnPressed: {
     opacity: 0.8,
@@ -615,14 +1045,14 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   voiceBannerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    marginHorizontal: 16,
-    marginTop: 4,
+    backgroundColor: 'rgba(8,8,8,0.92)',
+    marginHorizontal: 14,
+    marginTop: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(255,255,255,0.08)',
     zIndex: 998,
   },
   voiceBannerText: {
@@ -645,12 +1075,8 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     fontWeight: '700',
   },
   mapContainer: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
-  },
-  mapMinimized: {
-    flex: 0.3,
-    minHeight: 180,
   },
   map: {
     width: '100%',
@@ -686,6 +1112,64 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     color: '#FFF',
     fontSize: 10,
     fontWeight: '700',
+  },
+  startMarker: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#0B6E4F',
+    borderWidth: 2,
+    borderColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startMarkerText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  destinationMarker: {
+    minWidth: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#8B0000',
+    borderWidth: 2,
+    borderColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  destinationMarkerText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  busStopMarker: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2,
+    borderColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  busStopMarkerText: {
+    fontSize: 14,
+  },
+  busStopExitMarker: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: COLORS.surface,
+    borderWidth: 2,
+    borderColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  busStopExitText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: '900',
   },
   buildingMarker: {
     width: 30,
@@ -727,16 +1211,20 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     fontSize: 14,
   },
   directionsContainer: {
-    flex: 0.7,
-    minHeight: 280,
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    bottom: 28,
+    height: '44%',
+    minHeight: 260,
+    zIndex: 900,
   },
   voiceFab: {
     position: 'absolute',
-    bottom: 160,
     right: 16,
     backgroundColor: COLORS.primary,
-    paddingVertical: 14,
-    paddingHorizontal: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 28,
     flexDirection: 'row',
     alignItems: 'center',
@@ -746,8 +1234,14 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 10,
     elevation: 10,
-    minHeight: 56,
+    minHeight: 52,
     zIndex: 1001,
+  },
+  voiceFabDocked: {
+    bottom: 112,
+  },
+  voiceFabNavigating: {
+    bottom: 24,
   },
   voiceFabListening: {
     backgroundColor: COLORS.danger,

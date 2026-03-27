@@ -33,14 +33,14 @@ export const MacroBar = ({ label, current, target, color }: any) => {
   );
 };
 
-export const ActionButton = ({ label, onPress, disabled, color = '#500000', textColor = '#fff' }: any) => (
+export const ActionButton = ({ label, onPress, disabled, color = '#500000', textColor = '#fff', style, textStyle }: any) => (
   <TouchableOpacity 
     activeOpacity={0.7}
-    style={[styles.actionBtn, { backgroundColor: color }, disabled && { opacity: 0.5 }]} 
+    style={[styles.actionBtn, { backgroundColor: color }, style, disabled && { opacity: 0.5 }]} 
     onPress={onPress} 
     disabled={disabled}
   >
-    <Text style={[styles.actionBtnText, { color: textColor }]}>{label}</Text>
+    <Text style={[styles.actionBtnText, { color: textColor }, textStyle]}>{label}</Text>
   </TouchableOpacity>
 );
 
@@ -63,7 +63,7 @@ export const Badge = ({ label, color }: any) => (
 const styles = StyleSheet.create({
   card: { 
     backgroundColor: '#0a0a0a', 
-    borderRadius: 20, 
+    borderRadius: 28, 
     padding: 20, 
     marginBottom: 20, 
     borderWidth: 1, 
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     flex: 1, 
     alignItems: 'center', 
     backgroundColor: '#050505', 
-    borderRadius: 16, 
+    borderRadius: 20, 
     borderWidth: 1, 
     padding: 12,
     borderColor: '#111'
@@ -103,7 +103,7 @@ const styles = StyleSheet.create({
   fill: { height: '100%', borderRadius: 3 },
   actionBtn: { 
     paddingVertical: 18, 
-    borderRadius: 16, 
+    borderRadius: 999, 
     alignItems: 'center', 
     marginTop: 12,
     shadowColor: '#500000',
@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
   badge: { 
     paddingHorizontal: 12, 
     paddingVertical: 6, 
-    borderRadius: 10, 
+    borderRadius: 999, 
     borderWidth: 1.5, 
     alignSelf: 'flex-start' 
   },

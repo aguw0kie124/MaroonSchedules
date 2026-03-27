@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, SafeAreaView, StatusBar, ImageBackground } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { API_URL } from '../../config';
@@ -74,6 +74,14 @@ export default function MealOptimizerScreen({ navigation }: any) {
     : require('../../assets/white_marble.jpg');
 
   const mealPlan = plan?.plan || {};
+  const openFullMenu = (mealPeriod: string) => {
+    navigation.navigate('FullMenu', {
+      location: hall,
+      mealPeriod,
+      title: `${hall} ${mealPeriod.charAt(0).toUpperCase() + mealPeriod.slice(1)}`,
+      sourceHint: plan?.liveMenu?.fetched ? 'live' : 'database',
+    });
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
@@ -87,7 +95,7 @@ export default function MealOptimizerScreen({ navigation }: any) {
             <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
                 <Text style={{ fontSize: 24, color: T.text }}>←</Text>
             </TouchableOpacity>
-            <Text style={[s.title, { color: T.text }]}>Meal Optimizer</Text>
+            <Text style={[s.title, { color: T.text }]}>Menus</Text>
         </View>
 
         <Card>
@@ -151,7 +159,13 @@ export default function MealOptimizerScreen({ navigation }: any) {
             </View>
 
             {active && mealPlan[active] && (
-              <MealPanel data={mealPlan[active]} color={M_CLR[active]} onAdd={(v: any) => addToTracker(active, v)} T={T} />
+              <MealPanel
+                data={mealPlan[active]}
+                color={M_CLR[active]}
+                onAdd={(v: any) => addToTracker(active, v)}
+                onOpenFullMenu={() => openFullMenu(active)}
+                T={T}
+              />
             )}
           </View>
         )}
@@ -188,9 +202,13 @@ function shortenLoc(full: string): string {
   return full;
 }
 
-function MealPanel({ data, color, onAdd, T }: any) {
+function MealPanel({ data, color, onAdd, onOpenFullMenu, T }: any) {
   return (
     <View style={{ marginTop: 15 }}>
+      <TouchableOpacity style={[s.fullMenuBtn, { backgroundColor: color + '18', borderColor: color }]} onPress={onOpenFullMenu}>
+        <Text style={[s.fullMenuText, { color }]}>Full Menu</Text>
+      </TouchableOpacity>
+
       <SectionLabel>Dining Hall Options</SectionLabel>
       {data?.variants?.map((v: any, i: number) => (
         <Card key={i}>
@@ -237,7 +255,7 @@ function MealPanel({ data, color, onAdd, T }: any) {
                           {p.locations && p.locations.length > 0 && (
                             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
                               {p.locations.map((loc: string, i: number) => (
-                                <View key={i} style={{ backgroundColor: T.bg3, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: T.border }}>
+                                <View key={i} style={{ backgroundColor: T.bg3, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: T.border }}>
                                   <Text style={{ color: T.text3, fontSize: 9, fontWeight: '700' }}>{shortenLoc(loc)}</Text>
                                 </View>
                               ))}
@@ -251,7 +269,7 @@ function MealPanel({ data, color, onAdd, T }: any) {
                           {p.locations && p.locations.length > 0 && (
                             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
                               {p.locations.map((loc: string, i: number) => (
-                                <View key={i} style={{ backgroundColor: T.bg3, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: T.border }}>
+                                <View key={i} style={{ backgroundColor: T.bg3, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: T.border }}>
                                   <Text style={{ color: T.text3, fontSize: 9, fontWeight: '700' }}>{shortenLoc(loc)}</Text>
                                 </View>
                               ))}
@@ -277,8 +295,8 @@ const s = StyleSheet.create({
     flex: 1, 
     minWidth: 80,
     alignItems: 'center', 
-    padding: 11, 
-    borderRadius: 11, 
+    padding: 13, 
+    borderRadius: 20, 
     borderWidth: 1,
     gap: 3 
   },
@@ -290,12 +308,14 @@ const s = StyleSheet.create({
     gap: 12 
   },
   pillRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  tabs: { flexDirection: 'row', gap: 24, borderBottomWidth: 1, marginBottom: 10 },
-  tab: { paddingVertical: 14, flex: 1, alignItems: 'center' },
+  tabs: { flexDirection: 'row', gap: 10, borderBottomWidth: 1, marginBottom: 14 },
+  tab: { paddingVertical: 14, flex: 1, alignItems: 'center', borderRadius: 999 },
   tabText: { fontWeight: '900', textTransform: 'uppercase', fontSize: 12, letterSpacing: 1 },
   variantHeader: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   variantLabel: { fontWeight: '900', fontSize: 16, letterSpacing: -0.2 },
   variantSub: { fontSize: 12, marginTop: 2, fontWeight: '600' },
-  addBtn: { borderWidth: 1.5, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6 },
+  addBtn: { borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
   foodItem: { fontSize: 13, marginBottom: 5, paddingLeft: 5 },
+  fullMenuBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginBottom: 14 },
+  fullMenuText: { fontSize: 12, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.2 },
 });

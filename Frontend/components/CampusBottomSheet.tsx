@@ -6,6 +6,7 @@ import {
   ScrollView,
   Pressable,
 } from 'react-native';
+import { Volume2, VolumeX } from 'lucide-react-native';
 import { useTheme } from './SharedUI';
 import { CampusSearchResult } from '../services/campusSearch';
 import { formatDistance } from '../services/campusDirections';
@@ -17,8 +18,16 @@ interface CampusBottomSheetProps {
   onSelect: (item: CampusSearchResult) => void;
   hasRoute: boolean;
   destinationName?: string;
+  routeMode?: 'walk' | 'bus';
+  routeTitle?: string;
   distanceLabel?: string;
   etaLabel?: string;
+  routeMeta?: string;
+  routeNote?: string | null;
+  routeAccentColor?: string;
+  isLoadingRoute?: boolean;
+  voiceEnabled?: boolean;
+  onToggleVoice?: () => void;
   onClearRoute?: () => void;
   onStartDirections?: () => void;
 }
@@ -29,8 +38,16 @@ export function CampusBottomSheet({
   onSelect,
   hasRoute,
   destinationName,
+  routeMode = 'walk',
+  routeTitle,
   distanceLabel,
   etaLabel,
+  routeMeta,
+  routeNote,
+  routeAccentColor,
+  isLoadingRoute = false,
+  voiceEnabled = true,
+  onToggleVoice,
   onClearRoute,
   onStartDirections,
 }: CampusBottomSheetProps) {
@@ -52,24 +69,15 @@ export function CampusBottomSheet({
   };
 
   return (
-    <View style={styles.container}>
-      {/* Handle bar */}
-      <View style={styles.handleBar} />
+    <View style={[styles.container, hasRoute ? styles.containerRoute : styles.containerBrowse]}>
+      {!hasRoute ? <View style={styles.handleBar} /> : null}
 
-      {/* Route info card */}
-      {hasRoute && destinationName && (
-        <View style={styles.routeCard}>
-          <View style={styles.routeInfo}>
-            <Text style={styles.routeTitle} numberOfLines={1}>Walking to {destinationName}</Text>
-            <Text style={styles.routeSub}>{distanceLabel} • {etaLabel}</Text>
-          </View>
-          <View style={styles.routeBtns}>
-            <Pressable
-              style={({ pressed }) => [styles.startBtn, pressed && styles.btnPressed]}
-              onPress={onStartDirections}
-            >
-              <Text style={styles.startBtnText}>Start</Text>
-            </Pressable>
+      {hasRoute && destinationName ? (
+        <View style={[styles.routeCard, routeAccentColor ? { borderColor: routeAccentColor } : null]}>
+          <View style={styles.routeHeader}>
+            <View style={[styles.routeModeBadge, routeAccentColor ? { backgroundColor: routeAccentColor } : null]}>
+              <Text style={styles.routeModeBadgeText}>{routeMode === 'bus' ? 'Bus Route' : 'Walk Route'}</Text>
+            </View>
             <Pressable
               style={({ pressed }) => [styles.clearBtn, pressed && styles.btnPressed]}
               onPress={onClearRoute}
@@ -77,16 +85,50 @@ export function CampusBottomSheet({
               <Text style={styles.clearBtnText}>✕</Text>
             </Pressable>
           </View>
+          <View style={styles.routeInfo}>
+            <Text style={styles.routeTitle} numberOfLines={2}>
+              {routeTitle || `${routeMode === 'bus' ? 'Bus' : 'Walk'} to ${destinationName}`}
+            </Text>
+            <Text style={styles.routeSub}>{distanceLabel} • {etaLabel}</Text>
+            {routeMeta ? (
+              <Text style={styles.routeMetaText} numberOfLines={2}>
+                {routeMeta}
+              </Text>
+            ) : null}
+            {routeNote ? (
+              <Text style={styles.routeNoteText} numberOfLines={3}>
+                {routeNote}
+              </Text>
+            ) : null}
+          </View>
+          <View style={styles.routeFooter}>
+            <Pressable
+              style={({ pressed }) => [styles.voiceBtn, pressed && styles.btnPressed]}
+              onPress={onToggleVoice}
+            >
+              {voiceEnabled ? <Volume2 color={COLORS.primary} size={16} /> : <VolumeX color={COLORS.textSecondary} size={16} />}
+              <Text style={[styles.voiceBtnText, !voiceEnabled && styles.voiceBtnTextMuted]}>
+                {voiceEnabled ? 'Voice On' : 'Voice Off'}
+              </Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.startBtn, pressed && styles.btnPressed, isLoadingRoute && styles.startBtnDisabled]}
+              onPress={onStartDirections}
+              disabled={isLoadingRoute}
+            >
+              <Text style={styles.startBtnText}>
+                {isLoadingRoute ? 'Loading…' : routeMode === 'bus' ? 'Start Trip' : 'Start Walk'}
+              </Text>
+            </Pressable>
+          </View>
         </View>
-      )}
-
-      <ScrollView
-        style={styles.scrollArea}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Pinned quick actions */}
-        {!hasRoute && (
+      ) : (
+        <ScrollView
+          style={styles.scrollArea}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Pinned quick actions */}
           <>
             <Text style={styles.sectionLabel}>Quick Actions</Text>
             <View style={styles.quickRow}>
@@ -102,27 +144,27 @@ export function CampusBottomSheet({
               ))}
             </View>
           </>
-        )}
 
-        {/* Nearby */}
-        <Text style={styles.sectionLabel}>Nearby</Text>
-        {nearbyItems.map((item) => (
-          <Pressable
-            key={item.id}
-            style={({ pressed }) => [styles.nearbyRow, pressed && styles.nearbyRowPressed]}
-            onPress={() => onSelect(item)}
-          >
-            <Text style={styles.nearbyIcon}>{getIcon(item)}</Text>
-            <View style={styles.nearbyText}>
-              <Text style={styles.nearbyLabel} numberOfLines={1}>{item.label}</Text>
-              <Text style={styles.nearbySub}>
-                {item.subtitle}
-                {item.distance != null ? ` • ${formatDistance(item.distance)}` : ''}
-              </Text>
-            </View>
-          </Pressable>
-        ))}
-      </ScrollView>
+          {/* Nearby */}
+          <Text style={styles.sectionLabel}>Nearby</Text>
+          {nearbyItems.map((item) => (
+            <Pressable
+              key={item.id}
+              style={({ pressed }) => [styles.nearbyRow, pressed && styles.nearbyRowPressed]}
+              onPress={() => onSelect(item)}
+            >
+              <Text style={styles.nearbyIcon}>{getIcon(item)}</Text>
+              <View style={styles.nearbyText}>
+                <Text style={styles.nearbyLabel} numberOfLines={1}>{item.label}</Text>
+                <Text style={styles.nearbySub}>
+                  {item.subtitle}
+                  {item.distance != null ? ` • ${formatDistance(item.distance)}` : ''}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -130,79 +172,139 @@ export function CampusBottomSheet({
 const getStyles = (COLORS: any) => StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '45%',
+    bottom: 28,
+    left: 16,
+    right: 16,
+    backgroundColor: 'rgba(8,8,8,0.94)',
+    borderRadius: 30,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderBottomWidth: 0,
+    borderColor: 'rgba(255,255,255,0.08)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.28,
+    shadowRadius: 24,
     elevation: 12,
+    overflow: 'hidden',
+  },
+  containerBrowse: {
+    maxHeight: '38%',
+    paddingTop: 10,
+  },
+  containerRoute: {
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   handleBar: {
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: COLORS.border,
+    backgroundColor: 'rgba(255,255,255,0.18)',
     alignSelf: 'center',
-    marginTop: 10,
     marginBottom: 8,
   },
   routeCard: {
+    padding: 18,
+    backgroundColor: 'rgba(8,8,8,0.96)',
+    borderRadius: 30,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    gap: 16,
+  },
+  routeHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 16,
-    marginBottom: 8,
-    padding: 14,
-    backgroundColor: COLORS.primary,
-    borderRadius: 14,
+    justifyContent: 'space-between',
   },
   routeInfo: {
-    flex: 1,
+    gap: 4,
+  },
+  routeModeBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.primary,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  routeModeBadgeText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '800',
   },
   routeTitle: {
-    color: '#FFF',
-    fontSize: 15,
-    fontWeight: '700',
+    color: COLORS.textPrimary,
+    fontSize: 16,
+    fontWeight: '800',
+    lineHeight: 24,
   },
   routeSub: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 12,
-    marginTop: 2,
+    color: COLORS.textSecondary,
+    fontSize: 13,
   },
-  routeBtns: {
+  routeMetaText: {
+    color: COLORS.textPrimary,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  routeNoteText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  routeFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  voiceBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  voiceBtnText: {
+    color: COLORS.primary,
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  voiceBtnTextMuted: {
+    color: COLORS.textSecondary,
   },
   startBtn: {
-    backgroundColor: '#FFF',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 999,
+    minWidth: 110,
+    alignItems: 'center',
   },
   startBtnText: {
-    color: COLORS.primary,
+    color: '#FFF',
     fontWeight: '700',
     fontSize: 14,
   },
+  startBtnDisabled: {
+    opacity: 0.65,
+  },
   clearBtn: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(0,0,0,0.42)',
     width: 32,
     height: 32,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
   },
   clearBtnText: {
-    color: '#FFF',
+    color: COLORS.textPrimary,
     fontSize: 16,
     fontWeight: '700',
   },
@@ -233,12 +335,12 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   },
   quickCard: {
     flex: 1,
-    backgroundColor: COLORS.background,
-    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.38)',
+    borderRadius: 18,
     padding: 14,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   quickCardPressed: {
     backgroundColor: '#1E1E1E',
@@ -259,7 +361,7 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
   },
   nearbyRowPressed: {
     backgroundColor: '#1E1E1E',

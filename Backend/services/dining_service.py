@@ -367,11 +367,139 @@ PERIOD_ALIASES = {
     'dinner':    ['dinner', 'every-day', 'everyday', 'all-day'],
 }
 
+MENU_CATEGORY_RULES = [
+    ('Entrees', ['entree', 'chef', 'grill', 'plate', 'burger', 'sandwich', 'sub', 'wrap', 'pizza', 'bowl', 'quesadilla', 'taco', 'pasta', 'noodle', 'chicken', 'beef', 'pork', 'salmon', 'fish']),
+    ('Sides', ['side', 'fries', 'potato', 'rice', 'bean', 'vegetable', 'broccoli', 'corn', 'mac', 'soup']),
+    ('Salads', ['salad', 'greens']),
+    ('Breakfast', ['breakfast', 'egg', 'omelet', 'omelette', 'pancake', 'waffle', 'biscuit', 'sausage', 'bacon', 'hash']),
+    ('Desserts', ['dessert', 'cookie', 'cake', 'brownie', 'ice cream', 'pie', 'muffin']),
+    ('Drinks', ['drink', 'coffee', 'tea', 'smoothie', 'soda', 'juice']),
+    ('Sauces', ['sauce', 'dressing', 'dip', 'salsa', 'gravy']),
+]
+
 def items_for_period(all_items: List[Dict], period: str) -> List[Dict]:
     """Filter items to those available during a given meal period.
     Retail locations only have 'every-day' so they always match every period."""
     aliases = PERIOD_ALIASES.get(period, [period, 'every-day', 'everyday'])
     return [f for f in all_items if (f.get('meal_period') or '').lower() in aliases]
+
+
+def resolve_location_name(location_name: str) -> Optional[str]:
+    if not location_name:
+        return None
+    if location_name in DINING_LOCATIONS:
+        return location_name
+    lowered = location_name.lower()
+    for name in DINING_LOCATIONS:
+        if lowered == name.lower() or lowered in name.lower():
+            return name
+    return None
+
+
+def infer_menu_category(item: Dict[str, Any], meal_period: Optional[str] = None) -> str:
+    explicit = (item.get('category') or '').strip()
+    if explicit:
+        return explicit
+
+    name = (item.get('name') or '').lower()
+    for label, keywords in MENU_CATEGORY_RULES:
+        if any(keyword in name for keyword in keywords):
+            return label
+
+    period = (meal_period or item.get('meal_period') or '').lower()
+    if period == 'breakfast':
+        return 'Breakfast'
+    if period == 'dinner':
+        return 'Dinner Specials'
+    return 'Featured Items'
+
+
+def group_menu_items(items: List[Dict[str, Any]], meal_period: Optional[str] = None) -> List[Dict[str, Any]]:
+    grouped: Dict[str, List[Dict[str, Any]]] = {}
+    seen = set()
+
+    for raw in items:
+        item = dict(raw)
+        key = (
+            item.get('name', '').strip().lower(),
+            item.get('location', '').strip().lower(),
+            (item.get('meal_period') or meal_period or '').strip().lower(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+
+        category = infer_menu_category(item, meal_period)
+        grouped.setdefault(category, []).append(item)
+
+    ordered_labels = ['Entrees', 'Sides', 'Salads', 'Breakfast', 'Desserts', 'Drinks', 'Sauces', 'Featured Items', 'Dinner Specials']
+    category_names = sorted(grouped.keys(), key=lambda name: (ordered_labels.index(name) if name in ordered_labels else len(ordered_labels), name.lower()))
+    result = []
+    for category in category_names:
+        sorted_items = sorted(grouped[category], key=lambda item: ((item.get('name') or '').lower(), item.get('location') or ''))
+        result.append({"name": category, "items": sorted_items})
+    return result
+
+
+def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str = None) -> Dict[str, Any]:
+    period = (meal_period or 'lunch').lower()
+    resolved_name = resolve_location_name(location_name) or location_name
+    is_dining_hall = 'hall' in resolved_name.lower()
+    items: List[Dict[str, Any]] = []
+    source = 'database'
+    resolved_locations = [resolved_name]
+
+    if is_dining_hall:
+        live_result = fetch_dine_on_campus_menu(resolved_name, date_str=date_str, meal_period=period)
+        if live_result.get('success') and live_result.get('items'):
+            items = live_result['items']
+            source = 'live'
+        else:
+            aliases = PERIOD_ALIASES.get(period, [period, 'every-day', 'everyday', 'all-day'])
+            try:
+                with get_db_conn() as conn:
+                    with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+                        placeholders = ','.join(['%s'] * len(aliases))
+                        cur.execute(f"""
+                            SELECT * FROM food_items
+                            WHERE (location = %s OR location ILIKE %s)
+                            AND location_type = 'dining_hall'
+                            AND meal_period IN ({placeholders})
+                            AND active = TRUE
+                        """, [resolved_name, f"%{resolved_name}%"] + aliases)
+                        items = [dict(row) for row in cur.fetchall()]
+            except Exception:
+                items = []
+            source = 'database'
+    else:
+        aliases = PERIOD_ALIASES.get(period, [period, 'every-day', 'everyday', 'all-day'])
+        resolved_locations = RESTAURANT_GROUPS.get(location_name, [resolved_name])
+        try:
+            with get_db_conn() as conn:
+                with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+                    placeholders = ','.join(['%s'] * len(aliases))
+                    cur.execute(f"""
+                        SELECT * FROM food_items
+                        WHERE location = ANY(%s)
+                        AND location_type = 'restaurant'
+                        AND meal_period IN ({placeholders})
+                        AND active = TRUE
+                    """, [resolved_locations] + aliases)
+                    items = [dict(row) for row in cur.fetchall()]
+        except Exception:
+            items = []
+
+    grouped_items = group_menu_items(items, period)
+    return {
+        "success": len(grouped_items) > 0,
+        "location": location_name,
+        "resolvedLocation": resolved_name,
+        "locations": resolved_locations,
+        "mealPeriod": period,
+        "source": source,
+        "count": len(items),
+        "categories": grouped_items,
+    }
 
 
 def optimize_combo(location_name: str, target_cal: float) -> Dict[str, Any]:

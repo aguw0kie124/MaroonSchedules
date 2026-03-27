@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createBottomTabNavigator, BottomTabBar } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
@@ -12,8 +12,56 @@ import { Onboarding } from './components/Onboarding';
 import { Dashboard } from './components/Dashboard';
 import { Search } from './components/Search';
 import { Builder } from './components/Builder';
+import { PillTabs } from './components/PillTabs';
+
+function CustomTabBar({ state, descriptors, navigation }: any) {
+  const items = state.routes.map((route: any) => {
+    let icon: any;
+    if (route.name === 'Dashboard') icon = Calendar;
+    else if (route.name === 'Places') icon = MapPin;
+    else if (route.name === 'Social') icon = Radio;
+    else if (route.name === 'Dining') icon = UtensilsCrossed;
+    else if (route.name === 'Profile') icon = User;
+
+    const { options } = descriptors[route.key];
+    return {
+      key: route.name,
+      label: options.title !== undefined ? options.title : route.name,
+      icon,
+    };
+  });
+
+  return (
+    <View style={styles.tabBarShell} pointerEvents="box-none">
+      <View style={styles.tabBarWidth}>
+        <PillTabs
+          items={items}
+          activeKey={state.routes[state.index]?.name}
+          activeTextMode="active-only"
+          layout="stacked"
+          onChange={(routeName) => {
+            const route = state.routes.find((item: any) => item.name === routeName);
+            if (!route) return;
+
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+
+            if (state.routes[state.index]?.name !== routeName && !event.defaultPrevented) {
+              navigation.navigate({ name: routeName, merge: true });
+            }
+          }}
+        />
+      </View>
+    </View>
+  );
+}
 import { Saved } from './components/Saved';
 import { Profile } from './components/Profile';
+import { CampusConnectorScreen } from './components/CampusConnectorScreen';
+import { RecreationFacilitiesScreen } from './components/RecreationFacilitiesScreen';
 import { CourseDetail } from './components/CourseDetail';
 import { AuthLanding } from './components/AuthLanding';
 import { LoginScreen } from './components/LoginScreen';
@@ -36,9 +84,11 @@ import { CampusFeedScreen } from './components/CampusFeedScreen';
 import { ReelsScreen } from './components/ReelsScreen';
 import { GPACalculatorScreen } from './components/GPACalculatorScreen';
 import { CampusScreen } from './components/CampusScreen';
+import { SocialHubScreen } from './components/SocialHubScreen';
 
 import DiningDashboard from './components/dining/DiningDashboard';
 import MealOptimizerScreen from './components/dining/MealOptimizerScreen';
+import FullMenuScreen from './components/dining/FullMenuScreen';
 import MealTrackerScreen from './components/dining/MealTrackerScreen';
 import FoodDatabaseScreen from './components/dining/FoodDatabaseScreen';
 import RetailSwipesScreen from './components/dining/RetailSwipesScreen';
@@ -47,8 +97,8 @@ import WeightTrackerScreen from './components/dining/WeightTrackerScreen';
 import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 
-import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu, Compass, MessageSquare, MapPin, Radio } from 'lucide-react-native';
-import { useTheme } from './components/SharedUI';
+import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu, Compass, MessageSquare, MapPin, Radio, UtensilsCrossed } from 'lucide-react-native';
+import { useTheme, useThemeStore } from './components/SharedUI';
 
 import { syncUser } from './api/client';
 
@@ -60,6 +110,9 @@ function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
 
   React.useEffect(() => {
+    // Load wallpaper preference from storage
+    useThemeStore.getState().loadWallpaperPref?.();
+
     if (user) {
       syncUser(
         user.id,
@@ -108,48 +161,13 @@ function MainTabs() {
   return (
     <Tab.Navigator
       id="MainTabs"
-      screenOptions={({ route }) => ({
-        headerShown: false,
-        tabBarIcon: ({ focused, color, size }) => {
-          let IconName;
-
-          if (route.name === 'Dashboard') {
-            IconName = Calendar;
-          } else if (route.name === 'Places') {
-            IconName = MapPin;
-          } else if (route.name === 'Social') {
-            IconName = Radio;
-          } else if (route.name === 'Messages') {
-            IconName = MessageSquare;
-          } else if (route.name === 'Profile') {
-            IconName = User;
-          }
-
-          if (IconName) {
-            return <IconName size={size} color={color} strokeWidth={focused ? 2.5 : 2} />;
-          }
-          return null;
-        },
-        tabBarActiveTintColor: COLORS.accent, 
-        tabBarInactiveTintColor: COLORS.textTertiary,
-        tabBarStyle: {
-          height: 84,
-          paddingBottom: 28,
-          paddingTop: 12,
-          backgroundColor: COLORS.background, // Dynamic background
-          borderTopColor: COLORS.border,
-          borderTopWidth: StyleSheet.hairlineWidth,
-        },
-        tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
-        }
-      })}
+      screenOptions={{ headerShown: false }}
+      tabBar={props => <CustomTabBar {...props} />}
     >
       <Tab.Screen name="Dashboard" component={Dashboard} options={{ title: 'Home' }} />
       <Tab.Screen name="Places" component={PlacesMapScreen} options={{ title: 'Places' }} />
-      <Tab.Screen name="Social" component={CampusFeedScreen} options={{ title: 'Social' }} />
-      <Tab.Screen name="Messages" component={ChannelListScreen} options={{ title: 'Messages' }} />
+      <Tab.Screen name="Social" component={SocialHubScreen} options={{ title: 'Social' }} />
+      <Tab.Screen name="Dining" component={DiningDashboard} options={{ title: 'Dining' }} />
       <Tab.Screen name="Profile" component={Profile} options={{ title: 'Profile' }} />
     </Tab.Navigator>
   );
@@ -199,9 +217,12 @@ function RootNavigator() {
           <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: false }} />
           <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Reels" component={ReelsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="CampusConnector" component={CampusConnectorScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
           
           <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: false }} />
           <Stack.Screen name="MealOptimizer" component={MealOptimizerScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="FullMenu" component={FullMenuScreen} options={{ headerShown: false }} />
           <Stack.Screen name="TrackerHub" component={TrackerHubScreen} options={{ headerShown: false }} />
           <Stack.Screen name="StreakHub" component={StreakHubScreen} options={{ headerShown: false }} />
           <Stack.Screen name="MealTracker" component={MealTrackerScreen} options={{ headerShown: false }} />
@@ -250,3 +271,18 @@ function App() {
 }
 
 registerRootComponent(App);
+
+const styles = StyleSheet.create({
+  tabBarShell: {
+    position: 'absolute',
+    bottom: 24,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  tabBarWidth: {
+    width: '92%',
+    maxWidth: 460,
+  },
+});
