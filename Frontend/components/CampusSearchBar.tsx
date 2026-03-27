@@ -17,9 +17,18 @@ import { formatDistance } from '../services/campusDirections';
 interface CampusSearchBarProps {
   userCoord?: { latitude: number; longitude: number };
   onSelect: (result: CampusSearchResult) => void;
+  placeholder?: string;
+  showPinnedItems?: boolean;
+  displayValue?: string;
 }
 
-export function CampusSearchBar({ userCoord, onSelect }: CampusSearchBarProps) {
+export function CampusSearchBar({
+  userCoord,
+  onSelect,
+  placeholder = 'Search buildings, dining, restrooms…',
+  showPinnedItems = true,
+  displayValue,
+}: CampusSearchBarProps) {
     const { COLORS } = useTheme();
     const styles = getStyles(COLORS);
   const [query, setQuery] = useState('');
@@ -53,8 +62,17 @@ export function CampusSearchBar({ userCoord, onSelect }: CampusSearchBarProps) {
     inputRef.current?.focus();
   };
 
+  const handleFocus = () => {
+    if (!query && displayValue) {
+      setQuery(displayValue);
+      setResults(searchCampus(displayValue, userCoord));
+    }
+    setIsFocused(true);
+  };
+
   const pinnedItems = getPinnedItems();
-  const showDropdown = isFocused && (results.length > 0 || query.length === 0);
+  const showDropdown = isFocused && (results.length > 0 || (query.length === 0 && showPinnedItems));
+  const inputValue = isFocused ? query : (query || displayValue || '');
 
   const getItemIcon = (item: CampusSearchResult): string => {
     if (item.kind === 'command') {
@@ -72,23 +90,24 @@ export function CampusSearchBar({ userCoord, onSelect }: CampusSearchBarProps) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isFocused && styles.containerFocused]}>
       {/* Search input */}
       <View style={styles.inputRow}>
         <Search color={COLORS.textSecondary} size={18} style={styles.searchIcon} />
         <TextInput
           ref={inputRef}
           style={styles.input}
-          placeholder="Search buildings, dining, restrooms…"
+          placeholder={placeholder}
           placeholderTextColor={COLORS.textSecondary}
-          value={query}
+          value={inputValue}
           onChangeText={handleChangeText}
-          onFocus={() => setIsFocused(true)}
+          onFocus={handleFocus}
           onBlur={() => setTimeout(() => setIsFocused(false), 200)}
           returnKeyType="search"
           autoCorrect={false}
+          selectTextOnFocus
         />
-        {query.length > 0 && (
+        {inputValue.length > 0 && (
           <Pressable onPress={handleClear} style={styles.clearBtn}>
             <X color={COLORS.textSecondary} size={16} />
           </Pressable>
@@ -99,7 +118,7 @@ export function CampusSearchBar({ userCoord, onSelect }: CampusSearchBarProps) {
       {showDropdown && (
         <View style={styles.dropdown}>
           {/* Quick actions when no query */}
-          {query.length === 0 && (
+          {query.length === 0 && showPinnedItems && (
             <>
               <Text style={styles.sectionLabel}>Quick Actions</Text>
               {pinnedItems.map((item) => (
@@ -149,17 +168,22 @@ export function CampusSearchBar({ userCoord, onSelect }: CampusSearchBarProps) {
 
 const getStyles = (COLORS: any) => StyleSheet.create({
   container: {
-    zIndex: 1000,
+    position: 'relative',
+    zIndex: 10,
+  },
+  containerFocused: {
+    zIndex: 2000,
+    elevation: 24,
   },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    borderRadius: 14,
+    backgroundColor: '#050505',
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    paddingHorizontal: 14,
-    height: 48,
+    borderColor: 'rgba(255,255,255,0.10)',
+    paddingHorizontal: 18,
+    height: 56,
   },
   searchIcon: {
     marginRight: 10,
@@ -175,11 +199,11 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   },
   dropdown: {
     position: 'absolute',
-    top: 52,
+    top: 60,
     left: 0,
     right: 0,
     backgroundColor: COLORS.surface,
-    borderRadius: 14,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: COLORS.border,
     maxHeight: 320,
@@ -189,6 +213,7 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 12,
     elevation: 10,
+    zIndex: 2001,
   },
   sectionLabel: {
     fontSize: 12,

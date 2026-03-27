@@ -98,6 +98,27 @@ def update_dining_profile(clerk_id: str, req: UpdateDiningProfileRequest = Body(
         conn.commit()
     return {"status": "success"}
 
+
+@router.get("/full-menu")
+def get_full_menu(
+    location: str = Query(...),
+    meal_period: str = Query("lunch"),
+    date: Optional[str] = Query(None),
+):
+    result = dining_service.get_full_menu(location_name=location, meal_period=meal_period, date_str=date)
+    if not result.get("success"):
+        return {
+            "success": False,
+            "location": location,
+            "mealPeriod": meal_period,
+            "categories": [],
+            "count": 0,
+            "source": result.get("source", "database"),
+            "locations": result.get("locations", []),
+            "message": "No menu items available for that selection.",
+        }
+    return result
+
 @router.post("/optimize/day")
 def optimize_day(
     clerk_id: str = Query(...), 

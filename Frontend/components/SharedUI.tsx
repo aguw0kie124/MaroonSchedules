@@ -39,13 +39,27 @@ export const LIGHT_COLORS = {
 // Zustand Theme Store
 export const useThemeStore = create<any>((set) => ({
   theme: 'dark', // 'dark' | 'light'
-  setTheme: (newTheme: string) => set({ theme: newTheme })
+  useWallpaper: true, // true = marble wallpaper, false = solid background
+  setTheme: (newTheme: string) => set({ theme: newTheme }),
+  setUseWallpaper: (val: boolean) => {
+    set({ useWallpaper: val });
+    AsyncStorage.setItem('use_wallpaper', JSON.stringify(val));
+  },
+  loadWallpaperPref: async () => {
+    const stored = await AsyncStorage.getItem('use_wallpaper');
+    if (stored !== null) set({ useWallpaper: JSON.parse(stored) });
+  },
 }));
 
 export const useTheme = () => {
   const theme = useThemeStore((s: any) => s.theme);
+  const useWallpaper = useThemeStore((s: any) => s.useWallpaper);
   const COLORS = theme === 'dark' ? DARK_COLORS : LIGHT_COLORS;
-  return { COLORS, theme, setTheme: useThemeStore.getState().setTheme };
+  return {
+    COLORS, theme, useWallpaper,
+    setTheme: useThemeStore.getState().setTheme,
+    setUseWallpaper: useThemeStore.getState().setUseWallpaper,
+  };
 };
 
 export const COLORS = DARK_COLORS; // Fallback for static usage

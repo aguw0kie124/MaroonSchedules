@@ -1,14 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
     View, Text, StyleSheet, FlatList, Pressable, 
     Image, TextInput, ActivityIndicator, Alert,
-    Modal, TouchableWithoutFeedback, KeyboardAvoidingView, Platform, Keyboard
+    Modal, TouchableWithoutFeedback, KeyboardAvoidingView, Platform, Keyboard,
+    PanResponder, Animated
 } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
-import { Camera, Image as ImageIcon, Video, Heart, MapPin, X, MoreHorizontal, MessageCircle, Calendar, Send, Film } from 'lucide-react-native';
+import { Camera, Image as ImageIcon, Video, Heart, MapPin, X, MoreHorizontal, MessageCircle, Calendar, Send, Film, Plus } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from './SharedUI';
+import { useDiningTheme } from './dining/DiningTheme';
 import {
     connectFeedsUser,
     getCampusFeed,
@@ -65,9 +67,10 @@ function mapActivityToPost(activity: any): Post {
     };
 }
 
-export function CampusFeedScreen() {
-    const { COLORS } = useTheme();
-    const styles = getStyles(COLORS);
+export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = {}) {
+    const { COLORS, theme } = useTheme();
+    const T = useDiningTheme(theme === 'dark');
+    const styles = getStyles(COLORS, T);
     const { user } = useUser();
     const navigation = useNavigation<any>();
     
@@ -293,14 +296,57 @@ export function CampusFeedScreen() {
         );
     };
 
-    const renderPost = ({ item }: { item: Post }) => {
+    const PostCard = ({ item }: { item: Post }) => {
         const isLiked = user ? item.liked_by.includes(user.id) : false;
         const date = new Date(item.created_at);
         const hoursAgo = Math.floor((new Date().getTime() - date.getTime()) / (1000 * 60 * 60));
         const timeStr = hoursAgo < 1 ? 'Just now' : hoursAgo < 24 ? `${hoursAgo}h ago` : `${Math.floor(hoursAgo/24)}d ago`;
 
+        const swipeAnim = useRef(new Animated.Value(0)).current;
+        const heartScale = useRef(new Animated.Value(0)).current;
+        const [showSwipeHeart, setShowSwipeHeart] = useState(false);
+
+        const panResponder = useRef(PanResponder.create({
+            onMoveShouldSetPanResponder: (_, gs) => Math.abs(gs.dx) > 20 && Math.abs(gs.dx) > Math.abs(gs.dy) * 1.5,
+            onPanResponderMove: (_, gs) => { swipeAnim.setValue(gs.dx); },
+            onPanResponderRelease: (_, gs) => {
+                if (gs.dx > 80) {
+                    // Right swipe = like
+                    if (!isLiked) {
+                        handleToggleLike(item.id);
+                        setShowSwipeHeart(true);
+                        Animated.sequence([
+                            Animated.spring(heartScale, { toValue: 1, useNativeDriver: true, tension: 400, friction: 15 }),
+                            Animated.timing(heartScale, { toValue: 0, duration: 400, useNativeDriver: true }),
+                        ]).start(() => setShowSwipeHeart(false));
+                    }
+                } else if (gs.dx < -80) {
+                    // Left swipe = unlike
+                    if (isLiked) handleToggleLike(item.id);
+                }
+                Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true, tension: 200, friction: 20 }).start();
+            },
+            onPanResponderTerminate: () => {
+                Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true }).start();
+            },
+        })).current;
+
+        const cardBg = swipeAnim.interpolate({
+            inputRange: [-100, 0, 100],
+            outputRange: ['rgba(255,69,58,0.08)', 'transparent', 'rgba(255,69,58,0.08)'],
+            extrapolate: 'clamp',
+        });
+
         return (
-            <View style={styles.postCard}>
+            <Animated.View
+                style={[styles.postCard, { transform: [{ translateX: swipeAnim }] }]}
+                {...panResponder.panHandlers}
+            >
+                {showSwipeHeart && (
+                    <Animated.View style={[styles.swipeHeart, { transform: [{ scale: heartScale }] }]}>
+                        <Heart color="#FF453A" fill="#FF453A" size={64} />
+                    </Animated.View>
+                )}
                 <View style={styles.postHeader}>
                     <Image source={{ uri: item.user_image || 'https://via.placeholder.com/40' }} style={styles.avatar} />
                     <View style={styles.postHeaderText}>
@@ -311,7 +357,7 @@ export function CampusFeedScreen() {
                                 <>
                                     <Text style={styles.postTime}>•</Text>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                                        <MapPin color={COLORS.accent || COLORS.primary} size={10} />
+                                        <MapPin color={T.roseGold} size={10} />
                                         <Text style={styles.postLocation}>{item.location_tag}</Text>
                                     </View>
                                 </>
@@ -321,7 +367,7 @@ export function CampusFeedScreen() {
                     {item.user_id === user?.id ? (
                         <View style={{ flexDirection: 'row', gap: 4 }}>
                             <Pressable style={styles.moreBtn} onPress={() => openEditPost(item)}>
-                                <MoreHorizontal color={COLORS.textSecondary} size={20} />
+                                <MoreHorizontal color={T.text2} size={20} />
                             </Pressable>
                             <Pressable style={styles.moreBtn} onPress={() => handleDeletePost(item.id)}>
                                 <Trash2 color="#FF453A" size={18} />
@@ -329,7 +375,7 @@ export function CampusFeedScreen() {
                         </View>
                     ) : (
                         <Pressable style={styles.moreBtn}>
-                            <MoreHorizontal color={COLORS.textSecondary} size={20} />
+                            <MoreHorizontal color={T.text2} size={20} />
                         </Pressable>
                     )}
                 </View>
@@ -341,27 +387,30 @@ export function CampusFeedScreen() {
                 )}
                 
                 {item.media_url && item.media_type === 'video' && (
-                    <View style={[styles.postImage, { backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' }]}>
-                        <Video color="rgba(255,255,255,0.5)" size={48} />
+                    <View style={[styles.postImage, { backgroundColor: T.bg2, justifyContent: 'center', alignItems: 'center' }]}>
+                        <Video color={T.text3} size={48} />
                     </View>
                 )}
 
                 <View style={styles.postFooter}>
                     <Pressable style={styles.actionBtn} onPress={() => handleToggleLike(item.id)}>
-                        <Heart color={isLiked ? '#FF453A' : COLORS.textSecondary} fill={isLiked ? '#FF453A' : 'transparent'} size={22} />
+                        <Heart color={isLiked ? '#FF453A' : T.text2} fill={isLiked ? '#FF453A' : 'transparent'} size={22} />
                         <Text style={[styles.actionText, isLiked && { color: '#FF453A' }]}>{item.likes}</Text>
                     </Pressable>
                     <Pressable style={styles.actionBtn} onPress={() => openComments(item.id, item.caption || '')}>
-                        <MessageCircle color={COLORS.textSecondary} size={22} />
+                        <MessageCircle color={T.text2} size={22} />
                         <Text style={styles.actionText}>{item.reply_count} Replies</Text>
                     </Pressable>
                 </View>
-            </View>
+            </Animated.View>
         );
     };
 
+    const renderPost = ({ item }: { item: Post }) => <PostCard item={item} />;
+
     return (
         <View style={styles.container}>
+            {!embedded && (
             <View style={styles.header}>
                 <View style={{ width: 44 }} />
                 <Text style={styles.headerTitle}>Campus Life</Text>
@@ -374,6 +423,7 @@ export function CampusFeedScreen() {
                     </Pressable>
                 </View>
             </View>
+            )}
 
             {loading ? (
                 <View style={styles.centerFull}>
@@ -420,7 +470,7 @@ export function CampusFeedScreen() {
             )}
 
             <Pressable style={styles.fab} onPress={() => setModalVisible(true)} disabled={!feedConnected || !!streamError}>
-                <Camera color="#FFF" size={24} />
+                <Plus color="#FFF" size={28} strokeWidth={2.5} />
             </Pressable>
 
             <Modal visible={modalVisible} animationType="slide" transparent>
@@ -575,64 +625,65 @@ export function CampusFeedScreen() {
     );
 }
 
-const getStyles = (COLORS: any) => StyleSheet.create({
-    container: { flex: 1, backgroundColor: COLORS.background },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.background, paddingTop: 50, paddingBottom: 16, paddingHorizontal: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border },
+const getStyles = (COLORS: any, T: any) => StyleSheet.create({
+    container: { flex: 1, backgroundColor: T.bg },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: T.bg, paddingTop: 50, paddingBottom: 16, paddingHorizontal: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: T.border },
     headerBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-    headerTitle: { fontSize: 20, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 },
+    headerTitle: { fontSize: 20, fontWeight: '800', color: T.text, letterSpacing: -0.5 },
     centerFull: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    listContent: { paddingBottom: 100 },
+    listContent: { paddingBottom: 150 },
     
-    postCard: { backgroundColor: COLORS.background, paddingVertical: 16, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border },
+    postCard: { backgroundColor: T.bg, paddingVertical: 16, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: T.border, overflow: 'hidden' },
+    swipeHeart: { position: 'absolute', top: '40%', left: '40%', zIndex: 100, opacity: 0.9 },
     postHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-    avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surfaceElevated || COLORS.surface, marginRight: 12 },
+    avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: T.card, marginRight: 12, borderWidth: 1, borderColor: T.cardBorder },
     postHeaderText: { flex: 1 },
-    postAuthor: { fontSize: 16, fontWeight: '700', color: '#FFFFFF', marginBottom: 2 },
-    postTime: { fontSize: 13, color: COLORS.textSecondary },
-    postLocation: { fontSize: 12, fontWeight: '600', color: COLORS.accent || COLORS.primary },
+    postAuthor: { fontSize: 16, fontWeight: '700', color: T.text, marginBottom: 2 },
+    postTime: { fontSize: 13, color: T.text2 },
+    postLocation: { fontSize: 12, fontWeight: '600', color: T.roseGold },
     moreBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
     
-    postCaption: { fontSize: 15, color: '#FFFFFF', lineHeight: 22, marginBottom: 12 },
-    postImage: { width: '100%', height: 250, borderRadius: 16, marginBottom: 16, backgroundColor: COLORS.surfaceElevated || COLORS.surface },
+    postCaption: { fontSize: 15, color: T.text, lineHeight: 22, marginBottom: 12 },
+    postImage: { width: '100%', height: 250, borderRadius: 16, marginBottom: 16, backgroundColor: T.card },
     
-    postFooter: { flexDirection: 'row', gap: 24, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 12 },
+    postFooter: { flexDirection: 'row', gap: 24, borderTopWidth: 1, borderTopColor: T.border, paddingTop: 12 },
     actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    actionText: { fontSize: 14, fontWeight: '600', color: COLORS.textSecondary },
+    actionText: { fontSize: 14, fontWeight: '600', color: T.text2 },
     
     emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 80, paddingHorizontal: 40 },
-    emptyTitle: { fontSize: 20, fontWeight: '700', color: '#FFFFFF', marginTop: 16, marginBottom: 8 },
-    emptySubtitle: { fontSize: 15, color: COLORS.textSecondary, textAlign: 'center', lineHeight: 22 },
+    emptyTitle: { fontSize: 20, fontWeight: '700', color: T.text, marginTop: 16, marginBottom: 8 },
+    emptySubtitle: { fontSize: 15, color: T.text2, textAlign: 'center', lineHeight: 22 },
     
-    fab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.4, shadowOffset: { width: 0, height: 4 }, shadowRadius: 12, elevation: 8 },
+    fab: { position: 'absolute', bottom: 120, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: T.tamuMaroon, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.4, shadowOffset: { width: 0, height: 4 }, shadowRadius: 12, elevation: 8, borderWidth: 1, borderColor: T.roseGoldDark },
     
     modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
-    modalContent: { backgroundColor: COLORS.surface, borderTopLeftRadius: 32, borderTopRightRadius: 32, minHeight: '80%', padding: 20 },
-    modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingBottom: 16 },
-    modalCancelText: { fontSize: 16, color: COLORS.textSecondary },
-    modalTitle: { fontSize: 18, fontWeight: '700', color: '#FFFFFF' },
-    modalPostText: { fontSize: 16, fontWeight: '700', color: COLORS.accent || COLORS.primary },
+    modalContent: { backgroundColor: T.bg, borderTopLeftRadius: 32, borderTopRightRadius: 32, minHeight: '80%', padding: 20 },
+    modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, borderBottomWidth: 1, borderBottomColor: T.border, paddingBottom: 16 },
+    modalCancelText: { fontSize: 16, color: T.text2 },
+    modalTitle: { fontSize: 18, fontWeight: '700', color: T.text },
+    modalPostText: { fontSize: 16, fontWeight: '700', color: T.roseGold },
     modalCloseBtn: { paddingVertical: 4 },
-    captionInput: { fontSize: 17, color: '#FFFFFF', minHeight: 120, textAlignVertical: 'top', marginBottom: 20 },
+    captionInput: { fontSize: 17, color: T.text, minHeight: 120, textAlignVertical: 'top', marginBottom: 20 },
     mediaPreviewContainer: { position: 'relative', marginBottom: 20 },
-    mediaPreview: { width: '100%', height: 200, borderRadius: 16, backgroundColor: COLORS.surfaceElevated || COLORS.surface },
+    mediaPreview: { width: '100%', height: 200, borderRadius: 16, backgroundColor: T.card },
     removeMediaBtn: { position: 'absolute', top: 12, right: 12, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
-    actionBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.border },
+    actionBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 16, borderTopWidth: 1, borderTopColor: T.border },
     mediaBtns: { flexDirection: 'row', gap: 16 },
-    mediaBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(80,0,0,0.15)', alignItems: 'center', justifyContent: 'center' },
-    locationInputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.background, paddingHorizontal: 12, height: 40, borderRadius: 20, gap: 8, flex: 1, marginLeft: 16 },
-    locationInput: { flex: 1, color: '#FFFFFF', fontSize: 14 },
+    mediaBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: T.bg3, alignItems: 'center', justifyContent: 'center' },
+    locationInputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: T.bg2, paddingHorizontal: 12, height: 40, borderRadius: 20, gap: 8, flex: 1, marginLeft: 16 },
+    locationInput: { flex: 1, color: T.text, fontSize: 14 },
 
-    commentsModal: { backgroundColor: COLORS.surface, borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: '75%', minHeight: '50%' },
-    commentsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-    commentsTitle: { fontSize: 18, fontWeight: '800', color: '#FFFFFF' },
-    commentOriginalPost: { paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.border, backgroundColor: 'rgba(80,0,0,0.1)' },
-    commentOriginalText: { fontSize: 14, color: COLORS.textSecondary, fontStyle: 'italic' },
+    commentsModal: { backgroundColor: T.bg, borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: '75%', minHeight: '50%' },
+    commentsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: T.border },
+    commentsTitle: { fontSize: 18, fontWeight: '800', color: T.text },
+    commentOriginalPost: { paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: T.border, backgroundColor: T.bg3 },
+    commentOriginalText: { fontSize: 14, color: T.text2, fontStyle: 'italic' },
     commentRow: { flexDirection: 'row', paddingHorizontal: 20, paddingVertical: 8, gap: 12, alignItems: 'flex-start' },
-    commentAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.surfaceElevated || '#222' },
-    commentBubble: { flex: 1, backgroundColor: COLORS.surfaceElevated || '#1A1A1A', borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: COLORS.border },
-    commentUser: { fontSize: 13, fontWeight: '800', color: COLORS.accent || COLORS.primary, marginBottom: 2 },
-    commentBody: { fontSize: 14, color: '#FFFFFF', lineHeight: 20 },
-    commentInputRow: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: COLORS.border, gap: 10, alignItems: 'center' },
-    commentInput: { flex: 1, backgroundColor: COLORS.background, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, color: '#FFFFFF', fontSize: 14 },
-    commentSendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.primary, alignItems: 'center', justifyContent: 'center' }
+    commentAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: T.card },
+    commentBubble: { flex: 1, backgroundColor: T.card, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: T.cardBorder },
+    commentUser: { fontSize: 13, fontWeight: '800', color: T.roseGold, marginBottom: 2 },
+    commentBody: { fontSize: 14, color: T.text, lineHeight: 20 },
+    commentInputRow: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: T.border, gap: 10, alignItems: 'center' },
+    commentInput: { flex: 1, backgroundColor: T.bg2, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 10, color: T.text, fontSize: 14 },
+    commentSendBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: T.tamuMaroon, alignItems: 'center', justifyContent: 'center' }
 });

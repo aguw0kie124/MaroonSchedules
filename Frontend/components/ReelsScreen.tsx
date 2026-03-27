@@ -73,23 +73,58 @@ const DEMO_REELS: Reel[] = [
     },
 ];
 
+function safelyPausePlayer(player: any) {
+    if (!player?.pause) return;
+    try {
+        player.pause();
+    } catch (error) {
+        console.warn('[Reels] Ignoring pause failure on disposed player');
+    }
+}
+
+function safelyPlayPlayer(player: any) {
+    if (!player?.play) return;
+    try {
+        player.play();
+    } catch (error) {
+        console.warn('[Reels] Ignoring play failure on disposed player');
+    }
+}
+
 const ReelItem = ({ 
     item, index, currentIndex, user, 
     handleLike, openComments, openEditReel, handleDeleteReel, 
-    styles 
+    styles,
+    mediaActive,
 }: any) => {
     const isLiked = user ? item.liked_by.includes(user.id) : false;
-    const isActive = index === currentIndex;
+    const isActive = index === currentIndex && mediaActive;
+    const [playbackError, setPlaybackError] = useState<string | null>(null);
 
     const player = useVideoPlayer(item.video_url, p => {
         p.loop = true;
-        if (isActive) p.play();
-        else p.pause();
     });
 
     useEffect(() => {
-        if (isActive) player.play();
-        else player.pause();
+        const subscription = player.addListener?.('statusChange', (event: any) => {
+            if (event?.status === 'error') {
+                setPlaybackError(event?.error?.message || 'Playback error');
+            } else if (event?.status === 'readyToPlay') {
+                setPlaybackError(null);
+            }
+        });
+
+        return () => {
+            subscription?.remove?.();
+        };
+    }, [player]);
+
+    useEffect(() => {
+        if (isActive) {
+            safelyPlayPlayer(player);
+        } else {
+            safelyPausePlayer(player);
+        }
     }, [isActive, player]);
 
     return (
@@ -100,6 +135,12 @@ const ReelItem = ({
                 contentFit="cover"
                 nativeControls={false}
             />
+
+            {playbackError ? (
+                <View style={styles.videoErrorOverlay}>
+                    <Text style={styles.videoErrorText}>This reel could not be played right now.</Text>
+                </View>
+            ) : null}
 
             {/* Right side action buttons */}
             <View style={styles.rightActions}>
@@ -151,7 +192,7 @@ const ReelItem = ({
     );
 };
 
-export function ReelsScreen() {
+export function ReelsScreen({ mediaActive = true }: { mediaActive?: boolean }) {
     const { COLORS } = useTheme();
     const styles = getStyles(COLORS);
     const { user } = useUser();
@@ -173,7 +214,6 @@ export function ReelsScreen() {
     const uploadPlayer = useVideoPlayer(uploadVideoUri || '', p => {
         p.loop = true;
         p.muted = true;
-        p.play();
     });
 
     // Comment Modal State
@@ -186,17 +226,25 @@ export function ReelsScreen() {
     const [sendingComment, setSendingComment] = useState(false);
 
     useEffect(() => { 
-        loadReels(); 
+        loadReels(true); 
         
-        // Real-time effect: poll every 15 seconds for reels
+        // Background poll — don't show loading spinner or reset scroll
         const interval = setInterval(() => {
-            loadReels();
+            loadReels(false);
         }, 15000);
         return () => clearInterval(interval);
     }, [user]);
 
-    const loadReels = async () => {
-        setLoading(true);
+    useEffect(() => {
+        if (uploadVideoUri && uploadModalVisible && mediaActive) {
+            safelyPlayPlayer(uploadPlayer);
+        } else {
+            safelyPausePlayer(uploadPlayer);
+        }
+    }, [mediaActive, uploadModalVisible, uploadPlayer, uploadVideoUri]);
+
+    const loadReels = async (showLoading = true) => {
+        if (showLoading) setLoading(true);
         if (!user) {
             setReels(DEMO_REELS);
             setLoading(false);
@@ -220,7 +268,7 @@ export function ReelsScreen() {
             }
             setReels(DEMO_REELS); // Fallback to demos so page isn't empty 
         } finally {
-            setLoading(false);
+            if (showLoading) setLoading(false);
         }
     };
 
@@ -367,6 +415,7 @@ export function ReelsScreen() {
             openEditReel={openEditReel}
             handleDeleteReel={handleDeleteReel}
             styles={styles}
+            mediaActive={mediaActive && !commentModalVisible && !uploadModalVisible}
         />
     );
 
@@ -418,6 +467,10 @@ export function ReelsScreen() {
                     offset: SCREEN_HEIGHT * index,
                     index,
                 })}
+                initialNumToRender={2}
+                maxToRenderPerBatch={2}
+                windowSize={3}
+                removeClippedSubviews
             />
 
             <Modal visible={uploadModalVisible} animationType="slide" transparent>
@@ -546,6 +599,19 @@ const getStyles = (COLORS: any) => StyleSheet.create({
 
     reelContainer: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT, backgroundColor: '#000' },
     video: { width: '100%', height: '100%' },
+    videoErrorOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: 'rgba(0,0,0,0.45)',
+        paddingHorizontal: 32,
+    },
+    videoErrorText: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        fontWeight: '700',
+        textAlign: 'center',
+    },
 
     rightActions: { position: 'absolute', right: 12, bottom: 140, alignItems: 'center', gap: 20 },
     rightActionItem: { alignItems: 'center', gap: 4 },

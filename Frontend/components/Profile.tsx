@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, Switch, Platform, ActivityIndicator, Alert, Modal, FlatList, Image } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { LogOut, Save, ChevronDown, Camera, GraduationCap, Search, Calendar as CalendarIcon, ChevronRight, BookOpen } from 'lucide-react-native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
+import { LogOut, Save, ChevronDown, Camera, GraduationCap, Search, Calendar as CalendarIcon, ChevronRight, Wallet, BriefcaseBusiness } from 'lucide-react-native';
 import { useUser, useClerk } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
 
 import { useTheme } from './SharedUI';
 
-import { fetchUserProfile, updateUserProfile } from '../api/client';
+import { fetchCampusConnectors, fetchCampusOverview, fetchUserProfile, updateUserProfile } from '../api/client';
 
 const MAJOR_OPTIONS = [
     'Aerospace Engineering',
@@ -66,22 +66,73 @@ const GRADUATION_YEAR_OPTIONS = [
 
 const PREFERRED_TIME_OPTIONS = ['Morning', 'Afternoon', 'Evening', 'No Preference'];
 
-const MAX_CREDITS_OPTIONS = ['12', '15', '18', '21'];
+
+
+const CONNECTOR_OPTIONS = [
+    {
+        systemId: 'howdy',
+        label: 'Howdy Portal',
+        description: 'Academic schedule, GPA, holds, and registration readiness.',
+        icon: GraduationCap,
+        tint: '#800000',
+    },
+    {
+        systemId: 'transact',
+        label: 'Transact eAccounts',
+        description: 'Meal plans, balances, and recent dining transactions.',
+        icon: Wallet,
+        tint: '#A15C00',
+    },
+    {
+        systemId: 'symplicity',
+        label: 'Hire Aggies',
+        description: 'Jobs, employers, interviews, and career event activity.',
+        icon: BriefcaseBusiness,
+        tint: '#236B54',
+    },
+];
+
+function getConnectorStatusLabel(status?: string) {
+    if (status === 'connected') return 'Connected';
+    if (status === 'awaiting_login') return 'Finish Login';
+    return 'Connect';
+}
+
+function getConnectorDescription(connector: any, fallback: string) {
+    if (connector?.status === 'connected' && connector?.updated_at) {
+        const updatedAt = new Date(connector.updated_at);
+        return `Captured ${updatedAt.toLocaleString([], {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        })}`;
+    }
+
+    if (connector?.status === 'awaiting_login') {
+        return 'Keep going in the connector browser until your campus data page is visible.';
+    }
+
+    return fallback;
+}
 
 export function Profile() {
     const navigation = useNavigation<any>();
+    const isFocused = useIsFocused();
     const [preferences, setPreferences] = useState({
         major: '',
         graduationYear: '',
         preferredTime: 'Morning',
-        maxCredits: '15',
         avoidFriday: false,
         showOnlineFirst: true,
     });
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [connectors, setConnectors] = useState<any[]>([]);
+    const [connectorsLoading, setConnectorsLoading] = useState(true);
+    const [academicStatus, setAcademicStatus] = useState<any | null>(null);
     const [pickerVisible, setPickerVisible] = useState<'major' | 'gradYear' | 'prefTime' | null>(null);
-    const { COLORS, theme, setTheme } = useTheme();
+    const { COLORS, theme, setTheme, useWallpaper, setUseWallpaper } = useTheme();
     const styles = getStyles(COLORS);
 
     const { user } = useUser();
@@ -89,14 +140,17 @@ export function Profile() {
 
     // Load saved profile from PostgreSQL on mount
     useEffect(() => {
-        if (!user) return;
+        if (!user) {
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
         fetchUserProfile(user.id)
             .then(data => {
                 setPreferences({
                     major: data.major || '',
                     graduationYear: data.graduation_year || '',
                     preferredTime: data.preferred_time || 'Morning',
-                    maxCredits: data.max_credits || '15',
                     avoidFriday: data.avoid_friday ?? false,
                     showOnlineFirst: data.show_online_first ?? true,
                 });
@@ -104,6 +158,37 @@ export function Profile() {
             .catch(err => console.warn('Failed to load profile:', err))
             .finally(() => setLoading(false));
     }, [user]);
+
+    useEffect(() => {
+        let cancelled = false;
+        if (!user || !isFocused) return;
+
+        setConnectorsLoading(true);
+        fetchCampusConnectors(user.id)
+            .then(data => {
+                if (!cancelled) {
+                    setConnectors(Array.isArray(data) ? data : []);
+                }
+            })
+            .catch(err => console.warn('Failed to load connectors:', err))
+            .finally(() => {
+                if (!cancelled) {
+                    setConnectorsLoading(false);
+                }
+            });
+
+        fetchCampusOverview(user.id)
+            .then(data => {
+                if (!cancelled) {
+                    setAcademicStatus(data?.academic || null);
+                }
+            })
+            .catch(err => console.warn('Failed to load academic status:', err));
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isFocused, user]);
 
     // Auto-save a single field to the backend
     const saveField = useCallback(async (fields: Record<string, any>) => {
@@ -141,7 +226,6 @@ export function Profile() {
                 major: preferences.major,
                 graduation_year: preferences.graduationYear,
                 preferred_time: preferences.preferredTime,
-                max_credits: preferences.maxCredits,
                 avoid_friday: preferences.avoidFriday,
                 show_online_first: preferences.showOnlineFirst,
             });
@@ -156,7 +240,7 @@ export function Profile() {
     const handleLogout = async () => {
         await signOut();
     };
-    
+
     const handleAvatarPress = async () => {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') {
@@ -175,17 +259,17 @@ export function Profile() {
         if (!result.canceled && result.assets && result.assets.length > 0) {
             const asset = result.assets[0];
             if (!user) return;
-            
+
             setSaving(true);
             try {
                 // Clerk's setProfileImage can accept a base64 string directly.
                 // This is often more reliable in React Native/Expo than Blob conversion.
                 const base64Data = asset.base64;
                 const mimeType = asset.mimeType || 'image/jpeg';
-                
+
                 if (base64Data) {
-                    await user.setProfileImage({ 
-                        file: `data:${mimeType};base64,${base64Data}` 
+                    await user.setProfileImage({
+                        file: `data:${mimeType};base64,${base64Data}`
                     });
                     Alert.alert('Success', 'Profile picture updated successfully!');
                 } else if (asset.uri) {
@@ -212,8 +296,6 @@ export function Profile() {
 
     return (
         <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-            <Text style={styles.title}>Profile & Preferences</Text>
-
             {/* Avatar Section */}
             <View style={styles.avatarSection}>
                 <Pressable onPress={handleAvatarPress} style={styles.avatarWrapper}>
@@ -256,36 +338,11 @@ export function Profile() {
                     onPress={() => setPickerVisible('prefTime')}
                 />
 
-                {/* Max credits segmented control */}
-                <View style={styles.inputContainer}>
-                    <Text style={styles.label}>Max Credits Per Term</Text>
-                    <View style={styles.segmentedRow}>
-                        {MAX_CREDITS_OPTIONS.map(opt => (
-                            <Pressable
-                                key={opt}
-                                style={[
-                                    styles.segmentBtn,
-                                    preferences.maxCredits === opt && styles.segmentBtnActive,
-                                ]}
-                                onPress={() => {
-                                    setPreferences(prev => ({ ...prev, maxCredits: opt }));
-                                    saveField({ max_credits: opt });
-                                }}
-                            >
-                                <Text style={[
-                                    styles.segmentText,
-                                    preferences.maxCredits === opt && styles.segmentTextActive,
-                                ]}>{opt}</Text>
-                            </Pressable>
-                        ))}
-                    </View>
-                </View>
+
             </View>
 
             {/* Preferences */}
             <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Preferences</Text>
-
                 <ToggleField
                     label="Avoid Friday Classes"
                     description="Prioritize schedules without Friday classes"
@@ -328,22 +385,102 @@ export function Profile() {
                     <Text style={styles.toolTitle}>GPA Calculator</Text>
                     <ChevronRight size={20} color={COLORS.border} />
                 </Pressable>
+            </View>
 
-                <Pressable style={styles.toolRow} onPress={() => navigation.navigate('DiningDashboard')}>
-                    <View style={[styles.toolIconBg, { backgroundColor: '#E8922A20' }]}>
-                        <Search size={20} color="#E8922A" />
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Academic Status</Text>
+                <View style={styles.statusCard}>
+                    <View style={styles.statusRow}>
+                        <Text style={styles.statusLabel}>Registration Readiness</Text>
+                        <Text style={[
+                            styles.statusValue,
+                            academicStatus?.registrationReady ? styles.statusValuePositive : styles.statusValueWarning,
+                        ]}>
+                            {academicStatus?.registrationReady ? 'Ready' : 'Needs attention'}
+                        </Text>
                     </View>
-                    <Text style={styles.toolTitle}>Campus Dining & Nutrition</Text>
-                    <ChevronRight size={20} color={COLORS.border} />
-                </Pressable>
+                    <Text style={styles.statusHelper}>
+                        {academicStatus?.activeHolds?.length
+                            ? `Active holds: ${academicStatus.activeHolds.join(', ')}`
+                            : 'No active holds are visible from your current academic state.'}
+                    </Text>
+                    <Text style={styles.statusHelper}>
+                        GPA: {academicStatus?.gpa || 'Connect Howdy'} · Source: {academicStatus?.sourceLabel || 'Unavailable'}
+                    </Text>
+                </View>
+            </View>
 
-                <Pressable style={styles.toolRow} onPress={() => navigation.navigate('CanvasDashboard')}>
-                    <View style={[styles.toolIconBg, { backgroundColor: '#E11D4820' }]}>
-                        <BookOpen size={20} color="#E11D48" />
+            <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Connected Services</Text>
+                <Text style={styles.sectionSubtext}>
+                    Sign in once inside the app and we will reuse that browser session on this device while refreshing campus data from the page you land on.
+                </Text>
+
+                {connectorsLoading ? (
+                    <View style={styles.connectorLoadingRow}>
+                        <ActivityIndicator size="small" color={COLORS.primary} />
+                        <Text style={styles.connectorLoadingText}>Checking saved campus connections...</Text>
                     </View>
-                    <Text style={styles.toolTitle}>Canvas LMS Hub</Text>
-                    <ChevronRight size={20} color={COLORS.border} />
-                </Pressable>
+                ) : (
+                    CONNECTOR_OPTIONS.map((item, index) => {
+                        const connector = connectors.find(entry => entry.system_id === item.systemId);
+                        const Icon = item.icon;
+                        const status = connector?.status || 'disconnected';
+
+                        return (
+                            <Pressable
+                                key={item.systemId}
+                                style={[
+                                    styles.connectorRow,
+                                    index === CONNECTOR_OPTIONS.length - 1 && styles.connectorRowLast,
+                                ]}
+                                onPress={() => navigation.navigate('CampusConnector', {
+                                    systemId: item.systemId,
+                                    label: connector?.label || item.label,
+                                    loginUrl: connector?.login_url,
+                                    dataScope: connector?.data_scope,
+                                    sourceUrl: connector?.source_url,
+                                })}
+                            >
+                                <View style={[styles.toolIconBg, { backgroundColor: `${item.tint}18` }]}>
+                                    <Icon size={20} color={item.tint} />
+                                </View>
+                                <View style={styles.connectorContent}>
+                                    <View style={styles.connectorHeader}>
+                                        <Text style={styles.connectorTitle}>{item.label}</Text>
+                                        <View
+                                            style={[
+                                                styles.connectorBadge,
+                                                status === 'connected'
+                                                    ? styles.connectorBadgeConnected
+                                                    : status === 'awaiting_login'
+                                                        ? styles.connectorBadgePending
+                                                        : styles.connectorBadgeDisconnected,
+                                            ]}
+                                        >
+                                            <Text
+                                                style={[
+                                                    styles.connectorBadgeText,
+                                                    status === 'connected'
+                                                        ? styles.connectorBadgeTextConnected
+                                                        : status === 'awaiting_login'
+                                                            ? styles.connectorBadgeTextPending
+                                                            : styles.connectorBadgeTextDisconnected,
+                                                ]}
+                                            >
+                                                {getConnectorStatusLabel(status)}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    <Text style={styles.connectorDescription} numberOfLines={2}>
+                                        {getConnectorDescription(connector, item.description)}
+                                    </Text>
+                                </View>
+                                <ChevronRight size={20} color={COLORS.border} />
+                            </Pressable>
+                        );
+                    })
+                )}
             </View>
 
             {/* Appearance Settings */}
@@ -365,6 +502,27 @@ export function Profile() {
                             <Text style={[styles.segmentText, theme === 'dark' && styles.segmentTextActive]}>Dark</Text>
                         </Pressable>
                     </View>
+                </View>
+
+                <View style={styles.inputContainer}>
+                    <Text style={styles.label}>Background Style</Text>
+                    <View style={styles.segmentedRow}>
+                        <Pressable
+                            style={[styles.segmentBtn, useWallpaper && styles.segmentBtnActive]}
+                            onPress={() => setUseWallpaper(true)}
+                        >
+                            <Text style={[styles.segmentText, useWallpaper && styles.segmentTextActive]}>Wallpaper</Text>
+                        </Pressable>
+                        <Pressable
+                            style={[styles.segmentBtn, !useWallpaper && styles.segmentBtnActive]}
+                            onPress={() => setUseWallpaper(false)}
+                        >
+                            <Text style={[styles.segmentText, !useWallpaper && styles.segmentTextActive]}>Solid</Text>
+                        </Pressable>
+                    </View>
+                    <Text style={{ fontSize: 11, color: COLORS.textTertiary, marginTop: 4 }}>
+                        {useWallpaper ? 'Marble wallpaper on supported pages' : `Solid ${theme === 'dark' ? 'black' : 'white'} background`}
+                    </Text>
                 </View>
             </View>
 
@@ -555,7 +713,7 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     },
     contentContainer: {
         padding: 16,
-        paddingTop: 40, // Reduced from 60
+        paddingTop: 85,
     },
     title: {
         fontSize: 24,
@@ -623,6 +781,12 @@ const getStyles = (COLORS: any) => StyleSheet.create({
         fontWeight: '600',
         marginBottom: 8,
         color: COLORS.textPrimary,
+    },
+    sectionSubtext: {
+        fontSize: 13,
+        lineHeight: 19,
+        color: COLORS.textSecondary,
+        marginTop: -4,
     },
     inputContainer: {
         gap: 8,
@@ -699,6 +863,110 @@ const getStyles = (COLORS: any) => StyleSheet.create({
         fontSize: 16,
         color: COLORS.textPrimary,
         fontWeight: '500',
+    },
+    connectorLoadingRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingVertical: 8,
+    },
+    connectorLoadingText: {
+        fontSize: 14,
+        color: COLORS.textSecondary,
+    },
+    connectorRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 14,
+        paddingVertical: 14,
+        borderBottomWidth: 1,
+        borderBottomColor: COLORS.border,
+    },
+    connectorRowLast: {
+        borderBottomWidth: 0,
+        paddingBottom: 0,
+    },
+    connectorContent: {
+        flex: 1,
+        gap: 6,
+    },
+    connectorHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    connectorTitle: {
+        flex: 1,
+        fontSize: 16,
+        fontWeight: '600',
+        color: COLORS.textPrimary,
+    },
+    connectorDescription: {
+        fontSize: 13,
+        lineHeight: 18,
+        color: COLORS.textSecondary,
+    },
+    connectorBadge: {
+        borderRadius: 999,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+    },
+    connectorBadgeConnected: {
+        backgroundColor: '#1C7C5420',
+    },
+    connectorBadgePending: {
+        backgroundColor: '#C9780020',
+    },
+    connectorBadgeDisconnected: {
+        backgroundColor: COLORS.border,
+    },
+    connectorBadgeText: {
+        fontSize: 11,
+        fontWeight: '700',
+    },
+    connectorBadgeTextConnected: {
+        color: '#1C7C54',
+    },
+    connectorBadgeTextPending: {
+        color: '#A45F00',
+    },
+    connectorBadgeTextDisconnected: {
+        color: COLORS.textSecondary,
+    },
+    statusCard: {
+        gap: 10,
+        backgroundColor: COLORS.surfaceElevated || COLORS.surface,
+        borderRadius: 14,
+        padding: 14,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+    },
+    statusRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: 12,
+    },
+    statusLabel: {
+        flex: 1,
+        fontSize: 15,
+        fontWeight: '600',
+        color: COLORS.textPrimary,
+    },
+    statusValue: {
+        fontSize: 13,
+        fontWeight: '800',
+    },
+    statusValuePositive: {
+        color: '#1C7C54',
+    },
+    statusValueWarning: {
+        color: '#A45F00',
+    },
+    statusHelper: {
+        fontSize: 13,
+        lineHeight: 18,
+        color: COLORS.textSecondary,
     },
     // Buttons
     saveButton: {

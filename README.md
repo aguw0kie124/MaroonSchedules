@@ -1,4 +1,4 @@
-# MaroonSchedules
+# MaroonLife
 
 <ins>**Quick Start Demo (run the following)**:</ins><br>
 git clone https://github.com/rianp0071/MaroonSchedules<br>

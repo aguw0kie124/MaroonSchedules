@@ -1,12 +1,31 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions, Modal, TouchableWithoutFeedback, Image } from 'react-native';
+import React, { useEffect, useMemo } from 'react';
+import {
+    ActivityIndicator,
+    Image,
+    ImageBackground,
+    Pressable,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    View,
+} from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
-import { Plus, ChevronDown, CheckCircle2, Clock, ArrowRight, MapPin, TrendingUp, GraduationCap, Radio, Map as MapIcon, Sparkles, ChevronRight } from 'lucide-react-native';
 import { useUser } from '@clerk/clerk-expo';
-import { fetchSchedules, fetchUserProfile } from '../api/client';
-import { useTheme, Card } from './SharedUI';
-
-const { width } = Dimensions.get('window');
+import * as Linking from 'expo-linking';
+import {
+    ArrowRight,
+    Bell,
+    BriefcaseBusiness,
+    Bus,
+    ChevronRight,
+    Clock,
+    Dumbbell,
+    ExternalLink,
+    MapPin,
+} from 'lucide-react-native';
+import { Card, useTheme } from './SharedUI';
+import { useCampusHubStore } from '../store/campusHubStore';
 
 const WEEK_DAYS = [
     { label: 'Mon', value: 'M' },
@@ -16,115 +35,129 @@ const WEEK_DAYS = [
     { label: 'Fri', value: 'F' },
 ];
 
+function getDefaultDay() {
+    const day = ['U', 'M', 'T', 'W', 'R', 'F', 'S'][new Date().getDay()];
+    return ['U', 'S'].includes(day) ? 'M' : day;
+}
+
+function getUrgencyColor(level: 'high' | 'medium' | 'low', colors: any) {
+    if (level === 'high') return colors.danger;
+    if (level === 'medium') return colors.warning;
+    return colors.success;
+}
+
+function getWeatherLabel(weatherCode: number | null | undefined, isDay?: number | null) {
+    const weatherMap: Record<number, string> = {
+        0: isDay === 0 ? 'Clear' : 'Sunny',
+        1: 'Mostly Clear',
+        2: 'Partly Cloudy',
+        3: 'Cloudy',
+        45: 'Fog',
+        48: 'Fog',
+        51: 'Light Drizzle',
+        53: 'Drizzle',
+        55: 'Heavy Drizzle',
+        61: 'Light Rain',
+        63: 'Rain',
+        65: 'Heavy Rain',
+        71: 'Light Snow',
+        73: 'Snow',
+        75: 'Heavy Snow',
+        80: 'Rain Showers',
+        81: 'Showers',
+        82: 'Heavy Showers',
+        95: 'Thunderstorm',
+    };
+    return weatherMap[weatherCode ?? -1] || 'Weather';
+}
+
 export function Dashboard() {
-    const { COLORS } = useTheme();
-    const styles = getStyles(COLORS);
+    const { COLORS, theme, useWallpaper } = useTheme();
+    const isDark = theme === 'dark';
+    const styles = getStyles(COLORS, isDark);
     const navigation = useNavigation<any>();
     const isFocused = useIsFocused();
     const { user } = useUser();
-
-    const [schedules, setSchedules] = useState<any[]>([]);
-    const [selectedSchedule, setSelectedSchedule] = useState<any>(null);
-    const [dropdownVisible, setDropdownVisible] = useState(false);
-    const [currentTime, setCurrentTime] = useState(new Date());
-    const [maxCreditGoal, setMaxCreditGoal] = useState(15);
-
-    const getDayString = () => {
-        const days = ['U', 'M', 'T', 'W', 'R', 'F', 'S'];
-        return days[new Date().getDay()];
-    };
-
-    const currentDayStr = getDayString();
-    const defaultDay = ['U', 'S'].includes(currentDayStr) ? 'M' : currentDayStr;
-    const [selectedDay, setSelectedDay] = useState(defaultDay);
+    const { snapshot, loading, error, hydrate } = useCampusHubStore();
+    const [selectedDay, setSelectedDay] = React.useState(getDefaultDay());
+    const [weatherLabel, setWeatherLabel] = React.useState('College Station');
 
     useEffect(() => {
-        const timer = setInterval(() => setCurrentTime(new Date()), 60000);
-        return () => clearInterval(timer);
+        if (isFocused && user?.id) {
+            hydrate(user.id).catch(() => {});
+        }
+    }, [hydrate, isFocused, user?.id]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        fetch('https://api.open-meteo.com/v1/forecast?latitude=30.6280&longitude=-96.3344&current=temperature_2m,weather_code,is_day&temperature_unit=fahrenheit&timezone=America%2FChicago')
+            .then(response => response.json())
+            .then(data => {
+                if (cancelled) return;
+                const current = data?.current;
+                const temperature = typeof current?.temperature_2m === 'number'
+                    ? `${Math.round(current.temperature_2m)}°`
+                    : null;
+                const condition = getWeatherLabel(current?.weather_code, current?.is_day);
+                setWeatherLabel(temperature ? `${temperature} ${condition}` : condition);
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setWeatherLabel('College Station');
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
     }, []);
 
-    useEffect(() => {
-        if (isFocused && user) {
-            loadSchedules();
-            // Load max_credits preference from user profile
-            fetchUserProfile(user.id)
-                .then(data => {
-                    const mc = parseInt(data?.max_credits || '15', 10);
-                    setMaxCreditGoal(isNaN(mc) ? 15 : mc);
-                })
-                .catch(() => { }); // silently keep default
+    const academic = snapshot?.academic;
+    const notifications = (snapshot?.notifications || []).filter(notification => notification.id !== 'registration-state');
+    const priorityNotifications = notifications.slice(0, 3);
+    const recreationPreview = (snapshot?.recreation.facilities || []).slice(0, 2);
+    const visibleCourses = useMemo(() => {
+        return (academic?.courses || []).filter(course => course.days.includes(selectedDay));
+    }, [academic?.courses, selectedDay]);
+    const annexModule = snapshot?.services.find(service => service.id === 'annex');
+    const openRecreationFacilities = () => {
+        const rootNavigation = navigation.getParent?.('RootStack') || navigation.getParent?.();
+        if (rootNavigation?.navigate) {
+            rootNavigation.navigate('RecreationFacilities');
+            return;
         }
-    }, [isFocused, user]);
+        navigation.navigate('RecreationFacilities');
+    };
 
-    const loadSchedules = async () => {
-        if (!user) return;
+    const marbleSrc = isDark
+        ? require('../assets/black_marble.jpg')
+        : require('../assets/white_marble.jpg');
+
+    const openExternal = async (url: string) => {
         try {
-            const res = await fetchSchedules(user.id);
-            setSchedules(res);
-            if (res.length > 0) {
-                setSelectedSchedule((prev: any) => prev ? (res.find((s: any) => s.schedule_id === prev.schedule_id) || res[0]) : res[0]);
-            }
-        } catch (e) { console.error(e); }
+            await Linking.openURL(url);
+        } catch (linkError) {
+            console.warn('Unable to open URL', url, linkError);
+        }
     };
-
-    const displayCourses = selectedSchedule?.sections ? selectedSchedule.sections.map((sec: any, index: number) => {
-        const meeting = sec.meetings?.[0];
-        const timeStr = meeting?.beginTime ? `${meeting.beginTime}-${meeting.endTime}` : 'TBA';
-        return {
-            id: sec.id || sec.section_id,
-            code: `${sec.dept || ''} ${sec.courseNumber || ''}`.trim() || `Section ${sec.section_id}`,
-            name: sec.courseTitle || 'Class',
-            time: timeStr,
-            beginTime: meeting?.beginTime,
-            endTime: meeting?.endTime,
-            days: meeting?.daysOfWeek || [],
-            credits: Number(sec.credit_hours || sec.creditHours || 3),
-            location: meeting?.building ? `${meeting.building} ${meeting.room || ''}`.trim() : 'TBA',
-            color: `hsl(${(index * 55) % 360}, 65%, 45%)`
-        };
-    }) : [];
-
-    const totalCredits = displayCourses.reduce((sum: number, course: any) => sum + (course.credits || 0), 0);
-
-    // Helper to convert a "H:MM AM/PM" string to total minutes for sorting
-    const timeToMins = (t: string): number => {
-        if (!t) return Infinity;
-        const [time, period] = t.split(' ');
-        let [h, m] = time.split(':').map(Number);
-        if (period === 'PM' && h !== 12) h += 12;
-        if (period === 'AM' && h === 12) h = 0;
-        return h * 60 + (m || 0);
-    };
-
-    const actualTodaysCourses = displayCourses
-        .filter((course: any) => course.days && course.days.includes(currentDayStr))
-        .sort((a: any, b: any) => timeToMins(a.beginTime) - timeToMins(b.beginTime));
-
-    const visibleCourses = displayCourses
-        .filter((course: any) => course.days && course.days.includes(selectedDay))
-        .sort((a: any, b: any) => timeToMins(a.beginTime) - timeToMins(b.beginTime));
-
-    // Find next class
-    const now = new Date();
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-    const nextClass = actualTodaysCourses
-        .filter((c: any) => {
-            if (!c.beginTime) return false;
-            const [time, period] = c.beginTime.split(' ');
-            let [h, m] = time.split(':').map(Number);
-            if (period === 'PM' && h !== 12) h += 12;
-            if (period === 'AM' && h === 12) h = 0;
-            return (h * 60 + m) > currentMinutes;
-        })[0]; // todaysCourses is already sorted, so first match = next class
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, useWallpaper && { backgroundColor: '#000' }]}>
+            <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+
+            {useWallpaper && (
+                <ImageBackground source={marbleSrc} style={StyleSheet.absoluteFill} resizeMode="cover">
+                    <View style={[StyleSheet.absoluteFill, {
+                        backgroundColor: isDark ? 'rgba(0,0,0,0.68)' : 'rgba(255,255,255,0.52)',
+                    }]} />
+                </ImageBackground>
+            )}
+
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                {/* Header */}
                 <View style={styles.header}>
-                    <View>
-                        <Text style={styles.greeting}>Howdy, Ag!</Text>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.greeting}>Howdy</Text>
                         <Text style={styles.name}>{user?.firstName || 'Aggie'}</Text>
                     </View>
                     <Pressable style={styles.avatar} onPress={() => navigation.navigate('Profile')}>
@@ -136,182 +169,253 @@ export function Dashboard() {
                     </Pressable>
                 </View>
 
-                {/* Next Class Widget */}
-                {nextClass ? (
-                    <Card style={styles.nextClassCard}>
-                        <View style={styles.nextClassRow}>
-                            <View style={{ flex: 1 }}>
-                                <Text style={styles.nextClassLabel}>UP NEXT</Text>
-                                <Text style={styles.nextClassTitle}>{nextClass.code}</Text>
-                                <View style={styles.nextClassDetailRow}>
-                                    <Clock size={14} color={COLORS.textTertiary} />
-                                    <Text style={styles.nextClassDetail}>{nextClass.time}</Text>
-                                    <MapPin size={14} color={COLORS.textTertiary} style={{ marginLeft: 8 }} />
-                                    <Text style={styles.nextClassDetail} numberOfLines={1}>{nextClass.location}</Text>
-                                </View>
-                            </View>
-                            <Pressable
-                                style={styles.nextClassAction}
-                                onPress={() => navigation.navigate('CourseDetail', { id: nextClass.id })}
-                            >
-                                <ArrowRight color="#FFF" size={20} />
-                            </Pressable>
-                        </View>
+                {loading && !snapshot ? (
+                    <Card style={styles.loadingCard}>
+                        <ActivityIndicator color={COLORS.primary} />
+                        <Text style={styles.loadingText}>Loading your day...</Text>
                     </Card>
                 ) : (
-                    <Card style={styles.noClassCard}>
-                        <Text style={styles.noClassText}>Done for today! BTHO Homework. 👍</Text>
-                    </Card>
-                )}
+                    <>
+                        <Card style={styles.heroCard}>
+                            <View style={styles.heroTopRow}>
+                                <Text style={styles.heroEyebrow}>Today</Text>
+                                <View style={styles.weatherChip}>
+                                    <Text style={styles.weatherChipText}>{weatherLabel}</Text>
+                                </View>
+                            </View>
 
-                {/* Campus Highlights Promo */}
-                <Pressable style={styles.promoCard} onPress={() => navigation.navigate('Places')}>
-                    <View style={styles.promoIconBg}>
-                        <MapPin color={COLORS.textPrimary} size={22} />
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 16 }}>
-                        <Text style={styles.promoTitle}>Campus Places</Text>
-                        <Text style={styles.promoSub}>Check live occupancy before you go.</Text>
-                    </View>
-                    <ChevronRight color={COLORS.border} size={20} />
-                </Pressable>
-
-                {/* Current Schedule Selector */}
-                <View style={styles.section}>
-                    <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionLabel}>PLANNER</Text>
-                        <Pressable onPress={() => setDropdownVisible(true)} style={styles.scheduleSwitcher}>
-                            <Text style={styles.scheduleSwitcherText}>{selectedSchedule?.name || 'Select Schedule'}</Text>
-                            <ChevronDown size={14} color={COLORS.primary} />
-                        </Pressable>
-                    </View>
-
-                    <Card style={styles.progressCard}>
-                        <View style={styles.progressHeader}>
-                            <Text style={styles.progressTitle}>{totalCredits} / {maxCreditGoal} Credits</Text>
-                            <Text style={styles.progressSubtitle}>{Math.round((totalCredits / maxCreditGoal) * 100)}% of goal</Text>
-                        </View>
-                        <View style={styles.progressBarBg}>
-                            <View style={[styles.progressBarFill, { width: `${Math.min((totalCredits / maxCreditGoal) * 100, 100)}%` }]} />
-                        </View>
-                    </Card>
-                </View>
-
-                {/* Daily Schedule */}
-                <View style={styles.section}>
-                    <View style={styles.weekStrip}>
-                        {WEEK_DAYS.map(day => (
-                            <Pressable 
-                                key={day.value}
-                                style={[styles.dayButton, selectedDay === day.value && styles.dayButtonActive]}
-                                onPress={() => setSelectedDay(day.value)}
-                            >
-                                <Text style={[styles.dayText, selectedDay === day.value && styles.dayTextActive]}>{day.label}</Text>
-                            </Pressable>
-                        ))}
-                    </View>
-                    <View style={styles.courseList}>
-                        {visibleCourses.length > 0 ? (
-                            visibleCourses.map((course: any) => (
-                                <Pressable
-                                    key={course.id}
-                                    onPress={() => navigation.navigate('CourseDetail', { id: course.id })}
-                                    style={styles.courseItem}
-                                >
-                                    <View style={styles.courseContent}>
-                                        <Text style={styles.courseCode}>{course.code}</Text>
-                                        <Text style={styles.courseName} numberOfLines={1}>{course.name}</Text>
-                                        <View style={styles.courseMeta}>
-                                            <Clock size={12} color={COLORS.textTertiary} />
-                                            <Text style={styles.courseMetaText}>{course.time}</Text>
-                                        </View>
+                            {academic?.nextCourse ? (
+                                <>
+                                    <Text style={styles.heroTitle}>Up next: {academic.nextCourse.code}</Text>
+                                    <Text style={styles.heroDetail}>{academic.nextCourse.name}</Text>
+                                    <View style={styles.heroMetaRow}>
+                                        <Clock size={14} color={COLORS.textTertiary} />
+                                        <Text style={styles.heroMetaText}>{academic.nextCourse.time}</Text>
+                                        <MapPin size={14} color={COLORS.textTertiary} />
+                                        <Text style={styles.heroMetaText} numberOfLines={1}>{academic.nextCourse.location}</Text>
                                     </View>
-                                    <ChevronRight color={COLORS.border} size={18} />
+                                </>
+                            ) : (
+                                <>
+                                    <Text style={styles.heroTitle}>Your day is clear</Text>
+                                    <Text style={styles.heroDetail}>
+                                        No upcoming class is visible yet.
+                                    </Text>
+                                </>
+                            )}
+
+                            <View style={styles.heroActions}>
+                                <Pressable style={styles.primaryAction} onPress={() => navigation.navigate('ScheduleList')}>
+                                    <Text style={styles.primaryActionText}>Open Schedule</Text>
+                                    <ArrowRight size={16} color="#FFFFFF" />
                                 </Pressable>
-                            ))
-                        ) : (
-                            <Text style={styles.emptyText}>No classes scheduled.</Text>
-                        )}
-                    </View>
-                </View>
+                                <Pressable
+                                    style={styles.secondaryAction}
+                                    onPress={() => navigation.navigate('Places', {
+                                        initialLayer: 'Bus',
+                                        focusToken: Date.now(),
+                                    })}
+                                >
+                                    <Bus size={16} color={COLORS.textPrimary} />
+                                    <Text style={styles.secondaryActionText}>Transit Map</Text>
+                                </Pressable>
+                            </View>
+                        </Card>
 
-                <View style={{ height: 100 }} />
-            </ScrollView>
+                        <View style={styles.section}>
+                            <View style={styles.sectionHeader}>
+                                <Text style={styles.sectionLabel}>Today&apos;s Schedule</Text>
+                                <Pressable onPress={() => navigation.navigate('ScheduleList')}>
+                                    <Text style={styles.linkText}>Full schedule</Text>
+                                </Pressable>
+                            </View>
+                            <Card style={styles.panelCard}>
+                                <Text style={styles.summaryTitle}>{academic?.scheduleName || 'Primary schedule unavailable'}</Text>
+                                <Text style={styles.summaryBody}>{academic?.sourceLabel || 'Academic details will appear here.'}</Text>
 
-            {/* Fab */}
-            <Pressable style={styles.fab} onPress={() => navigation.navigate('NewCourseSearch')}>
-                <Plus size={28} color="#FFF" />
-            </Pressable>
-
-            {/* Modal for Selecting Schedule */}
-            <Modal visible={dropdownVisible} transparent animationType="slide">
-                <TouchableWithoutFeedback onPress={() => setDropdownVisible(false)}>
-                    <View style={styles.modalOverlay}>
-                        <TouchableWithoutFeedback>
-                            <View style={styles.modalContent}>
-                                <Text style={styles.modalTitle}>Switch Schedule</Text>
-                                <ScrollView showsVerticalScrollIndicator={false}>
-                                    {schedules.map(s => (
+                                <View style={styles.weekStrip}>
+                                    {WEEK_DAYS.map(day => (
                                         <Pressable
-                                            key={s.schedule_id}
-                                            style={styles.scheduleOption}
-                                            onPress={() => {
-                                                setSelectedSchedule(s);
-                                                setDropdownVisible(false);
-                                            }}
+                                            key={day.value}
+                                            style={[styles.dayButton, selectedDay === day.value && styles.dayButtonActive]}
+                                            onPress={() => setSelectedDay(day.value)}
                                         >
-                                            <Text style={[styles.scheduleText, selectedSchedule?.schedule_id === s.schedule_id && { color: COLORS.primary, fontWeight: '700' }]}>
-                                                {s.name}
+                                            <Text style={[styles.dayText, selectedDay === day.value && styles.dayTextActive]}>
+                                                {day.label}
                                             </Text>
-                                            {selectedSchedule?.schedule_id === s.schedule_id && <CheckCircle2 color={COLORS.primary} size={20} />}
                                         </Pressable>
                                     ))}
-                                </ScrollView>
+                                </View>
+
+                                <View style={styles.courseList}>
+                                    {visibleCourses.length > 0 ? (
+                                        visibleCourses.map(course => (
+                                            <View key={course.id} style={styles.courseItem}>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={styles.courseCode}>{course.code}</Text>
+                                                    <Text style={styles.courseName}>{course.name}</Text>
+                                                    <Text style={styles.courseMetaText}>
+                                                        {course.time} · {course.location} · {course.instructor}
+                                                    </Text>
+                                                </View>
+                                            </View>
+                                        ))
+                                    ) : (
+                                        <Text style={styles.emptyText}>No classes scheduled for this day.</Text>
+                                    )}
+                                </View>
+                            </Card>
+                        </View>
+
+                        <View style={styles.section}>
+                            <View style={styles.sectionHeader}>
+                                <Text style={styles.sectionLabel}>Priority Alerts</Text>
+                                <Pressable onPress={() => navigation.navigate('Social')}>
+                                    <Text style={styles.linkText}>Open social hub</Text>
+                                </Pressable>
                             </View>
-                        </TouchableWithoutFeedback>
-                    </View>
-                </TouchableWithoutFeedback>
-            </Modal>
+                            <Card style={styles.panelCard}>
+                                {priorityNotifications.map(notification => (
+                                    <View key={notification.id} style={styles.notificationRow}>
+                                        <View
+                                            style={[
+                                                styles.notificationDot,
+                                                { backgroundColor: getUrgencyColor(notification.urgency, COLORS) },
+                                            ]}
+                                        />
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.notificationTitle}>{notification.title}</Text>
+                                            <Text style={styles.notificationDetail}>{notification.detail}</Text>
+                                        </View>
+                                    </View>
+                                ))}
+                                {priorityNotifications.length === 0 && (
+                                    <Text style={styles.emptyText}>No normalized notifications are available yet.</Text>
+                                )}
+                            </Card>
+                        </View>
+
+                        <View style={styles.section}>
+                            <View style={styles.sectionHeader}>
+                                <Text style={styles.sectionLabel}>Campus Essentials</Text>
+                            </View>
+                            <Card style={styles.panelCard}>
+                                <Pressable
+                                    style={styles.essentialRow}
+                                    onPress={() => openExternal(snapshot?.career.resources[0]?.url || 'https://tamu-csm.symplicity.com/students/index.php?signin_tab=0')}
+                                >
+                                    <View style={styles.essentialIconWrap}>
+                                        <BriefcaseBusiness size={18} color={COLORS.primary} />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.essentialTitle}>Hire Aggies</Text>
+                                        <Text style={styles.essentialMeta}>
+                                            {snapshot?.career.summary || 'Jobs, employers, and career events.'}
+                                        </Text>
+                                    </View>
+                                    <ExternalLink size={16} color={COLORS.primary} />
+                                </Pressable>
+
+                                <Pressable
+                                    style={styles.essentialRow}
+                                    onPress={openRecreationFacilities}
+                                >
+                                    <View style={styles.essentialIconWrap}>
+                                        <Dumbbell size={18} color={COLORS.primary} />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.essentialTitle}>Recreation</Text>
+                                        {recreationPreview.length > 0 ? (
+                                            recreationPreview.map(facility => (
+                                                <Text key={facility.id} style={styles.essentialMeta}>
+                                                    {facility.name}: {facility.today_hours || facility.hours_hint}
+                                                </Text>
+                                            ))
+                                        ) : (
+                                            <Text style={styles.essentialMeta}>
+                                                {snapshot?.recreation.summary || 'Recreation data unavailable.'}
+                                            </Text>
+                                        )}
+                                    </View>
+                                    <ChevronRight size={16} color={COLORS.primary} />
+                                </Pressable>
+
+                                <Pressable
+                                    style={[styles.essentialRow, styles.essentialRowLast]}
+                                    onPress={() => openExternal(annexModule?.url || 'https://www.library.tamu.edu/')}
+                                >
+                                    <View style={styles.essentialIconWrap}>
+                                        <MapPin size={18} color={COLORS.primary} />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.essentialTitle}>The Annex</Text>
+                                        <Text style={styles.essentialMeta}>
+                                            {annexModule?.summary || 'Library and study support for quieter work sessions.'}
+                                        </Text>
+                                    </View>
+                                    <ExternalLink size={16} color={COLORS.primary} />
+                                </Pressable>
+                            </Card>
+                        </View>
+
+                        {error ? (
+                            <Card style={styles.errorCard}>
+                                <Text style={styles.errorTitle}>Resilience Mode Active</Text>
+                                <Text style={styles.errorBody}>
+                                    Some live data could not be refreshed, so the dashboard is using the last safe state and local modules.
+                                </Text>
+                                <Text style={styles.errorDetail}>{error}</Text>
+                            </Card>
+                        ) : null}
+                    </>
+                )}
+
+                <View style={{ height: 110 }} />
+            </ScrollView>
         </View>
     );
 }
 
-const getStyles = (COLORS: any) => StyleSheet.create({
+const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: COLORS.background,
     },
     scrollContent: {
         padding: 16,
-        paddingTop: 40, // Reduced from 60
+        paddingTop: 62,
+        paddingBottom: 110,
     },
     header: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         marginBottom: 24,
+        gap: 14,
     },
     greeting: {
-        fontSize: 15,
-        fontWeight: '600',
+        fontSize: 13,
+        fontWeight: '800',
+        letterSpacing: 1.2,
         color: COLORS.textSecondary,
-        marginBottom: 2,
+        textTransform: 'uppercase',
     },
     name: {
-        fontSize: 34, // Larger, more impressive header
+        fontSize: 34,
         fontWeight: '800',
         letterSpacing: -1,
         color: COLORS.textPrimary,
+        marginTop: 2,
     },
     avatar: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        width: 44,
+        height: 44,
+        borderRadius: 22,
         backgroundColor: COLORS.primary,
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 2,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
         overflow: 'hidden',
     },
     avatarImage: {
@@ -319,259 +423,451 @@ const getStyles = (COLORS: any) => StyleSheet.create({
         height: '100%',
     },
     avatarText: {
-        color: '#fff',
+        color: '#FFFFFF',
         fontSize: 18,
         fontWeight: '700',
     },
-    nextClassCard: {
-        marginBottom: 16,
-        paddingHorizontal: 0,
-        backgroundColor: 'transparent',
-        borderBottomWidth: 0, // removed bottom divider for next class
-    },
-    nextClassRow: {
-        flexDirection: 'row',
+    loadingCard: {
+        padding: 24,
         alignItems: 'center',
+        borderRadius: 28,
         backgroundColor: COLORS.surfaceElevated,
-        padding: 20,
-        borderRadius: 20, // keep soft rounded corners just for this hero card
+        borderBottomWidth: 0,
     },
-    nextClassLabel: {
-        fontSize: 11,
-        fontWeight: '700',
+    loadingText: {
+        marginTop: 12,
         color: COLORS.textSecondary,
-        letterSpacing: 1.5,
-        marginBottom: 4,
+        fontWeight: '600',
     },
-    nextClassTitle: {
+    heroCard: {
+        borderRadius: 28,
+        padding: 22,
+        marginBottom: 16,
+        backgroundColor: COLORS.surfaceElevated,
+        borderBottomWidth: 0,
+    },
+    heroTopRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 14,
+    },
+    heroEyebrow: {
+        color: COLORS.textSecondary,
+        fontSize: 12,
+        fontWeight: '800',
+        letterSpacing: 1.1,
+        textTransform: 'uppercase',
+    },
+    weatherChip: {
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 999,
+        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+    },
+    weatherChipText: {
+        color: COLORS.textPrimary,
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    secondaryChip: {
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 999,
+        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+    },
+    secondaryChipText: {
+        color: COLORS.textPrimary,
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    heroTitle: {
         fontSize: 26,
         fontWeight: '800',
         color: COLORS.textPrimary,
-        letterSpacing: -0.5,
+        letterSpacing: -0.7,
     },
-    nextClassDetailRow: {
+    heroDetail: {
+        fontSize: 15,
+        color: COLORS.textSecondary,
+        marginTop: 8,
+        lineHeight: 22,
+    },
+    heroMetaRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 6,
+        flexWrap: 'wrap',
+        gap: 6,
+        marginTop: 12,
     },
-    nextClassDetail: {
-        fontSize: 12,
+    heroMetaText: {
         color: COLORS.textTertiary,
-        marginLeft: 4,
+        fontSize: 13,
     },
-    nextClassAction: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
+    heroActions: {
+        flexDirection: 'row',
+        gap: 10,
+        marginTop: 18,
+    },
+    primaryAction: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
         backgroundColor: COLORS.primary,
-        marginRight: 16,
-        alignItems: 'center',
-        justifyContent: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderRadius: 999,
     },
-    noClassCard: {
-        marginBottom: 24,
-        padding: 24,
+    primaryActionText: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        fontWeight: '700',
+    },
+    secondaryAction: {
+        flexDirection: 'row',
         alignItems: 'center',
+        gap: 8,
+        backgroundColor: isDark ? '#151515' : '#F1F1F4',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderRadius: 999,
+    },
+    secondaryActionText: {
+        color: COLORS.textPrimary,
+        fontSize: 14,
+        fontWeight: '700',
+    },
+    metricsRow: {
+        flexDirection: 'row',
+        gap: 10,
+        marginBottom: 22,
+    },
+    metricCard: {
+        flex: 1,
+        padding: 16,
+        borderRadius: 24,
         backgroundColor: COLORS.surface,
+        borderBottomWidth: 0,
+        gap: 8,
     },
-    noClassText: {
+    metricValue: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: COLORS.textPrimary,
+    },
+    metricLabel: {
+        fontSize: 12,
         color: COLORS.textSecondary,
-        fontWeight: '500',
+        lineHeight: 16,
     },
     section: {
-        marginBottom: 28,
+        marginBottom: 22,
     },
     sectionHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 12,
+        marginBottom: 10,
     },
     sectionLabel: {
         fontSize: 12,
         fontWeight: '800',
-        color: 'rgba(255,255,255,0.3)',
-        letterSpacing: 1.5,
-        marginBottom: 12,
+        color: COLORS.textSecondary,
+        letterSpacing: 1.1,
+        textTransform: 'uppercase',
     },
-    promoCard: {
+    linkText: {
+        color: COLORS.primary,
+        fontWeight: '700',
+        fontSize: 13,
+    },
+    panelCard: {
+        borderRadius: 28,
+        backgroundColor: COLORS.surface,
+        borderBottomWidth: 0,
+        padding: 18,
+    },
+    notificationRow: {
         flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 16,
-        marginBottom: 24,
+        alignItems: 'flex-start',
+        gap: 12,
+        paddingVertical: 12,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: COLORS.border,
     },
-    promoIconBg: {
-        width: 44,
-        height: 44,
-        borderRadius: 12,
-        backgroundColor: COLORS.surfaceElevated,
+    notificationDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+        marginTop: 5,
+    },
+    notificationTitle: {
+        color: COLORS.textPrimary,
+        fontSize: 15,
+        fontWeight: '700',
+        marginBottom: 4,
+    },
+    notificationDetail: {
+        color: COLORS.textSecondary,
+        fontSize: 13,
+        lineHeight: 19,
+    },
+    essentialRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 12,
+        paddingVertical: 12,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: COLORS.border,
+    },
+    essentialRowLast: {
+        borderBottomWidth: 0,
+        paddingBottom: 0,
+    },
+    essentialIconWrap: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: COLORS.surfaceElevated,
     },
-    promoTitle: {
+    essentialTitle: {
+        color: COLORS.textPrimary,
+        fontSize: 14,
+        fontWeight: '800',
+        marginBottom: 4,
+    },
+    essentialMeta: {
+        color: COLORS.textSecondary,
+        fontSize: 12,
+        lineHeight: 18,
+    },
+    moduleGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 12,
+    },
+    moduleCard: {
+        width: '48%',
+        minHeight: 152,
+        backgroundColor: COLORS.surface,
+        borderRadius: 24,
+        padding: 16,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        gap: 8,
+    },
+    moduleTitle: {
+        color: COLORS.textPrimary,
         fontSize: 16,
-        fontWeight: '700',
+        fontWeight: '800',
+    },
+    moduleBody: {
+        color: COLORS.textPrimary,
+        fontSize: 13,
+        lineHeight: 18,
+        fontWeight: '600',
+    },
+    moduleCaption: {
+        color: COLORS.textSecondary,
+        fontSize: 12,
+        lineHeight: 17,
+    },
+    summaryTitle: {
+        fontSize: 19,
+        fontWeight: '800',
         color: COLORS.textPrimary,
     },
-    promoSub: {
-        fontSize: 12,
-        color: COLORS.textTertiary,
-        marginTop: 4,
-    },
-    scheduleSwitcher: {
+    inlineModuleHeader: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 6,
-        backgroundColor: COLORS.surfaceElevated,
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 16,
-    },
-    scheduleSwitcherText: {
-        fontSize: 13,
-        fontWeight: '600',
-        color: COLORS.textPrimary,
-    },
-    progressCard: {
-        backgroundColor: COLORS.surface,
-        padding: 16,
-    },
-    progressHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-end',
+        gap: 8,
         marginBottom: 8,
     },
-    progressTitle: {
-        fontSize: 18,
-        fontWeight: '700',
-        color: COLORS.textPrimary,
-    },
-    progressSubtitle: {
+    inlineMetaText: {
+        color: COLORS.textSecondary,
         fontSize: 12,
-        color: COLORS.textTertiary,
+        marginTop: 10,
     },
-    progressBarBg: {
-        height: 6,
-        backgroundColor: 'rgba(255,255,255,0.05)',
-        borderRadius: 3,
-        overflow: 'hidden',
-    },
-    progressBarFill: {
-        height: '100%',
-        backgroundColor: COLORS.primary,
+    summaryBody: {
+        fontSize: 14,
+        color: COLORS.textSecondary,
+        marginTop: 8,
+        lineHeight: 20,
     },
     weekStrip: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        gap: 8,
+        marginTop: 18,
         marginBottom: 16,
-        paddingBottom: 12,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: COLORS.border,
     },
     dayButton: {
         flex: 1,
-        alignItems: 'center',
         paddingVertical: 10,
-        borderRadius: 8,
+        borderRadius: 999,
+        backgroundColor: COLORS.surfaceElevated,
+        alignItems: 'center',
     },
     dayButtonActive: {
         backgroundColor: COLORS.primary,
     },
     dayText: {
-        fontSize: 14,
-        fontWeight: '600',
         color: COLORS.textSecondary,
+        fontWeight: '700',
+        fontSize: 13,
     },
     dayTextActive: {
-        color: '#FFF',
+        color: '#FFFFFF',
     },
     courseList: {
-        gap: 12,
+        gap: 10,
     },
     courseItem: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 16,
+        gap: 12,
+        paddingVertical: 12,
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: COLORS.border,
     },
-    courseContent: {
-        flex: 1,
-    },
     courseCode: {
-        fontSize: 15,
-        fontWeight: '700',
         color: COLORS.textPrimary,
+        fontSize: 15,
+        fontWeight: '800',
     },
     courseName: {
-        fontSize: 12,
-        color: COLORS.textTertiary,
-        marginTop: 2,
-    },
-    courseMeta: {
-        flexDirection: 'row',
-        alignItems: 'center',
+        color: COLORS.textPrimary,
+        fontSize: 14,
         marginTop: 4,
-        gap: 4,
+        marginBottom: 4,
     },
     courseMetaText: {
-        fontSize: 11,
-        color: COLORS.textTertiary,
+        color: COLORS.textSecondary,
+        fontSize: 12,
+        lineHeight: 18,
     },
-    emptyText: {
-        color: COLORS.textTertiary,
-        textAlign: 'center',
-        padding: 20,
+    suggestionList: {
+        gap: 10,
+        marginTop: 14,
     },
-    fab: {
-        position: 'absolute',
-        bottom: 24,
-        right: 24,
-        width: 60,
-        height: 60,
-        borderRadius: 30,
-        backgroundColor: COLORS.primary,
+    suggestionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: COLORS.border,
+    },
+    suggestionBadge: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
         alignItems: 'center',
         justifyContent: 'center',
-        shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.4,
-        shadowRadius: 12,
-        elevation: 10,
+        backgroundColor: COLORS.primary,
+    },
+    suggestionBadgeText: {
+        color: '#FFFFFF',
+        fontSize: 11,
+        fontWeight: '800',
+    },
+    suggestionName: {
+        color: COLORS.textPrimary,
+        fontSize: 14,
+        fontWeight: '700',
+    },
+    suggestionMeta: {
+        color: COLORS.textSecondary,
+        fontSize: 12,
+        marginTop: 4,
+    },
+    serviceCard: {
+        width: '48%',
+        minHeight: 220,
+        borderRadius: 24,
+        backgroundColor: COLORS.surface,
+        borderBottomWidth: 0,
+        padding: 16,
+    },
+    serviceRow: {
+        paddingVertical: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: COLORS.border,
+    },
+    serviceName: {
+        color: COLORS.textPrimary,
+        fontSize: 13,
+        fontWeight: '700',
+    },
+    serviceMeta: {
+        color: COLORS.textSecondary,
+        fontSize: 12,
+        lineHeight: 17,
+        marginTop: 4,
+    },
+    emptyText: {
+        color: COLORS.textSecondary,
+        fontSize: 14,
+        lineHeight: 20,
+    },
+    errorCard: {
+        borderRadius: 24,
+        backgroundColor: 'rgba(128,0,0,0.12)',
+        borderBottomWidth: 0,
+        padding: 18,
+    },
+    errorTitle: {
+        color: COLORS.textPrimary,
+        fontSize: 16,
+        fontWeight: '800',
+    },
+    errorBody: {
+        color: COLORS.textSecondary,
+        fontSize: 13,
+        lineHeight: 19,
+        marginTop: 6,
+    },
+    errorDetail: {
+        color: COLORS.accent,
+        fontSize: 12,
+        marginTop: 8,
     },
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.7)',
-        justifyContent: 'flex-end',
+        backgroundColor: 'rgba(0,0,0,0.55)',
+        justifyContent: 'center',
+        padding: 20,
     },
     modalContent: {
-        backgroundColor: '#1C1C1E',
-        borderTopLeftRadius: 32,
-        borderTopRightRadius: 32,
-        padding: 24,
-        paddingBottom: 40,
-        maxHeight: '70%',
+        backgroundColor: COLORS.surface,
+        borderRadius: 28,
+        padding: 20,
+        borderWidth: 1,
+        borderColor: COLORS.border,
     },
     modalTitle: {
-        fontSize: 20,
+        color: COLORS.textPrimary,
+        fontSize: 18,
         fontWeight: '800',
-        color: '#FFF',
-        marginBottom: 20,
-        textAlign: 'center',
+        marginBottom: 12,
     },
-    scheduleOption: {
+    resourceRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: 16,
-        borderBottomWidth: 1,
-        borderBottomColor: 'rgba(255,255,255,0.05)',
+        gap: 12,
+        paddingVertical: 12,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: COLORS.border,
     },
-    scheduleText: {
-        fontSize: 17,
-        color: 'rgba(255,255,255,0.6)',
+    resourceLabel: {
+        color: COLORS.textPrimary,
+        fontSize: 14,
+        fontWeight: '700',
+    },
+    resourceUrl: {
+        color: COLORS.textSecondary,
+        fontSize: 12,
+        marginTop: 4,
     },
 });
