@@ -89,7 +89,11 @@ export function Profile() {
 
     // Load saved profile from PostgreSQL on mount
     useEffect(() => {
-        if (!user) return;
+        if (!user) {
+            setLoading(false);
+            return;
+        }
+        setLoading(true);
         fetchUserProfile(user.id)
             .then(data => {
                 setPreferences({
