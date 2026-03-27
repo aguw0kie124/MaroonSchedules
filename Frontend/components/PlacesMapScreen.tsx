@@ -69,7 +69,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const SNAP_PEEK = SCREEN_HEIGHT * 0.58; // ~42% of screen visible
 const SNAP_FULL = SCREEN_HEIGHT * 0.08; // ~92% of screen visible
 const SNAP_HIDDEN = SCREEN_HEIGHT; // off-screen
-const FLOATING_RESULT_BOTTOM_OFFSET = 118;
+const FLOATING_RESULT_BOTTOM_OFFSET = 0;
 
 const TAMU_CENTER = {
   latitude: 30.6153,
@@ -1825,24 +1825,24 @@ export function PlacesMapScreen() {
               {/* Header — always visible at peek height */}
               <View style={styles.sheetHeader}>
                 <View style={{ flex: 1 }}>
-                  <View style={styles.sheetBadgeRow}>
-                    <View style={styles.typeBadge}>
-                      <Text style={styles.typeText}>{selectedLoc.type}</Text>
-                    </View>
-                    {selectedLoc.is_live ? (
-                      <View style={styles.liveBadge}>
-                        <View style={styles.livePulse} />
-                        <Text style={styles.liveText}>Live</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.aiBadge}>
-                        <Text style={styles.aiText}>Directory</Text>
-                      </View>
-                    )}
-                  </View>
                   <Text style={styles.locationName}>
                     {selectedLoc.location}
                   </Text>
+                  <View style={styles.sheetBadgeRow}>
+                    <Text style={styles.typeTextSlim}>{selectedLoc.type}</Text>
+                    {selectedLoc.is_live ? (
+                      <View style={styles.liveBadgeSlim}>
+                        <Text style={styles.dotSeparator}>•</Text>
+                        <View style={styles.livePulse} />
+                        <Text style={styles.liveTextSlim}>Live Traffic</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.aiBadgeSlim}>
+                        <Text style={styles.dotSeparator}>•</Text>
+                        <Text style={styles.aiTextSlim}>Directory</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
                 <TouchableOpacity
                   onPress={() => setSelectedId(null)}
@@ -1853,15 +1853,14 @@ export function PlacesMapScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Replace hardcoded occupancy with lists for Hubs/Dining */}
+              {selectedLoc.description ? (
+                <Text style={styles.descriptionText} numberOfLines={2}>
+                  {selectedLoc.description}
+                </Text>
+              ) : null}
+
+              {/* Google Maps style Action pill row */}
               <View style={styles.locationActionsRow}>
-                {selectedLoc.description ? (
-                  <View style={styles.secondaryActionPill}>
-                    <Text style={styles.secondaryActionText} numberOfLines={2}>
-                      {selectedLoc.description}
-                    </Text>
-                  </View>
-                ) : null}
                 <TouchableOpacity
                   style={styles.primaryActionBtn}
                   onPress={() =>
@@ -1891,8 +1890,8 @@ export function PlacesMapScreen() {
                     })
                   }
                 >
-                  <Navigation size={16} color="#FFF" />
-                  <Text style={styles.primaryActionText}>Plan Route</Text>
+                  <Navigation size={18} fill="#FFF" color="#FFF" />
+                  <Text style={styles.primaryActionText}>Directions</Text>
                 </TouchableOpacity>
               </View>
 
@@ -1918,27 +1917,36 @@ export function PlacesMapScreen() {
                 </View>
               ) : (
                 <View style={styles.infoBlock}>
-                  <Text style={styles.sectionTitle}>Location Details</Text>
-                  <View style={styles.hoursInfo}>
-                    <Clock size={12} color={COLORS.textTertiary} />
-                    <Text style={styles.hoursText}>
-                      {selectedLoc.hours || "6:00 AM – 12:00 AM"}
-                    </Text>
-                  </View>
-                  <View style={styles.metaPillRow}>
-                    <View style={styles.metaPill}>
-                      <Text style={styles.metaPillText}>
-                        {selectedLoc.is_live
-                          ? "Live campus location"
-                          : "Campus directory location"}
+                  {selectedLoc.type === 'Library' || selectedLoc.type === 'Rec' ? (
+                    <View style={styles.occupancyBlock}>
+                      <View style={styles.occupancyHeaderRow}>
+                         <Layers size={18} color={getStatusColor(selectedLoc.percent_full)} />
+                         <View style={{ marginLeft: 8, flex: 1 }}>
+                            <Text style={styles.occupancyLiveLabel}>Live Occupancy</Text>
+                            <Text style={[styles.occupancyLiveText, { color: getStatusColor(selectedLoc.percent_full) }]}>
+                               {selectedLoc.percent_full}% Full
+                            </Text>
+                         </View>
+                      </View>
+                      <View style={styles.occupancyTrack}>
+                        <View style={[styles.occupancyFill, {
+                          width: `${selectedLoc.percent_full}%` as any,
+                          backgroundColor: getStatusColor(selectedLoc.percent_full)
+                        }]} />
+                      </View>
+                      <View style={styles.hoursInfo}>
+                        <Clock size={16} color={"#888"} />
+                        <Text style={styles.hoursText}>{selectedLoc.hours || '6:00 AM – 12:00 AM'}</Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.hoursInfoBlock}>
+                      <Clock size={16} color={"#888"} />
+                      <Text style={styles.hoursText}>
+                        {selectedLoc.hours || "6:00 AM – 12:00 AM"}
                       </Text>
                     </View>
-                    <View style={styles.metaPill}>
-                      <Text style={styles.metaPillText}>
-                        {selectedLoc.type}
-                      </Text>
-                    </View>
-                  </View>
+                  )}
                 </View>
               )}
 
@@ -1950,7 +1958,22 @@ export function PlacesMapScreen() {
                 contentContainerStyle={{ paddingBottom: 40 }}
                 scrollEventThrottle={16}
               >
-                {/* Traffic chart - REMOVED per user request (was hardcoded/estimated) */}
+                {/* Traffic chart - Remounted for rec centers and libraries */}
+                {(selectedLoc.type === "Library" || selectedLoc.type === "Rec") && (
+                  <View style={styles.chartContainer}>
+                    <Text style={styles.chartTitle}>Foot Traffic · Last 8h</Text>
+                    <View style={styles.chartBars}>
+                      {(selectedLoc.traffic_history || [20, 45, 15, 60, 40, 25, 20, 50]).map((val: number, i: number) => (
+                        <View key={i} style={styles.barWrapper}>
+                          <View style={[styles.barFill, {
+                            height: Math.max(8, (val / 100) * 45),
+                            backgroundColor: getStatusColor(val)
+                          }]} />
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
 
                 {/* Reviews from Stream */}
                 <View style={styles.reviewsHeader}>
@@ -2347,16 +2370,17 @@ const getStyles = (COLORS: any) =>
     // ── Bottom Sheet ────────────────────────────────────────────────────────
     bottomSheet: {
       position: "absolute",
-      left: 12,
-      right: 12,
+      left: 0,
+      right: 0,
       bottom: FLOATING_RESULT_BOTTOM_OFFSET,
-      height: SCREEN_HEIGHT * 0.82,
+      height: SCREEN_HEIGHT * 0.85,
       backgroundColor: "#0C0C0C",
-      borderRadius: 32,
-      borderWidth: 1,
-      borderColor: "#1F1F1F",
+      borderTopLeftRadius: 32,
+      borderTopRightRadius: 32,
+      borderTopWidth: 1,
+      borderTopColor: "#1F1F1F",
       paddingHorizontal: 20,
-      paddingTop: 10,
+      paddingTop: 12,
       shadowColor: "#000",
       shadowOffset: { width: 0, height: -6 },
       shadowOpacity: 0.5,
@@ -2376,14 +2400,45 @@ const getStyles = (COLORS: any) =>
     sheetHeader: {
       flexDirection: "row",
       alignItems: "flex-start",
-      marginBottom: 16,
+      marginBottom: 12,
       gap: 12,
+    },
+    locationName: {
+      fontSize: 24,
+      fontWeight: "800",
+      color: "#FFF",
+      lineHeight: 30,
+      marginBottom: 4,
     },
     sheetBadgeRow: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 8,
-      marginBottom: 6,
+      gap: 6,
+    },
+    typeTextSlim: {
+      color: "#AAA",
+      fontSize: 14,
+      fontWeight: "600",
+      textTransform: "capitalize",
+    },
+    dotSeparator: {
+      color: "#555",
+      fontSize: 14,
+      marginHorizontal: 2,
+    },
+    liveBadgeSlim: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+    liveTextSlim: { color: "#32D74B", fontSize: 13, fontWeight: "700" },
+    aiBadgeSlim: { flexDirection: "row", alignItems: "center", gap: 6 },
+    aiTextSlim: { color: "#888", fontSize: 13, fontWeight: "600" },
+    livePulse: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: "#32D74B",
     },
     dismissBtn: {
       width: 32,
@@ -2394,44 +2449,26 @@ const getStyles = (COLORS: any) =>
       justifyContent: "center",
       marginTop: 2,
     },
-
-    typeBadge: {
-      backgroundColor: "rgba(128,0,0,0.4)",
-      paddingHorizontal: 10,
-      paddingVertical: 4,
-      borderRadius: 6,
-    },
-    typeText: {
-      color: "#FF8A8A",
-      fontSize: 11,
-      fontWeight: "700",
-      letterSpacing: 0.4,
-    },
-    liveBadge: { flexDirection: "row", alignItems: "center", gap: 6 },
-    livePulse: {
-      width: 7,
-      height: 7,
-      borderRadius: 4,
-      backgroundColor: "#32D74B",
-    },
-    liveText: { color: "#32D74B", fontSize: 11, fontWeight: "700" },
-    aiBadge: {
-      backgroundColor: "rgba(255,149,0,0.10)",
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 6,
-    },
-    aiText: { color: "#FF9500", fontSize: 11, fontWeight: "700" },
-
-    locationName: {
-      fontSize: 20,
-      fontWeight: "700",
-      color: "#FFF",
-      lineHeight: 26,
+    descriptionText: {
+      color: "#CCC",
+      fontSize: 14,
+      lineHeight: 20,
+      marginBottom: 16,
     },
 
-    hoursInfo: { flexDirection: "row", alignItems: "center", gap: 6 },
-    hoursText: { fontSize: 12, color: COLORS.textTertiary, fontWeight: "500" },
+    occupancyBlock:  { marginBottom: 8, backgroundColor: '#161616', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#222' },
+    occupancyHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+    occupancyLiveLabel: { fontSize: 13, color: '#AAA', fontWeight: '600', marginBottom: 2 },
+    occupancyLiveText: { fontSize: 16, fontWeight: '800' },
+    occupancyTrack:  {
+        height: 6, backgroundColor: 'rgba(255,255,255,0.08)',
+        borderRadius: 3, overflow: 'hidden', marginBottom: 16,
+    },
+    occupancyFill:   { height: '100%', borderRadius: 3 },
+
+    hoursInfo: { flexDirection: "row", alignItems: "center", gap: 8 },
+    hoursText: { fontSize: 14, color: "#CCC", fontWeight: "600" },
+    hoursInfoBlock: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 },
     metaPillRow: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -2802,44 +2839,26 @@ const getStyles = (COLORS: any) =>
       marginLeft: 8,
     },
     locationActionsRow: {
-      flexDirection: "column",
+      flexDirection: "row",
       gap: 10,
       marginBottom: 16,
       alignItems: "stretch",
     },
     primaryActionBtn: {
+      flex: 1,
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "center",
       gap: 8,
-      backgroundColor: "#500000",
+      backgroundColor: "#007AFF", 
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingVertical: 14,
       borderRadius: 999,
-      borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.08)",
     },
     primaryActionText: {
       color: "#FFF",
-      fontSize: 13,
-      fontWeight: "800",
-      textTransform: "uppercase",
-      letterSpacing: 0.4,
-    },
-    secondaryActionPill: {
-      backgroundColor: "#161616",
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: "#262626",
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      justifyContent: "center",
-    },
-    secondaryActionText: {
-      color: "#BDBDBD",
-      fontSize: 12,
-      lineHeight: 17,
-      fontWeight: "600",
+      fontSize: 15,
+      fontWeight: "700",
     },
     busMarker: {
       width: 34,
