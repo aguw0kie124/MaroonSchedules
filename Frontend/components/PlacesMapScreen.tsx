@@ -354,7 +354,7 @@ export function PlacesMapScreen() {
 
     const [locations, setLocations]               = useState<CampusLocation[]>([]);
     const [loading, setLoading]                   = useState(true);
-    const [activeLayer, setActiveLayer]           = useState<string>('Heatmap');
+    const [activeLayer, setActiveLayer]           = useState<string>('Bus');
     const indicatorAnim                           = useRef(new Animated.Value(0)).current;
     const [categoryTrackWidth, setCategoryTrackWidth] = useState(0);
 
