@@ -114,7 +114,6 @@ export const AMENITIES: CampusAmenity[] = [
   { id: 'hulla-dining', name: 'Hullabaloo Food Court', latitude: 30.616460, longitude: -96.346322, type: 'dining' },
   { id: 'cfa', name: 'Chick-fil-A (MSC)', latitude: 30.611881, longitude: -96.341541, type: 'dining' },
   { id: 'polo-garage-food', name: 'Polo Road Garage Dining', latitude: 30.622723, longitude: -96.337939, type: 'dining' },
-  { id: 'aggie-express', name: 'Aggie Express at Hullabaloo', latitude: 30.616601, longitude: -96.346443, type: 'dining' },
   { id: 'underground', name: 'Underground Food Court', latitude: 30.617135, longitude: -96.343777, type: 'dining' },
 
   // Restrooms (major accessible restrooms)
