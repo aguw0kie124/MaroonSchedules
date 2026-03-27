@@ -177,7 +177,7 @@ export default function DiningDashboard({ navigation }: any) {
             right: 24,
             zIndex: 100,
             backgroundColor: T.btnBg,
-            borderColor: T.roseGold + '40',
+            borderColor: T.border3,
           }]}
         >
           <Text style={{ fontSize: 20 }}>⚙️</Text>
@@ -217,7 +217,7 @@ export default function DiningDashboard({ navigation }: any) {
                 const ringColor = (T as any)[ring.colorKey];
                 return (
                     <G key={ring.key}>
-                    <Circle cx={CX} cy={CY} r={r + RING_STROKE / 2 + 2} stroke={T.roseGold} strokeWidth={1.5} fill="none" opacity={0.45} />
+                    <Circle cx={CX} cy={CY} r={r + RING_STROKE / 2 + 2} stroke={T.border3} strokeWidth={1.5} fill="none" opacity={0.45} />
                     <G rotation="-90" origin={`${CX},${CY}`}>
                         <Circle cx={CX} cy={CY} r={r} stroke={T.ringTrack} strokeWidth={RING_STROKE} fill="none" strokeLinecap="butt" />
                         {fill > 0.005 && (
@@ -235,7 +235,7 @@ export default function DiningDashboard({ navigation }: any) {
                 );
                 })}
 
-                <Circle cx={CX} cy={CY} r={rR(RING_DEFS.length) + RING_STROKE / 2 + 2} stroke={T.roseGold} strokeWidth={1.5} fill="none" opacity={0.45} />
+                <Circle cx={CX} cy={CY} r={rR(RING_DEFS.length) + RING_STROKE / 2 + 2} stroke={T.border3} strokeWidth={1.5} fill="none" opacity={0.45} />
 
                 {(() => {
                 const innerR = rR(RING_DEFS.length) - 4;
@@ -243,7 +243,7 @@ export default function DiningDashboard({ navigation }: any) {
                 const topY   = CY + innerR - fillH;
                 return (
                     <G>
-                    <Circle cx={CX} cy={CY} r={innerR} fill={T.ringTrack} stroke={T.roseGold} strokeWidth={2} opacity={0.6} />
+                    <Circle cx={CX} cy={CY} r={innerR} fill={T.ringTrack} stroke={T.border3} strokeWidth={2} opacity={0.6} />
                     {calFill > 0.005 && (
                         <G>
                         <Defs>
@@ -252,7 +252,7 @@ export default function DiningDashboard({ navigation }: any) {
                         <Rect x={CX - innerR} y={topY} width={innerR * 2} height={fillH} fill="url(#wood-center)" clipPath="url(#cal-clip)" />
                         </G>
                     )}
-                    <Circle cx={CX} cy={CY} r={innerR} fill="none" stroke={T.roseGold} strokeWidth={2.5} opacity={0.7} />
+                    <Circle cx={CX} cy={CY} r={innerR} fill="none" stroke={T.border2} strokeWidth={2.5} opacity={0.7} />
                     </G>
                 );
                 })()}
@@ -280,10 +280,10 @@ export default function DiningDashboard({ navigation }: any) {
         </View>
 
         {/* Tab Bar */}
-        <View style={[s.tabBar, { backgroundColor: T.tabBarBg, borderColor: T.roseGold + '30' }]}>
+        <View style={[s.tabBar, { backgroundColor: T.tabBarBg, borderColor: T.border2 }]}>
           <Animated.View style={[s.tabIndicator, {
-            backgroundColor: T.roseGold + '25',
-            borderColor: T.roseGold + '40',
+            backgroundColor: T.maroonSheen,
+            borderColor: T.maroonLight,
             opacity: activeTab >= 0 ? 1 : 0,
             transform: [{
               translateX: tabIndicator.interpolate({
@@ -297,7 +297,7 @@ export default function DiningDashboard({ navigation }: any) {
           {TAB_ITEMS.map((tab, i) => (
             <TouchableOpacity key={tab.id} style={s.tabItem} onPress={() => switchTab(i)} activeOpacity={0.7}>
               <Text style={{ fontSize: 18 }}>{tab.icon}</Text>
-              <Text style={[s.tabLabel, { color: activeTab === i ? T.roseGold : T.text3 }]}>{tab.label}</Text>
+              <Text style={[s.tabLabel, { color: activeTab === i ? T.text : T.text3 }]}>{tab.label}</Text>
             </TouchableOpacity>
           ))}
         </View>

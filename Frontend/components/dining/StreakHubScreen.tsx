@@ -69,7 +69,7 @@ export default function StreakHubScreen({ navigation }: any) {
         </View>
         <Text style={[s.sub, { color: T.text3 }]}>Consistency is key to tracking your diet!</Text>
 
-        <View style={[s.fireBox, { borderColor: T.roseGold, backgroundColor: T.btnBg }]}>
+        <View style={[s.fireBox, { borderColor: T.border2, backgroundColor: T.btnBg }]}>
             <Text style={{ fontSize: 60, marginBottom: 10 }}>🔥</Text>
             <Text style={[s.days, { color: T.text }]}>{currentStreak} Days</Text>
             <Text style={[s.streakLabel, { color: T.amber }]}>CURRENT STREAK</Text>

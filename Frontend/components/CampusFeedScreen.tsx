@@ -389,7 +389,7 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
                                 <>
                                     <Text style={styles.postTime}>•</Text>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                                        <MapPin color={T.roseGold} size={10} />
+                                        <MapPin color={T.maroon} size={10} />
                                         <Text style={styles.postLocation}>{item.location_tag}</Text>
                                     </View>
                                 </>

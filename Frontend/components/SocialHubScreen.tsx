@@ -58,24 +58,12 @@ export function SocialHubScreen() {
         );
     }
 
-    const marbleSrc = isDark
-        ? require('../assets/black_marble.jpg')
-        : require('../assets/white_marble.jpg');
-
     return (
-        <View style={[styles.container, useWallpaper && { backgroundColor: '#000' }]}>
+        <View style={styles.container}>
             <StatusBar barStyle={T.statusBar as any} />
 
-            {useWallpaper && (
-                <ImageBackground source={marbleSrc} style={StyleSheet.absoluteFill} resizeMode="cover">
-                    <View style={[StyleSheet.absoluteFill, {
-                        backgroundColor: isDark ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.45)',
-                    }]} />
-                </ImageBackground>
-            )}
-
             {/* Header — pill bar only, no title text */}
-            <View style={useWallpaper ? [styles.header, { backgroundColor: 'transparent' }] : styles.header}>
+            <View style={styles.header}>
                 {renderPillBar(false)}
             </View>
 
