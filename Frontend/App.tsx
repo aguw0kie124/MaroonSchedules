@@ -47,6 +47,11 @@ import WeightTrackerScreen from './components/dining/WeightTrackerScreen';
 import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 
+import { CanvasDashboardScreen } from './components/canvas/CanvasDashboardScreen';
+import { CanvasCoursesScreen } from './components/canvas/CanvasCoursesScreen';
+import { CanvasAssignmentsScreen } from './components/canvas/CanvasAssignmentsScreen';
+import { CanvasGradesScreen } from './components/canvas/CanvasGradesScreen';
+
 import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu, Compass, MessageSquare, MapPin, Radio } from 'lucide-react-native';
 import { useTheme } from './components/SharedUI';
 
@@ -209,6 +214,11 @@ function RootNavigator() {
           <Stack.Screen name="RetailSwipes" component={RetailSwipesScreen} options={{ headerShown: false }} />
           <Stack.Screen name="DiningSettings" component={DiningSettingsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="WeightTracker" component={WeightTrackerScreen} options={{ headerShown: false }} />
+          
+          <Stack.Screen name="CanvasDashboard" component={CanvasDashboardScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="CanvasCourses" component={CanvasCoursesScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="CanvasAssignments" component={CanvasAssignmentsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="CanvasGrades" component={CanvasGradesScreen} options={{ headerShown: false }} />
         </>
       ) : (
         <>
@@ -234,6 +244,9 @@ function RootNavigator() {
 
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { registerRootComponent } from 'expo';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+const queryClient = new QueryClient();
 
 function App() {
   const { theme } = useTheme();
@@ -241,9 +254,11 @@ function App() {
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <ClerkLoaded>
-        <NavigationContainer theme={theme === 'dark' ? DarkTheme : DefaultTheme}>
-          <RootNavigator />
-        </NavigationContainer>
+        <QueryClientProvider client={queryClient}>
+          <NavigationContainer theme={theme === 'dark' ? DarkTheme : DefaultTheme}>
+            <RootNavigator />
+          </NavigationContainer>
+        </QueryClientProvider>
       </ClerkLoaded>
     </ClerkProvider>
   );

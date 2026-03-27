@@ -26,6 +26,8 @@ def get_profile(clerk_id: str) -> dict | None:
 def update_profile(clerk_id: str, fields: dict) -> dict | None:
     return user_repository.update_profile(clerk_id, fields)
 
+def save_canvas_tokens(clerk_id: str, access_token: str, refresh_token: str, expires_at, instance_url: str = 'https://canvas.tamu.edu') -> None:
+    return user_repository.save_canvas_tokens(clerk_id, access_token, refresh_token, expires_at, instance_url)
 
 # ---------------------------------------------------------------------------
 # Schedules  (stored as JSONB array inside the users table)

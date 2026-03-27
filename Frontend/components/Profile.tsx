@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TextInput, Pressable, ScrollView, Switch, Platform, ActivityIndicator, Alert, Modal, FlatList, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { LogOut, Save, ChevronDown, Camera, GraduationCap, Search, Calendar as CalendarIcon, ChevronRight } from 'lucide-react-native';
+import { LogOut, Save, ChevronDown, Camera, GraduationCap, Search, Calendar as CalendarIcon, ChevronRight, BookOpen } from 'lucide-react-native';
 import { useUser, useClerk } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -334,6 +334,14 @@ export function Profile() {
                         <Search size={20} color="#E8922A" />
                     </View>
                     <Text style={styles.toolTitle}>Campus Dining & Nutrition</Text>
+                    <ChevronRight size={20} color={COLORS.border} />
+                </Pressable>
+
+                <Pressable style={styles.toolRow} onPress={() => navigation.navigate('CanvasDashboard')}>
+                    <View style={[styles.toolIconBg, { backgroundColor: '#E11D4820' }]}>
+                        <BookOpen size={20} color="#E11D48" />
+                    </View>
+                    <Text style={styles.toolTitle}>Canvas LMS Hub</Text>
                     <ChevronRight size={20} color={COLORS.border} />
                 </Pressable>
             </View>

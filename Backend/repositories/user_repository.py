@@ -24,8 +24,9 @@ def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile
                         profile_image_url = COALESCE(EXCLUDED.profile_image_url, users.profile_image_url),
                         updated_at        = NOW()
                 RETURNING id, clerk_id, email, full_name, profile_image_url, major, graduation_year,
-                          preferred_time, max_credits, avoid_friday, show_online_first,
-                          schedules, created_at, updated_at
+                        schedules, created_at, updated_at,
+                          canvas_access_token, canvas_refresh_token,
+                          canvas_expires_at, canvas_instance_url
                 """,
                 (clerk_id, email, full_name, profile_image_url),
             )
@@ -41,8 +42,9 @@ def get_user(clerk_id: str) -> dict | None:
             cur.execute(
                 """
                 SELECT id, clerk_id, email, full_name, profile_image_url, major, graduation_year,
-                       preferred_time, max_credits, avoid_friday, show_online_first,
-                       schedules, created_at, updated_at
+                       schedules, created_at, updated_at,
+                       canvas_access_token, canvas_refresh_token,
+                       canvas_expires_at, canvas_instance_url
                 FROM users WHERE clerk_id = %s
                 """,
                 (clerk_id,),
@@ -75,7 +77,9 @@ def update_profile(clerk_id: str, fields: dict) -> dict | None:
                 WHERE clerk_id = %s
                 RETURNING id, clerk_id, email, full_name, profile_image_url, major, graduation_year,
                           preferred_time, max_credits, avoid_friday, show_online_first,
-                          schedules, created_at, updated_at
+                          schedules, created_at, updated_at,
+                          canvas_access_token, canvas_refresh_token,
+                          canvas_expires_at, canvas_instance_url
                 """,
                 values,
             )
@@ -146,4 +150,22 @@ def _row_to_dict(row) -> dict:
         "schedules": schedules or [],
         "created_at": str(row[12]) if row[12] else None,
         "updated_at": str(row[13]) if row[13] else None,
+        "canvas_access_token": row[14],
+        "canvas_refresh_token": row[15],
+        "canvas_expires_at": str(row[16]) if row[16] else None,
+        "canvas_instance_url": row[17],
     }
+
+def save_canvas_tokens(clerk_id: str, access_token: str, refresh_token: str, expires_at, instance_url: str = 'https://canvas.tamu.edu') -> None:
+    """Save Canvas OAuth tokens for a user."""
+    with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE users
+                SET canvas_access_token = %s, canvas_refresh_token = %s, canvas_expires_at = %s, canvas_instance_url = %s, updated_at = NOW()
+                WHERE clerk_id = %s
+                """,
+                (access_token, refresh_token, expires_at, instance_url, clerk_id),
+            )
+        conn.commit()
