@@ -163,14 +163,6 @@ function MainTabs() {
         }}
       />
       <Tab.Screen
-        name="Grades"
-        component={GradesScreen}
-        options={{
-          title: 'Grades',
-          tabBarIcon: ({ color, size }) => <BarChart2 color={color} size={size} />
-        }}
-      />
-      <Tab.Screen
         name="Profile"
         component={Profile}
         options={{
