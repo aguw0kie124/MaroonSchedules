@@ -23,10 +23,7 @@ def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile
                         full_name         = COALESCE(EXCLUDED.full_name, users.full_name),
                         profile_image_url = COALESCE(EXCLUDED.profile_image_url, users.profile_image_url),
                         updated_at        = NOW()
-                RETURNING id, clerk_id, email, full_name, profile_image_url, major, graduation_year,
-                        schedules, created_at, updated_at,
-                          canvas_access_token, canvas_refresh_token,
-                          canvas_expires_at, canvas_instance_url
+                RETURNING id, clerk_id, email, full_name, profile_image_url, major, graduation_year, preferred_time, max_credits, avoid_friday, show_online_first, schedules, created_at, updated_at, canvas_access_token, canvas_refresh_token, canvas_expires_at, canvas_instance_url
                 """,
                 (clerk_id, email, full_name, profile_image_url),
             )
@@ -41,10 +38,7 @@ def get_user(clerk_id: str) -> dict | None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, clerk_id, email, full_name, profile_image_url, major, graduation_year,
-                       schedules, created_at, updated_at,
-                       canvas_access_token, canvas_refresh_token,
-                       canvas_expires_at, canvas_instance_url
+                SELECT id, clerk_id, email, full_name, profile_image_url, major, graduation_year, preferred_time, max_credits, avoid_friday, show_online_first, schedules, created_at, updated_at, canvas_access_token, canvas_refresh_token, canvas_expires_at, canvas_instance_url
                 FROM users WHERE clerk_id = %s
                 """,
                 (clerk_id,),

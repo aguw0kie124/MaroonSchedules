@@ -21,6 +21,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
     else if (route.name === 'Places') icon = MapPin;
     else if (route.name === 'Social') icon = Radio;
     else if (route.name === 'Dining') icon = UtensilsCrossed;
+    else if (route.name === 'Grades') icon = BarChart2;
     else if (route.name === 'Profile') icon = User;
 
     const { options } = descriptors[route.key];
@@ -85,6 +86,7 @@ import { ReelsScreen } from './components/ReelsScreen';
 import { GPACalculatorScreen } from './components/GPACalculatorScreen';
 import { CampusScreen } from './components/CampusScreen';
 import { SocialHubScreen } from './components/SocialHubScreen';
+import { GradesScreen } from './components/GradesScreen';
 
 import DiningDashboard from './components/dining/DiningDashboard';
 import MealOptimizerScreen from './components/dining/MealOptimizerScreen';
@@ -101,7 +103,7 @@ import { CanvasCoursesScreen } from './components/canvas/CanvasCoursesScreen';
 import { CanvasAssignmentsScreen } from './components/canvas/CanvasAssignmentsScreen';
 import { CanvasGradesScreen } from './components/canvas/CanvasGradesScreen';
 
-import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu, Compass, MessageSquare, MapPin, Radio, UtensilsCrossed } from 'lucide-react-native';
+import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu, Compass, MessageSquare, MapPin, Radio, UtensilsCrossed, BarChart2 } from 'lucide-react-native';
 import { useTheme, useThemeStore } from './components/SharedUI';
 
 import { syncUser } from './api/client';
@@ -172,6 +174,7 @@ function MainTabs() {
       <Tab.Screen name="Places" component={PlacesMapScreen} options={{ title: 'Places' }} />
       <Tab.Screen name="Social" component={SocialHubScreen} options={{ title: 'Social' }} />
       <Tab.Screen name="Dining" component={DiningDashboard} options={{ title: 'Dining' }} />
+      <Tab.Screen name="Grades" component={GradesScreen} options={{ title: 'Grades' }} />
       <Tab.Screen name="Profile" component={Profile} options={{ title: 'Profile' }} />
     </Tab.Navigator>
   );
