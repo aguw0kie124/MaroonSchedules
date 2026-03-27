@@ -214,7 +214,7 @@ export function CampusConnectorScreen() {
             manualCaptureRef.current = false;
             setConnector(savedConnector);
             setCurrentUrl(payload.url || currentUrl);
-            setStatusText('Campus data captured. The dashboard can now hydrate from this saved session state.');
+            setStatusText('Campus data captured. The dashboard can now refresh from this saved session state.');
             await hydrateCampusHub(user.id).catch(() => {});
         } catch (error) {
             console.warn('Connector capture failed:', error);

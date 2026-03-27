@@ -46,6 +46,31 @@ function getUrgencyColor(level: 'high' | 'medium' | 'low', colors: any) {
     return colors.success;
 }
 
+function getWeatherLabel(weatherCode: number | null | undefined, isDay?: number | null) {
+    const weatherMap: Record<number, string> = {
+        0: isDay === 0 ? 'Clear' : 'Sunny',
+        1: 'Mostly Clear',
+        2: 'Partly Cloudy',
+        3: 'Cloudy',
+        45: 'Fog',
+        48: 'Fog',
+        51: 'Light Drizzle',
+        53: 'Drizzle',
+        55: 'Heavy Drizzle',
+        61: 'Light Rain',
+        63: 'Rain',
+        65: 'Heavy Rain',
+        71: 'Light Snow',
+        73: 'Snow',
+        75: 'Heavy Snow',
+        80: 'Rain Showers',
+        81: 'Showers',
+        82: 'Heavy Showers',
+        95: 'Thunderstorm',
+    };
+    return weatherMap[weatherCode ?? -1] || 'Weather';
+}
+
 export function Dashboard() {
     const { COLORS, theme, useWallpaper } = useTheme();
     const isDark = theme === 'dark';
@@ -55,12 +80,38 @@ export function Dashboard() {
     const { user } = useUser();
     const { snapshot, loading, error, hydrate } = useCampusHubStore();
     const [selectedDay, setSelectedDay] = React.useState(getDefaultDay());
+    const [weatherLabel, setWeatherLabel] = React.useState('College Station');
 
     useEffect(() => {
         if (isFocused && user?.id) {
             hydrate(user.id).catch(() => {});
         }
     }, [hydrate, isFocused, user?.id]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        fetch('https://api.open-meteo.com/v1/forecast?latitude=30.6280&longitude=-96.3344&current=temperature_2m,weather_code,is_day&temperature_unit=fahrenheit&timezone=America%2FChicago')
+            .then(response => response.json())
+            .then(data => {
+                if (cancelled) return;
+                const current = data?.current;
+                const temperature = typeof current?.temperature_2m === 'number'
+                    ? `${Math.round(current.temperature_2m)}°`
+                    : null;
+                const condition = getWeatherLabel(current?.weather_code, current?.is_day);
+                setWeatherLabel(temperature ? `${temperature} ${condition}` : condition);
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setWeatherLabel('College Station');
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     const academic = snapshot?.academic;
     const notifications = (snapshot?.notifications || []).filter(notification => notification.id !== 'registration-state');
@@ -106,11 +157,8 @@ export function Dashboard() {
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 <View style={styles.header}>
                     <View style={{ flex: 1 }}>
-                        <Text style={styles.greeting}>Campus OS</Text>
+                        <Text style={styles.greeting}>Howdy</Text>
                         <Text style={styles.name}>{user?.firstName || 'Aggie'}</Text>
-                        <Text style={styles.subhead}>
-                            Academic, dining, transit, social, and campus operations in one flow.
-                        </Text>
                     </View>
                     <Pressable style={styles.avatar} onPress={() => navigation.navigate('Profile')}>
                         {user?.imageUrl ? (
@@ -124,13 +172,16 @@ export function Dashboard() {
                 {loading && !snapshot ? (
                     <Card style={styles.loadingCard}>
                         <ActivityIndicator color={COLORS.primary} />
-                        <Text style={styles.loadingText}>Hydrating your campus dashboard...</Text>
+                        <Text style={styles.loadingText}>Loading your day...</Text>
                     </Card>
                 ) : (
                     <>
                         <Card style={styles.heroCard}>
                             <View style={styles.heroTopRow}>
                                 <Text style={styles.heroEyebrow}>Today</Text>
+                                <View style={styles.weatherChip}>
+                                    <Text style={styles.weatherChipText}>{weatherLabel}</Text>
+                                </View>
                             </View>
 
                             {academic?.nextCourse ? (
@@ -180,7 +231,7 @@ export function Dashboard() {
                             </View>
                             <Card style={styles.panelCard}>
                                 <Text style={styles.summaryTitle}>{academic?.scheduleName || 'Primary schedule unavailable'}</Text>
-                                <Text style={styles.summaryBody}>{academic?.sourceLabel || 'Academic data can be hydrated here.'}</Text>
+                                <Text style={styles.summaryBody}>{academic?.sourceLabel || 'Academic details will appear here.'}</Text>
 
                                 <View style={styles.weekStrip}>
                                     {WEEK_DAYS.map(day => (
@@ -356,13 +407,6 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
         color: COLORS.textPrimary,
         marginTop: 2,
     },
-    subhead: {
-        color: COLORS.textSecondary,
-        fontSize: 14,
-        lineHeight: 20,
-        marginTop: 8,
-        maxWidth: 280,
-    },
     avatar: {
         width: 44,
         height: 44,
@@ -414,6 +458,17 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
         fontWeight: '800',
         letterSpacing: 1.1,
         textTransform: 'uppercase',
+    },
+    weatherChip: {
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 999,
+        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+    },
+    weatherChipText: {
+        color: COLORS.textPrimary,
+        fontSize: 12,
+        fontWeight: '700',
     },
     secondaryChip: {
         paddingHorizontal: 12,

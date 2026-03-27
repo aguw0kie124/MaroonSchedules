@@ -841,7 +841,7 @@ def get_academic_snapshot(clerk_id: str) -> Dict[str, Any]:
 
     return {
         "status": "live" if courses or howdy_snapshot else "preview",
-        "sourceLabel": "Primary schedule loaded from MaroonSchedules storage" if courses else ("Captured from connected Howdy session" if howdy_snapshot else "Howdy connector required for direct registrar hydration"),
+        "sourceLabel": "Primary schedule loaded from MaroonSchedules storage" if courses else ("Captured from connected Howdy session" if howdy_snapshot else "Connect Howdy to load registrar details directly"),
         "scheduleName": primary_schedule.get("name", "Schedule unavailable"),
         "courses": courses,
         "totalCredits": round(sum(course.get("credits", 0) for course in courses), 1),
