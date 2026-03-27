@@ -10,26 +10,15 @@ import {
     ScrollView,
     Animated,
     PanResponder,
-    Modal,
-    TouchableWithoutFeedback,
-    KeyboardAvoidingView,
-    Platform
 } from 'react-native';
 import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import axios from 'axios';
 import { useTheme, Card } from './SharedUI';
-import { 
-    MapPin, Navigation, Info, Utensils, Star, X, ChevronRight, 
-    TrafficCone, Library, Dumbbell, Clock, MessageSquare, Plus, 
-    ChevronDown, ChevronUp, ExternalLink, Calendar, Flame,
-    Layers, Search, MessageSquarePlus
-} from 'lucide-react-native';
-import { useUser } from '@clerk/clerk-expo';
-import * as Haptics from 'expo-haptics';
-import { connectFeedsUser } from '../services/streamFeeds';
-import { API_URL } from '../config';
+import { Library, Dumbbell, Utensils, Info, Layers, Search, X, Star, Clock, MapPin, ChevronRight } from 'lucide-react-native';
+import { Platform } from 'react-native';
 
 const { width, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8000';
 
 // Snap point translateY values (distance from top of screen)
 const SNAP_PEEK  = SCREEN_HEIGHT * 0.58; // ~42% of screen visible
@@ -55,22 +44,25 @@ const DARK_MAP_STYLE = [
 ];
 
 // AI-estimated campus-wide density zones — independent of registered locations.
-// Filtered to only show gyms and libraries as requested.
 const CAMPUS_ZONES: Array<{
     name: string; lat: number; lng: number;
     peak: number; off: number; radius: number;
-    type: 'Rec' | 'Library' | 'Dining';
 }> = [
-    { name: 'Student Rec Center',                lat: 30.6097, lng: -96.3455, peak: 70, off: 10, radius: 220, type: 'Rec' },
-    { name: 'Southside Rec Center',              lat: 30.6093, lng: -96.3390, peak: 65, off: 10, radius: 200, type: 'Rec' },
-    { name: 'Polo Road Rec Center',              lat: 30.6237, lng: -96.3395, peak: 55, off:  8, radius: 200, type: 'Rec' },
-    { name: 'Evans Library',                     lat: 30.6168, lng: -96.3388, peak: 82, off: 18, radius: 160, type: 'Library' },
-    { name: 'Evans Library Annex',               lat: 30.6168, lng: -96.3388, peak: 70, off: 15, radius: 120, type: 'Library' },
-    { name: 'West Campus Library',               lat: 30.6095, lng: -96.3445, peak: 60, off: 14, radius: 160, type: 'Library' },
-    { name: 'Evans Library Annex',               lat: 30.6168, lng: -96.3388, peak: 70, off: 15, radius: 120, type: 'Library' },
-    { name: 'Memorial Student Center',           lat: 30.6125, lng: -96.3410, peak: 85, off: 15, radius: 180, type: 'Dining' },
-    { name: 'Polo Road Garage',                  lat: 30.6237, lng: -96.3395, peak: 80, off: 10, radius: 180, type: 'Dining' },
-    { name: 'Underground Food Court',            lat: 30.6128, lng: -96.3418, peak: 70, off:  5, radius: 150, type: 'Dining' },
+    { name: 'Academic Building / Rudder Plaza', lat: 30.6129, lng: -96.3408, peak: 95, off: 15, radius: 200 },
+    { name: 'Memorial Student Center (MSC)',     lat: 30.6118, lng: -96.3425, peak: 88, off: 20, radius: 250 },
+    { name: 'Evans Library',                     lat: 30.6174, lng: -96.3390, peak: 82, off: 18, radius: 160 },
+    { name: 'Evans Library Annex',               lat: 30.6172, lng: -96.3387, peak: 70, off: 15, radius: 120 },
+    { name: 'Sbisa Dining Hall',                 lat: 30.6170, lng: -96.3435, peak: 85, off: 30, radius: 180 },
+    { name: 'Duncan Dining Hall',                lat: 30.6118, lng: -96.3353, peak: 78, off: 28, radius: 160 },
+    { name: 'Zachry Engineering',                lat: 30.6211, lng: -96.3367, peak: 78, off: 12, radius: 200 },
+    { name: 'Student Rec Center',                lat: 30.6071, lng: -96.3428, peak: 70, off: 10, radius: 220 },
+    { name: 'Southside Rec Center',              lat: 30.6105, lng: -96.3365, peak: 65, off: 10, radius: 200 },
+    { name: 'Polo Road Rec Center',              lat: 30.6230, lng: -96.3384, peak: 55, off:  8, radius: 200 },
+    { name: 'North Gate / College Ave',          lat: 30.6225, lng: -96.3353, peak: 90, off: 55, radius: 220 },
+    { name: 'West Campus Library',               lat: 30.6117, lng: -96.3500, peak: 60, off: 14, radius: 160 },
+    { name: 'Medical Sciences Library',          lat: 30.6118, lng: -96.3516, peak: 45, off: 10, radius: 140 },
+    { name: 'The Commons Dining Hall',           lat: 30.6153, lng: -96.3360, peak: 80, off: 35, radius: 180 },
+    { name: 'TAMU Research Park',                lat: 30.5983, lng: -96.3410, peak: 35, off:  8, radius: 220 },
 ];
 
 function getTimeOfDayFactor(): number {
@@ -89,7 +81,7 @@ function getZoneDensity(zone: typeof CAMPUS_ZONES[0]): number {
     return Math.round(zone.off + (zone.peak - zone.off) * factor);
 }
 
-type LocationType = 'Rec' | 'Library' | 'Dining' | 'Hub' | 'Study' | 'General';
+type LocationType = 'Rec' | 'Library' | 'Dining' | 'Study' | 'General';
 
 interface CampusLocation {
     location: string;
@@ -102,8 +94,6 @@ interface CampusLocation {
     hours?: string;
     reviews?: Array<{ user: string; rating: number; comment: string }>;
     traffic_history?: number[];
-    restaurants?: string[];
-    menu_snippet?: string[] | null;
 }
 
 const CATEGORIES = [
@@ -117,8 +107,7 @@ const getCategoryIcon = (type: LocationType) => {
     switch (type) {
         case 'Library': return <Library />;
         case 'Rec':     return <Dumbbell />;
-        case 'Dining':  
-        case 'Hub':     return <Utensils />;
+        case 'Dining':  return <Utensils />;
         default:        return <Info />;
     }
 };
@@ -139,16 +128,6 @@ export function PlacesMapScreen() {
     const [selectedId, setSelectedId]             = useState<string | null>(null);
     const [searchQuery, setSearchQuery]           = useState('');
     const [showSearchResults, setShowSearchResults] = useState(false);
-    const [streamReviews, setStreamReviews]       = useState<any[]>([]);
-    const [reviewModalVisible, setReviewModalVisible] = useState(false);
-    const [newRating, setNewRating]               = useState(5);
-    const [newReviewText, setNewReviewText]       = useState('');
-    const [isPostingReview, setIsPostingReview]   = useState(false);
-    const [allReviewsModalVisible, setAllReviewsModalVisible] = useState(false);
-    const [hubRestaurants, setHubRestaurants]     = useState<string[]>([]);
-    const [isFetchingDining, setIsFetchingDining] = useState(false);
-    const [isFetchingReviews, setIsFetchingReviews] = useState(false);
-    const { user }                                = useUser();
     const mapRef       = useRef<any>(null);
 
     // ── Bottom sheet animation ──────────────────────────────────────────────
@@ -173,53 +152,10 @@ export function PlacesMapScreen() {
     useEffect(() => {
         if (selectedId) {
             animateSheet(SNAP_PEEK);
-            fetchReviews(selectedId);
-            fetchDiningData(selectedId);
         } else {
             animateSheet(SNAP_HIDDEN);
-            setStreamReviews([]);
-            setHubRestaurants([]);
-            setHubRestaurants([]);
         }
     }, [selectedId, animateSheet]);
-
-    const fetchDiningData = async (placeId: string) => {
-        setIsFetchingDining(true);
-        try {
-            // Use raw placeId (backend handles normalization)
-            const encodedId = encodeURIComponent(placeId);
-            const hubUrl = `${API_URL}/dining/hubs/${encodedId}`;
-            const menuUrl = `${API_URL}/dining/menus/${encodedId}`;
-            console.log(`[Dining] Fetching Hub/Menu for: ${placeId}`);
-            
-            // 1. Try to fetch as HUB
-            const hubRes = await axios.get(hubUrl).catch(() => null);
-            if (hubRes && hubRes.data && hubRes.data.restaurants) {
-                setHubRestaurants(hubRes.data.restaurants);
-            } else {
-                setHubRestaurants([]);
-            }
-
-
-        } catch (e) {
-            console.warn("Failed to fetch dining data", e);
-        } finally {
-            setIsFetchingDining(false);
-        }
-    };
-
-    const fetchReviews = async (placeId: string, limit = 5) => {
-        if (limit > 5) setIsFetchingReviews(true);
-        try {
-            const { getPlaceReviews } = require('../services/streamFeeds');
-            const revs = await getPlaceReviews(placeId, limit);
-            setStreamReviews(revs);
-        } catch (e) {
-            console.warn("Failed to fetch stream reviews", e);
-        } finally {
-            setIsFetchingReviews(false);
-        }
-    };
 
     const panResponder = useMemo(() => PanResponder.create({
         onMoveShouldSetPanResponder: (_, { dy }) => Math.abs(dy) > 6,
@@ -276,23 +212,7 @@ export function PlacesMapScreen() {
     const fetchData = async () => {
         try {
             const res = await axios.get(`${API_URL}/traffic/retrieve`);
-            let fetched = res.data.filter((d: any) => d.coord);
-            
-            // Ensure Hubs are present even if traffic data misses them
-            const hubs = [
-                { location: 'Memorial Student Center (MSC)', type: 'Hub', coord: { lat: 30.6123, lng: -96.3415 }, percent_full: 45, is_live: false, hours: '7:00 AM – 10:00 PM' },
-                { location: 'Polo Road Garage', type: 'Hub', coord: { lat: 30.6225, lng: -96.3353 }, percent_full: 30, is_live: false, hours: '7:00 AM – 9:00 PM' },
-                { location: 'The Underground', type: 'Hub', coord: { lat: 30.6120, lng: -96.3408 }, percent_full: 60, is_live: false, hours: '10:00 AM – 8:00 PM' }
-            ];
-
-            const combined = [...fetched];
-            hubs.forEach(h => {
-                if (!combined.find(c => c.location.includes(h.location) || h.location.includes(c.location))) {
-                    combined.push(h);
-                }
-            });
-
-            setLocations(combined);
+            setLocations(res.data.filter((d: any) => d.coord));
         } catch (err) {
             console.warn("Failed to fetch traffic data", err);
         } finally {
@@ -302,7 +222,6 @@ export function PlacesMapScreen() {
 
     const filteredLocations = useMemo(() => {
         if (activeLayer === 'Heatmap') return [];
-        if (activeLayer === 'Dining') return locations.filter(loc => loc.type === 'Dining' || loc.type === 'Hub');
         return locations.filter(loc => loc.type === activeLayer);
     }, [locations, activeLayer]);
 
@@ -330,31 +249,6 @@ export function PlacesMapScreen() {
             }, 800);
         }
     }, []);
-
-    const handlePostReview = async () => {
-        if (!user || !selectedId || !newReviewText.trim()) return;
-        setIsPostingReview(true);
-        try {
-            const { addPlaceReview } = require('../services/streamFeeds');
-            await addPlaceReview({
-                userId: user.id,
-                userName: user.fullName || user.username || 'Aggie',
-                userImage: user.imageUrl,
-                placeId: selectedId,
-                rating: newRating,
-                text: newReviewText.trim()
-            });
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            setReviewModalVisible(false);
-            setNewReviewText('');
-            setNewRating(5);
-            fetchReviews(selectedId);
-        } catch (e) {
-            console.warn("Failed to post review", e);
-        } finally {
-            setIsPostingReview(false);
-        }
-    };
 
     if (loading) {
         return (
@@ -402,23 +296,18 @@ export function PlacesMapScreen() {
                     );
                 })}
 
-                {/* Marker rendering fixes: Ensure markers are always rendered to avoid disappearing glitch */}
-                {locations.filter(loc => {
-                    if (activeLayer === 'Heatmap') return false;
-                    const isDiningTab = activeLayer === 'Dining';
-                    return loc.type === activeLayer || (isDiningTab && loc.type === 'Hub');
-                }).map((loc) => {
+                {/* Category markers */}
+                {activeLayer !== 'Heatmap' && filteredLocations.map((loc) => {
                     const isSelected = selectedId === loc.location;
                     const catIcon = getCategoryIcon(loc.type);
                     return (
                         <Marker
-                            key={`marker-${loc.location}`}
+                            key={loc.location}
                             identifier={loc.location}
                             coordinate={{ latitude: loc.coord.lat, longitude: loc.coord.lng }}
                             tracksViewChanges={false}
                             anchor={{ x: 0.5, y: 1 }}
                             zIndex={isSelected ? 100 : 1}
-                            onPress={() => setSelectedId(loc.location)}
                         >
                             <View style={styles.pinContainer} pointerEvents="none">
                                 <View style={[styles.pinHead, { backgroundColor: isSelected ? '#FF8A00' : '#800000' }]}>
@@ -532,43 +421,23 @@ export function PlacesMapScreen() {
                             </TouchableOpacity>
                         </View>
 
-                        {/* Replace hardcoded occupancy with lists for Hubs/Dining */}
-                        {/* Hub Restaurants */}
-                        {hubRestaurants.length > 0 ? (
-                            <View style={styles.infoBlock}>
-                                <View style={{ marginBottom: 16 }}>
-                                    <Text style={styles.sectionTitle}>Inside this Hub</Text>
-                                    <View style={styles.restaurantChipList}>
-                                        {hubRestaurants.map((r, i) => (
-                                            <View key={i} style={styles.restaurantChip}>
-                                                <Text style={styles.restaurantChipText}>{r}</Text>
-                                            </View>
-                                        ))}
-                                    </View>
-                                </View>
-                                <View style={styles.hoursInfo}>
-                                    <Clock size={12} color={COLORS.textTertiary} />
-                                    <Text style={styles.hoursText}>{selectedLoc.hours || 'Open Today · 7:00 AM – 10:00 PM'}</Text>
-                                </View>
+                        {/* Occupancy strip */}
+                        <View style={styles.occupancyBlock}>
+                            <View style={styles.occupancyRow}>
+                                <Text style={styles.occupancyValue}>{selectedLoc.percent_full}%</Text>
+                                <Text style={styles.statSubText}>occupancy</Text>
                             </View>
-                        ) : (
-                            <View style={styles.occupancyBlock}>
-                                <View style={styles.occupancyRow}>
-                                    <Text style={styles.occupancyValue}>{selectedLoc.percent_full}%</Text>
-                                    <Text style={styles.statSubText}>occupancy</Text>
-                                </View>
-                                <View style={styles.occupancyTrack}>
-                                    <View style={[styles.occupancyFill, {
-                                        width: `${selectedLoc.percent_full}%` as any,
-                                        backgroundColor: getStatusColor(selectedLoc.percent_full)
-                                    }]} />
-                                </View>
-                                <View style={styles.hoursInfo}>
-                                    <Clock size={12} color={COLORS.textTertiary} />
-                                    <Text style={styles.hoursText}>{selectedLoc.hours || '6:00 AM – 12:00 AM'}</Text>
-                                </View>
+                            <View style={styles.occupancyTrack}>
+                                <View style={[styles.occupancyFill, {
+                                    width: `${selectedLoc.percent_full}%` as any,
+                                    backgroundColor: getStatusColor(selectedLoc.percent_full)
+                                }]} />
                             </View>
-                        )}
+                            <View style={styles.hoursInfo}>
+                                <Clock size={12} color={COLORS.textTertiary} />
+                                <Text style={styles.hoursText}>{selectedLoc.hours || '6:00 AM – 12:00 AM'}</Text>
+                            </View>
+                        </View>
 
                         <View style={styles.sheetDivider} />
 
@@ -578,174 +447,48 @@ export function PlacesMapScreen() {
                             contentContainerStyle={{ paddingBottom: 40 }}
                             scrollEventThrottle={16}
                         >
-                            {/* Traffic chart - REMOVED per user request (was hardcoded/estimated) */}
-
-                            {/* Reviews from Stream */}
-                            <View style={styles.reviewsHeader}>
-                                <Text style={styles.sectionTitle}>Reviews</Text>
-                                <View style={{ flexDirection: 'row', gap: 12 }}>
-                                    <TouchableOpacity onPress={() => setReviewModalVisible(true)}>
-                                        <Text style={styles.addReviewText}>+ Add Review</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity onPress={() => {
-                                        setAllReviewsModalVisible(true);
-                                        fetchReviews(selectedId, 30);
-                                    }}>
-                                        <Text style={styles.seeAllText}>See all</Text>
-                                    </TouchableOpacity>
+                            {/* Traffic chart */}
+                            <View style={styles.chartContainer}>
+                                <Text style={styles.chartTitle}>Foot Traffic · Last 8h</Text>
+                                <View style={styles.chartBars}>
+                                    {(selectedLoc.traffic_history || [20, 45, 15, 60, 40, 25, 20, 50]).map((val, i) => (
+                                        <View key={i} style={styles.barWrapper}>
+                                            <View style={[styles.barFill, {
+                                                height: Math.max(8, (val / 100) * 45),
+                                                backgroundColor: getStatusColor(val)
+                                            }]} />
+                                        </View>
+                                    ))}
                                 </View>
                             </View>
-                            
-                            {streamReviews.length > 0 ? streamReviews.slice(0, 5).map((rev, i) => (
-                                <View key={rev.id || i} style={styles.reviewItem}>
+
+                            {/* Reviews */}
+                            <Text style={styles.sectionTitle}>Reviews</Text>
+                            {(selectedLoc.reviews || [
+                                { user: "Asvath M.", rating: 4, comment: "Solid choice for studying or grabbing a bite." },
+                                { user: "Parin V.",  rating: 5, comment: "I really enjoy the atmosphere here." }
+                            ]).map((rev, i) => (
+                                <View key={i} style={styles.reviewItem}>
                                     <View style={styles.reviewMeta}>
-                                        <View style={styles.reviewUserRow}>
-                                            <View style={styles.userAvatar}>
-                                                <Text style={styles.avatarText}>{rev.user[0]}</Text>
-                                            </View>
-                                            <Text style={styles.reviewUser}>{rev.user}</Text>
-                                        </View>
+                                        <Text style={styles.reviewUser}>{rev.user}</Text>
                                         <View style={styles.reviewStars}>
-                                            {[1,2,3,4,5].map(s => (
-                                                <Star key={s} size={11} fill={s <= rev.rating ? '#FFD700' : 'transparent'} color={s <= rev.rating ? '#FFD700' : '#555'} />
+                                            {[...Array(5)].map((_, j) => (
+                                                <Star
+                                                    key={j}
+                                                    size={11}
+                                                    fill={j < rev.rating ? '#FFD700' : 'transparent'}
+                                                    color={j < rev.rating ? '#FFD700' : '#333'}
+                                                />
                                             ))}
                                         </View>
                                     </View>
                                     <Text style={styles.reviewComment} numberOfLines={3}>{rev.comment}</Text>
                                 </View>
-                            )) : (
-                                <View style={styles.emptyReviews}>
-                                    <Text style={styles.emptyReviewsText}>No reviews found for this location.</Text>
-                                </View>
-                            )}
+                            ))}
                         </ScrollView>
                     </>
                 ) : null}
             </Animated.View>
-
-            {/* Review Modal */}
-            <Modal visible={reviewModalVisible} animationType="fade" transparent>
-                <TouchableWithoutFeedback onPress={() => setReviewModalVisible(false)}>
-                    <View style={styles.modalOverlay}>
-                        <KeyboardAvoidingView 
-                            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                            style={{ width: '100%', alignItems: 'center' }}
-                        >
-                            <TouchableWithoutFeedback onPress={e => e.stopPropagation()}>
-                                <View style={styles.reviewModalContainer}>
-                                    <View style={styles.modalHeader}>
-                                        <Text style={styles.modalTitle}>Rate {selectedId}</Text>
-                                        <TouchableOpacity onPress={() => setReviewModalVisible(false)}>
-                                            <X size={20} color="#666" />
-                                        </TouchableOpacity>
-                                    </View>
-                                    
-                                    <View style={styles.starRow}>
-                                        {[1,2,3,4,5].map(s => (
-                                            <TouchableOpacity 
-                                                key={s} 
-                                                onPress={() => {
-                                                    setNewRating(s);
-                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                }}
-                                                style={styles.starTouch}
-                                            >
-                                                <Star 
-                                                    size={38} 
-                                                    fill={s <= newRating ? '#FFD700' : 'transparent'} 
-                                                    color={s <= newRating ? '#FFD700' : '#333'} 
-                                                />
-                                            </TouchableOpacity>
-                                        ))}
-                                    </View>
-
-                                    <View style={styles.inputContainer}>
-                                        <TextInput
-                                            style={styles.reviewInput}
-                                            placeholder="Sharing your experience helps other Aggies..."
-                                            placeholderTextColor="#555"
-                                            multiline
-                                            value={newReviewText}
-                                            onChangeText={setNewReviewText}
-                                            maxLength={500}
-                                        />
-                                        <Text style={styles.charCount}>{newReviewText.length}/500</Text>
-                                    </View>
-
-                                    <TouchableOpacity 
-                                        style={[styles.premiumPostBtn, (!newReviewText.trim() || newRating === 0) && { opacity: 0.4 }]} 
-                                        onPress={handlePostReview}
-                                        disabled={!newReviewText.trim() || newRating === 0 || isPostingReview}
-                                    >
-                                        <View style={styles.btnContent}>
-                                            {isPostingReview ? (
-                                                <ActivityIndicator size="small" color="#000" />
-                                            ) : (
-                                                <Text style={styles.premiumPostBtnText}>Post Review</Text>
-                                            )}
-                                        </View>
-                                    </TouchableOpacity>
-                                </View>
-                            </TouchableWithoutFeedback>
-                        </KeyboardAvoidingView>
-                    </View>
-                </TouchableWithoutFeedback>
-            </Modal>
-            {/* Full Reviews Modal */}
-            <Modal
-                visible={allReviewsModalVisible}
-                animationType="slide"
-                transparent={true}
-                onRequestClose={() => setAllReviewsModalVisible(false)}
-            >
-                <View style={styles.fullReviewsContainer}>
-                    <View style={styles.fullReviewsHeader}>
-                        <TouchableOpacity 
-                            onPress={() => setAllReviewsModalVisible(false)}
-                            style={styles.backBtn}
-                        >
-                            <ChevronRight size={24} color="#FFF" style={{ transform: [{ rotate: '180deg' }] }} />
-                        </TouchableOpacity>
-                        <View style={{ flex: 1, alignItems: 'center' }}>
-                            <Text style={styles.fullReviewsTitle}>User Reviews</Text>
-                            <Text style={{ color: '#888', fontSize: 12, fontWeight: '600' }}>{selectedId}</Text>
-                        </View>
-                        <View style={{ width: 40 }} /> 
-                    </View>
-
-                    {isFetchingReviews ? (
-                        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                            <ActivityIndicator size="large" color="#FFD700" />
-                            <Text style={{ color: '#FFF', marginTop: 16, fontWeight: '600' }}>Loading Reviews...</Text>
-                        </View>
-                    ) : (
-                        <ScrollView 
-                            contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
-                            showsVerticalScrollIndicator={false}
-                        >
-                            {streamReviews.length > 0 ? (
-                                streamReviews.map((rev, i) => (
-                                    <View key={i} style={styles.reviewItem}>
-                                        <View style={styles.reviewMeta}>
-                                            <Text style={styles.reviewUser}>{rev.user}</Text>
-                                            <View style={styles.reviewStars}>
-                                                {[1,2,3,4,5].map(s => (
-                                                    <Star key={s} size={11} fill={s <= rev.rating ? '#FFD700' : 'transparent'} color={s <= rev.rating ? '#FFD700' : '#444'} />
-                                                ))}
-                                            </View>
-                                        </View>
-                                        <Text style={styles.reviewComment}>{rev.comment}</Text>
-                                    </View>
-                                ))
-                            ) : (
-                                <View style={styles.emptyReviews}>
-                                    <Text style={styles.emptyReviewsText}>No reviews found for this location.</Text>
-                                </View>
-                            )}
-                        </ScrollView>
-                    )}
-                </View>
-            </Modal>
         </View>
     );
 }
@@ -882,63 +625,10 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     barWrapper:      { width: 12, height: 45, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 4, overflow: 'hidden', justifyContent: 'flex-end' },
     barFill:         { width: '100%', borderRadius: 2 },
 
-    sectionTitle:  { fontSize: 13, color: '#AAA', fontWeight: '700', marginBottom: 12, letterSpacing: 0.5, textTransform: 'uppercase' },
-    reviewItem:    { paddingVertical: 14, borderTopWidth: 1, borderTopColor: '#1C1C1C' },
-    reviewMeta:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-     reviewUser:    { fontSize: 14, fontWeight: '700', color: '#FFF' },
-    reviewUserRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    userAvatar: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#333', alignItems: 'center', justifyContent: 'center' },
-    avatarText: { color: '#AAA', fontSize: 10, fontWeight: '800' },
+    sectionTitle:  { fontSize: 12, color: COLORS.textTertiary, fontWeight: '600', marginBottom: 4 },
+    reviewItem:    { paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#1C1C1C' },
+    reviewMeta:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+    reviewUser:    { fontSize: 14, fontWeight: '600', color: '#FFF' },
     reviewStars:   { flexDirection: 'row', gap: 3 },
-    reviewComment: { fontSize: 14, color: '#DDD', lineHeight: 20 },
-
-    infoBlock: { marginBottom: 20 },
-    restaurantChipList: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-    restaurantChip: { backgroundColor: '#1A1A1A', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#333', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4 },
-    restaurantChipText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
-    menuList: { marginBottom: 16, gap: 10 },
-    menuItemCard: {
-        backgroundColor: '#111',
-        borderRadius: 16,
-        padding: 16,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        borderWidth: 1,
-        borderColor: '#222',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.4,
-        shadowRadius: 10,
-    },
-    menuItemDetails: { flex: 1, gap: 6 },
-    menuItemName:    { color: '#FFF', fontSize: 15, fontWeight: '800' },
-    menuItemMeta:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
-    menuItemCal:     { color: '#888', fontSize: 12, fontWeight: '600' },
-    
-    reviewsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, marginTop: 8 },
-    seeAllText: { color: '#FFD700', fontSize: 13, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-    addReviewText: { color: '#32D74B', fontSize: 13, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-    emptyReviews: { paddingVertical: 30, alignItems: 'center' },
-    emptyReviewsText: { color: '#444', fontSize: 14, fontWeight: '600' },
-
-    // ── Review Modal ────────────────────────────────────────────────────────
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-    reviewModalContainer: { width: '100%', backgroundColor: '#121212', borderRadius: 24, padding: 24, borderWidth: 1, borderColor: '#222', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 12 },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    modalTitle: { fontSize: 22, fontWeight: '800', color: '#FFF' },
-    starRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 24 },
-    starTouch: { padding: 4 },
-    inputContainer: { marginBottom: 24 },
-    reviewInput: { backgroundColor: '#1A1A1A', borderRadius: 16, padding: 16, color: '#FFF', fontSize: 16, height: 120, textAlignVertical: 'top', borderWidth: 1, borderColor: '#333' },
-    charCount: { position: 'absolute', bottom: 10, right: 12, fontSize: 10, color: '#555' },
-    premiumPostBtn: { backgroundColor: '#FFD700', borderRadius: 16, paddingVertical: 18, alignItems: 'center' },
-    premiumPostBtnText: { color: '#000', fontSize: 17, fontWeight: '800', letterSpacing: 0.5 },
-    btnContent: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-
-    // ── Full Reviews Modal ──────────────────────────────────────────────────
-    fullReviewsContainer: { flex: 1, backgroundColor: '#000', paddingTop: Platform.OS === 'ios' ? 60 : 40 },
-    fullReviewsHeader:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: '#222' },
-    fullReviewsTitle:    { fontSize: 18, fontWeight: '800', color: '#FFF' },
-    backBtn:             { width: 44, height: 44, borderRadius: 22, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#333' }
+    reviewComment: { fontSize: 13, color: COLORS.textSecondary, lineHeight: 19 },
 });

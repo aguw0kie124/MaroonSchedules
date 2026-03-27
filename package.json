@@ -2,7 +2,7 @@
   "main": "Frontend/App.tsx",
   "scripts": {
     "start": "expo start",
-    "backend": "cd Backend && uvicorn main:app --reload --host 0.0.0.0 --port 8000"
+    "backend": "cd Backend && ../.venv/bin/python3 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000"
   },
   "dependencies": {
     "@clerk/clerk-expo": "^2.19.30",
