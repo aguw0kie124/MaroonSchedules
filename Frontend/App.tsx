@@ -213,12 +213,14 @@ function RootNavigator() {
           <Stack.Screen name="ScheduleDetail" component={ScheduleDetailScreen} options={{ headerShown: true, title: 'Schedule Details' }} />
           <Stack.Screen name="LocationSearch" component={LocationSearchScreen} options={{ headerShown: true, title: 'Location Traffic Search' }} />
           <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="CampusMap" component={CampusMapScreen} options={{ headerShown: false }} />
           <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
           <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: false }} />
           <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Reels" component={ReelsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CampusConnector" component={CampusConnectorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="CampusFeed" component={CampusFeedScreen} options={{ headerShown: false }} />
           
           <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: false }} />
           <Stack.Screen name="MealOptimizer" component={MealOptimizerScreen} options={{ headerShown: false }} />

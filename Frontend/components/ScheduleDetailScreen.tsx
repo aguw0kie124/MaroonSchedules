@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, useWindowDimensions, Pressable } from 'react-native';
-import { useRoute, useNavigation, useIsFocused } from '@react-navigation/native';
+import { useRoute, useNavigation, useIsFocused, CommonActions } from '@react-navigation/native';
 import { fetchSchedules, removeSectionFromSchedule } from '../api/client';
 import { useTheme, PrimaryButton, SectionRow, Card } from './SharedUI';
 import { useUser } from '@clerk/clerk-expo';
+import { ChevronLeft } from 'lucide-react-native';
 
 export function ScheduleDetailScreen() {
     const { COLORS } = useTheme();
@@ -15,6 +16,49 @@ export function ScheduleDetailScreen() {
     const userId = user?.id || 'anonymous';
     const [schedule, setSchedule] = useState<any>(scheduleObj);
     const { width } = useWindowDimensions();
+    const handleBackToSchedules = () => {
+        const state = navigation.getState();
+        const schedIndex = state.routes.findIndex((r: any) => r.name === 'ScheduleList');
+        
+        if (schedIndex !== -1) {
+            navigation.dispatch(
+                CommonActions.reset({
+                    index: schedIndex,
+                    routes: state.routes.slice(0, schedIndex + 1),
+                })
+            );
+        } else {
+            const mainRoute = state.routes.find((r: any) => r.name === 'Main') || state.routes[0];
+            const currentRoute = state.routes[state.routes.length - 1];
+            navigation.dispatch(
+                CommonActions.reset({
+                    index: 2,
+                    routes: [
+                        mainRoute,
+                        { name: 'ScheduleList', key: `ScheduleList-${Date.now()}` },
+                        currentRoute,
+                    ],
+                })
+            );
+            setTimeout(() => {
+                navigation.goBack();
+            }, 0);
+        }
+    };
+
+    React.useLayoutEffect(() => {
+        navigation.setOptions({
+            headerLeft: () => (
+                <Pressable
+                    onPress={handleBackToSchedules}
+                    style={{ marginLeft: 16, flexDirection: 'row', alignItems: 'center' }}
+                >
+                    <ChevronLeft size={28} color={COLORS.primary} />
+                    <Text style={{ color: COLORS.primary, fontSize: 17, marginLeft: -4, fontWeight: '500' }}>Schedules</Text>
+                </Pressable>
+            ),
+        });
+    }, [navigation, COLORS]);
 
     const hours = Array.from({ length: 13 }, (_, i) => i + 8); // 8am to 8pm
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
@@ -99,7 +143,7 @@ export function ScheduleDetailScreen() {
                 <Text style={styles.sectionTitle}>Courses ({schedule?.sections?.length || 0})</Text>
                 <PrimaryButton
                     title="+ Add Class"
-                    onPress={() => navigation.navigate('NewCourseSearch')}
+                    onPress={() => navigation.navigate('NewCourseSearch', { returnTo: 'ScheduleDetail', scheduleId })}
                     style={{ paddingVertical: 8, paddingHorizontal: 16 }}
                 />
             </View>

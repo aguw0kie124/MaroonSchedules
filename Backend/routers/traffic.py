@@ -9,13 +9,60 @@ import pytz
 import json
 import re
 from threading import Lock
+from collections import defaultdict
 
 try:
     from perplexity import Perplexity
 except ImportError:
     Perplexity = None
 
+# ── Canonical location registry ──────────────────────────────────────────────
+# Display names match exactly what the GoBoard FacilityName or Library API key resolves to.
+# All coordinates verified via Google Maps.
+LOCATION_DATA = {
+    # Rec Centers  (matched by GoBoard FacilityName)
+    "Student Rec Center":   {"lat": 30.607120, "lng": -96.345403, "type": "Rec"},
+    "Southside Rec Center": {"lat": 30.615185, "lng": -96.334412, "type": "Rec"},
+    "Polo Road Rec Center": {"lat": 30.622968, "lng": -96.340926, "type": "Rec"},
+
+    # Libraries  (matched by LIBRARY_KEY_MAP below)
+    "Evans Library":                          {"lat": 30.616607, "lng": -96.339047, "type": "Library"},
+    "Evans Library Annex":                    {"lat": 30.616300, "lng": -96.338340, "type": "Library"},
+    "West Campus Library":                    {"lat": 30.611570, "lng": -96.350164, "type": "Library"},
+    "Cushing Memorial Library":               {"lat": 30.616360, "lng": -96.339900, "type": "Library"},
+    "Medical Sciences Library":               {"lat": 30.61182, "lng": -96.35161, "type": "Library"},
+    "Policy Sciences & Economics Library":    {"lat": 30.59744, "lng": -96.35355, "type": "Library"},
+
+    # Dining (AI-estimated, no live API)
+    "Sbisa Dining Hall":              {"lat": 30.61700, "lng": -96.34350, "type": "Dining"},
+    "The Commons Dining Hall":        {"lat": 30.61534, "lng": -96.33601, "type": "Dining"},
+    "Duncan Dining Hall":             {"lat": 30.61180, "lng": -96.33529, "type": "Dining"},
+    "West Campus Dining Facility":    {"lat": 30.61020, "lng": -96.34863, "type": "Dining"},
+    "Memorial Student Center (MSC)":  {"lat": 30.61223, "lng": -96.34137, "type": "Dining"},
+    "Polo Road Garage":               {"lat": 30.62313, "lng": -96.33749, "type": "Dining"},
+    "Creekside Market":               {"lat": 30.60756, "lng": -96.35381, "type": "Dining"},
+}
+
+# Maps Library API abbreviation keys → canonical display name in LOCATION_DATA
+LIBRARY_KEY_MAP: Dict[str, str] = {
+    "evans":   "Evans Library",
+    "annex":   "Evans Library Annex",
+    "blcc":    "West Campus Library",       # API calls it WCL/BLCC
+    "cushing": "Cushing Memorial Library",
+    "msl":     "Medical Sciences Library",
+    "psel":    "Policy Sciences & Economics Library",
+}
+
+# GoBoard FacilityName → canonical display name (only needed where they differ)
+REC_FACILITY_MAP: Dict[str, str] = {
+    "Student Rec Center":   "Student Rec Center",
+    "Southside Rec Center": "Southside Rec Center",
+    "Polo Road Rec Center": "Polo Road Rec Center",
+    # Ignore: Penberthy, PEAP, Aquatics — not in our registry
+}
+
 router = APIRouter()
+
 
 class TAMUFacilityTracker:
     def __init__(self):
@@ -40,21 +87,20 @@ class TAMUFacilityTracker:
             return None
 
     def fetch_rec_data(self) -> List[Dict]:
+        """Returns raw sub-location list from GoBoard."""
         return self._get_json(self.rec_api) or []
 
-    def fetch_library_data(self) -> List[Dict]:
+    def fetch_library_data(self) -> Dict[str, Any]:
+        """Returns the full library API dict (keyed by abbreviation)."""
         data = self._get_json(self.library_api)
-        if not data:
-            return []
-        if isinstance(data, dict):
-            return [v for k, v in data.items() if k != "lastupdate" and isinstance(v, dict)]
-        return data if isinstance(data, list) else []
+        if not data or not isinstance(data, dict):
+            return {}
+        return data
 
     def fetch_event_data(self, limit: int = 20) -> List[Dict]:
         data = self._get_json(self.events_api)
         if not data:
             return []
-
         events = []
         if isinstance(data, dict) and "events" in data:
             for day_events in data["events"].values():
@@ -71,7 +117,6 @@ class TAMUFacilityTracker:
                 end_ts = event.get("ts_end")
                 start_time = datetime.fromtimestamp(start_ts).strftime("%Y-%m-%d %I:%M %p") if start_ts else "N/A"
                 end_time = datetime.fromtimestamp(end_ts).strftime("%Y-%m-%d %I:%M %p") if end_ts else "N/A"
-
                 parsed.append({
                     "title": event.get("title", "Untitled Event"),
                     "location": event.get("location", "Unknown"),
@@ -84,7 +129,6 @@ class TAMUFacilityTracker:
                 })
             except Exception:
                 pass
-
         return sorted(parsed, key=lambda e: e["start_time"])[:limit]
 
     def load_all_data(self):
@@ -94,54 +138,110 @@ class TAMUFacilityTracker:
             "events": self.fetch_event_data(limit=50)
         }
 
-    def get_all_locations_with_events(self) -> List[Dict[str, float]]:
-        result = []
-        official_lookup = {
-            "Student Rec Center": {"coord": {"lat": 30.607120, "lng": -96.345403}, "type": "Rec", "hours": "6:00 AM – 11:59 PM"},
-            "Southside Rec Center": {"coord": {"lat": 30.615185, "lng": -96.334412}, "type": "Rec", "hours": "5:30 AM – 11:59 PM"},
-            "Polo Road Rec Center": {"coord": {"lat": 30.622968, "lng": -96.340926}, "type": "Rec", "hours": "6:00 AM – 9:00 PM weekdays"},
-            "Sterling C. Evans Library": {"coord": {"lat": 30.616607, "lng": -96.339047}, "type": "Library"},
-            "Evans Library Annex": {"coord": {"lat": 30.616300, "lng": -96.338340}, "type": "Library"},
-            "West Campus Library": {"coord": {"lat": 30.611570, "lng": -96.350164}, "type": "Library"},
-            "Cushing Memorial Library": {"coord": {"lat": 30.616360, "lng": -96.339900}, "type": "Library"},
+    def get_mock_metadata(self, loc_name: str, loc_type: str):
+        hours_map = {
+            "Rec": "6:00 AM – 12:00 AM",
+            "Library": "8:00 AM – 11:00 PM",
+            "Dining": "7:00 AM – 10:00 PM",
         }
+        hours = hours_map.get(loc_type, "8:00 AM – 10:00 PM")
+        if "Evans" in loc_name:
+            hours = "Open 24 Hours (Mon–Thu)"
+        if "Medical" in loc_name:
+            hours = "7:30 AM – 6:00 PM"
 
-        # Rec Facilities
-        for f in self.fetch_rec_data():
-            name = f.get("LocationName") or "Unknown"
-            current = f.get("LastCount", 0)
-            total = f.get("TotalCapacity", 1)
-            percent = round((current / total) * 100, 1)
-            lookup = official_lookup.get(name)
-            if lookup:
-                result.append({
-                    "location": name,
-                    "percent_full": percent,
-                    "type": lookup["type"],
-                    "is_live": True,
-                    "available_seats": max(total - current, 0),
-                    "coord": lookup["coord"],
-                    "hours": lookup.get("hours"),
-                })
-        # Libraries
-        for lib in self.fetch_library_data():
-            name = lib.get("name") or "Unknown"
-            max_cap = int(lib.get("max", 1)) or 1
-            remaining = int(lib.get("remaining", 0))
-            current = max_cap - remaining
-            percent = round((current / max_cap) * 100, 1)
-            lookup = official_lookup.get(name)
-            if lookup:
-                result.append({
-                    "location": name,
-                    "percent_full": percent,
-                    "type": lookup["type"],
-                    "is_live": True,
-                    "available_seats": remaining,
-                    "coord": lookup["coord"],
-                    "hours": lookup.get("hours"),
-                })
-        # Events
+        review_pool = [
+            {"user": "Parin V.",  "rating": 5, "comment": "Great spot, really enjoy the facilities here."},
+            {"user": "Asvath M.", "rating": 4, "comment": "Solid choice for studying or grabbing a bite."},
+            {"user": "Adhip K.",  "rating": 5, "comment": "One of my favorite places on campus!"},
+            {"user": "Parin V.",  "rating": 4, "comment": "Atmosphere is great today."},
+            {"user": "Asvath M.", "rating": 3, "comment": "Decent, but can get loud during peak hours."},
+            {"user": "Adhip K.",  "rating": 4, "comment": "Highly recommend checking this out."},
+        ]
+        selected = [
+            random.choice([r for r in review_pool if r["user"] == "Parin V."]),
+            random.choice([r for r in review_pool if r["user"] == "Asvath M."]),
+            random.choice([r for r in review_pool if r["user"] == "Adhip K."]),
+        ]
+        random.shuffle(selected)
+        history = [random.randint(15, 90) for _ in range(8)]
+        return {"hours": hours, "reviews": selected, "traffic_history": history}
+
+    def get_all_locations_with_events(self) -> List[Dict[str, Any]]:
+        result = []
+        live_percents = []
+
+        # ── 1. Rec Centers: aggregate sub-locations by FacilityName ──────────
+        rec_raw = self.fetch_rec_data()
+        facility_totals: Dict[str, Dict] = defaultdict(lambda: {"count": 0, "capacity": 0})
+        for entry in rec_raw:
+            fname = entry.get("FacilityName", "")
+            if fname not in REC_FACILITY_MAP:
+                continue  # skip Penberthy, PEAP, Aquatics
+            facility_totals[fname]["count"]    += entry.get("LastCount", 0)
+            facility_totals[fname]["capacity"] += entry.get("TotalCapacity", 1)
+
+        for api_name, display_name in REC_FACILITY_MAP.items():
+            totals = facility_totals.get(api_name)
+            if not totals or totals["capacity"] == 0:
+                continue  # no data for this facility
+            percent = round((totals["count"] / totals["capacity"]) * 100, 1)
+            live_percents.append(percent)
+            info = LOCATION_DATA[display_name]
+            meta = self.get_mock_metadata(display_name, "Rec")
+            result.append({
+                "location": display_name,
+                "percent_full": percent,
+                "type": "Rec",
+                "is_live": True,
+                "available_seats": totals["capacity"] - totals["count"],
+                "coord": info,
+                **meta,
+            })
+
+        # ── 2. Libraries: use API abbreviation → canonical name map ──────────
+        lib_raw = self.fetch_library_data()
+        for api_key, display_name in LIBRARY_KEY_MAP.items():
+            entry = lib_raw.get(api_key)
+            if not entry or api_key == "lastupdate":
+                continue
+            percent = float(entry.get("percentfull", 0))
+            remaining = int(entry.get("remaining", 0))
+            live_percents.append(percent)
+            info = LOCATION_DATA[display_name]
+            meta = self.get_mock_metadata(display_name, "Library")
+            result.append({
+                "location": display_name,
+                "percent_full": percent,
+                "type": "Library",
+                "is_live": True,
+                "available_seats": remaining,
+                "coord": info,
+                **meta,
+            })
+
+        # ── 3. Dining: AI-estimated using live campus average ────────────────
+        avg_occupancy = sum(live_percents) / len(live_percents) if live_percents else 42.0
+        live_display_names = {r["location"] for r in result}
+
+        for loc_name, info in LOCATION_DATA.items():
+            if info["type"] != "Dining":
+                continue
+            if loc_name in live_display_names:
+                continue
+            est = round(min(95, max(5, avg_occupancy + random.uniform(-15, 20))), 1)
+            meta = self.get_mock_metadata(loc_name, "Dining")
+            result.append({
+                "location": loc_name,
+                "percent_full": est,
+                "type": "Dining",
+                "is_live": False,
+                "available_seats": None,
+                "coord": info,
+                **meta,
+            })
+
+        # ── 4. Events: preserve event markers with explicit coordinates ──────
         for event in self.fetch_event_data(limit=50):
             location_name = event.get("location") or "Unknown Event Location"
             latitude = event.get("latitude")
@@ -167,18 +267,13 @@ class TAMUFacilityTracker:
     def ask_perplexity(self, prompt: str) -> str:
         if not Perplexity:
             return json.dumps([{"name": "Error - Perplexity API Missing", "percent_full": 0, "available_seats": 0}])
-            
-        system_prompt = """You are a TAMU campus assistant that returns structured data only.
-        - Output MUST be valid JSON text (a JSON array) and nothing else.
-        """
+        system_prompt = "You are a TAMU campus assistant that returns structured JSON arrays only."
         try:
             embedded_data = json.dumps(self.data, default=str)
         except Exception:
             embedded_data = str(self.data)
-
         user_message = {"role": "user", "content": f"User Query: {prompt}\nLive Data: {embedded_data}"}
         messages = [{"role": "system", "content": system_prompt}, user_message]
-
         try:
             client = Perplexity()
             response = client.chat.completions.create(model="sonar", messages=messages)
@@ -207,12 +302,11 @@ class TAMUFacilityTracker:
                 available = int(item.get("available_seats", 0)) if isinstance(item, dict) else 0
                 normalized.append({"name": name, "percent_full": percent, "available_seats": available})
             return json.dumps(normalized)
-        else:
-            return json.dumps([{"name": "Parsing failed", "percent_full": 0, "available_seats": 0}])
+        return json.dumps([{"name": "Parsing failed", "percent_full": 0, "available_seats": 0}])
+
 
 tracker = TAMUFacilityTracker()
-# Wait until called to load to prevent blocking bootup
-# tracker.load_all_data()
+
 
 
 class AggieSpiritProxy:
@@ -394,6 +488,7 @@ transit_proxy = AggieSpiritProxy()
 class QueryRequest(BaseModel):
     query: str
 
+
 class EventRequest(BaseModel):
     text: str
     start: str
@@ -401,10 +496,12 @@ class EventRequest(BaseModel):
     details: str = ""
     location: str = ""
 
+
 @router.post("/ask")
 def ask_perplexity(request: QueryRequest):
     result = tracker.ask_perplexity(request.query)
     return {"response": result}
+
 
 @router.get("/retrieve")
 def retrieve_locations():
@@ -427,7 +524,6 @@ def get_transit_route(route_key: str):
 @router.get("/transit/vehicles")
 def get_transit_vehicles(route_id: str = Query("")):
     return transit_proxy.get_vehicles(route_id)
-
 @router.post("/create-event")
 def create_event(event: EventRequest):
     event_dict = event.dict()
@@ -439,25 +535,3 @@ def create_event(event: EventRequest):
         f"&location={quote(event_dict.get('location',''))}"
     )
     return {"message": "Google Calendar link created!", "link": base_url + params}
-
-@router.get("/get-event-requests", response_model=List[EventRequest])
-def get_event_requests():
-    raw_events = tracker.fetch_event_data(limit=10)
-    formatted_events = []
-    tz = pytz.timezone("America/Chicago")
-    for event in raw_events:
-        try:
-            start_dt = datetime.strptime(event["start_time"], "%Y-%m-%d %I:%M %p")
-            end_dt = datetime.strptime(event["end_time"], "%Y-%m-%d %I:%M %p")
-            start_str = start_dt.astimezone(tz).strftime("%Y%m%dT%H%M%S%z")
-            end_str = end_dt.astimezone(tz).strftime("%Y%m%dT%H%M%S%z")
-            formatted_events.append(EventRequest(
-                text=event["title"],
-                start=start_str,
-                end=end_str,
-                details=event["summary"],
-                location=event["location"]
-            ))
-        except Exception:
-            pass
-    return formatted_events

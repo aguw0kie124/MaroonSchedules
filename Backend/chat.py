@@ -118,11 +118,10 @@ async def get_feeds_token(body: FeedsTokenRequest):
     if not api_key or not api_secret:
         raise HTTPException(status_code=500, detail="Stream API keys not configured")
         
-    chat_client = StreamChat(api_key=api_key, api_secret=api_secret)
-
     try:
-        chat_client.upsert_users([{"id": stream_user_id}])
-        token = chat_client.create_token(user_id=stream_user_id)
+        # Use stream-python (getstream) for Feeds token generation
+        server_client = stream.connect(api_key, api_secret)
+        token = server_client.create_user_token(stream_user_id)
         return FeedsTokenResponse(
             stream_user_id=stream_user_id,
             stream_user_token=token,
@@ -130,7 +129,7 @@ async def get_feeds_token(body: FeedsTokenRequest):
         )
     except Exception as e:
         print(f"Stream Feeds Token Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Feeds Token Error: {str(e)}")
 
 import stream
 from typing import Dict, Any
