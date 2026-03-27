@@ -1,0 +1,606 @@
+// Frontend/components/GradesScreen.tsx
+// Grade-distribution search screen for the MaroonSchedules app.
+//
+// Shows: subject + course# search → summary card → section list → detail modal
+
+import React, { useState, useCallback } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  FlatList,
+  Modal,
+  ScrollView,
+  ActivityIndicator,
+  StyleSheet,
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
+import { BarChart2, X, ChevronRight, GraduationCap } from 'lucide-react-native';
+
+import { useTheme } from './SharedUI';
+import { searchCourseGrades } from '../services/grades';
+import { gpaColor } from '../utils/grades';
+import {
+  CourseStats,
+  GradeSearchResult,
+  InstructorSectionStat,
+} from '../types/grades';
+
+// ──────────────────────────────────────────────────────────────
+// Types
+// ──────────────────────────────────────────────────────────────
+
+type ScreenState = 'idle' | 'loading' | 'results' | 'error';
+
+// ──────────────────────────────────────────────────────────────
+// Sub-components
+// ──────────────────────────────────────────────────────────────
+
+function GpaBar({
+  label,
+  percent,
+  color,
+  COLORS,
+}: {
+  label: string;
+  percent: number;
+  color: string;
+  COLORS: any;
+}) {
+  return (
+    <View style={{ marginBottom: 6 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 2 }}>
+        <Text style={{ color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' }}>{label}</Text>
+        <Text style={{ color: COLORS.textPrimary, fontSize: 12, fontWeight: '700' }}>
+          {percent.toFixed(1)}%
+        </Text>
+      </View>
+      <View style={{ height: 6, borderRadius: 3, backgroundColor: COLORS.border }}>
+        <View
+          style={{
+            height: 6,
+            borderRadius: 3,
+            width: `${Math.min(percent, 100)}%`,
+            backgroundColor: color,
+          }}
+        />
+      </View>
+    </View>
+  );
+}
+
+function CourseSummaryCard({
+  stats,
+  subject,
+  courseNum,
+  COLORS,
+  styles,
+}: {
+  stats: CourseStats;
+  subject: string;
+  courseNum: string;
+  COLORS: any;
+  styles: any;
+}) {
+  const accentGpa = gpaColor(stats.avgGpa);
+  return (
+    <View style={styles.summaryCard}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+        <View style={[styles.iconBg, { backgroundColor: '#50000018' }]}>
+          <GraduationCap size={20} color={COLORS.primary} />
+        </View>
+        <View style={{ marginLeft: 12, flex: 1 }}>
+          <Text style={styles.summaryTitle}>
+            {subject.toUpperCase()} {courseNum}
+          </Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: 13 }}>
+            {stats.totalStudents.toLocaleString()} students across all sections
+          </Text>
+        </View>
+        <View style={[styles.gpaBadge, { backgroundColor: accentGpa + '20' }]}>
+          <Text style={[styles.gpaBadgeText, { color: accentGpa }]}>
+            {stats.avgGpa.toFixed(2)}
+          </Text>
+          <Text style={{ color: accentGpa, fontSize: 10, fontWeight: '600' }}>GPA</Text>
+        </View>
+      </View>
+
+      <GpaBar label="A" percent={stats.percentA} color="#30D158" COLORS={COLORS} />
+      <GpaBar label="B" percent={stats.percentB} color="#64D2FF" COLORS={COLORS} />
+      <GpaBar label="C" percent={stats.percentC} color="#FF9F0A" COLORS={COLORS} />
+      <GpaBar label="D" percent={stats.percentD} color="#FF6B35" COLORS={COLORS} />
+      <GpaBar label="F" percent={stats.percentF} color="#FF453A" COLORS={COLORS} />
+      {stats.percentQ > 0 && (
+        <GpaBar label="Q (Drop)" percent={stats.percentQ} color="#8E8E93" COLORS={COLORS} />
+      )}
+    </View>
+  );
+}
+
+function SectionCard({
+  item,
+  onPress,
+  COLORS,
+  styles,
+}: {
+  item: InstructorSectionStat;
+  onPress: () => void;
+  COLORS: any;
+  styles: any;
+}) {
+  const accentGpa = gpaColor(item.avgGpa);
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.sectionCard, pressed && { opacity: 0.75 }]}
+    >
+      <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.instructorName}>{item.instructor || 'STAFF'}</Text>
+            <Text style={{ color: COLORS.textSecondary, fontSize: 13 }}>
+              Sec {item.section} · {item.semester} {item.year} · {item.enrollment} enrolled
+            </Text>
+          </View>
+          <View style={{ alignItems: 'flex-end', marginLeft: 12 }}>
+            <Text style={[styles.sectionGpa, { color: accentGpa }]}>
+              {item.avgGpa.toFixed(2)}
+            </Text>
+            <Text style={{ color: COLORS.textTertiary, fontSize: 10 }}>avg GPA</Text>
+          </View>
+        </View>
+
+        {/* Inline mini-distribution */}
+        <Text style={[styles.miniDist, { marginTop: 8 }]}>
+          <Text style={{ color: '#30D158' }}>A: {item.percentA.toFixed(0)}%</Text>
+          {'  '}
+          <Text style={{ color: '#64D2FF' }}>B: {item.percentB.toFixed(0)}%</Text>
+          {'  '}
+          <Text style={{ color: '#FF9F0A' }}>C: {item.percentC.toFixed(0)}%</Text>
+          {'  '}
+          <Text style={{ color: '#FF6B35' }}>D: {item.percentD.toFixed(0)}%</Text>
+          {'  '}
+          <Text style={{ color: '#FF453A' }}>F: {item.percentF.toFixed(0)}%</Text>
+        </Text>
+      </View>
+      <ChevronRight size={18} color={COLORS.textTertiary} style={{ marginLeft: 8, alignSelf: 'center' }} />
+    </Pressable>
+  );
+}
+
+function DetailModal({
+  item,
+  subject,
+  courseNum,
+  onClose,
+  COLORS,
+  styles,
+}: {
+  item: InstructorSectionStat | null;
+  subject: string;
+  courseNum: string;
+  onClose: () => void;
+  COLORS: any;
+  styles: any;
+}) {
+  if (!item) return null;
+  const accentGpa = gpaColor(item.avgGpa);
+
+  const grades = [
+    { label: 'A', count: item.a_count, color: '#30D158' },
+    { label: 'B', count: item.b_count, color: '#64D2FF' },
+    { label: 'C', count: item.c_count, color: '#FF9F0A' },
+    { label: 'D', count: item.d_count, color: '#FF6B35' },
+    { label: 'F', count: item.f_count, color: '#FF453A' },
+    { label: 'I', count: item.i_count, color: '#8E8E93' },
+    { label: 'Q', count: item.q_count, color: '#636366' },
+    { label: 'S', count: item.s_count, color: '#30D158' },
+    { label: 'U', count: item.u_count, color: '#FF453A' },
+    { label: 'X', count: item.x_count, color: '#8E8E93' },
+  ].filter(g => g.count > 0);
+
+  return (
+    <Modal visible={true} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalSheet}>
+          <View style={styles.modalHandle} />
+
+          {/* Header */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.modalTitle}>
+                {subject.toUpperCase()} {courseNum} · Sec {item.section}
+              </Text>
+              <Text style={{ color: COLORS.textSecondary, fontSize: 14 }}>
+                {item.semester} {item.year} · Prof. {item.instructor}
+              </Text>
+            </View>
+            <Pressable onPress={onClose} style={styles.closeBtn}>
+              <X size={20} color={COLORS.textSecondary} />
+            </Pressable>
+          </View>
+
+          {/* GPA badge */}
+          <View style={[styles.modalGpaBadge, { backgroundColor: accentGpa + '18' }]}>
+            <Text style={[styles.modalGpaText, { color: accentGpa }]}>
+              {item.avgGpa.toFixed(3)}
+            </Text>
+            <Text style={{ color: accentGpa, fontSize: 13, fontWeight: '600' }}>
+              Average GPA · {item.enrollment} students
+            </Text>
+          </View>
+
+          {/* Grade bars */}
+          <ScrollView style={{ marginTop: 16 }} showsVerticalScrollIndicator={false}>
+            {grades.map(g => (
+              <View key={g.label} style={{ marginBottom: 10 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={{ color: COLORS.textSecondary, fontWeight: '700', width: 24 }}>
+                    {g.label}
+                  </Text>
+                  <Text style={{ color: COLORS.textPrimary, fontWeight: '600', flex: 1, paddingLeft: 8 }}>
+                    {g.count} students
+                  </Text>
+                  <Text style={{ color: g.color, fontWeight: '700' }}>
+                    {item.enrollment > 0 ? ((g.count / item.enrollment) * 100).toFixed(1) : '0.0'}%
+                  </Text>
+                </View>
+                <View style={{ height: 8, borderRadius: 4, backgroundColor: COLORS.border }}>
+                  <View
+                    style={{
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: g.color,
+                      width: item.enrollment > 0
+                        ? `${Math.min((g.count / item.enrollment) * 100, 100)}%`
+                        : '0%',
+                    }}
+                  />
+                </View>
+              </View>
+            ))}
+            <View style={{ height: 40 }} />
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────
+// Main Screen
+// ──────────────────────────────────────────────────────────────
+
+export function GradesScreen() {
+  const { COLORS } = useTheme();
+  const styles = getStyles(COLORS);
+
+  const [subject, setSubject] = useState('');
+  const [courseNum, setCourseNum] = useState('');
+  const [screenState, setScreenState] = useState<ScreenState>('idle');
+  const [result, setResult] = useState<GradeSearchResult | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [selectedSection, setSelectedSection] = useState<InstructorSectionStat | null>(null);
+
+  const handleSearch = useCallback(async () => {
+    const subj = subject.trim().toUpperCase();
+    const num = courseNum.trim();
+    if (!subj || !num) return;
+
+    setScreenState('loading');
+    setResult(null);
+    setErrorMsg('');
+
+    try {
+      const data = await searchCourseGrades(subj, num);
+      setResult(data);
+      setScreenState('results');
+    } catch (err: any) {
+      setErrorMsg(err?.message ?? 'Unknown error');
+      setScreenState('error');
+    }
+  }, [subject, courseNum]);
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        {/* ── Header ── */}
+        <View style={styles.header}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <BarChart2 size={22} color={COLORS.primary} />
+            <Text style={styles.headerTitle}>Grade Distribution</Text>
+          </View>
+          <Text style={styles.headerSub}>Powered by anex.us · TAMU data</Text>
+        </View>
+
+        {/* ── Search inputs ── */}
+        <View style={styles.searchRow}>
+          <TextInput
+            style={[styles.input, { flex: 1.2 }]}
+            placeholder="Subject"
+            placeholderTextColor={COLORS.textTertiary}
+            value={subject}
+            onChangeText={t => setSubject(t.toUpperCase())}
+            autoCapitalize="characters"
+            returnKeyType="next"
+          />
+          <TextInput
+            style={[styles.input, { flex: 1 }]}
+            placeholder="Number"
+            placeholderTextColor={COLORS.textTertiary}
+            value={courseNum}
+            onChangeText={setCourseNum}
+            keyboardType="default"
+            returnKeyType="search"
+            onSubmitEditing={handleSearch}
+          />
+          <Pressable
+            style={({ pressed }) => [styles.searchBtn, pressed && { opacity: 0.8 }]}
+            onPress={handleSearch}
+          >
+            <Text style={styles.searchBtnText}>Search</Text>
+          </Pressable>
+        </View>
+
+        {/* ── States ── */}
+        {screenState === 'loading' && (
+          <View style={styles.centered}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={[styles.stateMsg, { marginTop: 12 }]}>
+              Fetching grade data…
+            </Text>
+          </View>
+        )}
+
+        {screenState === 'error' && (
+          <View style={styles.centered}>
+            <Text style={[styles.stateMsg, { color: COLORS.danger }]}>
+              ⚠ {errorMsg}
+            </Text>
+          </View>
+        )}
+
+        {screenState === 'idle' && (
+          <View style={styles.centered}>
+            <BarChart2 size={48} color={COLORS.textTertiary} />
+            <Text style={[styles.stateMsg, { marginTop: 12 }]}>
+              Enter a subject and course number{'\n'}to see grade distributions
+            </Text>
+            <Text style={[styles.stateMsg, { marginTop: 6, fontSize: 13 }]}>
+              e.g. CSCE · 121
+            </Text>
+          </View>
+        )}
+
+        {screenState === 'results' && result && (
+          <>
+            {result.rows.length === 0 ? (
+              <View style={styles.centered}>
+                <Text style={styles.stateMsg}>
+                  No data found for {subject.toUpperCase()} {courseNum}.{'\n'}
+                  Try a different course.
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                contentContainerStyle={{ paddingBottom: 100 }}
+                ListHeaderComponent={
+                  <CourseSummaryCard
+                    stats={result.stats}
+                    subject={subject}
+                    courseNum={courseNum}
+                    COLORS={COLORS}
+                    styles={styles}
+                  />
+                }
+                data={result.sections}
+                keyExtractor={(item, idx) => `${item.term_code}_${item.section}_${item.instructor}_${idx}`}
+                renderItem={({ item }) => (
+                  <SectionCard
+                    item={item}
+                    onPress={() => setSelectedSection(item)}
+                    COLORS={COLORS}
+                    styles={styles}
+                  />
+                )}
+                ItemSeparatorComponent={() => (
+                  <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: COLORS.border }} />
+                )}
+              />
+            )}
+          </>
+        )}
+      </KeyboardAvoidingView>
+
+      {/* Detail modal */}
+      <DetailModal
+        item={selectedSection}
+        subject={subject}
+        courseNum={courseNum}
+        onClose={() => setSelectedSection(null)}
+        COLORS={COLORS}
+        styles={styles}
+      />
+    </SafeAreaView>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────
+// Styles
+// ──────────────────────────────────────────────────────────────
+
+const getStyles = (COLORS: any) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: COLORS.background,
+    },
+    header: {
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 8,
+    },
+    headerTitle: {
+      fontSize: 22,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
+      letterSpacing: -0.5,
+    },
+    headerSub: {
+      color: COLORS.textTertiary,
+      fontSize: 12,
+      marginTop: 2,
+      marginLeft: 32,
+    },
+    searchRow: {
+      flexDirection: 'row',
+      paddingHorizontal: 16,
+      gap: 8,
+      marginTop: 8,
+      marginBottom: 12,
+    },
+    input: {
+      height: 46,
+      backgroundColor: COLORS.surface,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      fontSize: 15,
+      color: COLORS.textPrimary,
+    },
+    searchBtn: {
+      height: 46,
+      paddingHorizontal: 18,
+      backgroundColor: COLORS.primary,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    searchBtnText: {
+      color: '#fff',
+      fontWeight: '700',
+      fontSize: 15,
+    },
+    centered: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 32,
+    },
+    stateMsg: {
+      color: COLORS.textSecondary,
+      fontSize: 15,
+      textAlign: 'center',
+      lineHeight: 22,
+    },
+    // Summary card
+    summaryCard: {
+      margin: 16,
+      marginBottom: 8,
+      backgroundColor: COLORS.surfaceElevated,
+      borderRadius: 16,
+      padding: 18,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    summaryTitle: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+      letterSpacing: -0.3,
+    },
+    iconBg: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    gpaBadge: {
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      alignItems: 'center',
+    },
+    gpaBadgeText: {
+      fontSize: 22,
+      fontWeight: '800',
+      letterSpacing: -0.5,
+    },
+    // Section list
+    sectionCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 14,
+      paddingHorizontal: 16,
+      backgroundColor: COLORS.background,
+    },
+    instructorName: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
+      marginBottom: 2,
+    },
+    sectionGpa: {
+      fontSize: 20,
+      fontWeight: '800',
+      letterSpacing: -0.5,
+    },
+    miniDist: {
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    // Detail modal
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.6)',
+      justifyContent: 'flex-end',
+    },
+    modalSheet: {
+      backgroundColor: COLORS.surfaceElevated,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      padding: 20,
+      paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+      maxHeight: '80%',
+    },
+    modalHandle: {
+      width: 40,
+      height: 5,
+      borderRadius: 3,
+      backgroundColor: COLORS.border,
+      alignSelf: 'center',
+      marginBottom: 16,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+      letterSpacing: -0.3,
+    },
+    modalGpaBadge: {
+      borderRadius: 14,
+      padding: 16,
+      alignItems: 'center',
+    },
+    modalGpaText: {
+      fontSize: 36,
+      fontWeight: '800',
+      letterSpacing: -1,
+    },
+    closeBtn: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: COLORS.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  });

@@ -36,6 +36,7 @@ import { CampusFeedScreen } from './components/CampusFeedScreen';
 import { ReelsScreen } from './components/ReelsScreen';
 import { GPACalculatorScreen } from './components/GPACalculatorScreen';
 import { CampusScreen } from './components/CampusScreen';
+import { GradesScreen } from './components/GradesScreen';
 
 import DiningDashboard from './components/dining/DiningDashboard';
 import MealOptimizerScreen from './components/dining/MealOptimizerScreen';
@@ -47,7 +48,7 @@ import WeightTrackerScreen from './components/dining/WeightTrackerScreen';
 import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 
-import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu, Compass, MessageSquare, MapPin, Radio } from 'lucide-react-native';
+import { Calendar, Search as SearchIcon, Grid3x3, Bookmark, User, Menu, Compass, MessageSquare, MapPin, Radio, BarChart2 } from 'lucide-react-native';
 import { useTheme } from './components/SharedUI';
 
 import { syncUser } from './api/client';
@@ -119,8 +120,8 @@ function MainTabs() {
             IconName = MapPin;
           } else if (route.name === 'Social') {
             IconName = Radio;
-          } else if (route.name === 'Messages') {
-            IconName = MessageSquare;
+          } else if (route.name === 'Grades') {
+            IconName = BarChart2;
           } else if (route.name === 'Profile') {
             IconName = User;
           }
@@ -149,7 +150,7 @@ function MainTabs() {
       <Tab.Screen name="Dashboard" component={Dashboard} options={{ title: 'Home' }} />
       <Tab.Screen name="Places" component={PlacesMapScreen} options={{ title: 'Places' }} />
       <Tab.Screen name="Social" component={CampusFeedScreen} options={{ title: 'Social' }} />
-      <Tab.Screen name="Messages" component={ChannelListScreen} options={{ title: 'Messages' }} />
+      <Tab.Screen name="Grades" component={GradesScreen} options={{ title: 'Grades' }} />
       <Tab.Screen name="Profile" component={Profile} options={{ title: 'Profile' }} />
     </Tab.Navigator>
   );
