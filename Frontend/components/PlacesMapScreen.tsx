@@ -66,7 +66,7 @@ import { BUILDINGS, AMENITIES } from "../data/campus";
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 // Snap point translateY values (distance from top of screen)
-const SNAP_PEEK = SCREEN_HEIGHT * 0.58; // ~42% of screen visible
+const SNAP_PEEK = SCREEN_HEIGHT * 0.45; // ~55% of screen visible
 const SNAP_FULL = SCREEN_HEIGHT * 0.08; // ~92% of screen visible
 const SNAP_HIDDEN = SCREEN_HEIGHT; // off-screen
 const FLOATING_RESULT_BOTTOM_OFFSET = 0;
@@ -1824,7 +1824,7 @@ export function PlacesMapScreen() {
             <>
               {/* Header — always visible at peek height */}
               <View style={styles.sheetHeader}>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
                   <Text style={styles.locationName}>
                     {selectedLoc.location}
                   </Text>
@@ -1844,13 +1844,48 @@ export function PlacesMapScreen() {
                     )}
                   </View>
                 </View>
-                <TouchableOpacity
-                  onPress={() => setSelectedId(null)}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  style={styles.dismissBtn}
-                >
-                  <X size={18} color="#888" />
-                </TouchableOpacity>
+                
+                <View style={{ alignItems: "center", gap: 12 }}>
+                  <TouchableOpacity
+                    onPress={() => setSelectedId(null)}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    style={styles.dismissBtn}
+                  >
+                    <X size={18} color="#888" />
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={styles.circularActionBtn}
+                    onPress={() =>
+                      navigation.navigate("CampusNavigation", {
+                        initialDestination: {
+                          id: selectedLoc.location,
+                          name: selectedLoc.location,
+                          shortName:
+                            selectedLoc.shortName || selectedLoc.location,
+                          latitude: selectedLoc.coord.lat,
+                          longitude: selectedLoc.coord.lng,
+                          type:
+                            selectedLoc.type === "Academic"
+                              ? "academic"
+                              : selectedLoc.type === "Library"
+                                ? "library"
+                                : selectedLoc.type === "Dining"
+                                  ? "dining"
+                                  : selectedLoc.type === "Rec"
+                                    ? "recreation"
+                                    : selectedLoc.type === "Housing"
+                                      ? "housing"
+                                      : selectedLoc.type === "Athletics"
+                                        ? "athletics"
+                                        : "landmark",
+                        },
+                      })
+                    }
+                  >
+                    <Navigation size={20} fill="#FFF" color="#FFF" />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               {selectedLoc.description ? (
@@ -1858,42 +1893,6 @@ export function PlacesMapScreen() {
                   {selectedLoc.description}
                 </Text>
               ) : null}
-
-              {/* Google Maps style Action pill row */}
-              <View style={styles.locationActionsRow}>
-                <TouchableOpacity
-                  style={styles.primaryActionBtn}
-                  onPress={() =>
-                    navigation.navigate("CampusNavigation", {
-                      initialDestination: {
-                        id: selectedLoc.location,
-                        name: selectedLoc.location,
-                        shortName:
-                          selectedLoc.shortName || selectedLoc.location,
-                        latitude: selectedLoc.coord.lat,
-                        longitude: selectedLoc.coord.lng,
-                        type:
-                          selectedLoc.type === "Academic"
-                            ? "academic"
-                            : selectedLoc.type === "Library"
-                              ? "library"
-                              : selectedLoc.type === "Dining"
-                                ? "dining"
-                                : selectedLoc.type === "Rec"
-                                  ? "recreation"
-                                  : selectedLoc.type === "Housing"
-                                    ? "housing"
-                                    : selectedLoc.type === "Athletics"
-                                      ? "athletics"
-                                      : "landmark",
-                      },
-                    })
-                  }
-                >
-                  <Navigation size={18} fill="#FFF" color="#FFF" />
-                  <Text style={styles.primaryActionText}>Directions</Text>
-                </TouchableOpacity>
-              </View>
 
               {/* Hub Restaurants */}
               {hubRestaurants.length > 0 ? (
@@ -2838,27 +2837,18 @@ const getStyles = (COLORS: any) =>
       backgroundColor: "#FFD700",
       marginLeft: 8,
     },
-    locationActionsRow: {
-      flexDirection: "row",
-      gap: 10,
-      marginBottom: 16,
-      alignItems: "stretch",
-    },
-    primaryActionBtn: {
-      flex: 1,
-      flexDirection: "row",
+    circularActionBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: "#007AFF",
       alignItems: "center",
       justifyContent: "center",
-      gap: 8,
-      backgroundColor: "#007AFF", 
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      borderRadius: 999,
-    },
-    primaryActionText: {
-      color: "#FFF",
-      fontSize: 15,
-      fontWeight: "700",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 5,
+      elevation: 6,
     },
     busMarker: {
       width: 34,
