@@ -21,7 +21,7 @@ type Vibe = typeof VIBE_OPTIONS[number];
 const CAMPUS_SPOTS = [
   'Evans Library', 'Sbisa Dining Hall', 'Student Rec Center',
   'Memorial Student Center', 'Zachry Engineering', 'Blocker Building',
-  'West Campus Library', 'Rudder Tower', 'Commons Dining',
+  'West Campus Library', 'Rudder Tower', 'The Commons Dining Hall',
   'Hullabaloo Hall', 'Annex Library',
 ];
 

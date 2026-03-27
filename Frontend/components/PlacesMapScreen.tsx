@@ -333,7 +333,7 @@ const STATIC_LOCATION_META: Record<string, Partial<CampusLocation>> = {
     hours: "Breakfast, lunch, and dinner service",
     description: "Northside all-you-care-to-eat dining hall.",
   },
-  "The Commons Dining": {
+  "The Commons Dining Hall": {
     hours: "Breakfast, lunch, and dinner service",
     description: "Southside dining hall near the Commons.",
   },

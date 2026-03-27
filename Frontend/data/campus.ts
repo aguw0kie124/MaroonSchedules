@@ -110,7 +110,6 @@ export const AMENITIES: CampusAmenity[] = [
 
   // Dining
   { id: 'sbisa', name: 'Sbisa Dining Hall', latitude: 30.617135, longitude: -96.343777, type: 'dining' },
-  { id: 'commons', name: 'The Commons Dining', latitude: 30.615460, longitude: -96.336075, type: 'dining' },
   { id: 'duncan', name: 'Duncan Dining Hall', latitude: 30.612072, longitude: -96.335505, type: 'dining' },
   { id: 'hulla-dining', name: 'Hullabaloo Food Court', latitude: 30.616460, longitude: -96.346322, type: 'dining' },
   { id: 'cfa', name: 'Chick-fil-A (MSC)', latitude: 30.611881, longitude: -96.341541, type: 'dining' },
