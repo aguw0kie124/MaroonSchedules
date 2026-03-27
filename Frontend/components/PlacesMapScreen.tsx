@@ -407,14 +407,6 @@ function buildCampusDirectory(): CampusLocation[] {
     available_seats: null,
     coord: { lat: amenity.latitude, lng: amenity.longitude },
     source: "directory" as const,
-    description:
-      amenity.type === "parking"
-        ? "Parking destination indexed for campus search and navigation."
-        : amenity.type === "study"
-          ? "Study and quiet-space destination."
-          : amenity.type === "dining"
-            ? "Dining destination indexed for navigation."
-            : "Campus amenity destination.",
   }));
 
   const merged = new Map<string, CampusLocation>();
@@ -1863,6 +1855,13 @@ export function PlacesMapScreen() {
 
               {/* Replace hardcoded occupancy with lists for Hubs/Dining */}
               <View style={styles.locationActionsRow}>
+                {selectedLoc.description ? (
+                  <View style={styles.secondaryActionPill}>
+                    <Text style={styles.secondaryActionText} numberOfLines={2}>
+                      {selectedLoc.description}
+                    </Text>
+                  </View>
+                ) : null}
                 <TouchableOpacity
                   style={styles.primaryActionBtn}
                   onPress={() =>
@@ -1895,13 +1894,6 @@ export function PlacesMapScreen() {
                   <Navigation size={16} color="#FFF" />
                   <Text style={styles.primaryActionText}>Plan Route</Text>
                 </TouchableOpacity>
-                {selectedLoc.description ? (
-                  <View style={styles.secondaryActionPill}>
-                    <Text style={styles.secondaryActionText} numberOfLines={2}>
-                      {selectedLoc.description}
-                    </Text>
-                  </View>
-                ) : null}
               </View>
 
               {/* Hub Restaurants */}
@@ -2810,7 +2802,7 @@ const getStyles = (COLORS: any) =>
       marginLeft: 8,
     },
     locationActionsRow: {
-      flexDirection: "row",
+      flexDirection: "column",
       gap: 10,
       marginBottom: 16,
       alignItems: "stretch",
@@ -2818,6 +2810,7 @@ const getStyles = (COLORS: any) =>
     primaryActionBtn: {
       flexDirection: "row",
       alignItems: "center",
+      justifyContent: "center",
       gap: 8,
       backgroundColor: "#500000",
       paddingHorizontal: 16,
@@ -2834,9 +2827,8 @@ const getStyles = (COLORS: any) =>
       letterSpacing: 0.4,
     },
     secondaryActionPill: {
-      flex: 1,
       backgroundColor: "#161616",
-      borderRadius: 18,
+      borderRadius: 12,
       borderWidth: 1,
       borderColor: "#262626",
       paddingHorizontal: 12,
