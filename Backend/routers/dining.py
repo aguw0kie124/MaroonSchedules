@@ -519,3 +519,22 @@ def get_weight_stats(clerk_id: str):
                 "goalDate": goal_date,
                 "totalChange": current - prev
             }
+
+@router.get("/hubs/{location_id}")
+def get_hub_restaurants(location_id: str):
+    hubs = {
+        "Memorial Student Center": ["Chick-fil-A", "Panda Express", "Rev's American Grill", "Cabo Grill", "Abu Omar Halal", "Spin 'N Stone Pizza", "Houston Street Subs", "Shake Smart"],
+        "Polo Road Garage Dining": ["Panda Express", "Houston Street Subs", "Shake Smart", "Salata", "Bagel Block"],
+        "Underground Food Court": ["Chick-fil-A", "Houston Street Subs", "Pizza @ Underground", "Smoothie King", "1876 Burgers"],
+        "West Campus Food Hall": ["Chick-fil-A", "Houston Street Subs", "Copperhead Jack's"],
+        "Sbisa Complex": ["Copperhead Jack's", "1876 Burgers", "Einstein Bros. Bagels"]
+    }
+    for key, val in hubs.items():
+        if location_id.lower() in key.lower():
+            return {"restaurants": val}
+    
+    return {"restaurants": []}
+
+@router.get("/menus/{location_id}")
+def get_location_menu(location_id: str):
+    return {"items": []}
