@@ -9,6 +9,7 @@ import { useUser } from '@clerk/clerk-expo';
 import { Camera, Image as ImageIcon, Video, Heart, MapPin, X, MoreHorizontal, MessageCircle, Calendar, Send, Film, Plus } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useTheme } from './SharedUI';
 import { useDiningTheme } from './dining/DiningTheme';
 import {
@@ -65,6 +66,33 @@ function mapActivityToPost(activity: any): Post {
         reaction_counts: activity.reaction_counts,
         own_reactions: activity.own_reactions,
     };
+}
+
+
+function PostVideo({ url, styles }: { url: string; styles: any }) {
+    const player = useVideoPlayer(url, p => {
+        p.loop = true;
+        p.muted = false;
+    });
+
+    useEffect(() => {
+        player.play();
+        return () => {
+            try { player.pause(); } catch (_) {}
+        };
+    }, [player]);
+
+    return (
+        <View style={styles.postImage}>
+            <VideoView
+                player={player}
+                style={{ width: '100%', height: '100%', borderRadius: 16 }}
+                allowsFullscreen
+                allowsPictureInPicture
+                nativeControls={true}
+            />
+        </View>
+    );
 }
 
 export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = {}) {
@@ -179,7 +207,11 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
                 // CREATE new post
                 let uploadedMediaUrl = null;
                 if (mediaUri && mediaType) {
-                    uploadedMediaUrl = await uploadStreamImage(mediaUri); 
+                    if (mediaType === 'video') {
+                        uploadedMediaUrl = await uploadStreamFile(mediaUri);
+                    } else {
+                        uploadedMediaUrl = await uploadStreamImage(mediaUri); 
+                    }
                 }
 
                 await addPost({
@@ -387,9 +419,7 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
                 )}
                 
                 {item.media_url && item.media_type === 'video' && (
-                    <View style={[styles.postImage, { backgroundColor: T.bg2, justifyContent: 'center', alignItems: 'center' }]}>
-                        <Video color={T.text3} size={48} />
-                    </View>
+                    <PostVideo url={item.media_url} styles={styles} />
                 )}
 
                 <View style={styles.postFooter}>
