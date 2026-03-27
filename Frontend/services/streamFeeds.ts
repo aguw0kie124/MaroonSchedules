@@ -120,7 +120,7 @@ export async function addPost(params: {
     }
   };
 
-  const res = await fetch(`${API_URL}/feeds/proxy/flat/campus_global`, {
+  const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/campus_global`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ activity })
@@ -194,7 +194,7 @@ export async function addReel(params: {
     }
   };
 
-  const res = await fetch(`${API_URL}/feeds/proxy/flat/reels_global`, {
+  const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/reels_global`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ activity })
@@ -203,14 +203,14 @@ export async function addReel(params: {
 }
 
 export async function deletePost(activityId: string) {
-    const res = await fetch(`${API_URL}/feeds/proxy/flat/campus_global/${activityId}`, {
+    const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/campus_global/${activityId}`, {
         method: 'DELETE'
     });
     if (!res.ok) throw new Error("Failed to delete post.");
 }
 
 export async function deleteReel(activityId: string) {
-    const res = await fetch(`${API_URL}/feeds/proxy/flat/reels_global/${activityId}`, {
+    const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/reels_global/${activityId}`, {
         method: 'DELETE'
     });
     if (!res.ok) throw new Error("Failed to delete reel.");
