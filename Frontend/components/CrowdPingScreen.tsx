@@ -11,6 +11,7 @@ import {
   Keyboard,
   RefreshControl,
 } from "react-native";
+import { AlertTriangle, MessageSquarePlus, Target, ThumbsUp, Users, Volume2, Zap } from "lucide-react-native";
 import { useTheme, Card } from "./SharedUI";
 
 import { API_URL } from "../config";
@@ -52,12 +53,12 @@ interface CrowdPing {
 // Local storage for pings (in a real app, this would be API-backed)
 let localPings: CrowdPing[] = [];
 
-const VIBE_EMOJI: Record<Vibe, string> = {
-  Focused: "🎯",
-  Chill: "😎",
-  Social: "🗣️",
-  Energetic: "⚡",
-  Stressful: "😰",
+const VIBE_ICONS: Record<Vibe, any> = {
+  Focused: Target,
+  Chill: Volume2,
+  Social: Users,
+  Energetic: Zap,
+  Stressful: AlertTriangle,
 };
 
 function timeAgo(ts: number): string {
@@ -151,7 +152,7 @@ export function CrowdPingScreen() {
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View>
-            <Text style={styles.title}>📡 CrowdPing</Text>
+            <Text style={styles.title}>CrowdPing</Text>
             <Text style={styles.subtitle}>Crowdsourced campus vibes</Text>
           </View>
           <Pressable
@@ -182,7 +183,7 @@ export function CrowdPingScreen() {
         {/* Form */}
         {showForm && (
           <Card style={styles.formCard}>
-            <Text style={styles.formTitle}>Drop a Ping 📡</Text>
+            <Text style={styles.formTitle}>Drop a Ping</Text>
 
             {/* Place picker */}
             <Text style={styles.formLabel}>Where are you?</Text>
@@ -270,21 +271,26 @@ export function CrowdPingScreen() {
             <Text style={styles.formLabel}>Vibe?</Text>
             <View style={styles.vibeRow}>
               {VIBE_OPTIONS.map((v) => (
-                <Pressable
-                  key={v}
-                  style={[styles.vibeChip, vibe === v && styles.vibeChipActive]}
-                  onPress={() => setVibe(v)}
-                >
-                  <Text style={styles.vibeEmoji}>{VIBE_EMOJI[v]}</Text>
-                  <Text
-                    style={[
-                      styles.vibeText,
-                      vibe === v && styles.vibeTextActive,
-                    ]}
-                  >
-                    {v}
-                  </Text>
-                </Pressable>
+                (() => {
+                  const Icon = VIBE_ICONS[v];
+                  return (
+                    <Pressable
+                      key={v}
+                      style={[styles.vibeChip, vibe === v && styles.vibeChipActive]}
+                      onPress={() => setVibe(v)}
+                    >
+                      <Icon size={16} color={vibe === v ? "#FFFFFF" : COLORS.textSecondary} />
+                      <Text
+                        style={[
+                          styles.vibeText,
+                          vibe === v && styles.vibeTextActive,
+                        ]}
+                      >
+                        {v}
+                      </Text>
+                    </Pressable>
+                  );
+                })()
               ))}
             </View>
 
@@ -321,7 +327,7 @@ export function CrowdPingScreen() {
         {/* Feed */}
         {!showForm && pings.length === 0 && (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>📡</Text>
+            <MessageSquarePlus size={44} color={COLORS.textSecondary} />
             <Text style={styles.emptyTitle}>No pings yet</Text>
             <Text style={styles.emptySubtitle}>
               Be the first to share what campus looks like right now!
@@ -354,16 +360,25 @@ export function CrowdPingScreen() {
               <View
                 style={[styles.statBadge, { backgroundColor: "#3B82F622" }]}
               >
-                <Text style={[styles.statText, { color: "#3B82F6" }]}>
-                  🔊 {ping.loud}/10
-                </Text>
+                <View style={styles.statBadgeContent}>
+                  <Volume2 size={14} color="#3B82F6" />
+                  <Text style={[styles.statText, { color: "#3B82F6" }]}>
+                    {ping.loud}/10
+                  </Text>
+                </View>
               </View>
               <View
                 style={[styles.statBadge, { backgroundColor: "#8B5CF622" }]}
               >
-                <Text style={[styles.statText, { color: "#8B5CF6" }]}>
-                  {VIBE_EMOJI[ping.vibe]} {ping.vibe}
-                </Text>
+                <View style={styles.statBadgeContent}>
+                  {(() => {
+                    const Icon = VIBE_ICONS[ping.vibe];
+                    return <Icon size={14} color="#8B5CF6" />;
+                  })()}
+                  <Text style={[styles.statText, { color: "#8B5CF6" }]}>
+                    {ping.vibe}
+                  </Text>
+                </View>
               </View>
             </View>
             {ping.notes ? (
@@ -373,9 +388,12 @@ export function CrowdPingScreen() {
               onPress={() => handleLike(ping.id)}
               style={styles.likeBtn}
             >
-              <Text style={styles.likeText}>
-                👍 {ping.likes > 0 ? ping.likes : ""} Helpful
-              </Text>
+              <View style={styles.likeContent}>
+                <ThumbsUp size={14} color={COLORS.primary} />
+                <Text style={styles.likeText}>
+                  {ping.likes > 0 ? `${ping.likes} ` : ''}Helpful
+                </Text>
+              </View>
             </Pressable>
           </Card>
         ))}
@@ -475,7 +493,6 @@ const getStyles = (COLORS: any) =>
       backgroundColor: COLORS.primary,
       borderColor: COLORS.primary,
     },
-    vibeEmoji: { fontSize: 16 },
     vibeText: { fontSize: 13, fontWeight: "600", color: "#FFFFFF" },
     vibeTextActive: { color: "#FFF" },
     notesInput: {
@@ -504,7 +521,6 @@ const getStyles = (COLORS: any) =>
     },
     submitText: { color: "#FFF", fontWeight: "800", fontSize: 16 },
     emptyState: { alignItems: "center", paddingVertical: 50 },
-    emptyEmoji: { fontSize: 48 },
     emptyTitle: {
       fontSize: 18,
       fontWeight: "700",
@@ -533,6 +549,7 @@ const getStyles = (COLORS: any) =>
       marginBottom: 8,
     },
     statBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+    statBadgeContent: { flexDirection: "row", alignItems: "center", gap: 6 },
     statText: { fontSize: 12, fontWeight: "700" },
     pingNotes: {
       fontSize: 14,
@@ -550,5 +567,6 @@ const getStyles = (COLORS: any) =>
       borderWidth: 1,
       borderColor: "#2A2A2A",
     },
+    likeContent: { flexDirection: "row", alignItems: "center", gap: 8 },
     likeText: { fontSize: 13, fontWeight: "600", color: "#FFFFFF" },
   });

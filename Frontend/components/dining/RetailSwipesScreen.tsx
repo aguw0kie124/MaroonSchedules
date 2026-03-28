@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView, SafeAreaView, StatusBar, ImageBackground } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
+import { Trophy } from 'lucide-react-native';
 import { API_URL } from '../../config';
 import { Card, SectionLabel, StatPill, Divider, ActionButton } from './DiningUI';
 import { useTheme } from '../SharedUI';
@@ -22,9 +23,9 @@ function shortenLoc(full: string): string {
   return d > 0 ? full.substring(d + 3) : full;
 }
 
-export default function RetailSwipesScreen({ navigation }: any) {
+export default function RetailSwipesScreen({ navigation, embedded = false }: any) {
   const { user } = useUser();
-  const { theme } = useTheme();
+  const { theme, wallpaperUri } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
 
@@ -125,30 +126,28 @@ export default function RetailSwipesScreen({ navigation }: any) {
     navigation.navigate('FullMenu', {
       location: selRest,
       mealPeriod: selMeal,
-      title: `${selRest} ${selMeal.charAt(0).toUpperCase() + selMeal.slice(1)}`,
+      title: `${selRest} Menu`,
       locations: optResult?.locations || [],
       sourceHint: 'database',
     });
   };
 
-  const marbleSrc = darkMode
-    ? require('../../assets/black_marble.jpg')
-    : require('../../assets/white_marble.jpg');
+  const wallpaperSource = wallpaperUri
+    ? { uri: wallpaperUri }
+    : darkMode
+      ? require('../../assets/black_marble.jpg')
+      : require('../../assets/white_marble.jpg');
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
-      <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
-      <ImageBackground source={marbleSrc} style={StyleSheet.absoluteFill} resizeMode="cover">
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)' }]} />
-      </ImageBackground>
-
-      <ScrollView style={s.container} contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
-        <View style={s.header}>
-            <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
-                <Text style={{ fontSize: 24, color: T.text }}>←</Text>
-            </TouchableOpacity>
-            <Text style={[s.title, { color: T.text }]}>Retail Swipes</Text>
-        </View>
+  const content = (
+      <ScrollView style={s.container} contentContainerStyle={{ padding: embedded ? 0 : 20, paddingBottom: 60 }}>
+        {!embedded ? (
+          <View style={s.header}>
+              <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+                  <Text style={{ fontSize: 24, color: T.text }}>←</Text>
+              </TouchableOpacity>
+              <Text style={[s.title, { color: T.text }]}>Retail Swipes</Text>
+          </View>
+        ) : null}
 
         <Card>
           <SectionLabel>This Week ($11/swipe · 7/wk)</SectionLabel>
@@ -212,7 +211,7 @@ export default function RetailSwipesScreen({ navigation }: any) {
                   {/* Top Pick Banner */}
                   {optResult.topPick && (
                     <View style={{flexDirection: 'row', alignItems: 'center', backgroundColor: T.bg3, padding: 10, borderRadius: 8, marginVertical: 10}}>
-                        <Text style={{fontSize: 20, marginRight: 10}}>🏆</Text>
+                        <Trophy size={18} color={T.sky} style={{ marginRight: 10 }} />
                         <View style={{flex: 1}}>
                             <Text style={{color: T.sky, fontSize: 10, fontWeight: '800'}}>ORDER THIS:</Text>
                             <Text style={{color: T.text, fontSize: 14, fontWeight: '700'}}>{optResult.topPick}</Text>
@@ -265,6 +264,19 @@ export default function RetailSwipesScreen({ navigation }: any) {
           }
         </Card>
       </ScrollView>
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
+      <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)' }]} />
+      </ImageBackground>
+      {content}
     </SafeAreaView>
   );
 }

@@ -4,14 +4,13 @@ import {
   Text,
   TextInput,
   StyleSheet,
-  FlatList,
   Pressable,
   Keyboard,
 } from 'react-native';
-import { Search, X } from 'lucide-react-native';
+import { Coffee, Library, MapPin, Search, Utensils, X } from 'lucide-react-native';
 import { useTheme } from './SharedUI';
 import { CampusSearchResult, searchCampus, getPinnedItems } from '../services/campusSearch';
-import { getAmenityEmoji, getBuildingEmoji } from '../data/campus';
+import { getAmenityIcon, getBuildingIcon } from '../data/campus';
 import { formatDistance } from '../services/campusDirections';
 
 interface CampusSearchBarProps {
@@ -29,8 +28,8 @@ export function CampusSearchBar({
   showPinnedItems = true,
   displayValue,
 }: CampusSearchBarProps) {
-    const { COLORS } = useTheme();
-    const styles = getStyles(COLORS);
+    const { COLORS, theme } = useTheme();
+    const styles = getStyles(COLORS, theme === 'dark');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CampusSearchResult[]>([]);
   const [isFocused, setIsFocused] = useState(false);
@@ -74,19 +73,19 @@ export function CampusSearchBar({
   const showDropdown = isFocused && (results.length > 0 || (query.length === 0 && showPinnedItems));
   const inputValue = isFocused ? query : (query || displayValue || '');
 
-  const getItemIcon = (item: CampusSearchResult): string => {
+  const getItemIcon = (item: CampusSearchResult) => {
     if (item.kind === 'command') {
       switch (item.commandType) {
-        case 'nearest-restroom': return '🚻';
-        case 'nearest-coffee': return '☕';
-        case 'nearest-library': return '📚';
-        case 'nearest-dining': return '🍔';
-        default: return '📍';
+        case 'nearest-restroom': return MapPin;
+        case 'nearest-coffee': return Coffee;
+        case 'nearest-library': return Library;
+        case 'nearest-dining': return Utensils;
+        default: return MapPin;
       }
     }
-    if (item.building) return getBuildingEmoji(item.building.type);
-    if (item.amenity) return getAmenityEmoji(item.amenity.type);
-    return '📍';
+    if (item.building) return getBuildingIcon(item.building.type);
+    if (item.amenity) return getAmenityIcon(item.amenity.type);
+    return MapPin;
   };
 
   return (
@@ -122,17 +121,24 @@ export function CampusSearchBar({
             <>
               <Text style={styles.sectionLabel}>Quick Actions</Text>
               {pinnedItems.map((item) => (
-                <Pressable
-                  key={item.id}
-                  style={({ pressed }) => [styles.resultRow, pressed && styles.resultRowPressed]}
-                  onPress={() => handleSelect(item)}
-                >
-                  <Text style={styles.resultIcon}>{getItemIcon(item)}</Text>
-                  <View style={styles.resultText}>
-                    <Text style={styles.resultLabel}>{item.label}</Text>
-                    <Text style={styles.resultSubtitle}>{item.subtitle}</Text>
-                  </View>
-                </Pressable>
+                (() => {
+                  const Icon = getItemIcon(item);
+                  return (
+                    <Pressable
+                      key={item.id}
+                      style={({ pressed }) => [styles.resultRow, pressed && styles.resultRowPressed]}
+                      onPress={() => handleSelect(item)}
+                    >
+                      <View style={styles.resultIconWrap}>
+                        <Icon size={18} color="#F3F1ED" />
+                      </View>
+                      <View style={styles.resultText}>
+                        <Text style={styles.resultLabel}>{item.label}</Text>
+                        <Text style={styles.resultSubtitle}>{item.subtitle}</Text>
+                      </View>
+                    </Pressable>
+                  );
+                })()
               ))}
             </>
           )}
@@ -143,20 +149,27 @@ export function CampusSearchBar({
               {query.length === 0 && <View style={styles.divider} />}
               <Text style={styles.sectionLabel}>Results</Text>
               {results.map((item) => (
-                <Pressable
-                  key={item.id}
-                  style={({ pressed }) => [styles.resultRow, pressed && styles.resultRowPressed]}
-                  onPress={() => handleSelect(item)}
-                >
-                  <Text style={styles.resultIcon}>{getItemIcon(item)}</Text>
-                  <View style={styles.resultText}>
-                    <Text style={styles.resultLabel}>{item.label}</Text>
-                    <Text style={styles.resultSubtitle}>
-                      {item.subtitle}
-                      {item.distance != null ? ` • ${formatDistance(item.distance)}` : ''}
-                    </Text>
-                  </View>
-                </Pressable>
+                (() => {
+                  const Icon = getItemIcon(item);
+                  return (
+                    <Pressable
+                      key={item.id}
+                      style={({ pressed }) => [styles.resultRow, pressed && styles.resultRowPressed]}
+                      onPress={() => handleSelect(item)}
+                    >
+                      <View style={styles.resultIconWrap}>
+                        <Icon size={18} color="#F3F1ED" />
+                      </View>
+                      <View style={styles.resultText}>
+                        <Text style={styles.resultLabel}>{item.label}</Text>
+                        <Text style={styles.resultSubtitle}>
+                          {item.subtitle}
+                          {item.distance != null ? ` • ${formatDistance(item.distance)}` : ''}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })()
               ))}
             </>
           )}
@@ -166,7 +179,7 @@ export function CampusSearchBar({
   );
 }
 
-const getStyles = (COLORS: any) => StyleSheet.create({
+const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   container: {
     position: 'relative',
     zIndex: 10,
@@ -178,10 +191,10 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#050505',
+    backgroundColor: isDark ? '#050505' : '#FFFFFF',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(12,12,14,0.08)',
     paddingHorizontal: 18,
     height: 56,
   },
@@ -236,13 +249,16 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     paddingVertical: 12,
   },
   resultRowPressed: {
-    backgroundColor: '#1E1E1E',
+    backgroundColor: isDark ? '#1E1E1E' : '#F4F5F7',
   },
-  resultIcon: {
-    fontSize: 20,
+  resultIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     marginRight: 14,
-    width: 28,
-    textAlign: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
   },
   resultText: {
     flex: 1,

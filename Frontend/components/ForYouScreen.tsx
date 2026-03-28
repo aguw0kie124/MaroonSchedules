@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { CalendarDays, Dumbbell, GraduationCap, Library, MapPin, Star, UtensilsCrossed } from 'lucide-react-native';
 import { useTheme, Card } from './SharedUI';
 
 import { API_URL } from '../config';
@@ -18,17 +19,16 @@ interface ForYouItem {
   category: 'Study' | 'Dining' | 'Rec' | 'Library' | 'Event' | 'Other';
   percentFull: number;
   available: number;
-  icon: string;
   reason: string;
 }
 
-const CATEGORY_CONFIG: Record<string, { emoji: string; color: string }> = {
-  Study: { emoji: '📖', color: '#8B5CF6' },
-  Dining: { emoji: '🍔', color: '#F59E0B' },
-  Rec: { emoji: '💪', color: '#10B981' },
-  Library: { emoji: '📚', color: '#3B82F6' },
-  Event: { emoji: '🎟️', color: '#EC4899' },
-  Other: { emoji: '📍', color: '#6B7280' },
+const CATEGORY_CONFIG: Record<string, { Icon: any; color: string }> = {
+  Study: { Icon: GraduationCap, color: '#8B5CF6' },
+  Dining: { Icon: UtensilsCrossed, color: '#F59E0B' },
+  Rec: { Icon: Dumbbell, color: '#10B981' },
+  Library: { Icon: Library, color: '#3B82F6' },
+  Event: { Icon: CalendarDays, color: '#EC4899' },
+  Other: { Icon: MapPin, color: '#6B7280' },
 };
 
 function classifyLocation(name: string): ForYouItem['category'] {
@@ -71,7 +71,6 @@ export function ForYouScreen() {
 
       const items: ForYouItem[] = data.map((d, i) => {
         const cat = classifyLocation(d.location);
-        const config = CATEGORY_CONFIG[cat];
         const available = Math.max(0, Math.round((100 - d.percent_full) * 2));
         // Generate contextual reason
         let reason = '';
@@ -86,7 +85,6 @@ export function ForYouScreen() {
           category: cat,
           percentFull: d.percent_full,
           available,
-          icon: config.emoji,
           reason,
         };
       });
@@ -139,7 +137,7 @@ export function ForYouScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.greeting}>{getTimeGreeting()}, Aggie! 👋</Text>
+        <Text style={styles.greeting}>{getTimeGreeting()}, Aggie!</Text>
         <Text style={styles.subtitle}>{getTimeRecommendation()}</Text>
       </View>
 
@@ -147,15 +145,19 @@ export function ForYouScreen() {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={styles.filterContent}>
         {categories.map((cat) => {
           const isActive = (selectedCategory || 'All') === cat;
+          const Icon = cat !== 'All' ? CATEGORY_CONFIG[cat]?.Icon : null;
           return (
             <Pressable
               key={cat}
               style={[styles.filterChip, isActive && styles.filterChipActive]}
               onPress={() => setSelectedCategory(cat === 'All' ? null : cat)}
             >
-              <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
-                {cat !== 'All' ? `${CATEGORY_CONFIG[cat]?.emoji || ''} ` : ''}{cat}
-              </Text>
+              <View style={styles.filterChipContent}>
+                {Icon ? <Icon size={14} color="#FFFFFF" /> : null}
+                <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+                  {cat}
+                </Text>
+              </View>
             </Pressable>
           );
         })}
@@ -169,45 +171,57 @@ export function ForYouScreen() {
         {/* Top picks section */}
         {!selectedCategory && filtered.length >= 3 && (
           <>
-            <Text style={styles.sectionLabel}>⭐ Top Picks Right Now</Text>
+            <Text style={styles.sectionLabel}>Top Picks Right Now</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.topRow} contentContainerStyle={styles.topContent}>
               {filtered.slice(0, 4).map((item) => (
-                <Card key={item.id} style={styles.topCard}>
-                  <Text style={styles.topIcon}>{item.icon}</Text>
+                (() => {
+                  const Icon = CATEGORY_CONFIG[item.category]?.Icon || Star;
+                  return (
+                    <Card key={item.id} style={styles.topCard}>
+                      <View style={[styles.topIconWrap, { backgroundColor: CATEGORY_CONFIG[item.category]?.color + '22' }]}>
+                        <Icon size={24} color={CATEGORY_CONFIG[item.category]?.color || '#FFFFFF'} />
+                      </View>
                   <Text style={styles.topName} numberOfLines={2}>{item.name}</Text>
                   <View style={[styles.topBadge, { backgroundColor: getCapacityColor(item.percentFull) }]}>
                     <Text style={styles.topBadgeText}>{item.percentFull}%</Text>
                   </View>
                   <Text style={styles.topReason} numberOfLines={2}>{item.reason}</Text>
-                </Card>
+                    </Card>
+                  );
+                })()
               ))}
             </ScrollView>
           </>
         )}
 
         {/* Full list */}
-        <Text style={styles.sectionLabel}>🏫 All Spots</Text>
+        <Text style={styles.sectionLabel}>All Spots</Text>
         {filtered.map((item) => (
-          <Card key={item.id} style={styles.itemCard}>
-            <View style={styles.itemRow}>
-              <View style={[styles.itemIconBg, { backgroundColor: CATEGORY_CONFIG[item.category]?.color + '22' }]}>
-                <Text style={styles.itemIcon}>{item.icon}</Text>
-              </View>
-              <View style={styles.itemInfo}>
-                <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
-                <Text style={styles.itemReason}>{item.reason}</Text>
-              </View>
-              <View style={styles.itemStats}>
-                <Text style={[styles.itemPct, { color: getCapacityColor(item.percentFull) }]}>
-                  {item.percentFull}%
-                </Text>
-                <Text style={styles.itemAvail}>{item.available} avail</Text>
-              </View>
-            </View>
-            <View style={styles.miniBar}>
-              <View style={[styles.miniBarFill, { width: `${Math.min(item.percentFull, 100)}%`, backgroundColor: getCapacityColor(item.percentFull) }]} />
-            </View>
-          </Card>
+          (() => {
+            const Icon = CATEGORY_CONFIG[item.category]?.Icon || MapPin;
+            return (
+              <Card key={item.id} style={styles.itemCard}>
+                <View style={styles.itemRow}>
+                  <View style={[styles.itemIconBg, { backgroundColor: CATEGORY_CONFIG[item.category]?.color + '22' }]}>
+                    <Icon size={18} color={CATEGORY_CONFIG[item.category]?.color || '#FFFFFF'} />
+                  </View>
+                  <View style={styles.itemInfo}>
+                    <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+                    <Text style={styles.itemReason}>{item.reason}</Text>
+                  </View>
+                  <View style={styles.itemStats}>
+                    <Text style={[styles.itemPct, { color: getCapacityColor(item.percentFull) }]}>
+                      {item.percentFull}%
+                    </Text>
+                    <Text style={styles.itemAvail}>{item.available} avail</Text>
+                  </View>
+                </View>
+                <View style={styles.miniBar}>
+                  <View style={[styles.miniBarFill, { width: `${Math.min(item.percentFull, 100)}%`, backgroundColor: getCapacityColor(item.percentFull) }]} />
+                </View>
+              </Card>
+            );
+          })()
         ))}
 
         <View style={{ height: 40 }} />
@@ -230,6 +244,7 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   filterContent: { gap: 8, paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row' },
   filterChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: '#2A2A2A' },
   filterChipActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  filterChipContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   filterChipText: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' },
   filterChipTextActive: { color: '#FFF' },
   scroll: { flex: 1 },
@@ -238,7 +253,7 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   topRow: { marginBottom: 8 },
   topContent: { gap: 12, flexDirection: 'row', paddingRight: 16 },
   topCard: { width: 150, padding: 14, alignItems: 'center' },
-  topIcon: { fontSize: 28, marginBottom: 8 },
+  topIconWrap: { width: 52, height: 52, borderRadius: 26, marginBottom: 8, alignItems: 'center', justifyContent: 'center' },
   topName: { fontSize: 14, fontWeight: '700', color: '#FFFFFF', textAlign: 'center', marginBottom: 6 },
   topBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, marginBottom: 6 },
   topBadgeText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
@@ -246,7 +261,6 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   itemCard: { marginBottom: 8, padding: 12 },
   itemRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   itemIconBg: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  itemIcon: { fontSize: 20 },
   itemInfo: { flex: 1 },
   itemName: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   itemReason: { fontSize: 12, color: COLORS.textSecondary, marginTop: 2 },

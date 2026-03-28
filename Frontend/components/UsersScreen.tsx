@@ -294,7 +294,7 @@ export function UsersScreen() {
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyEmoji}>💬</Text>
+            <Users size={48} color="rgba(255,255,255,0.68)" />
             <Text style={styles.emptyTitle}>No Aggies yet</Text>
             <Text style={styles.emptySub}>Users appear here once they've signed in</Text>
           </View>

@@ -1199,17 +1199,114 @@ def get_notification_hub(clerk_id: str) -> List[Dict[str, Any]]:
 
 
 def get_overview(clerk_id: str) -> Dict[str, Any]:
+    def safe_snapshot(label: str, loader, fallback):
+        try:
+            return loader()
+        except Exception as exc:
+            print(f"[campus_hub] {label} snapshot failed for {clerk_id}: {exc}")
+            return fallback
+
     return {
-        "auth": get_auth_status(clerk_id),
-        "academic": get_academic_snapshot(clerk_id),
-        "dining": get_dining_snapshot(clerk_id),
-        "notifications": get_notification_hub(clerk_id),
-        "career": get_career_snapshot(clerk_id),
-        "network": discover_network(clerk_id, limit=6),
-        "events": get_events_snapshot(clerk_id, limit=6),
-        "transit": get_transit_snapshot(),
-        "recreation": get_recreation_snapshot(),
-        "services": get_services_snapshot(),
-        "connectors": get_connector_snapshots(clerk_id),
+        "auth": safe_snapshot(
+            "auth",
+            lambda: get_auth_status(clerk_id),
+            {
+                "status": "app_authenticated",
+                "primary_auth": "Clerk",
+                "institution_sso": {
+                    "provider": "Howdy / NetID",
+                    "status": "connector_required",
+                    "note": "Institutional auth status is temporarily unavailable.",
+                    "resource_url": HOWDY_URL,
+                },
+                "user_id": clerk_id,
+            },
+        ),
+        "academic": safe_snapshot(
+            "academic",
+            lambda: get_academic_snapshot(clerk_id),
+            {
+                "status": "preview",
+                "sourceLabel": "Campus hub fallback",
+                "scheduleName": "Schedule unavailable",
+                "courses": [],
+                "totalCredits": 0,
+                "nextCourse": None,
+                "gpa": "Connect Howdy",
+                "registrationReady": True,
+                "activeHolds": [],
+                "resources": [{"label": "Howdy Portal", "url": HOWDY_URL}],
+            },
+        ),
+        "dining": safe_snapshot(
+            "dining",
+            lambda: get_dining_snapshot(clerk_id),
+            {
+                "status": "link",
+                "planName": "Dining module ready to connect",
+                "balanceLabel": "Transact eAccounts required for live balances",
+                "recentActivityLabel": "Using fallback state.",
+                "resources": [{"label": "Transact eAccounts", "url": DINING_URL}],
+            },
+        ),
+        "notifications": safe_snapshot(
+            "notifications",
+            lambda: get_notification_hub(clerk_id),
+            [],
+        ),
+        "career": safe_snapshot(
+            "career",
+            lambda: get_career_snapshot(clerk_id),
+            {
+                "status": "link",
+                "summary": "Hire Aggies connector required for live jobs and employers.",
+                "resources": [{"label": "Hire Aggies", "url": HIRE_AGGIES_URL}],
+            },
+        ),
+        "network": safe_snapshot(
+            "network",
+            lambda: discover_network(clerk_id, limit=6),
+            {
+                "status": "preview",
+                "chatStatus": "stream_messaging_available",
+                "summary": "Networking suggestions are temporarily unavailable.",
+                "pendingRequests": 0,
+                "suggestions": [],
+                "resources": [],
+            },
+        ),
+        "events": safe_snapshot(
+            "events",
+            lambda: get_events_snapshot(clerk_id, limit=6),
+            [],
+        ),
+        "transit": safe_snapshot(
+            "transit",
+            get_transit_snapshot,
+            {
+                "status": "live",
+                "summary": "Transit map remains available.",
+                "resources": [{"label": "AggieSpirit Route Map", "url": AGGIE_SPIRIT_URL}],
+            },
+        ),
+        "recreation": safe_snapshot(
+            "recreation",
+            get_recreation_snapshot,
+            {
+                "status": "preview",
+                "summary": "Recreation data is temporarily unavailable.",
+                "facilities": [],
+            },
+        ),
+        "services": safe_snapshot(
+            "services",
+            get_services_snapshot,
+            [],
+        ),
+        "connectors": safe_snapshot(
+            "connectors",
+            lambda: get_connector_snapshots(clerk_id),
+            [],
+        ),
         "generatedAt": datetime.utcnow().isoformat() + "Z",
     }

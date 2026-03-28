@@ -164,8 +164,8 @@ export function ChannelListScreen({ embedded = false }: { embedded?: boolean } =
 }
 
 const getStyles = (COLORS: any) => StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.background },
-  centerFull: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background, gap: 12 },
+  screen: { flex: 1, backgroundColor: 'transparent' },
+  centerFull: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'transparent', gap: 12 },
   loadingText: { marginTop: 4, color: COLORS.textSecondary, fontSize: 14 },
   errorText: { color: COLORS.danger, fontSize: 15, textAlign: 'center', paddingHorizontal: 24 },
   
@@ -194,8 +194,8 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    bottom: 110, // Above the global tab bar
-    right: 20,
+    bottom: 24,
+    left: 20,
     width: 56,
     height: 56,
     borderRadius: 28,

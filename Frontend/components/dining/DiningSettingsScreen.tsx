@@ -5,6 +5,7 @@ import { API_URL } from '../../config';
 import { Card, SectionLabel, ActionButton } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
+import { getOrderedItems, useAppShellStore } from '../../store/appShellStore';
 
 const ACTIVITY = [
   { value: 'sedentary', label: 'Sedentary', sub: 'Little/no exercise' },
@@ -16,6 +17,8 @@ const ACTIVITY = [
 
 export default function DiningSettingsScreen({ navigation }: any) {
   const { user } = useUser();
+  const diningActions = useAppShellStore((state) => state.diningActions);
+  const toggleDiningAction = useAppShellStore((state) => state.toggleDiningAction);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<any>({
@@ -55,19 +58,22 @@ export default function DiningSettingsScreen({ navigation }: any) {
 
   const upd = (k: string, v: any) => setForm((f: any) => ({ ...f, [k]: v }));
 
-  const { theme } = useTheme();
+  const { theme, wallpaperUri } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
+  const orderedDiningActions = getOrderedItems(diningActions);
 
-  const marbleSrc = darkMode
-    ? require('../../assets/black_marble.jpg')
-    : require('../../assets/white_marble.jpg');
+  const wallpaperSource = wallpaperUri
+    ? { uri: wallpaperUri }
+    : darkMode
+      ? require('../../assets/black_marble.jpg')
+      : require('../../assets/white_marble.jpg');
 
   if (loading) return <ActivityIndicator style={{ flex: 1 }} color="#500000" />;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
-      <ImageBackground source={marbleSrc} style={StyleSheet.absoluteFill} resizeMode="cover">
+      <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
         <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)' }]} />
       </ImageBackground>
 
@@ -78,6 +84,31 @@ export default function DiningSettingsScreen({ navigation }: any) {
           </TouchableOpacity>
           <Text style={[s.title, { color: T.text }]}>Dining Settings</Text>
         </View>
+
+      <Card>
+        <SectionLabel>Dashboard Modules</SectionLabel>
+        <Text style={{ color: T.text3, fontSize: 11, marginBottom: 12 }}>
+          Choose what appears on the dining home screen. Rings and macro boxes move together.
+        </Text>
+        {orderedDiningActions.map((item) => (
+          <TouchableOpacity
+            key={item.id}
+            style={[
+              s.actRow,
+              {
+                borderColor: item.visible ? T.tamuGold : '#333',
+                backgroundColor: item.visible ? T.tamuGold + '14' : 'transparent',
+              },
+            ]}
+            onPress={() => toggleDiningAction(item.id)}
+          >
+            <Text style={[s.actLabel, { color: item.visible ? T.text : '#999' }]}>{item.label}</Text>
+            <Text style={[s.actSub, { color: item.visible ? T.tamuGold : '#666' }]}>
+              {item.visible ? 'Shown on dashboard' : 'Hidden from dashboard'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </Card>
 
       <Card>
         <SectionLabel>Biological Metrics</SectionLabel>

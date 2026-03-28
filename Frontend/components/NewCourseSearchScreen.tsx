@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, FlatList, StyleSheet, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, TextInput, FlatList, StyleSheet, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, Switch } from 'react-native';
 import { useNavigation, CommonActions, useRoute } from '@react-navigation/native';
-import { Search as SearchIcon, ChevronRight, ChevronLeft } from 'lucide-react-native';
-import { fetchCourses } from '../api/client';
+import { Search as SearchIcon, ChevronRight, ChevronLeft, ChevronDown, SlidersHorizontal } from 'lucide-react-native';
+import { useUser } from '@clerk/clerk-expo';
+import { fetchCourses, fetchUserProfile, updateUserProfile } from '../api/client';
 import { useTheme } from './SharedUI';
 
 export function NewCourseSearchScreen() {
@@ -10,10 +11,19 @@ export function NewCourseSearchScreen() {
     const styles = getStyles(COLORS);
     const navigation = useNavigation<any>();
     const route = useRoute<any>();
+    const { user } = useUser();
     const { returnTo, scheduleId } = route.params || {};
     const [query, setQuery] = useState('');
     const [courses, setCourses] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
+    const [plannerExpanded, setPlannerExpanded] = useState(false);
+    const [plannerPreferences, setPlannerPreferences] = useState({
+        major: '',
+        graduationYear: '',
+        preferredTime: 'Morning',
+        avoidFriday: false,
+        showOnlineFirst: true,
+    });
 
     const handleBackToSchedules = () => {
         const state = navigation.getState();
@@ -75,6 +85,30 @@ export function NewCourseSearchScreen() {
         return () => clearTimeout(delayDebounceFn);
     }, [query]);
 
+    useEffect(() => {
+        if (!user) return;
+        fetchUserProfile(user.id)
+            .then((data) => {
+                setPlannerPreferences({
+                    major: data.major || '',
+                    graduationYear: data.graduation_year || '',
+                    preferredTime: data.preferred_time || 'Morning',
+                    avoidFriday: data.avoid_friday ?? false,
+                    showOnlineFirst: data.show_online_first ?? true,
+                });
+            })
+            .catch((error) => console.warn('Failed to load planner preferences:', error));
+    }, [user]);
+
+    const savePlannerPreference = async (fields: Record<string, any>) => {
+        if (!user) return;
+        try {
+            await updateUserProfile(user.id, fields);
+        } catch (error) {
+            console.warn('Failed to save planner preference:', error);
+        }
+    };
+
     const handleSearch = async () => {
         setLoading(true);
         try {
@@ -130,6 +164,120 @@ export function NewCourseSearchScreen() {
                         clearButtonMode="while-editing"
                     />
                 </View>
+
+                <Pressable
+                    style={styles.plannerToggle}
+                    onPress={() => setPlannerExpanded((prev) => !prev)}
+                >
+                    <View style={styles.plannerToggleLeft}>
+                        <SlidersHorizontal size={18} color={COLORS.primary} />
+                        <View>
+                            <Text style={styles.plannerToggleTitle}>Planner Preferences</Text>
+                            <Text style={styles.plannerToggleMeta}>
+                                Major and schedule/search preferences now live here.
+                            </Text>
+                        </View>
+                    </View>
+                    <ChevronDown
+                        size={18}
+                        color={COLORS.textSecondary}
+                        style={plannerExpanded ? { transform: [{ rotate: '180deg' }] } : undefined}
+                    />
+                </Pressable>
+
+                {plannerExpanded && (
+                    <View style={styles.plannerCard}>
+                        <View style={styles.preferenceField}>
+                            <Text style={styles.preferenceLabel}>Major</Text>
+                            <TextInput
+                                style={styles.preferenceInput}
+                                placeholder="Set once for course planning"
+                                placeholderTextColor={COLORS.textSecondary}
+                                value={plannerPreferences.major}
+                                onChangeText={(value) =>
+                                    setPlannerPreferences((prev) => ({ ...prev, major: value }))
+                                }
+                                onBlur={() => savePlannerPreference({ major: plannerPreferences.major })}
+                            />
+                        </View>
+
+                        <View style={styles.preferenceField}>
+                            <Text style={styles.preferenceLabel}>Graduation Year</Text>
+                            <TextInput
+                                style={styles.preferenceInput}
+                                placeholder="Optional"
+                                placeholderTextColor={COLORS.textSecondary}
+                                value={plannerPreferences.graduationYear}
+                                onChangeText={(value) =>
+                                    setPlannerPreferences((prev) => ({ ...prev, graduationYear: value }))
+                                }
+                                onBlur={() =>
+                                    savePlannerPreference({
+                                        graduation_year: plannerPreferences.graduationYear,
+                                    })
+                                }
+                            />
+                        </View>
+
+                        <View style={styles.preferenceField}>
+                            <Text style={styles.preferenceLabel}>Preferred Time of Day</Text>
+                            <View style={styles.preferenceChips}>
+                                {['Morning', 'Afternoon', 'Evening', 'No Preference'].map((option) => {
+                                    const selected = plannerPreferences.preferredTime === option;
+                                    return (
+                                        <Pressable
+                                            key={option}
+                                            style={[styles.preferenceChip, selected && styles.preferenceChipActive]}
+                                            onPress={() => {
+                                                setPlannerPreferences((prev) => ({
+                                                    ...prev,
+                                                    preferredTime: option,
+                                                }));
+                                                savePlannerPreference({ preferred_time: option });
+                                            }}
+                                        >
+                                            <Text style={[styles.preferenceChipText, selected && styles.preferenceChipTextActive]}>
+                                                {option}
+                                            </Text>
+                                        </Pressable>
+                                    );
+                                })}
+                            </View>
+                        </View>
+
+                        <View style={styles.preferenceSwitchRow}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.preferenceSwitchTitle}>Avoid Friday Classes</Text>
+                                <Text style={styles.preferenceSwitchMeta}>Keep this in your course-planning flow instead of Settings.</Text>
+                            </View>
+                            <Switch
+                                value={plannerPreferences.avoidFriday}
+                                onValueChange={(value) => {
+                                    setPlannerPreferences((prev) => ({ ...prev, avoidFriday: value }));
+                                    savePlannerPreference({ avoid_friday: value });
+                                }}
+                                trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                                thumbColor="#FFFFFF"
+                            />
+                        </View>
+
+                        <View style={styles.preferenceSwitchRow}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.preferenceSwitchTitle}>Show Online Courses First</Text>
+                                <Text style={styles.preferenceSwitchMeta}>Keep search and scheduler preferences grouped together.</Text>
+                            </View>
+                            <Switch
+                                value={plannerPreferences.showOnlineFirst}
+                                onValueChange={(value) => {
+                                    setPlannerPreferences((prev) => ({ ...prev, showOnlineFirst: value }));
+                                    savePlannerPreference({ show_online_first: value });
+                                }}
+                                trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                                thumbColor="#FFFFFF"
+                            />
+                        </View>
+                    </View>
+                )}
             </View>
             
             {loading ? (
@@ -185,6 +333,104 @@ const getStyles = (COLORS: any) => StyleSheet.create({
         borderRadius: 12,
         paddingHorizontal: 12,
         height: 44,
+    },
+    plannerToggle: {
+        marginTop: 14,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: 14,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        backgroundColor: COLORS.background,
+        gap: 12,
+    },
+    plannerToggleLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        flex: 1,
+    },
+    plannerToggleTitle: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: COLORS.textPrimary,
+        marginBottom: 3,
+    },
+    plannerToggleMeta: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+    },
+    plannerCard: {
+        marginTop: 12,
+        padding: 14,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        backgroundColor: COLORS.background,
+        gap: 14,
+    },
+    preferenceField: {
+        gap: 8,
+    },
+    preferenceLabel: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: COLORS.textPrimary,
+        textTransform: 'uppercase',
+        letterSpacing: 0.4,
+    },
+    preferenceInput: {
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        backgroundColor: COLORS.surface,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        color: COLORS.textPrimary,
+        fontSize: 15,
+    },
+    preferenceChips: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    preferenceChip: {
+        borderRadius: 999,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        backgroundColor: COLORS.surface,
+    },
+    preferenceChipActive: {
+        backgroundColor: COLORS.primary,
+        borderColor: COLORS.primary,
+    },
+    preferenceChipText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: COLORS.textPrimary,
+    },
+    preferenceChipTextActive: {
+        color: '#FFFFFF',
+    },
+    preferenceSwitchRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    preferenceSwitchTitle: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: COLORS.textPrimary,
+        marginBottom: 4,
+    },
+    preferenceSwitchMeta: {
+        fontSize: 12,
+        color: COLORS.textSecondary,
+        lineHeight: 17,
     },
     searchInput: { 
         flex: 1,

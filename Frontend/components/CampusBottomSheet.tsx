@@ -6,11 +6,11 @@ import {
   ScrollView,
   Pressable,
 } from 'react-native';
-import { Volume2, VolumeX } from 'lucide-react-native';
+import { Coffee, Library, MapPin, Utensils, Volume2, VolumeX } from 'lucide-react-native';
 import { useTheme } from './SharedUI';
 import { CampusSearchResult } from '../services/campusSearch';
 import { formatDistance } from '../services/campusDirections';
-import { getBuildingEmoji, getAmenityEmoji } from '../data/campus';
+import { getBuildingIcon, getAmenityIcon } from '../data/campus';
 
 interface CampusBottomSheetProps {
   nearbyItems: CampusSearchResult[];
@@ -51,21 +51,21 @@ export function CampusBottomSheet({
   onClearRoute,
   onStartDirections,
 }: CampusBottomSheetProps) {
-    const { COLORS } = useTheme();
-    const styles = getStyles(COLORS);
+    const { COLORS, theme } = useTheme();
+    const styles = getStyles(COLORS, theme === 'dark');
   const getIcon = (item: CampusSearchResult) => {
     if (item.kind === 'command') {
       switch (item.commandType) {
-        case 'nearest-restroom': return '🚻';
-        case 'nearest-coffee': return '☕';
-        case 'nearest-library': return '📚';
-        case 'nearest-dining': return '🍔';
-        default: return '📍';
+        case 'nearest-restroom': return MapPin;
+        case 'nearest-coffee': return Coffee;
+        case 'nearest-library': return Library;
+        case 'nearest-dining': return Utensils;
+        default: return MapPin;
       }
     }
-    if (item.building) return getBuildingEmoji(item.building.type);
-    if (item.amenity) return getAmenityEmoji(item.amenity.type);
-    return '📍';
+    if (item.building) return getBuildingIcon(item.building.type);
+    if (item.amenity) return getAmenityIcon(item.amenity.type);
+    return MapPin;
   };
 
   return (
@@ -133,14 +133,21 @@ export function CampusBottomSheet({
             <Text style={styles.sectionLabel}>Quick Actions</Text>
             <View style={styles.quickRow}>
               {pinnedItems.map((item) => (
-                <Pressable
-                  key={item.id}
-                  style={({ pressed }) => [styles.quickCard, pressed && styles.quickCardPressed]}
-                  onPress={() => onSelect(item)}
-                >
-                  <Text style={styles.quickIcon}>{getIcon(item)}</Text>
-                  <Text style={styles.quickLabel} numberOfLines={2}>{item.label}</Text>
-                </Pressable>
+                (() => {
+                  const Icon = getIcon(item);
+                  return (
+                    <Pressable
+                      key={item.id}
+                      style={({ pressed }) => [styles.quickCard, pressed && styles.quickCardPressed]}
+                      onPress={() => onSelect(item)}
+                    >
+                      <View style={styles.quickIconWrap}>
+                        <Icon size={18} color="#F3F1ED" />
+                      </View>
+                      <Text style={styles.quickLabel} numberOfLines={2}>{item.label}</Text>
+                    </Pressable>
+                  );
+                })()
               ))}
             </View>
           </>
@@ -148,20 +155,27 @@ export function CampusBottomSheet({
           {/* Nearby */}
           <Text style={styles.sectionLabel}>Nearby</Text>
           {nearbyItems.map((item) => (
-            <Pressable
-              key={item.id}
-              style={({ pressed }) => [styles.nearbyRow, pressed && styles.nearbyRowPressed]}
-              onPress={() => onSelect(item)}
-            >
-              <Text style={styles.nearbyIcon}>{getIcon(item)}</Text>
-              <View style={styles.nearbyText}>
-                <Text style={styles.nearbyLabel} numberOfLines={1}>{item.label}</Text>
-                <Text style={styles.nearbySub}>
-                  {item.subtitle}
-                  {item.distance != null ? ` • ${formatDistance(item.distance)}` : ''}
-                </Text>
-              </View>
-            </Pressable>
+            (() => {
+              const Icon = getIcon(item);
+              return (
+                <Pressable
+                  key={item.id}
+                  style={({ pressed }) => [styles.nearbyRow, pressed && styles.nearbyRowPressed]}
+                  onPress={() => onSelect(item)}
+                >
+                  <View style={styles.nearbyIconWrap}>
+                    <Icon size={18} color="#F3F1ED" />
+                  </View>
+                  <View style={styles.nearbyText}>
+                    <Text style={styles.nearbyLabel} numberOfLines={1}>{item.label}</Text>
+                    <Text style={styles.nearbySub}>
+                      {item.subtitle}
+                      {item.distance != null ? ` • ${formatDistance(item.distance)}` : ''}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })()
           ))}
         </ScrollView>
       )}
@@ -169,16 +183,16 @@ export function CampusBottomSheet({
   );
 }
 
-const getStyles = (COLORS: any) => StyleSheet.create({
+const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   container: {
     position: 'absolute',
     bottom: 28,
     left: 16,
     right: 16,
-    backgroundColor: 'rgba(8,8,8,0.94)',
+    backgroundColor: isDark ? 'rgba(8,8,8,0.94)' : 'rgba(255,255,255,0.98)',
     borderRadius: 30,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.28,
@@ -200,13 +214,13 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(12,12,14,0.14)',
     alignSelf: 'center',
     marginBottom: 8,
   },
   routeCard: {
     padding: 18,
-    backgroundColor: 'rgba(8,8,8,0.96)',
+    backgroundColor: isDark ? 'rgba(8,8,8,0.96)' : '#FFFFFF',
     borderRadius: 30,
     borderWidth: 1,
     borderColor: COLORS.primary,
@@ -262,15 +276,15 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(0,0,0,0.42)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.42)' : '#F4F5F7',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(12,12,14,0.08)',
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
   voiceBtnText: {
-    color: COLORS.primary,
+    color: COLORS.textPrimary,
     fontWeight: '700',
     fontSize: 12,
   },
@@ -294,14 +308,14 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     opacity: 0.65,
   },
   clearBtn: {
-    backgroundColor: 'rgba(0,0,0,0.42)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.42)' : '#F4F5F7',
     width: 32,
     height: 32,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(12,12,14,0.08)',
   },
   clearBtnText: {
     color: COLORS.textPrimary,
@@ -335,20 +349,25 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   },
   quickCard: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.38)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.38)' : '#F5F6F8',
     borderRadius: 18,
     padding: 14,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
   },
   quickCardPressed: {
-    backgroundColor: '#1E1E1E',
+    backgroundColor: isDark ? '#1E1E1E' : '#ECEEF2',
     transform: [{ scale: 0.97 }],
   },
-  quickIcon: {
-    fontSize: 24,
+  quickIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     marginBottom: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
   },
   quickLabel: {
     fontSize: 12,
@@ -361,16 +380,19 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
+    borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
   },
   nearbyRowPressed: {
-    backgroundColor: '#1E1E1E',
+    backgroundColor: isDark ? '#1E1E1E' : '#F4F5F7',
   },
-  nearbyIcon: {
-    fontSize: 22,
+  nearbyIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     marginRight: 14,
-    width: 30,
-    textAlign: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
   },
   nearbyText: {
     flex: 1,

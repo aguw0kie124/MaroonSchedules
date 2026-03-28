@@ -2,6 +2,17 @@
  * Texas A&M Campus Data
  * Buildings, landmarks, amenities with real lat/lng coordinates
  */
+import type { ComponentType } from 'react';
+import {
+  Coffee,
+  Dumbbell,
+  GraduationCap,
+  Home,
+  Library,
+  MapPin,
+  Star,
+  Utensils,
+} from 'lucide-react-native';
 
 export interface CampusBuilding {
   id: string;
@@ -110,10 +121,19 @@ export const AMENITIES: CampusAmenity[] = [
 
   // Dining
   { id: 'sbisa', name: 'Sbisa Dining Hall', latitude: 30.617135, longitude: -96.343777, type: 'dining' },
+  { id: 'commons', name: 'The Commons Dining Hall', latitude: 30.610450, longitude: -96.334950, type: 'dining' },
   { id: 'duncan', name: 'Duncan Dining Hall', latitude: 30.612072, longitude: -96.335505, type: 'dining' },
   { id: 'hulla-dining', name: 'Hullabaloo Food Court', latitude: 30.616460, longitude: -96.346322, type: 'dining' },
+  { id: 'underground-food', name: 'Underground Food Court', latitude: 30.617020, longitude: -96.343250, type: 'dining' },
   { id: 'cfa', name: 'Chick-fil-A (MSC)', latitude: 30.611881, longitude: -96.341541, type: 'dining' },
+  { id: 'panda-msc', name: 'Panda Express (MSC)', latitude: 30.612020, longitude: -96.341180, type: 'dining' },
+  { id: 'revs-msc-food', name: "Rev's American Grill (MSC)", latitude: 30.612180, longitude: -96.341020, type: 'dining' },
+  { id: 'houston-msc', name: 'Houston Street Subs (MSC)', latitude: 30.612110, longitude: -96.341240, type: 'dining' },
+  { id: 'abu-omar-msc', name: 'Abu Omar Halal (MSC)', latitude: 30.612310, longitude: -96.341060, type: 'dining' },
   { id: 'polo-garage-food', name: 'Polo Road Garage Dining', latitude: 30.622723, longitude: -96.337939, type: 'dining' },
+  { id: 'panda-polo', name: 'Panda Express (Polo)', latitude: 30.622780, longitude: -96.337860, type: 'dining' },
+  { id: 'salata-polo', name: 'Salata (Polo)', latitude: 30.622640, longitude: -96.337820, type: 'dining' },
+  { id: 'shake-polo', name: 'Shake Smart (Polo)', latitude: 30.622590, longitude: -96.337980, type: 'dining' },
 
   // Restrooms (major accessible restrooms)
   { id: 'rr-msc', name: 'Restroom (MSC 1st Floor)', latitude: 30.612309, longitude: -96.341378, type: 'restroom' },
@@ -149,32 +169,26 @@ export const DEFAULT_USER_LOCATION = {
   longitude: -96.341378,
 };
 
-/**
- * Get emoji for building type
- */
-export function getBuildingEmoji(type: CampusBuilding['type']): string {
+export function getBuildingIcon(type: CampusBuilding['type']): ComponentType<{ size?: number; color?: string; strokeWidth?: number }> {
   switch (type) {
-    case 'academic': return '🏫';
-    case 'athletics': return '🏟️';
-    case 'library': return '📚';
-    case 'dining': return '🍽️';
-    case 'recreation': return '💪';
-    case 'landmark': return '⭐';
-    case 'housing': return '🏠';
-    default: return '📍';
+    case 'academic': return GraduationCap;
+    case 'athletics': return Star;
+    case 'library': return Library;
+    case 'dining': return Utensils;
+    case 'recreation': return Dumbbell;
+    case 'landmark': return Star;
+    case 'housing': return Home;
+    default: return MapPin;
   }
 }
 
-/**
- * Get emoji for amenity type
- */
-export function getAmenityEmoji(type: CampusAmenity['type']): string {
+export function getAmenityIcon(type: CampusAmenity['type']): ComponentType<{ size?: number; color?: string; strokeWidth?: number }> {
   switch (type) {
-    case 'restroom': return '🚻';
-    case 'coffee': return '☕';
-    case 'dining': return '🍔';
-    case 'study': return '📖';
-    case 'parking': return '🅿️';
-    default: return '📍';
+    case 'coffee': return Coffee;
+    case 'dining': return Utensils;
+    case 'study': return Library;
+    case 'restroom': return MapPin;
+    case 'parking': return MapPin;
+    default: return MapPin;
   }
 }

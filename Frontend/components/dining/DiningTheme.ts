@@ -56,12 +56,12 @@ export const darkTheme = {
   ringFat:      '#FF9F0A',
   ringCal:      '#500000',
   // Flat Neumorphic/Modern App style
-  btnBg:        '#1A1A1A',
-  btnBorder:    'rgba(255,255,255,0.08)',
+  btnBg:        'rgba(18,18,20,0.78)',
+  btnBorder:    'rgba(255,255,255,0.10)',
   btnShadow:    'transparent',
-  btnHighlight: 'rgba(255,255,255,0.1)',
+  btnHighlight: 'rgba(255,255,255,0.08)',
   headerBg:     'rgba(0,0,0,0.85)',
-  tabBarBg:     'rgba(0,0,0,0.88)',
+  tabBarBg:     'rgba(12,12,14,0.9)',
   ...layout,
   ...accent,
 };
@@ -105,12 +105,12 @@ export const lightTheme = {
   ringFat:      '#FF9500',
   ringCal:      '#500000',
   // Flat Modern App style
-  btnBg:        '#F2F2F2',
-  btnBorder:    'rgba(0,0,0,0.08)',
+  btnBg:        'rgba(255,255,255,0.78)',
+  btnBorder:    'rgba(255,255,255,0.82)',
   btnShadow:    'transparent',
-  btnHighlight: 'rgba(0,0,0,0.05)',
+  btnHighlight: 'rgba(255,255,255,0.32)',
   headerBg:     'rgba(255,255,255,0.90)',
-  tabBarBg:     'rgba(255,255,255,0.92)',
+  tabBarBg:     'rgba(255,255,255,0.9)',
   ...layout,
   ...accent,
 };

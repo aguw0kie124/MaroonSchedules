@@ -1,4 +1,5 @@
 import math
+import re
 import requests
 import psycopg
 import psycopg.rows
@@ -367,6 +368,14 @@ PERIOD_ALIASES = {
     'dinner':    ['dinner', 'every-day', 'everyday', 'all-day'],
 }
 
+SEMANTIC_PERIOD_ALIASES = {
+    'breakfast': ['breakfast', 'morning', 'weekday-breakfast'],
+    'lunch': ['lunch', 'brunch', 'midday', 'noon', 'weekday-lunch'],
+    'dinner': ['dinner', 'supper', 'evening', 'weekday-dinner'],
+}
+
+GENERIC_PERIOD_ALIASES = ['every-day', 'everyday', 'all-day']
+
 MENU_CATEGORY_RULES = [
     ('Entrees', ['entree', 'chef', 'grill', 'plate', 'burger', 'sandwich', 'sub', 'wrap', 'pizza', 'bowl', 'quesadilla', 'taco', 'pasta', 'noodle', 'chicken', 'beef', 'pork', 'salmon', 'fish']),
     ('Sides', ['side', 'fries', 'potato', 'rice', 'bean', 'vegetable', 'broccoli', 'corn', 'mac', 'soup']),
@@ -382,6 +391,88 @@ def items_for_period(all_items: List[Dict], period: str) -> List[Dict]:
     Retail locations only have 'every-day' so they always match every period."""
     aliases = PERIOD_ALIASES.get(period, [period, 'every-day', 'everyday'])
     return [f for f in all_items if (f.get('meal_period') or '').lower() in aliases]
+
+
+def normalize_period_value(value: Optional[str]) -> str:
+    if not value:
+        return ''
+    normalized = re.sub(r'[^a-z0-9]+', '-', value.strip().lower())
+    return normalized.strip('-')
+
+
+def canonicalize_meal_period(value: Optional[str]) -> Optional[str]:
+    normalized = normalize_period_value(value)
+    if not normalized:
+        return None
+
+    for canonical, aliases in SEMANTIC_PERIOD_ALIASES.items():
+        if normalized == canonical or normalized in aliases:
+            return canonical
+        if any(alias in normalized for alias in aliases):
+            return canonical
+
+    return None
+
+
+def get_period_match_score(period: Dict[str, Any], requested_period: Optional[str]) -> int:
+    slug = normalize_period_value(period.get('slug'))
+    name = normalize_period_value(period.get('name'))
+    requested_value = normalize_period_value(requested_period)
+    requested_canonical = canonicalize_meal_period(requested_period)
+    semantic_aliases = SEMANTIC_PERIOD_ALIASES.get(requested_canonical or '', [])
+
+    if requested_value:
+        if slug == requested_value:
+            return 220
+        if name == requested_value:
+            return 210
+        if slug.startswith(requested_value) or slug.endswith(requested_value):
+            return 180
+        if name.startswith(requested_value) or name.endswith(requested_value):
+            return 170
+
+    for alias in semantic_aliases:
+        normalized_alias = normalize_period_value(alias)
+        if slug == normalized_alias:
+            return 200
+        if name == normalized_alias:
+            return 190
+        if slug.startswith(normalized_alias) or slug.endswith(normalized_alias):
+            return 165
+        if name.startswith(normalized_alias) or name.endswith(normalized_alias):
+            return 155
+        if normalized_alias and normalized_alias in slug:
+            return 145
+        if normalized_alias and normalized_alias in name:
+            return 135
+
+    for generic_alias in GENERIC_PERIOD_ALIASES:
+        normalized_generic = normalize_period_value(generic_alias)
+        if slug == normalized_generic or name == normalized_generic:
+            return 40
+
+    return 0
+
+
+def select_requested_period(periods: List[Dict[str, Any]], requested_period: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not periods:
+        return None
+
+    ranked_periods = sorted(
+        periods,
+        key=lambda period: (
+            get_period_match_score(period, requested_period),
+            bool(period.get('id')),
+            -(len(str(period.get('name') or ''))),
+        ),
+        reverse=True,
+    )
+
+    best = ranked_periods[0]
+    if get_period_match_score(best, requested_period) > 0:
+        return best
+
+    return None
 
 
 def resolve_location_name(location_name: str) -> Optional[str]:
@@ -579,34 +670,15 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
         resp = requests.get(periods_url, headers=HEADERS, timeout=10)
         periods = resp.json().get('periods', []) if resp.status_code == 200 else []
 
-        # Match requested period
-        period_id = None
-        matched_slug = None
-        if meal_period and periods:
-            search = meal_period.lower().replace(' ', '-')
-            for p in periods:
-                if p.get('slug') == search or search in p.get('name', '').lower():
-                    period_id = p['id']
-                    matched_slug = p['slug']
-                    break
+        requested_period = canonicalize_meal_period(meal_period) or normalize_period_value(meal_period) or 'lunch'
+        selected_period = select_requested_period(periods, meal_period)
 
-        # Fallback order
-        if not period_id and periods:
-            fallback_order = ['every-day', 'everyday', 'all-day', 'lunch', 'dinner', 'breakfast']
-            for fb in fallback_order:
-                for p in periods:
-                    if fb in (p.get('slug') or ''):
-                        period_id = p['id']
-                        matched_slug = p['slug']
-                        break
-                if period_id:
-                    break
-            if not period_id:
-                period_id = periods[0]['id']
-                matched_slug = periods[0].get('slug', '')
-
-        if not period_id:
+        if not selected_period or not selected_period.get('id'):
             return {"success": False, "error": f"No periods for {location_name}", "items": []}
+
+        period_id = selected_period['id']
+        matched_slug = selected_period.get('slug') or normalize_period_value(selected_period.get('name'))
+        resolved_period = canonicalize_meal_period(matched_slug) or requested_period
 
         # Fetch menu for this period
         menu_url = f"{API_BASE}/locations/{location_id}/menu?date={date_str}&period={period_id}"
@@ -634,7 +706,7 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
                     "name": (item.get('name') or '').strip(),
                     "category": cat_name,
                     "location": location_name,
-                    "meal_period": matched_slug or (meal_period or 'every-day'),
+                    "meal_period": resolved_period or matched_slug or (meal_period or 'every-day'),
                     "calories": parse_val(nutrients.get('calories', item.get('calories', 0))),
                     "protein": parse_val(nutrients.get('protein (g)', 0)),
                     "carbs": parse_val(nutrients.get('total carbohydrates (g)', 0)),
@@ -651,7 +723,14 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
                 })
 
         items = enrich_items(items)
-        return {"success": True, "items": items, "location": location_name, "date": date_str, "period": matched_slug}
+        return {
+            "success": True,
+            "items": items,
+            "location": location_name,
+            "date": date_str,
+            "period": matched_slug,
+            "resolvedPeriod": resolved_period,
+        }
     except Exception as e:
         return {"success": False, "error": str(e), "items": []}
 

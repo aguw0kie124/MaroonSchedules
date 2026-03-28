@@ -7,7 +7,7 @@ import {
   Pressable,
   Animated,
 } from 'react-native';
-import { Volume2, VolumeX, X as XIcon } from 'lucide-react-native';
+import { Bus, MapPin, Navigation, Volume2, VolumeX, X as XIcon } from 'lucide-react-native';
 import { useTheme } from './SharedUI';
 import { DirectionStep } from '../services/campusDirections';
 import { stopSpeech } from '../services/campusTTS';
@@ -50,6 +50,12 @@ export function CampusDirectionsPanel({
   const handleEnd = async () => {
     await stopSpeech();
     onEnd();
+  };
+
+  const renderStepIcon = (iconLabel: string) => {
+    if (iconLabel === '🚌') return <Bus size={16} color="#FFFFFF" />;
+    if (iconLabel === '📍') return <MapPin size={16} color="#FFFFFF" />;
+    return <Navigation size={16} color="#FFFFFF" />;
   };
 
   return (
@@ -107,7 +113,7 @@ export function CampusDirectionsPanel({
         {steps.map((step, idx) => (
           <View key={step.id} style={styles.stepRow}>
             <View style={styles.stepIconContainer}>
-              <Text style={styles.stepIcon}>{step.icon}</Text>
+              {renderStepIcon(step.icon)}
               {idx < steps.length - 1 && <View style={styles.stepLine} />}
             </View>
             <View style={styles.stepBody}>
@@ -215,7 +221,7 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     opacity: 0.8,
   },
   voiceBtnText: {
-    color: COLORS.primary,
+    color: '#F3F1ED',
     fontWeight: '700',
     fontSize: 12,
   },
@@ -252,12 +258,9 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   },
   stepIconContainer: {
     alignItems: 'center',
+    justifyContent: 'flex-start',
     width: 36,
     marginRight: 12,
-  },
-  stepIcon: {
-    fontSize: 20,
-    marginBottom: 4,
   },
   stepLine: {
     width: 2,
