@@ -1,0 +1,23 @@
+[
+  {
+    "term_code": "20221",
+    "year": 2022,
+    "semester": "SPRING",
+    "college_code": "",
+    "subject": "ANTH",
+    "course_number": "308",
+    "section": "500",
+    "instructor": "INURRETA DIAZ A",
+    "a_count": 8,
+    "b_count": 5,
+    "c_count": 5,
+    "d_count": 0,
+    "f_count": 1,
+    "i_count": 0,
+    "q_count": 1,
+    "s_count": 0,
+    "u_count": 0,
+    "x_count": 0,
+    "avg_gpa": 3.0
+  }
+]

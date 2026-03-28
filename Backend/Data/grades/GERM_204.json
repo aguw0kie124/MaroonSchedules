@@ -1,0 +1,23 @@
+[
+  {
+    "term_code": "20171",
+    "year": 2017,
+    "semester": "SPRING",
+    "college_code": "",
+    "subject": "GERM",
+    "course_number": "204",
+    "section": "500",
+    "instructor": "SIEFERT T",
+    "a_count": 9,
+    "b_count": 10,
+    "c_count": 2,
+    "d_count": 0,
+    "f_count": 0,
+    "i_count": 0,
+    "q_count": 0,
+    "s_count": 0,
+    "u_count": 0,
+    "x_count": 0,
+    "avg_gpa": 3.333
+  }
+]

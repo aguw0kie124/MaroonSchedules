@@ -1,0 +1,23 @@
+[
+  {
+    "term_code": "20161",
+    "year": 2016,
+    "semester": "SPRING",
+    "college_code": "",
+    "subject": "MATH",
+    "course_number": "102",
+    "section": "500",
+    "instructor": "SCHRADER T",
+    "a_count": 4,
+    "b_count": 2,
+    "c_count": 1,
+    "d_count": 1,
+    "f_count": 0,
+    "i_count": 0,
+    "q_count": 3,
+    "s_count": 0,
+    "u_count": 0,
+    "x_count": 0,
+    "avg_gpa": 3.125
+  }
+]

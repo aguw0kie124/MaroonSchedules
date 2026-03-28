@@ -1,0 +1,23 @@
+[
+  {
+    "term_code": "20223",
+    "year": 2022,
+    "semester": "FALL",
+    "college_code": "",
+    "subject": "ECCB",
+    "course_number": "481",
+    "section": "900",
+    "instructor": "BELSHE E",
+    "a_count": 6,
+    "b_count": 8,
+    "c_count": 3,
+    "d_count": 0,
+    "f_count": 0,
+    "i_count": 0,
+    "q_count": 0,
+    "s_count": 0,
+    "u_count": 0,
+    "x_count": 0,
+    "avg_gpa": 3.176
+  }
+]

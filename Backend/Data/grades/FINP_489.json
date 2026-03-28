@@ -1,0 +1,23 @@
+[
+  {
+    "term_code": "20251",
+    "year": 2025,
+    "semester": "SPRING",
+    "college_code": "",
+    "subject": "FINP",
+    "course_number": "489",
+    "section": "500",
+    "instructor": "FIELD C",
+    "a_count": 17,
+    "b_count": 0,
+    "c_count": 0,
+    "d_count": 0,
+    "f_count": 1,
+    "i_count": 0,
+    "q_count": 1,
+    "s_count": 0,
+    "u_count": 0,
+    "x_count": 0,
+    "avg_gpa": 3.778
+  }
+]

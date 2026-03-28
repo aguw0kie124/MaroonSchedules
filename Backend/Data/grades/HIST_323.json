@@ -1,0 +1,23 @@
+[
+  {
+    "term_code": "20223",
+    "year": 2022,
+    "semester": "FALL",
+    "college_code": "",
+    "subject": "HIST",
+    "course_number": "323",
+    "section": "500",
+    "instructor": "LIM R",
+    "a_count": 26,
+    "b_count": 2,
+    "c_count": 0,
+    "d_count": 0,
+    "f_count": 2,
+    "i_count": 0,
+    "q_count": 0,
+    "s_count": 0,
+    "u_count": 0,
+    "x_count": 0,
+    "avg_gpa": 3.667
+  }
+]

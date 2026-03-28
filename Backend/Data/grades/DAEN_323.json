@@ -1,0 +1,23 @@
+[
+  {
+    "term_code": "20251",
+    "year": 2025,
+    "semester": "SPRING",
+    "college_code": "",
+    "subject": "DAEN",
+    "course_number": "323",
+    "section": "500",
+    "instructor": "IDAN L",
+    "a_count": 6,
+    "b_count": 7,
+    "c_count": 15,
+    "d_count": 5,
+    "f_count": 3,
+    "i_count": 0,
+    "q_count": 0,
+    "s_count": 0,
+    "u_count": 0,
+    "x_count": 0,
+    "avg_gpa": 2.222
+  }
+]

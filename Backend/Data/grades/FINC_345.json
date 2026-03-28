@@ -1,0 +1,23 @@
+[
+  {
+    "term_code": "20213",
+    "year": 2021,
+    "semester": "FALL",
+    "college_code": "",
+    "subject": "FINC",
+    "course_number": "345",
+    "section": "500",
+    "instructor": "WHITE E",
+    "a_count": 24,
+    "b_count": 0,
+    "c_count": 0,
+    "d_count": 0,
+    "f_count": 0,
+    "i_count": 0,
+    "q_count": 1,
+    "s_count": 0,
+    "u_count": 0,
+    "x_count": 0,
+    "avg_gpa": 4.0
+  }
+]

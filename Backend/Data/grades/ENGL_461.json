@@ -1,0 +1,23 @@
+[
+  {
+    "term_code": "20151",
+    "year": 2015,
+    "semester": "SPRING",
+    "college_code": "",
+    "subject": "ENGL",
+    "course_number": "461",
+    "section": "500",
+    "instructor": "KINKEAD A",
+    "a_count": 7,
+    "b_count": 11,
+    "c_count": 4,
+    "d_count": 1,
+    "f_count": 0,
+    "i_count": 1,
+    "q_count": 3,
+    "s_count": 0,
+    "u_count": 0,
+    "x_count": 0,
+    "avg_gpa": 3.043
+  }
+]

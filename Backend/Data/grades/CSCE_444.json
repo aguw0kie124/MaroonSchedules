@@ -1,0 +1,23 @@
+[
+  {
+    "term_code": "20153",
+    "year": 2015,
+    "semester": "FALL",
+    "college_code": "",
+    "subject": "CSCE",
+    "course_number": "444",
+    "section": "500",
+    "instructor": "KERNE A",
+    "a_count": 26,
+    "b_count": 20,
+    "c_count": 4,
+    "d_count": 1,
+    "f_count": 3,
+    "i_count": 0,
+    "q_count": 5,
+    "s_count": 0,
+    "u_count": 0,
+    "x_count": 0,
+    "avg_gpa": 3.204
+  }
+]

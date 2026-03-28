@@ -1,0 +1,23 @@
+[
+  {
+    "term_code": "20153",
+    "year": 2015,
+    "semester": "FALL",
+    "college_code": "",
+    "subject": "GEOG",
+    "course_number": "370",
+    "section": "500",
+    "instructor": "HOUSER C",
+    "a_count": 13,
+    "b_count": 20,
+    "c_count": 8,
+    "d_count": 5,
+    "f_count": 1,
+    "i_count": 1,
+    "q_count": 3,
+    "s_count": 0,
+    "u_count": 0,
+    "x_count": 0,
+    "avg_gpa": 2.83
+  }
+]

@@ -1,0 +1,23 @@
+[
+  {
+    "term_code": "20243",
+    "year": 2024,
+    "semester": "FALL",
+    "college_code": "",
+    "subject": "DAEN",
+    "course_number": "300",
+    "section": "500",
+    "instructor": "GUTMAN D",
+    "a_count": 22,
+    "b_count": 11,
+    "c_count": 4,
+    "d_count": 1,
+    "f_count": 1,
+    "i_count": 0,
+    "q_count": 0,
+    "s_count": 0,
+    "u_count": 0,
+    "x_count": 0,
+    "avg_gpa": 3.333
+  }
+]

@@ -1,0 +1,23 @@
+[
+  {
+    "term_code": "20181",
+    "year": 2018,
+    "semester": "SPRING",
+    "college_code": "",
+    "subject": "PERF",
+    "course_number": "453",
+    "section": "900",
+    "instructor": "PUTCHA R",
+    "a_count": 5,
+    "b_count": 3,
+    "c_count": 0,
+    "d_count": 0,
+    "f_count": 2,
+    "i_count": 1,
+    "q_count": 1,
+    "s_count": 0,
+    "u_count": 0,
+    "x_count": 0,
+    "avg_gpa": 2.9
+  }
+]

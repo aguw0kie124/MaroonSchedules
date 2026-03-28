@@ -33,10 +33,18 @@ async function fetchFromBackend(
 
   const url = `${API_URL}/grades/search?${params.toString()}`;
   console.log('[grades] fetching:', url);
-  const resp = await fetch(url, { signal: AbortSignal.timeout(10_000) });
-  if (!resp.ok) throw new Error(`Backend returned ${resp.status}`);
-  const data: GradeRow[] = await resp.json();
-  return data;
+  
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const resp = await fetch(url, { signal: controller.signal });
+    if (!resp.ok) throw new Error(`Backend returned ${resp.status}`);
+    const data: GradeRow[] = await resp.json();
+    return data;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 // ──────────────────────────────────────────────────────────────

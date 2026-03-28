@@ -1,0 +1,23 @@
+[
+  {
+    "term_code": "20233",
+    "year": 2023,
+    "semester": "FALL",
+    "college_code": "",
+    "subject": "POLS",
+    "course_number": "333",
+    "section": "500",
+    "instructor": "JO H",
+    "a_count": 21,
+    "b_count": 11,
+    "c_count": 3,
+    "d_count": 0,
+    "f_count": 1,
+    "i_count": 0,
+    "q_count": 0,
+    "s_count": 0,
+    "u_count": 0,
+    "x_count": 0,
+    "avg_gpa": 3.417
+  }
+]
