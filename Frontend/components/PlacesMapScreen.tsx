@@ -202,8 +202,6 @@ export function PlacesMapScreen() {
   const [allRoutePatternsById, setAllRoutePatternsById] = useState<Record<string, { points: any[]; stops: any[] }>>({});
   const [isFetchingBus, setIsFetchingBus] = useState(false);
   const [isRouteDropdownOpen, setIsRouteDropdownOpen] = useState(false);
-  const [routeSearchQuery, setRouteSearchQuery] = useState("");
-  const [busDestinationQuery, setBusDestinationQuery] = useState("");
   const [selectedStop, setSelectedStop] = useState<any | null>(null);
   const [selectedBus, setSelectedBus] = useState<any | null>(null);
   const [nearestBusInfo, setNearestBusInfo] = useState<string | null>(null);
@@ -348,12 +346,6 @@ export function PlacesMapScreen() {
       .slice(0, 8);
   }, [allMapLocations, searchQuery]);
 
-  const busDestinationResults = useMemo(() => {
-    if (!busDestinationQuery.trim()) return [];
-    const q = busDestinationQuery.toLowerCase();
-    return allMapLocations.filter((l) => l.location.toLowerCase().includes(q) || (l.shortName || "").toLowerCase().includes(q)).slice(0, 6);
-  }, [allMapLocations, busDestinationQuery]);
-
   const busPulseAnim = useRef(new Animated.Value(1)).current;
 
   const selectedLoc = useMemo(() => allMapLocations.find((l) => l.location === selectedId), [allMapLocations, selectedId]);
@@ -369,12 +361,8 @@ export function PlacesMapScreen() {
     () => isAllBusRoutesSelected ? null : busRoutes.find((r) => r.Key === selectedBusRouteId) ?? null,
     [busRoutes, isAllBusRoutesSelected, selectedBusRouteId],
   );
-  const busRouteOptions = useMemo(() => [{ Key: ALL_BUS_ROUTES_KEY, ShortName: "ALL", Name: "Show All Routes", Color: "#1E1E1E" }, ...busRoutes], [busRoutes]);
-  const filteredBusRoutes = useMemo(() => {
-    const q = routeSearchQuery.trim().toLowerCase();
-    if (!q) return busRouteOptions;
-    return busRouteOptions.filter((r) => (r.ShortName || "").toString().toLowerCase().includes(q) || (r.Name || "").toString().toLowerCase().includes(q));
-  }, [busRouteOptions, routeSearchQuery]);
+  const busRouteOptions = useMemo(() => [{ Key: ALL_BUS_ROUTES_KEY, ShortName: "ALL", Name: "All Routes", Color: "#1E1E1E" }, ...busRoutes], [busRoutes]);
+  const filteredBusRoutes = busRouteOptions;
 
   const scheduleSummaryLabel = useMemo(() => {
     if (isLoadingSchedules) return "Loading your class map...";
@@ -937,15 +925,9 @@ export function PlacesMapScreen() {
           isAllBusRoutesSelected={isAllBusRoutesSelected}
           isRouteDropdownOpen={isRouteDropdownOpen}
           setIsRouteDropdownOpen={setIsRouteDropdownOpen}
-          routeSearchQuery={routeSearchQuery}
-          setRouteSearchQuery={setRouteSearchQuery}
           filteredBusRoutes={filteredBusRoutes}
           handleSelectBusRoute={handleSelectBusRoute}
           openBusTimetable={openBusTimetable}
-          busDestinationQuery={busDestinationQuery}
-          setBusDestinationQuery={setBusDestinationQuery}
-          busDestinationResults={busDestinationResults}
-          openNavigationToLocation={openNavigationToLocation}
           selectedStop={selectedStop}
           setSelectedStop={setSelectedStop}
           selectedBus={selectedBus}

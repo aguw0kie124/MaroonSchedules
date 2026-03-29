@@ -49,7 +49,7 @@ export function useBusTransit(
       {
         Key: ALL_BUS_ROUTES_KEY,
         ShortName: "ALL",
-        Name: "Show All Routes",
+        Name: "All Routes",
         Color: "#1E1E1E",
       },
       ...busRoutes,

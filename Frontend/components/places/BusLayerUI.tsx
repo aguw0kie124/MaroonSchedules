@@ -3,12 +3,10 @@ import {
   View,
   Text,
   TouchableOpacity,
-  TextInput,
   ScrollView,
   LayoutAnimation,
 } from "react-native";
 import {
-  Search,
   X,
   ChevronDown,
   Clock,
@@ -16,7 +14,6 @@ import {
   Bus,
 } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
-import type { CampusLocation } from "./types";
 import { getStopLabel } from "./utils";
 
 interface BusLayerUIProps {
@@ -28,16 +25,9 @@ interface BusLayerUIProps {
   isAllBusRoutesSelected: boolean;
   isRouteDropdownOpen: boolean;
   setIsRouteDropdownOpen: (v: boolean) => void;
-  routeSearchQuery: string;
-  setRouteSearchQuery: (v: string) => void;
   filteredBusRoutes: any[];
   handleSelectBusRoute: (routeId: string) => void;
   openBusTimetable: () => void;
-  // Destination search
-  busDestinationQuery: string;
-  setBusDestinationQuery: (v: string) => void;
-  busDestinationResults: CampusLocation[];
-  openNavigationToLocation: (loc: CampusLocation, mode: "walk" | "bus") => void;
   // Stop info card
   selectedStop: any;
   setSelectedStop: (v: any) => void;
@@ -56,15 +46,9 @@ export function BusRouteSelector({
   isAllBusRoutesSelected,
   isRouteDropdownOpen,
   setIsRouteDropdownOpen,
-  routeSearchQuery,
-  setRouteSearchQuery,
   filteredBusRoutes,
   handleSelectBusRoute,
   openBusTimetable,
-  busDestinationQuery,
-  setBusDestinationQuery,
-  busDestinationResults,
-  openNavigationToLocation,
 }: BusLayerUIProps) {
   if (busRoutes.length === 0) return null;
 
@@ -103,10 +87,10 @@ export function BusRouteSelector({
             </View>
           </View>
           <View style={styles.selectedRouteTextStack}>
-            <Text style={styles.labelSubText}>Current Route</Text>
+            <Text style={styles.labelSubText}>Route View</Text>
             <Text style={styles.selectedRouteName} numberOfLines={1}>
               {isAllBusRoutesSelected
-                ? "Show All Routes"
+                ? "All Routes"
                 : busRoutes.find((r) => r.Key === selectedBusRouteId)?.Name ||
                   "Select Route"}
             </Text>
@@ -131,89 +115,8 @@ export function BusRouteSelector({
         </TouchableOpacity>
       </View>
 
-      <View style={styles.destinationSearchCard}>
-        <View style={styles.destinationSearchRow}>
-          <Search size={16} color={COLORS.textTertiary} />
-          <TextInput
-            value={busDestinationQuery}
-            onChangeText={setBusDestinationQuery}
-            placeholder="Search destination for walking or bus route"
-            placeholderTextColor={COLORS.textTertiary}
-            style={styles.destinationSearchInput}
-          />
-          {busDestinationQuery.length > 0 ? (
-            <TouchableOpacity onPress={() => setBusDestinationQuery("")}>
-              <X size={16} color={COLORS.textTertiary} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {busDestinationQuery.trim().length > 0 ? (
-          <View style={styles.destinationResults}>
-            {busDestinationResults.length > 0 ? (
-              busDestinationResults.map((loc) => (
-                <View
-                  key={`bus-search-${loc.location}`}
-                  style={styles.destinationResultItem}
-                >
-                  <TouchableOpacity
-                    style={styles.destinationResultMain}
-                    onPress={() => openNavigationToLocation(loc, "walk")}
-                  >
-                    <MapPin size={14} color={COLORS.primary} />
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={styles.destinationResultTitle}
-                        numberOfLines={1}
-                      >
-                        {loc.location}
-                      </Text>
-                      <Text
-                        style={styles.destinationResultMeta}
-                        numberOfLines={1}
-                      >
-                        {loc.shortName && loc.shortName !== loc.location
-                          ? `${loc.shortName} • `
-                          : ""}
-                        {loc.type}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.destinationModePill}
-                    onPress={() => openNavigationToLocation(loc, "walk")}
-                  >
-                    <Text style={styles.destinationModeText}>Walk</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.destinationModePill}
-                    onPress={() => openNavigationToLocation(loc, "bus")}
-                  >
-                    <Text style={styles.destinationModeText}>Bus</Text>
-                  </TouchableOpacity>
-                </View>
-              ))
-            ) : (
-              <Text style={styles.destinationEmptyText}>
-                No places match that search.
-              </Text>
-            )}
-          </View>
-        ) : null}
-      </View>
-
       {isRouteDropdownOpen && (
         <View style={styles.busRoutesDropdown}>
-          <View style={styles.routeSearchRow}>
-            <Search size={15} color={COLORS.textTertiary} />
-            <TextInput
-              value={routeSearchQuery}
-              onChangeText={setRouteSearchQuery}
-              placeholder="Search route or number"
-              placeholderTextColor={COLORS.textTertiary}
-              style={styles.routeSearchInput}
-            />
-          </View>
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.busDropdownScroll}
