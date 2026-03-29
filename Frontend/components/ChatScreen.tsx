@@ -24,7 +24,7 @@ import {
   Attachment,
 } from 'stream-chat-react-native';
 import { useUser } from '@clerk/clerk-expo';
-import { LogOut, UserPlus, ChevronLeft, Check, X } from 'lucide-react-native';
+import { Calendar, LogOut, UserPlus, ChevronLeft, Check, X } from 'lucide-react-native';
 import { API_URL } from '../config';
 import { fetchSchedules } from '../api/client';
 
@@ -343,7 +343,7 @@ export function ChatScreen({ route, navigation }: Props) {
     setShareModalVisible(false);
     if (channel) {
       await channel.sendMessage({
-        text: 'Check out my schedule! 📅',
+        text: 'Check out my schedule!',
         attachments: [{
           type: 'schedule',
           schedule_id: schedule.schedule_id,
@@ -357,7 +357,7 @@ export function ChatScreen({ route, navigation }: Props) {
 
   const CustomInputButtons = () => (
     <Pressable onPress={() => setShareModalVisible(true)} style={{ padding: 8, justifyContent: 'center' }}>
-       <Text style={{ fontSize: 24 }}>📅</Text>
+       <Calendar size={22} color={C.maroon} />
     </Pressable>
   );
 

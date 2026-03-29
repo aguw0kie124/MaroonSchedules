@@ -20,13 +20,14 @@ import { useTheme } from './SharedUI';
 import { CampusSearchBar } from './CampusSearchBar';
 import { CampusDirectionsPanel } from './CampusDirectionsPanel';
 import { CampusBottomSheet } from './CampusBottomSheet';
+import { MapPin } from 'lucide-react-native';
 import {
   BUILDINGS,
   AMENITIES,
   TAMU_CENTER,
   DEFAULT_USER_LOCATION,
-  getBuildingEmoji,
-  getAmenityEmoji,
+  getBuildingIcon,
+  getAmenityIcon,
   CampusBuilding,
   CampusAmenity,
 } from '../data/campus';
@@ -74,8 +75,8 @@ const VOICE_PREF_KEY = 'campus_navigation_voice_enabled';
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 export function CampusNavigationScreen() {
-    const { COLORS } = useTheme();
-    const styles = getStyles(COLORS);
+    const { COLORS, theme } = useTheme();
+    const styles = getStyles(COLORS, theme === 'dark');
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   // ─── State ──────────────────────────────────────────────────
@@ -693,7 +694,7 @@ export function CampusNavigationScreen() {
             anchor={{ x: 0.5, y: 0.5 }}
           >
             <Animated.View style={[styles.userMarker, { transform: [{ scale: pulseAnim }] }]}>
-              <Text style={styles.userMarkerText}>📍</Text>
+              <MapPin size={18} color="#FFFFFF" />
             </Animated.View>
           </Marker>
           {manualOrigin && (
@@ -730,6 +731,7 @@ export function CampusNavigationScreen() {
           {/* Building markers */}
           {!hasActiveRoute && BUILDINGS.map((b) => {
             const isDestination = destination?.building?.id === b.id;
+            const Icon = getBuildingIcon(b.type);
             return (
               <Marker
                 key={b.id}
@@ -741,7 +743,7 @@ export function CampusNavigationScreen() {
                 }}
               >
                 <View style={[styles.buildingMarker, isDestination && styles.destMarker]}>
-                  <Text style={styles.markerEmoji}>{getBuildingEmoji(b.type)}</Text>
+                  <Icon size={18} color="#FFFFFF" />
                 </View>
               </Marker>
             );
@@ -750,6 +752,7 @@ export function CampusNavigationScreen() {
           {/* Amenity markers */}
           {!hasActiveRoute && AMENITIES.map((a) => {
             const isDestination = destination?.amenity?.id === a.id;
+            const Icon = getAmenityIcon(a.type);
             return (
               <Marker
                 key={a.id}
@@ -760,7 +763,7 @@ export function CampusNavigationScreen() {
                 }}
               >
                 <View style={[styles.amenityMarker, isDestination && styles.destAmenityMarker]}>
-                  <Text style={styles.markerEmoji}>{getAmenityEmoji(a.type)}</Text>
+                  <Icon size={18} color="#FFFFFF" />
                 </View>
               </Marker>
             );
@@ -925,10 +928,10 @@ export function CampusNavigationScreen() {
 }
 
 // ─── Styles ─────────────────────────────────────────────────
-const getStyles = (COLORS: any) => StyleSheet.create({
+const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: COLORS.background,
   },
   topOverlay: {
     position: 'absolute',
@@ -959,9 +962,9 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: 'rgba(0,0,0,0.72)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(255,255,255,0.94)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
+    borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(12,12,14,0.10)',
   },
   backButtonIcon: {
     color: COLORS.textPrimary,
@@ -1002,10 +1005,10 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   modeSwitch: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.72)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(255,255,255,0.94)',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
+    borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(12,12,14,0.10)',
     padding: 4,
     gap: 4,
   },
@@ -1026,15 +1029,15 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     color: '#FFF',
   },
   originPill: {
-    backgroundColor: 'rgba(0,0,0,0.72)',
+    backgroundColor: COLORS.primary,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.16)',
+    borderColor: COLORS.primary,
     paddingHorizontal: 14,
     paddingVertical: 9,
   },
   originPillText: {
-    color: COLORS.textPrimary,
+    color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
   },
@@ -1045,14 +1048,14 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   voiceBannerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(8,8,8,0.92)',
+    backgroundColor: isDark ? 'rgba(8,8,8,0.92)' : 'rgba(255,255,255,0.96)',
     marginHorizontal: 14,
     marginTop: 10,
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
     zIndex: 998,
   },
   voiceBannerText: {

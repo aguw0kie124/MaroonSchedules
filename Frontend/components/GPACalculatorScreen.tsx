@@ -51,12 +51,12 @@ function gpaColor(gpa: number): string {
 }
 
 function gpaLabel(gpa: number): string {
-  if (gpa >= 3.9) return 'Summa Cum Laude 🏅';
-  if (gpa >= 3.7) return 'Magna Cum Laude 🎖️';
-  if (gpa >= 3.5) return 'Cum Laude 🎓';
-  if (gpa >= 3.0) return 'Good Standing 👍';
+  if (gpa >= 3.9) return 'Summa Cum Laude';
+  if (gpa >= 3.7) return 'Magna Cum Laude';
+  if (gpa >= 3.5) return 'Cum Laude';
+  if (gpa >= 3.0) return 'Good Standing';
   if (gpa >= 2.0) return 'Satisfactory';
-  return 'Below Minimum ⚠️';
+  return 'Below Minimum';
 }
 
 // ─── Component ───────────────────────────────────────────────

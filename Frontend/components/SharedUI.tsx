@@ -36,29 +36,130 @@ export const LIGHT_COLORS = {
   warning: '#FF9500',
 };
 
+export const DEFAULT_LIGHT_ACCENT = '#8E8E93';
+export const DEFAULT_DARK_ACCENT = '#8E8E93';
+
+export function getDefaultAccentColor(theme: 'light' | 'dark') {
+  return theme === 'dark' ? DEFAULT_DARK_ACCENT : DEFAULT_LIGHT_ACCENT;
+}
+
 // Zustand Theme Store
-export const useThemeStore = create<any>((set) => ({
+export const useThemeStore = create<any>((set, get) => ({
   theme: 'dark', // 'dark' | 'light'
-  useWallpaper: true, // true = marble wallpaper, false = solid background
-  setTheme: (newTheme: string) => set({ theme: newTheme }),
+  backgroundMode: 'solid', // 'solid' | 'custom'
+  customWallpaperUri: null as string | null,
+  accentColor: DEFAULT_DARK_ACCENT,
+  applyAccentToText: false,
+  setTheme: (newTheme: string) => {
+    const currentTheme = get().theme as 'light' | 'dark';
+    const currentAccent = get().accentColor;
+    const nextState: Record<string, string> = { theme: newTheme };
+    if (currentAccent === getDefaultAccentColor(currentTheme)) {
+      nextState.accentColor = getDefaultAccentColor(newTheme as 'light' | 'dark');
+      AsyncStorage.setItem('accent_color', nextState.accentColor).catch(() => {});
+    }
+    set(nextState);
+    AsyncStorage.setItem('theme_mode', newTheme).catch(() => {});
+  },
+  setAccentColor: (accentColor: string) => {
+    set({ accentColor });
+    AsyncStorage.setItem('accent_color', accentColor).catch(() => {});
+  },
+  setApplyAccentToText: (applyAccentToText: boolean) => {
+    set({ applyAccentToText });
+    AsyncStorage.setItem('accent_text_enabled', JSON.stringify(applyAccentToText)).catch(() => {});
+  },
   setUseWallpaper: (val: boolean) => {
-    set({ useWallpaper: val });
-    AsyncStorage.setItem('use_wallpaper', JSON.stringify(val));
+    const nextMode = val && get().customWallpaperUri ? 'custom' : 'solid';
+    set({ backgroundMode: nextMode });
+    AsyncStorage.setItem('background_mode', nextMode).catch(() => {});
+  },
+  setBackgroundMode: (mode: 'solid' | 'custom') => {
+    const nextMode = mode === 'custom' && !get().customWallpaperUri ? 'solid' : mode;
+    set({ backgroundMode: nextMode });
+    AsyncStorage.setItem('background_mode', nextMode).catch(() => {});
+  },
+  setCustomWallpaper: async (uri: string | null) => {
+    if (!uri) {
+      set({ customWallpaperUri: null, backgroundMode: 'solid' });
+      await AsyncStorage.removeItem('custom_wallpaper_uri');
+      await AsyncStorage.setItem('background_mode', 'solid');
+      return;
+    }
+    set({ customWallpaperUri: uri, backgroundMode: 'custom' });
+    await AsyncStorage.setItem('custom_wallpaper_uri', uri);
+    await AsyncStorage.setItem('background_mode', 'custom');
   },
   loadWallpaperPref: async () => {
-    const stored = await AsyncStorage.getItem('use_wallpaper');
-    if (stored !== null) set({ useWallpaper: JSON.parse(stored) });
+    const [legacy, storedTheme, backgroundMode, customWallpaperUri, accentColor, accentTextEnabled] = await Promise.all([
+      AsyncStorage.getItem('use_wallpaper'),
+      AsyncStorage.getItem('theme_mode'),
+      AsyncStorage.getItem('background_mode'),
+      AsyncStorage.getItem('custom_wallpaper_uri'),
+      AsyncStorage.getItem('accent_color'),
+      AsyncStorage.getItem('accent_text_enabled'),
+    ]);
+
+    const nextState: Record<string, unknown> = {};
+
+    const nextTheme = storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : get().theme;
+    if (storedTheme === 'light' || storedTheme === 'dark') {
+      nextState.theme = storedTheme;
+    }
+
+    nextState.accentColor = accentColor || getDefaultAccentColor(nextTheme);
+
+    if (accentTextEnabled !== null) {
+      nextState.applyAccentToText = accentTextEnabled === 'true';
+    }
+
+    if (customWallpaperUri) {
+      set({
+        ...nextState,
+        customWallpaperUri,
+        backgroundMode: backgroundMode === 'custom' ? 'custom' : 'solid',
+      });
+      return;
+    }
+
+    if (backgroundMode) {
+      set({ ...nextState, backgroundMode });
+      return;
+    }
+
+    if (legacy !== null) {
+      set({ ...nextState, backgroundMode: JSON.parse(legacy) ? 'solid' : 'solid' });
+      return;
+    }
+
+    if (Object.keys(nextState).length) {
+      set(nextState);
+    }
   },
 }));
 
 export const useTheme = () => {
   const theme = useThemeStore((s: any) => s.theme);
-  const useWallpaper = useThemeStore((s: any) => s.useWallpaper);
-  const COLORS = theme === 'dark' ? DARK_COLORS : LIGHT_COLORS;
+  const backgroundMode = useThemeStore((s: any) => s.backgroundMode);
+  const wallpaperUri = useThemeStore((s: any) => s.customWallpaperUri);
+  const accentColor = useThemeStore((s: any) => s.accentColor);
+  const applyAccentToText = useThemeStore((s: any) => s.applyAccentToText);
+  const useWallpaper = backgroundMode === 'custom' && !!wallpaperUri;
+  const palette = theme === 'dark' ? DARK_COLORS : LIGHT_COLORS;
+  const COLORS = {
+    ...palette,
+    primary: accentColor,
+    accent: accentColor,
+    accentText: applyAccentToText ? accentColor : palette.textPrimary,
+  };
   return {
-    COLORS, theme, useWallpaper,
+    COLORS, theme, useWallpaper, backgroundMode, wallpaperUri, accentColor, applyAccentToText,
     setTheme: useThemeStore.getState().setTheme,
     setUseWallpaper: useThemeStore.getState().setUseWallpaper,
+    setBackgroundMode: useThemeStore.getState().setBackgroundMode,
+    setCustomWallpaper: useThemeStore.getState().setCustomWallpaper,
+    setAccentColor: useThemeStore.getState().setAccentColor,
+    setApplyAccentToText: useThemeStore.getState().setApplyAccentToText,
   };
 };
 
@@ -80,8 +181,8 @@ export const useSavedStore = create<any>((set, get) => ({
 }));
 
 export const Card = ({ children, style }: any) => {
-  const { COLORS } = useTheme();
-  const styles = getStyles(COLORS);
+  const { COLORS, theme } = useTheme();
+  const styles = getStyles(COLORS, theme === 'dark');
   return (
     <View style={[styles.card, style]}>
       {children}
@@ -90,8 +191,9 @@ export const Card = ({ children, style }: any) => {
 };
 
 export const PrimaryButton = ({ title, onPress, style, textStyle, isLoading, variant = 'primary' }: any) => {
-  const { COLORS } = useTheme();
-  const styles = getStyles(COLORS);
+  const { COLORS, theme } = useTheme();
+  const isDark = theme === 'dark';
+  const styles = getStyles(COLORS, isDark);
   const isPrimary = variant === 'primary';
   const getBgColor = () => {
     if (variant === 'danger') return COLORS.danger;
@@ -115,7 +217,7 @@ export const PrimaryButton = ({ title, onPress, style, textStyle, isLoading, var
       <Text style={[
           styles.buttonText, 
           { color: '#FFFFFF' }, // Always white text on maroon buttons
-          variant === 'outline' && { color: COLORS.primary },
+          variant === 'outline' && { color: isDark ? '#F3F1ED' : COLORS.textPrimary },
           textStyle
       ]}>{title}</Text>}
     </Pressable>
@@ -123,8 +225,8 @@ export const PrimaryButton = ({ title, onPress, style, textStyle, isLoading, var
 };
 
 export const SectionRow = ({ section, onAdd, onRemove, isAdded }: any) => {
-    const { COLORS } = useTheme();
-    const styles = getStyles(COLORS);
+    const { COLORS, theme } = useTheme();
+    const styles = getStyles(COLORS, theme === 'dark');
     const { savedSections, toggleSave } = useSavedStore();
     const isSaved = savedSections.some((s:any) => s.id === section.id);
 
@@ -135,7 +237,7 @@ export const SectionRow = ({ section, onAdd, onRemove, isAdded }: any) => {
     const timeStr = meeting?.beginTime ? `${meeting.beginTime} - ${meeting.endTime}` : 'Time TBA';
     const daysStr = meeting?.daysOfWeek?.length ? meeting.daysOfWeek.join('') : 'Days TBA';
     const locationStr = meeting?.building ? `${meeting.building} ${meeting.room || ''}`.trim() : 'Location TBA';
-    const statusText = section.isOpen ? '🟢 Open' : '🔴 Closed';
+    const statusText = section.isOpen ? 'Open' : 'Closed';
 
     return (
         <Card style={styles.sectionRow}>
@@ -157,7 +259,7 @@ export const SectionRow = ({ section, onAdd, onRemove, isAdded }: any) => {
                 </View>
                 
                 <Text style={styles.sectionInfo}>
-                    Prof: {prof?.name || 'TBA'} {prof?.overall_rating ? `⭐ ${prof.overall_rating}/5 (${prof.total_reviews})` : ''}
+                    Prof: {prof?.name || 'TBA'} {prof?.overall_rating ? ` · ${prof.overall_rating}/5 (${prof.total_reviews})` : ''}
                 </Text>
                 
                 <Text style={styles.sectionInfo}>
@@ -188,12 +290,19 @@ export const SectionRow = ({ section, onAdd, onRemove, isAdded }: any) => {
     );
 };
 
-const getStyles = (COLORS: any) => StyleSheet.create({
+const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   card: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: isDark ? 'rgba(12,12,14,0.84)' : 'rgba(255,255,255,0.88)',
     paddingVertical: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.border,
+    paddingHorizontal: 16,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: isDark ? 0.18 : 0.08,
+    shadowRadius: 18,
+    elevation: 8,
   },
   button: {
     paddingVertical: 16,

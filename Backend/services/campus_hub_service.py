@@ -14,6 +14,7 @@ import psycopg
 from db_config import CONNECTION_PARAMS
 from repositories import course_repository, user_repository
 from routers.traffic import tracker
+from services import campus_events_service
 
 HOWDY_URL = "https://howdy.tamu.edu/main/home/card-view"
 DINING_URL = "https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx"
@@ -988,7 +989,6 @@ def create_connection_request(requester_id: str, recipient_id: str) -> Dict[str,
 
 def get_events_snapshot(clerk_id: str | None = None, limit: int = 8) -> List[Dict[str, Any]]:
     _ensure_social_tables()
-    raw_events = tracker.fetch_event_data(limit=limit)
     rsvp_lookup: Dict[str, str] = {}
     if clerk_id:
         rows = _safe_db_fetchall(
@@ -997,6 +997,18 @@ def get_events_snapshot(clerk_id: str | None = None, limit: int = 8) -> List[Dic
         )
         rsvp_lookup = {row.get("event_id"): row.get("response", "interested") for row in rows}
 
+    crawler_events = campus_events_service.load_campus_events()
+    if crawler_events:
+        limited = crawler_events[:limit] if limit else crawler_events
+        return [
+            {
+                **event,
+                "rsvp_status": rsvp_lookup.get(event.get("event_id"), "none"),
+            }
+            for event in limited
+        ]
+
+    raw_events = tracker.fetch_event_data(limit=limit)
     events = []
     for event in raw_events:
         event_id = _event_id_for(event)
@@ -1008,7 +1020,19 @@ def get_events_snapshot(clerk_id: str | None = None, limit: int = 8) -> List[Dic
                 "start_time": event.get("start_time"),
                 "end_time": event.get("end_time"),
                 "summary": event.get("summary", ""),
+                "description": event.get("summary", ""),
                 "link": event.get("link"),
+                "source_url": event.get("link"),
+                "host_name": None,
+                "source_name": "legacy_tracker",
+                "tags": [],
+                "has_food": False,
+                "food_confidence": 0.0,
+                "food_type": "unknown",
+                "food_reasons": [],
+                "location_lat": None,
+                "location_lng": None,
+                "map_available": False,
                 "rsvp_status": rsvp_lookup.get(event_id, "none"),
             }
         )
@@ -1199,17 +1223,114 @@ def get_notification_hub(clerk_id: str) -> List[Dict[str, Any]]:
 
 
 def get_overview(clerk_id: str) -> Dict[str, Any]:
+    def safe_snapshot(label: str, loader, fallback):
+        try:
+            return loader()
+        except Exception as exc:
+            print(f"[campus_hub] {label} snapshot failed for {clerk_id}: {exc}")
+            return fallback
+
     return {
-        "auth": get_auth_status(clerk_id),
-        "academic": get_academic_snapshot(clerk_id),
-        "dining": get_dining_snapshot(clerk_id),
-        "notifications": get_notification_hub(clerk_id),
-        "career": get_career_snapshot(clerk_id),
-        "network": discover_network(clerk_id, limit=6),
-        "events": get_events_snapshot(clerk_id, limit=6),
-        "transit": get_transit_snapshot(),
-        "recreation": get_recreation_snapshot(),
-        "services": get_services_snapshot(),
-        "connectors": get_connector_snapshots(clerk_id),
+        "auth": safe_snapshot(
+            "auth",
+            lambda: get_auth_status(clerk_id),
+            {
+                "status": "app_authenticated",
+                "primary_auth": "Clerk",
+                "institution_sso": {
+                    "provider": "Howdy / NetID",
+                    "status": "connector_required",
+                    "note": "Institutional auth status is temporarily unavailable.",
+                    "resource_url": HOWDY_URL,
+                },
+                "user_id": clerk_id,
+            },
+        ),
+        "academic": safe_snapshot(
+            "academic",
+            lambda: get_academic_snapshot(clerk_id),
+            {
+                "status": "preview",
+                "sourceLabel": "Campus hub fallback",
+                "scheduleName": "Schedule unavailable",
+                "courses": [],
+                "totalCredits": 0,
+                "nextCourse": None,
+                "gpa": "Connect Howdy",
+                "registrationReady": True,
+                "activeHolds": [],
+                "resources": [{"label": "Howdy Portal", "url": HOWDY_URL}],
+            },
+        ),
+        "dining": safe_snapshot(
+            "dining",
+            lambda: get_dining_snapshot(clerk_id),
+            {
+                "status": "link",
+                "planName": "Dining module ready to connect",
+                "balanceLabel": "Transact eAccounts required for live balances",
+                "recentActivityLabel": "Using fallback state.",
+                "resources": [{"label": "Transact eAccounts", "url": DINING_URL}],
+            },
+        ),
+        "notifications": safe_snapshot(
+            "notifications",
+            lambda: get_notification_hub(clerk_id),
+            [],
+        ),
+        "career": safe_snapshot(
+            "career",
+            lambda: get_career_snapshot(clerk_id),
+            {
+                "status": "link",
+                "summary": "Hire Aggies connector required for live jobs and employers.",
+                "resources": [{"label": "Hire Aggies", "url": HIRE_AGGIES_URL}],
+            },
+        ),
+        "network": safe_snapshot(
+            "network",
+            lambda: discover_network(clerk_id, limit=6),
+            {
+                "status": "preview",
+                "chatStatus": "stream_messaging_available",
+                "summary": "Networking suggestions are temporarily unavailable.",
+                "pendingRequests": 0,
+                "suggestions": [],
+                "resources": [],
+            },
+        ),
+        "events": safe_snapshot(
+            "events",
+            lambda: get_events_snapshot(clerk_id, limit=6),
+            [],
+        ),
+        "transit": safe_snapshot(
+            "transit",
+            get_transit_snapshot,
+            {
+                "status": "live",
+                "summary": "Transit map remains available.",
+                "resources": [{"label": "AggieSpirit Route Map", "url": AGGIE_SPIRIT_URL}],
+            },
+        ),
+        "recreation": safe_snapshot(
+            "recreation",
+            get_recreation_snapshot,
+            {
+                "status": "preview",
+                "summary": "Recreation data is temporarily unavailable.",
+                "facilities": [],
+            },
+        ),
+        "services": safe_snapshot(
+            "services",
+            get_services_snapshot,
+            [],
+        ),
+        "connectors": safe_snapshot(
+            "connectors",
+            lambda: get_connector_snapshots(clerk_id),
+            [],
+        ),
         "generatedAt": datetime.utcnow().isoformat() + "Z",
     }

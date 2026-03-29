@@ -78,7 +78,7 @@ def create_connection_request(request: ConnectionRequest = Body(...)):
 
 
 @router.get("/events")
-def get_events(clerk_id: str | None = Query(None), limit: int = Query(8, ge=1, le=25)):
+def get_events(clerk_id: str | None = Query(None), limit: int = Query(250, ge=1, le=1000)):
     return campus_hub_service.get_events_snapshot(clerk_id, limit=limit)
 
 

@@ -27,8 +27,9 @@ export function PillTabs({
   activeTextMode = 'always',
   layout = 'row',
 }: PillTabsProps) {
-  const { COLORS } = useTheme();
-  const styles = getStyles(COLORS);
+  const { COLORS, theme } = useTheme();
+  const isDark = theme === 'dark';
+  const styles = getStyles(COLORS, isDark);
   const indicatorAnim = useRef(new Animated.Value(0)).current;
   const [trackWidth, setTrackWidth] = useState(0);
   const activeIndex = Math.max(0, items.findIndex(item => item.key === activeKey));
@@ -45,10 +46,12 @@ export function PillTabs({
   const slotWidth = trackWidth > 0 ? trackWidth / Math.max(items.length, 1) : 0;
   const indicatorInset = compact ? 2 : 4;
   const indicatorWidth = Math.max(slotWidth - indicatorInset * 2, 0);
-  const translateX = indicatorAnim.interpolate({
-    inputRange: items.map((_, index) => index),
-    outputRange: items.map((_, index) => index * slotWidth + indicatorInset),
-  });
+  const translateX = items.length <= 1
+    ? 0
+    : indicatorAnim.interpolate({
+        inputRange: items.map((_, index) => index),
+        outputRange: items.map((_, index) => index * slotWidth + indicatorInset),
+      });
 
   const handleLayout = useMemo(
     () => (event: LayoutChangeEvent) => {
@@ -118,7 +121,7 @@ export function PillTabs({
   );
 }
 
-const getStyles = (COLORS: any) =>
+const getStyles = (COLORS: any, isDark: boolean) =>
   StyleSheet.create({
     shell: {
       width: '100%',
@@ -132,15 +135,20 @@ const getStyles = (COLORS: any) =>
     track: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: COLORS.surface,
-      borderRadius: 32,
+      backgroundColor: isDark ? 'rgba(16,16,18,0.86)' : 'rgba(255,255,255,0.86)',
+      borderRadius: 999,
       borderWidth: StyleSheet.hairlineWidth,
-      borderColor: COLORS.border,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
       padding: 6,
       overflow: 'hidden',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.14,
+      shadowRadius: 18,
+      elevation: 10,
     },
     trackFloating: {
-      backgroundColor: 'rgba(8,8,8,0.88)',
+      backgroundColor: isDark ? 'rgba(8,8,10,0.9)' : 'rgba(255,255,255,0.9)',
       borderColor: 'rgba(255,255,255,0.08)',
     },
     trackCompact: {
@@ -151,8 +159,8 @@ const getStyles = (COLORS: any) =>
       left: 0,
       top: 6,
       bottom: 6,
-      backgroundColor: COLORS.primary,
-      borderRadius: 26,
+      backgroundColor: isDark ? 'rgba(0,0,0,0.74)' : 'rgba(12,12,14,0.88)',
+      borderRadius: 999,
     },
     indicatorCompact: {
       top: 4,
@@ -182,12 +190,13 @@ const getStyles = (COLORS: any) =>
       gap: 2,
     },
     label: {
-      fontSize: 12,
+      fontSize: 10,
       fontWeight: '700',
       flexShrink: 1,
+      textAlign: 'center',
     },
     labelCompact: {
-      fontSize: 11,
+      fontSize: 10,
     },
     labelActive: {
       color: '#FFFFFF',

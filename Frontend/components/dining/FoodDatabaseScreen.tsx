@@ -6,9 +6,9 @@ import { Card, SectionLabel, ActionButton } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
 
-export default function FoodDatabaseScreen({ navigation }: any) {
+export default function FoodDatabaseScreen({ navigation, embedded = false }: any) {
   const { user } = useUser();
-  const { theme } = useTheme();
+  const { theme, wallpaperUri } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
 
@@ -43,27 +43,25 @@ export default function FoodDatabaseScreen({ navigation }: any) {
     setNewFood({ name: '', location: '', calories: '', protein: '', carbs: '', fat: '' });
   };
 
-  const marbleSrc = darkMode
-    ? require('../../assets/black_marble.jpg')
-    : require('../../assets/white_marble.jpg');
+  const wallpaperSource = wallpaperUri
+    ? { uri: wallpaperUri }
+    : darkMode
+      ? require('../../assets/black_marble.jpg')
+      : require('../../assets/white_marble.jpg');
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
-      <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
-      <ImageBackground source={marbleSrc} style={StyleSheet.absoluteFill} resizeMode="cover">
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)' }]} />
-      </ImageBackground>
-
+  const content = (
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.container}>
-        <View style={s.header}>
-            <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
-                <Text style={{ fontSize: 24, color: T.text }}>←</Text>
-            </TouchableOpacity>
-            <Text style={[s.title, { color: T.text }]}>Database</Text>
-            <TouchableOpacity onPress={() => setShowAdd(!showAdd)}>
-                <Text style={{ color: T.amber, fontSize: 24, fontWeight: '200' }}>{showAdd ? '✕' : '+'}</Text>
-            </TouchableOpacity>
-        </View>
+        {!embedded ? (
+          <View style={s.header}>
+              <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+                  <Text style={{ fontSize: 24, color: T.text }}>←</Text>
+              </TouchableOpacity>
+              <Text style={[s.title, { color: T.text }]}>Database</Text>
+              <TouchableOpacity onPress={() => setShowAdd(!showAdd)}>
+                  <Text style={{ color: T.amber, fontSize: 24, fontWeight: '200' }}>{showAdd ? '✕' : '+'}</Text>
+              </TouchableOpacity>
+          </View>
+        ) : null}
 
         <View style={s.searchRow}>
           <TextInput 
@@ -120,6 +118,19 @@ export default function FoodDatabaseScreen({ navigation }: any) {
           />
         )}
       </KeyboardAvoidingView>
+  );
+
+  if (embedded) {
+    return content;
+  }
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
+      <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)' }]} />
+      </ImageBackground>
+      {content}
     </SafeAreaView>
   );
 }

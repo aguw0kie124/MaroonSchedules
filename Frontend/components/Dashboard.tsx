@@ -1,873 +1,740 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-    ActivityIndicator,
-    Image,
-    ImageBackground,
-    Pressable,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    View,
+  ActivityIndicator,
+  Image,
+  ImageBackground,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
-import * as Linking from 'expo-linking';
 import {
-    ArrowRight,
-    Bell,
-    BriefcaseBusiness,
-    Bus,
-    ChevronRight,
-    Clock,
-    Dumbbell,
-    ExternalLink,
-    MapPin,
+  BellRing,
+  Bus,
+  Clock,
+  GraduationCap,
+  Cog,
+  Check,
+  Plus,
+  Trash2,
 } from 'lucide-react-native';
 import { Card, useTheme } from './SharedUI';
+import { PageModuleEditor } from './PageModuleEditor';
 import { useCampusHubStore } from '../store/campusHubStore';
+import {
+  HomeSectionId,
+  UIDensity,
+  getOrderedItems,
+  getOrderedVisibleItems,
+  isNavItemVisible,
+  useAppShellStore,
+} from '../store/appShellStore';
 
 const WEEK_DAYS = [
-    { label: 'Mon', value: 'M' },
-    { label: 'Tue', value: 'T' },
-    { label: 'Wed', value: 'W' },
-    { label: 'Thu', value: 'R' },
-    { label: 'Fri', value: 'F' },
+  { label: 'Mon', value: 'M' },
+  { label: 'Tue', value: 'T' },
+  { label: 'Wed', value: 'W' },
+  { label: 'Thu', value: 'R' },
+  { label: 'Fri', value: 'F' },
 ];
+const HOME_TODO_KEY = 'home_todo_items';
 
 function getDefaultDay() {
-    const day = ['U', 'M', 'T', 'W', 'R', 'F', 'S'][new Date().getDay()];
-    return ['U', 'S'].includes(day) ? 'M' : day;
+  return ['U', 'M', 'T', 'W', 'R', 'F', 'S'][new Date().getDay()];
+}
+
+function getDensityLimit(density: UIDensity, values: { minimal: number; standard: number; full: number }) {
+  if (density === 'minimal') return values.minimal;
+  if (density === 'full') return values.full;
+  return values.standard;
+}
+
+function getContextBoost(sectionId: HomeSectionId) {
+  const now = new Date();
+  const minutes = now.getHours() * 60 + now.getMinutes();
+
+  if (sectionId === 'schedule' && minutes >= 420 && minutes <= 1020) return 18;
+  if (sectionId === 'alerts') return 8;
+  return 0;
 }
 
 function getUrgencyColor(level: 'high' | 'medium' | 'low', colors: any) {
-    if (level === 'high') return colors.danger;
-    if (level === 'medium') return colors.warning;
-    return colors.success;
-}
-
-function getWeatherLabel(weatherCode: number | null | undefined, isDay?: number | null) {
-    const weatherMap: Record<number, string> = {
-        0: isDay === 0 ? 'Clear' : 'Sunny',
-        1: 'Mostly Clear',
-        2: 'Partly Cloudy',
-        3: 'Cloudy',
-        45: 'Fog',
-        48: 'Fog',
-        51: 'Light Drizzle',
-        53: 'Drizzle',
-        55: 'Heavy Drizzle',
-        61: 'Light Rain',
-        63: 'Rain',
-        65: 'Heavy Rain',
-        71: 'Light Snow',
-        73: 'Snow',
-        75: 'Heavy Snow',
-        80: 'Rain Showers',
-        81: 'Showers',
-        82: 'Heavy Showers',
-        95: 'Thunderstorm',
-    };
-    return weatherMap[weatherCode ?? -1] || 'Weather';
+  if (level === 'high') return colors.danger;
+  if (level === 'medium') return colors.warning;
+  return colors.success;
 }
 
 export function Dashboard() {
-    const { COLORS, theme, useWallpaper } = useTheme();
-    const isDark = theme === 'dark';
-    const styles = getStyles(COLORS, isDark);
-    const navigation = useNavigation<any>();
-    const isFocused = useIsFocused();
-    const { user } = useUser();
-    const { snapshot, loading, error, hydrate } = useCampusHubStore();
-    const [selectedDay, setSelectedDay] = React.useState(getDefaultDay());
-    const [weatherLabel, setWeatherLabel] = React.useState('College Station');
+  const { COLORS, theme, useWallpaper, wallpaperUri } = useTheme();
+  const isDark = theme === 'dark';
+  const styles = getStyles(COLORS, isDark);
+  const navigation = useNavigation<any>();
+  const isFocused = useIsFocused();
+  const { user } = useUser();
+  const { snapshot, loading, hydrate } = useCampusHubStore();
+  const homeSections = useAppShellStore((state) => state.homeSections);
+  const navItems = useAppShellStore((state) => state.navItems);
+  const moveHomeSection = useAppShellStore((state) => state.moveHomeSection);
+  const toggleHomeSection = useAppShellStore((state) => state.toggleHomeSection);
+  const density = useAppShellStore((state) => state.density);
+  const orderedHomeSections = useMemo(
+    () => getOrderedItems(homeSections).filter((item) => item.id === 'schedule' || item.id === 'alerts'),
+    [homeSections],
+  );
+  const hasStandaloneBus = useMemo(() => isNavItemVisible(navItems, 'BusRoutes'), [navItems]);
 
-    useEffect(() => {
-        if (isFocused && user?.id) {
-            hydrate(user.id).catch(() => {});
+  const visibleHomeSections = useMemo(
+    () => getOrderedVisibleItems(homeSections).filter((item) => item.id === 'schedule' || item.id === 'alerts'),
+    [homeSections],
+  );
+  const rankedHomeSections = useMemo(
+    () =>
+      [...visibleHomeSections].sort((left, right) => {
+        const leftScore = 100 - left.order * 8 + getContextBoost(left.id);
+        const rightScore = 100 - right.order * 8 + getContextBoost(right.id);
+        return rightScore - leftScore;
+      }),
+    [visibleHomeSections],
+  );
+
+  const [selectedDay, setSelectedDay] = useState(getDefaultDay());
+  const [isEditorVisible, setIsEditorVisible] = useState(false);
+  const [todoInput, setTodoInput] = useState('');
+  const [todoItems, setTodoItems] = useState<Array<{ id: string; text: string; done: boolean }>>([]);
+
+  useEffect(() => {
+    if (isFocused && user?.id) {
+      hydrate(user.id).catch(() => {});
+    }
+  }, [hydrate, isFocused, user?.id]);
+
+  useEffect(() => {
+    AsyncStorage.getItem(HOME_TODO_KEY)
+      .then((value) => {
+        if (value) {
+          setTodoItems(JSON.parse(value));
         }
-    }, [hydrate, isFocused, user?.id]);
+      })
+      .catch(() => {});
+  }, []);
 
-    useEffect(() => {
-        let cancelled = false;
+  useEffect(() => {
+    AsyncStorage.setItem(HOME_TODO_KEY, JSON.stringify(todoItems)).catch(() => {});
+  }, [todoItems]);
 
-        fetch('https://api.open-meteo.com/v1/forecast?latitude=30.6280&longitude=-96.3344&current=temperature_2m,weather_code,is_day&temperature_unit=fahrenheit&timezone=America%2FChicago')
-            .then(response => response.json())
-            .then(data => {
-                if (cancelled) return;
-                const current = data?.current;
-                const temperature = typeof current?.temperature_2m === 'number'
-                    ? `${Math.round(current.temperature_2m)}°`
-                    : null;
-                const condition = getWeatherLabel(current?.weather_code, current?.is_day);
-                setWeatherLabel(temperature ? `${temperature} ${condition}` : condition);
-            })
-            .catch(() => {
-                if (!cancelled) {
-                    setWeatherLabel('College Station');
-                }
-            });
+  const academic = snapshot?.academic;
+  const notifications = (snapshot?.notifications || []).filter((notification) => notification.id !== 'registration-state');
+  const visibleCourses = useMemo(
+    () => (academic?.courses || []).filter((course) => course.days.includes(selectedDay)),
+    [academic?.courses, selectedDay],
+  );
+  const notificationLimit = getDensityLimit(density, { minimal: 2, standard: 3, full: 5 });
+  const courseLimit = getDensityLimit(density, { minimal: 2, standard: 3, full: 5 });
+  const priorityNotifications = notifications.slice(0, notificationLimit);
+  const wallpaperSource = wallpaperUri
+    ? { uri: wallpaperUri }
+    : isDark
+      ? require('../assets/black_marble.jpg')
+      : require('../assets/white_marble.jpg');
 
-        return () => {
-            cancelled = true;
-        };
-    }, []);
+  const addTodoItem = () => {
+    const trimmed = todoInput.trim();
+    if (!trimmed) return;
+    setTodoItems((current) => [{ id: `${Date.now()}`, text: trimmed, done: false }, ...current]);
+    setTodoInput('');
+  };
 
-    const academic = snapshot?.academic;
-    const notifications = (snapshot?.notifications || []).filter(notification => notification.id !== 'registration-state');
-    const priorityNotifications = notifications.slice(0, 3);
-    const recreationPreview = (snapshot?.recreation.facilities || []).slice(0, 2);
-    const visibleCourses = useMemo(() => {
-        return (academic?.courses || []).filter(course => course.days.includes(selectedDay));
-    }, [academic?.courses, selectedDay]);
-    const annexModule = snapshot?.services.find(service => service.id === 'annex');
-    const openRecreationFacilities = () => {
-        const rootNavigation = navigation.getParent?.('RootStack') || navigation.getParent?.();
-        if (rootNavigation?.navigate) {
-            rootNavigation.navigate('RecreationFacilities');
-            return;
-        }
-        navigation.navigate('RecreationFacilities');
-    };
-
-    const marbleSrc = isDark
-        ? require('../assets/black_marble.jpg')
-        : require('../assets/white_marble.jpg');
-
-    const openExternal = async (url: string) => {
-        try {
-            await Linking.openURL(url);
-        } catch (linkError) {
-            console.warn('Unable to open URL', url, linkError);
-        }
-    };
-
-    return (
-        <View style={[styles.container, useWallpaper && { backgroundColor: '#000' }]}>
-            <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
-
-            {useWallpaper && (
-                <ImageBackground source={marbleSrc} style={StyleSheet.absoluteFill} resizeMode="cover">
-                    <View style={[StyleSheet.absoluteFill, {
-                        backgroundColor: isDark ? 'rgba(0,0,0,0.68)' : 'rgba(255,255,255,0.52)',
-                    }]} />
-                </ImageBackground>
-            )}
-
-            <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-                <View style={styles.header}>
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.greeting}>Howdy</Text>
-                        <Text style={styles.name}>{user?.firstName || 'Aggie'}</Text>
-                    </View>
-                    <Pressable style={styles.avatar} onPress={() => navigation.navigate('Profile')}>
-                        {user?.imageUrl ? (
-                            <Image source={{ uri: user.imageUrl }} style={styles.avatarImage} />
-                        ) : (
-                            <Text style={styles.avatarText}>{user?.firstName?.[0] || 'A'}</Text>
-                        )}
-                    </Pressable>
-                </View>
-
-                {loading && !snapshot ? (
-                    <Card style={styles.loadingCard}>
-                        <ActivityIndicator color={COLORS.primary} />
-                        <Text style={styles.loadingText}>Loading your day...</Text>
-                    </Card>
-                ) : (
-                    <>
-                        <Card style={styles.heroCard}>
-                            <View style={styles.heroTopRow}>
-                                <Text style={styles.heroEyebrow}>Today</Text>
-                                <View style={styles.weatherChip}>
-                                    <Text style={styles.weatherChipText}>{weatherLabel}</Text>
-                                </View>
-                            </View>
-
-                            {academic?.nextCourse ? (
-                                <>
-                                    <Text style={styles.heroTitle}>Up next: {academic.nextCourse.code}</Text>
-                                    <Text style={styles.heroDetail}>{academic.nextCourse.name}</Text>
-                                    <View style={styles.heroMetaRow}>
-                                        <Clock size={14} color={COLORS.textTertiary} />
-                                        <Text style={styles.heroMetaText}>{academic.nextCourse.time}</Text>
-                                        <MapPin size={14} color={COLORS.textTertiary} />
-                                        <Text style={styles.heroMetaText} numberOfLines={1}>{academic.nextCourse.location}</Text>
-                                    </View>
-                                </>
-                            ) : (
-                                <>
-                                    <Text style={styles.heroTitle}>Your day is clear</Text>
-                                    <Text style={styles.heroDetail}>
-                                        No upcoming class is visible yet.
-                                    </Text>
-                                </>
-                            )}
-
-                            <View style={styles.heroActions}>
-                                <Pressable style={styles.primaryAction} onPress={() => navigation.navigate('ScheduleList')}>
-                                    <Text style={styles.primaryActionText}>Open Schedule</Text>
-                                    <ArrowRight size={16} color="#FFFFFF" />
-                                </Pressable>
-                                <Pressable
-                                    style={styles.secondaryAction}
-                                    onPress={() => navigation.navigate('Places', {
-                                        initialLayer: 'Bus',
-                                        focusToken: Date.now(),
-                                    })}
-                                >
-                                    <Bus size={16} color={COLORS.textPrimary} />
-                                    <Text style={styles.secondaryActionText}>Transit Map</Text>
-                                </Pressable>
-                            </View>
-                        </Card>
-
-                        <View style={styles.section}>
-                            <View style={styles.sectionHeader}>
-                                <Text style={styles.sectionLabel}>Today&apos;s Schedule</Text>
-                                <Pressable onPress={() => navigation.navigate('ScheduleList')}>
-                                    <Text style={styles.linkText}>Full schedule</Text>
-                                </Pressable>
-                            </View>
-                            <Card style={styles.panelCard}>
-                                <Text style={styles.summaryTitle}>{academic?.scheduleName || 'Primary schedule unavailable'}</Text>
-                                <Text style={styles.summaryBody}>{academic?.sourceLabel || 'Academic details will appear here.'}</Text>
-
-                                <View style={styles.weekStrip}>
-                                    {WEEK_DAYS.map(day => (
-                                        <Pressable
-                                            key={day.value}
-                                            style={[styles.dayButton, selectedDay === day.value && styles.dayButtonActive]}
-                                            onPress={() => setSelectedDay(day.value)}
-                                        >
-                                            <Text style={[styles.dayText, selectedDay === day.value && styles.dayTextActive]}>
-                                                {day.label}
-                                            </Text>
-                                        </Pressable>
-                                    ))}
-                                </View>
-
-                                <View style={styles.courseList}>
-                                    {visibleCourses.length > 0 ? (
-                                        visibleCourses.map(course => (
-                                            <View key={course.id} style={styles.courseItem}>
-                                                <View style={{ flex: 1 }}>
-                                                    <Text style={styles.courseCode}>{course.code}</Text>
-                                                    <Text style={styles.courseName}>{course.name}</Text>
-                                                    <Text style={styles.courseMetaText}>
-                                                        {course.time} · {course.location} · {course.instructor}
-                                                    </Text>
-                                                </View>
-                                            </View>
-                                        ))
-                                    ) : (
-                                        <Text style={styles.emptyText}>No classes scheduled for this day.</Text>
-                                    )}
-                                </View>
-                            </Card>
-                        </View>
-
-                        <View style={styles.section}>
-                            <View style={styles.sectionHeader}>
-                                <Text style={styles.sectionLabel}>Priority Alerts</Text>
-                                <Pressable onPress={() => navigation.navigate('Social')}>
-                                    <Text style={styles.linkText}>Open social hub</Text>
-                                </Pressable>
-                            </View>
-                            <Card style={styles.panelCard}>
-                                {priorityNotifications.map(notification => (
-                                    <View key={notification.id} style={styles.notificationRow}>
-                                        <View
-                                            style={[
-                                                styles.notificationDot,
-                                                { backgroundColor: getUrgencyColor(notification.urgency, COLORS) },
-                                            ]}
-                                        />
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.notificationTitle}>{notification.title}</Text>
-                                            <Text style={styles.notificationDetail}>{notification.detail}</Text>
-                                        </View>
-                                    </View>
-                                ))}
-                                {priorityNotifications.length === 0 && (
-                                    <Text style={styles.emptyText}>No normalized notifications are available yet.</Text>
-                                )}
-                            </Card>
-                        </View>
-
-                        <View style={styles.section}>
-                            <View style={styles.sectionHeader}>
-                                <Text style={styles.sectionLabel}>Campus Essentials</Text>
-                            </View>
-                            <Card style={styles.panelCard}>
-                                <Pressable
-                                    style={styles.essentialRow}
-                                    onPress={() => openExternal(snapshot?.career.resources[0]?.url || 'https://tamu-csm.symplicity.com/students/index.php?signin_tab=0')}
-                                >
-                                    <View style={styles.essentialIconWrap}>
-                                        <BriefcaseBusiness size={18} color={COLORS.primary} />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={styles.essentialTitle}>Hire Aggies</Text>
-                                        <Text style={styles.essentialMeta}>
-                                            {snapshot?.career.summary || 'Jobs, employers, and career events.'}
-                                        </Text>
-                                    </View>
-                                    <ExternalLink size={16} color={COLORS.primary} />
-                                </Pressable>
-
-                                <Pressable
-                                    style={styles.essentialRow}
-                                    onPress={openRecreationFacilities}
-                                >
-                                    <View style={styles.essentialIconWrap}>
-                                        <Dumbbell size={18} color={COLORS.primary} />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={styles.essentialTitle}>Recreation</Text>
-                                        {recreationPreview.length > 0 ? (
-                                            recreationPreview.map(facility => (
-                                                <Text key={facility.id} style={styles.essentialMeta}>
-                                                    {facility.name}: {facility.today_hours || facility.hours_hint}
-                                                </Text>
-                                            ))
-                                        ) : (
-                                            <Text style={styles.essentialMeta}>
-                                                {snapshot?.recreation.summary || 'Recreation data unavailable.'}
-                                            </Text>
-                                        )}
-                                    </View>
-                                    <ChevronRight size={16} color={COLORS.primary} />
-                                </Pressable>
-
-                                <Pressable
-                                    style={[styles.essentialRow, styles.essentialRowLast]}
-                                    onPress={() => openExternal(annexModule?.url || 'https://www.library.tamu.edu/')}
-                                >
-                                    <View style={styles.essentialIconWrap}>
-                                        <MapPin size={18} color={COLORS.primary} />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={styles.essentialTitle}>The Annex</Text>
-                                        <Text style={styles.essentialMeta}>
-                                            {annexModule?.summary || 'Library and study support for quieter work sessions.'}
-                                        </Text>
-                                    </View>
-                                    <ExternalLink size={16} color={COLORS.primary} />
-                                </Pressable>
-                            </Card>
-                        </View>
-
-                        {error ? (
-                            <Card style={styles.errorCard}>
-                                <Text style={styles.errorTitle}>Resilience Mode Active</Text>
-                                <Text style={styles.errorBody}>
-                                    Some live data could not be refreshed, so the dashboard is using the last safe state and local modules.
-                                </Text>
-                                <Text style={styles.errorDetail}>{error}</Text>
-                            </Card>
-                        ) : null}
-                    </>
-                )}
-
-                <View style={{ height: 110 }} />
-            </ScrollView>
-        </View>
+  const toggleTodoItem = (id: string) => {
+    setTodoItems((current) =>
+      current.map((item) => (item.id === id ? { ...item, done: !item.done } : item)),
     );
+  };
+
+  const deleteTodoItem = (id: string) => {
+    setTodoItems((current) => current.filter((item) => item.id !== id));
+  };
+
+  const openRootScreen = (screen: string, params?: Record<string, unknown>) => {
+    const rootNavigation = navigation.getParent?.('RootStack') || navigation.getParent?.();
+    if (rootNavigation?.navigate) {
+      rootNavigation.navigate(screen, params);
+      return;
+    }
+    navigation.navigate(screen, params);
+  };
+
+  const renderSectionCard = (sectionId: HomeSectionId) => {
+    if (sectionId === 'schedule') {
+      return (
+        <Card key={sectionId} style={styles.moduleCard}>
+          <View style={styles.moduleHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.moduleEyebrow}>Current Schedule</Text>
+              {academic?.nextCourse ? (
+                <Text style={styles.moduleTitle}>
+                  {`${academic.nextCourse.code} is coming up`}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          {academic?.nextCourse ? (
+            <Text style={styles.moduleBody}>
+              {`${academic.nextCourse.name} · ${academic.nextCourse.time} · ${academic.nextCourse.location}`}
+            </Text>
+          ) : null}
+
+          <View style={styles.weekStrip}>
+            {WEEK_DAYS.map((day) => (
+              <Pressable
+                key={day.value}
+                style={[styles.dayButton, selectedDay === day.value && styles.dayButtonActive]}
+                onPress={() => setSelectedDay(day.value)}
+              >
+                <Text style={[styles.dayText, selectedDay === day.value && styles.dayTextActive]}>
+                  {day.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={styles.listBlock}>
+            {visibleCourses.length > 0 ? (
+              visibleCourses.slice(0, courseLimit).map((course) => (
+                <View key={course.id} style={styles.timelineRow}>
+                  <View style={styles.timelineBadge}>
+                    <Clock size={13} color={COLORS.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.timelineTitle}>{course.code}</Text>
+                    <Text style={styles.timelineBody}>{course.name}</Text>
+                    <Text style={styles.timelineMeta}>{course.time} · {course.location}</Text>
+                  </View>
+                </View>
+              ))
+            ) : (
+              <View />
+            )}
+          </View>
+
+          <View style={styles.actionRow}>
+            <Pressable
+              style={styles.primaryAction}
+              onPress={() =>
+                hasStandaloneBus
+                  ? navigation.navigate('BusRoutes')
+                  : navigation.navigate('Places', { initialLayer: 'Bus', focusToken: Date.now() })
+              }
+            >
+              <Text style={styles.primaryActionText}>Transit</Text>
+            </Pressable>
+            <Pressable
+              style={styles.secondaryAction}
+              onPress={() => openRootScreen('EventsCalendar')}
+            >
+              <Text style={styles.secondaryActionText}>Events</Text>
+            </Pressable>
+          </View>
+        </Card>
+      );
+    }
+
+    if (sectionId === 'alerts') {
+      return (
+        <Card key={sectionId} style={styles.moduleCard}>
+          <View style={styles.moduleHeader}>
+            <View>
+              <Text style={styles.moduleEyebrow}>Notifications</Text>
+            </View>
+            <BellRing size={18} color={COLORS.primary} />
+          </View>
+          <View style={styles.listBlock}>
+            {priorityNotifications.length > 0 ? (
+              priorityNotifications.map((notification) => (
+                <View key={notification.id} style={styles.alertRow}>
+                  <View
+                    style={[
+                      styles.alertDot,
+                      { backgroundColor: getUrgencyColor(notification.urgency, COLORS) },
+                    ]}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.timelineTitle}>{notification.title}</Text>
+                    <Text style={styles.timelineBody}>{notification.detail}</Text>
+                  </View>
+                </View>
+              ))
+            ) : (
+              <View />
+            )}
+          </View>
+        </Card>
+      );
+    }
+
+    return null;
+  };
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
+
+      {useWallpaper ? (
+        <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover" />
+      ) : null}
+
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <View style={styles.headerTitlePill}>
+            <Text style={styles.headerTitleText}>{`Howdy, ${user?.firstName || 'Aggie'}`}</Text>
+          </View>
+          <View style={styles.headerActions}>
+            <Pressable style={styles.avatar} onPress={() => navigation.navigate('Settings')}>
+              {user?.imageUrl ? (
+                <Image source={{ uri: user.imageUrl }} style={styles.avatarImage} />
+              ) : (
+                <Cog size={18} color="#FFFFFF" />
+              )}
+            </Pressable>
+          </View>
+        </View>
+
+        <Card style={styles.moduleCard}>
+          <View style={styles.moduleHeader}>
+            <View>
+              <Text style={styles.moduleEyebrow}>To Do</Text>
+            </View>
+            <Check size={18} color={COLORS.primary} />
+          </View>
+          <View style={styles.todoComposer}>
+            <TextInput
+              value={todoInput}
+              onChangeText={setTodoInput}
+              placeholder="Add a task..."
+              placeholderTextColor={COLORS.textTertiary}
+              style={styles.todoInput}
+              onSubmitEditing={addTodoItem}
+              returnKeyType="done"
+            />
+            <Pressable style={styles.todoAddButton} onPress={addTodoItem}>
+              <Plus size={16} color="#FFFFFF" />
+            </Pressable>
+          </View>
+          <View style={styles.listBlock}>
+            {todoItems.length ? (
+              todoItems.map((item) => (
+                <View key={item.id} style={styles.todoRow}>
+                  <Pressable style={styles.todoMain} onPress={() => toggleTodoItem(item.id)}>
+                    <View style={[styles.todoCheck, item.done && styles.todoCheckActive]}>
+                      {item.done ? <Check size={13} color="#FFFFFF" /> : null}
+                    </View>
+                    <Text style={[styles.todoText, item.done && styles.todoTextDone]}>{item.text}</Text>
+                  </Pressable>
+                  <Pressable style={styles.todoDeleteButton} onPress={() => deleteTodoItem(item.id)}>
+                    <Trash2 size={15} color={COLORS.textSecondary} />
+                  </Pressable>
+                </View>
+              ))
+            ) : (
+              <View />
+            )}
+          </View>
+        </Card>
+
+        {loading && !snapshot ? (
+          <Card style={styles.loadingCard}>
+            <ActivityIndicator color={COLORS.primary} />
+            <Text style={styles.loadingText}>Loading your dashboard...</Text>
+          </Card>
+        ) : (
+          rankedHomeSections.map((section) => renderSectionCard(section.id)).filter(Boolean)
+        )}
+      </ScrollView>
+
+      <PageModuleEditor
+        visible={isEditorVisible}
+        onClose={() => setIsEditorVisible(false)}
+        title="Home"
+        items={orderedHomeSections}
+        onToggle={toggleHomeSection}
+        onMove={moveHomeSection}
+      />
+    </View>
+  );
 }
 
-const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
+const getStyles = (COLORS: any, isDark: boolean) =>
+  StyleSheet.create({
     container: {
-        flex: 1,
-        backgroundColor: COLORS.background,
+      flex: 1,
+      backgroundColor: COLORS.background,
     },
     scrollContent: {
-        padding: 16,
-        paddingTop: 62,
-        paddingBottom: 110,
+      paddingHorizontal: 16,
+      paddingTop: 54,
+      paddingBottom: 132,
+      gap: 14,
     },
     header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: 24,
-        gap: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 14,
     },
-    greeting: {
-        fontSize: 13,
-        fontWeight: '800',
-        letterSpacing: 1.2,
-        color: COLORS.textSecondary,
-        textTransform: 'uppercase',
+    topBarRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginBottom: 2,
     },
-    name: {
-        fontSize: 34,
-        fontWeight: '800',
-        letterSpacing: -1,
-        color: COLORS.textPrimary,
-        marginTop: 2,
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 0,
+    },
+    headerTitlePill: {
+      flex: 1,
+      minHeight: 54,
+      borderRadius: 27,
+      paddingHorizontal: 20,
+      alignItems: 'flex-start',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(16,16,18,0.74)' : 'rgba(255,255,255,0.84)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
+    },
+    headerTitleText: {
+      fontSize: 26,
+      fontWeight: '900',
+      color: COLORS.textPrimary,
+      letterSpacing: -0.8,
     },
     avatar: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
-        backgroundColor: COLORS.primary,
-        alignItems: 'center',
-        justifyContent: 'center',
-        borderWidth: 2,
-        borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)',
-        overflow: 'hidden',
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      overflow: 'hidden',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: COLORS.primary,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
     },
     avatarImage: {
-        width: '100%',
-        height: '100%',
+      width: '100%',
+      height: '100%',
     },
     avatarText: {
-        color: '#FFFFFF',
-        fontSize: 18,
-        fontWeight: '700',
-    },
-    loadingCard: {
-        padding: 24,
-        alignItems: 'center',
-        borderRadius: 28,
-        backgroundColor: COLORS.surfaceElevated,
-        borderBottomWidth: 0,
-    },
-    loadingText: {
-        marginTop: 12,
-        color: COLORS.textSecondary,
-        fontWeight: '600',
+      color: '#FFFFFF',
+      fontSize: 18,
+      fontWeight: '800',
     },
     heroCard: {
-        borderRadius: 28,
-        padding: 22,
-        marginBottom: 16,
-        backgroundColor: COLORS.surfaceElevated,
-        borderBottomWidth: 0,
+      gap: 14,
     },
     heroTopRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 14,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 12,
     },
     heroEyebrow: {
-        color: COLORS.textSecondary,
-        fontSize: 12,
-        fontWeight: '800',
-        letterSpacing: 1.1,
-        textTransform: 'uppercase',
-    },
-    weatherChip: {
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-        borderRadius: 999,
-        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
-    },
-    weatherChipText: {
-        color: COLORS.textPrimary,
-        fontSize: 12,
-        fontWeight: '700',
-    },
-    secondaryChip: {
-        paddingHorizontal: 12,
-        paddingVertical: 7,
-        borderRadius: 999,
-        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
-    },
-    secondaryChipText: {
-        color: COLORS.textPrimary,
-        fontSize: 12,
-        fontWeight: '700',
+      fontSize: 12,
+      fontWeight: '800',
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+      color: COLORS.accentText || COLORS.textSecondary,
     },
     heroTitle: {
-        fontSize: 26,
-        fontWeight: '800',
-        color: COLORS.textPrimary,
-        letterSpacing: -0.7,
+      fontSize: 28,
+      fontWeight: '900',
+      color: COLORS.textPrimary,
+      lineHeight: 34,
+      letterSpacing: -0.8,
     },
     heroDetail: {
-        fontSize: 15,
-        color: COLORS.textSecondary,
-        marginTop: 8,
-        lineHeight: 22,
+      fontSize: 15,
+      lineHeight: 22,
+      color: COLORS.textSecondary,
     },
-    heroMetaRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: 6,
-        marginTop: 12,
+    heroChipRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
     },
-    heroMetaText: {
-        color: COLORS.textTertiary,
-        fontSize: 13,
+    heroChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(80,0,0,0.04)',
     },
-    heroActions: {
-        flexDirection: 'row',
-        gap: 10,
-        marginTop: 18,
+    heroChipText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
+      textTransform: 'capitalize',
     },
-    primaryAction: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        backgroundColor: COLORS.primary,
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderRadius: 999,
+    loadingCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
     },
-    primaryActionText: {
-        color: '#FFFFFF',
-        fontSize: 14,
-        fontWeight: '700',
-    },
-    secondaryAction: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        backgroundColor: isDark ? '#151515' : '#F1F1F4',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderRadius: 999,
-    },
-    secondaryActionText: {
-        color: COLORS.textPrimary,
-        fontSize: 14,
-        fontWeight: '700',
-    },
-    metricsRow: {
-        flexDirection: 'row',
-        gap: 10,
-        marginBottom: 22,
-    },
-    metricCard: {
-        flex: 1,
-        padding: 16,
-        borderRadius: 24,
-        backgroundColor: COLORS.surface,
-        borderBottomWidth: 0,
-        gap: 8,
-    },
-    metricValue: {
-        fontSize: 20,
-        fontWeight: '800',
-        color: COLORS.textPrimary,
-    },
-    metricLabel: {
-        fontSize: 12,
-        color: COLORS.textSecondary,
-        lineHeight: 16,
-    },
-    section: {
-        marginBottom: 22,
-    },
-    sectionHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 10,
-    },
-    sectionLabel: {
-        fontSize: 12,
-        fontWeight: '800',
-        color: COLORS.textSecondary,
-        letterSpacing: 1.1,
-        textTransform: 'uppercase',
-    },
-    linkText: {
-        color: COLORS.primary,
-        fontWeight: '700',
-        fontSize: 13,
-    },
-    panelCard: {
-        borderRadius: 28,
-        backgroundColor: COLORS.surface,
-        borderBottomWidth: 0,
-        padding: 18,
-    },
-    notificationRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        gap: 12,
-        paddingVertical: 12,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: COLORS.border,
-    },
-    notificationDot: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
-        marginTop: 5,
-    },
-    notificationTitle: {
-        color: COLORS.textPrimary,
-        fontSize: 15,
-        fontWeight: '700',
-        marginBottom: 4,
-    },
-    notificationDetail: {
-        color: COLORS.textSecondary,
-        fontSize: 13,
-        lineHeight: 19,
-    },
-    essentialRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        gap: 12,
-        paddingVertical: 12,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: COLORS.border,
-    },
-    essentialRowLast: {
-        borderBottomWidth: 0,
-        paddingBottom: 0,
-    },
-    essentialIconWrap: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: COLORS.surfaceElevated,
-    },
-    essentialTitle: {
-        color: COLORS.textPrimary,
-        fontSize: 14,
-        fontWeight: '800',
-        marginBottom: 4,
-    },
-    essentialMeta: {
-        color: COLORS.textSecondary,
-        fontSize: 12,
-        lineHeight: 18,
-    },
-    moduleGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 12,
+    loadingText: {
+      color: COLORS.textSecondary,
+      fontSize: 14,
+      fontWeight: '600',
     },
     moduleCard: {
-        width: '48%',
-        minHeight: 152,
-        backgroundColor: COLORS.surface,
-        borderRadius: 24,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        gap: 8,
+      gap: 14,
+    },
+    moduleHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 16,
+    },
+    moduleEyebrow: {
+      fontSize: 12,
+      fontWeight: '800',
+      letterSpacing: 0.7,
+      textTransform: 'uppercase',
+      color: COLORS.accentText || COLORS.textSecondary,
+      marginBottom: 6,
     },
     moduleTitle: {
-        color: COLORS.textPrimary,
-        fontSize: 16,
-        fontWeight: '800',
+      fontSize: 20,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+      letterSpacing: -0.4,
+      lineHeight: 26,
     },
     moduleBody: {
-        color: COLORS.textPrimary,
-        fontSize: 13,
-        lineHeight: 18,
-        fontWeight: '600',
-    },
-    moduleCaption: {
-        color: COLORS.textSecondary,
-        fontSize: 12,
-        lineHeight: 17,
-    },
-    summaryTitle: {
-        fontSize: 19,
-        fontWeight: '800',
-        color: COLORS.textPrimary,
-    },
-    inlineModuleHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        marginBottom: 8,
-    },
-    inlineMetaText: {
-        color: COLORS.textSecondary,
-        fontSize: 12,
-        marginTop: 10,
-    },
-    summaryBody: {
-        fontSize: 14,
-        color: COLORS.textSecondary,
-        marginTop: 8,
-        lineHeight: 20,
+      fontSize: 14,
+      lineHeight: 21,
+      color: COLORS.textSecondary,
     },
     weekStrip: {
-        flexDirection: 'row',
-        gap: 8,
-        marginTop: 18,
-        marginBottom: 16,
+      flexDirection: 'row',
+      gap: 6,
+      flexWrap: 'nowrap',
+      justifyContent: 'space-between',
     },
     dayButton: {
-        flex: 1,
-        paddingVertical: 10,
-        borderRadius: 999,
-        backgroundColor: COLORS.surfaceElevated,
-        alignItems: 'center',
+      flex: 1,
+      minWidth: 0,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 0,
+      paddingVertical: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surfaceElevated,
     },
     dayButtonActive: {
-        backgroundColor: COLORS.primary,
+      backgroundColor: COLORS.primary,
+      borderColor: COLORS.primary,
     },
     dayText: {
-        color: COLORS.textSecondary,
-        fontWeight: '700',
-        fontSize: 13,
+      fontSize: 11,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
+      textAlign: 'center',
     },
     dayTextActive: {
-        color: '#FFFFFF',
+      color: '#FFFFFF',
     },
-    courseList: {
-        gap: 10,
+    listBlock: {
+      gap: 10,
     },
-    courseItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        paddingVertical: 12,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: COLORS.border,
+    todoComposer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
     },
-    courseCode: {
-        color: COLORS.textPrimary,
-        fontSize: 15,
-        fontWeight: '800',
+    todoInput: {
+      flex: 1,
+      minHeight: 44,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surfaceElevated,
+      paddingHorizontal: 14,
+      color: COLORS.textPrimary,
+      fontSize: 14,
+      fontWeight: '600',
     },
-    courseName: {
-        color: COLORS.textPrimary,
-        fontSize: 14,
-        marginTop: 4,
-        marginBottom: 4,
+    todoAddButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: COLORS.primary,
     },
-    courseMetaText: {
-        color: COLORS.textSecondary,
-        fontSize: 12,
-        lineHeight: 18,
+    todoRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingVertical: 4,
     },
-    suggestionList: {
-        gap: 10,
-        marginTop: 14,
+    todoMain: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
     },
-    suggestionRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        paddingVertical: 10,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: COLORS.border,
+    todoCheck: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surfaceElevated,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    suggestionBadge: {
-        width: 34,
-        height: 34,
-        borderRadius: 17,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: COLORS.primary,
+    todoCheckActive: {
+      backgroundColor: COLORS.primary,
+      borderColor: COLORS.primary,
     },
-    suggestionBadgeText: {
-        color: '#FFFFFF',
-        fontSize: 11,
-        fontWeight: '800',
+    todoDeleteButton: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.04)',
+      borderWidth: 1,
+      borderColor: COLORS.border,
     },
-    suggestionName: {
-        color: COLORS.textPrimary,
-        fontSize: 14,
-        fontWeight: '700',
+    todoText: {
+      flex: 1,
+      fontSize: 14,
+      color: COLORS.textPrimary,
+      fontWeight: '600',
     },
-    suggestionMeta: {
-        color: COLORS.textSecondary,
-        fontSize: 12,
-        marginTop: 4,
+    todoTextDone: {
+      color: COLORS.textSecondary,
+      textDecorationLine: 'line-through',
     },
-    serviceCard: {
-        width: '48%',
-        minHeight: 220,
-        borderRadius: 24,
-        backgroundColor: COLORS.surface,
-        borderBottomWidth: 0,
-        padding: 16,
+    timelineRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 12,
+      paddingVertical: 4,
     },
-    serviceRow: {
-        paddingVertical: 10,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: COLORS.border,
+    timelineBadge: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(80,0,0,0.05)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
     },
-    serviceName: {
-        color: COLORS.textPrimary,
-        fontSize: 13,
-        fontWeight: '700',
+    timelineTitle: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+      marginBottom: 2,
     },
-    serviceMeta: {
-        color: COLORS.textSecondary,
-        fontSize: 12,
-        lineHeight: 17,
-        marginTop: 4,
+    timelineBody: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: COLORS.textSecondary,
     },
-    emptyText: {
-        color: COLORS.textSecondary,
-        fontSize: 14,
-        lineHeight: 20,
+    timelineMeta: {
+      fontSize: 12,
+      marginTop: 4,
+      color: COLORS.textTertiary,
     },
-    errorCard: {
-        borderRadius: 24,
-        backgroundColor: 'rgba(128,0,0,0.12)',
-        borderBottomWidth: 0,
-        padding: 18,
+    alertRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      paddingVertical: 4,
     },
-    errorTitle: {
-        color: COLORS.textPrimary,
-        fontSize: 16,
-        fontWeight: '800',
+    alertDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      marginTop: 6,
     },
-    errorBody: {
-        color: COLORS.textSecondary,
-        fontSize: 13,
-        lineHeight: 19,
-        marginTop: 6,
+    infoChipRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
     },
-    errorDetail: {
-        color: COLORS.accent,
-        fontSize: 12,
-        marginTop: 8,
+    infoChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(80,0,0,0.05)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
     },
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.55)',
-        justifyContent: 'center',
-        padding: 20,
+    infoChipText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
     },
-    modalContent: {
-        backgroundColor: COLORS.surface,
-        borderRadius: 28,
-        padding: 20,
-        borderWidth: 1,
-        borderColor: COLORS.border,
+    actionRow: {
+      flexDirection: 'row',
+      gap: 10,
+      justifyContent: 'center',
     },
-    modalTitle: {
-        color: COLORS.textPrimary,
-        fontSize: 18,
-        fontWeight: '800',
-        marginBottom: 12,
+    primaryAction: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flex: 1,
+      borderRadius: 18,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      backgroundColor: COLORS.primary,
     },
-    resourceRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        paddingVertical: 12,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: COLORS.border,
+    primaryActionText: {
+      color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '800',
+      textAlign: 'center',
     },
-    resourceLabel: {
-        color: COLORS.textPrimary,
-        fontSize: 14,
-        fontWeight: '700',
+    secondaryAction: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 18,
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surfaceElevated,
     },
-    resourceUrl: {
-        color: COLORS.textSecondary,
-        fontSize: 12,
-        marginTop: 4,
+    secondaryActionText: {
+      color: isDark ? '#F3F1ED' : COLORS.textPrimary,
+      fontSize: 13,
+      fontWeight: '800',
+      textAlign: 'center',
     },
-});
+    emptyState: {
+      fontSize: 13,
+      lineHeight: 19,
+      color: COLORS.textSecondary,
+    },
+  });

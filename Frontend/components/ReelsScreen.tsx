@@ -23,6 +23,7 @@ import {
 } from '../services/streamFeeds';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const FRAME_WIDTH = SCREEN_WIDTH - 32;
 
 interface Reel {
     id: string;
@@ -96,6 +97,7 @@ const ReelItem = ({
     handleLike, openComments, openEditReel, handleDeleteReel, 
     styles,
     mediaActive,
+    embedded = false,
 }: any) => {
     const isLiked = user ? item.liked_by.includes(user.id) : false;
     const isActive = index === currentIndex && mediaActive;
@@ -129,70 +131,70 @@ const ReelItem = ({
 
     return (
         <View style={styles.reelContainer}>
-            <VideoView
-                player={player}
-                style={styles.video}
-                contentFit="cover"
-                nativeControls={false}
-            />
+            <View style={[styles.reelFrame, embedded && styles.reelFrameEmbedded]}>
+                <VideoView
+                    player={player}
+                    style={styles.video}
+                    contentFit="cover"
+                    nativeControls={false}
+                />
 
-            {playbackError ? (
-                <View style={styles.videoErrorOverlay}>
-                    <Text style={styles.videoErrorText}>This reel could not be played right now.</Text>
+                {playbackError ? (
+                    <View style={styles.videoErrorOverlay}>
+                        <Text style={styles.videoErrorText}>This reel could not be played right now.</Text>
+                    </View>
+                ) : null}
+
+                <View style={styles.rightActions}>
+                    <View style={styles.rightActionItem}>
+                        <Image
+                            source={{ uri: item.user_image || 'https://via.placeholder.com/40' }}
+                            style={styles.reelAvatar}
+                        />
+                    </View>
+
+                    <Pressable style={styles.rightActionItem} onPress={() => handleLike(item.id)}>
+                        <Heart color="#FFF" fill={isLiked ? '#FF453A' : 'transparent'} size={30} />
+                        <Text style={styles.rightActionText}>{item.likes}</Text>
+                    </Pressable>
+
+                    <Pressable style={styles.rightActionItem} onPress={() => openComments(item)}>
+                        <MessageCircle color="#FFF" size={28} />
+                        <Text style={styles.rightActionText}>{item.reply_count}</Text>
+                    </Pressable>
+
+                    <Pressable style={styles.rightActionItem}>
+                        <Share2 color="#FFF" size={26} />
+                        <Text style={styles.rightActionText}>Share</Text>
+                    </Pressable>
+
+                    <View style={styles.musicDisc}>
+                        <Music color="#FFF" size={16} />
+                    </View>
                 </View>
-            ) : null}
 
-            {/* Right side action buttons */}
-            <View style={styles.rightActions}>
-                <View style={styles.rightActionItem}>
-                    <Image
-                        source={{ uri: item.user_image || 'https://via.placeholder.com/40' }}
-                        style={styles.reelAvatar}
-                    />
+                <View style={styles.bottomInfo}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <Text style={styles.reelUsername}>@{item.user_name}</Text>
+                        {user?.id === item.user_id && (
+                            <View style={{ flexDirection: 'row', gap: 12 }}>
+                                <Pressable onPress={() => openEditReel(item)}>
+                                    <Plus color="#FFF" size={20} style={{ transform: [{ rotate: '45deg' }] }} />
+                                </Pressable>
+                                <Pressable onPress={() => handleDeleteReel(item.id)}>
+                                    <X color="#FF453A" size={20} />
+                                </Pressable>
+                            </View>
+                        )}
+                    </View>
+                    <Text style={styles.reelCaption} numberOfLines={3}>{item.caption}</Text>
                 </View>
-
-                <Pressable style={styles.rightActionItem} onPress={() => handleLike(item.id)}>
-                    <Heart color="#FFF" fill={isLiked ? '#FF453A' : 'transparent'} size={30} />
-                    <Text style={styles.rightActionText}>{item.likes}</Text>
-                </Pressable>
-
-                <Pressable style={styles.rightActionItem} onPress={() => openComments(item)}>
-                    <MessageCircle color="#FFF" size={28} />
-                    <Text style={styles.rightActionText}>{item.reply_count}</Text>
-                </Pressable>
-
-                <Pressable style={styles.rightActionItem}>
-                    <Share2 color="#FFF" size={26} />
-                    <Text style={styles.rightActionText}>Share</Text>
-                </Pressable>
-
-                <View style={styles.musicDisc}>
-                    <Music color="#FFF" size={16} />
-                </View>
-            </View>
-
-            {/* Bottom info */}
-            <View style={styles.bottomInfo}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <Text style={styles.reelUsername}>@{item.user_name}</Text>
-                    {user?.id === item.user_id && (
-                        <View style={{ flexDirection: 'row', gap: 12 }}>
-                            <Pressable onPress={() => openEditReel(item)}>
-                                <Plus color="#FFF" size={20} style={{ transform: [{ rotate: '45deg' }] }} />
-                            </Pressable>
-                            <Pressable onPress={() => handleDeleteReel(item.id)}>
-                                <X color="#FF453A" size={20} />
-                            </Pressable>
-                        </View>
-                    )}
-                </View>
-                <Text style={styles.reelCaption} numberOfLines={3}>{item.caption}</Text>
             </View>
         </View>
     );
 };
 
-export function ReelsScreen({ mediaActive = true }: { mediaActive?: boolean }) {
+export function ReelsScreen({ mediaActive = true, embedded = false, immersive = false }: { mediaActive?: boolean; embedded?: boolean; immersive?: boolean }) {
     const { COLORS } = useTheme();
     const styles = getStyles(COLORS);
     const { user } = useUser();
@@ -416,6 +418,7 @@ export function ReelsScreen({ mediaActive = true }: { mediaActive?: boolean }) {
             handleDeleteReel={handleDeleteReel}
             styles={styles}
             mediaActive={mediaActive && !commentModalVisible && !uploadModalVisible}
+            embedded={embedded}
         />
     );
 
@@ -434,7 +437,7 @@ export function ReelsScreen({ mediaActive = true }: { mediaActive?: boolean }) {
             <StatusBar barStyle="light-content" />
 
             {/* Header */}
-            <View style={styles.header}>
+            {!embedded && !immersive ? <View style={styles.header}>
                 <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
                     <ChevronLeft color="#FFF" size={28} />
                 </Pressable>
@@ -442,7 +445,7 @@ export function ReelsScreen({ mediaActive = true }: { mediaActive?: boolean }) {
                 <Pressable onPress={pickVideo} style={[styles.cameraBtn, streamError && { opacity: 0.5 }]}>
                     <Plus color="#FFF" size={28} />
                 </Pressable>
-            </View>
+            </View> : null}
 
             {streamError && (
                 <View style={{ position: 'absolute', top: 110, left: 20, right: 20, zIndex: 10, backgroundColor: 'rgba(255,59,48,0.9)', padding: 12, borderRadius: 12 }}>
@@ -598,6 +601,17 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     cameraBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
 
     reelContainer: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT, backgroundColor: '#000' },
+    reelFrame: {
+        width: SCREEN_WIDTH,
+        height: SCREEN_HEIGHT,
+        position: 'relative',
+    },
+    reelFrameEmbedded: {
+        width: FRAME_WIDTH,
+        alignSelf: 'center',
+        borderRadius: 32,
+        overflow: 'hidden',
+    },
     video: { width: '100%', height: '100%' },
     videoErrorOverlay: {
         ...StyleSheet.absoluteFillObject,

@@ -14,6 +14,7 @@ from routers.posts import router as posts_router
 from routers.dining import router as dining_router
 from routers.campus_hub import router as campus_hub_router
 from routers.grades import router as grades_router
+from routers.annex import router as annex_router
 
 from services import course_service, schedule_service, user_service
 from models.search import CourseSearchRequest
@@ -34,6 +35,7 @@ app.include_router(posts_router)
 app.include_router(dining_router)
 app.include_router(campus_hub_router)
 app.include_router(grades_router)
+app.include_router(annex_router)
 
 @app.get("/")
 def read_root():

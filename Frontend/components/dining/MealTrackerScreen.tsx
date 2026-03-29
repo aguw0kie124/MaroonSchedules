@@ -10,9 +10,9 @@ import { getLocalDateString } from '../../services/dateUtils';
 
 const MICROS: any = { vitamin_c: 90, calcium: 1000, iron: 8, potassium: 3400, magnesium: 420, sodium: 2300 };
 
-export default function MealTrackerScreen({ navigation }: any) {
+export default function MealTrackerScreen({ navigation, embedded = false }: any) {
   const { user } = useUser();
-  const { theme } = useTheme();
+  const { theme, wallpaperUri } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
 
@@ -70,25 +70,14 @@ export default function MealTrackerScreen({ navigation }: any) {
   const calPct = Math.min(1, (totals.calories || 0) / target);
   const isToday = date === getLocalDateString();
 
-  const marbleSrc = darkMode
-    ? require('../../assets/black_marble.jpg')
-    : require('../../assets/white_marble.jpg');
+  const wallpaperSource = wallpaperUri
+    ? { uri: wallpaperUri }
+    : darkMode
+      ? require('../../assets/black_marble.jpg')
+      : require('../../assets/white_marble.jpg');
 
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
-      <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
-      <ImageBackground source={marbleSrc} style={StyleSheet.absoluteFill} resizeMode="cover">
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)' }]} />
-      </ImageBackground>
-
-      <ScrollView style={s.container} contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
-        <View style={s.header}>
-            <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
-                <Text style={{ fontSize: 24, color: T.text }}>←</Text>
-            </TouchableOpacity>
-            <Text style={[s.title, { color: T.text }]}>Meal Tracker</Text>
-        </View>
-
+  const contentBody = (
+      <>
         <View style={[s.dateNav, { backgroundColor: T.bg3, borderColor: T.border }]}>
           <TouchableOpacity onPress={() => shift(-1)}><Text style={[s.dateArrow, { color: T.amber }]}>‹</Text></TouchableOpacity>
           <View style={{ alignItems: 'center' }}>
@@ -149,13 +138,39 @@ export default function MealTrackerScreen({ navigation }: any) {
             </Card>
           </>
         )}
+      </>
+  );
+
+  if (embedded) {
+    return <View style={[s.container, s.embeddedContainer]}>{contentBody}</View>;
+  }
+
+  const content = (
+      <ScrollView style={s.container} contentContainerStyle={{ padding: 20, paddingBottom: 60 }}>
+        <View style={s.header}>
+            <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+                <Text style={{ fontSize: 24, color: T.text }}>←</Text>
+            </TouchableOpacity>
+            <Text style={[s.title, { color: T.text }]}>Meal Tracker</Text>
+        </View>
+        {contentBody}
       </ScrollView>
+  );
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
+      <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.34)' : 'rgba(255,255,255,0.18)' }]} />
+      </ImageBackground>
+      {content}
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
   container: { flex: 1 },
+  embeddedContainer: { paddingBottom: 20 },
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   backBtn: { width: 44, height: 44, justifyContent: 'center' },
   title: { fontSize: 32, fontWeight: '900', letterSpacing: -0.5, flex: 1 },

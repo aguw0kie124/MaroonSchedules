@@ -87,7 +87,7 @@ function PostVideo({ url, styles }: { url: string; styles: any }) {
             <VideoView
                 player={player}
                 style={{ width: '100%', height: '100%', borderRadius: 16 }}
-                allowsFullscreen
+                fullscreenOptions={{ enable: true }}
                 allowsPictureInPicture
                 nativeControls={true}
             />
@@ -499,7 +499,11 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
                 />
             )}
 
-            <Pressable style={styles.fab} onPress={() => setModalVisible(true)} disabled={!feedConnected || !!streamError}>
+            <Pressable
+                style={[styles.fab, embedded && styles.embeddedFab]}
+                onPress={() => setModalVisible(true)}
+                disabled={!feedConnected || !!streamError}
+            >
                 <Plus color="#FFF" size={28} strokeWidth={2.5} />
             </Pressable>
 
@@ -656,7 +660,7 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
 }
 
 const getStyles = (COLORS: any, T: any) => StyleSheet.create({
-    container: { flex: 1, backgroundColor: T.bg },
+    container: { flex: 1, backgroundColor: 'transparent' },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: T.bg, paddingTop: 50, paddingBottom: 16, paddingHorizontal: 20, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: T.border },
     headerBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
     headerTitle: { fontSize: 20, fontWeight: '800', color: T.text, letterSpacing: -0.5 },
@@ -685,6 +689,7 @@ const getStyles = (COLORS: any, T: any) => StyleSheet.create({
     emptySubtitle: { fontSize: 15, color: T.text2, textAlign: 'center', lineHeight: 22 },
     
     fab: { position: 'absolute', bottom: 120, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: T.tamuMaroon, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.4, shadowOffset: { width: 0, height: 4 }, shadowRadius: 12, elevation: 8, borderWidth: 1, borderColor: T.roseGoldDark },
+    embeddedFab: { bottom: 22, right: 18 },
     
     modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
     modalContent: { backgroundColor: T.bg, borderTopLeftRadius: 32, borderTopRightRadius: 32, minHeight: '80%', padding: 20 },
