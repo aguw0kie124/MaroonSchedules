@@ -5,15 +5,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
 export const DARK_COLORS = {
-  background: '#000000',      // Pure Black
+  background: '#121212',      // Slightly grayish dark
   primary: '#500000',         // Aggie Maroon
   primaryLight: '#3D0000',
   accent: '#FF8A8A',
   textSecondary: '#A0A0A5',
   textTertiary: '#636366',
   textPrimary: '#FFFFFF',
-  surface: '#000000',
-  surfaceElevated: '#111111',
+  surface: '#1E1E1E',         // Elevated grayish tone
+  surfaceElevated: '#2A2A2A', // Higher elevation
   border: '#2C2C2E',
   danger: '#FF453A',
   success: '#30D158',

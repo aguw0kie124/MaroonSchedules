@@ -94,6 +94,7 @@ import {
   haversineDistanceMeters,
   getParkingRecommendation,
   getCategoryPillIcon,
+  getCategoryIcon,
 } from "./places/utils";
 import { getStyles } from "./places/placesStyles";
 
@@ -843,10 +844,13 @@ export function PlacesMapScreen() {
               key={`loc-${loc.location}`}
               coordinate={{ latitude: loc.coord.lat, longitude: loc.coord.lng }}
               onPress={() => handleSelectLocation(loc)}
-              anchor={{ x: 0.5, y: 0.5 }}
+              anchor={{ x: 0.5, y: 1 }}
             >
-              <View style={[styles.markerPill, isSelected && styles.markerPillSelected, { borderColor: isSelected ? statusColor : "transparent" }]}>
-                <View style={[styles.markerDot, { backgroundColor: isSelected ? statusColor : COLORS.primary }]} />
+              <View style={{ alignItems: "center", transform: [{ scale: isSelected ? 1.2 : 1.0 }] }}>
+                <View style={[styles.markerPin, { backgroundColor: isSelected ? statusColor : COLORS.primary }]}>
+                   {getCategoryIcon(loc.type, "#FFFFFF", isSelected ? 18 : 16)}
+                </View>
+                <View style={[styles.markerPinLeg, { borderTopColor: isSelected ? statusColor : COLORS.primary }]} />
               </View>
             </Marker>
           );

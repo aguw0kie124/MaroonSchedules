@@ -16,25 +16,25 @@ import { PARKING_INFO_URL, ROOM_RESERVATION_URL, EVENTS_URL } from "./types";
 import { ParkingPermit } from "../../store/appShellStore";
 
 // ── Icon helpers ──────────────────────────────────────────────
-export const getCategoryIcon = (type: LocationType) => {
+export const getCategoryIcon = (type: LocationType, color = "#FFFFFF", size = 24) => {
   switch (type) {
     case "Library":
-      return <Library />;
+      return <Library color={color} size={size} />;
     case "Rec":
-      return <Dumbbell />;
+      return <Dumbbell color={color} size={size} />;
     case "Dining":
     case "Hub":
-      return <Utensils />;
+      return <Utensils color={color} size={size} />;
     case "Parking":
-      return <TrafficCone />;
+      return <TrafficCone color={color} size={size} />;
     case "Academic":
-      return <Info />;
+      return <Info color={color} size={size} />;
     case "Landmark":
-      return <Star />;
+      return <Star color={color} size={size} />;
     case "Study":
-      return <Library />;
+      return <Library color={color} size={size} />;
     default:
-      return <Info />;
+      return <Info color={color} size={size} />;
   }
 };
 
