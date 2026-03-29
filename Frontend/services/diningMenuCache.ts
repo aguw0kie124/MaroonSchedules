@@ -235,11 +235,15 @@ export async function fetchDiningFullMenuCached({
     const cached = await AsyncStorage.getItem(cacheKey);
     if (cached) {
       const parsed: CachedMenuPayload = JSON.parse(cached);
-      return {
-        ...parsed.data,
-        fromCache: true,
-        resolvedLocation,
-      };
+      if (!parsed?.data?.success || !Array.isArray(parsed?.data?.categories) || parsed.data.categories.length === 0) {
+        await AsyncStorage.removeItem(cacheKey);
+      } else {
+        return {
+          ...parsed.data,
+          fromCache: true,
+          resolvedLocation,
+        };
+      }
     }
   }
 
@@ -249,17 +253,22 @@ export async function fetchDiningFullMenuCached({
     date: dateKey,
   });
   const response = await fetch(`${API_URL}/dining/full-menu?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Dining menu request failed (${response.status})`);
+  }
   const data = await response.json();
 
-  const payload: CachedMenuPayload = {
-    dateKey,
-    fetchedAt: new Date().toISOString(),
-    location,
-    resolvedLocation,
-    mealPeriod,
-    data,
-  };
-  await AsyncStorage.setItem(cacheKey, JSON.stringify(payload));
+  if (data?.success && Array.isArray(data?.categories) && data.categories.length > 0) {
+    const payload: CachedMenuPayload = {
+      dateKey,
+      fetchedAt: new Date().toISOString(),
+      location,
+      resolvedLocation,
+      mealPeriod,
+      data,
+    };
+    await AsyncStorage.setItem(cacheKey, JSON.stringify(payload));
+  }
 
   return {
     ...data,

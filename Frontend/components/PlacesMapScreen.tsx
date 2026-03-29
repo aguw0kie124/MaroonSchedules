@@ -66,6 +66,7 @@ import { useUser } from "@clerk/clerk-expo";
 import * as Haptics from "expo-haptics";
 import { connectFeedsUser } from "../services/streamFeeds";
 import { API_URL } from "../config";
+import { fetchSchedules } from "../api/client";
 import { useCampusHubStore } from "../store/campusHubStore";
 import { BUILDINGS, AMENITIES } from "../data/campus";
 import {
@@ -76,7 +77,9 @@ import {
   useAppShellStore,
 } from "../store/appShellStore";
 import {
+  DiningMealPeriod,
   fetchDiningFullMenuCached,
+  getDiningMealOptionsForLocation,
   getDiningMealPeriodForLocation,
   getDiningMenuCandidates,
 } from "../services/diningMenuCache";
@@ -120,6 +123,18 @@ const AMENITY_COORDS = new Map(
   AMENITIES.map((amenity) => [
     amenity.name,
     { lat: amenity.latitude, lng: amenity.longitude },
+  ]),
+);
+
+function normalizeBuildingKey(value?: string | null) {
+  return (value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+const BUILDING_LOOKUP = new Map(
+  BUILDINGS.flatMap((building) => [
+    [normalizeBuildingKey(building.name), building],
+    [normalizeBuildingKey(building.shortName), building],
+    [normalizeBuildingKey(building.id), building],
   ]),
 );
 
@@ -309,6 +324,25 @@ type LocationType =
   | "Housing"
   | "Athletics";
 
+interface ScheduleMeetingEntry {
+  id: string;
+  code: string;
+  name: string;
+  building: string;
+  room?: string;
+  days: string[];
+  timeLabel: string;
+  locationLabel: string;
+  scheduleLabel: string;
+}
+
+interface ScheduleMapOption {
+  id: string;
+  label: string;
+  source: "uploaded" | "saved";
+  entries: ScheduleMeetingEntry[];
+}
+
 interface CampusLocation {
   location: string;
   percent_full: number;
@@ -324,7 +358,26 @@ interface CampusLocation {
   menu_snippet?: string[] | null;
   shortName?: string;
   description?: string;
-  source?: "traffic" | "directory";
+  source?: "traffic" | "directory" | "schedule";
+  classMeetings?: ScheduleMeetingEntry[];
+  scheduleLabel?: string;
+}
+
+function resolveScheduleBuilding(
+  buildingValue?: string | null,
+  locationValue?: string | null,
+) {
+  const directMatch = BUILDING_LOOKUP.get(normalizeBuildingKey(buildingValue));
+  if (directMatch) return directMatch;
+
+  const locationToken = (locationValue || "").trim().split(/\s+/)[0];
+  const tokenMatch = BUILDING_LOOKUP.get(normalizeBuildingKey(locationToken));
+  if (tokenMatch) return tokenMatch;
+
+  const locationMatch = BUILDING_LOOKUP.get(normalizeBuildingKey(locationValue));
+  if (locationMatch) return locationMatch;
+
+  return null;
 }
 
 const STATIC_LOCATION_META: Record<string, Partial<CampusLocation>> = {
@@ -440,6 +493,7 @@ function buildCampusDirectory(): CampusLocation[] {
 }
 
 const CATEGORIES = [
+  { id: "Schedule", label: "Classes", icon: <Calendar size={18} /> },
   { id: "Bus", label: "Buses", icon: <Bus size={18} /> },
   { id: "Dining", label: "Dining", icon: <Utensils size={18} /> },
   { id: "Parking", label: "Parking", icon: <TrafficCone size={18} /> },
@@ -480,6 +534,8 @@ const getStatusColor = (pct: number) => {
 
 function getCategoryPillIcon(id: string) {
   switch (id) {
+    case "Schedule":
+      return Calendar;
     case "Bus":
       return Bus;
     case "Library":
@@ -504,6 +560,14 @@ function getDistanceLabel(distanceMeters: number | null) {
   if (distanceMeters == null) return "Campus";
   if (distanceMeters < 1000) return `${Math.round(distanceMeters)} m away`;
   return `${(distanceMeters / 1000).toFixed(1)} km away`;
+}
+
+function formatScheduleDays(days: string[]) {
+  if (!Array.isArray(days) || days.length === 0) {
+    return "Days TBA";
+  }
+
+  return days.join(" ");
 }
 
 function getStopLabel(stop: any) {
@@ -751,9 +815,12 @@ export function PlacesMapScreen() {
 
   const [locations, setLocations] = useState<CampusLocation[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeLayer, setActiveLayer] = useState<string>("Bus");
+  const [activeLayer, setActiveLayer] = useState<string>("Schedule");
   const indicatorAnim = useRef(new Animated.Value(0)).current;
   const [categoryTrackWidth, setCategoryTrackWidth] = useState(0);
+  const [savedSchedules, setSavedSchedules] = useState<any[]>([]);
+  const [isLoadingSchedules, setIsLoadingSchedules] = useState(false);
+  const [activeScheduleId, setActiveScheduleId] = useState<string | null>(null);
 
   // ── Pulse Animation ──
   useEffect(() => {
@@ -789,6 +856,8 @@ export function PlacesMapScreen() {
   const [isFetchingDining, setIsFetchingDining] = useState(false);
   const [diningMenuOptions, setDiningMenuOptions] = useState<string[]>([]);
   const [activeDiningMenu, setActiveDiningMenu] = useState<string | null>(null);
+  const [activeDiningMealPeriod, setActiveDiningMealPeriod] =
+    useState<DiningMealPeriod>("lunch");
   const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
   const [isFetchingReviews, setIsFetchingReviews] = useState(false);
 
@@ -807,6 +876,7 @@ export function PlacesMapScreen() {
   const [isFetchingBus, setIsFetchingBus] = useState(false);
   const [isRouteDropdownOpen, setIsRouteDropdownOpen] = useState(false);
   const [routeSearchQuery, setRouteSearchQuery] = useState("");
+  const [busDestinationQuery, setBusDestinationQuery] = useState("");
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const busPollInterval = useRef<any>(null);
   const { user } = useUser();
@@ -844,6 +914,162 @@ export function PlacesMapScreen() {
       ]),
     );
   }, [campusHubSnapshot?.recreation.facilities]);
+  const scheduleOptions = useMemo(() => {
+    const options: ScheduleMapOption[] = [];
+    const uploadedCourses = campusHubSnapshot?.academic?.courses || [];
+
+    if (uploadedCourses.length > 0) {
+      const uploadedLabel =
+        campusHubSnapshot?.academic?.scheduleName?.trim() || "Uploaded Schedule";
+      const uploadedEntries = uploadedCourses
+        .map((course: any) => {
+          const locationLabel = (course.location || "").trim();
+          const [building, ...roomParts] = locationLabel.split(/\s+/);
+          return {
+            id: `uploaded:${course.id || course.code}`,
+            code: course.code || "Class",
+            name: course.name || "Untitled Class",
+            building,
+            room: roomParts.join(" ").trim(),
+            days: Array.isArray(course.days) ? course.days : [],
+            timeLabel: course.time || "Time TBA",
+            locationLabel,
+            scheduleLabel: uploadedLabel,
+          } satisfies ScheduleMeetingEntry;
+        })
+        .filter((entry) => resolveScheduleBuilding(entry.building, entry.locationLabel));
+
+      if (uploadedEntries.length > 0) {
+        options.push({
+          id: "uploaded",
+          label: uploadedLabel,
+          source: "uploaded",
+          entries: uploadedEntries,
+        });
+      }
+    }
+
+    savedSchedules.forEach((schedule: any) => {
+      const scheduleLabel = schedule.name || "Saved Schedule";
+      const scheduleEntries = (schedule.sections || [])
+        .map((section: any) => {
+          const meeting = (section.meetings || [])[0] || {};
+          const building = (meeting.building || "").trim();
+          const room = (meeting.room || "").trim();
+          const locationLabel = `${building} ${room}`.trim();
+          return {
+            id: `saved:${schedule.schedule_id}:${section.section_id || section.id || section.sectionNumber || section.courseNumber}`,
+            code:
+              `${section.dept || ""} ${section.courseNumber || ""}`.trim() ||
+              `Section ${section.sectionNumber || "TBA"}`,
+            name: section.courseTitle || "Untitled Class",
+            building,
+            room,
+            days: Array.isArray(meeting.daysOfWeek) ? meeting.daysOfWeek : [],
+            timeLabel:
+              meeting.beginTime && meeting.endTime
+                ? `${meeting.beginTime}-${meeting.endTime}`
+                : "Time TBA",
+            locationLabel,
+            scheduleLabel,
+          } satisfies ScheduleMeetingEntry;
+        })
+        .filter((entry) => resolveScheduleBuilding(entry.building, entry.locationLabel));
+
+      if (scheduleEntries.length > 0) {
+        options.push({
+          id: `saved:${schedule.schedule_id}`,
+          label: scheduleLabel,
+          source: "saved",
+          entries: scheduleEntries,
+        });
+      }
+    });
+
+    return options;
+  }, [
+    campusHubSnapshot?.academic?.courses,
+    campusHubSnapshot?.academic?.scheduleName,
+    savedSchedules,
+  ]);
+  const activeScheduleOption = useMemo(
+    () =>
+      scheduleOptions.find((option) => option.id === activeScheduleId) ||
+      scheduleOptions[0] ||
+      null,
+    [activeScheduleId, scheduleOptions],
+  );
+  const scheduleLocations = useMemo(() => {
+    if (!activeScheduleOption) {
+      return [];
+    }
+
+    const grouped = new Map<
+      string,
+      { building: (typeof BUILDINGS)[number]; classMeetings: ScheduleMeetingEntry[] }
+    >();
+
+    activeScheduleOption.entries.forEach((entry) => {
+      const building = resolveScheduleBuilding(entry.building, entry.locationLabel);
+      if (!building) return;
+
+      const canonicalName = getCanonicalLocationName(building.name);
+      const existing = grouped.get(canonicalName);
+      if (existing) {
+        existing.classMeetings.push(entry);
+        return;
+      }
+
+      grouped.set(canonicalName, {
+        building,
+        classMeetings: [entry],
+      });
+    });
+
+    return Array.from(grouped.entries()).map(([locationName, group]) => {
+      const existingLocation = fullCampusIndex.find(
+        (location) => location.location === locationName,
+      );
+      return {
+        ...(existingLocation || {
+          location: locationName,
+          percent_full: 0,
+          type: "Academic" as LocationType,
+          is_live: false,
+          available_seats: null,
+          coord: {
+            lat: group.building.latitude,
+            lng: group.building.longitude,
+          },
+        }),
+        location: locationName,
+        shortName: group.building.shortName,
+        percent_full: 0,
+        type: "Academic" as LocationType,
+        is_live: false,
+        available_seats: null,
+        coord: {
+          lat: group.building.latitude,
+          lng: group.building.longitude,
+        },
+        source: "schedule" as const,
+        scheduleLabel: activeScheduleOption.label,
+        description: `${group.classMeetings.length} class location${group.classMeetings.length === 1 ? "" : "s"} from ${activeScheduleOption.label}.`,
+        classMeetings: group.classMeetings,
+      } satisfies CampusLocation;
+    });
+  }, [activeScheduleOption, fullCampusIndex]);
+  const allMapLocations = useMemo(() => {
+    const merged = new Map<string, CampusLocation>();
+    locations.forEach((location) => merged.set(location.location, location));
+    scheduleLocations.forEach((location) => {
+      merged.set(location.location, {
+        ...(merged.get(location.location) || {}),
+        ...location,
+      });
+    });
+    return Array.from(merged.values());
+  }, [locations, scheduleLocations]);
   const visibleCategories = useMemo(() => {
     const orderedCategories = visiblePlacesPills
       .map((item) => CATEGORIES.find((category) => category.id === item.id))
@@ -867,6 +1093,19 @@ export function PlacesMapScreen() {
     ],
     [visibleCategories],
   );
+  const scheduleSummaryLabel = useMemo(() => {
+    if (isLoadingSchedules) {
+      return "Loading your class map...";
+    }
+
+    if (!activeScheduleOption) {
+      return "No schedule mapped yet";
+    }
+
+    const classCount = activeScheduleOption.entries.length;
+    const buildingCount = scheduleLocations.length;
+    return `${classCount} class${classCount === 1 ? "" : "es"} across ${buildingCount} building${buildingCount === 1 ? "" : "s"}`;
+  }, [activeScheduleOption, isLoadingSchedules, scheduleLocations.length]);
   const filteredBusRoutes = useMemo(() => {
     const query = routeSearchQuery.trim().toLowerCase();
     if (!query) {
@@ -1025,6 +1264,52 @@ export function PlacesMapScreen() {
   }, [activeLayer, visibleCategories]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    if (!user?.id) {
+      setSavedSchedules([]);
+      setIsLoadingSchedules(false);
+      return;
+    }
+
+    setIsLoadingSchedules(true);
+    fetchSchedules(user.id)
+      .then((data) => {
+        if (!cancelled) {
+          setSavedSchedules(Array.isArray(data) ? data : []);
+        }
+      })
+      .catch((error) => {
+        console.warn("Failed to fetch saved schedules", error);
+        if (!cancelled) {
+          setSavedSchedules([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsLoadingSchedules(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (scheduleOptions.length === 0) {
+      if (activeScheduleId !== null) {
+        setActiveScheduleId(null);
+      }
+      return;
+    }
+
+    if (!activeScheduleId || !scheduleOptions.some((option) => option.id === activeScheduleId)) {
+      setActiveScheduleId(scheduleOptions[0].id);
+    }
+  }, [activeScheduleId, scheduleOptions]);
+
+  useEffect(() => {
     const activeIndex = Math.max(
       0,
       visibleCategories.findIndex((category) => category.id === activeLayer),
@@ -1059,7 +1344,10 @@ export function PlacesMapScreen() {
   }, [placesViewMode]);
 
   useEffect(() => {
-    if (user?.id && (activeLayer === "Rec" || activeLayer === "Library")) {
+    if (
+      user?.id &&
+      (activeLayer === "Rec" || activeLayer === "Library" || activeLayer === "Schedule")
+    ) {
       hydrateCampusHub(user.id).catch(() => {});
     }
   }, [activeLayer, hydrateCampusHub, user?.id]);
@@ -1144,6 +1432,7 @@ export function PlacesMapScreen() {
       setHubRestaurants([]);
       setDiningMenuOptions([]);
       setActiveDiningMenu(null);
+      setActiveDiningMealPeriod("lunch");
       setDiningMenuPreview(null);
     }
   }, [selectedId, animateSheet]);
@@ -1160,6 +1449,57 @@ export function PlacesMapScreen() {
       setIsFetchingReviews(false);
     }
   };
+
+  const loadBestDiningPreview = useCallback(
+    async (
+      locationName: string,
+      preferredMeal: DiningMealPeriod,
+    ): Promise<{ preview: any | null; meal: DiningMealPeriod }> => {
+      const mealOptions = getDiningMealOptionsForLocation(locationName);
+      const firstMeal =
+        mealOptions.find((meal) => meal === preferredMeal) ||
+        mealOptions[0] ||
+        preferredMeal;
+      const orderedMeals: DiningMealPeriod[] = [
+        firstMeal,
+        ...mealOptions.filter((meal) => meal !== firstMeal),
+      ];
+
+      let fallbackPreview: any | null = null;
+      let fallbackMeal: DiningMealPeriod = firstMeal;
+
+      for (const meal of orderedMeals) {
+        const preview = await fetchDiningFullMenuCached({
+          location: locationName,
+          mealPeriod: meal,
+        }).catch(() => null);
+
+        if (!fallbackPreview) {
+          fallbackPreview = preview;
+          fallbackMeal = meal;
+        }
+
+        if (preview?.success && preview?.categories?.length) {
+          return { preview, meal };
+        }
+      }
+
+      for (const meal of orderedMeals) {
+        const preview = await fetchDiningFullMenuCached({
+          location: locationName,
+          mealPeriod: meal,
+          forceRefresh: true,
+        }).catch(() => null);
+
+        if (preview?.success && preview?.categories?.length) {
+          return { preview, meal };
+        }
+      }
+
+      return { preview: fallbackPreview, meal: fallbackMeal };
+    },
+    [],
+  );
 
   const fetchDiningData = async (location: CampusLocation) => {
     setIsFetchingDining(true);
@@ -1180,16 +1520,12 @@ export function PlacesMapScreen() {
 
       const nextMenuLocation = menuCandidates[0] || null;
       setActiveDiningMenu(nextMenuLocation);
+      const nextMealPeriod = nextMenuLocation
+        ? (getDiningMealPeriodForLocation(nextMenuLocation) as DiningMealPeriod)
+        : "lunch";
+      setActiveDiningMealPeriod(nextMealPeriod);
 
-      if (nextMenuLocation) {
-        const menuPreview = await fetchDiningFullMenuCached({
-          location: nextMenuLocation,
-          mealPeriod: getDiningMealPeriodForLocation(nextMenuLocation),
-        });
-        setDiningMenuPreview(menuPreview);
-      } else {
-        setDiningMenuPreview(null);
-      }
+      setDiningMenuPreview(null);
     } catch (e) {
       console.warn("Failed to fetch dining data", e);
     } finally {
@@ -1637,22 +1973,23 @@ export function PlacesMapScreen() {
 
   const filteredLocations = useMemo(() => {
     if (activeLayer === "Heatmap") return [];
+    if (activeLayer === "Schedule") return scheduleLocations;
     if (activeLayer === "Dining")
-      return locations.filter(
+      return allMapLocations.filter(
         (loc) => loc.type === "Dining" || loc.type === "Hub",
       );
     if (activeLayer === "Academic") {
-      return locations.filter(
+      return allMapLocations.filter(
         (loc) => loc.type === "Academic" || loc.type === "Landmark",
       );
     }
     if (activeLayer === "Study") {
-      return locations.filter(
+      return allMapLocations.filter(
         (loc) => loc.type === "Study" || loc.type === "Library",
       );
     }
-    return locations.filter((loc) => loc.type === activeLayer);
-  }, [locations, activeLayer]);
+    return allMapLocations.filter((loc) => loc.type === activeLayer);
+  }, [activeLayer, allMapLocations, scheduleLocations]);
 
   const sortedFilteredLocations = useMemo(() => {
     return [...filteredLocations].sort((left, right) => {
@@ -1682,7 +2019,7 @@ export function PlacesMapScreen() {
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
     const query = searchQuery.toLowerCase();
-    return locations
+    return allMapLocations
       .filter(
         (loc) =>
           loc.location.toLowerCase().includes(query) ||
@@ -1707,12 +2044,47 @@ export function PlacesMapScreen() {
         return a.location.localeCompare(b.location);
       })
       .slice(0, 8);
-  }, [locations, searchQuery, userCoord]);
+  }, [allMapLocations, searchQuery, userCoord]);
+
+  const busDestinationResults = useMemo(() => {
+    if (!busDestinationQuery.trim()) return [];
+    const query = busDestinationQuery.toLowerCase();
+    return allMapLocations
+      .filter(
+        (loc) =>
+          loc.location.toLowerCase().includes(query) ||
+          (loc.shortName || "").toLowerCase().includes(query) ||
+          (loc.description || "").toLowerCase().includes(query),
+      )
+      .sort((a, b) => {
+        const aStarts = a.location.toLowerCase().startsWith(query) ? 0 : 1;
+        const bStarts = b.location.toLowerCase().startsWith(query) ? 0 : 1;
+        if (aStarts !== bStarts) return aStarts - bStarts;
+        return a.location.localeCompare(b.location);
+      })
+      .slice(0, 6);
+  }, [allMapLocations, busDestinationQuery]);
 
   const selectedLoc = useMemo(
-    () => locations.find((l) => l.location === selectedId),
-    [locations, selectedId],
+    () => allMapLocations.find((l) => l.location === selectedId),
+    [allMapLocations, selectedId],
   );
+  const markerLocations = useMemo(() => {
+    if (activeLayer === "Heatmap" || activeLayer === "Bus") {
+      return selectedLoc ? [selectedLoc] : [];
+    }
+
+    const merged = new Map<string, CampusLocation>();
+    filteredLocations.forEach((location) => {
+      merged.set(location.location, location);
+    });
+
+    if (selectedLoc) {
+      merged.set(selectedLoc.location, selectedLoc);
+    }
+
+    return Array.from(merged.values());
+  }, [activeLayer, filteredLocations, selectedLoc]);
 
   useEffect(() => {
     if (
@@ -1761,6 +2133,14 @@ export function PlacesMapScreen() {
     if (!selectedLoc) return null;
     return recreationFacilityMap.get(getCanonicalLocationName(selectedLoc.location)) || null;
   }, [recreationFacilityMap, selectedLoc]);
+  const isPrimaryDiningHallSelection = useMemo(() => {
+    const reference = (activeDiningMenu || selectedLoc?.location || "").toLowerCase();
+    return (
+      reference.includes("sbisa") ||
+      reference.includes("commons") ||
+      reference.includes("duncan")
+    );
+  }, [activeDiningMenu, selectedLoc?.location]);
 
   const getPlaceExternalLink = useCallback((location: CampusLocation) => {
     const recreationFacility =
@@ -1819,13 +2199,13 @@ export function PlacesMapScreen() {
 
     let cancelled = false;
     setIsFetchingDining(true);
-    fetchDiningFullMenuCached({
-      location: activeDiningMenu,
-      mealPeriod: getDiningMealPeriodForLocation(activeDiningMenu),
-    })
-      .then((menuPreview) => {
+    loadBestDiningPreview(activeDiningMenu, activeDiningMealPeriod)
+      .then(({ preview, meal }) => {
         if (!cancelled) {
-          setDiningMenuPreview(menuPreview);
+          if (meal !== activeDiningMealPeriod) {
+            setActiveDiningMealPeriod(meal);
+          }
+          setDiningMenuPreview(preview);
         }
       })
       .catch((error) => console.warn("Failed to load dining menu preview", error))
@@ -1838,7 +2218,7 @@ export function PlacesMapScreen() {
     return () => {
       cancelled = true;
     };
-  }, [activeDiningMenu]);
+  }, [activeDiningMealPeriod, activeDiningMenu, loadBestDiningPreview]);
 
   const openFullMenu = useCallback(
     (locationName: string) => {
@@ -1860,6 +2240,26 @@ export function PlacesMapScreen() {
     },
     [navigation],
   );
+
+  const openScheduleList = useCallback(() => {
+    const rootNavigation = navigation.getParent?.("RootStack") || navigation.getParent?.();
+    if (rootNavigation?.navigate) {
+      rootNavigation.navigate("ScheduleList");
+      return;
+    }
+
+    navigation.navigate("ScheduleList");
+  }, [navigation]);
+
+  const openNewCourseSearch = useCallback(() => {
+    const rootNavigation = navigation.getParent?.("RootStack") || navigation.getParent?.();
+    if (rootNavigation?.navigate) {
+      rootNavigation.navigate("NewCourseSearch");
+      return;
+    }
+
+    navigation.navigate("NewCourseSearch");
+  }, [navigation]);
 
   const openBusTimetable = useCallback(() => {
     const params = isAllBusRoutesSelected
@@ -1893,22 +2293,43 @@ export function PlacesMapScreen() {
     stopTimetable,
   ]);
 
-  const openTripPlanner = useCallback(() => {
-    const rootNavigation = navigation.getParent?.("RootStack") || navigation.getParent?.();
-    const params = {
-      preferredRouteKey: isAllBusRoutesSelected ? null : selectedRoute?.Key || null,
-      preferredRouteName: isAllBusRoutesSelected
-        ? "Best available route"
-        : selectedRoute?.Name || selectedRoute?.ShortName || "Selected route",
-    };
+  const openNavigationToLocation = useCallback(
+    (loc: CampusLocation, initialTravelMode: "walk" | "bus" = "walk") => {
+      const rootNavigation = navigation.getParent?.("RootStack") || navigation.getParent?.();
+      const params = {
+        initialTravelMode,
+        initialDestination: {
+          id: loc.location,
+          name: loc.location,
+          shortName: loc.shortName || loc.location,
+          latitude: loc.coord.lat,
+          longitude: loc.coord.lng,
+          type:
+            loc.type === "Academic"
+              ? "academic"
+              : loc.type === "Library"
+                ? "library"
+                : loc.type === "Dining"
+                  ? "dining"
+                  : loc.type === "Rec"
+                    ? "recreation"
+                    : loc.type === "Housing"
+                      ? "housing"
+                      : loc.type === "Athletics"
+                        ? "athletics"
+                        : "landmark",
+        },
+      };
 
-    if (rootNavigation?.navigate) {
-      rootNavigation.navigate("TransitTripPlanner", params);
-      return;
-    }
-
-    navigation.navigate("TransitTripPlanner", params);
-  }, [isAllBusRoutesSelected, navigation, selectedRoute]);
+      if (rootNavigation?.navigate) {
+        rootNavigation.navigate("CampusNavigation", params);
+      } else {
+        navigation.navigate("CampusNavigation", params);
+      }
+      setBusDestinationQuery("");
+    },
+    [navigation],
+  );
 
   const handleSelectLocation = useCallback((loc: CampusLocation) => {
     Keyboard.dismiss();
@@ -2135,22 +2556,7 @@ export function PlacesMapScreen() {
           })}
 
         {/* Marker rendering fixes: Ensure markers are always rendered for active categories */}
-        {locations
-          .filter((loc) => {
-            if (activeLayer === "Heatmap" || activeLayer === "Bus")
-              return loc.location === selectedId;
-            const isDiningTab = activeLayer === "Dining";
-            const isAcademicTab = activeLayer === "Academic";
-            const isStudyTab = activeLayer === "Study";
-            return (
-              loc.location === selectedId ||
-              loc.type === activeLayer ||
-              (isDiningTab && loc.type === "Hub") ||
-              (isAcademicTab && loc.type === "Landmark") ||
-              (isStudyTab && loc.type === "Library")
-            );
-          })
-          .map((loc) => {
+        {markerLocations.map((loc) => {
             const isSelected = selectedId === loc.location;
             const catIcon = getCategoryIcon(loc.type);
             return (
@@ -2170,20 +2576,26 @@ export function PlacesMapScreen() {
                   <View
                     style={[
                       styles.pinHead,
-                      { backgroundColor: isSelected ? "#FF8A00" : "#800000" },
+                      {
+                        backgroundColor:
+                          isSelected || loc.source === "schedule" ? "#500000" : "#7A1F1F",
+                      },
                     ]}
                   >
                     <View style={styles.pinInnerCircle}>
                       {React.cloneElement(catIcon as React.ReactElement<any>, {
                         size: 12,
-                        color: isSelected ? "#FFF" : "#FF8A8A",
+                        color: isSelected || loc.source === "schedule" ? "#FFF" : "#F5D6D6",
                       })}
                     </View>
                   </View>
                   <View
                     style={[
                       styles.pinTail,
-                      { borderTopColor: isSelected ? "#FF8A00" : "#800000" },
+                      {
+                        borderTopColor:
+                          isSelected || loc.source === "schedule" ? "#500000" : "#7A1F1F",
+                      },
                     ]}
                   />
                 </View>
@@ -2358,11 +2770,118 @@ export function PlacesMapScreen() {
             </View>
             <View style={styles.resultCountChip}>
               <Text style={styles.resultCountText}>
-                {sortedFilteredLocations.length} places
+                {activeLayer === "Schedule"
+                  ? `${sortedFilteredLocations.length} class building${sortedFilteredLocations.length === 1 ? "" : "s"}`
+                  : `${sortedFilteredLocations.length} places`}
               </Text>
             </View>
           </View>
         )}
+
+        {activeLayer === "Schedule" ? (
+          <View style={styles.scheduleHeaderCard}>
+            <View style={styles.scheduleHeaderTopRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.scheduleHeaderEyebrow}>Class map</Text>
+                <Text style={styles.scheduleHeaderTitle}>
+                  {activeScheduleOption ? activeScheduleOption.label : "No schedule selected"}
+                </Text>
+                <Text style={styles.scheduleHeaderBody}>
+                  {activeScheduleOption
+                    ? `${scheduleSummaryLabel}. Tap a building to see the classes meeting there.`
+                    : isLoadingSchedules
+                      ? "Loading your saved schedules and uploaded class data."
+                      : "Upload a schedule or add classes manually to pin your day onto the map."}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.scheduleHeaderButton}
+                onPress={openScheduleList}
+              >
+                <Text style={styles.scheduleHeaderButtonText}>Schedules</Text>
+              </TouchableOpacity>
+            </View>
+
+            {scheduleOptions.length > 0 ? (
+              <>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.scheduleChipScroller}
+                >
+                  {scheduleOptions.map((option) => {
+                    const isActive = activeScheduleOption?.id === option.id;
+                    return (
+                      <TouchableOpacity
+                        key={option.id}
+                        style={[
+                          styles.scheduleChip,
+                          isActive && styles.scheduleChipActive,
+                        ]}
+                        onPress={() => {
+                          setActiveScheduleId(option.id);
+                          setSelectedId(null);
+                        }}
+                      >
+                        <Text
+                          style={[
+                            styles.scheduleChipLabel,
+                            isActive && styles.scheduleChipLabelActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          {option.label}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.scheduleChipMeta,
+                            isActive && styles.scheduleChipMetaActive,
+                          ]}
+                        >
+                          {option.source === "uploaded"
+                            ? "Uploaded schedule"
+                            : `${option.entries.length} classes`}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                <View style={styles.scheduleHeaderFooter}>
+                  <Text style={styles.scheduleHeaderFooterText}>
+                    {scheduleSummaryLabel}
+                  </Text>
+                  <TouchableOpacity onPress={openNewCourseSearch}>
+                    <Text style={styles.seeAllText}>Add class</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : isLoadingSchedules ? (
+              <ActivityIndicator color={COLORS.primary} style={{ marginTop: 12 }} />
+            ) : (
+              <View style={styles.scheduleEmptyState}>
+                <Text style={styles.scheduleEmptyStateTitle}>No classes on the map yet</Text>
+                <Text style={styles.scheduleEmptyStateBody}>
+                  Keep Places centered on your day by adding a saved schedule or choosing sections manually.
+                </Text>
+                <View style={styles.scheduleEmptyActionRow}>
+                  <TouchableOpacity
+                    style={[styles.scheduleEmptyAction, styles.scheduleEmptyActionPrimary]}
+                    onPress={openScheduleList}
+                  >
+                    <Text style={styles.scheduleEmptyActionPrimaryText}>My Schedules</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.scheduleEmptyAction}
+                    onPress={openNewCourseSearch}
+                  >
+                    <Text style={styles.scheduleEmptyActionText}>Add Class</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        ) : null}
 
       </View>
 
@@ -2430,22 +2949,65 @@ export function PlacesMapScreen() {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity
-            style={styles.planTripButton}
-            onPress={openTripPlanner}
-            activeOpacity={0.88}
-          >
-            <View style={styles.planTripIconWrap}>
-              <Navigation size={16} color="#FFFFFF" />
+          <View style={styles.destinationSearchCard}>
+            <View style={styles.destinationSearchRow}>
+              <Search size={16} color={COLORS.textTertiary} />
+              <TextInput
+                value={busDestinationQuery}
+                onChangeText={setBusDestinationQuery}
+                placeholder="Search destination for walking or bus route"
+                placeholderTextColor={COLORS.textTertiary}
+                style={styles.destinationSearchInput}
+              />
+              {busDestinationQuery.length > 0 ? (
+                <TouchableOpacity onPress={() => setBusDestinationQuery("")}>
+                  <X size={16} color={COLORS.textTertiary} />
+                </TouchableOpacity>
+              ) : null}
             </View>
-            <View style={styles.planTripTextStack}>
-              <Text style={styles.planTripLabel}>Plan a Trip</Text>
-              <Text style={styles.planTripMeta} numberOfLines={1}>
-                Start, destination, time, and routing preferences
-              </Text>
-            </View>
-            <ChevronRight size={16} color={COLORS.textTertiary} />
-          </TouchableOpacity>
+
+            {busDestinationQuery.trim().length > 0 ? (
+              <View style={styles.destinationResults}>
+                {busDestinationResults.length > 0 ? (
+                  busDestinationResults.map((loc) => (
+                    <View key={`bus-search-${loc.location}`} style={styles.destinationResultItem}>
+                      <TouchableOpacity
+                        style={styles.destinationResultMain}
+                        onPress={() => openNavigationToLocation(loc, "walk")}
+                      >
+                        <MapPin size={14} color={COLORS.primary} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.destinationResultTitle} numberOfLines={1}>
+                            {loc.location}
+                          </Text>
+                          <Text style={styles.destinationResultMeta} numberOfLines={1}>
+                            {loc.shortName && loc.shortName !== loc.location
+                              ? `${loc.shortName} • `
+                              : ""}
+                            {loc.type}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.destinationModePill}
+                        onPress={() => openNavigationToLocation(loc, "walk")}
+                      >
+                        <Text style={styles.destinationModeText}>Walk</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.destinationModePill}
+                        onPress={() => openNavigationToLocation(loc, "bus")}
+                      >
+                        <Text style={styles.destinationModeText}>Bus</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.destinationEmptyText}>No places match that search.</Text>
+                )}
+              </View>
+            ) : null}
+          </View>
 
           {isRouteDropdownOpen && (
             <View style={styles.busRoutesDropdown}>
@@ -2513,12 +3075,24 @@ export function PlacesMapScreen() {
       )}
 
       {placesViewMode === "list" && activeLayer !== "Bus" && activeLayer !== "Heatmap" && (
-        <View style={styles.placesListOverlay} pointerEvents="box-none">
+        <View
+          style={[
+            styles.placesListOverlay,
+            activeLayer === "Schedule" && styles.placesListOverlaySchedule,
+          ]}
+          pointerEvents="box-none"
+        >
           <Card style={styles.placesListCard}>
-            <View style={styles.placesListHeader}>
-              <Text style={styles.placesListTitle}>{activeLayer} Places</Text>
+              <View style={styles.placesListHeader}>
+              <Text style={styles.placesListTitle}>
+                {activeLayer === "Schedule" ? "Class Locations" : `${activeLayer} Places`}
+              </Text>
               <Text style={styles.placesListSubtitle}>
-                Unified campus nodes with dining, events, parking, and room actions layered in.
+                {activeLayer === "Schedule"
+                  ? activeScheduleOption
+                    ? `Mapped from ${activeScheduleOption.label}. Open any building to see which classes meet there.`
+                    : "No uploaded or saved schedule has been pinned yet."
+                  : "Unified campus nodes with dining, events, parking, and room actions layered in."}
               </Text>
             </View>
             <ScrollView
@@ -2555,7 +3129,12 @@ export function PlacesMapScreen() {
                         <Text style={styles.placesListRowDistance}>{getDistanceLabel(distanceMeters)}</Text>
                       </View>
                       <Text style={styles.placesListRowMeta}>
-                        {loc.type === "Rec"
+                        {loc.classMeetings?.length
+                          ? `${loc.classMeetings.length} class${loc.classMeetings.length === 1 ? "" : "es"} · ${loc.classMeetings
+                              .slice(0, 2)
+                              .map((meeting) => meeting.code)
+                              .join(" · ")}`
+                          : loc.type === "Rec"
                           ? `Today: ${recreationFacility?.today_hours || recreationFacility?.hours_hint || loc.hours || 'Check official page'}`
                           : loc.description || loc.hours || loc.type}
                       </Text>
@@ -2707,6 +3286,11 @@ export function PlacesMapScreen() {
                         <View style={styles.livePulse} />
                         <Text style={styles.liveTextSlim}>Live Traffic</Text>
                       </View>
+                    ) : selectedLoc.classMeetings?.length ? (
+                      <View style={styles.aiBadgeSlim}>
+                        <Text style={styles.dotSeparator}>•</Text>
+                        <Text style={styles.aiTextSlim}>Your schedule</Text>
+                      </View>
                     ) : (
                       <View style={styles.aiBadgeSlim}>
                         <Text style={styles.dotSeparator}>•</Text>
@@ -2785,13 +3369,25 @@ export function PlacesMapScreen() {
                         <Text style={styles.quickActionText}>{externalLink.label}</Text>
                       </TouchableOpacity>
 
-                      {(selectedLoc.type === "Dining" || selectedLoc.type === "Hub") && activeDiningMenu ? (
+                      {(selectedLoc.type === "Dining" || selectedLoc.type === "Hub") &&
+                      activeDiningMenu &&
+                      isPrimaryDiningHallSelection ? (
                         <TouchableOpacity
                           style={[styles.quickActionPill, styles.quickActionPrimary]}
                           onPress={() => openFullMenu(activeDiningMenu)}
                         >
                           <Utensils size={14} color="#FFFFFF" />
-                          <Text style={styles.quickActionPrimaryText}>Open Menu</Text>
+                          <Text style={styles.quickActionPrimaryText}>View Menus</Text>
+                        </TouchableOpacity>
+                      ) : null}
+
+                      {selectedLoc.classMeetings?.length ? (
+                        <TouchableOpacity
+                          style={styles.quickActionPill}
+                          onPress={openScheduleList}
+                        >
+                          <Calendar size={14} color="#F3F1ED" />
+                          <Text style={styles.quickActionText}>My Schedules</Text>
                         </TouchableOpacity>
                       ) : null}
 
@@ -2849,9 +3445,6 @@ export function PlacesMapScreen() {
                         </TouchableOpacity>
                       ))}
                     </View>
-                    <Text style={styles.hoursText}>
-                      Tap a restaurant to preview its menu and open the full cached menu instantly.
-                    </Text>
                   </View>
                   <View style={styles.hoursInfo}>
                     <Clock size={12} color={COLORS.textTertiary} />
@@ -2933,16 +3526,38 @@ export function PlacesMapScreen() {
                   </View>
                 )}
 
-                {(selectedLoc.type === "Dining" || selectedLoc.type === "Hub") && (
+                {(selectedLoc.type === "Dining" || selectedLoc.type === "Hub") &&
+                isPrimaryDiningHallSelection && (
                   <View style={styles.infoBlock}>
                     <View style={styles.reviewsHeader}>
-                      <Text style={styles.sectionTitle}>Menu Preview</Text>
+                      <Text style={styles.sectionTitle}>Menus</Text>
                       {activeDiningMenu ? (
                         <TouchableOpacity onPress={() => openFullMenu(activeDiningMenu)}>
-                          <Text style={styles.seeAllText}>Open full menu</Text>
+                          <Text style={styles.seeAllText}>View full menu</Text>
                         </TouchableOpacity>
                       ) : null}
                     </View>
+
+                    {activeDiningMenu ? (
+                      <View style={styles.restaurantChipList}>
+                        {getDiningMealOptionsForLocation(activeDiningMenu).map((mealPeriod) => (
+                          <TouchableOpacity
+                            key={mealPeriod}
+                            style={[
+                              styles.restaurantChip,
+                              activeDiningMealPeriod === mealPeriod && styles.restaurantChipActive,
+                            ]}
+                            onPress={() =>
+                              setActiveDiningMealPeriod(mealPeriod as DiningMealPeriod)
+                            }
+                          >
+                            <Text style={styles.restaurantChipText}>
+                              {mealPeriod.charAt(0).toUpperCase() + mealPeriod.slice(1)}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ) : null}
 
                     {diningMenuOptions.length > 1 ? (
                       <View style={styles.restaurantChipList}>
@@ -2989,12 +3604,42 @@ export function PlacesMapScreen() {
                     ) : (
                       <View style={styles.emptyReviews}>
                         <Text style={styles.emptyReviewsText}>
-                          No cached menu preview is available for this location yet.
+                          Menu not available yet for this meal period.
                         </Text>
                       </View>
                     )}
                   </View>
                 )}
+
+                {selectedLoc.classMeetings?.length ? (
+                  <View style={styles.infoBlock}>
+                    <View style={styles.reviewsHeader}>
+                      <Text style={styles.sectionTitle}>Classes Here</Text>
+                      <TouchableOpacity onPress={openScheduleList}>
+                        <Text style={styles.seeAllText}>My schedules</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.classMeetingList}>
+                      {selectedLoc.classMeetings.map((meeting) => (
+                        <View key={meeting.id} style={styles.classMeetingCard}>
+                          <View style={styles.classMeetingHeader}>
+                            <Text style={styles.classMeetingCode}>{meeting.code}</Text>
+                            <Text style={styles.classMeetingTime}>{meeting.timeLabel}</Text>
+                          </View>
+                          <Text style={styles.classMeetingName}>{meeting.name}</Text>
+                          <Text style={styles.classMeetingMeta}>
+                            {formatScheduleDays(meeting.days)}
+                            {meeting.room ? ` · Room ${meeting.room}` : ""}
+                          </Text>
+                          <Text style={styles.classMeetingScheduleLabel}>
+                            {meeting.scheduleLabel}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
 
                 {/* Reviews from Stream */}
                 <View style={styles.reviewsHeader}>
@@ -3418,6 +4063,150 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       fontWeight: "700",
       color: COLORS.textPrimary,
     },
+    scheduleHeaderCard: {
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
+      backgroundColor: isDark ? "rgba(14,14,16,0.9)" : "rgba(255,255,255,0.94)",
+      padding: 16,
+      gap: 14,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.2,
+      shadowRadius: 14,
+      elevation: 10,
+    },
+    scheduleHeaderTopRow: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 12,
+    },
+    scheduleHeaderEyebrow: {
+      color: COLORS.textSecondary,
+      fontSize: 11,
+      fontWeight: "800",
+      textTransform: "uppercase",
+      letterSpacing: 0.7,
+      marginBottom: 4,
+    },
+    scheduleHeaderTitle: {
+      color: COLORS.textPrimary,
+      fontSize: 18,
+      fontWeight: "800",
+      marginBottom: 4,
+    },
+    scheduleHeaderBody: {
+      color: COLORS.textSecondary,
+      fontSize: 13,
+      lineHeight: 19,
+    },
+    scheduleHeaderButton: {
+      minHeight: 38,
+      paddingHorizontal: 14,
+      borderRadius: 19,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#500000",
+    },
+    scheduleHeaderButtonText: {
+      color: "#FFFFFF",
+      fontSize: 12,
+      fontWeight: "800",
+    },
+    scheduleChipScroller: {
+      gap: 10,
+      paddingRight: 4,
+    },
+    scheduleChip: {
+      minWidth: 148,
+      maxWidth: 224,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
+      backgroundColor: isDark ? "#121214" : "#F6F4F1",
+      gap: 4,
+    },
+    scheduleChipActive: {
+      backgroundColor: "#500000",
+      borderColor: "#500000",
+    },
+    scheduleChipLabel: {
+      color: COLORS.textPrimary,
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    scheduleChipLabelActive: {
+      color: "#FFFFFF",
+    },
+    scheduleChipMeta: {
+      color: COLORS.textSecondary,
+      fontSize: 11,
+      fontWeight: "600",
+    },
+    scheduleChipMetaActive: {
+      color: "rgba(255,255,255,0.82)",
+    },
+    scheduleHeaderFooter: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+    },
+    scheduleHeaderFooterText: {
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      fontWeight: "700",
+      flex: 1,
+    },
+    scheduleEmptyState: {
+      borderRadius: 20,
+      padding: 14,
+      gap: 12,
+      backgroundColor: isDark ? "#121214" : "#F6F4F1",
+      borderWidth: 1,
+      borderColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,12,14,0.06)",
+    },
+    scheduleEmptyStateTitle: {
+      color: COLORS.textPrimary,
+      fontSize: 15,
+      fontWeight: "800",
+    },
+    scheduleEmptyStateBody: {
+      color: COLORS.textSecondary,
+      fontSize: 13,
+      lineHeight: 19,
+    },
+    scheduleEmptyActionRow: {
+      flexDirection: "row",
+      gap: 10,
+    },
+    scheduleEmptyAction: {
+      flex: 1,
+      minHeight: 42,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: isDark ? "#18181A" : "#FFFFFF",
+      paddingHorizontal: 12,
+    },
+    scheduleEmptyActionPrimary: {
+      backgroundColor: "#500000",
+      borderColor: "#500000",
+    },
+    scheduleEmptyActionText: {
+      color: COLORS.textPrimary,
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    scheduleEmptyActionPrimaryText: {
+      color: "#FFFFFF",
+      fontSize: 13,
+      fontWeight: "800",
+    },
 
     // ── Pins ────────────────────────────────────────────────────────────────
     pinContainer: { alignItems: "center", justifyContent: "center" },
@@ -3764,6 +4553,52 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     emptyReviews: { paddingVertical: 30, alignItems: "center" },
     emptyReviewsText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: "600" },
+    classMeetingList: {
+      gap: 10,
+      marginBottom: 12,
+    },
+    classMeetingCard: {
+      borderRadius: 18,
+      padding: 14,
+      gap: 6,
+      backgroundColor: isDark ? "#111" : "#FFFFFF",
+      borderWidth: 1,
+      borderColor: isDark ? "#222" : "rgba(12,12,14,0.08)",
+    },
+    classMeetingHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 12,
+    },
+    classMeetingCode: {
+      color: COLORS.textPrimary,
+      fontSize: 14,
+      fontWeight: "800",
+      flex: 1,
+    },
+    classMeetingTime: {
+      color: "#500000",
+      fontSize: 12,
+      fontWeight: "800",
+    },
+    classMeetingName: {
+      color: COLORS.textPrimary,
+      fontSize: 13,
+      fontWeight: "700",
+    },
+    classMeetingMeta: {
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      lineHeight: 18,
+    },
+    classMeetingScheduleLabel: {
+      color: COLORS.textSecondary,
+      fontSize: 11,
+      fontWeight: "700",
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+    },
 
     // ── Review Modal ────────────────────────────────────────────────────────
     modalOverlay: {
@@ -3942,14 +4777,9 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       shadowRadius: 10,
       elevation: 8,
     },
-    planTripButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      backgroundColor: isDark ? "rgba(12,12,14,0.90)" : "rgba(255,255,255,0.96)",
-      borderRadius: 22,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
+    destinationSearchCard: {
+      backgroundColor: isDark ? "rgba(12,12,14,0.92)" : "rgba(255,255,255,0.97)",
+      borderRadius: 18,
       borderWidth: 1,
       borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
       shadowColor: "#000",
@@ -3957,28 +4787,71 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       shadowOpacity: 0.24,
       shadowRadius: 10,
       elevation: 8,
+      overflow: "hidden",
     },
-    planTripIconWrap: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
+    destinationSearchRow: {
+      flexDirection: "row",
       alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: COLORS.primary,
+      gap: 10,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
     },
-    planTripTextStack: {
+    destinationSearchInput: {
       flex: 1,
-      gap: 2,
-    },
-    planTripLabel: {
       color: COLORS.textPrimary,
       fontSize: 14,
+      fontWeight: "600",
+    },
+    destinationResults: {
+      borderTopWidth: 1,
+      borderTopColor: COLORS.border,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+      gap: 8,
+    },
+    destinationResultItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    destinationResultMain: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 4,
+    },
+    destinationResultTitle: {
+      color: COLORS.textPrimary,
+      fontSize: 13,
       fontWeight: "800",
     },
-    planTripMeta: {
+    destinationResultMeta: {
       color: COLORS.textSecondary,
       fontSize: 11,
       fontWeight: "600",
+      marginTop: 1,
+    },
+    destinationModePill: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,12,14,0.04)",
+    },
+    destinationModeText: {
+      color: COLORS.textPrimary,
+      fontSize: 11,
+      fontWeight: "700",
+    },
+    destinationEmptyText: {
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      fontWeight: "600",
+      paddingHorizontal: 4,
+      paddingVertical: 8,
     },
     busRoutesDropdown: {
       marginTop: 8,
@@ -4014,6 +4887,9 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       right: 16,
       bottom: FLOATING_CARD_BOTTOM_OFFSET + 12,
       zIndex: 3400,
+    },
+    placesListOverlaySchedule: {
+      top: 332,
     },
     placesListCard: {
       flex: 1,

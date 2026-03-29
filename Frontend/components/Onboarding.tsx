@@ -13,7 +13,6 @@ import {
   LayoutGrid,
   Radio,
   SlidersHorizontal,
-  UtensilsCrossed,
 } from 'lucide-react-native';
 import { Card, PrimaryButton, useTheme } from './SharedUI';
 import {
@@ -34,7 +33,7 @@ import {
 } from '../store/appShellStore';
 
 const LANDING_OPTIONS: Array<{ id: NavItemId; label: string }> = DEFAULT_NAV_ITEMS
-  .filter((item) => ['Dashboard', 'Places', 'Dining', 'Social'].includes(item.id))
+  .filter((item) => ['Places', 'Dashboard', 'Social', 'Events'].includes(item.id))
   .map((item) => ({ id: item.id, label: item.label }));
 
 function getModeIcon(mode: AppMode) {
@@ -45,8 +44,6 @@ function getModeIcon(mode: AppMode) {
       return Radio;
     case 'navigation':
       return Compass;
-    case 'dining':
-      return UtensilsCrossed;
     case 'all_in_one':
     default:
       return LayoutGrid;

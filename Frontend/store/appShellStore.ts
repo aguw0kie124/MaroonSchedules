@@ -5,14 +5,12 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 export type NavItemId =
   | 'Dashboard'
   | 'Places'
-  | 'Dining'
   | 'Social'
-  | 'Timer'
   | 'BusRoutes'
-  | 'Events'
-  | 'Menus';
-export type HomeSectionId = 'schedule' | 'transit' | 'dining' | 'alerts' | 'events';
+  | 'Events';
+export type HomeSectionId = 'schedule' | 'transit' | 'alerts' | 'events';
 export type PlacesPillId =
+  | 'Schedule'
   | 'Bus'
   | 'Library'
   | 'Rec'
@@ -22,16 +20,7 @@ export type PlacesPillId =
   | 'Study'
   | 'Heatmap';
 export type SocialTabId = 'home' | 'events' | 'reels' | 'messages';
-export type DiningActionId =
-  | 'rings'
-  | 'macros'
-  | 'tracker'
-  | 'menus'
-  | 'streak'
-  | 'swipes'
-  | 'database';
-export type TimerModuleId = 'pomodoro' | 'habits' | 'focus_tools';
-export type AppMode = 'academic' | 'social' | 'navigation' | 'dining' | 'all_in_one';
+export type AppMode = 'academic' | 'social' | 'navigation' | 'all_in_one';
 export type UIDensity = 'minimal' | 'standard' | 'full';
 export type ShellPresetId = 'freshman' | 'commuter' | 'resident' | 'power';
 export type ParkingPermit = 'visitor' | 'garage' | 'any_valid' | 'west_campus' | 'resident';
@@ -48,7 +37,6 @@ export const APP_MODE_OPTIONS: Array<{ id: AppMode; label: string; description: 
   { id: 'academic', label: 'Academic', description: 'Classes, schedule, readiness, and focused planning.' },
   { id: 'social', label: 'Social', description: 'Events, org activity, and community-first discovery.' },
   { id: 'navigation', label: 'Navigation', description: 'Places, buses, parking, and getting around fast.' },
-  { id: 'dining', label: 'Dining', description: 'Menus, nearby food, dollars, and meal tracking first.' },
   { id: 'all_in_one', label: 'All-in-One', description: 'A balanced dashboard across the whole campus experience.' },
 ];
 
@@ -74,38 +62,35 @@ export const PARKING_PERMIT_OPTIONS: Array<{ id: ParkingPermit; label: string; d
 ];
 
 export const PLACES_VIEW_MODE_OPTIONS: Array<{ id: PlacesViewMode; label: string; description: string }> = [
-  { id: 'map', label: 'Map First', description: 'Open Places in map mode with floating controls.' },
+  { id: 'map', label: 'Map First', description: 'Open Places on the map with schedule locations front and center.' },
   { id: 'list', label: 'List First', description: 'Open Places in list mode for faster browsing.' },
 ];
 
 export const DEFAULT_NAV_ITEMS: ToggleLayoutItem<NavItemId>[] = [
-  { id: 'Dashboard', label: 'Home', visible: true, order: 0 },
-  { id: 'Places', label: 'Places', visible: true, order: 1 },
-  { id: 'Dining', label: 'Dining', visible: true, order: 2 },
-  { id: 'Social', label: 'Social', visible: true, order: 3 },
-  { id: 'Timer', label: 'Timer', visible: true, order: 4 },
-  { id: 'BusRoutes', label: 'Bus Routes', visible: false, order: 5 },
-  { id: 'Events', label: 'Events', visible: false, order: 6 },
-  { id: 'Menus', label: 'Menus', visible: false, order: 7 },
+  { id: 'Places', label: 'Places', visible: true, order: 0 },
+  { id: 'Dashboard', label: 'Home', visible: true, order: 1 },
+  { id: 'Social', label: 'Social', visible: true, order: 2 },
+  { id: 'BusRoutes', label: 'Bus Routes', visible: false, order: 4 },
+  { id: 'Events', label: 'Events', visible: false, order: 5 },
 ];
 
 export const DEFAULT_HOME_SECTIONS: ToggleLayoutItem<HomeSectionId>[] = [
   { id: 'schedule', label: "What's Next", visible: true, order: 0 },
   { id: 'transit', label: 'Transit Window', visible: true, order: 1 },
-  { id: 'dining', label: 'Dining Now', visible: true, order: 2 },
-  { id: 'alerts', label: 'Priority Alerts', visible: true, order: 3 },
-  { id: 'events', label: 'Events Near You', visible: true, order: 4 },
+  { id: 'alerts', label: 'Priority Alerts', visible: true, order: 2 },
+  { id: 'events', label: 'Events Near You', visible: true, order: 3 },
 ];
 
 export const DEFAULT_PLACES_PILLS: ToggleLayoutItem<PlacesPillId>[] = [
-  { id: 'Bus', label: 'Buses', visible: true, order: 0 },
+  { id: 'Schedule', label: 'Classes', visible: true, order: 0 },
   { id: 'Dining', label: 'Dining', visible: true, order: 1 },
-  { id: 'Parking', label: 'Parking', visible: true, order: 2 },
-  { id: 'Library', label: 'Libraries', visible: true, order: 3 },
-  { id: 'Academic', label: 'Academic', visible: false, order: 4 },
-  { id: 'Rec', label: 'Gyms', visible: true, order: 5 },
-  { id: 'Study', label: 'Study', visible: false, order: 6 },
-  { id: 'Heatmap', label: 'Traffic', visible: true, order: 7 },
+  { id: 'Bus', label: 'Buses', visible: true, order: 2 },
+  { id: 'Parking', label: 'Parking', visible: true, order: 3 },
+  { id: 'Academic', label: 'Academic', visible: true, order: 4 },
+  { id: 'Library', label: 'Libraries', visible: false, order: 5 },
+  { id: 'Rec', label: 'Gyms', visible: false, order: 6 },
+  { id: 'Study', label: 'Study', visible: false, order: 7 },
+  { id: 'Heatmap', label: 'Traffic', visible: false, order: 8 },
 ];
 
 export const DEFAULT_SOCIAL_TABS: ToggleLayoutItem<SocialTabId>[] = [
@@ -113,22 +98,6 @@ export const DEFAULT_SOCIAL_TABS: ToggleLayoutItem<SocialTabId>[] = [
   { id: 'events', label: 'Events', visible: true, order: 1 },
   { id: 'reels', label: 'Reels', visible: true, order: 2 },
   { id: 'messages', label: 'Messages', visible: true, order: 3 },
-];
-
-export const DEFAULT_DINING_ACTIONS: ToggleLayoutItem<DiningActionId>[] = [
-  { id: 'rings', label: 'Calorie Rings', visible: true, order: 0 },
-  { id: 'macros', label: 'Macro Summary', visible: true, order: 1 },
-  { id: 'tracker', label: 'Tracker', visible: true, order: 2 },
-  { id: 'menus', label: 'Menus', visible: true, order: 3 },
-  { id: 'streak', label: 'Streak', visible: true, order: 4 },
-  { id: 'swipes', label: 'Swipes', visible: true, order: 5 },
-  { id: 'database', label: 'Database', visible: true, order: 6 },
-];
-
-export const DEFAULT_TIMER_MODULES: ToggleLayoutItem<TimerModuleId>[] = [
-  { id: 'pomodoro', label: 'Pomodoro', visible: true, order: 0 },
-  { id: 'habits', label: 'Study Habits', visible: true, order: 1 },
-  { id: 'focus_tools', label: 'Focus Tools', visible: true, order: 2 },
 ];
 
 function sortItems<T extends string>(items: ToggleLayoutItem<T>[]) {
@@ -242,12 +211,12 @@ function buildPresetState(preset: ShellPresetId) {
       return {
         appMode: 'academic' as AppMode,
         density: 'standard' as UIDensity,
-        defaultLandingTab: 'Dashboard' as NavItemId,
+        defaultLandingTab: 'Places' as NavItemId,
         parkingPermit: 'visitor' as ParkingPermit,
         placesViewMode: 'map' as PlacesViewMode,
-        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Dashboard', 'Places', 'Dining', 'Social', 'Timer']),
-        homeSections: applyVisibleOrder(DEFAULT_HOME_SECTIONS, ['schedule', 'transit', 'dining', 'events', 'alerts']),
-        placesPills: applyVisibleOrder(DEFAULT_PLACES_PILLS, ['Bus', 'Dining', 'Parking', 'Library', 'Rec', 'Heatmap']),
+        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Places', 'Dashboard', 'Social']),
+        homeSections: applyVisibleOrder(DEFAULT_HOME_SECTIONS, ['schedule', 'transit', 'alerts', 'events']),
+        placesPills: applyVisibleOrder(DEFAULT_PLACES_PILLS, ['Schedule', 'Dining', 'Bus', 'Parking', 'Academic']),
       };
     case 'commuter':
       return {
@@ -255,32 +224,32 @@ function buildPresetState(preset: ShellPresetId) {
         density: 'minimal' as UIDensity,
         defaultLandingTab: 'Places' as NavItemId,
         parkingPermit: 'garage' as ParkingPermit,
-        placesViewMode: 'list' as PlacesViewMode,
-        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Places', 'BusRoutes', 'Dashboard', 'Dining', 'Timer']),
-        homeSections: applyVisibleOrder(DEFAULT_HOME_SECTIONS, ['transit', 'schedule', 'alerts', 'dining']),
-        placesPills: applyVisibleOrder(DEFAULT_PLACES_PILLS, ['Bus', 'Parking', 'Dining', 'Library', 'Heatmap']),
+        placesViewMode: 'map' as PlacesViewMode,
+        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Places', 'Dashboard', 'BusRoutes', 'Social']),
+        homeSections: applyVisibleOrder(DEFAULT_HOME_SECTIONS, ['transit', 'schedule', 'alerts', 'events']),
+        placesPills: applyVisibleOrder(DEFAULT_PLACES_PILLS, ['Schedule', 'Bus', 'Parking', 'Dining', 'Academic']),
       };
     case 'resident':
       return {
         appMode: 'social' as AppMode,
         density: 'standard' as UIDensity,
-        defaultLandingTab: 'Dashboard' as NavItemId,
+        defaultLandingTab: 'Places' as NavItemId,
         parkingPermit: 'resident' as ParkingPermit,
         placesViewMode: 'map' as PlacesViewMode,
-        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Dashboard', 'Dining', 'Social', 'Places', 'Timer', 'Events']),
-        homeSections: applyVisibleOrder(DEFAULT_HOME_SECTIONS, ['dining', 'events', 'schedule', 'alerts', 'transit']),
-        placesPills: applyVisibleOrder(DEFAULT_PLACES_PILLS, ['Dining', 'Bus', 'Parking', 'Library', 'Rec', 'Heatmap']),
+        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Places', 'Dashboard', 'Social', 'Events']),
+        homeSections: applyVisibleOrder(DEFAULT_HOME_SECTIONS, ['events', 'schedule', 'alerts', 'transit']),
+        placesPills: applyVisibleOrder(DEFAULT_PLACES_PILLS, ['Schedule', 'Dining', 'Bus', 'Parking', 'Academic']),
       };
     case 'power':
       return {
         appMode: 'all_in_one' as AppMode,
         density: 'full' as UIDensity,
-        defaultLandingTab: 'Dashboard' as NavItemId,
+        defaultLandingTab: 'Places' as NavItemId,
         parkingPermit: 'any_valid' as ParkingPermit,
         placesViewMode: 'map' as PlacesViewMode,
-        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Dashboard', 'Places', 'Dining', 'Social', 'Timer', 'Events', 'BusRoutes', 'Menus']),
-        homeSections: applyVisibleOrder(DEFAULT_HOME_SECTIONS, ['schedule', 'transit', 'dining', 'alerts', 'events']),
-        placesPills: applyVisibleOrder(DEFAULT_PLACES_PILLS, ['Bus', 'Dining', 'Parking', 'Library', 'Academic', 'Rec', 'Study', 'Heatmap']),
+        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Places', 'Dashboard', 'Social', 'Events', 'BusRoutes']),
+        homeSections: applyVisibleOrder(DEFAULT_HOME_SECTIONS, ['schedule', 'transit', 'alerts', 'events']),
+        placesPills: applyVisibleOrder(DEFAULT_PLACES_PILLS, ['Schedule', 'Dining', 'Bus', 'Parking', 'Academic', 'Library', 'Rec']),
       };
   }
 }
@@ -294,8 +263,6 @@ interface AppShellState {
   homeSections: ToggleLayoutItem<HomeSectionId>[];
   placesPills: ToggleLayoutItem<PlacesPillId>[];
   socialTabs: ToggleLayoutItem<SocialTabId>[];
-  diningActions: ToggleLayoutItem<DiningActionId>[];
-  timerModules: ToggleLayoutItem<TimerModuleId>[];
   appMode: AppMode;
   density: UIDensity;
   shellPreset: ShellPresetId;
@@ -311,10 +278,6 @@ interface AppShellState {
   movePlacesPill: (id: PlacesPillId, direction: -1 | 1) => void;
   toggleSocialTab: (id: SocialTabId) => void;
   moveSocialTab: (id: SocialTabId, direction: -1 | 1) => void;
-  toggleDiningAction: (id: DiningActionId) => void;
-  moveDiningAction: (id: DiningActionId, direction: -1 | 1) => void;
-  toggleTimerModule: (id: TimerModuleId) => void;
-  moveTimerModule: (id: TimerModuleId, direction: -1 | 1) => void;
   setAppMode: (mode: AppMode) => void;
   setDensity: (density: UIDensity) => void;
   setDefaultLandingTab: (tab: NavItemId) => void;
@@ -333,8 +296,6 @@ export const useAppShellStore = create<AppShellState>()(
       homeSections: defaultPresetState.homeSections,
       placesPills: defaultPresetState.placesPills,
       socialTabs: DEFAULT_SOCIAL_TABS,
-      diningActions: DEFAULT_DINING_ACTIONS,
-      timerModules: DEFAULT_TIMER_MODULES,
       appMode: defaultPresetState.appMode,
       density: defaultPresetState.density,
       shellPreset: 'freshman',
@@ -374,22 +335,6 @@ export const useAppShellStore = create<AppShellState>()(
         set((state) => ({
           socialTabs: moveItem(state.socialTabs, id, direction),
         })),
-      toggleDiningAction: (id) =>
-        set((state) => ({
-          diningActions: toggleItem(state.diningActions, id),
-        })),
-      moveDiningAction: (id, direction) =>
-        set((state) => ({
-          diningActions: moveItem(state.diningActions, id, direction),
-        })),
-      toggleTimerModule: (id) =>
-        set((state) => ({
-          timerModules: toggleItem(state.timerModules, id),
-        })),
-      moveTimerModule: (id, direction) =>
-        set((state) => ({
-          timerModules: moveItem(state.timerModules, id, direction),
-        })),
       setAppMode: (appMode) => set({ appMode }),
       setDensity: (density) => set({ density }),
       setDefaultLandingTab: (defaultLandingTab) => set({ defaultLandingTab }),
@@ -413,15 +358,13 @@ export const useAppShellStore = create<AppShellState>()(
     }),
     {
       name: 'app-shell-store',
-      version: 3,
+      version: 5,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         navItems: state.navItems,
         homeSections: state.homeSections,
         placesPills: state.placesPills,
         socialTabs: state.socialTabs,
-        diningActions: state.diningActions,
-        timerModules: state.timerModules,
         appMode: state.appMode,
         density: state.density,
         shellPreset: state.shellPreset,
@@ -438,8 +381,6 @@ export const useAppShellStore = create<AppShellState>()(
           homeSections: normalizeItems(persisted.homeSections, currentState.homeSections),
           placesPills: normalizeItems(persisted.placesPills, currentState.placesPills),
           socialTabs: normalizeItems(persisted.socialTabs, currentState.socialTabs),
-          diningActions: normalizeItems(persisted.diningActions, currentState.diningActions),
-          timerModules: normalizeItems(persisted.timerModules, currentState.timerModules),
           appMode: isAppMode(persisted.appMode) ? persisted.appMode : currentState.appMode,
           density: isDensity(persisted.density) ? persisted.density : currentState.density,
           shellPreset: isPreset(persisted.shellPreset) ? persisted.shellPreset : currentState.shellPreset,

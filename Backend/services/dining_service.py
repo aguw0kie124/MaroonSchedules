@@ -487,6 +487,34 @@ def resolve_location_name(location_name: str) -> Optional[str]:
     return None
 
 
+def get_dining_db_location_candidates(resolved_name: str) -> List[str]:
+    """Return candidate location labels used by local seed data."""
+    candidates: List[str] = [resolved_name]
+    normalized = (resolved_name or '').lower()
+
+    if 'sbisa' in normalized:
+        candidates.extend(['Sbisa Dining Hall', 'Sbisa'])
+    if 'commons' in normalized:
+        candidates.extend(['The Commons Dining Hall', 'Commons'])
+    if 'duncan' in normalized:
+        candidates.extend(['Duncan Dining Hall', 'Duncan'])
+
+    # Also include the canonical name without parenthetical suffix.
+    if '(' in resolved_name:
+        candidates.append(resolved_name.split('(')[0].strip())
+
+    # Deduplicate while preserving order.
+    seen = set()
+    ordered: List[str] = []
+    for value in candidates:
+        key = value.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        ordered.append(value.strip())
+    return ordered
+
+
 def infer_menu_category(item: Dict[str, Any], meal_period: Optional[str] = None) -> str:
     explicit = (item.get('category') or '').strip()
     if explicit:
@@ -547,17 +575,22 @@ def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str 
             source = 'live'
         else:
             aliases = PERIOD_ALIASES.get(period, [period, 'every-day', 'everyday', 'all-day'])
+            location_candidates = get_dining_db_location_candidates(resolved_name)
             try:
                 with get_db_conn() as conn:
                     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                         placeholders = ','.join(['%s'] * len(aliases))
+                        location_clauses = ' OR '.join(['location = %s OR location ILIKE %s'] * len(location_candidates))
+                        location_params: List[str] = []
+                        for candidate in location_candidates:
+                            location_params.extend([candidate, f'%{candidate}%'])
                         cur.execute(f"""
                             SELECT * FROM food_items
-                            WHERE (location = %s OR location ILIKE %s)
-                            AND location_type = 'dining_hall'
+                            WHERE ({location_clauses})
+                            AND location_type = ANY(%s)
                             AND meal_period IN ({placeholders})
                             AND active = TRUE
-                        """, [resolved_name, f"%{resolved_name}%"] + aliases)
+                        """, location_params + [['dining_hall', 'dining']] + aliases)
                         items = [dict(row) for row in cur.fetchall()]
             except Exception:
                 items = []

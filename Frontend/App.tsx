@@ -44,26 +44,15 @@ import { GPACalculatorScreen } from './components/GPACalculatorScreen';
 import { CampusScreen } from './components/CampusScreen';
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
-import { TimerScreen } from './components/TimerScreen';
 
-import DiningDashboard from './components/dining/DiningDashboard';
-import MealOptimizerScreen from './components/dining/MealOptimizerScreen';
 import FullMenuScreen from './components/dining/FullMenuScreen';
-import MealTrackerScreen from './components/dining/MealTrackerScreen';
-import FoodDatabaseScreen from './components/dining/FoodDatabaseScreen';
-import RetailSwipesScreen from './components/dining/RetailSwipesScreen';
-import DiningSettingsScreen from './components/dining/DiningSettingsScreen';
-import WeightTrackerScreen from './components/dining/WeightTrackerScreen';
-import TrackerHubScreen from './components/dining/TrackerHubScreen';
-import StreakHubScreen from './components/dining/StreakHubScreen';
 import { CanvasDashboardScreen } from './components/canvas/CanvasDashboardScreen';
 import { CanvasCoursesScreen } from './components/canvas/CanvasCoursesScreen';
 import { CanvasAssignmentsScreen } from './components/canvas/CanvasAssignmentsScreen';
 import { CanvasGradesScreen } from './components/canvas/CanvasGradesScreen';
 
-import { Bus, Calendar, CalendarDays, Clock3, Compass, MessageCircle, Cog, UtensilsCrossed } from 'lucide-react-native';
+import { Bus, Calendar, CalendarDays, Clock3, Compass, MessageCircle, Cog } from 'lucide-react-native';
 import { useTheme, useThemeStore } from './components/SharedUI';
-import { GlassPillTabBar } from './components/GlassPillTabBar';
 import { getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 
 import { syncUser } from './api/client';
@@ -160,39 +149,12 @@ function MainTabs() {
           initialParams: undefined,
         };
       }
-      if (item.id === 'Timer') {
-        return {
-          name: 'Timer',
-          component: TimerScreen,
-          title: 'Timer',
-          icon: Clock3,
-          initialParams: undefined,
-        };
-      }
-      if (item.id === 'Dining') {
-        return {
-          name: 'Dining',
-          component: DiningDashboard,
-          title: 'Dining',
-          icon: UtensilsCrossed,
-          initialParams: undefined,
-        };
-      }
       if (item.id === 'Events') {
         return {
           name: 'Events',
           component: EventsCalendarScreen,
           title: 'Events',
           icon: CalendarDays,
-          initialParams: undefined,
-        };
-      }
-      if (item.id === 'Menus') {
-        return {
-          name: 'Menus',
-          component: MealOptimizerScreen,
-          title: 'Menus',
-          icon: UtensilsCrossed,
           initialParams: undefined,
         };
       }
@@ -214,7 +176,9 @@ function MainTabs() {
   ];
 
   const availableRouteNames = tabScreens.map((screen) => screen.name);
-  const initialRouteName = availableRouteNames.includes(defaultLandingTab)
+  const initialRouteName = availableRouteNames.includes('Places')
+    ? 'Places'
+    : availableRouteNames.includes(defaultLandingTab)
     ? defaultLandingTab
     : availableRouteNames[0];
   const shellKey = `${initialRouteName}:${availableRouteNames.join('|')}`;
@@ -224,10 +188,33 @@ function MainTabs() {
       key={shellKey}
       id="MainTabs"
       initialRouteName={initialRouteName}
-      tabBar={(props) => <GlassPillTabBar {...props} />}
       screenOptions={{
         headerShown: false,
         tabBarHideOnKeyboard: true,
+        tabBarStyle: {
+          height: 64,
+          paddingTop: 6,
+          paddingBottom: 8,
+          borderTopWidth: 1,
+          borderTopColor: COLORS.border,
+          backgroundColor: COLORS.surface,
+          shadowColor: '#000000',
+          shadowOpacity: 0.06,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: -3 },
+          elevation: 8,
+        },
+        tabBarActiveTintColor: '#500000',
+        tabBarInactiveTintColor: COLORS.textTertiary,
+        tabBarItemStyle: {
+          paddingTop: 2,
+          paddingBottom: 2,
+        },
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '600',
+          letterSpacing: 0.1,
+        },
       }}
     >
       {tabScreens.map((screen) => (
@@ -238,8 +225,24 @@ function MainTabs() {
           initialParams={screen.initialParams}
           options={{
             title: screen.title,
-            tabBarIcon: ({ color, size }) => (
-              <screen.icon color={color} size={size} />
+            tabBarIcon: ({ color, focused }) => (
+              <View
+                style={{
+                  width:
+                    focused && screen.name === 'Places'
+                      ? 42
+                      : focused
+                      ? 34
+                      : 26,
+                  height: focused ? 28 : 24,
+                  borderRadius: 14,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: focused ? '#500000' : 'transparent',
+                }}
+              >
+                <screen.icon color={focused ? '#FFFFFF' : color} size={focused ? 15 : 14} />
+              </View>
             ),
           }}
         />
@@ -300,16 +303,7 @@ function RootNavigator() {
           <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CampusFeed" component={CampusFeedScreen} options={{ headerShown: false }} />
 
-          <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: false }} />
-          <Stack.Screen name="MealOptimizer" component={MealOptimizerScreen} options={{ headerShown: false }} />
           <Stack.Screen name="FullMenu" component={FullMenuScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="TrackerHub" component={TrackerHubScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="StreakHub" component={StreakHubScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="MealTracker" component={MealTrackerScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="FoodDatabase" component={FoodDatabaseScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="RetailSwipes" component={RetailSwipesScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="DiningSettings" component={DiningSettingsScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="WeightTracker" component={WeightTrackerScreen} options={{ headerShown: false }} />
 
           <Stack.Screen name="CanvasDashboard" component={CanvasDashboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CanvasCourses" component={CanvasCoursesScreen} options={{ headerShown: false }} />

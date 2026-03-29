@@ -182,14 +182,20 @@ def optimize_day(
     
     # If live fetch failed or returned nothing, fall back to DB
     if not all_foods:
+        hall_name = dining_service.resolve_location_name(dining_hall) or dining_hall
+        location_candidates = dining_service.get_dining_db_location_candidates(hall_name)
+        location_clauses = ' OR '.join(['location = %s OR location ILIKE %s'] * len(location_candidates))
+        location_params = []
+        for candidate in location_candidates:
+            location_params.extend([candidate, f"%{candidate}%"])
         with psycopg.connect(get_db_connection()) as conn:
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
-                cur.execute("""
+                cur.execute(f"""
                     SELECT * FROM food_items 
-                    WHERE (location = %s OR location ILIKE %s) 
-                    AND location_type = 'dining_hall'
+                    WHERE ({location_clauses})
+                    AND location_type = ANY(%s)
                     AND active = TRUE
-                """, (dining_hall, f"%{dining_hall}%"))
+                """, location_params + [['dining_hall', 'dining']])
                 all_foods = [dict(r) for r in cur.fetchall()]
                 if all_foods:
                     menu_result = {"success": True}
@@ -208,16 +214,22 @@ def optimize_day(
         if not m_foods:
             aliases = dining_service.PERIOD_ALIASES.get(m, [m])
             try:
+                hall_name = dining_service.resolve_location_name(dining_hall) or dining_hall
+                location_candidates = dining_service.get_dining_db_location_candidates(hall_name)
+                location_clauses = ' OR '.join(['location = %s OR location ILIKE %s'] * len(location_candidates))
+                location_params = []
+                for candidate in location_candidates:
+                    location_params.extend([candidate, f"%{candidate}%"])
                 with psycopg.connect(get_db_connection()) as conn:
                     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                         placeholders = ','.join(['%s'] * len(aliases))
                         cur.execute(f"""
                             SELECT * FROM food_items 
-                            WHERE (location = %s OR location ILIKE %s) 
-                            AND location_type = 'dining_hall'
+                            WHERE ({location_clauses})
+                            AND location_type = ANY(%s)
                             AND meal_period IN ({placeholders})
                             AND active = TRUE
-                        """, [dining_hall, f"%{dining_hall}%"] + aliases)
+                        """, location_params + [['dining_hall', 'dining']] + aliases)
                         m_foods = [dict(r) for r in cur.fetchall()]
             except:
                 pass
