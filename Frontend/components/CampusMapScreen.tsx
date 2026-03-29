@@ -15,9 +15,9 @@ const TAMU_CENTER = {
 // Known coordinates for TAMU Facilities
 const COORD_MAP: Record<string, { lat: number; lng: number }> = {
   // Rec Centers (Key strings)
-  "Student Rec": { lat: 30.6071, lng: -96.3454 },
-  Southside: { lat: 30.6155, lng: -96.3334 },
-  Polo: { lat: 30.6225, lng: -96.3353 },
+  "Student Rec": { lat: 30.607133, lng: -96.342862 },
+  Southside: { lat: 30.615518, lng: -96.333422 },
+  Polo: { lat: 30.623467, lng: -96.338006 },
 
   // Libraries
   Evans: { lat: 30.6171, lng: -96.3387 },

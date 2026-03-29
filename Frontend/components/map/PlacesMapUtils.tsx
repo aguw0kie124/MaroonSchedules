@@ -4,7 +4,22 @@ import React from "react";
 
 import { Dimensions } from "react-native";
 import { BUILDINGS, AMENITIES } from "../../data/campus";
-import { Bus, MapPin, Navigation, Info, Utensils, Star, Flame, Calendar, Dumbbell, Library, GraduationCap, TrafficCone, Layers, Clock } from "lucide-react-native";
+import {
+  Bus,
+  MapPin,
+  Navigation,
+  Info,
+  Utensils,
+  Star,
+  Flame,
+  Calendar,
+  Dumbbell,
+  Library,
+  GraduationCap,
+  TrafficCone,
+  Layers,
+  Clock,
+} from "lucide-react-native";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -106,8 +121,8 @@ export const CAMPUS_ZONES: Array<{
   {
     name: "Student Recreation Center",
     ...getCanonicalCoords("Student Recreation Center", {
-      lat: 30.6071,
-      lng: -96.3454,
+      lat: 30.607133,
+      lng: -96.342862,
     }),
     peak: 70,
     off: 10,
@@ -118,8 +133,8 @@ export const CAMPUS_ZONES: Array<{
   {
     name: "Southside Recreation Center",
     ...getCanonicalCoords("Southside Recreation Center", {
-      lat: 30.6155,
-      lng: -96.3334,
+      lat: 30.615518,
+      lng: -96.333422,
     }),
     peak: 65,
     off: 10,
@@ -129,8 +144,8 @@ export const CAMPUS_ZONES: Array<{
   {
     name: "Polo Road Recreation Center",
     ...getCanonicalCoords("Polo Road Recreation Center", {
-      lat: 30.6237,
-      lng: -96.3395,
+      lat: 30.623467,
+      lng: -96.338006,
     }),
     peak: 55,
     off: 8,
@@ -432,7 +447,13 @@ export function getDistanceLabel(distanceMeters: number | null) {
 }
 
 export function getStopLabel(stop: any) {
-  return stop?.Name || stop?.StopName || stop?.Description || stop?.StopCode || 'Transit Stop';
+  return (
+    stop?.Name ||
+    stop?.StopName ||
+    stop?.Description ||
+    stop?.StopCode ||
+    "Transit Stop"
+  );
 }
 
 export function getParkingRecommendation(
@@ -442,35 +463,76 @@ export function getParkingRecommendation(
   const lower = locationName.toLowerCase();
   const isGarage = lower.includes("garage");
   const isWestCampus = lower.includes("west campus");
-  const isResidentAdjacent = lower.includes("lot 30") || lower.includes("lot 61");
+  const isResidentAdjacent =
+    lower.includes("lot 30") || lower.includes("lot 61");
 
   if (permit === "visitor") {
     return isGarage
-      ? { score: 0, badge: "Best Match", detail: "Visitor-friendly garages are prioritized first." }
-      : { score: 2, badge: "Check Access", detail: "Visitor access is usually easier in campus garages." };
+      ? {
+          score: 0,
+          badge: "Best Match",
+          detail: "Visitor-friendly garages are prioritized first.",
+        }
+      : {
+          score: 2,
+          badge: "Check Access",
+          detail: "Visitor access is usually easier in campus garages.",
+        };
   }
 
   if (permit === "garage") {
     return isGarage
-      ? { score: 0, badge: "Garage Fit", detail: "This matches a garage-first parking setup." }
-      : { score: 3, badge: "Secondary", detail: "A garage may be a cleaner match for this permit preference." };
+      ? {
+          score: 0,
+          badge: "Garage Fit",
+          detail: "This matches a garage-first parking setup.",
+        }
+      : {
+          score: 3,
+          badge: "Secondary",
+          detail: "A garage may be a cleaner match for this permit preference.",
+        };
   }
 
   if (permit === "west_campus") {
     return isWestCampus
-      ? { score: 0, badge: "West Campus", detail: "This is aligned with west campus parking." }
-      : { score: isGarage ? 1 : 3, badge: "Secondary", detail: "Useful, but west campus options rank higher." };
+      ? {
+          score: 0,
+          badge: "West Campus",
+          detail: "This is aligned with west campus parking.",
+        }
+      : {
+          score: isGarage ? 1 : 3,
+          badge: "Secondary",
+          detail: "Useful, but west campus options rank higher.",
+        };
   }
 
   if (permit === "resident") {
     return isResidentAdjacent
-      ? { score: 0, badge: "Resident Fit", detail: "This lot is surfaced first for residential access." }
-      : { score: isGarage ? 2 : 1, badge: "Check Access", detail: "Verify housing access before relying on this option." };
+      ? {
+          score: 0,
+          badge: "Resident Fit",
+          detail: "This lot is surfaced first for residential access.",
+        }
+      : {
+          score: isGarage ? 2 : 1,
+          badge: "Check Access",
+          detail: "Verify housing access before relying on this option.",
+        };
   }
 
   return isGarage
-    ? { score: 0, badge: "Recommended", detail: "A strong all-around option for most valid permits." }
-    : { score: 1, badge: "Available", detail: "Keep this as a fallback if your primary lots are full." };
+    ? {
+        score: 0,
+        badge: "Recommended",
+        detail: "A strong all-around option for most valid permits.",
+      }
+    : {
+        score: 1,
+        badge: "Available",
+        detail: "Keep this as a fallback if your primary lots are full.",
+      };
 }
 
 export function getLocationContextLink(location: CampusLocation) {
@@ -481,14 +543,22 @@ export function getLocationContextLink(location: CampusLocation) {
     };
   }
 
-  if (location.type === "Library" || location.type === "Study" || location.type === "Academic") {
+  if (
+    location.type === "Library" ||
+    location.type === "Study" ||
+    location.type === "Academic"
+  ) {
     return {
       label: "Reserve Room",
       url: ROOM_RESERVATION_URL,
     };
   }
 
-  if (location.current_event || location.type === "Landmark" || location.type === "Hub") {
+  if (
+    location.current_event ||
+    location.type === "Landmark" ||
+    location.type === "Hub"
+  ) {
     return {
       label: "View Events",
       url: EVENTS_URL,
@@ -520,7 +590,11 @@ export function haversineDistanceMeters(
   return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export function toLocalXY(latitude: number, longitude: number, originLat: number) {
+export function toLocalXY(
+  latitude: number,
+  longitude: number,
+  originLat: number,
+) {
   const metersPerLat = 111320;
   const metersPerLng = Math.cos((originLat * Math.PI) / 180) * 111320;
   return {
@@ -633,11 +707,13 @@ export function getApproximateEtaMinutes(
 
 export function isVehicleOnRoute(bus: any, route: any) {
   if (!bus || !route) return false;
-  const routeKey = (route.Key || '').toString().toLowerCase();
-  const routeShortName = (route.ShortName || '').toString().toLowerCase();
-  const routeName = (route.Name || '').toString().toLowerCase();
+  const routeKey = (route.Key || "").toString().toLowerCase();
+  const routeShortName = (route.ShortName || "").toString().toLowerCase();
+  const routeName = (route.Name || "").toString().toLowerCase();
   return [bus.RouteKey, bus.RouteShortName, bus.RouteName]
-    .map((value: string) => (value || '').toString().toLowerCase())
-    .some((value: string) => value === routeKey || value === routeShortName || value === routeName);
+    .map((value: string) => (value || "").toString().toLowerCase())
+    .some(
+      (value: string) =>
+        value === routeKey || value === routeShortName || value === routeName,
+    );
 }
-

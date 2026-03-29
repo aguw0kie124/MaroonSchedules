@@ -21,9 +21,9 @@ except ImportError:
 # All coordinates verified via Google Maps.
 LOCATION_DATA = {
     # Rec Centers  (matched by GoBoard FacilityName)
-    "Student Rec Center":   {"lat": 30.607120, "lng": -96.345403, "type": "Rec"},
-    "Southside Rec Center": {"lat": 30.615185, "lng": -96.334412, "type": "Rec"},
-    "Polo Road Rec Center": {"lat": 30.622968, "lng": -96.340926, "type": "Rec"},
+    "Student Rec Center":   {"lat": 30.607133, "lng": -96.342862, "type": "Rec"},
+    "Southside Rec Center": {"lat": 30.615518, "lng": -96.333422, "type": "Rec"},
+    "Polo Road Rec Center": {"lat": 30.623467, "lng": -96.338006, "type": "Rec"},
 
     # Libraries  (matched by LIBRARY_KEY_MAP below)
     "Evans Library":                          {"lat": 30.616607, "lng": -96.339047, "type": "Library"},
