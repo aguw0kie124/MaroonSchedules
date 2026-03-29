@@ -106,8 +106,8 @@ export const CAMPUS_ZONES: Array<{
   {
     name: "Student Recreation Center",
     ...getCanonicalCoords("Student Recreation Center", {
-      lat: 30.6094,
-      lng: -96.34,
+      lat: 30.6071,
+      lng: -96.3454,
     }),
     peak: 70,
     off: 10,
@@ -118,8 +118,8 @@ export const CAMPUS_ZONES: Array<{
   {
     name: "Southside Recreation Center",
     ...getCanonicalCoords("Southside Recreation Center", {
-      lat: 30.6093,
-      lng: -96.339,
+      lat: 30.6155,
+      lng: -96.3334,
     }),
     peak: 65,
     off: 10,
