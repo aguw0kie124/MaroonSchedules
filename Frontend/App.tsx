@@ -44,6 +44,7 @@ import { ReelsScreen } from './components/ReelsScreen';
 import { CampusScreen } from './components/CampusScreen';
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
+import { LeaderboardScreen } from './components/LeaderboardScreen';
 
 import FullMenuScreen from './components/dining/FullMenuScreen';
 import { CanvasDashboardScreen } from './components/canvas/CanvasDashboardScreen';
@@ -51,9 +52,8 @@ import { CanvasCoursesScreen } from './components/canvas/CanvasCoursesScreen';
 import { CanvasAssignmentsScreen } from './components/canvas/CanvasAssignmentsScreen';
 import { CanvasGradesScreen } from './components/canvas/CanvasGradesScreen';
 
-import { Bus, Calendar, CalendarDays, Clock3, Compass, MessageCircle, Cog } from 'lucide-react-native';
+import { Trophy, Home, Map, Users, User } from 'lucide-react-native';
 import { useTheme, useThemeStore } from './components/SharedUI';
-import { getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 
 import { syncUser } from './api/client';
 
@@ -113,88 +113,54 @@ const Tab = createBottomTabNavigator();
 
 function MainTabs() {
   const { COLORS } = useTheme();
-  const navItems = useAppShellStore((state) => state.navItems);
-  const defaultLandingTab = useAppShellStore((state) => state.defaultLandingTab);
-  const visibleNavItems = React.useMemo(
-    () => getOrderedVisibleItems(navItems),
-    [navItems],
-  );
-
   const tabScreens = [
-    ...visibleNavItems.map((item) => {
-      if (item.id === 'Dashboard') {
-        return {
-          name: 'Dashboard',
-          component: Dashboard,
-          title: 'Home',
-          icon: Calendar,
-          initialParams: undefined,
-        };
-      }
-      if (item.id === 'Places') {
-        return {
-          name: 'Places',
-          component: PlacesMapScreen,
-          title: 'Places',
-          icon: Compass,
-          initialParams: undefined,
-        };
-      }
-      if (item.id === 'Social') {
-        return {
-          name: 'Social',
-          component: SocialHubScreen,
-          title: 'Social',
-          icon: MessageCircle,
-          initialParams: undefined,
-        };
-      }
-      if (item.id === 'Events') {
-        return {
-          name: 'Events',
-          component: EventsCalendarScreen,
-          title: 'Events',
-          icon: CalendarDays,
-          initialParams: undefined,
-        };
-      }
-      return {
-        name: 'BusRoutes',
-        component: PlacesMapScreen,
-        title: 'Bus',
-        icon: Bus,
-        initialParams: { initialLayer: 'Bus', focusToken: 1 },
-      };
-    }),
+    {
+      name: 'Dashboard',
+      component: Dashboard,
+      title: 'Home',
+      icon: Home,
+      initialParams: undefined,
+    },
+    {
+      name: 'Leaderboard',
+      component: LeaderboardScreen,
+      title: 'Rankings',
+      icon: Trophy,
+      initialParams: undefined,
+    },
+    {
+      name: 'Places',
+      component: PlacesMapScreen,
+      title: 'Places',
+      icon: Map,
+      initialParams: undefined,
+    },
+    {
+      name: 'Social',
+      component: SocialHubScreen,
+      title: 'Social',
+      icon: Users,
+      initialParams: undefined,
+    },
     {
       name: 'Settings',
       component: Profile,
       title: 'Settings',
-      icon: Cog,
+      icon: User,
       initialParams: undefined,
     },
   ];
 
-  const availableRouteNames = tabScreens.map((screen) => screen.name);
-  const initialRouteName = availableRouteNames.includes('Places')
-    ? 'Places'
-    : availableRouteNames.includes(defaultLandingTab)
-    ? defaultLandingTab
-    : availableRouteNames[0];
-  const shellKey = `${initialRouteName}:${availableRouteNames.join('|')}`;
-
   return (
     <Tab.Navigator
-      key={shellKey}
       id="MainTabs"
-      initialRouteName={initialRouteName}
+      initialRouteName="Dashboard"
       screenOptions={{
         headerShown: false,
+        tabBarShowLabel: false,
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          height: 64,
-          paddingTop: 6,
-          paddingBottom: 8,
+          height: 70,
           borderTopWidth: 1,
           borderTopColor: COLORS.border,
           backgroundColor: COLORS.surface,
@@ -206,15 +172,6 @@ function MainTabs() {
         },
         tabBarActiveTintColor: '#500000',
         tabBarInactiveTintColor: COLORS.textTertiary,
-        tabBarItemStyle: {
-          paddingTop: 2,
-          paddingBottom: 2,
-        },
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: '600',
-          letterSpacing: 0.1,
-        },
       }}
     >
       {tabScreens.map((screen) => (
@@ -225,25 +182,47 @@ function MainTabs() {
           initialParams={screen.initialParams}
           options={{
             title: screen.title,
-            tabBarIcon: ({ color, focused }) => (
-              <View
-                style={{
-                  width:
-                    focused && screen.name === 'Places'
-                      ? 42
-                      : focused
-                      ? 34
-                      : 26,
-                  height: focused ? 28 : 24,
-                  borderRadius: 14,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: focused ? '#500000' : 'transparent',
-                }}
-              >
-                <screen.icon color={focused ? '#FFFFFF' : color} size={focused ? 15 : 14} />
-              </View>
-            ),
+            tabBarIcon: ({ color, focused }) => {
+              const isMap = screen.name === 'Places';
+
+              if (isMap) {
+                return (
+                  <View
+                    style={{
+                      width: 58,
+                      height: 58,
+                      borderRadius: 29,
+                      backgroundColor: focused ? '#500000' : 'rgba(80, 0, 0, 0.7)',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginTop: -10,
+                      shadowColor: '#500000',
+                      shadowOffset: { width: 0, height: focused ? 8 : 4 },
+                      shadowOpacity: focused ? 0.6 : 0.3,
+                      shadowRadius: focused ? 12 : 8,
+                      elevation: focused ? 14 : 8,
+                      borderWidth: 4,
+                      borderColor: COLORS.surface,
+                    }}
+                  >
+                    <screen.icon color="#FFFFFF" size={26} strokeWidth={2.5} />
+                  </View>
+                );
+              }
+
+              const isEnlarged = screen.name === 'Social' || screen.name === 'Settings';
+              const size = isEnlarged ? 28 : 24;
+
+              return (
+                <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                  <screen.icon
+                    color={focused ? '#500000' : color}
+                    size={size}
+                    strokeWidth={focused ? 2.5 : 2}
+                  />
+                </View>
+              );
+            },
           }}
         />
       ))}

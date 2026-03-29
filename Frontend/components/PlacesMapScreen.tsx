@@ -885,7 +885,6 @@ export function PlacesMapScreen() {
           showSearchResults={showSearchResults}
           onSelectLocation={handleSelectLocation}
         />
-      </View>
 
       {/* Schedule header */}
       <ScheduleHeader
@@ -930,6 +929,7 @@ export function PlacesMapScreen() {
           handleStopPress={handleStopPress}
         />
       )}
+      </View>
 
       <BusStopInfoCard
         styles={styles}

@@ -4,6 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 export type NavItemId =
   | 'Dashboard'
+  | 'Leaderboard'
   | 'Places'
   | 'Social'
   | 'BusRoutes'
@@ -67,9 +68,10 @@ export const PLACES_VIEW_MODE_OPTIONS: Array<{ id: PlacesViewMode; label: string
 ];
 
 export const DEFAULT_NAV_ITEMS: ToggleLayoutItem<NavItemId>[] = [
-  { id: 'Places', label: 'Places', visible: true, order: 0 },
-  { id: 'Dashboard', label: 'Home', visible: true, order: 1 },
-  { id: 'Social', label: 'Social', visible: true, order: 2 },
+  { id: 'Dashboard', label: 'Home', visible: true, order: 0 },
+  { id: 'Leaderboard', label: 'Rankings', visible: true, order: 1 },
+  { id: 'Places', label: 'Places', visible: true, order: 2 },
+  { id: 'Social', label: 'Social', visible: true, order: 3 },
   { id: 'BusRoutes', label: 'Bus Routes', visible: false, order: 4 },
   { id: 'Events', label: 'Events', visible: false, order: 5 },
 ];
