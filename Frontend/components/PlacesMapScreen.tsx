@@ -42,8 +42,6 @@ import { connectFeedsUser } from "../services/streamFeeds";
 import { API_URL } from "../config";
 import { useCampusHubStore } from "../store/campusHubStore";
 import {
-  ParkingPermit,
-  PlacesViewMode,
   getOrderedItems,
   isNavItemVisible,
   useAppShellStore,
@@ -66,7 +64,6 @@ import {
   BusStopInfoCard,
   BusVehicleInfoCard,
 } from "./places/BusLayerUI";
-import { ScheduleHeader } from "./places/ScheduleHeader";
 import { LocationBottomSheet } from "./places/LocationBottomSheet";
 import { PlacesList } from "./places/PlacesList";
 
@@ -75,12 +72,9 @@ import {
   TAMU_CENTER,
   ALL_BUS_ROUTES_KEY,
   PARKING_INFO_URL,
-  SNAP_PEEK,
-  SNAP_HIDDEN,
   type CampusLocation,
   type LocationType,
 } from "./places/types";
-import { DARK_MAP_STYLE } from "./places/mapStyles";
 import {
   CAMPUS_ZONES,
   CATEGORIES,
@@ -93,7 +87,6 @@ import {
   getStatusColor,
   haversineDistanceMeters,
   getParkingRecommendation,
-  getCategoryPillIcon,
   getCategoryIcon,
 } from "./places/utils";
 import { getStyles } from "./places/placesStyles";
@@ -116,8 +109,6 @@ export function PlacesMapScreen() {
   const navItems = useAppShellStore((s) => s.navItems);
   const placesPills = useAppShellStore((s) => s.placesPills);
   const parkingPermit = useAppShellStore((s) => s.parkingPermit);
-  const placesViewMode = useAppShellStore((s) => s.placesViewMode);
-  const setPlacesViewMode = useAppShellStore((s) => s.setPlacesViewMode);
   const togglePlacesPill = useAppShellStore((s) => s.togglePlacesPill);
   const movePlacesPill = useAppShellStore((s) => s.movePlacesPill);
   const isStandaloneTransitScreen = route.name === "BusRoutes";
@@ -675,9 +666,6 @@ export function PlacesMapScreen() {
     setActiveLayer(nextLayer); setSelectedId(null); setSelectedStop(null); setSelectedBus(null); setNearestBusInfo(null); setIsSearchExpanded(false); setSearchQuery(""); setShowSearchResults(false);
   }, [route.params?.focusToken, route.params?.initialLayer]);
 
-  // Clear selection when switching to list view
-  useEffect(() => { if (placesViewMode === "list") setSelectedId(null); }, [placesViewMode]);
-
   // Hydrate hub when tab needs it
   useEffect(() => {
     if (user?.id && (activeLayer === "Rec" || activeLayer === "Library" || activeLayer === "Schedule")) {
@@ -749,14 +737,14 @@ export function PlacesMapScreen() {
 
   // Auto-fit map to filtered locations
   useEffect(() => {
-    if (!mapRef.current || activeLayer === "Bus" || activeLayer === "Heatmap" || placesViewMode !== "map" || selectedId || sortedFilteredLocations.length === 0) return;
+    if (!mapRef.current || activeLayer === "Bus" || activeLayer === "Heatmap" || selectedId || sortedFilteredLocations.length === 0) return;
     const fitKey = `${activeLayer}:${sortedFilteredLocations.length}:${sortedFilteredLocations[0]?.location || ""}`;
     if (lastPlacesFitKey.current === fitKey) return;
     lastPlacesFitKey.current = fitKey;
     const points = sortedFilteredLocations.slice(0, 18).map((l) => ({ latitude: l.coord.lat, longitude: l.coord.lng }));
     if (points.length === 1) { mapRef.current.animateToRegion({ latitude: points[0].latitude - 0.0018, longitude: points[0].longitude, latitudeDelta: 0.008, longitudeDelta: 0.008 }, 650); return; }
     mapRef.current.fitToCoordinates(points, { edgePadding: { top: 210, right: 48, bottom: 250, left: 48 }, animated: true });
-  }, [activeLayer, placesViewMode, selectedId, sortedFilteredLocations]);
+  }, [activeLayer, selectedId, sortedFilteredLocations]);
 
   // Sheet selection - fetch reviews + dining on select
   useEffect(() => {
@@ -903,8 +891,6 @@ export function PlacesMapScreen() {
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           setShowSearchResults={setShowSearchResults}
-          placesViewMode={placesViewMode}
-          setPlacesViewMode={setPlacesViewMode}
           onOpenSettings={() => setIsEditorVisible(true)}
         />
 
@@ -931,21 +917,6 @@ export function PlacesMapScreen() {
           }}
           onOpenSettings={() => setIsEditorVisible(true)}
         />
-
-      {/* Schedule header */}
-      <ScheduleHeader
-        styles={styles}
-        COLORS={COLORS}
-        activeLayer={activeLayer}
-        scheduleOptions={scheduleOptions}
-        activeScheduleOption={activeScheduleOption}
-        scheduleSummaryLabel={scheduleSummaryLabel}
-        isLoadingSchedules={isLoadingSchedules}
-        setActiveScheduleId={setActiveScheduleId}
-        setSelectedId={setSelectedId}
-        openScheduleList={openScheduleList}
-        openNewCourseSearch={openNewCourseSearch}
-      />
 
       {/* Bus layer UI */}
       {activeLayer === "Bus" && (
@@ -1014,10 +985,16 @@ export function PlacesMapScreen() {
         styles={styles}
         COLORS={COLORS}
         activeLayer={activeLayer}
-        placesViewMode={placesViewMode}
-        setPlacesViewMode={setPlacesViewMode}
+        selectedId={selectedId}
         sortedFilteredLocations={sortedFilteredLocations}
+        scheduleOptions={scheduleOptions}
         activeScheduleOption={activeScheduleOption}
+        scheduleSummaryLabel={scheduleSummaryLabel}
+        isLoadingSchedules={isLoadingSchedules}
+        setActiveScheduleId={setActiveScheduleId}
+        setSelectedId={setSelectedId}
+        openScheduleList={openScheduleList}
+        openNewCourseSearch={openNewCourseSearch}
         userCoord={userCoord}
         parkingPermit={parkingPermit}
         recreationFacilityMap={recreationFacilityMap}

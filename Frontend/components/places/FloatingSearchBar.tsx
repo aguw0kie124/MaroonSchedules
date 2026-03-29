@@ -8,12 +8,8 @@ import {
 import {
   Search,
   X,
-  Map,
-  List,
   SlidersHorizontal,
-  ChevronDown,
 } from "lucide-react-native";
-import type { PlacesViewMode } from "../../store/appShellStore";
 
 interface FloatingSearchBarProps {
   styles: any;
@@ -23,8 +19,6 @@ interface FloatingSearchBarProps {
   searchQuery: string;
   setSearchQuery: (value: string) => void;
   setShowSearchResults: (value: boolean) => void;
-  placesViewMode: PlacesViewMode;
-  setPlacesViewMode: (value: PlacesViewMode) => void;
   onOpenSettings: () => void;
 }
 
@@ -36,14 +30,8 @@ export function FloatingSearchBar({
   searchQuery,
   setSearchQuery,
   setShowSearchResults,
-  placesViewMode,
-  setPlacesViewMode,
   onOpenSettings,
 }: FloatingSearchBarProps) {
-  const [isViewMenuOpen, setIsViewMenuOpen] = React.useState(false);
-
-  const currentViewLabel = placesViewMode === "map" ? "Map" : "List";
-
   return (
     <View style={styles.floatingSearchStack}>
       <View style={styles.floatingSearchBar}>
@@ -66,7 +54,6 @@ export function FloatingSearchBar({
             onFocus={() => {
               setIsSearchExpanded(true);
               setShowSearchResults(true);
-              setIsViewMenuOpen(false);
             }}
             onChangeText={(value) => {
               setSearchQuery(value);
@@ -80,7 +67,6 @@ export function FloatingSearchBar({
             onPress={() => {
               setIsSearchExpanded(true);
               setShowSearchResults(true);
-              setIsViewMenuOpen(false);
             }}
           >
             <Text style={styles.floatingSearchPromptText}>
@@ -105,7 +91,6 @@ export function FloatingSearchBar({
               setIsSearchExpanded(false);
               setSearchQuery("");
               setShowSearchResults(false);
-              setIsViewMenuOpen(false);
               return;
             }
             onOpenSettings();
@@ -118,46 +103,6 @@ export function FloatingSearchBar({
           )}
         </TouchableOpacity>
       </View>
-
-      {!isSearchExpanded ? (
-        <TouchableOpacity
-          style={styles.viewMenuTrigger}
-          onPress={() => setIsViewMenuOpen((value) => !value)}
-        >
-          {placesViewMode === "map" ? (
-            <Map size={14} color={COLORS.textPrimary} />
-          ) : (
-            <List size={14} color={COLORS.textPrimary} />
-          )}
-          <Text style={styles.viewMenuTriggerText}>{currentViewLabel}</Text>
-          <ChevronDown size={14} color={COLORS.textTertiary} />
-        </TouchableOpacity>
-      ) : null}
-
-      {!isSearchExpanded && isViewMenuOpen ? (
-        <View style={styles.viewDropdownMenu}>
-          <TouchableOpacity
-            style={styles.viewDropdownItem}
-            onPress={() => {
-              setPlacesViewMode("map");
-              setIsViewMenuOpen(false);
-            }}
-          >
-            <Map size={15} color={COLORS.textPrimary} />
-            <Text style={styles.viewDropdownItemText}>Map</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.viewDropdownItem}
-            onPress={() => {
-              setPlacesViewMode("list");
-              setIsViewMenuOpen(false);
-            }}
-          >
-            <List size={15} color={COLORS.textPrimary} />
-            <Text style={styles.viewDropdownItemText}>List</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
     </View>
   );
 }
