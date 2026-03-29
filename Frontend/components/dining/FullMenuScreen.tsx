@@ -36,8 +36,8 @@ export default function FullMenuScreen({ navigation, route }: any) {
       : require('../../assets/white_marble.jpg');
 
   const { location, mealPeriod, title, locations, sourceHint } = route.params || {};
-  const availableMealPeriods = getDiningMealOptionsForLocation(location);
   const isDiningHall = isDiningHallMenuLocation(location);
+  const availableMealPeriods = isDiningHall ? getDiningMealOptionsForLocation(location) : [];
   const [activeMealPeriod, setActiveMealPeriod] = useState<DiningMealPeriod>(
     (mealPeriod as DiningMealPeriod) || getDiningMealPeriodForLocation(location),
   );
@@ -49,6 +49,12 @@ export default function FullMenuScreen({ navigation, route }: any) {
   const load = useCallback(async (nextMealPeriod: DiningMealPeriod) => {
     if (!location) {
       setError('Menu details are unavailable.');
+      setLoading(false);
+      return;
+    }
+
+    if (!isDiningHall) {
+      setError('Menus are only available for Sbisa, Commons, and Duncan.');
       setLoading(false);
       return;
     }
@@ -79,7 +85,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
     } finally {
       setLoading(false);
     }
-  }, [location, menusByPeriod]);
+  }, [isDiningHall, location, menusByPeriod]);
 
   useEffect(() => {
     load(activeMealPeriod);
@@ -87,8 +93,9 @@ export default function FullMenuScreen({ navigation, route }: any) {
 
   useEffect(() => {
     if (!location) return;
+    if (!isDiningHall) return;
     prefetchDiningMenus([location], availableMealPeriods).catch(() => {});
-  }, [availableMealPeriods, location]);
+  }, [availableMealPeriods, isDiningHall, location]);
 
   const categoryCount = menu?.categories?.length || 0;
 
@@ -115,18 +122,20 @@ export default function FullMenuScreen({ navigation, route }: any) {
           </View>
         </View>
 
-        <View style={s.mealTabsWrap}>
-          <PillTabs
-            items={availableMealPeriods.map((period) => ({
-              key: period,
-              label: formatMealLabel(period),
-            }))}
-            activeKey={activeMealPeriod}
-            onChange={(key) => setActiveMealPeriod(key as DiningMealPeriod)}
-            floating
-            compact
-          />
-        </View>
+        {isDiningHall ? (
+          <View style={s.mealTabsWrap}>
+            <PillTabs
+              items={availableMealPeriods.map((period) => ({
+                key: period,
+                label: formatMealLabel(period),
+              }))}
+              activeKey={activeMealPeriod}
+              onChange={(key) => setActiveMealPeriod(key as DiningMealPeriod)}
+              floating
+              compact
+            />
+          </View>
+        ) : null}
 
         <View style={s.metaRow}>
           <Badge label={`${menu?.count ?? 0} items`} color={T.amber} />
@@ -134,7 +143,13 @@ export default function FullMenuScreen({ navigation, route }: any) {
           <Badge label={(menu?.source || sourceHint || 'menu').toUpperCase()} color={T.sage} />
         </View>
 
-        {loading ? (
+        {!isDiningHall ? (
+          <Card>
+            <Text style={[s.emptyText, { color: T.text3 }]}>
+              Menus are only shown for the main dining halls.
+            </Text>
+          </Card>
+        ) : loading ? (
           <View style={{ paddingTop: 40 }}>
             <ActivityIndicator color={T.tamuGold} size="large" />
           </View>

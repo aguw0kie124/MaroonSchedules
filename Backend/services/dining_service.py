@@ -1,6 +1,7 @@
 import math
 import re
 import requests
+import urllib3
 import psycopg
 import psycopg.rows
 from typing import Optional, Dict, List, Any
@@ -11,6 +12,9 @@ from services import usda_service
 
 def get_db_conn():
     return psycopg.connect(get_db_connection())
+
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def init_db():
     conn = get_db_conn()
@@ -82,6 +86,12 @@ DINING_LOCATIONS = {
     "Shake Smart- Rec Center": "5873c5f43191a200e44eba46",
     "The 41st Club - Bush Library": "58653dc82cc8da820e58aca9",
     "Vet Med Cafe": "591c65b8ee596f0ff3feea1f"
+}
+
+DINING_HALL_LOCATION_NAMES = {
+    "Sbisa Dining Hall (North Campus)",
+    "The Commons Dining Hall (South Campus)",
+    "Duncan Dining Hall (South Campus/Quad)",
 }
 
 # Bundling map for retail restaurants
@@ -563,7 +573,7 @@ def group_menu_items(items: List[Dict[str, Any]], meal_period: Optional[str] = N
 def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str = None) -> Dict[str, Any]:
     period = (meal_period or 'lunch').lower()
     resolved_name = resolve_location_name(location_name) or location_name
-    is_dining_hall = 'hall' in resolved_name.lower()
+    is_dining_hall = resolved_name in DINING_HALL_LOCATION_NAMES
     items: List[Dict[str, Any]] = []
     source = 'database'
     resolved_locations = [resolved_name]
@@ -574,27 +584,17 @@ def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str 
             items = live_result['items']
             source = 'live'
         else:
-            aliases = PERIOD_ALIASES.get(period, [period, 'every-day', 'everyday', 'all-day'])
-            location_candidates = get_dining_db_location_candidates(resolved_name)
-            try:
-                with get_db_conn() as conn:
-                    with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
-                        placeholders = ','.join(['%s'] * len(aliases))
-                        location_clauses = ' OR '.join(['location = %s OR location ILIKE %s'] * len(location_candidates))
-                        location_params: List[str] = []
-                        for candidate in location_candidates:
-                            location_params.extend([candidate, f'%{candidate}%'])
-                        cur.execute(f"""
-                            SELECT * FROM food_items
-                            WHERE ({location_clauses})
-                            AND location_type = ANY(%s)
-                            AND meal_period IN ({placeholders})
-                            AND active = TRUE
-                        """, location_params + [['dining_hall', 'dining']] + aliases)
-                        items = [dict(row) for row in cur.fetchall()]
-            except Exception:
-                items = []
-            source = 'database'
+            return {
+                "success": False,
+                "location": location_name,
+                "resolvedLocation": resolved_name,
+                "locations": resolved_locations,
+                "mealPeriod": period,
+                "source": "live",
+                "count": 0,
+                "categories": [],
+                "message": live_result.get("error") or "No live dining hall menu available right now.",
+            }
     else:
         aliases = PERIOD_ALIASES.get(period, [period, 'every-day', 'everyday', 'all-day'])
         resolved_locations = RESTAURANT_GROUPS.get(location_name, [resolved_name])
@@ -675,15 +675,37 @@ def generate_variants(foods: List[Dict], target_cal: float, macros: Dict) -> Lis
     return variants
 
 
-# ============ DineOnCampus API v4 ============
+# ============ DineOnCampus API ============
 
-API_BASE = "https://apiv4.dineoncampus.com"
+DINE_API_BASE = "https://apiv4.dineoncampus.com"
+DINE_API_HOST = "apiv4.dineoncampus.com"
+DINE_API_IP_FALLBACK = "206.82.192.172"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
     "Origin": "https://dineoncampus.com",
     "Referer": "https://dineoncampus.com/"
 }
+
+
+def _dine_api_get(path: str, *, timeout: int = 10, params: Optional[Dict[str, Any]] = None):
+    """Fetch a DineOnCampus endpoint, falling back to the origin IP when DNS fails."""
+    attempts = [
+        (f"{DINE_API_BASE}{path}", dict(HEADERS), True),
+        (f"https://{DINE_API_IP_FALLBACK}{path}", {**HEADERS, "Host": DINE_API_HOST}, False),
+    ]
+    last_error = None
+
+    for url, headers, verify in attempts:
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=timeout, verify=verify)
+            if resp.status_code == 200:
+                return resp, url
+            last_error = f"{url} returned HTTP {resp.status_code}"
+        except requests.RequestException as exc:
+            last_error = str(exc)
+
+    raise requests.RequestException(last_error or "Unable to reach DineOnCampus")
 
 
 def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_period: str = None) -> Dict[str, Any]:
@@ -697,15 +719,14 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
     if not location_id:
         return {"success": False, "error": f"Unknown location: {location_name}", "items": []}
 
+    requested_period = canonicalize_meal_period(meal_period) or normalize_period_value(meal_period) or 'lunch'
+    last_error: Optional[str] = None
+
     try:
-        # Fetch available periods
-        periods_url = f"{API_BASE}/locations/{location_id}/periods/?date={date_str}"
-        resp = requests.get(periods_url, headers=HEADERS, timeout=10)
-        periods = resp.json().get('periods', []) if resp.status_code == 200 else []
+        periods_resp, periods_url = _dine_api_get(f"/locations/{location_id}/periods/", timeout=10, params={"date": date_str})
+        periods = periods_resp.json().get('periods', [])
 
-        requested_period = canonicalize_meal_period(meal_period) or normalize_period_value(meal_period) or 'lunch'
         selected_period = select_requested_period(periods, meal_period)
-
         if not selected_period or not selected_period.get('id'):
             return {"success": False, "error": f"No periods for {location_name}", "items": []}
 
@@ -713,9 +734,12 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
         matched_slug = selected_period.get('slug') or normalize_period_value(selected_period.get('name'))
         resolved_period = canonicalize_meal_period(matched_slug) or requested_period
 
-        # Fetch menu for this period
-        menu_url = f"{API_BASE}/locations/{location_id}/menu?date={date_str}&period={period_id}"
-        menu_resp = requests.get(menu_url, headers=HEADERS, timeout=15)
+        menu_resp, menu_url = _dine_api_get(
+            f"/locations/{location_id}/menu",
+            timeout=15,
+            params={"date": date_str, "period": period_id},
+        )
+
         data = menu_resp.json()
         items = []
 
@@ -752,7 +776,7 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
                     "vitamin_c": parse_val(nutrients.get('vitamin c (mg)', 0)),
                     "vitamin_d": parse_val(nutrients.get('vitamin d (mcg)' ,0)),
                     "magnesium": parse_val(nutrients.get('magnesium (mg)', 0)),
-                    "source": "dineoncampus_v4"
+                    "source": f"dineoncampus:{DINE_API_HOST if '206.82.192.172' not in menu_url else DINE_API_IP_FALLBACK}",
                 })
 
         items = enrich_items(items)
@@ -763,9 +787,12 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
             "date": date_str,
             "period": matched_slug,
             "resolvedPeriod": resolved_period,
+            "apiBase": menu_url.rsplit('/locations/', 1)[0],
         }
     except Exception as e:
-        return {"success": False, "error": str(e), "items": []}
+        last_error = str(e)
+
+    return {"success": False, "error": last_error or "Unable to reach DineOnCampus", "items": []}
 
 
 def sync_all_locations(date_str: str = None):
@@ -776,13 +803,13 @@ def sync_all_locations(date_str: str = None):
         with conn.cursor() as cur:
             for name, loc_id in DINING_LOCATIONS.items():
                 print(f"Syncing {name}...")
+                periods = []
                 try:
-                    p_url = f"{API_BASE}/locations/{loc_id}/periods/?date={date_str}"
-                    p_resp = requests.get(p_url, headers=HEADERS, timeout=10)
-                    periods = p_resp.json().get('periods', []) if p_resp.status_code == 200 else []
+                    p_resp, _ = _dine_api_get(f"/locations/{loc_id}/periods/", timeout=10, params={"date": date_str})
+                    periods = p_resp.json().get('periods', [])
                     if not periods:
                         periods = [{'id': None, 'name': 'Every Day', 'slug': 'every-day'}]
-                except:
+                except Exception:
                     periods = [{'id': None, 'name': 'Every Day', 'slug': 'every-day'}]
 
                 for p in periods:

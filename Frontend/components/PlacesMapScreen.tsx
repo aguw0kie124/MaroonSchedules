@@ -51,6 +51,7 @@ import {
   fetchDiningFullMenuCached,
   getDiningMealOptionsForLocation,
   getDiningMealPeriodForLocation,
+  isDiningHallMenuLocation,
   getDiningMenuCandidates,
 } from "../services/diningMenuCache";
 import axios from "axios";
@@ -514,14 +515,21 @@ export function PlacesMapScreen() {
   const fetchDiningData = useCallback(async (loc: CampusLocation) => {
     setIsFetchingDining(true);
     try {
-      const hubRes = await axios.get(`${API_URL}/dining/hubs/${encodeURIComponent(loc.location)}`).catch(() => null);
-      const nextRestaurants = hubRes?.data && Array.isArray(hubRes.data.restaurants) ? hubRes.data.restaurants : [];
-      setHubRestaurants(nextRestaurants);
-      const menuCandidates = getDiningMenuCandidates(loc.location, nextRestaurants);
+      if (!isDiningHallMenuLocation(loc.location)) {
+        setHubRestaurants([]);
+        setDiningMenuOptions([]);
+        setActiveDiningMenu(null);
+        setActiveDiningMealPeriod("lunch");
+        setDiningMenuPreview(null);
+        return;
+      }
+
+      const menuCandidates = getDiningMenuCandidates(loc.location, []);
+      setHubRestaurants([]);
       setDiningMenuOptions(menuCandidates);
-      const nextMenu = menuCandidates[0] || null;
+      const nextMenu = loc.location;
       setActiveDiningMenu(nextMenu);
-      setActiveDiningMealPeriod(nextMenu ? (getDiningMealPeriodForLocation(nextMenu) as DiningMealPeriod) : "lunch");
+      setActiveDiningMealPeriod(getDiningMealPeriodForLocation(nextMenu) as DiningMealPeriod);
       setDiningMenuPreview(null);
     } catch (e) { console.warn("Failed to fetch dining data", e); }
     finally { setIsFetchingDining(false); }
@@ -756,7 +764,7 @@ export function PlacesMapScreen() {
   }, [selectedId, fetchReviews]);
 
   useEffect(() => {
-    if (!selectedLoc || (selectedLoc.type !== "Dining" && selectedLoc.type !== "Hub")) { setHubRestaurants([]); setDiningMenuOptions([]); setActiveDiningMenu(null); setDiningMenuPreview(null); return; }
+    if (!selectedLoc || !isDiningHallMenuLocation(selectedLoc.location)) { setHubRestaurants([]); setDiningMenuOptions([]); setActiveDiningMenu(null); setDiningMenuPreview(null); return; }
     fetchDiningData(selectedLoc);
   }, [selectedLoc, fetchDiningData]);
 

@@ -19,9 +19,9 @@ def create_place_reviews_group():
         # many Stream clients use create_feed_group or similar
         # let's try the direct API if the SDK is restricted, but check first
         client.create_feed_group('place_reviews', 'flat')
-        print("SUCCESS: feed_group created.")
+        print("SUCCESS: f
+        print(f"Error: {e}")eed_group created.")
     except Exception as e:
-        print(f"Error: {e}")
 
 if __name__ == "__main__":
     create_place_reviews_group()

@@ -9,15 +9,9 @@ from db_config import get_db_connection
 # Removed hardcoded credentials
 
 def migrate():
-    # Enriched seed data from db.js
+    # Keep only retail/restaurant seed data.
+    # Dining hall menus should come from live DineOnCampus fetches.
     seed_foods = [
-        # Sbisa
-        {"name": "Scrambled Eggs", "source": "manual", "location": "Sbisa", "location_type": "dining", "meal_period": "breakfast", "calories": 140, "protein": 10, "carbs": 2, "fat": 10, "fiber": 0, "sodium": 250, "calcium": 80, "iron": 1.5, "vitamin_c": 0, "cost": 0},
-        {"name": "Oatmeal", "source": "manual", "location": "Sbisa", "location_type": "dining", "meal_period": "breakfast", "calories": 150, "protein": 5, "carbs": 27, "fat": 3, "fiber": 4, "sodium": 0, "calcium": 20, "iron": 2, "vitamin_c": 0, "cost": 0},
-        {"name": "Grilled Chicken Breast", "source": "manual", "location": "Sbisa", "location_type": "dining", "meal_period": "lunch", "calories": 165, "protein": 31, "carbs": 0, "fat": 3.6, "fiber": 0, "sodium": 74, "calcium": 15, "iron": 1, "vitamin_c": 0, "cost": 0},
-        {"name": "Brown Rice", "source": "manual", "location": "Sbisa", "location_type": "dining", "meal_period": "lunch", "calories": 215, "protein": 5, "carbs": 44, "fat": 2, "fiber": 4, "sodium": 10, "calcium": 20, "iron": 1, "vitamin_c": 0, "cost": 0},
-        {"name": "Grilled Salmon", "source": "manual", "location": "Sbisa", "location_type": "dining", "meal_period": "dinner", "calories": 208, "protein": 28, "carbs": 0, "fat": 10, "fiber": 0, "sodium": 59, "calcium": 15, "iron": 0.4, "vitamin_c": 0, "cost": 0},
-        
         # Retail - Chick-fil-A
         {"name": "Grilled Chicken Sandwich", "source": "manual", "location": "Chick-fil-A", "location_type": "restaurant", "meal_period": "all", "calories": 380, "protein": 28, "carbs": 40, "fat": 7, "fiber": 3, "sodium": 820, "calcium": 60, "iron": 2, "vitamin_c": 2, "cost": 5.49},
         {"name": "8ct Chick-fil-A Nuggets", "source": "manual", "location": "Chick-fil-A", "location_type": "restaurant", "meal_period": "all", "calories": 260, "protein": 26, "carbs": 12, "fat": 12, "fiber": 0, "sodium": 810, "calcium": 20, "iron": 1, "vitamin_c": 0, "cost": 4.49},
@@ -42,6 +36,8 @@ def migrate():
         {"name": "Salata Custom Salad", "source": "manual", "location": "Salata", "location_type": "restaurant", "meal_period": "all", "calories": 380, "protein": 32, "carbs": 20, "fat": 18, "fiber": 8, "sodium": 680, "calcium": 150, "iron": 3, "vitamin_c": 35, "cost": 10.99},
     ]
 
+    dining_halls = ["Sbisa Dining Hall (North Campus)", "The Commons Dining Hall (South Campus)", "Duncan Dining Hall (South Campus/Quad)"]
+
     # Micronutrients backfill (condensed)
     micros = [
         {"name": "Scrambled Eggs", "potassium": 138, "magnesium": 12, "vitamin_d": 1.1},
@@ -56,6 +52,16 @@ def migrate():
     cur = conn.cursor()
 
     print(f"Migrating {len(seed_foods)} food items...")
+
+    # Remove any old manual dining-hall seeds so halls only reflect live data.
+    cur.execute(
+        """
+        DELETE FROM food_items
+        WHERE location = ANY(%s)
+          AND source = 'manual'
+        """,
+        (dining_halls,),
+    )
     
     for f in seed_foods:
         # Check if exists

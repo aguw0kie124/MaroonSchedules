@@ -37,6 +37,7 @@ import {
   DiningMealPeriod,
   getDiningMealOptionsForLocation,
   getDiningMenuCandidates,
+  isDiningHallMenuLocation,
 } from "../../services/diningMenuCache";
 
 interface LocationBottomSheetProps {
@@ -309,7 +310,7 @@ export function LocationBottomSheet({
                       </Text>
                     </TouchableOpacity>
 
-                    {(selectedLoc.type === "Dining" || selectedLoc.type === "Hub") &&
+                    {isDiningHallMenuLocation(selectedLoc.location) &&
                     activeDiningMenu &&
                     isPrimaryDiningHallSelection ? (
                       <TouchableOpacity
@@ -515,8 +516,7 @@ export function LocationBottomSheet({
               )}
 
               {/* Dining menus */}
-              {(selectedLoc.type === "Dining" || selectedLoc.type === "Hub") &&
-                isPrimaryDiningHallSelection && (
+              {isDiningHallMenuLocation(selectedLoc.location) && isPrimaryDiningHallSelection && (
                   <View style={styles.infoBlock}>
                     <View style={styles.reviewsHeader}>
                       <Text style={styles.sectionTitle}>Menus</Text>
@@ -583,12 +583,9 @@ export function LocationBottomSheet({
                       />
                     ) : diningMenuPreview?.categories?.length ? (
                       <View style={styles.menuList}>
-                        {diningMenuPreview.categories
-                          .flatMap((category: any) =>
-                            category.items.slice(0, 2),
-                          )
-                          .slice(0, 6)
-                          .map((item: any) => (
+                        {diningMenuPreview.categories.flatMap((category: any) =>
+                          category.items,
+                        ).map((item: any) => (
                             <View
                               key={`${activeDiningMenu}-${item.name}`}
                               style={styles.menuItemCard}
