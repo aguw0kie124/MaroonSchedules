@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, TouchableOpacity, ScrollView } from "react-native";
-import { ChevronRight } from "lucide-react-native";
+import { ChevronRight, ArrowLeft } from "lucide-react-native";
 import { Card } from "../SharedUI";
 import { PlacesViewMode } from "../../store/appShellStore";
 import type { CampusLocation } from "./types";
@@ -58,18 +58,29 @@ export function PlacesList({
     >
       <Card style={styles.placesListCard}>
         <View style={styles.placesListHeader}>
-          <Text style={styles.placesListTitle}>
-            {activeLayer === "Schedule"
-              ? "Class Locations"
-              : `${activeLayer} Places`}
-          </Text>
-          <Text style={styles.placesListSubtitle}>
-            {activeLayer === "Schedule"
-              ? activeScheduleOption
-                ? `Mapped from ${activeScheduleOption.label}. Open any building to see which classes meet there.`
-                : "No uploaded or saved schedule has been pinned yet."
-              : "Unified campus nodes with dining, events, parking, and room actions layered in."}
-          </Text>
+          <View style={styles.placesListHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.placesListTitle}>
+                {activeLayer === "Schedule"
+                  ? "Class Locations"
+                  : `${activeLayer} Places`}
+              </Text>
+              <Text style={styles.placesListSubtitle}>
+                {activeLayer === "Schedule"
+                  ? activeScheduleOption
+                    ? `Mapped from ${activeScheduleOption.label}. Open any building to see which classes meet there.`
+                    : "No uploaded or saved schedule has been pinned yet."
+                  : "Browse nearby places, then tap any row to jump back into the map."}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.placesListExitButton}
+              onPress={() => setPlacesViewMode("map")}
+            >
+              <ArrowLeft size={15} color={COLORS.textPrimary} />
+              <Text style={styles.placesListExitText}>Map</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         <ScrollView
           showsVerticalScrollIndicator={false}

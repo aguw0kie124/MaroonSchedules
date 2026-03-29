@@ -22,9 +22,8 @@ import {
   View,
   StyleSheet,
   ActivityIndicator,
+  TouchableOpacity,
   Animated,
-  Platform,
-  LayoutAnimation,
 } from "react-native";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
@@ -59,7 +58,8 @@ import {
 import axios from "axios";
 
 // ── Sub-components ────────────────────────────────────────────
-import { CategoryPillBar } from "./places/CategoryPillBar";
+import { FloatingSearchBar } from "./places/FloatingSearchBar";
+import { LayerPillScroller } from "./places/LayerPillScroller";
 import { SearchOverlay } from "./places/SearchOverlay";
 import {
   BusRouteSelector,
@@ -97,6 +97,7 @@ import {
   getCategoryIcon,
 } from "./places/utils";
 import { getStyles } from "./places/placesStyles";
+import { LocateFixed, Orbit } from "lucide-react-native";
 
 // ── Transitional: still uses inline hooks from original file
 //    (replace with useLocationData / useScheduleMap / useBusTransit
@@ -150,11 +151,7 @@ export function PlacesMapScreen() {
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [userCoord, setUserCoord] = useState<{ latitude: number; longitude: number } | null>(null);
-
-  // Indicator animation
-  const indicatorAnim = useRef(new Animated.Value(0)).current;
-  const [categoryTrackWidth, setCategoryTrackWidth] = useState(0);
-  const busPulseAnim = useRef(new Animated.Value(1)).current;
+  const [isMapTilted, setIsMapTilted] = useState(false);
 
   // ── Location data ─────────────────────────────────────────
   const fullCampusIndex = useMemo(() => buildCampusDirectory(), []);
@@ -247,26 +244,25 @@ export function PlacesMapScreen() {
   const visibleCategories = useMemo(() => {
     const ordered: any[] = visiblePlacesPills
       .map((item) => CATEGORIES.find((c) => c.id === item.id))
+      .filter((c) => c?.id !== "Academic" && c?.id !== "Heatmap")
       .filter((c) => c != null);
-    if (!ordered.length) return CATEGORIES;
+    if (!ordered.length) {
+      return CATEGORIES.filter(
+        (category) =>
+          category.id !== "Academic" && category.id !== "Heatmap",
+      );
+    }
     const active = CATEGORIES.find((c) => c.id === activeLayer);
-    if (active && !ordered.some((c) => c.id === active.id)) return [active, ...ordered];
+    if (
+      active &&
+      active.id !== "Academic" &&
+      active.id !== "Heatmap" &&
+      !ordered.some((c) => c.id === active.id)
+    ) {
+      return [active, ...ordered];
+    }
     return ordered;
   }, [activeLayer, visiblePlacesPills]);
-
-  const topBarItems = useMemo(
-    () => [...visibleCategories.map((c) => ({ ...c, isSettings: false })), { id: "__settings__", label: "Settings", isSettings: true }],
-    [visibleCategories],
-  );
-
-  const categorySlotWidth = categoryTrackWidth > 0 ? categoryTrackWidth / topBarItems.length : 0;
-  const categoryIndicatorTranslateX =
-    visibleCategories.length <= 1 || topBarItems.length <= 1
-      ? 0
-      : indicatorAnim.interpolate({
-          inputRange: visibleCategories.map((_, i) => i),
-          outputRange: visibleCategories.map((_, i) => i * categorySlotWidth + 2),
-        });
 
   // ── Derived map locations ─────────────────────────────────
   const scheduleOptions = useMemo(() => {
@@ -365,6 +361,8 @@ export function PlacesMapScreen() {
     const q = busDestinationQuery.toLowerCase();
     return allMapLocations.filter((l) => l.location.toLowerCase().includes(q) || (l.shortName || "").toLowerCase().includes(q)).slice(0, 6);
   }, [allMapLocations, busDestinationQuery]);
+
+  const busPulseAnim = useRef(new Animated.Value(1)).current;
 
   const selectedLoc = useMemo(() => allMapLocations.find((l) => l.location === selectedId), [allMapLocations, selectedId]);
   const markerLocations = useMemo(() => {
@@ -548,6 +546,50 @@ export function PlacesMapScreen() {
     }
   }, []);
 
+  const centerOnUserLocation = useCallback(async () => {
+    try {
+      let nextCoord = userCoord;
+      if (!nextCoord) {
+        const current = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        nextCoord = {
+          latitude: current.coords.latitude,
+          longitude: current.coords.longitude,
+        };
+        setUserCoord(nextCoord);
+      }
+      if (!nextCoord || !mapRef.current) return;
+      mapRef.current.animateCamera(
+        {
+          center: nextCoord,
+          zoom: 16.4,
+          pitch: isMapTilted ? 55 : 0,
+          heading: 0,
+        },
+        { duration: 700 },
+      );
+    } catch (error) {
+      console.warn("Unable to center on user location", error);
+    }
+  }, [isMapTilted, userCoord]);
+
+  const toggleMapPitch = useCallback(() => {
+    const nextTilted = !isMapTilted;
+    setIsMapTilted(nextTilted);
+    if (!mapRef.current) return;
+    const center = userCoord || TAMU_CENTER;
+    mapRef.current.animateCamera(
+      {
+        center,
+        pitch: nextTilted ? 55 : 0,
+        zoom: userCoord ? 16.4 : 15.2,
+        heading: 0,
+      },
+      { duration: 500 },
+    );
+  }, [isMapTilted, userCoord]);
+
   // ── Transit handlers ──────────────────────────────────────
   const { transitService } = require("../services/transitService");
 
@@ -619,12 +661,6 @@ export function PlacesMapScreen() {
     })();
     return () => { mounted = false; watcher?.remove(); };
   }, []);
-
-  // Pill indicator animation
-  useEffect(() => {
-    const idx = Math.max(0, visibleCategories.findIndex((c) => c.id === activeLayer));
-    Animated.spring(indicatorAnim, { toValue: idx, useNativeDriver: true, tension: 260, friction: 28 }).start();
-  }, [activeLayer, indicatorAnim, visibleCategories]);
 
   // Keep active layer valid
   useEffect(() => {
@@ -859,26 +895,17 @@ export function PlacesMapScreen() {
 
       {/* Top UI Floating Elements */}
       <View style={[styles.topContainer, { top: Math.max(insets.top + 10, 54) }]}>
-        <CategoryPillBar
+        <FloatingSearchBar
           styles={styles}
           COLORS={COLORS}
-          theme={theme}
           isSearchExpanded={isSearchExpanded}
           setIsSearchExpanded={setIsSearchExpanded}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
-          showSearchResults={showSearchResults}
           setShowSearchResults={setShowSearchResults}
-          activeLayer={activeLayer}
-          setActiveLayer={(layer) => { setActiveLayer(layer); setSelectedId(null); }}
-          setSelectedId={setSelectedId}
-          setIsRouteDropdownOpen={setIsRouteDropdownOpen}
-          setIsEditorVisible={setIsEditorVisible}
-          visibleCategories={visibleCategories}
-          topBarItems={topBarItems}
-          categorySlotWidth={categorySlotWidth}
-          categoryIndicatorTranslateX={categoryIndicatorTranslateX}
-          setCategoryTrackWidth={setCategoryTrackWidth}
+          placesViewMode={placesViewMode}
+          setPlacesViewMode={setPlacesViewMode}
+          onOpenSettings={() => setIsEditorVisible(true)}
         />
 
         <SearchOverlay
@@ -888,6 +915,21 @@ export function PlacesMapScreen() {
           isSearchExpanded={isSearchExpanded}
           showSearchResults={showSearchResults}
           onSelectLocation={handleSelectLocation}
+        />
+
+        <LayerPillScroller
+          styles={styles}
+          COLORS={COLORS}
+          activeLayer={activeLayer}
+          layers={visibleCategories}
+          onSelectLayer={(layer) => {
+            setActiveLayer(layer);
+            setSelectedId(null);
+            setSelectedStop(null);
+            setSelectedBus(null);
+            setIsRouteDropdownOpen(false);
+          }}
+          onOpenSettings={() => setIsEditorVisible(true)}
         />
 
       {/* Schedule header */}
@@ -933,6 +975,21 @@ export function PlacesMapScreen() {
           handleStopPress={handleStopPress}
         />
       )}
+      </View>
+
+      <View style={styles.mapFabStack} pointerEvents="box-none">
+        <TouchableOpacity
+          style={styles.mapFab}
+          onPress={centerOnUserLocation}
+        >
+          <LocateFixed size={22} color={COLORS.textPrimary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.mapFab}
+          onPress={toggleMapPitch}
+        >
+          <Orbit size={22} color={isMapTilted ? COLORS.primary : COLORS.textPrimary} />
+        </TouchableOpacity>
       </View>
 
       <BusStopInfoCard
@@ -1012,7 +1069,9 @@ export function PlacesMapScreen() {
           visible={isEditorVisible}
           onClose={() => setIsEditorVisible(false)}
           title="Places"
-          items={getOrderedItems(placesPills)}
+          items={getOrderedItems(placesPills).filter(
+            (item) => item.id !== "Academic" && item.id !== "Heatmap",
+          )}
           onToggle={togglePlacesPill}
           onMove={movePlacesPill}
         />
