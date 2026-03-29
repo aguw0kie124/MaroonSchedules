@@ -154,7 +154,7 @@ function MainTabs() {
   return (
     <Tab.Navigator
       id="MainTabs"
-      initialRouteName="Dashboard"
+      initialRouteName="Places"
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
