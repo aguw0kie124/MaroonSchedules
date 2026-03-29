@@ -1494,7 +1494,7 @@ export function PlacesMapScreen() {
         }}
       >
         {/* AI-estimated campus-wide density zones */}
-        {activeLayer === "Heatmap" &&
+        {activeLayer === "Heatmap" ? (
           CAMPUS_ZONES.map((zone, i) => {
             const density = getZoneDensity(zone);
             const color = getStatusColor(density);
@@ -1508,7 +1508,8 @@ export function PlacesMapScreen() {
                 strokeWidth={2}
               />
             );
-          })}
+          })
+        ) : null}
 
         {/* Transit Layer: Route Polyline */}
         {activeLayer === "Bus" && userCoord ? (
@@ -1524,8 +1525,9 @@ export function PlacesMapScreen() {
           </Marker>
         ) : null}
 
-        {activeLayer === "Bus" && isAllBusRoutesSelected
-          ? busRoutes.map((route) => {
+        {activeLayer === "Bus" ? (
+          isAllBusRoutesSelected ? (
+            busRoutes.map((route) => {
               const routePattern =
                 allRoutePatternsById[route.Key]?.points || [];
               if (!routePattern.length) return null;
@@ -1541,21 +1543,21 @@ export function PlacesMapScreen() {
                 />
               );
             })
-          : routePatterns.length > 0 && (
-              <Polyline
-                coordinates={routePatterns}
-                strokeColor={
-                  selectedRoute?.Color ||
-                  transitService.getRouteColor(selectedBusRouteId || "")
-                }
-                strokeWidth={6}
-                lineDashPattern={[0]}
-              />
-            )}
+          ) : routePatterns.length > 0 ? (
+            <Polyline
+              coordinates={routePatterns}
+              strokeColor={
+                selectedRoute?.Color ||
+                transitService.getRouteColor(selectedBusRouteId || "")
+              }
+              strokeWidth={6}
+              lineDashPattern={[0]}
+            />
+          ) : null
+        ) : null}
 
         {/* Transit Layer: Bus Stops (MaroonRides Style: Blue Pins) */}
-        {activeLayer === "Bus" &&
-          !isAllBusRoutesSelected &&
+        {activeLayer === "Bus" && !isAllBusRoutesSelected ? (
           busStops.map((stop, idx) => (
             <Marker
               key={`stop-${stop.StopCode || idx}`}
@@ -1571,10 +1573,11 @@ export function PlacesMapScreen() {
                 <MapPin size={16} color="#FFF" />
               </View>
             </Marker>
-          ))}
+          ))
+        ) : null}
 
         {/* Transit Layer: Bus Vehicles (MaroonRides Style: Bus Icons with Number) */}
-        {activeLayer === "Bus" &&
+        {activeLayer === "Bus" ? (
           busVehicles.map((bus) => {
             const isTrackedBus = selectedBus?.Key === bus.Key;
             return (
@@ -1625,7 +1628,8 @@ export function PlacesMapScreen() {
                 </View>
               </Marker>
             );
-          })}
+          })
+        ) : null}
 
         {/* Marker rendering fixes: Ensure markers are always rendered for active categories */}
         {locations
