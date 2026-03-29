@@ -1,3 +1,4 @@
+import { getStyles } from "./map/PlacesMapStyles";
 import React, {
   useEffect,
   useState,
@@ -26,6 +27,47 @@ import {
 import axios from "axios";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
+import {
+  SNAP_PEEK,
+  SNAP_FULL,
+  SNAP_HIDDEN,
+  SHEET_BOTTOM_OFFSET,
+  FLOATING_CARD_BOTTOM_OFFSET,
+  ALL_BUS_ROUTES_KEY,
+  ROOM_RESERVATION_URL,
+  PARKING_INFO_URL,
+  EVENTS_URL,
+  TAMU_CENTER,
+  CANONICAL_LOCATION_ALIASES,
+  BUILDING_COORDS,
+  AMENITY_COORDS,
+  getCanonicalLocationName,
+  getCanonicalCoords,
+  DARK_MAP_STYLE,
+  CAMPUS_ZONES,
+  getTimeOfDayFactor,
+  getZoneDensity,
+  LocationType,
+  CampusLocation,
+  STATIC_LOCATION_META,
+  mapBuildingType,
+  mapAmenityType,
+  buildCampusDirectory,
+  CATEGORIES,
+  getCategoryIcon,
+  getStatusColor,
+  getCategoryPillIcon,
+  getDistanceLabel,
+  getStopLabel,
+  getParkingRecommendation,
+  getLocationContextLink,
+  haversineDistanceMeters,
+  toLocalXY,
+  getClosestProgressMeters,
+  formatBusDistance,
+  getApproximateEtaMinutes,
+  isVehicleOnRoute,
+} from "./map/PlacesMapUtils";
 import { useTheme, Card } from "./SharedUI";
 import { PageModuleEditor } from "./PageModuleEditor";
 import {
@@ -81,645 +123,10 @@ import {
   getDiningMenuCandidates,
 } from "../services/diningMenuCache";
 
-const { height: SCREEN_HEIGHT } = Dimensions.get("window");
-
-// Snap point translateY values (distance from top of screen)
-const SNAP_PEEK = SCREEN_HEIGHT * 0.45; // ~55% of screen visible
-const SNAP_FULL = SCREEN_HEIGHT * 0.08; // ~92% of screen visible
-const SNAP_HIDDEN = SCREEN_HEIGHT; // off-screen
-const SHEET_BOTTOM_OFFSET = 0;
-const FLOATING_CARD_BOTTOM_OFFSET = 124;
-const ALL_BUS_ROUTES_KEY = "__all__";
-const ROOM_RESERVATION_URL = "https://tamu.libcal.com/reserve";
-const PARKING_INFO_URL = "https://transport.tamu.edu/Parking";
-const EVENTS_URL = "https://stuactonline.tamu.edu/app/events";
-
-const TAMU_CENTER = {
-  latitude: 30.6153,
-  longitude: -96.341,
-  latitudeDelta: 0.03,
-  longitudeDelta: 0.03,
-};
-
-const CANONICAL_LOCATION_ALIASES: Record<string, string> = {
-  "Student Rec Center": "Student Recreation Center",
-  "Southside Rec Center": "Southside Recreation Center",
-  "Polo Road Rec Center": "Polo Road Recreation Center",
-  "Evans Library": "Sterling C. Evans Library",
-  "Memorial Student Center (MSC)": "Memorial Student Center",
-};
-
-const BUILDING_COORDS = new Map(
-  BUILDINGS.map((building) => [
-    building.name,
-    { lat: building.latitude, lng: building.longitude },
-  ]),
-);
-
-const AMENITY_COORDS = new Map(
-  AMENITIES.map((amenity) => [
-    amenity.name,
-    { lat: amenity.latitude, lng: amenity.longitude },
-  ]),
-);
-
-function getCanonicalLocationName(name: string): string {
-  return CANONICAL_LOCATION_ALIASES[name] || name;
-}
-
-function getCanonicalCoords(
-  name: string,
-  fallback: { lat: number; lng: number },
-): { lat: number; lng: number } {
-  const canonicalName = getCanonicalLocationName(name);
-  return (
-    BUILDING_COORDS.get(canonicalName) ||
-    AMENITY_COORDS.get(canonicalName) ||
-    fallback
-  );
-}
-
-const DARK_MAP_STYLE = [
-  { elementType: "geometry", stylers: [{ color: "#212121" }] },
-  { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#212121" }] },
-  {
-    featureType: "administrative",
-    elementType: "geometry",
-    stylers: [{ color: "#757575" }],
-  },
-  {
-    featureType: "poi",
-    elementType: "geometry",
-    stylers: [{ color: "#181818" }],
-  },
-  {
-    featureType: "road",
-    elementType: "geometry.fill",
-    stylers: [{ color: "#2c2c2c" }],
-  },
-  {
-    featureType: "water",
-    elementType: "geometry",
-    stylers: [{ color: "#000000" }],
-  },
-];
-
-// AI-estimated campus-wide density zones — independent of registered locations.
-// Filtered to only show gyms and libraries as requested.
-const CAMPUS_ZONES: Array<{
-  name: string;
-  lat: number;
-  lng: number;
-  peak: number;
-  off: number;
-  radius: number;
-  type: "Rec" | "Library" | "Dining";
-  hours?: string;
-}> = [
-  {
-    name: "Student Recreation Center",
-    ...getCanonicalCoords("Student Recreation Center", {
-      lat: 30.6094,
-      lng: -96.34,
-    }),
-    peak: 70,
-    off: 10,
-    radius: 220,
-    type: "Rec",
-    hours: "6:00 AM – 11:59 PM", // Updated based on March 26 data
-  },
-  {
-    name: "Southside Recreation Center",
-    ...getCanonicalCoords("Southside Recreation Center", {
-      lat: 30.6093,
-      lng: -96.339,
-    }),
-    peak: 65,
-    off: 10,
-    radius: 200,
-    type: "Rec",
-  },
-  {
-    name: "Polo Road Recreation Center",
-    ...getCanonicalCoords("Polo Road Recreation Center", {
-      lat: 30.6237,
-      lng: -96.3395,
-    }),
-    peak: 55,
-    off: 8,
-    radius: 200,
-    type: "Rec",
-  },
-  {
-    name: "Sterling C. Evans Library",
-    ...getCanonicalCoords("Sterling C. Evans Library", {
-      lat: 30.6171,
-      lng: -96.3387,
-    }),
-    peak: 82,
-    off: 18,
-    radius: 160,
-    type: "Library",
-  },
-  {
-    name: "Evans Library Annex",
-    ...getCanonicalCoords("Evans Library Annex", {
-      lat: 30.6168,
-      lng: -96.3383,
-    }),
-    peak: 70,
-    off: 15,
-    radius: 120,
-    type: "Library",
-  },
-  {
-    name: "West Campus Library",
-    ...getCanonicalCoords("West Campus Library", {
-      lat: 30.6146,
-      lng: -96.344,
-    }),
-    peak: 60,
-    off: 14,
-    radius: 160,
-    type: "Library",
-  },
-  {
-    name: "Memorial Student Center",
-    ...getCanonicalCoords("Memorial Student Center", {
-      lat: 30.6123,
-      lng: -96.3415,
-    }),
-    peak: 85,
-    off: 15,
-    radius: 180,
-    type: "Dining",
-  },
-  {
-    name: "Polo Road Garage Dining",
-    ...getCanonicalCoords("Polo Road Garage Dining", {
-      lat: 30.6235,
-      lng: -96.3388,
-    }),
-    peak: 80,
-    off: 10,
-    radius: 180,
-    type: "Dining",
-  },
-  {
-    name: "Sbisa Dining Hall",
-    ...getCanonicalCoords("Sbisa Dining Hall", {
-      lat: 30.617135,
-      lng: -96.343777,
-    }),
-    peak: 70,
-    off: 5,
-    radius: 150,
-    type: "Dining",
-  },
-];
-
-function getTimeOfDayFactor(): number {
-  const hour = new Date().getHours();
-  if (hour >= 8 && hour < 9) return 0.55;
-  if (hour >= 9 && hour < 11) return 0.95;
-  if (hour >= 11 && hour < 14) return 1.0;
-  if (hour >= 14 && hour < 17) return 0.85;
-  if (hour >= 17 && hour < 19) return 0.6;
-  if (hour >= 19 && hour < 22) return 0.45;
-  return 0.12;
-}
-
-function getZoneDensity(zone: (typeof CAMPUS_ZONES)[0]): number {
-  const factor = getTimeOfDayFactor();
-  return Math.round(zone.off + (zone.peak - zone.off) * factor);
-}
-
-type LocationType =
-  | "Rec"
-  | "Library"
-  | "Dining"
-  | "Hub"
-  | "Study"
-  | "General"
-  | "Academic"
-  | "Parking"
-  | "Landmark"
-  | "Housing"
-  | "Athletics";
-
-interface CampusLocation {
-  location: string;
-  percent_full: number;
-  type: LocationType;
-  is_live: boolean;
-  available_seats: number | null;
-  coord: { lat: number; lng: number };
-  current_event?: string;
-  hours?: string;
-  reviews?: Array<{ user: string; rating: number; comment: string }>;
-  traffic_history?: number[];
-  restaurants?: string[];
-  menu_snippet?: string[] | null;
-  shortName?: string;
-  description?: string;
-  source?: "traffic" | "directory";
-}
-
-const STATIC_LOCATION_META: Record<string, Partial<CampusLocation>> = {
-  "Sterling C. Evans Library": {
-    hours: "Open daily · check library schedule",
-    description: "Main research library near the Academic Plaza.",
-  },
-  "Evans Library Annex": {
-    hours: "Open daily · check library schedule",
-    description: "Annex study and overflow library space.",
-  },
-  "West Campus Library": {
-    hours: "Open daily · check library schedule",
-    description: "Business and west campus study hub.",
-  },
-  "Student Recreation Center": {
-    hours: "6:00 AM – 11:59 PM",
-    description: "Main rec center with fitness, courts, and aquatic areas.",
-  },
-  "Southside Recreation Center": {
-    hours: "5:30 AM – 11:59 PM",
-    description: "Southside fitness and recreation facility.",
-  },
-  "Polo Road Recreation Center": {
-    hours: "6:00 AM – 9:00 PM weekdays",
-    description: "North campus rec and fitness destination.",
-  },
-  "Sbisa Dining Hall": {
-    hours: "Breakfast, lunch, and dinner service",
-    description: "Northside all-you-care-to-eat dining hall.",
-  },
-  "The Commons Dining Hall": {
-    hours: "Breakfast, lunch, and dinner service",
-    description: "Southside dining hall near the Commons.",
-  },
-  "Memorial Student Center": {
-    hours: "Open daily",
-    description: "Central student hub, dining, lounges, and events.",
-  },
-  "Polo Road Garage Dining": {
-    hours: "Check dining schedule",
-    description: "Dining hub inside the Polo Road Garage complex.",
-  },
-  "Rudder Tower": {
-    hours: "Open daily",
-    description: "Event and campus activity landmark adjacent to the MSC.",
-  },
-};
-
-function mapBuildingType(type: string): LocationType {
-  switch (type) {
-    case "library":
-      return "Library";
-    case "recreation":
-      return "Rec";
-    case "dining":
-      return "Dining";
-    case "academic":
-      return "Academic";
-    case "athletics":
-      return "Athletics";
-    case "housing":
-      return "Housing";
-    case "landmark":
-      return "Landmark";
-    default:
-      return "General";
-  }
-}
-
-function mapAmenityType(type: string): LocationType {
-  switch (type) {
-    case "dining":
-      return "Dining";
-    case "study":
-      return "Study";
-    case "parking":
-      return "Parking";
-    default:
-      return "General";
-  }
-}
-
-function buildCampusDirectory(): CampusLocation[] {
-  const buildingLocations = BUILDINGS.map((building) => ({
-    location: building.name,
-    shortName: building.shortName,
-    percent_full: 0,
-    type: mapBuildingType(building.type),
-    is_live: false,
-    available_seats: null,
-    coord: { lat: building.latitude, lng: building.longitude },
-    source: "directory" as const,
-    ...STATIC_LOCATION_META[building.name],
-  }));
-
-  const amenityLocations = AMENITIES.map((amenity) => ({
-    location: amenity.name,
-    shortName: amenity.name,
-    percent_full: 0,
-    type: mapAmenityType(amenity.type),
-    is_live: false,
-    available_seats: null,
-    coord: { lat: amenity.latitude, lng: amenity.longitude },
-    source: "directory" as const,
-  }));
-
-  const merged = new Map<string, CampusLocation>();
-  [...buildingLocations, ...amenityLocations].forEach((location) => {
-    merged.set(location.location, location);
-  });
-  return Array.from(merged.values());
-}
-
-const CATEGORIES = [
-  { id: "Bus", label: "Buses", icon: <Bus size={18} /> },
-  { id: "Dining", label: "Dining", icon: <Utensils size={18} /> },
-  { id: "Parking", label: "Parking", icon: <TrafficCone size={18} /> },
-  { id: "Library", label: "Libraries", icon: <Library size={18} /> },
-  { id: "Academic", label: "Academic", icon: <GraduationCap size={18} /> },
-  { id: "Rec", label: "Gyms", icon: <Dumbbell size={18} /> },
-  { id: "Study", label: "Study", icon: <Info size={18} /> },
-  { id: "Heatmap", label: "Traffic", icon: <Layers size={18} /> },
-];
-
-const getCategoryIcon = (type: LocationType) => {
-  switch (type) {
-    case "Library":
-      return <Library />;
-    case "Rec":
-      return <Dumbbell />;
-    case "Dining":
-    case "Hub":
-      return <Utensils />;
-    case "Parking":
-      return <TrafficCone />;
-    case "Academic":
-      return <Info />;
-    case "Landmark":
-      return <Star />;
-    case "Study":
-      return <Library />;
-    default:
-      return <Info />;
-  }
-};
-
-const getStatusColor = (pct: number) => {
-  if (pct < 40) return "#32D74B";
-  if (pct < 75) return "#FF9500";
-  return "#FF3B30";
-};
-
-function getCategoryPillIcon(id: string) {
-  switch (id) {
-    case "Bus":
-      return Bus;
-    case "Library":
-      return Library;
-    case "Rec":
-      return Dumbbell;
-    case "Dining":
-      return Utensils;
-    case "Parking":
-      return TrafficCone;
-    case "Academic":
-      return GraduationCap;
-    case "Study":
-      return Info;
-    case "Heatmap":
-    default:
-      return Layers;
-  }
-}
-
-function getDistanceLabel(distanceMeters: number | null) {
-  if (distanceMeters == null) return "Campus";
-  if (distanceMeters < 1000) return `${Math.round(distanceMeters)} m away`;
-  return `${(distanceMeters / 1000).toFixed(1)} km away`;
-}
-
-function getStopLabel(stop: any) {
-  return stop?.Name || stop?.StopName || stop?.Description || stop?.StopCode || 'Transit Stop';
-}
-
-function getParkingRecommendation(
-  locationName: string,
-  permit: ParkingPermit,
-): { score: number; badge: string; detail: string } {
-  const lower = locationName.toLowerCase();
-  const isGarage = lower.includes("garage");
-  const isWestCampus = lower.includes("west campus");
-  const isResidentAdjacent = lower.includes("lot 30") || lower.includes("lot 61");
-
-  if (permit === "visitor") {
-    return isGarage
-      ? { score: 0, badge: "Best Match", detail: "Visitor-friendly garages are prioritized first." }
-      : { score: 2, badge: "Check Access", detail: "Visitor access is usually easier in campus garages." };
-  }
-
-  if (permit === "garage") {
-    return isGarage
-      ? { score: 0, badge: "Garage Fit", detail: "This matches a garage-first parking setup." }
-      : { score: 3, badge: "Secondary", detail: "A garage may be a cleaner match for this permit preference." };
-  }
-
-  if (permit === "west_campus") {
-    return isWestCampus
-      ? { score: 0, badge: "West Campus", detail: "This is aligned with west campus parking." }
-      : { score: isGarage ? 1 : 3, badge: "Secondary", detail: "Useful, but west campus options rank higher." };
-  }
-
-  if (permit === "resident") {
-    return isResidentAdjacent
-      ? { score: 0, badge: "Resident Fit", detail: "This lot is surfaced first for residential access." }
-      : { score: isGarage ? 2 : 1, badge: "Check Access", detail: "Verify housing access before relying on this option." };
-  }
-
-  return isGarage
-    ? { score: 0, badge: "Recommended", detail: "A strong all-around option for most valid permits." }
-    : { score: 1, badge: "Available", detail: "Keep this as a fallback if your primary lots are full." };
-}
-
-function getLocationContextLink(location: CampusLocation) {
-  if (location.type === "Parking") {
-    return {
-      label: "Parking Guide",
-      url: PARKING_INFO_URL,
-    };
-  }
-
-  if (location.type === "Library" || location.type === "Study" || location.type === "Academic") {
-    return {
-      label: "Reserve Room",
-      url: ROOM_RESERVATION_URL,
-    };
-  }
-
-  if (location.current_event || location.type === "Landmark" || location.type === "Hub") {
-    return {
-      label: "View Events",
-      url: EVENTS_URL,
-    };
-  }
-
-  return null;
-}
-
-function haversineDistanceMeters(
-  startLat: number,
-  startLng: number,
-  endLat: number,
-  endLng: number,
-) {
-  const earthRadiusMeters = 6371000;
-  const dLat = ((endLat - startLat) * Math.PI) / 180;
-  const dLng = ((endLng - startLng) * Math.PI) / 180;
-  const startLatRad = (startLat * Math.PI) / 180;
-  const endLatRad = (endLat * Math.PI) / 180;
-
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.sin(dLng / 2) *
-      Math.sin(dLng / 2) *
-      Math.cos(startLatRad) *
-      Math.cos(endLatRad);
-
-  return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function toLocalXY(latitude: number, longitude: number, originLat: number) {
-  const metersPerLat = 111320;
-  const metersPerLng = Math.cos((originLat * Math.PI) / 180) * 111320;
-  return {
-    x: longitude * metersPerLng,
-    y: latitude * metersPerLat,
-  };
-}
-
-function getClosestProgressMeters(
-  routePoints: Array<{ latitude: number; longitude: number }>,
-  target: { latitude: number; longitude: number },
-) {
-  if (routePoints.length === 0) return null;
-  if (routePoints.length === 1) return 0;
-
-  const originLat = target.latitude;
-  const targetXY = toLocalXY(target.latitude, target.longitude, originLat);
-  let traveledMeters = 0;
-  let bestProgressMeters = 0;
-  let bestDistanceMeters = Number.POSITIVE_INFINITY;
-
-  for (let index = 0; index < routePoints.length - 1; index += 1) {
-    const start = routePoints[index];
-    const end = routePoints[index + 1];
-    const startXY = toLocalXY(start.latitude, start.longitude, originLat);
-    const endXY = toLocalXY(end.latitude, end.longitude, originLat);
-    const dx = endXY.x - startXY.x;
-    const dy = endXY.y - startXY.y;
-    const segmentLengthSquared = dx * dx + dy * dy;
-
-    let t = 0;
-    if (segmentLengthSquared > 0) {
-      t =
-        ((targetXY.x - startXY.x) * dx + (targetXY.y - startXY.y) * dy) /
-        segmentLengthSquared;
-      t = Math.max(0, Math.min(1, t));
-    }
-
-    const projectionX = startXY.x + dx * t;
-    const projectionY = startXY.y + dy * t;
-    const distanceToSegment = Math.hypot(
-      targetXY.x - projectionX,
-      targetXY.y - projectionY,
-    );
-    const segmentLengthMeters = Math.hypot(dx, dy);
-
-    if (distanceToSegment < bestDistanceMeters) {
-      bestDistanceMeters = distanceToSegment;
-      bestProgressMeters = traveledMeters + segmentLengthMeters * t;
-    }
-
-    traveledMeters += segmentLengthMeters;
-  }
-
-  return {
-    progressMeters: bestProgressMeters,
-    totalRouteMeters: traveledMeters,
-    offsetMeters: bestDistanceMeters,
-  };
-}
-
-function formatBusDistance(
-  distanceMeters: number,
-  etaMinutes: number,
-  busLabel?: string,
-) {
-  const prefix = busLabel ? `${busLabel} · ` : "";
-  if (distanceMeters <= 120) return `${prefix}Arriving now`;
-  if (distanceMeters < 1000)
-    return `${prefix}${Math.round(distanceMeters)} m away · ~${etaMinutes} min`;
-  return `${prefix}${(distanceMeters / 1000).toFixed(1)} km away · ~${etaMinutes} min`;
-}
-
-function getApproximateEtaMinutes(
-  routePoints: Array<{ latitude: number; longitude: number }>,
-  stop: any,
-  bus: any,
-) {
-  const stopProgress = getClosestProgressMeters(routePoints, {
-    latitude: stop.Latitude,
-    longitude: stop.Longitude,
-  });
-  const busProgress = getClosestProgressMeters(routePoints, {
-    latitude: bus.Latitude,
-    longitude: bus.Longitude,
-  });
-
-  if (!stopProgress || !busProgress) {
-    const fallbackDistance = haversineDistanceMeters(
-      bus.Latitude,
-      bus.Longitude,
-      stop.Latitude,
-      stop.Longitude,
-    );
-    return Math.max(1, Math.round(fallbackDistance / 220));
-  }
-
-  let routeDelta = stopProgress.progressMeters - busProgress.progressMeters;
-  if (routeDelta < 0) {
-    routeDelta += stopProgress.totalRouteMeters;
-  }
-
-  const effectiveDistance = Math.max(
-    0,
-    routeDelta + stopProgress.offsetMeters + busProgress.offsetMeters,
-  );
-
-  return Math.max(1, Math.round(effectiveDistance / 220));
-}
-
-function isVehicleOnRoute(bus: any, route: any) {
-  if (!bus || !route) return false;
-  const routeKey = (route.Key || '').toString().toLowerCase();
-  const routeShortName = (route.ShortName || '').toString().toLowerCase();
-  const routeName = (route.Name || '').toString().toLowerCase();
-  return [bus.RouteKey, bus.RouteShortName, bus.RouteName]
-    .map((value: string) => (value || '').toString().toLowerCase())
-    .some((value: string) => value === routeKey || value === routeShortName || value === routeName);
-}
-
 export function PlacesMapScreen() {
   const { COLORS, theme } = useTheme();
   const isDark = theme === "dark";
-  const styles = getStyles(COLORS, theme === 'dark');
+  const styles = getStyles(COLORS, theme === "dark");
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const navItems = useAppShellStore((state) => state.navItems);
@@ -727,14 +134,21 @@ export function PlacesMapScreen() {
   const movePlacesPill = useAppShellStore((state) => state.movePlacesPill);
   const parkingPermit = useAppShellStore((state) => state.parkingPermit);
   const placesViewMode = useAppShellStore((state) => state.placesViewMode);
-  const setPlacesViewMode = useAppShellStore((state) => state.setPlacesViewMode);
+  const setPlacesViewMode = useAppShellStore(
+    (state) => state.setPlacesViewMode,
+  );
   const togglePlacesPill = useAppShellStore((state) => state.togglePlacesPill);
   const isStandaloneTransitScreen = route.name === "BusRoutes";
   const isStandaloneBusVisible = isNavItemVisible(navItems, "BusRoutes");
   const orderedPlacesPills = useMemo(
     () =>
       getOrderedItems(placesPills).filter(
-        (item) => !(item.id === "Bus" && !isStandaloneTransitScreen && isStandaloneBusVisible),
+        (item) =>
+          !(
+            item.id === "Bus" &&
+            !isStandaloneTransitScreen &&
+            isStandaloneBusVisible
+          ),
       ),
     [isStandaloneBusVisible, isStandaloneTransitScreen, placesPills],
   );
@@ -796,7 +210,10 @@ export function PlacesMapScreen() {
   const [busRoutes, setBusRoutes] = useState<any[]>([]);
   const [busVehicles, setBusVehicles] = useState<any[]>([]);
   const [busStops, setBusStops] = useState<any[]>([]);
-  const [userCoord, setUserCoord] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [userCoord, setUserCoord] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [selectedBusRouteId, setSelectedBusRouteId] = useState<string | null>(
     ALL_BUS_ROUTES_KEY,
   );
@@ -814,12 +231,13 @@ export function PlacesMapScreen() {
   const hydrateCampusHub = useCampusHubStore((state) => state.hydrate);
   const mapRef = useRef<any>(null);
   const lastPlacesFitKey = useRef<string | null>(null);
-  const isAllBusRoutesSelected = !selectedBusRouteId || selectedBusRouteId === ALL_BUS_ROUTES_KEY;
+  const isAllBusRoutesSelected =
+    !selectedBusRouteId || selectedBusRouteId === ALL_BUS_ROUTES_KEY;
   const selectedRoute = useMemo(
     () =>
       isAllBusRoutesSelected
         ? null
-        : busRoutes.find((route) => route.Key === selectedBusRouteId) ?? null,
+        : (busRoutes.find((route) => route.Key === selectedBusRouteId) ?? null),
     [busRoutes, isAllBusRoutesSelected, selectedBusRouteId],
   );
   const busRouteOptions = useMemo(
@@ -853,8 +271,13 @@ export function PlacesMapScreen() {
       return CATEGORIES;
     }
 
-    const activeCategory = CATEGORIES.find((category) => category.id === activeLayer);
-    if (activeCategory && !orderedCategories.some((category) => category.id === activeCategory.id)) {
+    const activeCategory = CATEGORIES.find(
+      (category) => category.id === activeLayer,
+    );
+    if (
+      activeCategory &&
+      !orderedCategories.some((category) => category.id === activeCategory.id)
+    ) {
       return [activeCategory, ...orderedCategories];
     }
 
@@ -862,7 +285,10 @@ export function PlacesMapScreen() {
   }, [activeLayer, visiblePlacesPills]);
   const topBarItems = useMemo(
     () => [
-      ...visibleCategories.map((category) => ({ ...category, isSettings: false })),
+      ...visibleCategories.map((category) => ({
+        ...category,
+        isSettings: false,
+      })),
       { id: "__settings__", label: "Settings", isSettings: true },
     ],
     [visibleCategories],
@@ -933,7 +359,7 @@ export function PlacesMapScreen() {
       return [];
     }
 
-      return busStops.slice(0, 12).map((stop, index) => {
+    return busStops.slice(0, 12).map((stop, index) => {
       if (busVehicles.length === 0) {
         return {
           stop,
@@ -960,15 +386,15 @@ export function PlacesMapScreen() {
         };
       }
 
-        return {
-          stop,
-          sequence: index + 1,
-          etaLabel: nextBus.etaMinutes <= 1 ? "Now" : `${nextBus.etaMinutes} min`,
-          detail: nextBus.bus.RouteShortName
-            ? `Route ${nextBus.bus.RouteShortName}`
-            : nextBus.bus.Name || "Live bus",
-        };
-      });
+      return {
+        stop,
+        sequence: index + 1,
+        etaLabel: nextBus.etaMinutes <= 1 ? "Now" : `${nextBus.etaMinutes} min`,
+        detail: nextBus.bus.RouteShortName
+          ? `Route ${nextBus.bus.RouteShortName}`
+          : nextBus.bus.Name || "Live bus",
+      };
+    });
   }, [activeLayer, busStops, busVehicles, routePatterns, selectedRoute]);
   const allRouteBoards = useMemo(() => {
     if (!isAllBusRoutesSelected) {
@@ -980,7 +406,9 @@ export function PlacesMapScreen() {
         const pattern = allRoutePatternsById[route.Key];
         const routePoints = pattern?.points || [];
         const routeStops = pattern?.stops || [];
-        const routeVehicles = busVehicles.filter((bus) => isVehicleOnRoute(bus, route));
+        const routeVehicles = busVehicles.filter((bus) =>
+          isVehicleOnRoute(bus, route),
+        );
         const entries = routeStops.slice(0, 4).map((stop, index) => {
           const rankedBuses = routeVehicles
             .map((bus) => ({
@@ -993,7 +421,11 @@ export function PlacesMapScreen() {
           return {
             stop,
             sequence: index + 1,
-            etaLabel: nextBus ? (nextBus.etaMinutes <= 1 ? "Now" : `${nextBus.etaMinutes} min`) : "Route loaded",
+            etaLabel: nextBus
+              ? nextBus.etaMinutes <= 1
+                ? "Now"
+                : `${nextBus.etaMinutes} min`
+              : "Route loaded",
             detail: nextBus?.bus?.RouteShortName
               ? `Route ${nextBus.bus.RouteShortName}`
               : route.Name || "Transit route",
@@ -1015,7 +447,9 @@ export function PlacesMapScreen() {
       ? 0
       : indicatorAnim.interpolate({
           inputRange: visibleCategories.map((_, index) => index),
-          outputRange: visibleCategories.map((_, index) => index * categorySlotWidth + 2),
+          outputRange: visibleCategories.map(
+            (_, index) => index * categorySlotWidth + 2,
+          ),
         });
 
   useEffect(() => {
@@ -1175,7 +609,10 @@ export function PlacesMapScreen() {
           : [];
       setHubRestaurants(nextRestaurants);
 
-      const menuCandidates = getDiningMenuCandidates(location.location, nextRestaurants);
+      const menuCandidates = getDiningMenuCandidates(
+        location.location,
+        nextRestaurants,
+      );
       setDiningMenuOptions(menuCandidates);
 
       const nextMenuLocation = menuCandidates[0] || null;
@@ -1225,7 +662,9 @@ export function PlacesMapScreen() {
     setBusStops([]);
     setRoutePatterns([]);
 
-    const allPoints = patternEntries.flatMap(([, pattern]) => pattern.points || []);
+    const allPoints = patternEntries.flatMap(
+      ([, pattern]) => pattern.points || [],
+    );
     if (mapRef.current && allPoints.length > 0) {
       mapRef.current.fitToCoordinates(allPoints, {
         edgePadding: { top: 220, right: 60, bottom: 110, left: 60 },
@@ -1657,21 +1096,41 @@ export function PlacesMapScreen() {
   const sortedFilteredLocations = useMemo(() => {
     return [...filteredLocations].sort((left, right) => {
       const leftDistance = userCoord
-        ? haversineDistanceMeters(userCoord.latitude, userCoord.longitude, left.coord.lat, left.coord.lng)
+        ? haversineDistanceMeters(
+            userCoord.latitude,
+            userCoord.longitude,
+            left.coord.lat,
+            left.coord.lng,
+          )
         : null;
       const rightDistance = userCoord
-        ? haversineDistanceMeters(userCoord.latitude, userCoord.longitude, right.coord.lat, right.coord.lng)
+        ? haversineDistanceMeters(
+            userCoord.latitude,
+            userCoord.longitude,
+            right.coord.lat,
+            right.coord.lng,
+          )
         : null;
 
       if (activeLayer === "Parking") {
-        const leftParking = getParkingRecommendation(left.location, parkingPermit);
-        const rightParking = getParkingRecommendation(right.location, parkingPermit);
+        const leftParking = getParkingRecommendation(
+          left.location,
+          parkingPermit,
+        );
+        const rightParking = getParkingRecommendation(
+          right.location,
+          parkingPermit,
+        );
         if (leftParking.score !== rightParking.score) {
           return leftParking.score - rightParking.score;
         }
       }
 
-      if (leftDistance != null && rightDistance != null && leftDistance !== rightDistance) {
+      if (
+        leftDistance != null &&
+        rightDistance != null &&
+        leftDistance !== rightDistance
+      ) {
         return leftDistance - rightDistance;
       }
 
@@ -1691,10 +1150,20 @@ export function PlacesMapScreen() {
       )
       .sort((a, b) => {
         const aDistance = userCoord
-          ? haversineDistanceMeters(userCoord.latitude, userCoord.longitude, a.coord.lat, a.coord.lng)
+          ? haversineDistanceMeters(
+              userCoord.latitude,
+              userCoord.longitude,
+              a.coord.lat,
+              a.coord.lng,
+            )
           : null;
         const bDistance = userCoord
-          ? haversineDistanceMeters(userCoord.latitude, userCoord.longitude, b.coord.lat, b.coord.lng)
+          ? haversineDistanceMeters(
+              userCoord.latitude,
+              userCoord.longitude,
+              b.coord.lat,
+              b.coord.lng,
+            )
           : null;
         const aStarts = a.location.toLowerCase().startsWith(query) ? 0 : 1;
         const bStarts = b.location.toLowerCase().startsWith(query) ? 0 : 1;
@@ -1717,16 +1186,16 @@ export function PlacesMapScreen() {
   useEffect(() => {
     if (
       !mapRef.current ||
-      activeLayer === 'Bus' ||
-      activeLayer === 'Heatmap' ||
-      placesViewMode !== 'map' ||
+      activeLayer === "Bus" ||
+      activeLayer === "Heatmap" ||
+      placesViewMode !== "map" ||
       selectedId ||
       sortedFilteredLocations.length === 0
     ) {
       return;
     }
 
-    const fitKey = `${activeLayer}:${sortedFilteredLocations.length}:${sortedFilteredLocations[0]?.location || ''}`;
+    const fitKey = `${activeLayer}:${sortedFilteredLocations.length}:${sortedFilteredLocations[0]?.location || ""}`;
     if (lastPlacesFitKey.current === fitKey) {
       return;
     }
@@ -1759,50 +1228,64 @@ export function PlacesMapScreen() {
   }, [activeLayer, placesViewMode, selectedId, sortedFilteredLocations]);
   const selectedRecreationFacility = useMemo(() => {
     if (!selectedLoc) return null;
-    return recreationFacilityMap.get(getCanonicalLocationName(selectedLoc.location)) || null;
+    return (
+      recreationFacilityMap.get(
+        getCanonicalLocationName(selectedLoc.location),
+      ) || null
+    );
   }, [recreationFacilityMap, selectedLoc]);
 
-  const getPlaceExternalLink = useCallback((location: CampusLocation) => {
-    const recreationFacility =
-      recreationFacilityMap.get(getCanonicalLocationName(location.location)) || null;
+  const getPlaceExternalLink = useCallback(
+    (location: CampusLocation) => {
+      const recreationFacility =
+        recreationFacilityMap.get(
+          getCanonicalLocationName(location.location),
+        ) || null;
 
-    if (recreationFacility?.source_url) {
+      if (recreationFacility?.source_url) {
+        return {
+          label: "Open Official Page",
+          url: recreationFacility.source_url,
+        };
+      }
+
+      if (location.type === "Dining" || location.type === "Hub") {
+        return {
+          label: "Dining Site",
+          url: "https://dineoncampus.com/tamu",
+        };
+      }
+
+      if (location.type === "Library" || location.type === "Study") {
+        return {
+          label: "Library Site",
+          url: "https://library.tamu.edu/",
+        };
+      }
+
+      if (location.type === "Parking") {
+        return {
+          label: "Parking Guide",
+          url: PARKING_INFO_URL,
+        };
+      }
+
+      const query = encodeURIComponent(
+        `${location.location} Texas A&M University`,
+      );
       return {
-        label: 'Open Official Page',
-        url: recreationFacility.source_url,
+        label: "Open in Maps",
+        url: `https://www.google.com/maps/search/?api=1&query=${query}`,
       };
-    }
-
-    if (location.type === "Dining" || location.type === "Hub") {
-      return {
-        label: 'Dining Site',
-        url: 'https://dineoncampus.com/tamu',
-      };
-    }
-
-    if (location.type === "Library" || location.type === "Study") {
-      return {
-        label: 'Library Site',
-        url: 'https://library.tamu.edu/',
-      };
-    }
-
-    if (location.type === "Parking") {
-      return {
-        label: 'Parking Guide',
-        url: PARKING_INFO_URL,
-      };
-    }
-
-    const query = encodeURIComponent(`${location.location} Texas A&M University`);
-    return {
-      label: 'Open in Maps',
-      url: `https://www.google.com/maps/search/?api=1&query=${query}`,
-    };
-  }, [recreationFacilityMap]);
+    },
+    [recreationFacilityMap],
+  );
 
   useEffect(() => {
-    if (!selectedLoc || (selectedLoc.type !== "Dining" && selectedLoc.type !== "Hub")) {
+    if (
+      !selectedLoc ||
+      (selectedLoc.type !== "Dining" && selectedLoc.type !== "Hub")
+    ) {
       setHubRestaurants([]);
       setDiningMenuOptions([]);
       setActiveDiningMenu(null);
@@ -1828,7 +1311,9 @@ export function PlacesMapScreen() {
           setDiningMenuPreview(menuPreview);
         }
       })
-      .catch((error) => console.warn("Failed to load dining menu preview", error))
+      .catch((error) =>
+        console.warn("Failed to load dining menu preview", error),
+      )
       .finally(() => {
         if (!cancelled) {
           setIsFetchingDining(false);
@@ -1842,7 +1327,8 @@ export function PlacesMapScreen() {
 
   const openFullMenu = useCallback(
     (locationName: string) => {
-      const rootNavigation = navigation.getParent?.("RootStack") || navigation.getParent?.();
+      const rootNavigation =
+        navigation.getParent?.("RootStack") || navigation.getParent?.();
       const targetMeal = getDiningMealPeriodForLocation(locationName);
       const params = {
         location: locationName,
@@ -1876,7 +1362,8 @@ export function PlacesMapScreen() {
           nearbyTransitInsight,
         };
 
-    const rootNavigation = navigation.getParent?.("RootStack") || navigation.getParent?.();
+    const rootNavigation =
+      navigation.getParent?.("RootStack") || navigation.getParent?.();
     if (rootNavigation?.navigate) {
       rootNavigation.navigate("BusTimetable", params);
       return;
@@ -1894,9 +1381,12 @@ export function PlacesMapScreen() {
   ]);
 
   const openTripPlanner = useCallback(() => {
-    const rootNavigation = navigation.getParent?.("RootStack") || navigation.getParent?.();
+    const rootNavigation =
+      navigation.getParent?.("RootStack") || navigation.getParent?.();
     const params = {
-      preferredRouteKey: isAllBusRoutesSelected ? null : selectedRoute?.Key || null,
+      preferredRouteKey: isAllBusRoutesSelected
+        ? null
+        : selectedRoute?.Key || null,
       preferredRouteName: isAllBusRoutesSelected
         ? "Best available route"
         : selectedRoute?.Name || selectedRoute?.ShortName || "Selected route",
@@ -2036,13 +1526,16 @@ export function PlacesMapScreen() {
 
         {activeLayer === "Bus" && isAllBusRoutesSelected
           ? busRoutes.map((route) => {
-              const routePattern = allRoutePatternsById[route.Key]?.points || [];
+              const routePattern =
+                allRoutePatternsById[route.Key]?.points || [];
               if (!routePattern.length) return null;
               return (
                 <Polyline
                   key={`all-route-${route.Key}`}
                   coordinates={routePattern}
-                  strokeColor={route.Color || transitService.getRouteColor(route.Key)}
+                  strokeColor={
+                    route.Color || transitService.getRouteColor(route.Key)
+                  }
                   strokeWidth={4}
                   lineDashPattern={[0]}
                 />
@@ -2198,8 +1691,14 @@ export function PlacesMapScreen() {
           style={[
             styles.pillBar,
             isSearchExpanded && {
-              backgroundColor: theme === 'dark' ? 'rgba(8,8,10,0.96)' : 'rgba(255,255,255,0.94)',
-              borderColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
+              backgroundColor:
+                theme === "dark"
+                  ? "rgba(8,8,10,0.96)"
+                  : "rgba(255,255,255,0.94)",
+              borderColor:
+                theme === "dark"
+                  ? "rgba(255,255,255,0.08)"
+                  : "rgba(12,12,14,0.08)",
             },
           ]}
         >
@@ -2271,7 +1770,9 @@ export function PlacesMapScreen() {
                 {topBarItems.map((category) => {
                   const isSettings = Boolean((category as any).isSettings);
                   const isActive = !isSettings && category.id === activeLayer;
-                  const Icon = isSettings ? Cog : getCategoryPillIcon(category.id);
+                  const Icon = isSettings
+                    ? Cog
+                    : getCategoryPillIcon(category.id);
 
                   return (
                     <TouchableOpacity
@@ -2293,7 +1794,12 @@ export function PlacesMapScreen() {
                       />
                       {isActive ? (
                         <Text
-                          style={[styles.pillLabel, isActive ? styles.pillLabelActive : styles.pillLabelInactive]}
+                          style={[
+                            styles.pillLabel,
+                            isActive
+                              ? styles.pillLabelActive
+                              : styles.pillLabelInactive,
+                          ]}
                           numberOfLines={1}
                         >
                           {category.label}
@@ -2346,10 +1852,18 @@ export function PlacesMapScreen() {
                 return (
                   <TouchableOpacity
                     key={mode}
-                    style={[styles.viewModeButton, selected && styles.viewModeButtonActive]}
+                    style={[
+                      styles.viewModeButton,
+                      selected && styles.viewModeButtonActive,
+                    ]}
                     onPress={() => setPlacesViewMode(mode)}
                   >
-                    <Text style={[styles.viewModeButtonText, selected && styles.viewModeButtonTextActive]}>
+                    <Text
+                      style={[
+                        styles.viewModeButtonText,
+                        selected && styles.viewModeButtonTextActive,
+                      ]}
+                    >
                       {mode === "map" ? "Map" : "List"}
                     </Text>
                   </TouchableOpacity>
@@ -2363,7 +1877,6 @@ export function PlacesMapScreen() {
             </View>
           </View>
         )}
-
       </View>
 
       {/* Bus Route Selector Overlay - Independent and Left Aligned */}
@@ -2406,8 +1919,8 @@ export function PlacesMapScreen() {
                 <Text style={styles.selectedRouteName} numberOfLines={1}>
                   {isAllBusRoutesSelected
                     ? "Show All Routes"
-                    : busRoutes.find((r) => r.Key === selectedBusRouteId)?.Name ||
-                      "Select Route"}
+                    : busRoutes.find((r) => r.Key === selectedBusRouteId)
+                        ?.Name || "Select Route"}
                 </Text>
               </View>
               <View style={styles.chevronIcon}>
@@ -2466,113 +1979,147 @@ export function PlacesMapScreen() {
               >
                 {filteredBusRoutes.length === 0 ? (
                   <View style={styles.emptyRouteSearchState}>
-                    <Text style={styles.emptyRouteSearchTitle}>No routes match that search.</Text>
-                    <Text style={styles.emptyRouteSearchBody}>Try a route number like 01 or a route name keyword.</Text>
+                    <Text style={styles.emptyRouteSearchTitle}>
+                      No routes match that search.
+                    </Text>
+                    <Text style={styles.emptyRouteSearchBody}>
+                      Try a route number like 01 or a route name keyword.
+                    </Text>
                   </View>
-                ) : filteredBusRoutes.map((route) => {
-                  const isSelected = selectedBusRouteId === route.Key;
-                  return (
-                    <TouchableOpacity
-                      key={route.Key}
-                      style={[
-                        styles.busRouteItem,
-                        isSelected && styles.busRouteItemActive,
-                      ]}
-                      onPress={() => {
-                        handleSelectBusRoute(route.Key);
-                        setIsRouteDropdownOpen(false);
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      }}
-                    >
-                      <View
+                ) : (
+                  filteredBusRoutes.map((route) => {
+                    const isSelected = selectedBusRouteId === route.Key;
+                    return (
+                      <TouchableOpacity
+                        key={route.Key}
                         style={[
-                          styles.routeItemBadge,
-                          isSelected ? styles.routeItemBadgeActive : styles.routeItemBadgeIdle,
+                          styles.busRouteItem,
+                          isSelected && styles.busRouteItemActive,
                         ]}
+                        onPress={() => {
+                          handleSelectBusRoute(route.Key);
+                          setIsRouteDropdownOpen(false);
+                          Haptics.impactAsync(
+                            Haptics.ImpactFeedbackStyle.Medium,
+                          );
+                        }}
                       >
-                        <Text style={[styles.routeItemNumber, !isSelected && styles.routeItemNumberIdle]}>
-                          {route.ShortName}
+                        <View
+                          style={[
+                            styles.routeItemBadge,
+                            isSelected
+                              ? styles.routeItemBadgeActive
+                              : styles.routeItemBadgeIdle,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.routeItemNumber,
+                              !isSelected && styles.routeItemNumberIdle,
+                            ]}
+                          >
+                            {route.ShortName}
+                          </Text>
+                        </View>
+                        <Text
+                          style={[
+                            styles.routeItemName,
+                            isSelected && styles.routeItemNameActive,
+                          ]}
+                        >
+                          {route.Name}
                         </Text>
-                      </View>
-                      <Text
-                        style={[
-                          styles.routeItemName,
-                          isSelected && styles.routeItemNameActive,
-                        ]}
-                      >
-                        {route.Name}
-                      </Text>
-                      {isSelected && <View style={styles.activeCheckDot} />}
-                    </TouchableOpacity>
-                  );
-                })}
+                        {isSelected && <View style={styles.activeCheckDot} />}
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
               </ScrollView>
             </View>
           )}
         </View>
       )}
 
-      {placesViewMode === "list" && activeLayer !== "Bus" && activeLayer !== "Heatmap" && (
-        <View style={styles.placesListOverlay} pointerEvents="box-none">
-          <Card style={styles.placesListCard}>
-            <View style={styles.placesListHeader}>
-              <Text style={styles.placesListTitle}>{activeLayer} Places</Text>
-              <Text style={styles.placesListSubtitle}>
-                Unified campus nodes with dining, events, parking, and room actions layered in.
-              </Text>
-            </View>
-            <ScrollView
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={styles.placesListContent}
-            >
-              {sortedFilteredLocations.map((loc) => {
-                const distanceMeters = userCoord
-                  ? haversineDistanceMeters(userCoord.latitude, userCoord.longitude, loc.coord.lat, loc.coord.lng)
-                  : null;
-                const parkingRecommendation = loc.type === "Parking"
-                  ? getParkingRecommendation(loc.location, parkingPermit)
-                  : null;
-                const recreationFacility =
-                  recreationFacilityMap.get(getCanonicalLocationName(loc.location)) || null;
-                return (
-                  <TouchableOpacity
-                    key={`list-${loc.location}`}
-                    style={styles.placesListRow}
-                    onPress={() => {
-                      setPlacesViewMode("map");
-                      handleSelectLocation(loc);
-                    }}
-                  >
-                    <View style={styles.placesListIcon}>
-                      {React.cloneElement(getCategoryIcon(loc.type) as React.ReactElement<any>, {
-                        size: 16,
-                        color: "#F3F1ED",
-                      })}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <View style={styles.placesListRowHeader}>
-                        <Text style={styles.placesListRowTitle}>{loc.location}</Text>
-                        <Text style={styles.placesListRowDistance}>{getDistanceLabel(distanceMeters)}</Text>
+      {placesViewMode === "list" &&
+        activeLayer !== "Bus" &&
+        activeLayer !== "Heatmap" && (
+          <View style={styles.placesListOverlay} pointerEvents="box-none">
+            <Card style={styles.placesListCard}>
+              <View style={styles.placesListHeader}>
+                <Text style={styles.placesListTitle}>{activeLayer} Places</Text>
+                <Text style={styles.placesListSubtitle}>
+                  Unified campus nodes with dining, events, parking, and room
+                  actions layered in.
+                </Text>
+              </View>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.placesListContent}
+              >
+                {sortedFilteredLocations.map((loc) => {
+                  const distanceMeters = userCoord
+                    ? haversineDistanceMeters(
+                        userCoord.latitude,
+                        userCoord.longitude,
+                        loc.coord.lat,
+                        loc.coord.lng,
+                      )
+                    : null;
+                  const parkingRecommendation =
+                    loc.type === "Parking"
+                      ? getParkingRecommendation(loc.location, parkingPermit)
+                      : null;
+                  const recreationFacility =
+                    recreationFacilityMap.get(
+                      getCanonicalLocationName(loc.location),
+                    ) || null;
+                  return (
+                    <TouchableOpacity
+                      key={`list-${loc.location}`}
+                      style={styles.placesListRow}
+                      onPress={() => {
+                        setPlacesViewMode("map");
+                        handleSelectLocation(loc);
+                      }}
+                    >
+                      <View style={styles.placesListIcon}>
+                        {React.cloneElement(
+                          getCategoryIcon(loc.type) as React.ReactElement<any>,
+                          {
+                            size: 16,
+                            color: "#F3F1ED",
+                          },
+                        )}
                       </View>
-                      <Text style={styles.placesListRowMeta}>
-                        {loc.type === "Rec"
-                          ? `Today: ${recreationFacility?.today_hours || recreationFacility?.hours_hint || loc.hours || 'Check official page'}`
-                          : loc.description || loc.hours || loc.type}
-                      </Text>
-                      {parkingRecommendation ? (
-                        <Text style={styles.placesListParkingHint}>
-                          {parkingRecommendation.badge} · {parkingRecommendation.detail}
+                      <View style={{ flex: 1 }}>
+                        <View style={styles.placesListRowHeader}>
+                          <Text style={styles.placesListRowTitle}>
+                            {loc.location}
+                          </Text>
+                          <Text style={styles.placesListRowDistance}>
+                            {getDistanceLabel(distanceMeters)}
+                          </Text>
+                        </View>
+                        <Text style={styles.placesListRowMeta}>
+                          {loc.type === "Rec"
+                            ? `Today: ${recreationFacility?.today_hours || recreationFacility?.hours_hint || loc.hours || "Check official page"}`
+                            : loc.description || loc.hours || loc.type}
                         </Text>
-                      ) : null}
-                    </View>
-                    <ChevronRight size={16} color={COLORS.textTertiary} />
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </Card>
-        </View>
-      )}
+                        {parkingRecommendation ? (
+                          <Text style={styles.placesListParkingHint}>
+                            {parkingRecommendation.badge} ·{" "}
+                            {parkingRecommendation.detail}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <ChevronRight size={16} color={COLORS.textTertiary} />
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </Card>
+          </View>
+        )}
 
       {/* Bus Stop Info Card - Docked at Bottom for Professional Look */}
       {activeLayer === "Bus" && selectedStop && (
@@ -2605,7 +2152,7 @@ export function PlacesMapScreen() {
                   style={{ marginRight: 4 }}
                 />
                 <Text style={styles.dockedStopProximity}>
-                  {nearestBusInfo || 'Stop details loading'}
+                  {nearestBusInfo || "Stop details loading"}
                 </Text>
               </View>
             </View>
@@ -2715,7 +2262,7 @@ export function PlacesMapScreen() {
                     )}
                   </View>
                 </View>
-                
+
                 <View style={{ alignItems: "center", gap: 12 }}>
                   <TouchableOpacity
                     onPress={() => setSelectedId(null)}
@@ -2724,7 +2271,7 @@ export function PlacesMapScreen() {
                   >
                     <X size={18} color="#888" />
                   </TouchableOpacity>
-                  
+
                   <TouchableOpacity
                     style={styles.circularActionBtn}
                     onPress={() =>
@@ -2768,7 +2315,10 @@ export function PlacesMapScreen() {
               {(() => {
                 const parkingRecommendation =
                   selectedLoc.type === "Parking"
-                    ? getParkingRecommendation(selectedLoc.location, parkingPermit)
+                    ? getParkingRecommendation(
+                        selectedLoc.location,
+                        parkingPermit,
+                      )
                     : null;
                 const contextLink = getLocationContextLink(selectedLoc);
                 const externalLink = getPlaceExternalLink(selectedLoc);
@@ -2777,48 +2327,77 @@ export function PlacesMapScreen() {
                     <View style={styles.quickActionRow}>
                       <TouchableOpacity
                         style={styles.quickActionPill}
-                        onPress={() => Linking.openURL(externalLink.url).catch((error) => {
-                          console.warn("Unable to open place external link", error);
-                        })}
+                        onPress={() =>
+                          Linking.openURL(externalLink.url).catch((error) => {
+                            console.warn(
+                              "Unable to open place external link",
+                              error,
+                            );
+                          })
+                        }
                       >
                         <ExternalLink size={14} color="#F3F1ED" />
-                        <Text style={styles.quickActionText}>{externalLink.label}</Text>
+                        <Text style={styles.quickActionText}>
+                          {externalLink.label}
+                        </Text>
                       </TouchableOpacity>
 
-                      {(selectedLoc.type === "Dining" || selectedLoc.type === "Hub") && activeDiningMenu ? (
+                      {(selectedLoc.type === "Dining" ||
+                        selectedLoc.type === "Hub") &&
+                      activeDiningMenu ? (
                         <TouchableOpacity
-                          style={[styles.quickActionPill, styles.quickActionPrimary]}
+                          style={[
+                            styles.quickActionPill,
+                            styles.quickActionPrimary,
+                          ]}
                           onPress={() => openFullMenu(activeDiningMenu)}
                         >
                           <Utensils size={14} color="#FFFFFF" />
-                          <Text style={styles.quickActionPrimaryText}>Open Menu</Text>
+                          <Text style={styles.quickActionPrimaryText}>
+                            Open Menu
+                          </Text>
                         </TouchableOpacity>
                       ) : null}
 
                       {contextLink ? (
                         <TouchableOpacity
                           style={styles.quickActionPill}
-                          onPress={() => Linking.openURL(contextLink.url).catch((error) => {
-                            console.warn("Unable to open place context link", error);
-                          })}
+                          onPress={() =>
+                            Linking.openURL(contextLink.url).catch((error) => {
+                              console.warn(
+                                "Unable to open place context link",
+                                error,
+                              );
+                            })
+                          }
                         >
                           <ExternalLink size={14} color="#F3F1ED" />
-                          <Text style={styles.quickActionText}>{contextLink.label}</Text>
+                          <Text style={styles.quickActionText}>
+                            {contextLink.label}
+                          </Text>
                         </TouchableOpacity>
                       ) : null}
                     </View>
 
                     {parkingRecommendation ? (
                       <View style={styles.contextCard}>
-                        <Text style={styles.contextCardTitle}>{parkingRecommendation.badge}</Text>
-                        <Text style={styles.contextCardBody}>{parkingRecommendation.detail}</Text>
+                        <Text style={styles.contextCardTitle}>
+                          {parkingRecommendation.badge}
+                        </Text>
+                        <Text style={styles.contextCardBody}>
+                          {parkingRecommendation.detail}
+                        </Text>
                       </View>
                     ) : null}
 
                     {selectedLoc.current_event ? (
                       <View style={styles.contextCard}>
-                        <Text style={styles.contextCardTitle}>Active at this place</Text>
-                        <Text style={styles.contextCardBody}>{selectedLoc.current_event}</Text>
+                        <Text style={styles.contextCardTitle}>
+                          Active at this place
+                        </Text>
+                        <Text style={styles.contextCardBody}>
+                          {selectedLoc.current_event}
+                        </Text>
                       </View>
                     ) : null}
                   </>
@@ -2836,7 +2415,9 @@ export function PlacesMapScreen() {
                           key={i}
                           style={[
                             styles.restaurantChip,
-                            activeDiningMenu === getDiningMenuCandidates(r)[0] && styles.restaurantChipActive,
+                            activeDiningMenu ===
+                              getDiningMenuCandidates(r)[0] &&
+                              styles.restaurantChipActive,
                           ]}
                           onPress={() => {
                             const nextMenu = getDiningMenuCandidates(r)[0];
@@ -2850,7 +2431,8 @@ export function PlacesMapScreen() {
                       ))}
                     </View>
                     <Text style={styles.hoursText}>
-                      Tap a restaurant to preview its menu and open the full cached menu instantly.
+                      Tap a restaurant to preview its menu and open the full
+                      cached menu instantly.
                     </Text>
                   </View>
                   <View style={styles.hoursInfo}>
@@ -2862,38 +2444,65 @@ export function PlacesMapScreen() {
                 </View>
               ) : (
                 <View style={styles.infoBlock}>
-                  {selectedLoc.type === 'Library' || selectedLoc.type === 'Rec' ? (
+                  {selectedLoc.type === "Library" ||
+                  selectedLoc.type === "Rec" ? (
                     <View style={styles.occupancyBlock}>
                       <View style={styles.occupancyHeaderRow}>
-                         <Layers size={18} color={getStatusColor(selectedLoc.percent_full)} />
-                         <View style={{ marginLeft: 8, flex: 1 }}>
-                            <Text style={styles.occupancyLiveLabel}>Live Occupancy</Text>
-                            <Text style={[styles.occupancyLiveText, { color: getStatusColor(selectedLoc.percent_full) }]}>
-                               {selectedLoc.percent_full}% Full
-                            </Text>
-                         </View>
+                        <Layers
+                          size={18}
+                          color={getStatusColor(selectedLoc.percent_full)}
+                        />
+                        <View style={{ marginLeft: 8, flex: 1 }}>
+                          <Text style={styles.occupancyLiveLabel}>
+                            Live Occupancy
+                          </Text>
+                          <Text
+                            style={[
+                              styles.occupancyLiveText,
+                              {
+                                color: getStatusColor(selectedLoc.percent_full),
+                              },
+                            ]}
+                          >
+                            {selectedLoc.percent_full}% Full
+                          </Text>
+                        </View>
                       </View>
                       <View style={styles.occupancyTrack}>
-                        <View style={[styles.occupancyFill, {
-                          width: `${selectedLoc.percent_full}%` as any,
-                          backgroundColor: getStatusColor(selectedLoc.percent_full)
-                        }]} />
+                        <View
+                          style={[
+                            styles.occupancyFill,
+                            {
+                              width: `${selectedLoc.percent_full}%` as any,
+                              backgroundColor: getStatusColor(
+                                selectedLoc.percent_full,
+                              ),
+                            },
+                          ]}
+                        />
                       </View>
                       <View style={styles.hoursInfo}>
                         <Clock size={16} color={"#888"} />
                         <Text style={styles.hoursText}>
-                          {selectedLoc.type === 'Rec'
-                            ? `Today: ${selectedRecreationFacility?.today_hours || selectedRecreationFacility?.hours_hint || selectedLoc.hours || 'Check official facility page'}`
-                            : selectedLoc.hours || '6:00 AM – 12:00 AM'}
+                          {selectedLoc.type === "Rec"
+                            ? `Today: ${selectedRecreationFacility?.today_hours || selectedRecreationFacility?.hours_hint || selectedLoc.hours || "Check official facility page"}`
+                            : selectedLoc.hours || "6:00 AM – 12:00 AM"}
                         </Text>
                       </View>
-                      {selectedLoc.type === 'Rec' && selectedRecreationFacility?.source_url ? (
+                      {selectedLoc.type === "Rec" &&
+                      selectedRecreationFacility?.source_url ? (
                         <TouchableOpacity
                           style={styles.inlineLinkRow}
-                          onPress={() => Linking.openURL(selectedRecreationFacility.source_url).catch(() => {})}
+                          onPress={() =>
+                            Linking.openURL(
+                              selectedRecreationFacility.source_url,
+                            ).catch(() => {})
+                          }
                         >
                           <ExternalLink size={14} color="#F3F1ED" />
-                          <Text style={styles.inlineLinkText}>Open official facility page</Text>
+                          <Text style={styles.inlineLinkText}>
+                            Open official facility page
+                          </Text>
                         </TouchableOpacity>
                       ) : null}
                     </View>
@@ -2917,28 +2526,43 @@ export function PlacesMapScreen() {
                 scrollEventThrottle={16}
               >
                 {/* Traffic chart - Remounted for rec centers and libraries */}
-                {(selectedLoc.type === "Library" || selectedLoc.type === "Rec") && (
+                {(selectedLoc.type === "Library" ||
+                  selectedLoc.type === "Rec") && (
                   <View style={styles.chartContainer}>
-                    <Text style={styles.chartTitle}>Foot Traffic · Last 8h</Text>
+                    <Text style={styles.chartTitle}>
+                      Foot Traffic · Last 8h
+                    </Text>
                     <View style={styles.chartBars}>
-                      {(selectedLoc.traffic_history || [20, 45, 15, 60, 40, 25, 20, 50]).map((val: number, i: number) => (
+                      {(
+                        selectedLoc.traffic_history || [
+                          20, 45, 15, 60, 40, 25, 20, 50,
+                        ]
+                      ).map((val: number, i: number) => (
                         <View key={i} style={styles.barWrapper}>
-                          <View style={[styles.barFill, {
-                            height: Math.max(8, (val / 100) * 45),
-                            backgroundColor: getStatusColor(val)
-                          }]} />
+                          <View
+                            style={[
+                              styles.barFill,
+                              {
+                                height: Math.max(8, (val / 100) * 45),
+                                backgroundColor: getStatusColor(val),
+                              },
+                            ]}
+                          />
                         </View>
                       ))}
                     </View>
                   </View>
                 )}
 
-                {(selectedLoc.type === "Dining" || selectedLoc.type === "Hub") && (
+                {(selectedLoc.type === "Dining" ||
+                  selectedLoc.type === "Hub") && (
                   <View style={styles.infoBlock}>
                     <View style={styles.reviewsHeader}>
                       <Text style={styles.sectionTitle}>Menu Preview</Text>
                       {activeDiningMenu ? (
-                        <TouchableOpacity onPress={() => openFullMenu(activeDiningMenu)}>
+                        <TouchableOpacity
+                          onPress={() => openFullMenu(activeDiningMenu)}
+                        >
                           <Text style={styles.seeAllText}>Open full menu</Text>
                         </TouchableOpacity>
                       ) : null}
@@ -2951,37 +2575,63 @@ export function PlacesMapScreen() {
                             key={option}
                             style={[
                               styles.restaurantChip,
-                              activeDiningMenu === option && styles.restaurantChipActive,
+                              activeDiningMenu === option &&
+                                styles.restaurantChipActive,
                             ]}
                             onPress={() => setActiveDiningMenu(option)}
                           >
-                            <Text style={styles.restaurantChipText}>{option}</Text>
+                            <Text style={styles.restaurantChipText}>
+                              {option}
+                            </Text>
                           </TouchableOpacity>
                         ))}
                       </View>
                     ) : null}
 
                     {isFetchingDining ? (
-                      <ActivityIndicator color={COLORS.primary} style={{ marginVertical: 18 }} />
+                      <ActivityIndicator
+                        color={COLORS.primary}
+                        style={{ marginVertical: 18 }}
+                      />
                     ) : diningMenuPreview?.categories?.length ? (
                       <View style={styles.menuList}>
                         {diningMenuPreview.categories
-                          .flatMap((category: any) => category.items.slice(0, 2))
+                          .flatMap((category: any) =>
+                            category.items.slice(0, 2),
+                          )
                           .slice(0, 6)
                           .map((item: any) => (
-                            <View key={`${activeDiningMenu}-${item.name}`} style={styles.menuItemCard}>
+                            <View
+                              key={`${activeDiningMenu}-${item.name}`}
+                              style={styles.menuItemCard}
+                            >
                               <View style={styles.menuItemDetails}>
-                                <Text style={styles.menuItemName}>{item.name}</Text>
+                                <Text style={styles.menuItemName}>
+                                  {item.name}
+                                </Text>
                                 <View style={styles.menuItemMeta}>
                                   <Clock size={12} color="#888" />
-                                  <Text style={styles.menuItemCal}>{Math.round(item.calories || 0)} kcal</Text>
+                                  <Text style={styles.menuItemCal}>
+                                    {Math.round(item.calories || 0)} kcal
+                                  </Text>
                                   {item.protein ? (
-                                    <Text style={styles.menuItemCal}>{Math.round(item.protein)}g protein</Text>
+                                    <Text style={styles.menuItemCal}>
+                                      {Math.round(item.protein)}g protein
+                                    </Text>
                                   ) : null}
                                 </View>
                               </View>
-                              <TouchableOpacity onPress={() => openFullMenu(activeDiningMenu || selectedLoc.location)}>
-                                <ExternalLink size={16} color={COLORS.primary} />
+                              <TouchableOpacity
+                                onPress={() =>
+                                  openFullMenu(
+                                    activeDiningMenu || selectedLoc.location,
+                                  )
+                                }
+                              >
+                                <ExternalLink
+                                  size={16}
+                                  color={COLORS.primary}
+                                />
                               </TouchableOpacity>
                             </View>
                           ))}
@@ -2989,7 +2639,8 @@ export function PlacesMapScreen() {
                     ) : (
                       <View style={styles.emptyReviews}>
                         <Text style={styles.emptyReviewsText}>
-                          No cached menu preview is available for this location yet.
+                          No cached menu preview is available for this location
+                          yet.
                         </Text>
                       </View>
                     )}
@@ -3221,7 +2872,11 @@ export function PlacesMapScreen() {
         visible={isEditorVisible}
         onClose={() => setIsEditorVisible(false)}
         title={isStandaloneTransitScreen ? "Transit" : "Places"}
-        description={isStandaloneTransitScreen ? "Control which transit layers stay in the standalone bus view." : ""}
+        description={
+          isStandaloneTransitScreen
+            ? "Control which transit layers stay in the standalone bus view."
+            : ""
+        }
         items={orderedPlacesPills}
         onToggle={togglePlacesPill}
         onMove={movePlacesPill}
@@ -3229,1268 +2884,3 @@ export function PlacesMapScreen() {
     </View>
   );
 }
-
-const getStyles = (COLORS: any, isDark: boolean) =>
-  StyleSheet.create({
-    container: { flex: 1, backgroundColor: COLORS.background },
-    map: { flex: 1, width: "100%" },
-    loader: {
-      flex: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      backgroundColor: COLORS.background,
-    },
-    loaderText: {
-      marginTop: 12,
-      color: COLORS.textSecondary,
-      fontWeight: "600",
-    },
-
-    // ── Unified Top Navigation ──────────────────────────────────────────────
-    topContainer: {
-      position: "absolute",
-      top: 54,
-      left: 16,
-      right: 16,
-      gap: 10,
-      zIndex: 6000,
-      elevation: 30,
-    },
-    pageControlFloating: {
-      alignSelf: "flex-end",
-    },
-    pillBar: {
-      flexDirection: "row",
-      backgroundColor: isDark ? "rgba(14,14,16,0.82)" : "rgba(255,255,255,0.88)",
-      borderRadius: 999,
-      padding: 6,
-      position: "relative",
-      borderWidth: 1,
-      borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
-      minHeight: 54,
-      alignItems: "center",
-      zIndex: 2,
-      overflow: "visible",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.24,
-      shadowRadius: 18,
-      elevation: 14,
-    },
-    searchExpanded: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      paddingHorizontal: 8,
-    },
-    cancelSearchText: {
-      fontSize: 14,
-      fontWeight: "600",
-      color: COLORS.textPrimary,
-      marginLeft: 8,
-    },
-    pillTabsContainer: {
-      flex: 1,
-      minHeight: 42,
-      flexDirection: "row",
-      alignItems: "center",
-      position: "relative",
-    },
-    searchIconBtn: {
-      width: 44,
-      height: 42,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    pillDivider: {
-      width: 1,
-      height: 22,
-      backgroundColor: COLORS.border,
-      marginRight: 4,
-    },
-    pillIndicator: {
-      position: "absolute",
-      top: 2,
-      bottom: 2,
-      left: 0,
-      backgroundColor: isDark ? "rgba(0,0,0,0.78)" : "rgba(12,12,14,0.88)",
-      borderRadius: 999,
-    },
-    pillTab: {
-      flex: 1,
-      minWidth: 0,
-      minHeight: 38,
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 2,
-      paddingHorizontal: 4,
-      zIndex: 1,
-    },
-    pillLabel: {
-      fontSize: 11,
-      fontWeight: "700",
-      color: COLORS.textTertiary,
-    },
-    pillLabelActive: {
-      color: "#FFFFFF",
-    },
-    pillLabelInactive: {
-      color: COLORS.textTertiary,
-    },
-    searchInput: {
-      flex: 1,
-      fontSize: 16,
-      marginLeft: 10,
-      padding: 0,
-      fontWeight: "500",
-    },
-    searchResults: {
-      position: "absolute",
-      top: 64,
-      left: 0,
-      right: 0,
-      backgroundColor: isDark ? "rgba(14,14,16,0.92)" : "rgba(255,255,255,0.94)",
-      borderRadius: 28,
-      borderWidth: 1,
-      borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
-      overflow: "hidden",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.5,
-      shadowRadius: 12,
-      elevation: 20,
-      zIndex: 10,
-    },
-    searchItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      padding: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: "rgba(255,255,255,0.06)",
-      gap: 14,
-    },
-    searchItemName: { fontSize: 15, fontWeight: "600" },
-    searchItemSub: { fontSize: 12, color: COLORS.textSecondary, marginTop: 3 },
-    viewModeBar: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 10,
-    },
-    viewModeToggle: {
-      flexDirection: "row",
-      alignItems: "center",
-      padding: 4,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
-      backgroundColor: isDark ? "rgba(14,14,16,0.86)" : "rgba(255,255,255,0.88)",
-      flex: 1,
-    },
-    viewModeButton: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
-      borderRadius: 999,
-      paddingVertical: 9,
-    },
-    viewModeButtonActive: {
-      backgroundColor: isDark ? "rgba(0,0,0,0.74)" : "rgba(12,12,14,0.88)",
-    },
-    viewModeButtonText: {
-      fontSize: 12,
-      fontWeight: "700",
-      color: COLORS.textTertiary,
-    },
-    viewModeButtonTextActive: {
-      color: "#FFFFFF",
-    },
-    resultCountChip: {
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
-      backgroundColor: isDark ? "rgba(14,14,16,0.86)" : "rgba(255,255,255,0.88)",
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-    },
-    resultCountText: {
-      fontSize: 12,
-      fontWeight: "700",
-      color: COLORS.textPrimary,
-    },
-
-    // ── Pins ────────────────────────────────────────────────────────────────
-    pinContainer: { alignItems: "center", justifyContent: "center" },
-    pinHead: {
-      width: 38,
-      height: 38,
-      borderRadius: 19,
-      borderWidth: 2,
-      borderColor: "#FFF",
-      alignItems: "center",
-      justifyContent: "center",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.5,
-      shadowRadius: 4,
-      elevation: 6,
-    },
-    pinInnerCircle: {
-      width: 26,
-      height: 26,
-      borderRadius: 13,
-      backgroundColor: "rgba(255,255,255,0.1)",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    pinTail: {
-      width: 0,
-      height: 0,
-      backgroundColor: "transparent",
-      borderStyle: "solid",
-      borderLeftWidth: 8,
-      borderRightWidth: 8,
-      borderTopWidth: 12,
-      borderLeftColor: "transparent",
-      borderRightColor: "transparent",
-      marginTop: -3,
-    },
-
-    // ── Bottom Sheet ────────────────────────────────────────────────────────
-    bottomSheet: {
-      position: "absolute",
-      left: 0,
-      right: 0,
-      bottom: SHEET_BOTTOM_OFFSET,
-      height: SCREEN_HEIGHT * 0.85,
-      backgroundColor: isDark ? "#0C0C0C" : "#FFFFFF",
-      borderTopLeftRadius: 32,
-      borderTopRightRadius: 32,
-      borderTopWidth: 1,
-      borderTopColor: isDark ? "#1F1F1F" : "rgba(12,12,14,0.08)",
-      paddingHorizontal: 20,
-      paddingTop: 12,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: -6 },
-      shadowOpacity: 0.5,
-      shadowRadius: 20,
-      elevation: 40,
-      zIndex: 7000,
-      overflow: "hidden",
-    },
-    dragHandle: {
-      width: 40,
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: isDark ? "#333" : "rgba(12,12,14,0.14)",
-      alignSelf: "center",
-      marginBottom: 18,
-    },
-    sheetHeader: {
-      flexDirection: "row",
-      alignItems: "flex-start",
-      marginBottom: 12,
-      gap: 12,
-    },
-    locationName: {
-      fontSize: 24,
-      fontWeight: "800",
-      color: COLORS.textPrimary,
-      lineHeight: 30,
-      marginBottom: 4,
-    },
-    sheetBadgeRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-    },
-    typeTextSlim: {
-      color: COLORS.textSecondary,
-      fontSize: 14,
-      fontWeight: "600",
-      textTransform: "capitalize",
-    },
-    dotSeparator: {
-      color: isDark ? "#555" : "rgba(12,12,14,0.32)",
-      fontSize: 14,
-      marginHorizontal: 2,
-    },
-    liveBadgeSlim: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 6,
-    },
-    liveTextSlim: { color: "#32D74B", fontSize: 13, fontWeight: "700" },
-    aiBadgeSlim: { flexDirection: "row", alignItems: "center", gap: 6 },
-    aiTextSlim: { color: COLORS.textSecondary, fontSize: 13, fontWeight: "600" },
-    livePulse: {
-      width: 7,
-      height: 7,
-      borderRadius: 4,
-      backgroundColor: "#32D74B",
-    },
-    dismissBtn: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
-      backgroundColor: isDark ? "#1C1C1C" : "#F3F4F7",
-      alignItems: "center",
-      justifyContent: "center",
-      marginTop: 2,
-    },
-    descriptionText: {
-      color: COLORS.textSecondary,
-      fontSize: 14,
-      lineHeight: 20,
-      marginBottom: 16,
-    },
-    quickActionRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 10,
-      marginBottom: 14,
-    },
-    quickActionPill: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      borderRadius: 999,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      backgroundColor: isDark ? "#161616" : "#F6F7FA",
-      borderWidth: 1,
-      borderColor: isDark ? "#262626" : "rgba(12,12,14,0.08)",
-    },
-    quickActionPrimary: {
-      backgroundColor: "#500000",
-      borderColor: "#500000",
-    },
-    quickActionText: {
-      color: isDark ? "#F3F1ED" : COLORS.textPrimary,
-      fontSize: 12,
-      fontWeight: "800",
-    },
-    quickActionPrimaryText: {
-      color: "#FFFFFF",
-      fontSize: 12,
-      fontWeight: "800",
-    },
-    contextCard: {
-      borderRadius: 18,
-      borderWidth: 1,
-      borderColor: isDark ? "#252525" : "rgba(12,12,14,0.08)",
-      backgroundColor: isDark ? "#131313" : "#F8F9FB",
-      padding: 14,
-      marginBottom: 14,
-    },
-    contextCardTitle: {
-      color: COLORS.textPrimary,
-      fontSize: 13,
-      fontWeight: "800",
-      marginBottom: 6,
-    },
-    contextCardBody: {
-      color: COLORS.textSecondary,
-      fontSize: 13,
-      lineHeight: 18,
-    },
-
-    occupancyBlock:  { marginBottom: 8, backgroundColor: isDark ? '#161616' : '#F8F9FB', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: isDark ? '#222' : 'rgba(12,12,14,0.08)' },
-    occupancyHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-    occupancyLiveLabel: { fontSize: 13, color: '#AAA', fontWeight: '600', marginBottom: 2 },
-    occupancyLiveText: { fontSize: 16, fontWeight: '800' },
-    occupancyTrack:  {
-        height: 6, backgroundColor: 'rgba(255,255,255,0.08)',
-        borderRadius: 3, overflow: 'hidden', marginBottom: 16,
-    },
-    occupancyFill:   { height: '100%', borderRadius: 3 },
-
-    hoursInfo: { flexDirection: "row", alignItems: "center", gap: 8 },
-    hoursText: { fontSize: 14, color: COLORS.textSecondary, fontWeight: "600" },
-    hoursInfoBlock: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 },
-    inlineLinkRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginTop: 14,
-    },
-    inlineLinkText: {
-      color: COLORS.textPrimary,
-      fontSize: 12,
-      fontWeight: "700",
-    },
-    metaPillRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-      marginTop: 14,
-    },
-    metaPill: {
-      backgroundColor: isDark ? "#161616" : "#F5F6F8",
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: isDark ? "#262626" : "rgba(12,12,14,0.08)",
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-    },
-    metaPillText: {
-      color: isDark ? "#D6D6D6" : COLORS.textPrimary,
-      fontSize: 12,
-      fontWeight: "700",
-    },
-
-    sheetDivider: { height: 1, backgroundColor: isDark ? "#1C1C1C" : "rgba(12,12,14,0.08)", marginBottom: 16 },
-
-    chartContainer: { marginBottom: 24 },
-    chartTitle: {
-      fontSize: 12,
-      color: COLORS.textTertiary,
-      fontWeight: "600",
-      marginBottom: 12,
-    },
-    chartBars: {
-      flexDirection: "row",
-      alignItems: "flex-end",
-      justifyContent: "space-between",
-      height: 45,
-    },
-    barWrapper: {
-      width: 12,
-      height: 45,
-      backgroundColor: "rgba(255,255,255,0.06)",
-      borderRadius: 4,
-      overflow: "hidden",
-      justifyContent: "flex-end",
-    },
-    barFill: { width: "100%", borderRadius: 2 },
-
-    sectionTitle: {
-      fontSize: 13,
-      color: COLORS.textSecondary,
-      fontWeight: "700",
-      marginBottom: 12,
-      letterSpacing: 0.5,
-      textTransform: "uppercase",
-    },
-    reviewItem: {
-      paddingVertical: 14,
-      borderTopWidth: 1,
-      borderTopColor: isDark ? "#1C1C1C" : "rgba(12,12,14,0.08)",
-    },
-    reviewMeta: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 6,
-    },
-    reviewUser: { fontSize: 14, fontWeight: "700", color: COLORS.textPrimary },
-    reviewUserRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-    userAvatar: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      backgroundColor: "#333",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    avatarText: { color: "#AAA", fontSize: 10, fontWeight: "800" },
-    reviewStars: { flexDirection: "row", gap: 3 },
-    reviewComment: { fontSize: 14, color: COLORS.textSecondary, lineHeight: 20 },
-
-    infoBlock: { marginBottom: 20 },
-    restaurantChipList: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-      marginBottom: 16,
-    },
-    restaurantChip: {
-      backgroundColor: isDark ? "#1A1A1A" : "#F5F6F8",
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: isDark ? "#333" : "rgba(12,12,14,0.08)",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.3,
-      shadowRadius: 4,
-    },
-    restaurantChipActive: {
-      borderColor: COLORS.primary,
-      backgroundColor: "rgba(80,0,0,0.28)",
-    },
-    restaurantChipText: { color: isDark ? "#FFF" : COLORS.textPrimary, fontSize: 13, fontWeight: "700" },
-    menuList: { marginBottom: 16, gap: 10 },
-    menuItemCard: {
-      backgroundColor: isDark ? "#111" : "#FFFFFF",
-      borderRadius: 16,
-      padding: 16,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      borderWidth: 1,
-      borderColor: isDark ? "#222" : "rgba(12,12,14,0.08)",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.4,
-      shadowRadius: 10,
-    },
-    menuItemDetails: { flex: 1, gap: 6 },
-    menuItemName: { color: COLORS.textPrimary, fontSize: 15, fontWeight: "800" },
-    menuItemMeta: { flexDirection: "row", alignItems: "center", gap: 6 },
-    menuItemCal: { color: COLORS.textSecondary, fontSize: 12, fontWeight: "600" },
-
-    reviewsHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 16,
-      marginTop: 8,
-    },
-    seeAllText: {
-      color: "#FFD700",
-      fontSize: 13,
-      fontWeight: "800",
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
-    },
-    addReviewText: {
-      color: "#32D74B",
-      fontSize: 13,
-      fontWeight: "800",
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
-    },
-    emptyReviews: { paddingVertical: 30, alignItems: "center" },
-    emptyReviewsText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: "600" },
-
-    // ── Review Modal ────────────────────────────────────────────────────────
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.85)",
-      justifyContent: "center",
-      alignItems: "center",
-      padding: 20,
-    },
-    reviewModalContainer: {
-      width: "100%",
-      backgroundColor: "#121212",
-      borderRadius: 24,
-      padding: 24,
-      borderWidth: 1,
-      borderColor: "#222",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 10 },
-      shadowOpacity: 0.5,
-      shadowRadius: 20,
-      elevation: 12,
-    },
-    modalHeader: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 20,
-    },
-    modalTitle: { fontSize: 22, fontWeight: "800", color: "#FFF" },
-    starRow: {
-      flexDirection: "row",
-      justifyContent: "center",
-      gap: 12,
-      marginBottom: 24,
-    },
-    starTouch: { padding: 4 },
-    inputContainer: { marginBottom: 24 },
-    reviewInput: {
-      backgroundColor: "#1A1A1A",
-      borderRadius: 16,
-      padding: 16,
-      color: "#FFF",
-      fontSize: 16,
-      height: 120,
-      textAlignVertical: "top",
-      borderWidth: 1,
-      borderColor: "#333",
-    },
-    charCount: {
-      position: "absolute",
-      bottom: 10,
-      right: 12,
-      fontSize: 10,
-      color: "#555",
-    },
-    premiumPostBtn: {
-      backgroundColor: "#FFD700",
-      borderRadius: 16,
-      paddingVertical: 18,
-      alignItems: "center",
-    },
-    premiumPostBtnText: {
-      color: "#000",
-      fontSize: 17,
-      fontWeight: "800",
-      letterSpacing: 0.5,
-    },
-    btnContent: { flexDirection: "row", alignItems: "center", gap: 8 },
-
-    // ── Full Reviews Modal ──────────────────────────────────────────────────
-    fullReviewsContainer: {
-      flex: 1,
-      backgroundColor: "#000",
-      paddingTop: Platform.OS === "ios" ? 60 : 40,
-    },
-    fullReviewsHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      paddingHorizontal: 16,
-      paddingBottom: 20,
-      borderBottomWidth: 1,
-      borderBottomColor: "#222",
-    },
-    fullReviewsTitle: { fontSize: 18, fontWeight: "800", color: "#FFF" },
-    backBtn: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: "#111",
-      alignItems: "center",
-      justifyContent: "center",
-      borderWidth: 1,
-      borderColor: "#333",
-    },
-
-    // ── Transit Styles ──────────────────────────────────────────────────────
-    busRouteSelectorOuter: {
-      position: "absolute",
-      top: 130, // Way below the pill bar
-      left: 20,
-      width: "84%",
-      zIndex: 3000,
-      gap: 10,
-    },
-    busRouteSelectorRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-    },
-    busRouteDropdownTrigger: {
-      flexDirection: "row",
-      alignItems: "center",
-      backgroundColor: isDark ? "rgba(12, 12, 14, 0.88)" : "rgba(255,255,255,0.94)",
-      borderRadius: 24,
-      paddingVertical: 8,
-      paddingHorizontal: 14,
-      borderWidth: 1,
-      borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
-      gap: 12,
-      flex: 1,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 5,
-      elevation: 8,
-    },
-    selectedRouteBadge: {
-      width: 38,
-      height: 38,
-      borderRadius: 11,
-      backgroundColor: "#500000",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    selectedRouteBadgeMuted: {
-      backgroundColor: isDark ? "rgba(255,255,255,0.10)" : "rgba(12,12,14,0.78)",
-    },
-    selectedRouteNumber: {
-      color: "#FFF",
-      fontSize: 13,
-      fontWeight: "900",
-    },
-    selectedRouteTextStack: {
-      flex: 1,
-      justifyContent: "center",
-    },
-    labelSubText: {
-      color: COLORS.textTertiary,
-      fontSize: 10,
-      fontWeight: "700",
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
-      marginBottom: 1,
-    },
-    selectedRouteName: {
-      color: COLORS.textPrimary,
-      fontSize: 14,
-      fontWeight: "800",
-    },
-    chevronIcon: {
-      paddingHorizontal: 8,
-    },
-    busTimetableButton: {
-      width: 38,
-      height: 38,
-      borderRadius: 11,
-      backgroundColor: isDark ? "rgba(12, 12, 14, 0.88)" : "rgba(255,255,255,0.98)",
-      borderWidth: 1,
-      borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.12)",
-      alignItems: "center",
-      justifyContent: "center",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.28,
-      shadowRadius: 10,
-      elevation: 8,
-    },
-    planTripButton: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      backgroundColor: isDark ? "rgba(12,12,14,0.90)" : "rgba(255,255,255,0.96)",
-      borderRadius: 22,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-      borderWidth: 1,
-      borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.24,
-      shadowRadius: 10,
-      elevation: 8,
-    },
-    planTripIconWrap: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: COLORS.primary,
-    },
-    planTripTextStack: {
-      flex: 1,
-      gap: 2,
-    },
-    planTripLabel: {
-      color: COLORS.textPrimary,
-      fontSize: 14,
-      fontWeight: "800",
-    },
-    planTripMeta: {
-      color: COLORS.textSecondary,
-      fontSize: 11,
-      fontWeight: "600",
-    },
-    busRoutesDropdown: {
-      marginTop: 8,
-      maxHeight: 300,
-      backgroundColor: isDark ? "rgba(12,12,14,0.94)" : "rgba(255,255,255,0.96)",
-      borderRadius: 24,
-      borderWidth: 1,
-      borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
-      overflow: "hidden",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 10 },
-      shadowOpacity: 0.5,
-      shadowRadius: 15,
-      elevation: 15,
-    },
-    busDropdownScroll: {
-      paddingVertical: 8,
-    },
-    routeSearchRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      paddingHorizontal: 14,
-      paddingTop: 14,
-      paddingBottom: 10,
-      borderBottomWidth: 1,
-      borderBottomColor: COLORS.border,
-    },
-    placesListOverlay: {
-      position: "absolute",
-      top: 178,
-      left: 16,
-      right: 16,
-      bottom: FLOATING_CARD_BOTTOM_OFFSET + 12,
-      zIndex: 3400,
-    },
-    placesListCard: {
-      flex: 1,
-      paddingBottom: 6,
-      backgroundColor: isDark ? 'rgba(12,12,14,0.88)' : 'rgba(255,255,255,0.94)',
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
-    },
-    placesListHeader: {
-      marginBottom: 8,
-      gap: 4,
-    },
-    placesListTitle: {
-      color: COLORS.textPrimary,
-      fontSize: 18,
-      fontWeight: "800",
-    },
-    placesListSubtitle: {
-      color: COLORS.textSecondary,
-      fontSize: 12,
-      lineHeight: 18,
-    },
-    placesListContent: {
-      paddingBottom: 16,
-      gap: 10,
-    },
-    placesListRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-      paddingVertical: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: COLORS.border,
-    },
-    placesListIcon: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: COLORS.primary,
-    },
-    placesListRowHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 12,
-      marginBottom: 4,
-    },
-    placesListRowTitle: {
-      color: COLORS.textPrimary,
-      fontSize: 14,
-      fontWeight: "800",
-      flex: 1,
-    },
-    placesListRowDistance: {
-      color: COLORS.textSecondary,
-      fontSize: 11,
-      fontWeight: "700",
-    },
-    placesListRowMeta: {
-      color: COLORS.textSecondary,
-      fontSize: 12,
-      lineHeight: 18,
-    },
-    placesListParkingHint: {
-      color: COLORS.textPrimary,
-      fontSize: 11,
-      lineHeight: 16,
-      marginTop: 5,
-    },
-    routeSearchInput: {
-      flex: 1,
-      color: COLORS.textPrimary,
-      fontSize: 14,
-      fontWeight: "600",
-      paddingVertical: 0,
-    },
-    emptyRouteSearchState: {
-      paddingHorizontal: 16,
-      paddingVertical: 22,
-      gap: 6,
-    },
-    emptyRouteSearchTitle: {
-      color: COLORS.textPrimary,
-      fontSize: 14,
-      fontWeight: "800",
-    },
-    emptyRouteSearchBody: {
-      color: COLORS.textSecondary,
-      fontSize: 12,
-      lineHeight: 18,
-    },
-    busRouteItem: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingVertical: 12,
-      paddingHorizontal: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: COLORS.border,
-    },
-    busRouteItemActive: {
-      backgroundColor: isDark ? "rgba(128,0,0,0.1)" : "rgba(80,0,0,0.08)",
-    },
-    routeItemBadge: {
-      minWidth: 36,
-      paddingHorizontal: 6,
-      height: 32,
-      borderRadius: 8,
-      alignItems: "center",
-      justifyContent: "center",
-      marginRight: 12,
-    },
-    routeItemBadgeActive: {
-      backgroundColor: COLORS.primary,
-    },
-    routeItemBadgeIdle: {
-      backgroundColor: isDark ? "#1A1A1A" : "#EFF1F5",
-      borderWidth: isDark ? 0 : 1,
-      borderColor: isDark ? "transparent" : "rgba(12,12,14,0.08)",
-    },
-    routeItemNumber: {
-      color: "#FFF",
-      fontSize: 12,
-      fontWeight: "800",
-    },
-    routeItemNumberIdle: {
-      color: isDark ? "#FFF" : COLORS.textPrimary,
-    },
-    routeItemName: {
-      flex: 1,
-      color: COLORS.textSecondary,
-      fontSize: 14,
-      fontWeight: "600",
-    },
-    routeItemNameActive: {
-      color: COLORS.textPrimary,
-      fontWeight: "800",
-    },
-    activeCheckDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
-      backgroundColor: "#F3F1ED",
-      marginLeft: 8,
-    },
-    busTransitPanel: {
-      backgroundColor: "rgba(12,12,14,0.88)",
-      borderRadius: 28,
-      borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.08)",
-      padding: 16,
-      gap: 14,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.22,
-      shadowRadius: 14,
-      elevation: 10,
-    },
-    busTransitHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 12,
-    },
-    busTransitTitle: {
-      color: "#FFF",
-      fontSize: 15,
-      fontWeight: "800",
-    },
-    busTransitSubtitle: {
-      color: "#A6A6AC",
-      fontSize: 12,
-      marginTop: 2,
-    },
-    nearbyTransitCard: {
-      backgroundColor: "rgba(255,255,255,0.04)",
-      borderRadius: 20,
-      padding: 14,
-      gap: 6,
-      borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.05)",
-    },
-    nearbyTransitCardMuted: {
-      backgroundColor: "rgba(255,255,255,0.03)",
-      borderRadius: 20,
-      padding: 14,
-      borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.04)",
-    },
-    nearbyTransitTitle: {
-      color: "#FFF",
-      fontSize: 13,
-      fontWeight: "800",
-    },
-    nearbyTransitBody: {
-      color: "#D2D2D7",
-      fontSize: 12,
-      lineHeight: 18,
-    },
-    nearbyTransitMutedText: {
-      color: "#A6A6AC",
-      fontSize: 12,
-      lineHeight: 18,
-    },
-    stopBoardHeader: {
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    stopBoardTitle: {
-      color: "#FFF",
-      fontSize: 13,
-      fontWeight: "800",
-      textTransform: "uppercase",
-      letterSpacing: 0.6,
-    },
-    stopBoardMeta: {
-      color: "#A6A6AC",
-      fontSize: 11,
-      fontWeight: "700",
-    },
-    stopBoardList: {
-      gap: 8,
-    },
-    stopBoardRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 10,
-      paddingHorizontal: 12,
-      paddingVertical: 12,
-      backgroundColor: "rgba(255,255,255,0.04)",
-      borderRadius: 18,
-      borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.05)",
-    },
-    stopBoardSequence: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      backgroundColor: "rgba(255,255,255,0.08)",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    stopBoardSequenceText: {
-      color: "#F3F1ED",
-      fontSize: 11,
-      fontWeight: "800",
-    },
-    stopBoardName: {
-      color: "#FFF",
-      fontSize: 13,
-      fontWeight: "700",
-    },
-    stopBoardDetail: {
-      color: "#9A9AA0",
-      fontSize: 11,
-      marginTop: 2,
-    },
-    stopBoardEta: {
-      color: "#F3F1ED",
-      fontSize: 12,
-      fontWeight: "800",
-    },
-    circularActionBtn: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: "#007AFF",
-      alignItems: "center",
-      justifyContent: "center",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 5,
-      elevation: 6,
-    },
-    busMarker: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
-      backgroundColor: "#800000",
-      borderWidth: 2,
-      borderColor: "#FFD700", // Gold border for visibility
-      alignItems: "center",
-      justifyContent: "center",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.8,
-      shadowRadius: 4,
-      elevation: 6,
-    },
-    userLocationMarker: {
-      width: 26,
-      height: 26,
-      borderRadius: 13,
-      backgroundColor: "rgba(255,255,255,0.24)",
-      alignItems: "center",
-      justifyContent: "center",
-      borderWidth: 1,
-      borderColor: "rgba(255,255,255,0.65)",
-    },
-    userLocationInner: {
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      backgroundColor: "#4DA3FF",
-      borderWidth: 2,
-      borderColor: "#FFFFFF",
-    },
-    busMarkerText: {
-      color: "#FFF",
-      fontSize: 12,
-      fontWeight: "900",
-    },
-    busStopPin: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      backgroundColor: "#007AFF", // Standard Blue
-      borderWidth: 2,
-      borderColor: "#FFF",
-      alignItems: "center",
-      justifyContent: "center",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.3,
-      shadowRadius: 3,
-      elevation: 4,
-    },
-    busStopInfoCard: {
-      position: "absolute",
-      bottom: FLOATING_CARD_BOTTOM_OFFSET + 12,
-      left: 20,
-      right: 20,
-      backgroundColor: "rgba(12, 12, 12, 0.98)",
-      borderRadius: 24,
-      padding: 20,
-      borderWidth: 1,
-      borderColor: "#800000",
-      zIndex: 2000,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 16,
-    },
-    stopInfoIcon: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: "#007AFF",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    stopInfoName: {
-      color: "#FFF",
-      fontSize: 16,
-      fontWeight: "800",
-      marginBottom: 2,
-    },
-    stopInfoProximity: {
-      color: "#FFD700",
-      fontSize: 13,
-      fontWeight: "700",
-    },
-    busVehicleInfoCard: {
-      position: "absolute",
-      bottom: FLOATING_CARD_BOTTOM_OFFSET + 12,
-      left: 20,
-      right: 20,
-      backgroundColor: isDark ? "rgba(18, 18, 20, 0.90)" : "rgba(255,255,255,0.98)",
-      borderRadius: 24,
-      padding: 20,
-      borderWidth: 1,
-      borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
-      zIndex: 2000,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 16,
-    },
-    busInfoIcon: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: "#800000",
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    busInfoBadgeRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginBottom: 4,
-    },
-    busInfoBadge: {
-      backgroundColor: isDark ? "#333" : "#EFF1F5",
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: 6,
-    },
-    busInfoBadgeText: {
-      color: COLORS.textPrimary,
-      fontSize: 11,
-      fontWeight: "700",
-    },
-    loadBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: 6,
-    },
-    loadText: {
-      fontSize: 11,
-      fontWeight: "700",
-    },
-    busInfoRouteName: {
-      color: COLORS.textPrimary,
-      fontSize: 15,
-      fontWeight: "700",
-    },
-    dockedStopContainer: {
-      position: "absolute",
-      bottom: FLOATING_CARD_BOTTOM_OFFSET,
-      left: 20,
-      right: 20,
-      zIndex: 5000, // VERY HIGH to be on top of everything
-    },
-    busStopDockedCard: {
-      backgroundColor: isDark ? "rgba(18,18,20,0.90)" : "rgba(255,255,255,0.98)",
-      borderRadius: 20,
-      padding: 16,
-      flexDirection: "row",
-      alignItems: "center",
-      borderWidth: 1,
-      borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 10 },
-      shadowOpacity: 0.5,
-      shadowRadius: 15,
-      elevation: 10,
-    },
-    stopIconCircular: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
-      backgroundColor: "rgba(0, 122, 255, 0.1)",
-      alignItems: "center",
-      justifyContent: "center",
-      position: "relative",
-    },
-    stopPulseMarker: {
-      position: "absolute",
-      width: 12,
-      height: 12,
-      borderRadius: 6,
-      backgroundColor: "#007AFF",
-      opacity: 0.3,
-    },
-    dockedStopName: {
-      color: COLORS.textPrimary,
-      fontSize: 16,
-      fontWeight: "800",
-      marginBottom: 4,
-    },
-    busStopHintText: {
-      color: COLORS.textSecondary,
-      fontSize: 12,
-      fontWeight: "600",
-      marginBottom: 6,
-    },
-    proximityRow: {
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    dockedStopProximity: {
-      color: "#007AFF",
-      fontSize: 13,
-      fontWeight: "700",
-    },
-    closeStopBtn: {
-      padding: 8,
-    },
-  });
