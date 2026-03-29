@@ -1,0 +1,215 @@
+sources:
+  # ── Main / University-wide Calendar Groups ──────────────────────
+  - name: main_calendar
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Main%20University%20Calendar"
+    priority: high
+    campus_filter: college_station
+
+  - name: student_activities
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Student%20Activities"
+    priority: high
+    campus_filter: college_station
+
+  - name: student_interest
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Student%20Interest"
+    priority: high
+    campus_filter: college_station
+
+  - name: registrar
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Registrar"
+    priority: medium
+    campus_filter: college_station
+
+  - name: rec_sports
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Rec%20Sports"
+    priority: medium
+    campus_filter: college_station
+
+  - name: student_orgs
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Student%20Organizations"
+    priority: high
+    campus_filter: college_station
+
+  - name: msc
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/MSC"
+    priority: high
+    campus_filter: college_station
+
+  - name: career_center
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Career%20Center"
+    priority: high
+    campus_filter: college_station
+
+  - name: engineering
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Engineering"
+    priority: high
+    campus_filter: college_station
+
+  - name: liberal_arts
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Liberal%20Arts"
+    priority: medium
+    campus_filter: college_station
+
+  - name: science
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Science"
+    priority: medium
+    campus_filter: college_station
+
+  - name: bush_school
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Bush%20School"
+    priority: low
+    campus_filter: college_station
+
+  # ── NEW: Department & College Groups ────────────────────────────
+  - name: agriculture
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Agriculture%20and%20Life%20Sciences"
+    priority: medium
+    campus_filter: college_station
+
+  - name: business
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Mays%20Business%20School"
+    priority: high
+    campus_filter: college_station
+
+  - name: education
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Education%20and%20Human%20Development"
+    priority: medium
+    campus_filter: college_station
+
+  - name: geosciences
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Geosciences"
+    priority: medium
+    campus_filter: college_station
+
+  - name: health
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/School%20of%20Public%20Health"
+    priority: medium
+    campus_filter: college_station
+
+  - name: architecture
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Architecture"
+    priority: medium
+    campus_filter: college_station
+
+  - name: veterinary
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Veterinary%20Medicine"
+    priority: low
+    campus_filter: college_station
+
+  - name: libraries
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/University%20Libraries"
+    priority: medium
+    campus_filter: college_station
+
+  - name: diversity
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Diversity"
+    priority: high
+    campus_filter: college_station
+
+  - name: graduate_studies
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Graduate%20and%20Professional%20School"
+    priority: medium
+    campus_filter: college_station
+
+  - name: research
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Research"
+    priority: medium
+    campus_filter: college_station
+
+  - name: international
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/International"
+    priority: high
+    campus_filter: college_station
+
+  - name: honors
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Honors"
+    priority: medium
+    campus_filter: college_station
+
+  - name: performing_arts
+    type: livewhale_json
+    url: "https://calendar.tamu.edu/live/json/events/group/Performing%20Arts"
+    priority: low
+    campus_filter: college_station
+
+  # ── RSS/iCal feed directory ─────────────────────────────────────
+  - name: feeds
+    type: rss_directory
+    url: "https://calendar.tamu.edu/feeds/"
+    priority: high
+    campus_filter: college_station
+
+  # ── GetInvolved (events page) ───────────────────────────────────
+  - name: getinvolved_events
+    type: html
+    url: "https://getinvolved.tamu.edu/events"
+    parser: getinvolved_events
+    priority: high
+    campus_filter: college_station
+
+  # ── GetInvolved (org discovery) ─────────────────────────────────
+  - name: getinvolved_orgs
+    type: html_pagination
+    base_url: "https://getinvolved.tamu.edu/organizations"
+    page_pattern: "?page={page}"
+    max_pages: 50
+    parser: getinvolved_orgs
+    priority: medium
+    campus_filter: college_station
+
+  # ── NEW: GetInvolved search queries (engineering/SEC orgs) ──────
+  - name: getinvolved_search_engineering
+    type: html_search
+    base_url: "https://getinvolved.tamu.edu/events"
+    queries:
+      - "SEC"
+      - "Student Engineers Council"
+      - "engineering"
+      - "ASME"
+      - "IEEE"
+      - "AIChE"
+      - "SHPE"
+      - "NSBE"
+      - "SWE"
+    parser: getinvolved_search
+    priority: high
+    campus_filter: college_station
+
+  - name: getinvolved_search_cultural
+    type: html_search
+    base_url: "https://getinvolved.tamu.edu/events"
+    queries:
+      - "PhilSA"
+      - "TASA"
+      - "cultural"
+      - "international students"
+      - "MSC CAMAC"
+      - "ALPFA"
+    parser: getinvolved_search
+    priority: high
+    campus_filter: college_station
