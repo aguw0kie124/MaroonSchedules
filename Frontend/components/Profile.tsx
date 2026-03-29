@@ -420,15 +420,7 @@ export function Profile() {
           )}
         </Pressable>
 
-        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('GPACalculator')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-            <GraduationCap size={20} color="#F3F1ED" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>GPA Calculator</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
+
       </View>
 
       <Pressable style={styles.logoutButton} onPress={handleLogout}>

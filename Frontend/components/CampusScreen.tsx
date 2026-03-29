@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Dimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Map, MessageSquare, Sparkles, Calendar, Heart, Rss, Navigation, TrendingUp, GraduationCap, ChevronRight, Compass } from 'lucide-react-native';
+import { Map, MessageSquare, Sparkles, Calendar, Heart, Rss, Navigation, TrendingUp, ChevronRight, Compass } from 'lucide-react-native';
 import { useTheme } from './SharedUI';
 
 const { width } = Dimensions.get('window');
@@ -37,12 +37,7 @@ export function CampusScreen() {
                 { id: 'LocationSearch', label: 'Location Search', subtitle: 'Search specific building stats', icon: <TrendingUp color={ICON_COLOR} size={22} /> },
             ]
         },
-        {
-            title: 'ACADEMICS',
-            items: [
-                { id: 'GPACalculator', label: 'GPA Calculator', subtitle: 'Calculate your semester GPA', icon: <GraduationCap color={ICON_COLOR} size={22} /> },
-            ]
-        }
+
     ];
 
     return (

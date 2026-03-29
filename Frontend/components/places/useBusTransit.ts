@@ -1,0 +1,502 @@
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { transitService } from "../../services/transitService";
+import { ALL_BUS_ROUTES_KEY } from "./types";
+import {
+  haversineDistanceMeters,
+  getClosestProgressMeters,
+  formatBusDistance,
+  getApproximateEtaMinutes,
+  isVehicleOnRoute,
+} from "./utils";
+
+export function useBusTransit(
+  activeLayer: string,
+  mapRef: React.RefObject<any>,
+) {
+  const [busRoutes, setBusRoutes] = useState<any[]>([]);
+  const [busVehicles, setBusVehicles] = useState<any[]>([]);
+  const [busStops, setBusStops] = useState<any[]>([]);
+  const [selectedBusRouteId, setSelectedBusRouteId] = useState<string | null>(
+    ALL_BUS_ROUTES_KEY,
+  );
+  const [routePatterns, setRoutePatterns] = useState<any[]>([]);
+  const [allRoutePatternsById, setAllRoutePatternsById] = useState<
+    Record<string, { points: any[]; stops: any[] }>
+  >({});
+  const [isFetchingBus, setIsFetchingBus] = useState(false);
+  const [isRouteDropdownOpen, setIsRouteDropdownOpen] = useState(false);
+  const [routeSearchQuery, setRouteSearchQuery] = useState("");
+  const [selectedStop, setSelectedStop] = useState<any | null>(null);
+  const [selectedBus, setSelectedBus] = useState<any | null>(null);
+  const [nearestBusInfo, setNearestBusInfo] = useState<string | null>(null);
+
+  const busPollInterval = useRef<any>(null);
+  const isFetchingRef = useRef(false);
+
+  const isAllBusRoutesSelected =
+    !selectedBusRouteId || selectedBusRouteId === ALL_BUS_ROUTES_KEY;
+
+  const selectedRoute = useMemo(
+    () =>
+      isAllBusRoutesSelected
+        ? null
+        : busRoutes.find((route) => route.Key === selectedBusRouteId) ?? null,
+    [busRoutes, isAllBusRoutesSelected, selectedBusRouteId],
+  );
+
+  const busRouteOptions = useMemo(
+    () => [
+      {
+        Key: ALL_BUS_ROUTES_KEY,
+        ShortName: "ALL",
+        Name: "Show All Routes",
+        Color: "#1E1E1E",
+      },
+      ...busRoutes,
+    ],
+    [busRoutes],
+  );
+
+  const filteredBusRoutes = useMemo(() => {
+    const query = routeSearchQuery.trim().toLowerCase();
+    if (!query) {
+      return busRouteOptions;
+    }
+
+    return busRouteOptions.filter((route) => {
+      const shortName = (route.ShortName || "").toString().toLowerCase();
+      const name = (route.Name || "").toString().toLowerCase();
+      return shortName.includes(query) || name.includes(query);
+    });
+  }, [busRouteOptions, routeSearchQuery]);
+
+  const loadAllBusRoutes = useCallback(async (routesToLoad: any[]) => {
+    if (!routesToLoad.length) {
+      setAllRoutePatternsById({});
+      setBusVehicles([]);
+      return;
+    }
+
+    const patternEntries = await Promise.all(
+      routesToLoad.map(async (route) => {
+        const pattern = await transitService.getRoutePattern(route.Key);
+        return [route.Key, pattern] as const;
+      }),
+    );
+
+    const nextPatterns = patternEntries.reduce(
+      (acc, [routeKey, pattern]) => {
+        acc[routeKey] = pattern;
+        return acc;
+      },
+      {} as Record<string, { points: any[]; stops: any[] }>,
+    );
+    setAllRoutePatternsById(nextPatterns);
+
+    const vehicles = await transitService.getVehicles();
+    setBusVehicles(vehicles);
+    setBusStops([]);
+    setRoutePatterns([]);
+
+    const allPoints = patternEntries.flatMap(
+      ([, pattern]) => pattern.points || [],
+    );
+    if (mapRef.current && allPoints.length > 0) {
+      mapRef.current.fitToCoordinates(allPoints, {
+        edgePadding: { top: 220, right: 60, bottom: 110, left: 60 },
+        animated: true,
+      });
+    }
+  }, [mapRef]);
+
+  const handleSelectBusRoute = useCallback(
+    async (routeId: string, availableRoutes: any[] = busRoutes) => {
+      console.log("[Transit] Selecting route:", routeId);
+      setSelectedBusRouteId(routeId);
+      setSelectedStop(null);
+      setSelectedBus(null);
+
+      if (routeId === ALL_BUS_ROUTES_KEY) {
+        await loadAllBusRoutes(availableRoutes);
+        return;
+      }
+
+      try {
+        const { points, stops } = await transitService.getRoutePattern(routeId);
+        if (points && points.length > 0) {
+          console.log("[Transit] Route trace points found:", points.length);
+          setRoutePatterns(points);
+        } else {
+          console.warn("[Transit] No route trace found for:", routeId);
+          setRoutePatterns([]);
+        }
+
+        if (stops && stops.length > 0) {
+          console.log("[Transit] Stops found:", stops.length);
+          setBusStops(stops);
+        } else {
+          console.warn("[Transit] No stops found for:", routeId);
+          setBusStops([]);
+        }
+
+        if (mapRef.current && points.length > 0) {
+          mapRef.current.fitToCoordinates(points, {
+            edgePadding: { top: 220, right: 60, bottom: 80, left: 60 },
+            animated: true,
+          });
+        }
+
+        const vehicles = await transitService.getVehicles(routeId);
+        console.log(
+          `[Transit] Found ${vehicles.length} vehicles for route ${routeId}`,
+        );
+        if (vehicles.length > 0) {
+          console.log(
+            "[Transit] Sample vehicle coords:",
+            vehicles[0].Latitude,
+            vehicles[0].Longitude,
+          );
+        }
+        setBusVehicles(vehicles);
+      } catch (e) {
+        console.warn("Failed to select bus route", e);
+      }
+    },
+    [busRoutes, loadAllBusRoutes, mapRef],
+  );
+
+  const fetchBusData = async () => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    setIsFetchingBus(true);
+    try {
+      console.log("[Transit] Fetching metadata and active routes...");
+      const metadata = await transitService.getRoutesMetadata();
+      const activeIds = await transitService.getActiveRoutes();
+
+      console.log("[Transit] Metadata count:", metadata.length);
+      console.log("[Transit] Active IDs:", activeIds);
+
+      const activeRoutes = metadata.filter(
+        (m) =>
+          activeIds.includes(m.ShortName) ||
+          activeIds.includes(m.Key) ||
+          activeIds.includes(m.Name),
+      );
+
+      const finalRoutes = activeRoutes.length > 0 ? activeRoutes : metadata;
+
+      console.log("[Transit] Final Active Routes count:", finalRoutes.length);
+      setBusRoutes(finalRoutes);
+
+      const isSelectionActive = finalRoutes.some(
+        (r) => r.Key === selectedBusRouteId,
+      );
+      if (
+        finalRoutes.length > 0 &&
+        (isAllBusRoutesSelected || !selectedBusRouteId || !isSelectionActive)
+      ) {
+        handleSelectBusRoute(ALL_BUS_ROUTES_KEY, finalRoutes);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch bus routes", e);
+    } finally {
+      setIsFetchingBus(false);
+      isFetchingRef.current = false;
+    }
+  };
+
+  const resolveNearestBusForStop = useCallback(
+    (stop: any, vehicles: any[]) => {
+      if (!stop || vehicles.length === 0) {
+        setNearestBusInfo(
+          selectedRoute ? "Route loaded" : "Transit route loaded",
+        );
+        return;
+      }
+
+      const stopProgress = getClosestProgressMeters(routePatterns, {
+        latitude: stop.Latitude,
+        longitude: stop.Longitude,
+      });
+
+      const rankedBuses = vehicles
+        .map((bus) => {
+          const directDistanceMeters = haversineDistanceMeters(
+            bus.Latitude,
+            bus.Longitude,
+            stop.Latitude,
+            stop.Longitude,
+          );
+
+          if (!stopProgress) {
+            return {
+              bus,
+              distanceMeters: directDistanceMeters,
+            };
+          }
+
+          const busProgress = getClosestProgressMeters(routePatterns, {
+            latitude: bus.Latitude,
+            longitude: bus.Longitude,
+          });
+
+          if (!busProgress) {
+            return {
+              bus,
+              distanceMeters: directDistanceMeters,
+            };
+          }
+
+          const routeDelta = Math.abs(
+            stopProgress.progressMeters - busProgress.progressMeters,
+          );
+          const wrappedDelta =
+            stopProgress.totalRouteMeters > 0
+              ? Math.min(routeDelta, stopProgress.totalRouteMeters - routeDelta)
+              : routeDelta;
+
+          return {
+            bus,
+            distanceMeters: Math.min(
+              directDistanceMeters,
+              wrappedDelta +
+                stopProgress.offsetMeters +
+                busProgress.offsetMeters,
+            ),
+          };
+        })
+        .sort(
+          (first, second) => first.distanceMeters - second.distanceMeters,
+        );
+
+      const nearestBus = rankedBuses[0];
+      if (!nearestBus) {
+        setNearestBusInfo(
+          selectedRoute ? "Route loaded" : "Transit route loaded",
+        );
+        return;
+      }
+
+      setSelectedBus(nearestBus.bus);
+      const etaMinutes = Math.max(
+        1,
+        Math.round(nearestBus.distanceMeters / 220),
+      );
+      const busLabel = nearestBus.bus.RouteShortName
+        ? `Route ${nearestBus.bus.RouteShortName}`
+        : nearestBus.bus.Name
+          ? `Bus ${nearestBus.bus.Name}`
+          : undefined;
+      setNearestBusInfo(
+        formatBusDistance(nearestBus.distanceMeters, etaMinutes, busLabel),
+      );
+    },
+    [routePatterns, selectedRoute],
+  );
+
+  // Fetch bus data when switching to Bus layer
+  useEffect(() => {
+    if (activeLayer === "Bus") {
+      fetchBusData();
+    }
+  }, [activeLayer]);
+
+  // Poll for bus locations
+  useEffect(() => {
+    if (activeLayer === "Bus" && selectedBusRouteId) {
+      busPollInterval.current = setInterval(async () => {
+        const updated = isAllBusRoutesSelected
+          ? await transitService.getVehicles()
+          : await transitService.getVehicles(selectedBusRouteId);
+        setBusVehicles(updated);
+      }, 5000);
+    } else {
+      if (busPollInterval.current) clearInterval(busPollInterval.current);
+    }
+    return () => {
+      if (busPollInterval.current) clearInterval(busPollInterval.current);
+    };
+  }, [activeLayer, isAllBusRoutesSelected, selectedBusRouteId]);
+
+  // Update nearest bus when bus positions change
+  useEffect(() => {
+    if (activeLayer === "Bus" && selectedStop) {
+      resolveNearestBusForStop(selectedStop, busVehicles);
+    }
+  }, [activeLayer, busVehicles, routePatterns, selectedStop, resolveNearestBusForStop]);
+
+  // Computed timetable for selected route
+  const stopTimetable = useMemo(() => {
+    if (activeLayer !== "Bus" || !selectedRoute || busStops.length === 0) {
+      return [];
+    }
+
+    return busStops.slice(0, 12).map((stop, index) => {
+      if (busVehicles.length === 0) {
+        return {
+          stop,
+          sequence: index + 1,
+          etaLabel: "Route loaded",
+          detail: "ETA pending",
+        };
+      }
+
+      const rankedBuses = busVehicles
+        .map((bus) => ({
+          bus,
+          etaMinutes: getApproximateEtaMinutes(routePatterns, stop, bus),
+        }))
+        .sort((left, right) => left.etaMinutes - right.etaMinutes);
+      const nextBus = rankedBuses[0];
+
+      if (!nextBus) {
+        return {
+          stop,
+          sequence: index + 1,
+          etaLabel: "No estimate",
+          detail: "Live feed unavailable",
+        };
+      }
+
+      return {
+        stop,
+        sequence: index + 1,
+        etaLabel:
+          nextBus.etaMinutes <= 1 ? "Now" : `${nextBus.etaMinutes} min`,
+        detail: nextBus.bus.RouteShortName
+          ? `Route ${nextBus.bus.RouteShortName}`
+          : nextBus.bus.Name || "Live bus",
+      };
+    });
+  }, [activeLayer, busStops, busVehicles, routePatterns, selectedRoute]);
+
+  // All-routes board for overview mode
+  const allRouteBoards = useMemo(() => {
+    if (!isAllBusRoutesSelected) {
+      return [];
+    }
+
+    return busRoutes
+      .map((route) => {
+        const pattern = allRoutePatternsById[route.Key];
+        const routePoints = pattern?.points || [];
+        const routeStops = pattern?.stops || [];
+        const routeVehicles = busVehicles.filter((bus) =>
+          isVehicleOnRoute(bus, route),
+        );
+        const entries = routeStops.slice(0, 4).map((stop, index) => {
+          const rankedBuses = routeVehicles
+            .map((bus) => ({
+              bus,
+              etaMinutes: getApproximateEtaMinutes(routePoints, stop, bus),
+            }))
+            .sort((left, right) => left.etaMinutes - right.etaMinutes);
+          const nextBus = rankedBuses[0];
+
+          return {
+            stop,
+            sequence: index + 1,
+            etaLabel: nextBus
+              ? nextBus.etaMinutes <= 1
+                ? "Now"
+                : `${nextBus.etaMinutes} min`
+              : "Route loaded",
+            detail: nextBus?.bus?.RouteShortName
+              ? `Route ${nextBus.bus.RouteShortName}`
+              : route.Name || "Transit route",
+          };
+        });
+
+        return {
+          route,
+          liveCount: routeVehicles.length,
+          entries,
+        };
+      })
+      .filter((board) => board.entries.length > 0 || board.liveCount > 0);
+  }, [allRoutePatternsById, busRoutes, busVehicles, isAllBusRoutesSelected]);
+
+  // Nearby transit insight for user location
+  const getNearbyTransitInsight = useCallback(
+    (userCoord: { latitude: number; longitude: number } | null) => {
+      if (!userCoord || activeLayer !== "Bus" || !selectedRoute) {
+        return null;
+      }
+
+      const nearestStop = busStops.reduce(
+        (best, stop) => {
+          const distance = haversineDistanceMeters(
+            userCoord.latitude,
+            userCoord.longitude,
+            stop.Latitude,
+            stop.Longitude,
+          );
+          if (!best || distance < best.distanceMeters) {
+            return { stop, distanceMeters: distance };
+          }
+          return best;
+        },
+        null as { stop: any; distanceMeters: number } | null,
+      );
+
+      const nearestVehicle = busVehicles.reduce(
+        (best, vehicle) => {
+          const distance = haversineDistanceMeters(
+            userCoord.latitude,
+            userCoord.longitude,
+            vehicle.Latitude,
+            vehicle.Longitude,
+          );
+          if (!best || distance < best.distanceMeters) {
+            return { vehicle, distanceMeters: distance };
+          }
+          return best;
+        },
+        null as { vehicle: any; distanceMeters: number } | null,
+      );
+
+      if (
+        (!nearestStop || nearestStop.distanceMeters > 320) &&
+        (!nearestVehicle || nearestVehicle.distanceMeters > 380)
+      ) {
+        return null;
+      }
+
+      return {
+        nearestStop,
+        nearestVehicle,
+      };
+    },
+    [activeLayer, busStops, busVehicles, selectedRoute],
+  );
+
+  return {
+    busRoutes,
+    busVehicles,
+    busStops,
+    selectedBusRouteId,
+    selectedRoute,
+    busRouteOptions,
+    filteredBusRoutes,
+    isFetchingBus,
+    isRouteDropdownOpen,
+    setIsRouteDropdownOpen,
+    routeSearchQuery,
+    setRouteSearchQuery,
+    selectedStop,
+    setSelectedStop,
+    selectedBus,
+    setSelectedBus,
+    nearestBusInfo,
+    setNearestBusInfo,
+    isAllBusRoutesSelected,
+    routePatterns,
+    allRoutePatternsById,
+    handleSelectBusRoute,
+    resolveNearestBusForStop,
+    stopTimetable,
+    allRouteBoards,
+    getNearbyTransitInsight,
+  };
+}

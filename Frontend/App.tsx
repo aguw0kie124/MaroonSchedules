@@ -40,7 +40,7 @@ import { EventsCalendarScreen } from './components/EventsCalendarScreen';
 import { ForYouScreen } from './components/ForYouScreen';
 import { CampusFeedScreen } from './components/CampusFeedScreen';
 import { ReelsScreen } from './components/ReelsScreen';
-import { GPACalculatorScreen } from './components/GPACalculatorScreen';
+
 import { CampusScreen } from './components/CampusScreen';
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
@@ -297,7 +297,7 @@ function RootNavigator() {
           <Stack.Screen name="CampusMap" component={CampusMapScreen} options={{ headerShown: false }} />
           <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
           <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
+
           <Stack.Screen name="Reels" component={ReelsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CampusConnector" component={CampusConnectorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
