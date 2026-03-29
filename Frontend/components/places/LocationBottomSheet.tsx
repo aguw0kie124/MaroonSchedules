@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useMemo, useCallback } from "react";
+import { useState } from "react";
 import {
   View,
   Text,
@@ -39,6 +40,7 @@ import {
   getDiningMenuCandidates,
   isDiningHallMenuLocation,
 } from "../../services/diningMenuCache";
+import { PillTabs } from "../PillTabs";
 
 interface LocationBottomSheetProps {
   styles: any;
@@ -127,6 +129,9 @@ export function LocationBottomSheet({
   const sheetY = useRef(new Animated.Value(SNAP_HIDDEN)).current;
   const sheetSnap = useRef<number>(SNAP_HIDDEN);
   const panStartY = useRef<number>(SNAP_HIDDEN);
+  const [diningDetailTab, setDiningDetailTab] = useState<"reviews" | "menus">(
+    "reviews",
+  );
 
   const animateSheet = useCallback(
     (toValue: number, onDone?: () => void) => {
@@ -143,12 +148,18 @@ export function LocationBottomSheet({
   );
 
   useEffect(() => {
+    setDiningDetailTab("reviews");
     if (selectedId) {
       animateSheet(SNAP_PEEK);
     } else {
       animateSheet(SNAP_HIDDEN);
     }
   }, [selectedId, animateSheet]);
+
+  const isDiningHallCard =
+    !!selectedLoc &&
+    isDiningHallMenuLocation(selectedLoc.location) &&
+    isPrimaryDiningHallSelection;
 
   const panResponder = useMemo(
     () =>
@@ -491,234 +502,360 @@ export function LocationBottomSheet({
               contentContainerStyle={{ paddingBottom: 40 }}
               scrollEventThrottle={16}
             >
-              {/* Traffic chart */}
-              {(selectedLoc.type === "Library" || selectedLoc.type === "Rec") && (
-                <View style={styles.chartContainer}>
-                  <Text style={styles.chartTitle}>Foot Traffic · Last 8h</Text>
-                  <View style={styles.chartBars}>
-                    {(
-                      selectedLoc.traffic_history || [20, 45, 15, 60, 40, 25, 20, 50]
-                    ).map((val: number, i: number) => (
-                      <View key={i} style={styles.barWrapper}>
-                        <View
-                          style={[
-                            styles.barFill,
-                            {
-                              height: Math.max(8, (val / 100) * 45),
-                              backgroundColor: getStatusColor(val),
-                            },
-                          ]}
-                        />
-                      </View>
-                    ))}
+              {isDiningHallCard ? (
+                <>
+                  <View style={styles.detailTabsWrap}>
+                    <PillTabs
+                      items={[
+                        { key: "reviews", label: "Reviews" },
+                        { key: "menus", label: "Menus" },
+                      ]}
+                      activeKey={diningDetailTab}
+                      onChange={(key) =>
+                        setDiningDetailTab(key as "reviews" | "menus")
+                      }
+                      floating
+                      compact
+                    />
                   </View>
-                </View>
-              )}
 
-              {/* Dining menus */}
-              {isDiningHallMenuLocation(selectedLoc.location) && isPrimaryDiningHallSelection && (
-                  <View style={styles.infoBlock}>
-                    <View style={styles.reviewsHeader}>
-                      <Text style={styles.sectionTitle}>Menus</Text>
-                      {activeDiningMenu ? (
-                        <TouchableOpacity
-                          onPress={() => openFullMenu(activeDiningMenu)}
-                        >
-                          <Text style={styles.seeAllText}>View full menu</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
+                  {diningDetailTab === "menus" ? (
+                    <View style={styles.infoBlock}>
+                      <View style={styles.reviewsHeader}>
+                        <View>
+                          <Text style={styles.sectionTitle}>Live menus</Text>
+                          <Text style={styles.menuIntroText}>
+                            Fresh DineOnCampus feed for the current dining hall.
+                          </Text>
+                        </View>
+                        {activeDiningMenu ? (
+                          <TouchableOpacity
+                            onPress={() =>
+                              openFullMenu(
+                                activeDiningMenu || selectedLoc.location,
+                              )
+                            }
+                          >
+                            <Text style={styles.seeAllText}>Open full menu</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
 
-                    {activeDiningMenu ? (
-                      <View style={styles.restaurantChipList}>
-                        {getDiningMealOptionsForLocation(activeDiningMenu).map(
-                          (mealPeriod) => (
+                      {diningMenuOptions.length > 1 ? (
+                        <View style={styles.restaurantChipList}>
+                          {diningMenuOptions.map((option) => (
                             <TouchableOpacity
-                              key={mealPeriod}
+                              key={option}
                               style={[
                                 styles.restaurantChip,
-                                activeDiningMealPeriod === mealPeriod &&
+                                activeDiningMenu === option &&
                                   styles.restaurantChipActive,
                               ]}
-                              onPress={() =>
-                                setActiveDiningMealPeriod(
-                                  mealPeriod as DiningMealPeriod,
-                                )
-                              }
+                              onPress={() => setActiveDiningMenu(option)}
                             >
                               <Text style={styles.restaurantChipText}>
-                                {mealPeriod.charAt(0).toUpperCase() +
-                                  mealPeriod.slice(1)}
+                                {option}
                               </Text>
                             </TouchableOpacity>
-                          ),
-                        )}
-                      </View>
-                    ) : null}
+                          ))}
+                        </View>
+                      ) : null}
 
-                    {diningMenuOptions.length > 1 ? (
-                      <View style={styles.restaurantChipList}>
-                        {diningMenuOptions.map((option) => (
-                          <TouchableOpacity
-                            key={option}
-                            style={[
-                              styles.restaurantChip,
-                              activeDiningMenu === option &&
-                                styles.restaurantChipActive,
-                            ]}
-                            onPress={() => setActiveDiningMenu(option)}
-                          >
-                            <Text style={styles.restaurantChipText}>
-                              {option}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ) : null}
-
-                    {isFetchingDining ? (
-                      <ActivityIndicator
-                        color={COLORS.primary}
-                        style={{ marginVertical: 18 }}
-                      />
-                    ) : diningMenuPreview?.categories?.length ? (
-                      <View style={styles.menuList}>
-                        {diningMenuPreview.categories.flatMap((category: any) =>
-                          category.items,
-                        ).map((item: any) => (
-                            <View
-                              key={`${activeDiningMenu}-${item.name}`}
-                              style={styles.menuItemCard}
-                            >
-                              <View style={styles.menuItemDetails}>
-                                <Text style={styles.menuItemName}>
-                                  {item.name}
-                                </Text>
-                                <View style={styles.menuItemMeta}>
-                                  <Clock size={12} color="#888" />
-                                  <Text style={styles.menuItemCal}>
-                                    {Math.round(item.calories || 0)} kcal
-                                  </Text>
-                                  {item.protein ? (
-                                    <Text style={styles.menuItemCal}>
-                                      {Math.round(item.protein)}g protein
-                                    </Text>
-                                  ) : null}
-                                </View>
-                              </View>
+                      {activeDiningMenu ? (
+                        <View style={styles.restaurantChipList}>
+                          {getDiningMealOptionsForLocation(activeDiningMenu).map(
+                            (mealPeriod) => (
                               <TouchableOpacity
+                                key={mealPeriod}
+                                style={[
+                                  styles.restaurantChip,
+                                  activeDiningMealPeriod === mealPeriod &&
+                                    styles.restaurantChipActive,
+                                ]}
                                 onPress={() =>
-                                  openFullMenu(
-                                    activeDiningMenu || selectedLoc.location,
+                                  setActiveDiningMealPeriod(
+                                    mealPeriod as DiningMealPeriod,
                                   )
                                 }
                               >
-                                <ExternalLink size={16} color={COLORS.primary} />
+                                <Text style={styles.restaurantChipText}>
+                                  {mealPeriod.charAt(0).toUpperCase() +
+                                    mealPeriod.slice(1)}
+                                </Text>
                               </TouchableOpacity>
+                            ),
+                          )}
+                        </View>
+                      ) : null}
+
+                      <View style={styles.metaPillRow}>
+                        <View style={styles.metaPill}>
+                          <Text style={styles.metaPillText}>
+                            {diningMenuPreview?.count ?? 0} items
+                          </Text>
+                        </View>
+                        <View style={styles.metaPill}>
+                          <Text style={styles.metaPillText}>
+                            {diningMenuPreview?.categories?.length ?? 0} categories
+                          </Text>
+                        </View>
+                        <View style={styles.metaPill}>
+                          <Text style={styles.metaPillText}>
+                            {String(diningMenuPreview?.source || "live").toUpperCase()}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {isFetchingDining ? (
+                        <ActivityIndicator
+                          color={COLORS.primary}
+                          style={{ marginVertical: 18 }}
+                        />
+                      ) : diningMenuPreview?.categories?.length ? (
+                        <View style={styles.menuCategoryList}>
+                          {diningMenuPreview.categories.map((category: any) => (
+                            <View
+                              key={category.name}
+                              style={styles.menuCategoryCard}
+                            >
+                              <View style={styles.menuCategoryHeader}>
+                                <Text style={styles.menuCategoryTitle}>
+                                  {category.name}
+                                </Text>
+                                <Text style={styles.menuCategoryCount}>
+                                  {category.items.length}
+                                </Text>
+                              </View>
+
+                              <View style={styles.menuCategoryItems}>
+                                {category.items.slice(0, 3).map((item: any) => (
+                                  <View
+                                    key={`${activeDiningMenu}-${category.name}-${item.name}`}
+                                    style={styles.menuCategoryItem}
+                                  >
+                                    <View style={{ flex: 1 }}>
+                                      <Text style={styles.menuCategoryItemName}>
+                                        {item.name}
+                                      </Text>
+                                      <Text
+                                        style={styles.menuCategoryItemMeta}
+                                        numberOfLines={1}
+                                      >
+                                        {Math.round(item.calories || 0)} kcal
+                                        {item.protein
+                                          ? ` · ${Math.round(item.protein)}g protein`
+                                          : ""}
+                                      </Text>
+                                    </View>
+                                  </View>
+                                ))}
+                                {category.items.length > 3 ? (
+                                  <Text style={styles.menuCategoryMoreText}>
+                                    +{category.items.length - 3} more items
+                                  </Text>
+                                ) : null}
+                              </View>
                             </View>
                           ))}
-                      </View>
-                    ) : (
-                      <View style={styles.emptyReviews}>
-                        <Text style={styles.emptyReviewsText}>
-                          Menu not available yet for this meal period.
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-
-              {/* Class meetings */}
-              {selectedLoc.classMeetings?.length ? (
-                <View style={styles.infoBlock}>
-                  <View style={styles.reviewsHeader}>
-                    <Text style={styles.sectionTitle}>Classes Here</Text>
-                    <TouchableOpacity onPress={openScheduleList}>
-                      <Text style={styles.seeAllText}>My schedules</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.classMeetingList}>
-                    {selectedLoc.classMeetings.map((meeting) => (
-                      <View key={meeting.id} style={styles.classMeetingCard}>
-                        <View style={styles.classMeetingHeader}>
-                          <Text style={styles.classMeetingCode}>
-                            {meeting.code}
-                          </Text>
-                          <Text style={styles.classMeetingTime}>
-                            {meeting.timeLabel}
+                        </View>
+                      ) : (
+                        <View style={styles.emptyReviews}>
+                          <Text style={styles.emptyReviewsText}>
+                            Menu not available yet for this meal period.
                           </Text>
                         </View>
-                        <Text style={styles.classMeetingName}>
-                          {meeting.name}
-                        </Text>
-                        <Text style={styles.classMeetingMeta}>
-                          {formatScheduleDays(meeting.days)}
-                          {meeting.room ? ` · Room ${meeting.room}` : ""}
-                        </Text>
-                        <Text style={styles.classMeetingScheduleLabel}>
-                          {meeting.scheduleLabel}
-                        </Text>
+                      )}
+                    </View>
+                  ) : (
+                    <View style={styles.infoBlock}>
+                      <View style={styles.reviewsHeader}>
+                        <Text style={styles.sectionTitle}>Reviews</Text>
+                        <View style={{ flexDirection: "row", gap: 12 }}>
+                          <TouchableOpacity
+                            onPress={() => setReviewModalVisible(true)}
+                          >
+                            <Text style={styles.addReviewText}>
+                              + Add Review
+                            </Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setAllReviewsModalVisible(true);
+                              fetchReviews(selectedId!, 30);
+                            }}
+                          >
+                            <Text style={styles.seeAllText}>See all</Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
-                    ))}
-                  </View>
-                </View>
-              ) : null}
 
-              {/* Reviews */}
-              <View style={styles.reviewsHeader}>
-                <Text style={styles.sectionTitle}>Reviews</Text>
-                <View style={{ flexDirection: "row", gap: 12 }}>
-                  <TouchableOpacity
-                    onPress={() => setReviewModalVisible(true)}
-                  >
-                    <Text style={styles.addReviewText}>+ Add Review</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setAllReviewsModalVisible(true);
-                      fetchReviews(selectedId!, 30);
-                    }}
-                  >
-                    <Text style={styles.seeAllText}>See all</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {streamReviews.length > 0 ? (
-                streamReviews.slice(0, 5).map((rev, i) => (
-                  <View key={rev.id || i} style={styles.reviewItem}>
-                    <View style={styles.reviewMeta}>
-                      <View style={styles.reviewUserRow}>
-                        <View style={styles.userAvatar}>
-                          <Text style={styles.avatarText}>
-                            {rev.user[0]}
+                      {streamReviews.length > 0 ? (
+                        streamReviews.slice(0, 5).map((rev, i) => (
+                          <View key={rev.id || i} style={styles.reviewItem}>
+                            <View style={styles.reviewMeta}>
+                              <View style={styles.reviewUserRow}>
+                                <View style={styles.userAvatar}>
+                                  <Text style={styles.avatarText}>
+                                    {rev.user[0]}
+                                  </Text>
+                                </View>
+                                <Text style={styles.reviewUser}>
+                                  {rev.user}
+                                </Text>
+                              </View>
+                              <View style={styles.reviewStars}>
+                                {[1, 2, 3, 4, 5].map((s) => (
+                                  <Star
+                                    key={s}
+                                    size={11}
+                                    fill={
+                                      s <= rev.rating ? "#FFD700" : "transparent"
+                                    }
+                                    color={s <= rev.rating ? "#FFD700" : "#555"}
+                                  />
+                                ))}
+                              </View>
+                            </View>
+                            <Text style={styles.reviewComment} numberOfLines={3}>
+                              {rev.comment}
+                            </Text>
+                          </View>
+                        ))
+                      ) : (
+                        <View style={styles.emptyReviews}>
+                          <Text style={styles.emptyReviewsText}>
+                            No reviews found for this location.
                           </Text>
                         </View>
-                        <Text style={styles.reviewUser}>{rev.user}</Text>
-                      </View>
-                      <View style={styles.reviewStars}>
-                        {[1, 2, 3, 4, 5].map((s) => (
-                          <Star
-                            key={s}
-                            size={11}
-                            fill={s <= rev.rating ? "#FFD700" : "transparent"}
-                            color={s <= rev.rating ? "#FFD700" : "#555"}
-                          />
+                      )}
+                    </View>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* Traffic chart */}
+                  {(selectedLoc.type === "Library" ||
+                    selectedLoc.type === "Rec") && (
+                    <View style={styles.chartContainer}>
+                      <Text style={styles.chartTitle}>Foot Traffic · Last 8h</Text>
+                      <View style={styles.chartBars}>
+                        {(
+                          selectedLoc.traffic_history || [
+                            20, 45, 15, 60, 40, 25, 20, 50,
+                          ]
+                        ).map((val: number, i: number) => (
+                          <View key={i} style={styles.barWrapper}>
+                            <View
+                              style={[
+                                styles.barFill,
+                                {
+                                  height: Math.max(8, (val / 100) * 45),
+                                  backgroundColor: getStatusColor(val),
+                                },
+                              ]}
+                            />
+                          </View>
                         ))}
                       </View>
                     </View>
-                    <Text style={styles.reviewComment} numberOfLines={3}>
-                      {rev.comment}
-                    </Text>
+                  )}
+
+                  {/* Class meetings */}
+                  {selectedLoc.classMeetings?.length ? (
+                    <View style={styles.infoBlock}>
+                      <View style={styles.reviewsHeader}>
+                        <Text style={styles.sectionTitle}>Classes Here</Text>
+                        <TouchableOpacity onPress={openScheduleList}>
+                          <Text style={styles.seeAllText}>My schedules</Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={styles.classMeetingList}>
+                        {selectedLoc.classMeetings.map((meeting) => (
+                          <View
+                            key={meeting.id}
+                            style={styles.classMeetingCard}
+                          >
+                            <View style={styles.classMeetingHeader}>
+                              <Text style={styles.classMeetingCode}>
+                                {meeting.code}
+                              </Text>
+                              <Text style={styles.classMeetingTime}>
+                                {meeting.timeLabel}
+                              </Text>
+                            </View>
+                            <Text style={styles.classMeetingName}>
+                              {meeting.name}
+                            </Text>
+                            <Text style={styles.classMeetingMeta}>
+                              {formatScheduleDays(meeting.days)}
+                              {meeting.room ? ` · Room ${meeting.room}` : ""}
+                            </Text>
+                            <Text style={styles.classMeetingScheduleLabel}>
+                              {meeting.scheduleLabel}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {/* Reviews */}
+                  <View style={styles.reviewsHeader}>
+                    <Text style={styles.sectionTitle}>Reviews</Text>
+                    <View style={{ flexDirection: "row", gap: 12 }}>
+                      <TouchableOpacity
+                        onPress={() => setReviewModalVisible(true)}
+                      >
+                        <Text style={styles.addReviewText}>+ Add Review</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setAllReviewsModalVisible(true);
+                          fetchReviews(selectedId!, 30);
+                        }}
+                      >
+                        <Text style={styles.seeAllText}>See all</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                ))
-              ) : (
-                <View style={styles.emptyReviews}>
-                  <Text style={styles.emptyReviewsText}>
-                    No reviews found for this location.
-                  </Text>
-                </View>
+
+                  {streamReviews.length > 0 ? (
+                    streamReviews.slice(0, 5).map((rev, i) => (
+                      <View key={rev.id || i} style={styles.reviewItem}>
+                        <View style={styles.reviewMeta}>
+                          <View style={styles.reviewUserRow}>
+                            <View style={styles.userAvatar}>
+                              <Text style={styles.avatarText}>
+                                {rev.user[0]}
+                              </Text>
+                            </View>
+                            <Text style={styles.reviewUser}>{rev.user}</Text>
+                          </View>
+                          <View style={styles.reviewStars}>
+                            {[1, 2, 3, 4, 5].map((s) => (
+                              <Star
+                                key={s}
+                                size={11}
+                                fill={s <= rev.rating ? "#FFD700" : "transparent"}
+                                color={s <= rev.rating ? "#FFD700" : "#555"}
+                              />
+                            ))}
+                          </View>
+                        </View>
+                        <Text style={styles.reviewComment} numberOfLines={3}>
+                          {rev.comment}
+                        </Text>
+                      </View>
+                    ))
+                  ) : (
+                    <View style={styles.emptyReviews}>
+                      <Text style={styles.emptyReviewsText}>
+                        No reviews found for this location.
+                      </Text>
+                    </View>
+                  )}
+                </>
               )}
             </ScrollView>
           </>

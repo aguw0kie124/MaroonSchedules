@@ -8,7 +8,7 @@ load_dotenv()
 
 def sync_main():
     date_str = datetime.now().strftime('%Y-%m-%d')
-    print(f"Starting in-depth dining data sync for {date_str} (including USDA verification and cost)...")
+    print(f"Starting dining data sync for {date_str}...")
     
     # Ensure tables and columns exist
     init_db()
@@ -18,7 +18,7 @@ def sync_main():
     conn = get_db_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("ALTER TABLE food_items ADD COLUMN IF NOT EXISTS usda_calories FLOAT; ALTER TABLE food_items ADD COLUMN IF NOT EXISTS cost FLOAT DEFAULT 0;")
+            cur.execute("ALTER TABLE food_items ADD COLUMN IF NOT EXISTS cost FLOAT DEFAULT 0;")
             conn.commit()
     finally:
         conn.close()

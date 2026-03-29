@@ -59,9 +59,9 @@ def migrate():
             sl_cur.execute("SELECT * FROM foods")
             for row in sl_cur.fetchall():
                 pg_cur.execute("""
-                    INSERT INTO food_items (name, source, usda_fdc_id, location, location_type, meal_period, calories, protein, carbs, fat, fiber, sugar, sodium, potassium, calcium, iron, magnesium, zinc, vitamin_a, vitamin_c, vitamin_d, serving_label, serving_grams, cost, active)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (row['name'], row['source'], row['usda_fdc_id'], row['location'], row['location_type'], row['meal_period'], row['calories'], row['protein'], row['carbs'], row['fat'], row['fiber'], row['sugar'], row['sodium'], row['potassium'], row['calcium'], row['iron'], row['magnesium'], row['zinc'], row['vitamin_a'], row['vitamin_c'], row['vitamin_d'], row['serving_label'], row['serving_grams'], row['cost'], bool(row['active'])))
+                    INSERT INTO food_items (name, source, location, location_type, meal_period, calories, protein, carbs, fat, fiber, sugar, sodium, potassium, calcium, iron, magnesium, zinc, vitamin_a, vitamin_c, vitamin_d, serving_label, serving_grams, cost, active)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (row['name'], row['source'], row['location'], row['location_type'], row['meal_period'], row['calories'], row['protein'], row['carbs'], row['fat'], row['fiber'], row['sugar'], row['sodium'], row['potassium'], row['calcium'], row['iron'], row['magnesium'], row['zinc'], row['vitamin_a'], row['vitamin_c'], row['vitamin_d'], row['serving_label'], row['serving_grams'], row['cost'], bool(row['active'])))
 
             # 5. Migrate Swipes
             sl_cur.execute("SELECT * FROM swipe_log")

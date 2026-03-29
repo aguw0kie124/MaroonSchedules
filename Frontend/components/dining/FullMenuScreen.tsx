@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, ImageBackground, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { ChevronLeft } from 'lucide-react-native';
+import { ActivityIndicator, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ChevronLeft, Clock3, UtensilsCrossed } from 'lucide-react-native';
 import { Card, SectionLabel, Badge } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
@@ -26,14 +26,8 @@ function formatMenuTitle(location?: string, title?: string) {
 }
 
 export default function FullMenuScreen({ navigation, route }: any) {
-  const { theme, wallpaperUri } = useTheme();
-  const darkMode = theme === 'dark';
-  const T = useDiningTheme(darkMode);
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : darkMode
-      ? require('../../assets/black_marble.jpg')
-      : require('../../assets/white_marble.jpg');
+  const { theme } = useTheme();
+  const T = useDiningTheme(theme === 'dark');
 
   const { location, mealPeriod, title, locations, sourceHint } = route.params || {};
   const isDiningHall = isDiningHallMenuLocation(location);
@@ -102,25 +96,44 @@ export default function FullMenuScreen({ navigation, route }: any) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
       <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
-      <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.58)' : 'rgba(255,255,255,0.72)' }]} />
-      </ImageBackground>
-
-      <ScrollView style={s.container} contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
-        <View style={s.header}>
-          <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
-            <ChevronLeft size={24} color={T.text} />
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={[s.title, { color: T.text }]} numberOfLines={1}>
-              {formatMenuTitle(location, title)}
-            </Text>
-            <Text style={[s.subtitle, { color: T.text3 }]}>
-              {formatMealLabel(activeMealPeriod)}
-              {isDiningHall ? ' service' : ' menu'}
-            </Text>
+      <ScrollView style={s.container} contentContainerStyle={{ padding: 16, paddingBottom: 32 }}>
+        <Card style={s.heroCard}>
+          <View style={s.heroHeader}>
+            <TouchableOpacity style={[s.backBtn, { backgroundColor: T.btnBg, borderColor: T.cardBorder }]} onPress={() => navigation.goBack()}>
+              <ChevronLeft size={22} color={T.text} />
+            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.kicker, { color: T.amber }]}>Dining hall menu</Text>
+              <Text style={[s.title, { color: T.text }]} numberOfLines={1}>
+                {formatMenuTitle(location, title)}
+              </Text>
+              <Text style={[s.subtitle, { color: T.text3 }]}>
+                {isDiningHall ? 'Live DineOnCampus feed' : 'Menu viewer'}
+              </Text>
+            </View>
           </View>
-        </View>
+
+          <View style={s.metaRow}>
+            <Badge label={`${menu?.count ?? 0} ITEMS`} color={T.amber} />
+            <Badge label={`${categoryCount} CATEGORIES`} color={T.sky} />
+            <Badge label={(menu?.source || sourceHint || 'live').toUpperCase()} color={T.sage} />
+          </View>
+
+          <View style={s.locationMetaRow}>
+            <View style={s.locationMetaPill}>
+              <Clock3 size={14} color={T.text3} />
+              <Text style={[s.locationMetaText, { color: T.text2 }]}>
+                {formatMealLabel(activeMealPeriod)}
+              </Text>
+            </View>
+            <View style={s.locationMetaPill}>
+              <UtensilsCrossed size={14} color={T.text3} />
+              <Text style={[s.locationMetaText, { color: T.text2 }]}>
+                {isDiningHall ? 'Dining hall service' : 'Menu details'}
+              </Text>
+            </View>
+          </View>
+        </Card>
 
         {isDiningHall ? (
           <View style={s.mealTabsWrap}>
@@ -137,12 +150,6 @@ export default function FullMenuScreen({ navigation, route }: any) {
           </View>
         ) : null}
 
-        <View style={s.metaRow}>
-          <Badge label={`${menu?.count ?? 0} items`} color={T.amber} />
-          <Badge label={`${categoryCount} categories`} color={T.sky} />
-          <Badge label={(menu?.source || sourceHint || 'menu').toUpperCase()} color={T.sage} />
-        </View>
-
         {!isDiningHall ? (
           <Card>
             <Text style={[s.emptyText, { color: T.text3 }]}>
@@ -150,9 +157,10 @@ export default function FullMenuScreen({ navigation, route }: any) {
             </Text>
           </Card>
         ) : loading ? (
-          <View style={{ paddingTop: 40 }}>
+          <Card style={s.loadingCard}>
             <ActivityIndicator color={T.tamuGold} size="large" />
-          </View>
+            <Text style={[s.loadingText, { color: T.text3 }]}>Loading live menu…</Text>
+          </Card>
         ) : error ? (
           <Card>
             <Text style={[s.emptyText, { color: T.text3 }]}>{error}</Text>
@@ -174,19 +182,31 @@ export default function FullMenuScreen({ navigation, route }: any) {
 
             {(menu?.categories || []).map((category: any) => (
               <Card key={category.name}>
-                <SectionLabel>{category.name}</SectionLabel>
-                {category.items.map((item: any) => (
-                  <View key={`${category.name}-${item.location || 'menu'}-${item.name}`} style={[s.itemRow, { borderBottomColor: T.border }]}>
-                    <View style={{ flex: 1, paddingRight: 12 }}>
-                      <Text style={[s.itemName, { color: T.text }]}>{item.name}</Text>
-                      <Text style={[s.itemMeta, { color: T.text3 }]}>
-                        {Math.round(item.calories || 0)} kcal
-                        {!!item.protein && ` • ${Math.round(item.protein)}g protein`}
-                        {!!item.location && menu.locations?.length > 1 && ` • ${item.location}`}
-                      </Text>
+                <View style={s.categoryHeader}>
+                  <SectionLabel>{category.name}</SectionLabel>
+                  <Badge label={`${category.items.length} items`} color={T.sky} />
+                </View>
+                <View style={s.categoryList}>
+                  {category.items.map((item: any, index: number) => (
+                    <View
+                      key={`${category.name}-${item.location || 'menu'}-${item.name}`}
+                      style={[
+                        s.itemRow,
+                        { borderBottomColor: T.border },
+                        index === category.items.length - 1 && { borderBottomWidth: 0 },
+                      ]}
+                    >
+                      <View style={{ flex: 1, paddingRight: 12 }}>
+                        <Text style={[s.itemName, { color: T.text }]}>{item.name}</Text>
+                        <Text style={[s.itemMeta, { color: T.text3 }]}>
+                          {Math.round(item.calories || 0)} kcal
+                          {!!item.protein && ` • ${Math.round(item.protein)}g protein`}
+                          {!!item.location && menu.locations?.length > 1 && ` • ${item.location}`}
+                        </Text>
+                      </View>
                     </View>
-                  </View>
-                ))}
+                  ))}
+                </View>
               </Card>
             ))}
           </>
@@ -198,16 +218,25 @@ export default function FullMenuScreen({ navigation, route }: any) {
 
 const s = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 },
-  backBtn: { width: 44, height: 44, justifyContent: 'center' },
-  title: { fontSize: 30, fontWeight: '900', letterSpacing: -0.5 },
-  subtitle: { fontSize: 12, marginTop: 2, fontWeight: '600' },
+  heroCard: { marginBottom: 14, padding: 18 },
+  heroHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  kicker: { fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 4 },
+  backBtn: { width: 42, height: 42, justifyContent: 'center', alignItems: 'center', borderRadius: 21, borderWidth: 1 },
+  title: { fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
+  subtitle: { fontSize: 13, marginTop: 2, fontWeight: '600' },
   mealTabsWrap: { marginBottom: 14 },
-  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  locationMetaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  locationMetaPill: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 10 },
+  locationMetaText: { fontSize: 12, fontWeight: '700' },
   emptyText: { fontSize: 14, textAlign: 'center', lineHeight: 21 },
   locationWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   locationPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
   locationText: { fontSize: 12, fontWeight: '700' },
+  loadingCard: { alignItems: 'center', gap: 12, paddingVertical: 28 },
+  loadingText: { fontSize: 13, fontWeight: '600' },
+  categoryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  categoryList: { marginTop: 2 },
   itemRow: { paddingVertical: 12, borderBottomWidth: 1 },
   itemName: { fontSize: 15, fontWeight: '800' },
   itemMeta: { fontSize: 12, marginTop: 4, fontWeight: '500' },
