@@ -1494,22 +1494,22 @@ export function PlacesMapScreen() {
         }}
       >
         {/* AI-estimated campus-wide density zones */}
-        {activeLayer === "Heatmap" ? (
-          CAMPUS_ZONES.map((zone, i) => {
-            const density = getZoneDensity(zone);
-            const color = getStatusColor(density);
-            return (
-              <Circle
-                key={`zone-${i}`}
-                center={{ latitude: zone.lat, longitude: zone.lng }}
-                radius={zone.radius}
-                fillColor={color + "2E"}
-                strokeColor={color + "80"}
-                strokeWidth={2}
-              />
-            );
-          })
-        ) : null}
+        {activeLayer === "Heatmap"
+          ? CAMPUS_ZONES.map((zone, i) => {
+              const density = getZoneDensity(zone);
+              const color = getStatusColor(density);
+              return (
+                <Circle
+                  key={`zone-${i}`}
+                  center={{ latitude: zone.lat, longitude: zone.lng }}
+                  radius={zone.radius}
+                  fillColor={color + "2E"}
+                  strokeColor={color + "80"}
+                  strokeWidth={2}
+                />
+              );
+            })
+          : null}
 
         {/* Transit Layer: Route Polyline */}
         {activeLayer === "Bus" && userCoord ? (
@@ -1557,79 +1557,79 @@ export function PlacesMapScreen() {
         ) : null}
 
         {/* Transit Layer: Bus Stops (MaroonRides Style: Blue Pins) */}
-        {activeLayer === "Bus" && !isAllBusRoutesSelected ? (
-          busStops.map((stop, idx) => (
-            <Marker
-              key={`stop-${stop.StopCode || idx}`}
-              coordinate={{
-                latitude: stop.Latitude,
-                longitude: stop.Longitude,
-              }}
-              onPress={() => handleStopPress(stop)}
-              tracksViewChanges={false}
-              zIndex={100}
-            >
-              <View style={styles.busStopPin}>
-                <MapPin size={16} color="#FFF" />
-              </View>
-            </Marker>
-          ))
-        ) : null}
-
-        {/* Transit Layer: Bus Vehicles (MaroonRides Style: Bus Icons with Number) */}
-        {activeLayer === "Bus" ? (
-          busVehicles.map((bus) => {
-            const isTrackedBus = selectedBus?.Key === bus.Key;
-            return (
+        {activeLayer === "Bus" && !isAllBusRoutesSelected
+          ? busStops.map((stop, idx) => (
               <Marker
-                key={`bus-${bus.Key}-${isTrackedBus ? "tracked" : "untracked"}`}
+                key={`stop-${stop.StopCode || idx}`}
                 coordinate={{
-                  latitude: bus.Latitude,
-                  longitude: bus.Longitude,
+                  latitude: stop.Latitude,
+                  longitude: stop.Longitude,
                 }}
-                anchor={{ x: 0.5, y: 0.5 }}
-                zIndex={isTrackedBus ? 240 : 200}
-                flat={true}
-                onPress={() => {
-                  setSelectedBus(bus);
-                  setSelectedStop(null);
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                }}
+                onPress={() => handleStopPress(stop)}
+                tracksViewChanges={false}
+                zIndex={100}
               >
-                <View
-                  style={[
-                    styles.busMarker,
-                    {
-                      backgroundColor:
-                        bus.RouteColor || selectedRoute?.Color || "#500000",
-                      transform: [
-                        { rotate: `${bus.Heading}deg` },
-                        { scale: isTrackedBus ? 1.18 : 1 },
-                      ],
-                    },
-                    isTrackedBus && {
-                      backgroundColor: "#C99700",
-                      borderColor: "#FFFFFF",
-                    },
-                  ]}
-                >
-                  <View
-                    style={{ transform: [{ rotate: `-${bus.Heading}deg` }] }}
-                  >
-                    <Text
-                      style={[
-                        styles.busMarkerText,
-                        isTrackedBus && { color: "#2B1100" },
-                      ]}
-                    >
-                      {bus.RouteShortName || selectedRoute?.ShortName || ""}
-                    </Text>
-                  </View>
+                <View style={styles.busStopPin}>
+                  <MapPin size={16} color="#FFF" />
                 </View>
               </Marker>
-            );
-          })
-        ) : null}
+            ))
+          : null}
+
+        {/* Transit Layer: Bus Vehicles (MaroonRides Style: Bus Icons with Number) */}
+        {activeLayer === "Bus"
+          ? busVehicles.map((bus) => {
+              const isTrackedBus = selectedBus?.Key === bus.Key;
+              return (
+                <Marker
+                  key={`bus-${bus.Key}-${isTrackedBus ? "tracked" : "untracked"}`}
+                  coordinate={{
+                    latitude: bus.Latitude,
+                    longitude: bus.Longitude,
+                  }}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  zIndex={isTrackedBus ? 240 : 200}
+                  flat={true}
+                  onPress={() => {
+                    setSelectedBus(bus);
+                    setSelectedStop(null);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.busMarker,
+                      {
+                        backgroundColor:
+                          bus.RouteColor || selectedRoute?.Color || "#500000",
+                        transform: [
+                          { rotate: `${bus.Heading}deg` },
+                          { scale: isTrackedBus ? 1.18 : 1 },
+                        ],
+                      },
+                      isTrackedBus && {
+                        backgroundColor: "#C99700",
+                        borderColor: "#FFFFFF",
+                      },
+                    ]}
+                  >
+                    <View
+                      style={{ transform: [{ rotate: `-${bus.Heading}deg` }] }}
+                    >
+                      <Text
+                        style={[
+                          styles.busMarkerText,
+                          isTrackedBus && { color: "#2B1100" },
+                        ]}
+                      >
+                        {bus.RouteShortName || selectedRoute?.ShortName || ""}
+                      </Text>
+                    </View>
+                  </View>
+                </Marker>
+              );
+            })
+          : null}
 
         {/* Marker rendering fixes: Ensure markers are always rendered for active categories */}
         {locations
