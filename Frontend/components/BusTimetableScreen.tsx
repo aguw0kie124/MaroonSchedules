@@ -169,8 +169,8 @@ export default function BusTimetableScreen({ navigation, route }: any) {
                     <Text style={styles.insightText}>
                       {nearbyTransitInsight.nearestStop
                         ? `${nearbyTransitInsight.nearestStop.stop.Name} is ${Math.round(
-                            nearbyTransitInsight.nearestStop.distanceMeters,
-                          )} m away.`
+                          nearbyTransitInsight.nearestStop.distanceMeters,
+                        )} m away.`
                         : "No nearby stop detected yet."}
                     </Text>
                   </View>

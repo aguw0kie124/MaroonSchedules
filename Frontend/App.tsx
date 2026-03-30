@@ -32,7 +32,6 @@ import { CampusMapScreen } from './components/CampusMapScreen';
 import { LocationSearchScreen } from './components/LocationSearchScreen';
 // import { ExtrasSidebar } from './components/ExtrasSidebar';
 import { CampusNavigationScreen } from './components/CampusNavigationScreen';
-import BusTimetableScreen from './components/BusTimetableScreen';
 import { TransitTripPlannerScreen } from './components/TransitTripPlannerScreen';
 import { TransitTripResultsScreen } from './components/TransitTripResultsScreen';
 import { PlacesMapScreen } from './components/PlacesMapScreen';
@@ -288,7 +287,6 @@ function RootNavigator() {
           <Stack.Screen name="ScheduleDetail" component={ScheduleDetailScreen} options={{ headerShown: true, title: 'Schedule Details' }} />
           <Stack.Screen name="LocationSearch" component={LocationSearchScreen} options={{ headerShown: true, title: 'Location Traffic Search' }} />
           <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="BusTimetable" component={BusTimetableScreen} options={{ headerShown: false }} />
           <Stack.Screen name="TransitTripPlanner" component={TransitTripPlannerScreen} options={{ headerShown: false }} />
           <Stack.Screen name="TransitTripResults" component={TransitTripResultsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CampusMap" component={CampusMapScreen} options={{ headerShown: false }} />
