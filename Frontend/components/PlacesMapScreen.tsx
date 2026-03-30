@@ -950,9 +950,11 @@ export function PlacesMapScreen() {
   const [activeDiningMenu, setActiveDiningMenu] = useState<string | null>(null);
   const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
   const [isFetchingReviews, setIsFetchingReviews] = useState(false);
-  const [schedules, setSchedules] = useState<any[]>([]);
+  const schedules = useAppShellStore((state) => state.schedules);
+  const setSchedules = useAppShellStore((state) => state.setSchedules);
+  const selectedScheduleId = useAppShellStore((state) => state.selectedScheduleId);
+  const setSelectedScheduleId = useAppShellStore((state) => state.setSelectedScheduleId);
   const [loadingSchedules, setLoadingSchedules] = useState(false);
-  const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(null);
   const [isScheduleDropdownOpen, setIsScheduleDropdownOpen] = useState(false);
   const [classTransitPlan, setClassTransitPlan] = useState<CampusTransitPlan | null>(null);
   const [placesRefitTick, setPlacesRefitTick] = useState(0);
@@ -1034,13 +1036,13 @@ export function PlacesMapScreen() {
       .then((data) => {
         if (cancelled || !Array.isArray(data)) return;
         setSchedules(data);
-        setSelectedScheduleId((current) => current ?? data[0]?.schedule_id ?? "__none__");
+        setSelectedScheduleId(selectedScheduleId || data[0]?.schedule_id || "__none__");
       })
       .catch((error) => {
         console.warn("Failed to load schedules for Places classes", error);
         if (!cancelled) {
           setSchedules([]);
-          setSelectedScheduleId((current) => current ?? "__none__");
+          setSelectedScheduleId(selectedScheduleId || "__none__");
         }
       })
       .finally(() => {
@@ -2599,7 +2601,7 @@ export function PlacesMapScreen() {
     if (mapRef.current) {
       mapRef.current.animateToRegion(
         {
-          latitude: (loc.coord?.lat || 30.6153) - 0.0022,
+          latitude: (loc.coord?.lat || 30.6153),
           longitude: loc.coord?.lng || -96.341,
           latitudeDelta: 0.0085,
           longitudeDelta: 0.0085,
@@ -3122,120 +3124,35 @@ export function PlacesMapScreen() {
           </View>
         )}
 
-        {activeLayer !== "Bus" && activeLayer !== "Heatmap" && (
-          <View style={styles.viewModeBar}>
-            <View style={styles.viewModeToggle}>
-              {(["map", "list"] as PlacesViewMode[]).map((mode) => {
-                const selected = placesViewMode === mode;
-                return (
-                  <TouchableOpacity
-                    key={mode}
-                    style={[styles.viewModeButton, selected && styles.viewModeButtonActive]}
-                    onPress={() => setPlacesViewMode(mode)}
-                  >
-                    <Text style={[styles.viewModeButtonText, selected && styles.viewModeButtonTextActive]}>
-                      {mode === "map" ? "Map" : "List"}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            {activeLayer === "Today" ? (
-              <>
-                <TouchableOpacity
-                  style={styles.classesInlinePill}
-                  onPress={() => setIsScheduleDropdownOpen((current) => !current)}
-                  activeOpacity={0.88}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', maxWidth: 160 }}>
-                    {selectedSchedule ? (
-                      <Text style={styles.classesInlineTitle} numberOfLines={1}>
-                        {selectedSchedule.name}
-                      </Text>
-                    ) : (
-                      <>
-                        <Text style={styles.classesInlineLabel}>Current Schedule</Text>
-                        <Text style={styles.classesInlineTitle} numberOfLines={1}>
-                          {loadingSchedules ? "..." : schedules.length > 0 ? "Choose" : "Add"}
-                        </Text>
-                      </>
-                    )}
-                  </View>
-                  {isScheduleDropdownOpen ? (
-                    <ChevronUp size={16} color={COLORS.textTertiary} />
-                  ) : (
-                    <ChevronDown size={16} color={COLORS.textTertiary} />
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.classesInlineAddButton}
-                  onPress={() => navigation.navigate("ScheduleList")}
-                  activeOpacity={0.88}
-                >
-                  <Plus size={18} color={COLORS.textPrimary} />
-                </TouchableOpacity>
-              </>
-            ) : null}
-            {activeLayer === "Dining" && (
-              <View style={styles.diningSegmentedToggleMap}>
-                <TouchableOpacity
-                  style={[styles.diningToggleBtn, diningViewType === 'events' && styles.diningToggleBtnActive]}
-                  onPress={() => {
-                    setDiningViewType('events');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                >
-                  <Flame size={14} color={diningViewType === 'events' ? '#FFF' : COLORS.textTertiary} />
-                  <Text style={[styles.diningToggleText, diningViewType === 'events' && styles.diningToggleTextActive]}>Events</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.diningToggleBtn, diningViewType === 'menus' && styles.diningToggleBtnActive]}
-                  onPress={() => {
-                    setDiningViewType('menus');
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                >
-                  <Utensils size={14} color={diningViewType === 'menus' ? '#FFF' : COLORS.textTertiary} />
-                  <Text style={[styles.diningToggleText, diningViewType === 'menus' && styles.diningToggleTextActive]}>Menus</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+        {activeLayer === "Dining" && (
+          <View style={styles.diningSegmentedToggleMap}>
+            <TouchableOpacity
+              style={[styles.diningToggleBtn, diningViewType === 'events' && styles.diningToggleBtnActive]}
+              onPress={() => {
+                setDiningViewType('events');
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }}
+            >
+              <Flame size={14} color={diningViewType === 'events' ? '#FFF' : COLORS.textTertiary} />
+              <Text style={[styles.diningToggleText, diningViewType === 'events' && styles.diningToggleTextActive]}>Events</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.diningToggleBtn, diningViewType === 'menus' && styles.diningToggleBtnActive]}
+              onPress={() => {
+                setDiningViewType('menus');
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }}
+            >
+              <Utensils size={14} color={diningViewType === 'menus' ? '#FFF' : COLORS.textTertiary} />
+              <Text style={[styles.diningToggleText, diningViewType === 'menus' && styles.diningToggleTextActive]}>Menus</Text>
+            </TouchableOpacity>
           </View>
         )}
+      </View>
 
         {activeLayer === "Today" ? (
           <View style={styles.classesOverlayCard}>
-            {isScheduleDropdownOpen ? (
-              <View style={styles.classesDropdown}>
-                {schedules.map((schedule) => {
-                  const isSelected = selectedScheduleId === schedule.schedule_id;
-                  return (
-                    <TouchableOpacity
-                      key={schedule.schedule_id}
-                      style={[
-                        styles.classesDropdownRow,
-                        isSelected && styles.classesDropdownRowActive,
-                      ]}
-                      onPress={() => {
-                        setSelectedScheduleId(schedule.schedule_id);
-                        setIsScheduleDropdownOpen(false);
-                        setSelectedId(null);
-                        setSelectedStop(null);
-                        setSelectedBus(null);
-                        setFocusedEvent(null);
-                        lastPlacesFitKey.current = null;
-                        setPlacesRefitTick((current) => current + 1);
-                      }}
-                    >
-                      <Text style={styles.classesDropdownTitle}>{schedule.name}</Text>
-                      <Text style={styles.classesDropdownMeta}>
-                        {(schedule.sections?.length || 0)} classes • {schedule.term_code || "Term"}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            ) : null}
+            {/* Schedule selection moved to Profile */}
 
             <View style={[styles.classDayRail, { marginTop: 0 }]}>
               {DAY_PILL_LABELS.map((dayLabel, index) => {
@@ -3286,6 +3203,29 @@ export function PlacesMapScreen() {
                             {metaStr}
                           </Text>
                         </View>
+                      </View>
+                      <View style={styles.summaryActionRow}>
+                        <View style={styles.summaryViewModeToggle}>
+                          <TouchableOpacity
+                            style={[styles.summaryViewBtn, (placesViewMode as any) === 'map' && styles.summaryViewBtnActive]}
+                            onPress={() => {
+                              setPlacesViewMode('map');
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            }}
+                          >
+                            <Text style={[styles.summaryViewBtnText, (placesViewMode as any) === 'map' && styles.summaryViewBtnTextActive]}>Map</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.summaryViewBtn, (placesViewMode as any) === 'list' && styles.summaryViewBtnActive]}
+                            onPress={() => {
+                              setPlacesViewMode('list');
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            }}
+                          >
+                            <Text style={[styles.summaryViewBtnText, (placesViewMode as any) === 'list' && styles.summaryViewBtnActive]}>List</Text>
+                          </TouchableOpacity>
+                        </View>
+
                         <TouchableOpacity
                           style={styles.classQuickAction}
                           onPress={() =>
@@ -3326,8 +3266,6 @@ export function PlacesMapScreen() {
             ) : null}
           </View>
         ) : null}
-
-      </View>
 
       {/* Bus Route Selector Overlay - Independent and Left Aligned */}
       {activeLayer === "Bus" && busRoutes.length > 0 && (
@@ -3518,7 +3456,7 @@ export function PlacesMapScreen() {
                         : "Unified campus nodes with shared metadata."}
                   </Text>
                 </View>
-                {activeLayer === "Dining" && (
+                {activeLayer === "Dining" ? (
                   <View style={styles.diningSegmentedToggle}>
                     <TouchableOpacity
                       style={[styles.diningToggleBtn, diningViewType === 'events' && styles.diningToggleBtnActive]}
@@ -3539,6 +3477,27 @@ export function PlacesMapScreen() {
                     >
                       <Utensils size={14} color={diningViewType === 'menus' ? '#FFF' : COLORS.textTertiary} />
                       <Text style={[styles.diningToggleText, diningViewType === 'menus' && styles.diningToggleTextActive]}>Menus</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.viewModeToggleList}>
+                    <TouchableOpacity
+                      style={[styles.viewModeBtnSmall, (placesViewMode as any) === 'map' && styles.viewModeBtnSmallActive]}
+                      onPress={() => {
+                        setPlacesViewMode('map');
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                    >
+                      <Text style={[styles.viewModeTextSmall, (placesViewMode as any) === 'map' && styles.viewModeTextSmallActive]}>Map</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.viewModeBtnSmall, (placesViewMode as any) === 'list' && styles.viewModeBtnSmallActive]}
+                      onPress={() => {
+                        setPlacesViewMode('list');
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                    >
+                      <Text style={[styles.viewModeTextSmall, (placesViewMode as any) === 'list' && styles.viewModeTextSmallActive]}>List</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -5347,7 +5306,11 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
 
     classesOverlayCard: {
-      marginTop: 0,
+      position: "absolute",
+      top: 116, // Calculated as bottom of topContainer (108) + gap (8)
+      left: 16,
+      right: 16,
+      zIndex: 7000,
       gap: 8,
     },
     classesInlinePill: {
@@ -5783,6 +5746,60 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       fontSize: 14,
       fontWeight: "800",
       flex: 1,
+    },
+    viewModeToggleList: {
+      flexDirection: 'row',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(12,12,14,0.06)',
+      borderRadius: 12,
+      padding: 2,
+    },
+    viewModeBtnSmall: {
+      paddingHorizontal: 12,
+      paddingVertical: 4,
+      borderRadius: 10,
+    },
+    viewModeBtnSmallActive: {
+      backgroundColor: COLORS.primary,
+    },
+    viewModeTextSmall: {
+      fontSize: 12,
+      fontWeight: '600',
+      color: COLORS.textTertiary,
+    },
+    viewModeTextSmallActive: {
+      color: '#FFF',
+    },
+
+    summaryActionRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      width: "100%",
+    },
+    summaryViewModeToggle: {
+      flex: 1,
+      flexDirection: "row",
+      backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,12,14,0.04)",
+      borderRadius: 12,
+      padding: 3,
+    },
+    summaryViewBtn: {
+      flex: 1,
+      paddingVertical: 8,
+      alignItems: "center",
+      borderRadius: 9,
+    },
+    summaryViewBtnActive: {
+      backgroundColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(12,12,14,0.08)",
+    },
+    summaryViewBtnText: {
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    summaryViewBtnTextActive: {
+      color: COLORS.textPrimary,
+      fontWeight: '800',
     },
     placesListRowDistance: {
       color: COLORS.textSecondary,

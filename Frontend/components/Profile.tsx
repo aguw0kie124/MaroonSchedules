@@ -165,6 +165,9 @@ export function Profile() {
   const setParkingPermit = useAppShellStore((state) => state.setParkingPermit);
   const activeTab = useAppShellStore((state) => state.settingsTab) as SettingsTabKey;
   const setActiveTab = useAppShellStore((state) => state.setSettingsTab);
+  const selectedScheduleId = useAppShellStore((state) => state.selectedScheduleId);
+  const setSelectedScheduleId = useAppShellStore((state) => state.setSelectedScheduleId);
+  const schedules = useAppShellStore((state) => state.schedules);
 
   const orderedNavItems = useMemo(() => getOrderedItems(navItems), [navItems]);
   const wallpaperSource = wallpaperUri
@@ -372,6 +375,52 @@ export function Profile() {
             );
           })}
         </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Academic Schedule</Text>
+
+        <Pressable
+          style={styles.toolRow}
+          onPress={() => {
+            if (schedules.length === 0) {
+              Alert.alert("No Schedules", "You haven't created any schedules yet.");
+              return;
+            }
+            Alert.alert(
+              "Select Active Schedule",
+              "Choose which schedule to display in the Today view.",
+              [
+                ...schedules.map(s => ({
+                  text: s.name + (s.id === selectedScheduleId ? " (Active)" : ""),
+                  onPress: () => setSelectedScheduleId(s.id)
+                })),
+                { text: "Cancel", style: "cancel" }
+              ] as any
+            );
+          }}
+        >
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
+            <CalendarIcon size={20} color="#F3F1ED" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Active: {schedules.find(s => s.id === selectedScheduleId)?.name || "None"}</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
+
+        <Pressable
+          style={[styles.toolRow, styles.toolRowLast]}
+          onPress={() => navigation.navigate('ScheduleList')}
+        >
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
+            <Settings2 size={20} color="#F3F1ED" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Manage Academic Schedules</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
       </View>
 
       <View style={styles.section}>

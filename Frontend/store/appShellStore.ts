@@ -307,6 +307,8 @@ interface AppShellState {
   placesViewMode: PlacesViewMode;
   settingsTab: SettingsTabId;
   isBottomBarHidden: boolean;
+  selectedScheduleId: string | null;
+  schedules: any[];
   toggleNavItem: (id: NavItemId) => void;
   moveNavItem: (id: NavItemId, direction: -1 | 1) => void;
   toggleHomeSection: (id: HomeSectionId) => void;
@@ -326,13 +328,15 @@ interface AppShellState {
   setPlacesViewMode: (mode: PlacesViewMode) => void;
   setSettingsTab: (tab: SettingsTabId) => void;
   setBottomBarHidden: (hidden: boolean) => void;
+  setSelectedScheduleId: (id: string | null) => void;
+  setSchedules: (schedules: any[]) => void;
   applyPreset: (preset: ShellPresetId) => void;
 }
 
 const defaultPresetState = {
   appMode: 'navigation' as AppMode,
   density: 'standard' as UIDensity,
-  defaultLandingTab: 'Places' as NavItemId,
+  defaultLandingTab: 'Events' as NavItemId,
   parkingPermit: 'visitor' as ParkingPermit,
   placesViewMode: 'map' as PlacesViewMode,
   navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Events', 'Places', 'Social', 'Dining']),
@@ -357,6 +361,8 @@ export const useAppShellStore = create<AppShellState>()(
       placesViewMode: defaultPresetState.placesViewMode,
       settingsTab: 'layout',
       isBottomBarHidden: false,
+      selectedScheduleId: null,
+      schedules: [],
       toggleNavItem: (id) =>
         set((state) => ({
           navItems: toggleItem(state.navItems, id),
@@ -412,6 +418,8 @@ export const useAppShellStore = create<AppShellState>()(
       setPlacesViewMode: (placesViewMode) => set({ placesViewMode }),
       setSettingsTab: (settingsTab) => set({ settingsTab }),
       setBottomBarHidden: (isBottomBarHidden) => set({ isBottomBarHidden }),
+      setSelectedScheduleId: (selectedScheduleId) => set({ selectedScheduleId }),
+      setSchedules: (schedules) => set({ schedules }),
       applyPreset: (shellPreset) => {
         const nextPreset = buildPresetState(shellPreset);
         set({
@@ -429,31 +437,32 @@ export const useAppShellStore = create<AppShellState>()(
     }),
     {
       name: 'app-shell-store',
-      version: 8,
+      version: 9,
       storage: createJSONStorage(() => AsyncStorage),
-      migrate: (persistedState: any, version) => {
-        if (!persistedState || version >= 8) {
-          return persistedState;
-        }
-
-        const migratedNavItems = applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Events', 'Places', 'Social', 'Dining']);
+      migrate: (persistedState: any, version: number) => {
+        if (!persistedState) return persistedState;
         
-        let migratedPlacesPills = persistedState.placesPills || defaultPresetState.placesPills;
-        if (Array.isArray(migratedPlacesPills)) {
-          migratedPlacesPills = migratedPlacesPills.map((pill: any) => 
-            pill.id === ('Classes' as any) ? { ...pill, id: 'Today', label: 'Today' } : pill
-          );
+        let newState = { ...persistedState };
+
+        if (version < 9) {
+          // Promote 'Events' as the default landing tab for all users transitioning to the refined layout
+          // We only do this if they were on one of the historical defaults
+          if (newState.defaultLandingTab === 'Places' || newState.defaultLandingTab === 'Dashboard') {
+            newState.defaultLandingTab = 'Events';
+          }
+          
+          // Also ensure the nav bar order reflects the new priority
+          newState.navItems = applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Events', 'Places', 'Social', 'Dining']);
+          
+          // Handle old name for Today pill if transitioning from very old versions
+          if (Array.isArray(newState.placesPills)) {
+            newState.placesPills = newState.placesPills.map((pill: any) => 
+              pill.id === ('Classes' as any) ? { ...pill, id: 'Today', label: 'Today' } : pill
+            );
+          }
         }
 
-        return {
-          ...persistedState,
-          navItems: migratedNavItems,
-          homeSections: defaultPresetState.homeSections,
-          diningActions: DEFAULT_DINING_ACTIONS,
-          placesPills: migratedPlacesPills,
-          defaultLandingTab: 'Places',
-          settingsTab: 'layout',
-        };
+        return newState;
       },
       partialize: (state) => ({
         navItems: state.navItems,
