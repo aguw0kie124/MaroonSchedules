@@ -20,8 +20,6 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  Clock,
-  Cog,
   MapPin,
   Plus,
   Trash2,
@@ -96,11 +94,11 @@ export function Dashboard() {
   const density = useAppShellStore((state) => state.density);
 
   const orderedHomeSections = useMemo(
-    () => getOrderedItems(homeSections).filter((item) => item.id === 'schedule' || item.id === 'alerts'),
+    () => getOrderedItems(homeSections).filter((item) => item.id === 'schedule'),
     [homeSections],
   );
   const visibleHomeSections = useMemo(
-    () => getOrderedVisibleItems(homeSections).filter((item) => item.id === 'schedule' || item.id === 'alerts'),
+    () => getOrderedVisibleItems(homeSections).filter((item) => item.id === 'schedule'),
     [homeSections],
   );
   const rankedHomeSections = useMemo(
@@ -120,7 +118,6 @@ export function Dashboard() {
   const [userCoord, setUserCoord] = useState<{ latitude: number; longitude: number } | null>(null);
   const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
   const [isDiningLoading, setIsDiningLoading] = useState(false);
-  const [isAlertsExpanded, setIsAlertsExpanded] = useState(false);
 
   useEffect(() => {
     if (isFocused && user?.id) {
@@ -303,14 +300,22 @@ export function Dashboard() {
     });
   };
 
+  const openScheduleManager = () => {
+    openRootScreen('ScheduleList');
+  };
+
   const renderSectionCard = (sectionId: HomeSectionId) => {
     if (sectionId === 'schedule') {
       return (
-        <Card key={sectionId} style={styles.scheduleCard}>
-          <View style={styles.scheduleHeaderBlock}>
-            <View>
+        <View key={sectionId} style={styles.scheduleSection}>
+          <View style={styles.scheduleSectionTopRow}>
+            <View style={styles.scheduleHeaderBlock}>
               <Text style={styles.moduleTitle}>Today&apos;s Schedule</Text>
             </View>
+            <Pressable style={styles.scheduleSelectButton} onPress={openScheduleManager}>
+              <Text style={styles.scheduleSelectText}>Select</Text>
+              <ChevronDown size={14} color={COLORS.textPrimary} />
+            </Pressable>
           </View>
 
           <View style={styles.scheduleSummaryRow}>
@@ -330,8 +335,7 @@ export function Dashboard() {
               style={styles.scheduleMapAction}
               onPress={openDayMap}
             >
-              <Text style={styles.scheduleMapActionLabel}>Map</Text>
-              <Text style={styles.scheduleMapActionText}>Day map</Text>
+              <MapPin size={16} color="#FFFFFF" />
             </Pressable>
           </View>
 
@@ -342,7 +346,7 @@ export function Dashboard() {
                 style={[styles.dayButton, selectedDay === day.value && styles.dayButtonActive]}
                 onPress={() => setSelectedDay(day.value)}
               >
-                <Text style={[styles.dayText, selectedDay === day.value && styles.dayTextActive]}>
+              <Text style={[styles.dayText, selectedDay === day.value && styles.dayTextActive]}>
                   {day.label}
                 </Text>
               </Pressable>
@@ -373,75 +377,7 @@ export function Dashboard() {
               <Text style={styles.emptyState}>No classes for this day.</Text>
             )}
           </View>
-        </Card>
-      );
-    }
-
-    if (sectionId === 'alerts') {
-      const leadNotification = priorityNotifications[0] || null;
-      return (
-        <Card key={sectionId} style={styles.compactCard}>
-          <View style={styles.alertsHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.moduleEyebrow}>Notifications</Text>
-              <Text style={styles.moduleTitle}>What needs attention</Text>
-            </View>
-            <Pressable
-              style={styles.alertsToggle}
-              onPress={() => setIsAlertsExpanded((current) => !current)}
-            >
-              {isAlertsExpanded ? (
-                <ChevronUp size={16} color={COLORS.textPrimary} />
-              ) : (
-                <ChevronDown size={16} color={COLORS.textPrimary} />
-              )}
-            </Pressable>
-          </View>
-          <View style={styles.listBlock}>
-            {leadNotification ? (
-              <>
-                <View style={styles.alertRow}>
-                  <View
-                    style={[
-                      styles.alertDot,
-                      { backgroundColor: getUrgencyColor(leadNotification.urgency, COLORS) },
-                    ]}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.timelineTitle}>{leadNotification.title}</Text>
-                    <Text
-                      style={styles.timelineBody}
-                      numberOfLines={isAlertsExpanded ? undefined : 2}
-                    >
-                      {leadNotification.detail}
-                    </Text>
-                  </View>
-                </View>
-                {isAlertsExpanded && priorityNotifications.slice(1).map((notification) => (
-                  <View key={notification.id} style={styles.alertRow}>
-                    <View
-                      style={[
-                        styles.alertDot,
-                        { backgroundColor: getUrgencyColor(notification.urgency, COLORS) },
-                      ]}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.timelineTitle}>{notification.title}</Text>
-                      <Text style={styles.timelineBody}>{notification.detail}</Text>
-                    </View>
-                  </View>
-                ))}
-                {priorityNotifications.length > 1 && !isAlertsExpanded ? (
-                  <Text style={styles.compactMeta}>
-                    {`${priorityNotifications.length - 1} more notification${priorityNotifications.length - 1 === 1 ? '' : 's'}`}
-                  </Text>
-                ) : null}
-              </>
-            ) : (
-              <Text style={styles.emptyState}>No urgent alerts right now.</Text>
-            )}
-          </View>
-        </Card>
+        </View>
       );
     }
 
@@ -467,12 +403,8 @@ export function Dashboard() {
             <Text style={styles.headerSubtitle}>{todayLabel}</Text>
           </View>
           <View style={styles.headerActions}>
-            <Pressable style={styles.avatar} onPress={() => navigation.navigate('Settings')}>
-              {user?.imageUrl ? (
-                <Image source={{ uri: user.imageUrl }} style={styles.avatarImage} />
-              ) : (
-                <Cog size={18} color="#FFFFFF" />
-              )}
+            <Pressable style={styles.avatar} onPress={() => openRootScreen('CampusFeed')}>
+              <BellRing size={18} color="#FFFFFF" />
             </Pressable>
           </View>
         </View>
@@ -526,10 +458,6 @@ export function Dashboard() {
                 <Text style={styles.emptyState}>No campus events surfaced for today yet.</Text>
               )}
             </Card>
-
-            {rankedHomeSections.find((section) => section.id === 'alerts')
-              ? renderSectionCard('alerts')
-              : null}
           </>
         )}
 
@@ -661,15 +589,38 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       borderRadius: 16,
       paddingVertical: 14,
     },
-    scheduleCard: {
+    scheduleSection: {
+      paddingTop: 10,
+      paddingBottom: 8,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderColor: COLORS.border,
       gap: 14,
-      borderRadius: 18,
-      paddingVertical: 16,
-      backgroundColor: isDark ? 'rgba(16,16,20,0.92)' : 'rgba(255,255,255,0.96)',
-      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(80,0,0,0.1)',
+    },
+    scheduleSectionTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
     },
     scheduleHeaderBlock: {
       gap: 4,
+    },
+    scheduleSelectButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      minHeight: 38,
+      paddingHorizontal: 14,
+      borderRadius: 999,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(12,12,14,0.05)',
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    scheduleSelectText: {
+      color: COLORS.textPrimary,
+      fontSize: 13,
+      fontWeight: '800',
     },
     scheduleSummaryRow: {
       flexDirection: 'row',
@@ -678,9 +629,9 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     scheduleSummaryCard: {
       flex: 1,
       paddingHorizontal: 10,
-      paddingVertical: 8,
+      paddingVertical: 7,
       borderRadius: 12,
-      backgroundColor: COLORS.surfaceElevated,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.04)',
       borderWidth: 1,
       borderColor: COLORS.border,
     },
@@ -703,12 +654,6 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       justifyContent: 'space-between',
       gap: 16,
     },
-    alertsHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 12,
-    },
     moduleEyebrow: {
       fontSize: 12,
       fontWeight: '800',
@@ -716,16 +661,6 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       textTransform: 'uppercase',
       color: COLORS.textSecondary,
       marginBottom: 6,
-    },
-    alertsToggle: {
-      width: 34,
-      height: 34,
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: COLORS.surfaceElevated,
-      borderWidth: 1,
-      borderColor: COLORS.border,
     },
     moduleTitle: {
       fontSize: 18,
@@ -735,27 +670,12 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       lineHeight: 24,
     },
     scheduleMapAction: {
-      width: 84,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
+      width: 44,
+      minHeight: 44,
       borderRadius: 12,
-      alignItems: 'flex-start',
-      justifyContent: 'space-between',
+      alignItems: 'center',
+      justifyContent: 'center',
       backgroundColor: COLORS.primary,
-    },
-    scheduleMapActionLabel: {
-      fontSize: 9,
-      fontWeight: '800',
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
-      color: 'rgba(255,255,255,0.8)',
-    },
-    scheduleMapActionText: {
-      color: '#FFFFFF',
-      fontSize: 12,
-      fontWeight: '800',
-      lineHeight: 14,
-      marginTop: 6,
     },
     moduleBody: {
       fontSize: 14,
@@ -781,7 +701,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       flexDirection: 'row',
       gap: 6,
       justifyContent: 'space-between',
-      paddingTop: 4,
+      paddingTop: 2,
       paddingBottom: 2,
     },
     dayButton: {
@@ -789,11 +709,11 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       minWidth: 0,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: 11,
-      borderRadius: 16,
+      paddingVertical: 10,
+      borderRadius: 14,
       borderWidth: 1,
       borderColor: COLORS.border,
-      backgroundColor: COLORS.surfaceElevated,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.04)',
     },
     dayButtonActive: {
       backgroundColor: COLORS.primary,
@@ -929,29 +849,6 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     todoTextDone: {
       color: COLORS.textSecondary,
       textDecorationLine: 'line-through',
-    },
-    timelineTitle: {
-      fontSize: 14,
-      fontWeight: '800',
-      color: COLORS.textPrimary,
-      marginBottom: 2,
-    },
-    timelineBody: {
-      fontSize: 13,
-      lineHeight: 18,
-      color: COLORS.textSecondary,
-    },
-    alertRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: 10,
-      paddingVertical: 4,
-    },
-    alertDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-      marginTop: 6,
     },
     emptyState: {
       fontSize: 13,
