@@ -144,6 +144,7 @@ export function PlacesMapScreen() {
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [userCoord, setUserCoord] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isMapTilted, setIsMapTilted] = useState(false);
+  const [pendingInitialLocation, setPendingInitialLocation] = useState<string | null>(null);
 
   // ── Location data ─────────────────────────────────────────
   const fullCampusIndex = useMemo(() => buildCampusDirectory(), []);
@@ -658,9 +659,38 @@ export function PlacesMapScreen() {
   useEffect(() => {
     const nextLayer = route.params?.initialLayer;
     const token = route.params?.focusToken;
-    if (!nextLayer || !token) return;
-    setActiveLayer(nextLayer); setSelectedId(null); setSelectedStop(null); setSelectedBus(null); setNearestBusInfo(null); setIsSearchExpanded(false); setSearchQuery(""); setShowSearchResults(false);
-  }, [route.params?.focusToken, route.params?.initialLayer]);
+    const nextLocation = route.params?.initialLocation;
+    if (!nextLayer && !token && !nextLocation) return;
+    if (nextLayer) setActiveLayer(nextLayer);
+    setSelectedId(null);
+    setSelectedStop(null);
+    setSelectedBus(null);
+    setNearestBusInfo(null);
+    setIsSearchExpanded(false);
+    setSearchQuery("");
+    setShowSearchResults(false);
+    setPendingInitialLocation(typeof nextLocation === "string" ? nextLocation : null);
+  }, [route.params?.focusToken, route.params?.initialLayer, route.params?.initialLocation]);
+
+  useEffect(() => {
+    if (!pendingInitialLocation) return;
+    const targetName = getCanonicalLocationName(pendingInitialLocation);
+    const match = allMapLocations.find((loc) => getCanonicalLocationName(loc.location) === targetName);
+    if (!match) return;
+    setSelectedId(match.location);
+    if (mapRef.current) {
+      mapRef.current.animateToRegion(
+        {
+          latitude: match.coord.lat - 0.001,
+          longitude: match.coord.lng,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        },
+        500,
+      );
+    }
+    setPendingInitialLocation(null);
+  }, [allMapLocations, pendingInitialLocation]);
 
   // Hydrate hub when tab needs it
   useEffect(() => {
