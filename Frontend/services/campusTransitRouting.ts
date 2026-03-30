@@ -16,8 +16,17 @@ export interface CampusTransitPlan {
   walkingFromStopMeters: number;
   busDistanceMeters: number;
   estimatedWaitMinutes: number;
+  transferCount: number;
   nearestVehicleLabel?: string;
   steps: DirectionStep[];
+}
+
+export type TransitTripPreference = 'best' | 'fewer_transfers' | 'less_walking';
+
+export interface TransitPlanBuildOptions {
+  preference?: TransitTripPreference;
+  preferredRouteKey?: string | null;
+  limit?: number;
 }
 
 type PlanCandidate = {
@@ -109,22 +118,130 @@ function estimateNearestVehicleLabel(vehicles: any[], stop: any) {
   return `${label} nearby · ~${minutes} min`;
 }
 
-export async function buildTransitPlan(
+function sortCandidates(candidates: PlanCandidate[], preference: TransitTripPreference) {
+  const getWalkingTotal = (candidate: PlanCandidate) =>
+    candidate.walkingToStopMeters + candidate.walkingFromStopMeters;
+
+  return [...candidates].sort((left, right) => {
+    if (preference === 'less_walking') {
+      const walkingDelta = getWalkingTotal(left) - getWalkingTotal(right);
+      if (walkingDelta !== 0) return walkingDelta;
+      return left.totalMinutes - right.totalMinutes;
+    }
+
+    if (preference === 'fewer_transfers') {
+      const timeDelta = left.totalMinutes - right.totalMinutes;
+      if (timeDelta !== 0) return timeDelta;
+      return getWalkingTotal(left) - getWalkingTotal(right);
+    }
+
+    const totalDelta = left.totalMinutes - right.totalMinutes;
+    if (totalDelta !== 0) return totalDelta;
+    return getWalkingTotal(left) - getWalkingTotal(right);
+  });
+}
+
+function buildSteps(
+  candidate: PlanCandidate,
+  startName: string,
+  destinationName: string,
+  nearestVehicleLabel?: string,
+): DirectionStep[] {
+  return [
+    {
+      id: 1,
+      instruction: `Walk from ${startName} to ${candidate.nearestOrigin.stop.Name}.`,
+      icon: '🚶',
+    },
+    {
+      id: 2,
+      instruction: `Board route ${candidate.route.ShortName} ${candidate.route.Name ? `(${candidate.route.Name})` : ''} at ${candidate.nearestOrigin.stop.Name}.`,
+      icon: '🚌',
+    },
+    {
+      id: 3,
+      instruction: `Ride to ${candidate.nearestDestination.stop.Name}${nearestVehicleLabel ? `, ${nearestVehicleLabel}.` : '.'}`,
+      icon: '🎟️',
+    },
+    {
+      id: 4,
+      instruction: `Walk from ${candidate.nearestDestination.stop.Name} to ${destinationName}.`,
+      icon: '🚶',
+    },
+  ];
+}
+
+function toTransitPlan(
+  candidate: PlanCandidate,
   start: Coordinate,
   destination: Coordinate,
   startName: string,
   destinationName: string,
-): Promise<CampusTransitPlan | null> {
+  nearestVehicleLabel?: string,
+): CampusTransitPlan {
+  return {
+    mode: 'bus',
+    distanceMeters:
+      candidate.walkingToStopMeters +
+      candidate.busDistanceMeters +
+      candidate.walkingFromStopMeters,
+    estimatedTimeMinutes: candidate.totalMinutes,
+    polyline: [
+      start,
+      {
+        latitude: candidate.nearestOrigin.stop.Latitude,
+        longitude: candidate.nearestOrigin.stop.Longitude,
+      },
+      ...candidate.segment,
+      {
+        latitude: candidate.nearestDestination.stop.Latitude,
+        longitude: candidate.nearestDestination.stop.Longitude,
+      },
+      destination,
+    ],
+    routeKey: candidate.route.Key,
+    routeName: candidate.route.Name,
+    routeShortName: candidate.route.ShortName,
+    routeColor: candidate.route.Color || transitService.getRouteColor(candidate.route.Key),
+    originStop: candidate.nearestOrigin.stop,
+    destinationStop: candidate.nearestDestination.stop,
+    walkingToStopMeters: candidate.walkingToStopMeters,
+    walkingFromStopMeters: candidate.walkingFromStopMeters,
+    busDistanceMeters: candidate.busDistanceMeters,
+    estimatedWaitMinutes: 5,
+    transferCount: 0,
+    nearestVehicleLabel,
+    steps: buildSteps(candidate, startName, destinationName, nearestVehicleLabel),
+  };
+}
+
+export async function buildTransitPlanOptions(
+  start: Coordinate,
+  destination: Coordinate,
+  startName: string,
+  destinationName: string,
+  options: TransitPlanBuildOptions = {},
+): Promise<CampusTransitPlan[]> {
+  const {
+    preference = 'best',
+    preferredRouteKey,
+    limit = 4,
+  } = options;
   const metadata = await transitService.getRoutesMetadata();
   const activeIds = await transitService.getActiveRoutes();
   const routes = metadata.filter((route) =>
     activeIds.includes(route.ShortName) || activeIds.includes(route.Key) || activeIds.includes(route.Name),
   );
-  const candidates = routes.length > 0 ? routes : metadata;
+  const baseCandidates = routes.length > 0 ? routes : metadata;
+  const orderedRoutes = preferredRouteKey
+    ? [
+        ...baseCandidates.filter((route) => route.Key === preferredRouteKey),
+        ...baseCandidates.filter((route) => route.Key !== preferredRouteKey),
+      ]
+    : baseCandidates;
+  const planCandidates: PlanCandidate[] = [];
 
-  let bestCandidate: PlanCandidate | null = null;
-
-  for (const route of candidates) {
+  for (const route of orderedRoutes) {
     const pattern = await transitService.getRoutePattern(route.Key);
     if (!pattern.stops?.length || !pattern.points?.length) continue;
 
@@ -147,7 +264,7 @@ export async function buildTransitPlan(
       Math.round(walkingToStopMeters / 84) + estimatedWaitMinutes + busMinutes + Math.round(walkingFromStopMeters / 84),
     );
 
-    const candidate: PlanCandidate = {
+    planCandidates.push({
       route,
       segment,
       nearestOrigin,
@@ -156,65 +273,57 @@ export async function buildTransitPlan(
       walkingFromStopMeters,
       busDistanceMeters,
       totalMinutes,
-    };
-
-    if (!bestCandidate || candidate.totalMinutes < bestCandidate.totalMinutes) {
-      bestCandidate = candidate;
-    }
+    });
   }
 
-  if (!bestCandidate) {
-    return null;
+  if (planCandidates.length === 0) {
+    return [];
   }
 
-  const vehicles = await transitService.getVehicles(bestCandidate.route.Key);
-  const nearestVehicleLabel = estimateNearestVehicleLabel(vehicles, bestCandidate.nearestOrigin.stop);
+  const rankedCandidates = sortCandidates(planCandidates, preference).slice(0, limit);
+  const liveVehicles = await transitService.getVehicles();
 
-  const steps: DirectionStep[] = [
-    {
-      id: 1,
-      instruction: `Walk from ${startName} to ${bestCandidate.nearestOrigin.stop.Name}.`,
-      icon: '🚶',
-    },
-    {
-      id: 2,
-      instruction: `Board route ${bestCandidate.route.ShortName} ${bestCandidate.route.Name ? `(${bestCandidate.route.Name})` : ''} at ${bestCandidate.nearestOrigin.stop.Name}.`,
-      icon: '🚌',
-    },
-    {
-      id: 3,
-      instruction: `Ride to ${bestCandidate.nearestDestination.stop.Name}${nearestVehicleLabel ? `, ${nearestVehicleLabel}.` : '.'}`,
-      icon: '🎟️',
-    },
-    {
-      id: 4,
-      instruction: `Walk from ${bestCandidate.nearestDestination.stop.Name} to ${destinationName}.`,
-      icon: '🚶',
-    },
-  ];
+  return rankedCandidates.map((candidate) => {
+    const routeVehicles = liveVehicles.filter((vehicle) =>
+      [vehicle.RouteKey, vehicle.RouteShortName, vehicle.RouteName]
+        .map((value: string) => (value || '').toString().toLowerCase())
+        .includes((candidate.route.Key || '').toString().toLowerCase()) ||
+      [vehicle.RouteKey, vehicle.RouteShortName, vehicle.RouteName]
+        .map((value: string) => (value || '').toString().toLowerCase())
+        .includes((candidate.route.ShortName || '').toString().toLowerCase()) ||
+      [vehicle.RouteKey, vehicle.RouteShortName, vehicle.RouteName]
+        .map((value: string) => (value || '').toString().toLowerCase())
+        .includes((candidate.route.Name || '').toString().toLowerCase())
+    );
+    const nearestVehicleLabel = estimateNearestVehicleLabel(routeVehicles, candidate.nearestOrigin.stop);
 
-  return {
-    mode: 'bus',
-    distanceMeters: bestCandidate.walkingToStopMeters + bestCandidate.busDistanceMeters + bestCandidate.walkingFromStopMeters,
-    estimatedTimeMinutes: bestCandidate.totalMinutes,
-    polyline: [
+    return toTransitPlan(
+      candidate,
       start,
-      { latitude: bestCandidate.nearestOrigin.stop.Latitude, longitude: bestCandidate.nearestOrigin.stop.Longitude },
-      ...bestCandidate.segment,
-      { latitude: bestCandidate.nearestDestination.stop.Latitude, longitude: bestCandidate.nearestDestination.stop.Longitude },
       destination,
-    ],
-    routeKey: bestCandidate.route.Key,
-    routeName: bestCandidate.route.Name,
-    routeShortName: bestCandidate.route.ShortName,
-    routeColor: bestCandidate.route.Color || transitService.getRouteColor(bestCandidate.route.Key),
-    originStop: bestCandidate.nearestOrigin.stop,
-    destinationStop: bestCandidate.nearestDestination.stop,
-    walkingToStopMeters: bestCandidate.walkingToStopMeters,
-    walkingFromStopMeters: bestCandidate.walkingFromStopMeters,
-    busDistanceMeters: bestCandidate.busDistanceMeters,
-    estimatedWaitMinutes: 5,
-    nearestVehicleLabel,
-    steps,
-  };
+      startName,
+      destinationName,
+      nearestVehicleLabel,
+    );
+  });
+}
+
+export async function buildTransitPlan(
+  start: Coordinate,
+  destination: Coordinate,
+  startName: string,
+  destinationName: string,
+  options: TransitPlanBuildOptions = {},
+): Promise<CampusTransitPlan | null> {
+  const [bestPlan] = await buildTransitPlanOptions(
+    start,
+    destination,
+    startName,
+    destinationName,
+    {
+      ...options,
+      limit: 1,
+    },
+  );
+  return bestPlan || null;
 }
