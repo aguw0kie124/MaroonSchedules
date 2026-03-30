@@ -1,0 +1,81 @@
+﻿python : Traceback 
+(most recent call 
+last):
+At line:1 char:1
++ python validate.py 
+2>&1 | Out-File 
+-Encoding utf8 
+validate_output.txt ...
++ 
+~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo     
+         : 
+NotSpecified:     
+(Traceback (most rec   
+ ent call last)::Stri  
+  ng) [], RemoteExcept 
+   ion
+    + 
+FullyQualifiedErro    
+rId : NativeCommandE   
+ rror
+ 
+  File "C:\Applications
+\TamuEventsCrawler\vali
+date.py", line 47, in 
+<module>
+Total events: 595
+Food events (any match): 20
+Food events (high confidence >=0.8): 3
+
+Events per source:
+  feeds:feed_17                    187
+  feeds:feed_4                     108
+  rec_sports                        85
+  feeds:feed_1                      77
+  feeds:feed_19                     43
+  feeds:feed_12                     29
+  feeds:feed_5                      21
+  career_center                     16
+  feeds:feed_11                     16
+  feeds:feed_15                      8
+  feeds:feed_14                      2
+  feeds:feed_10                      1
+  bush_school                        1
+  feeds:feed_16                      1
+
+Sample food events:
+  [100%] Indigenous Studies in Relation
+       Location: {'type': 'Point', 'coordinates': (-96.337971, 30.617684)}
+       Reasons: high_keyword:lunch, medium_keyword:coffee, pattern:served
+  [100%] Civic Conversation: A House Divided: What are the Hard Things WeÆd Hav
+       Location: {'type': 'Point', 'coordinates': (-96.339536, 30.613324)}
+       Reasons: high_keyword:lunch, pattern:served
+  [100%] Graduate Student Digital Learning Expo
+       Location: {'type': 'Point', 'coordinates': (-96.344294, 30.611959)}
+       Reasons: high_keyword:lunch, pattern:provided
+
+Sample non-food events:
+  Aggie One Stop Pop-Up Advising (Memorial Student Center)
+  Aggie One Stop Pop-Up Advising (Memorial Student Center)
+  Aggie One Stop Pop-Up Advising (Memorial Student Center)
+
+Schema validation:
+    print(f"  All 
+{len(required_fields)} 
+required fields 
+present \u2713")
+  File "C:\Users\anant\
+AppData\Local\Programs\
+Python\Python310\lib\en
+codings\cp1252.py", 
+line 19, in encode
+    return codecs.charm
+ap_encode(input,self.er
+rors,encoding_table)[0]
+UnicodeEncodeError: 
+'charmap' codec can't 
+encode character 
+'\u2713' in position 
+32: character maps to 
+<undefined>

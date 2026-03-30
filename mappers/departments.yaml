@@ -1,0 +1,268 @@
+# TAMU department and school code mappings
+# Used to infer department_code, department_name, and host_type
+
+departments:
+  # --- Engineering ---
+  ENGR:
+    name: "College of Engineering"
+    aliases: ["engineering", "college of engineering", "look college"]
+    source_names: ["engineering", "engineering_all"]
+    host_type: college
+
+  ECEN:
+    name: "Electrical & Computer Engineering"
+    aliases: ["ecen", "electrical", "computer engineering", "ece"]
+    host_type: department
+
+  CSCE:
+    name: "Computer Science & Engineering"
+    aliases: ["csce", "computer science", "cse", "cs department"]
+    host_type: department
+
+  MEEN:
+    name: "Mechanical Engineering"
+    aliases: ["meen", "mechanical engineering", "mechanical"]
+    host_type: department
+
+  CHEN:
+    name: "Chemical Engineering"
+    aliases: ["chen", "chemical engineering", "artie mcferrin dept"]
+    host_type: department
+
+  CVEN:
+    name: "Civil Engineering"
+    aliases: ["cven", "civil engineering", "civil"]
+    host_type: department
+
+  AERO:
+    name: "Aerospace Engineering"
+    aliases: ["aero", "aerospace", "aerospace engineering"]
+    host_type: department
+
+  BMEN:
+    name: "Biomedical Engineering"
+    aliases: ["bmen", "biomedical engineering", "biomedical"]
+    host_type: department
+
+  ISEN:
+    name: "Industrial & Systems Engineering"
+    aliases: ["isen", "industrial engineering", "industrial & systems"]
+    host_type: department
+
+  MSEN:
+    name: "Materials Science & Engineering"
+    aliases: ["msen", "materials science", "materials engineering"]
+    host_type: department
+
+  NUEN:
+    name: "Nuclear Engineering"
+    aliases: ["nuen", "nuclear engineering", "nuclear"]
+    host_type: department
+
+  OCEN:
+    name: "Ocean Engineering"
+    aliases: ["ocen", "ocean engineering", "ocean"]
+    host_type: department
+
+  PETE:
+    name: "Petroleum Engineering"
+    aliases: ["pete", "petroleum engineering", "petroleum"]
+    host_type: department
+
+  # --- Business ---
+  BUSN:
+    name: "Mays Business School"
+    aliases: ["mays", "mays business", "business school", "mays business school"]
+    source_names: ["business", "mays_undergrad_events", "mays_career_center"]
+    host_type: college
+
+  # --- McFerrin ---
+  MCFR:
+    name: "McFerrin Center for Entrepreneurship"
+    aliases: ["mcferrin", "mcferrin center", "entrepreneurship center"]
+    source_names: ["mcferrin_events", "mcferrin_programs"]
+    host_type: center
+
+  # --- Sciences ---
+  MATH:
+    name: "Mathematics"
+    aliases: ["math", "mathematics", "math department"]
+    host_type: department
+
+  STAT:
+    name: "Statistics"
+    aliases: ["stat", "statistics", "statistics department"]
+    host_type: department
+
+  PHYS:
+    name: "Physics & Astronomy"
+    aliases: ["phys", "physics", "physics department", "astronomy"]
+    host_type: department
+
+  CHEM:
+    name: "Chemistry"
+    aliases: ["chem", "chemistry", "chemistry department"]
+    host_type: department
+
+  BIOL:
+    name: "Biology"
+    aliases: ["biol", "biology", "biology department"]
+    host_type: department
+
+  # --- Agriculture ---
+  AG:
+    name: "College of Agriculture & Life Sciences"
+    aliases: ["agriculture", "ag", "agrilife", "agriculture and life sciences"]
+    source_names: ["agriculture"]
+    host_type: college
+
+  # --- Liberal Arts ---
+  LBAR:
+    name: "College of Liberal Arts"
+    aliases: ["liberal arts", "college of liberal arts"]
+    source_names: ["liberal_arts"]
+    host_type: college
+
+  # --- Science ---
+  SCI:
+    name: "College of Science"
+    aliases: ["college of science", "science"]
+    source_names: ["science"]
+    host_type: college
+
+  # --- Education ---
+  EDUC:
+    name: "College of Education & Human Development"
+    aliases: ["education", "college of education", "education and human development"]
+    source_names: ["education"]
+    host_type: college
+
+  # --- Architecture ---
+  ARCH:
+    name: "College of Architecture"
+    aliases: ["architecture", "college of architecture"]
+    source_names: ["architecture"]
+    host_type: college
+
+  # --- Geosciences ---
+  GEOSCI:
+    name: "College of Geosciences"
+    aliases: ["geosciences", "college of geosciences"]
+    source_names: ["geosciences"]
+    host_type: college
+
+  # --- Veterinary ---
+  VET:
+    name: "College of Veterinary Medicine & Biomedical Sciences"
+    aliases: ["veterinary", "vet med", "veterinary medicine"]
+    source_names: ["veterinary"]
+    host_type: college
+
+  # --- Bush School ---
+  BUSH:
+    name: "Bush School of Government & Public Service"
+    aliases: ["bush school", "bush school of government"]
+    source_names: ["bush_school"]
+    host_type: college
+
+  # --- Public Health ---
+  HLTH:
+    name: "School of Public Health"
+    aliases: ["public health", "school of public health"]
+    source_names: ["health"]
+    host_type: college
+
+  # --- Centers & Services ---
+  LIBR:
+    name: "University Libraries"
+    aliases: ["libraries", "university libraries", "evans library", "sterling c. evans"]
+    source_names: ["libraries"]
+    host_type: center
+
+  RECSPORTS:
+    name: "Rec Sports"
+    aliases: ["rec sports", "recreational sports", "student rec center"]
+    source_names: ["rec_sports"]
+    host_type: department
+
+  MSC:
+    name: "Memorial Student Center"
+    aliases: ["msc", "memorial student center", "student center"]
+    source_names: ["msc"]
+    host_type: center
+
+  CTE:
+    name: "Center for Teaching Excellence"
+    aliases: ["cte", "center for teaching excellence", "teaching excellence"]
+    host_type: center
+
+  CAREER:
+    name: "Career Center"
+    aliases: ["career center", "career services", "careercenter"]
+    source_names: ["career_center", "career_center_events", "career_fairs"]
+    host_type: center
+
+  HEALTH:
+    name: "University Health Services"
+    aliases: ["health services", "student health", "a.p. beutel"]
+    host_type: center
+
+  SEC:
+    name: "Student Engineers' Council"
+    aliases: ["sec", "student engineers council", "student engineers' council"]
+    source_names: ["sec_events"]
+    host_type: student_org
+
+  DIV:
+    name: "Division of Student Affairs — Diversity"
+    aliases: ["diversity", "multicultural", "inclusion"]
+    source_names: ["diversity"]
+    host_type: center
+
+  INTL:
+    name: "International Students"
+    aliases: ["international", "international students", "education abroad"]
+    source_names: ["international"]
+    host_type: center
+
+  HONORS:
+    name: "Honors Programs"
+    aliases: ["honors", "university honors", "honors program"]
+    source_names: ["honors"]
+    host_type: center
+
+  ARTS:
+    name: "Performing Arts"
+    aliases: ["performing arts", "opas", "msc opas"]
+    source_names: ["performing_arts"]
+    host_type: center
+
+  GRAD:
+    name: "Graduate & Professional School"
+    aliases: ["graduate", "graduate school", "graduate studies", "grad school"]
+    source_names: ["graduate_studies"]
+    host_type: college
+
+  RESEARCH:
+    name: "Division of Research"
+    aliases: ["research", "division of research", "vpr"]
+    source_names: ["research"]
+    host_type: center
+
+  STUACT:
+    name: "Student Activities"
+    aliases: ["student activities", "student engagement"]
+    source_names: ["student_activities", "student_interest"]
+    host_type: department
+
+  STUORG:
+    name: "Student Organizations"
+    aliases: ["student organizations", "student orgs", "clubs"]
+    source_names: ["student_orgs", "getinvolved_events", "getinvolved_orgs"]
+    host_type: student_org
+
+  REG:
+    name: "Registrar"
+    aliases: ["registrar", "office of the registrar"]
+    source_names: ["registrar"]
+    host_type: department

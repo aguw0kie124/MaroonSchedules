@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+data/raw/
+data/cache/
+data/state/
+*.log
+analyze_output.txt
+test_mcferrin.py
+analyze_state.py
+test_mcferrin.py
+full_crawlv4.log
+mcferrin_crawl.log
+diagnose_bull.txt
+test_cse.log
+.gemini/
+artifacts/
+tmp/
