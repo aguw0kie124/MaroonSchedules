@@ -1,0 +1,642 @@
+social:
+  title_keywords:
+    - mixer
+    - social
+    - meet and greet
+    - meet & greet
+    - game night
+    - dance
+    - hangout
+    - hang out
+    - happy hour
+    - welcome
+    - welcome back
+    - tabling
+    - networking social
+    - meetup
+    - meet-up
+    - bonfire
+    - cookout
+    - picnic
+    - potluck
+    - ice breaker
+    - icebreaker
+    - speed dating
+    - speed networking
+    - block party
+    - party
+    - get-together
+    - gathering
+    - mingle
+    - kickback
+  description_keywords:
+    - come socialize
+    - come hang out
+    - join us for a social
+    - meet other
+    - network with
+    - connect with fellow
+    - mingle with
+  host_patterns:
+    - student org
+    - student activities
+    - greek life
+    - fraternity
+    - sorority
+    - residence life
+  negative_patterns:
+    - social media
+    - social work
+    - social science
+    - social justice
+    - social determinants
+    - social psychology
+    - social studies
+
+sports:
+  title_keywords:
+    - athletics
+    - rec sports
+    - tournament
+    - match
+    - game day
+    - practice
+    - tryouts
+    - try-outs
+    - tailgate
+    - watch party
+    - scrimmage
+    - run club
+    - fitness
+    - intramural
+    - club sport
+    - workout
+    - yoga
+    - spin class
+    - boot camp
+    - bootcamp
+    - 5k
+    - marathon
+    - relay
+    - swim
+    - basketball
+    - soccer
+    - volleyball
+    - football
+    - baseball
+    - softball
+    - tennis
+    - golf
+    - track
+    - cross country
+    - lacrosse
+    - rugby
+    - cricket
+    - badminton
+    - table tennis
+    - esports
+    - e-sports
+  description_keywords:
+    - come cheer
+    - come watch
+    - aggie athletics
+    - rec center
+    - student rec
+    - intramural league
+  host_patterns:
+    - rec sports
+    - athletics
+    - 12th man
+    - kyle field
+    - reed arena
+  location_patterns:
+    - rec center
+    - student rec
+    - kyle field
+    - reed arena
+    - penberthy
+    - natatorium
+    - tennis center
+    - golf course
+  negative_patterns:
+    - sports medicine
+    - sports science
+    - sports management
+    - sports analytics
+    - sports law
+    - academic game
+
+academic:
+  title_keywords:
+    - seminar
+    - colloquium
+    - colloquia
+    - lecture
+    - workshop
+    - talk
+    - symposium
+    - dissertation
+    - defense
+    - panel
+    - research showcase
+    - info session
+    - information session
+    - webinar
+    - faculty candidate
+    - job talk
+    - candidate talk
+    - seminar series
+    - colloquium series
+    - thesis
+    - dissertation defense
+    - thesis defense
+    - visiting scholar
+    - distinguished lecture
+    - distinguished speaker
+    - invited speaker
+    - endowed lecture
+    - research presentation
+    - poster session
+    - poster presentation
+    - capstone
+    - hackathon
+    - hack-a-thon
+    - conference
+    - summit
+    - bootcamp
+    - startup 101
+    - startup workshop
+    - startup
+    - pitch competition
+    - pitch
+    - ideas challenge
+    - entrepreneur
+    - founder
+    - case competition
+    - study abroad
+    - advising
+    - tutoring
+    - review session
+    - office hours
+  description_keywords:
+    - research talk
+    - academic presentation
+    - scholarly
+    - peer review
+    - faculty presentation
+    - graduate seminar
+    - doctoral candidate
+    - phd candidate
+    - master's thesis
+    - research findings
+    - hackathon
+    - hack-a-thon
+  host_patterns:
+    - department
+    - college of
+    - school of
+    - center for
+    - institute
+    - lab
+    - laboratory
+  negative_patterns:
+    - academic calendar
+    - academic holiday
+    - last day of classes
+
+food:
+  title_keywords:
+    - free food
+    - food provided
+    - pizza
+    - lunch
+    - dinner
+    - breakfast
+    - snacks
+    - catered
+    - bbq
+    - barbeque
+    - barbecue
+    - cookout
+    - potluck
+    - buffet
+    - tacos
+    - ice cream
+    - donuts
+    - cookies
+    - cupcakes
+    - crawfish
+    - crawfish boil
+    - pancakes
+    - waffles
+    - chick-fil-a
+    - whataburger
+    - kolaches
+    - boba
+    - food truck
+    - luncheon
+    - brunch
+    - banquet
+    - gala dinner
+    - reception
+  description_keywords:
+    - food will be provided
+    - food and drinks
+    - refreshments provided
+    - refreshments will be served
+    - lunch provided
+    - lunch will be served
+    - dinner provided
+    - snacks provided
+    - meals provided
+    - catered lunch
+    - catered dinner
+    - complimentary lunch
+    - complimentary dinner
+    - free pizza
+    - free tacos
+    - free ice cream
+    - while supplies last
+    - first come first serve
+    - come grab
+    - come enjoy
+  negative_patterns:
+    - food science
+    - food engineering
+    - food safety
+    - food security
+    - food bank
+    - food desert
+    - food policy
+    - food industry
+    - food systems
+    - food technology
+    - food processing
+    - food studies
+    - food court
+
+advocacy:
+  title_keywords:
+    - advocacy
+    - awareness
+    - activism
+    - civic
+    - volunteer
+    - service
+    - justice
+    - policy
+    - voting
+    - voter registration
+    - community aid
+    - mutual aid
+    - rally
+    - march
+    - protest
+    - town hall
+    - town-hall
+    - community forum
+    - human rights
+    - civil rights
+    - equality
+    - equity
+    - inclusion
+    - diversity
+    - dei
+    - allyship
+    - solidarity
+    - sustainability
+    - climate
+    - environment
+    - immigration
+    - refugee
+    - homelessness
+    - hunger
+    - poverty
+    - mental health awareness
+    - suicide prevention
+    - sexual assault awareness
+    - domestic violence
+    - big event
+    - day of service
+  description_keywords:
+    - raise awareness
+    - take action
+    - make a difference
+    - give back
+    - community service
+    - volunteer opportunity
+    - service project
+    - civic engagement
+  host_patterns:
+    - student government
+    - sga
+    - diversity
+    - multicultural
+    - lgbtq
+    - women
+    - veterans
+  negative_patterns:
+    - policy review
+    - insurance policy
+
+entertainment:
+  title_keywords:
+    - concert
+    - performance
+    - movie
+    - movie night
+    - film
+    - film screening
+    - comedy
+    - comedy night
+    - jam
+    - jam session
+    - festival
+    - showcase
+    - art exhibition
+    - art show
+    - open mic
+    - open-mic
+    - karaoke
+    - live music
+    - talent show
+    - battle of the bands
+    - dj
+    - trivia
+    - trivia night
+    - poetry slam
+    - poetry reading
+    - spoken word
+    - magic show
+    - circus
+    - improv
+    - sketch comedy
+    - stand-up
+    - standup
+    - drag show
+    - fashion show
+    - step show
+    - stroll off
+    - variety show
+    - cultural show
+    - cultural night
+    - pageant
+    - coffeehouse
+    - coffee house
+    - gallery opening
+    - museum
+    - theater
+    - theatre
+    - musical
+    - opera
+    - ballet
+    - dance performance
+    - recital
+  description_keywords:
+    - come watch
+    - come see
+    - come enjoy
+    - live entertainment
+    - free admission
+    - doors open
+    - showtime
+    - curtain
+  host_patterns:
+    - msc
+    - memorial student center
+    - opas
+    - performing arts
+    - theater
+    - theatre
+    - museum
+    - arts council
+  location_patterns:
+    - rudder
+    - rudder theater
+    - rudder auditorium
+    - msc
+    - zona
+    - stark gallery
+  negative_patterns:
+    - entertainment industry
+    - entertainment law
+
+health_wellness:
+  title_keywords:
+    - wellness
+    - mental health
+    - stress
+    - stress relief
+    - nutrition
+    - fitness
+    - exercise
+    - therapy
+    - health screening
+    - health fair
+    - mindfulness
+    - self-care
+    - self care
+    - meditation
+    - counseling
+    - counselling
+    - support group
+    - recovery
+    - addiction
+    - substance
+    - alcohol awareness
+    - safe zone
+    - safe space
+    - body positivity
+    - eating disorder
+    - anxiety
+    - depression
+    - grief
+    - coping
+    - resilience
+    - relaxation
+    - breathwork
+    - blood drive
+    - blood donation
+    - first aid
+    - cpr
+    - aed
+    - flu shot
+    - vaccination
+    - immunization
+    - health education
+    - sexual health
+    - sti
+    - hiv
+    - contraception
+    - sleep
+    - hydration
+    - ergonomics
+    - stretching
+  description_keywords:
+    - take care of yourself
+    - mental wellness
+    - emotional well-being
+    - well-being
+    - healthy habits
+    - healthy living
+    - stress management
+    - manage stress
+    - health resources
+  host_patterns:
+    - student health
+    - health services
+    - counseling center
+    - counseling and psychological
+    - caps
+    - wellness
+    - rec sports
+  negative_patterns:
+    - health science
+    - health informatics
+    - public health policy
+    - health economics
+    - health administration
+
+religion:
+  title_keywords:
+    - prayer
+    - worship
+    - chapel
+    - ministry
+    - faith
+    - church
+    - bible
+    - bible study
+    - religious
+    - spiritual
+    - fellowship
+    - devotional
+    - mass
+    - vespers
+    - compline
+    - rosary
+    - quran
+    - torah
+    - meditation circle
+    - interfaith
+    - revival
+    - crusade
+    - gospel
+    - hymn
+    - praise
+    - baptism
+    - communion
+    - eucharist
+    - passover
+    - seder
+    - ramadan
+    - iftar
+    - eid
+    - diwali
+    - holi
+    - navratri
+    - puja
+    - dharma
+    - sangha
+    - shabbat
+    - sabbath
+    - ash wednesday
+    - lent
+    - easter
+    - christmas
+    - hanukkah
+    - chanukah
+  description_keywords:
+    - come worship
+    - join us in prayer
+    - word of god
+    - scripture
+    - sermon
+    - faith community
+    - spiritual growth
+    - religious life
+  host_patterns:
+    - campus ministry
+    - young life
+    - cru
+    - intervarsity
+    - hillel
+    - chabad
+    - msa
+    - muslim student
+    - catholic student
+    - baptist student
+    - methodist
+    - lutheran
+    - presbyterian
+    - episcopalian
+    - breakaway
+    - passion
+    - a&m church
+  negative_patterns:
+    - religious studies
+    - religion course
+    - comparative religion
+    - sociology of religion
+
+casual:
+  title_keywords:
+    - meetup
+    - meet-up
+    - hangout
+    - hang out
+    - game night
+    - movie night
+    - party
+    - mixer
+    - ice breaker
+    - icebreaker
+    - kickback
+    - potluck
+    - casual
+    - gathering
+    - get-together
+    - get together
+  description_keywords:
+    - come socialize
+    - come hang out
+    - casual setting
+    - casually
+    - relax and
+    - bring your friends
+    - meet other
+    - mingle with
+
+professional:
+  title_keywords:
+    - career fair
+    - corporate
+    - networking
+    - resume
+    - interview prep
+    - recruiter
+    - info session
+    - information session
+    - mock interview
+    - company night
+    - employer
+    - entrepreneur
+    - startup
+    - founder
+    - pitch
+    - pitch competition
+    - professional development
+    - leadership
+    - expo
+    - symposium
+  description_keywords:
+    - network with
+    - connect with employers
+    - bring your resume
+    - career opportunities
+    - internship
+    - full-time roles
+    - business casual
+    - business professional
+    - industry leaders
+    - corporate sponsor
