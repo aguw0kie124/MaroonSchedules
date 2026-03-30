@@ -347,6 +347,18 @@ export function PlacesMapScreen() {
       .slice(0, 8);
   }, [allMapLocations, searchQuery]);
 
+  const busRouteSearchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase();
+    return busRoutes
+      .filter((route) => {
+        const shortName = (route.ShortName || "").toString().toLowerCase();
+        const name = (route.Name || "").toString().toLowerCase();
+        return shortName.includes(q) || name.includes(q);
+      })
+      .slice(0, 4);
+  }, [busRoutes, searchQuery]);
+
   const busPulseAnim = useRef(new Animated.Value(1)).current;
 
   const selectedLoc = useMemo(() => allMapLocations.find((l) => l.location === selectedId), [allMapLocations, selectedId]);
@@ -604,6 +616,18 @@ export function PlacesMapScreen() {
       setBusVehicles(await transitService.getVehicles(routeId));
     } catch (e) { console.warn("Failed to select bus route", e); }
   }, [busRoutes, loadAllBusRoutes]);
+
+  const handleSelectBusRouteFromSearch = useCallback(async (route: any) => {
+    setActiveLayer("Bus");
+    setIsSearchExpanded(false);
+    setSearchQuery("");
+    setShowSearchResults(false);
+    setSelectedId(null);
+    setSelectedStop(null);
+    setSelectedBus(null);
+    setIsRouteDropdownOpen(false);
+    await handleSelectBusRoute(route.Key);
+  }, [handleSelectBusRoute]);
 
   const { getClosestProgressMeters, haversineDistanceMeters: hav, formatBusDistance } = require("./places/utils");
   const resolveNearestBusForStop = useCallback((stop: any, vehicles: any[]) => {
@@ -924,9 +948,11 @@ export function PlacesMapScreen() {
           styles={styles}
           COLORS={COLORS}
           searchResults={searchResults}
+          busRouteResults={busRouteSearchResults}
           isSearchExpanded={isSearchExpanded}
           showSearchResults={showSearchResults}
           onSelectLocation={handleSelectLocation}
+          onSelectBusRoute={handleSelectBusRouteFromSearch}
         />
 
         <LayerPillScroller

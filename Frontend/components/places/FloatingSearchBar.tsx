@@ -70,7 +70,7 @@ export function FloatingSearchBar({
             }}
           >
             <Text style={styles.floatingSearchPromptText}>
-              Search campus places...
+              Search places, dining, routes...
             </Text>
           </TouchableOpacity>
         )}

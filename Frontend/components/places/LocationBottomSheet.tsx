@@ -285,7 +285,7 @@ export function LocationBottomSheet({
             </View>
 
             {selectedLoc.description ? (
-              <Text style={styles.descriptionText} numberOfLines={2}>
+              <Text style={styles.descriptionText} numberOfLines={1}>
                 {selectedLoc.description}
               </Text>
             ) : null}
@@ -316,10 +316,10 @@ export function LocationBottomSheet({
                       }
                     >
                       <ExternalLink size={14} color="#F3F1ED" />
-                      <Text style={styles.quickActionText}>
+                        <Text style={styles.quickActionText}>
                         {externalLink.label}
-                      </Text>
-                    </TouchableOpacity>
+                        </Text>
+                      </TouchableOpacity>
 
                     {isDiningHallMenuLocation(selectedLoc.location) &&
                     activeDiningMenu &&
@@ -330,7 +330,7 @@ export function LocationBottomSheet({
                       >
                         <Utensils size={14} color="#FFFFFF" />
                         <Text style={styles.quickActionPrimaryText}>
-                          View Menus
+                          Menus
                         </Text>
                       </TouchableOpacity>
                     ) : null}
@@ -341,7 +341,7 @@ export function LocationBottomSheet({
                         onPress={openScheduleList}
                       >
                         <Calendar size={14} color="#F3F1ED" />
-                        <Text style={styles.quickActionText}>My Schedules</Text>
+                        <Text style={styles.quickActionText}>Schedules</Text>
                       </TouchableOpacity>
                     ) : null}
 
@@ -525,7 +525,7 @@ export function LocationBottomSheet({
                         <View>
                           <Text style={styles.sectionTitle}>Live menus</Text>
                           <Text style={styles.menuIntroText}>
-                            Fresh DineOnCampus feed for the current dining hall.
+                            Live dining hall menu.
                           </Text>
                         </View>
                         {activeDiningMenu ? (
@@ -599,11 +599,6 @@ export function LocationBottomSheet({
                             {diningMenuPreview?.categories?.length ?? 0} categories
                           </Text>
                         </View>
-                        <View style={styles.metaPill}>
-                          <Text style={styles.metaPillText}>
-                            {String(diningMenuPreview?.source || "live").toUpperCase()}
-                          </Text>
-                        </View>
                       </View>
 
                       {isFetchingDining ? (
@@ -628,7 +623,7 @@ export function LocationBottomSheet({
                               </View>
 
                               <View style={styles.menuCategoryItems}>
-                                {category.items.slice(0, 3).map((item: any) => (
+                                {category.items.slice(0, 2).map((item: any) => (
                                   <View
                                     key={`${activeDiningMenu}-${category.name}-${item.name}`}
                                     style={styles.menuCategoryItem}
@@ -637,21 +632,28 @@ export function LocationBottomSheet({
                                       <Text style={styles.menuCategoryItemName}>
                                         {item.name}
                                       </Text>
-                                      <Text
-                                        style={styles.menuCategoryItemMeta}
-                                        numberOfLines={1}
-                                      >
-                                        {Math.round(item.calories || 0)} kcal
-                                        {item.protein
-                                          ? ` · ${Math.round(item.protein)}g protein`
-                                          : ""}
-                                      </Text>
+                                      {item.calories || item.protein ? (
+                                        <Text
+                                          style={styles.menuCategoryItemMeta}
+                                          numberOfLines={1}
+                                        >
+                                          {item.calories
+                                            ? `${Math.round(item.calories || 0)} kcal`
+                                            : ""}
+                                          {item.calories && item.protein
+                                            ? " · "
+                                            : ""}
+                                          {item.protein
+                                            ? `${Math.round(item.protein)}g protein`
+                                            : ""}
+                                        </Text>
+                                      ) : null}
                                     </View>
                                   </View>
                                 ))}
-                                {category.items.length > 3 ? (
+                                {category.items.length > 2 ? (
                                   <Text style={styles.menuCategoryMoreText}>
-                                    +{category.items.length - 3} more items
+                                    +{category.items.length - 2} more items
                                   </Text>
                                 ) : null}
                               </View>
@@ -690,7 +692,7 @@ export function LocationBottomSheet({
                       </View>
 
                       {streamReviews.length > 0 ? (
-                        streamReviews.slice(0, 5).map((rev, i) => (
+                        streamReviews.slice(0, 3).map((rev, i) => (
                           <View key={rev.id || i} style={styles.reviewItem}>
                             <View style={styles.reviewMeta}>
                               <View style={styles.reviewUserRow}>
@@ -771,7 +773,7 @@ export function LocationBottomSheet({
                       </View>
 
                       <View style={styles.classMeetingList}>
-                        {selectedLoc.classMeetings.map((meeting) => (
+                        {selectedLoc.classMeetings.slice(0, 3).map((meeting) => (
                           <View
                             key={meeting.id}
                             style={styles.classMeetingCard}
@@ -803,7 +805,7 @@ export function LocationBottomSheet({
                   {/* Reviews */}
                   <View style={styles.reviewsHeader}>
                     <Text style={styles.sectionTitle}>Reviews</Text>
-                    <View style={{ flexDirection: "row", gap: 12 }}>
+                      <View style={{ flexDirection: "row", gap: 12 }}>
                       <TouchableOpacity
                         onPress={() => setReviewModalVisible(true)}
                       >
@@ -821,7 +823,7 @@ export function LocationBottomSheet({
                   </View>
 
                   {streamReviews.length > 0 ? (
-                    streamReviews.slice(0, 5).map((rev, i) => (
+                    streamReviews.slice(0, 3).map((rev, i) => (
                       <View key={rev.id || i} style={styles.reviewItem}>
                         <View style={styles.reviewMeta}>
                           <View style={styles.reviewUserRow}>

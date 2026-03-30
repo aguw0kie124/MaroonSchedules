@@ -87,7 +87,7 @@ export function BusRouteSelector({
             </View>
           </View>
           <View style={styles.selectedRouteTextStack}>
-            <Text style={styles.labelSubText}>Route View</Text>
+            <Text style={styles.labelSubText}>Transit</Text>
             <Text style={styles.selectedRouteName} numberOfLines={1}>
               {isAllBusRoutesSelected
                 ? "All Routes"
@@ -125,10 +125,10 @@ export function BusRouteSelector({
             {filteredBusRoutes.length === 0 ? (
               <View style={styles.emptyRouteSearchState}>
                 <Text style={styles.emptyRouteSearchTitle}>
-                  No routes match that search.
+                  No routes available right now.
                 </Text>
                 <Text style={styles.emptyRouteSearchBody}>
-                  Try a route number like 01 or a route name keyword.
+                  Pull to refresh live transit data and try again.
                 </Text>
               </View>
             ) : (

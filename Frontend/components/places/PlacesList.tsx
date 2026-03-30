@@ -62,9 +62,9 @@ export function PlacesList({
   const shouldShowSheet =
     !selectedId && activeLayer !== "Bus" && activeLayer !== "Heatmap" && (activeLayer === "Schedule" || sortedFilteredLocations.length > 0);
 
-  // Keep the sheet in the lower half of the screen so the search / layer UI stays visible.
-  const sheetHeight = Math.min(Math.round(SCREEN_HEIGHT * 0.58), 520);
-  const collapsedHeight = activeLayer === "Schedule" ? 176 : 126;
+  // Keep the sheet docked lower so the map remains the main workspace.
+  const sheetHeight = Math.min(Math.round(SCREEN_HEIGHT * 0.52), 470);
+  const collapsedHeight = activeLayer === "Schedule" ? 164 : 110;
   const collapsedTranslateY = Math.max(sheetHeight - collapsedHeight, 0);
   const translateY = useRef(new Animated.Value(collapsedTranslateY)).current;
   const sheetSnap = useRef(collapsedTranslateY);
@@ -136,12 +136,12 @@ export function PlacesList({
   const getSheetSubtitle = () => {
     if (activeLayer === "Schedule") {
       return activeScheduleOption
-        ? `Mapped from ${activeScheduleOption.label}. Drag up to browse every building on this schedule.`
+        ? `${activeScheduleOption.label} on the map.`
         : isLoadingSchedules
-          ? "Loading your saved schedules and uploaded class data."
-          : "Upload a schedule or add classes manually to pin your day onto the map.";
+          ? "Loading class map."
+          : "Map your classes to view them here.";
     }
-    return `${sortedFilteredLocations.length} place${sortedFilteredLocations.length === 1 ? "" : "s"} in this category. Drag up for the full list.`;
+    return `${sortedFilteredLocations.length} place${sortedFilteredLocations.length === 1 ? "" : "s"} in this view.`;
   };
 
   const renderScheduleCard = () => {
@@ -159,7 +159,7 @@ export function PlacesList({
             <Text style={styles.placesSheetScheduleTitle} numberOfLines={1}>
               {activeScheduleOption ? activeScheduleOption.label : "No schedule selected"}
             </Text>
-            <Text style={styles.placesSheetScheduleBody} numberOfLines={2}>
+            <Text style={styles.placesSheetScheduleBody} numberOfLines={1}>
               {scheduleSummaryLabel}
             </Text>
           </View>
@@ -341,8 +341,8 @@ export function PlacesList({
             <View style={styles.placesSheetCollapsedBody}>
               <Text style={styles.placesSheetCollapsedBodyText}>
                 {activeLayer === "Schedule"
-                  ? "Pull up to see class buildings on the map."
-                  : "Pull up to see places near you."}
+                  ? "Pull up for the class list."
+                  : "Pull up for the full list."}
               </Text>
               <View style={styles.placesSheetCollapsedSummary}>
                 <Text style={styles.placesSheetCollapsedSummaryTitle}>
@@ -353,7 +353,7 @@ export function PlacesList({
                 <Text style={styles.placesSheetCollapsedSummaryMeta}>
                   {activeLayer === "Schedule"
                     ? scheduleSummaryLabel
-                    : `${sortedFilteredLocations.length} result${sortedFilteredLocations.length === 1 ? "" : "s"} ready`}
+                    : `${sortedFilteredLocations.length} result${sortedFilteredLocations.length === 1 ? "" : "s"}`}
                 </Text>
               </View>
             </View>
