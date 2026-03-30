@@ -27,6 +27,7 @@ import {
   MapPin,
   Plus,
   Search,
+  Filter,
   Trash2,
   X as CloseIcon,
 } from 'lucide-react-native';
@@ -79,6 +80,43 @@ interface TAMUEvent {
   food_confidence?: number;
   food_type?: string | null;
 }
+
+type EventsViewMode = 'calendar' | 'categories';
+type ExploreCategory = 'Food' | 'Entertainment' | 'Advocacy' | 'Sports' | 'Religion' | 'Social';
+type SocialMode = 'casual' | 'professional';
+type MajorOption =
+  | 'Engineering'
+  | 'Business'
+  | 'Liberal Arts'
+  | 'Agriculture'
+  | 'Science'
+  | 'Architecture'
+  | 'Education'
+  | 'Public Health'
+  | 'Law'
+  | 'Medicine';
+
+const CATEGORY_COLORS: Record<ExploreCategory, string> = {
+  Food: '#FF7A00',
+  Entertainment: '#6D5EF7',
+  Advocacy: '#00A86B',
+  Sports: '#007AFF',
+  Religion: '#8C52FF',
+  Social: '#FF4F7B',
+};
+
+const MAJOR_OPTIONS: MajorOption[] = [
+  'Engineering',
+  'Business',
+  'Liberal Arts',
+  'Agriculture',
+  'Science',
+  'Architecture',
+  'Education',
+  'Public Health',
+  'Law',
+  'Medicine',
+];
 
 function formatDateFromTS(ts: number): string {
   const d = new Date(ts * 1000);
@@ -153,6 +191,66 @@ function generateGoogleCalendarLink(event: TAMUEvent) {
   return `https://calendar.google.com/calendar/r/eventedit?${params.toString()}`;
 }
 
+function getEventSearchBlob(event: TAMUEvent) {
+  return [
+    event.title,
+    event.description,
+    event.location,
+    event.location_title,
+    event.group_title,
+    ...(event.tags || []),
+    ...(event.event_types || []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function classifyEventCategory(event: TAMUEvent): ExploreCategory {
+  const blob = getEventSearchBlob(event);
+  if (event.has_food || /\bfood\b|\bmeal\b|\bdinner\b|\blunch\b|\bbreakfast\b|\bfree pizza\b|\brefreshments\b/.test(blob)) {
+    return 'Food';
+  }
+  if (/\bconcert\b|\bshow\b|\bmovie\b|\bcomedy\b|\bmusic\b|\bperformance\b|\bfestival\b|\bkaraoke\b|\bgame night\b/.test(blob)) {
+    return 'Entertainment';
+  }
+  if (/\badvocacy\b|\bactivism\b|\bpolicy\b|\bawareness\b|\bcommunity service\b|\bvolunteer\b|\bjustice\b|\bsustainability\b/.test(blob)) {
+    return 'Advocacy';
+  }
+  if (/\bsport\b|\bgame\b|\bmatch\b|\btournament\b|\bfitness\b|\brec\b|\bathletic\b|\bworkout\b/.test(blob)) {
+    return 'Sports';
+  }
+  if (/\bchurch\b|\bfaith\b|\bprayer\b|\bbible\b|\bworship\b|\bministry\b|\bmosque\b|\btemple\b|\brelig/i.test(blob)) {
+    return 'Religion';
+  }
+  return 'Social';
+}
+
+function getSocialMode(event: TAMUEvent): SocialMode {
+  const blob = getEventSearchBlob(event);
+  if (/\bcareer\b|\bnetworking\b|\bprofessional\b|\bresume\b|\binterview\b|\bcompany\b|\brecruit\b|\bworkshop\b|\bpanel\b/.test(blob)) {
+    return 'professional';
+  }
+  return 'casual';
+}
+
+function matchesMajor(event: TAMUEvent, major: MajorOption) {
+  const blob = getEventSearchBlob(event);
+  const aliases: Record<MajorOption, string[]> = {
+    Engineering: ['engineering', 'engr', 'mechanical', 'electrical', 'csce', 'computer science'],
+    Business: ['business', 'mays', 'finance', 'accounting', 'marketing'],
+    'Liberal Arts': ['liberal arts', 'history', 'english', 'philosophy', 'communication'],
+    Agriculture: ['agriculture', 'ag', 'animal science', 'horticulture'],
+    Science: ['science', 'biology', 'chemistry', 'physics', 'math'],
+    Architecture: ['architecture', 'arch', 'urban planning', 'construction science'],
+    Education: ['education', 'teaching', 'curriculum'],
+    'Public Health': ['public health', 'health', 'epidemiology'],
+    Law: ['law', 'legal', 'pre-law'],
+    Medicine: ['medicine', 'medical', 'premed', 'nursing', 'clinical'],
+  };
+  return aliases[major].some((term) => blob.includes(term));
+}
+
 export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
@@ -161,8 +259,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [events, setEvents] = useState<TAMUEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [eventsViewMode, setEventsViewMode] = useState<EventsViewMode>('calendar');
   const [searchQuery, setSearchQuery] = useState('');
   const [eventFilter, setEventFilter] = useState<'all' | 'free_food' | 'has_map' | 'personal'>('all');
+  const [isFilterMenuVisible, setIsFilterMenuVisible] = useState(false);
+  const [isMajorSpecific, setIsMajorSpecific] = useState(false);
+  const [selectedMajor, setSelectedMajor] = useState<MajorOption>('Engineering');
+  const [isMajorMenuVisible, setIsMajorMenuVisible] = useState(false);
+  const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [expandedId, setExpandedId] = useState<string | number | null>(null);
   const [selectedDate, setSelectedDate] = useState(getLocalDateString());
   const [isPanelExpanded, setIsPanelExpanded] = useState(false);
@@ -254,6 +358,22 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       (event.group_title && event.group_title.toLowerCase().includes(query))
     );
   }, [eventFilter, grouped, searchQuery, selectedDate]);
+  const discoverEvents = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return events.filter((event) => {
+      if (query && !getEventSearchBlob(event).includes(query)) return false;
+      if (isMajorSpecific && !matchesMajor(event, selectedMajor)) return false;
+      const category = classifyEventCategory(event);
+      if (category === 'Social' && getSocialMode(event) !== socialMode) return false;
+      return true;
+    });
+  }, [events, isMajorSpecific, searchQuery, selectedMajor, socialMode]);
+  const categorizedEvents = useMemo(() => {
+    return (['Food', 'Entertainment', 'Advocacy', 'Sports', 'Religion', 'Social'] as ExploreCategory[]).map((category) => ({
+      category,
+      events: discoverEvents.filter((event) => classifyEventCategory(event) === category).slice(0, 8),
+    }));
+  }, [discoverEvents]);
   const weekDays = useMemo(() => buildWeek(selectedDate), [selectedDate]);
   const weekLabel = useMemo(
     () => new Date(`${selectedDate}T12:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
@@ -289,7 +409,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const handleOpenOnMap = (event: TAMUEvent) => {
     if (event.location_lat == null || event.location_lng == null) return;
     navigation.navigate('Places', {
-      initialLayer: event.has_food ? 'FreeFood' : 'Academic',
+      initialLayer: event.has_food ? 'Dining' : 'Academic',
       focusToken: `event:${event.id}:${event.date_ts}`,
       eventFocus: {
         eventId: String(event.id),
@@ -334,6 +454,27 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           </Pressable>
         </View>
 
+        <View style={styles.eventsModeRow}>
+          {([
+            { key: 'calendar', label: 'Calendar' },
+            { key: 'categories', label: 'Categories' },
+          ] as Array<{ key: EventsViewMode; label: string }>).map((item) => {
+            const selected = eventsViewMode === item.key;
+            return (
+              <Pressable
+                key={item.key}
+                style={[styles.eventsModePill, selected && styles.eventsModePillActive]}
+                onPress={() => setEventsViewMode(item.key)}
+              >
+                <Text style={[styles.eventsModePillText, selected && styles.eventsModePillTextActive]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {eventsViewMode === 'calendar' ? (
         <View style={styles.calendarContainer}>
           <View style={styles.weekHeaderRow}>
             <Pressable style={styles.weekNavButton} onPress={() => setSelectedDate((current) => shiftDateKey(current, -7))}>
@@ -360,6 +501,47 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             })}
           </View>
         </View>
+        ) : (
+          <View style={styles.categoriesToolbar}>
+            <View style={styles.majorSpecificRow}>
+              <Text style={styles.majorSpecificLabel}>Major specific</Text>
+              <Pressable
+                style={[styles.majorToggle, isMajorSpecific && styles.majorToggleActive]}
+                onPress={() => setIsMajorSpecific((current) => !current)}
+              >
+                <View style={[styles.majorToggleKnob, isMajorSpecific && styles.majorToggleKnobActive]} />
+              </Pressable>
+            </View>
+            {isMajorSpecific ? (
+              <Pressable style={styles.majorPicker} onPress={() => setIsMajorMenuVisible(true)}>
+                <Text style={styles.majorPickerLabel}>{selectedMajor}</Text>
+                <ChevronDown size={16} color={COLORS.textPrimary} />
+              </Pressable>
+            ) : null}
+            <View style={styles.socialModeRow}>
+              <Text style={styles.socialModeLabel}>Social</Text>
+              <View style={styles.socialModeToggle}>
+                {([
+                  { key: 'casual', label: 'Casual' },
+                  { key: 'professional', label: 'Professional' },
+                ] as Array<{ key: SocialMode; label: string }>).map((item) => {
+                  const selected = socialMode === item.key;
+                  return (
+                    <Pressable
+                      key={item.key}
+                      style={[styles.socialModePill, selected && styles.socialModePillActive]}
+                      onPress={() => setSocialMode(item.key)}
+                    >
+                      <Text style={[styles.socialModePillText, selected && styles.socialModePillTextActive]}>
+                        {item.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+        )}
       </View>
 
       {error ? (
@@ -376,10 +558,18 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         <View style={styles.panelHeader}>
           <View style={{ flex: 1 }}>
             <Text style={styles.dateHeaderText}>
-              {dayEvents.length > 0 ? formatLocalDate(selectedDate) : `No events for ${formatLocalDate(selectedDate)}`}
+              {eventsViewMode === 'calendar'
+                ? dayEvents.length > 0
+                  ? formatLocalDate(selectedDate)
+                  : `No events for ${formatLocalDate(selectedDate)}`
+                : 'Explore by Category'}
             </Text>
             <Text style={styles.panelSubtitle}>
-              {dayEvents.length > 0 ? `${dayEvents.length} events for this day` : 'Add a personal event or switch dates'}
+              {eventsViewMode === 'calendar'
+                ? dayEvents.length > 0
+                  ? `${dayEvents.length} events for this day`
+                  : 'Add a personal event or switch dates'
+                : `${discoverEvents.length} events matched across your category feed`}
             </Text>
           </View>
           <View style={styles.panelActions}>
@@ -395,42 +585,32 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
         <View style={styles.searchContainer}>
           <View style={styles.searchBox}>
-            <Search size={18} color={COLORS.textSecondary} />
+            <Pressable style={styles.searchIconButton} onPress={() => setIsFilterMenuVisible(true)}>
+              <Search size={18} color={COLORS.textSecondary} />
+            </Pressable>
             <TextInput
               style={styles.searchInput}
-              placeholder="Filter events for this day..."
+              placeholder={eventsViewMode === 'calendar' ? 'Filter events for this day...' : 'Search all event categories...'}
               placeholderTextColor={COLORS.textSecondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
+            {eventsViewMode === 'calendar' ? (
+            <Pressable style={styles.searchFilterButton} onPress={() => setIsFilterMenuVisible(true)}>
+              <Filter size={15} color={COLORS.textPrimary} />
+              <Text style={styles.searchFilterButtonText}>
+                {eventFilter === 'all'
+                  ? 'All'
+                  : eventFilter === 'free_food'
+                    ? 'Free Food'
+                    : eventFilter === 'has_map'
+                      ? 'Map Pins'
+                      : 'Personal'}
+              </Text>
+            </Pressable>
+            ) : null}
           </View>
         </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterRow}
-        >
-          {[
-            { key: 'all', label: 'All' },
-            { key: 'free_food', label: 'Free Food' },
-            { key: 'has_map', label: 'Map Pins' },
-            { key: 'personal', label: 'Personal' },
-          ].map((filter) => {
-            const selected = eventFilter === filter.key;
-            return (
-              <Pressable
-                key={filter.key}
-                style={[styles.filterChip, selected && styles.filterChipActive]}
-                onPress={() => setEventFilter(filter.key as typeof eventFilter)}
-              >
-                <Text style={[styles.filterChipText, selected && styles.filterChipTextActive]}>
-                  {filter.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
 
         {loading ? (
           <View style={styles.loadingState}>
@@ -439,7 +619,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           </View>
         ) : (
           <ScrollView style={styles.listScroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            {dayEvents.map((event) => {
+            {eventsViewMode === 'calendar' ? dayEvents.map((event) => {
               const isExpanded = expandedId === event.id;
               const isPersonal = event.tags?.includes('Personal');
               const desc = event.description ? stripHtml(event.description) : null;
@@ -505,9 +685,80 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   </Card>
                 </Pressable>
               );
-            })}
+            }) : categorizedEvents.map((section) => (
+              <View key={section.category} style={styles.categorySection}>
+                <View style={[styles.categorySectionHeader, { backgroundColor: CATEGORY_COLORS[section.category] }]}>
+                  <Text style={styles.categorySectionTitle}>{section.category}</Text>
+                  <Text style={styles.categorySectionCount}>{section.events.length} events</Text>
+                </View>
+                {section.category === 'Social' ? (
+                  <Text style={styles.categorySectionHint}>
+                    Showing {socialMode === 'casual' ? 'casual' : 'professional'} social events.
+                  </Text>
+                ) : null}
+                {section.events.length === 0 ? (
+                  <View style={styles.categoryEmptyCard}>
+                    <Text style={styles.categoryEmptyText}>No {section.category.toLowerCase()} events match right now.</Text>
+                  </View>
+                ) : (
+                  section.events.map((event) => {
+                    const isExpanded = expandedId === `category:${section.category}:${event.id}`;
+                    const desc = event.description ? stripHtml(event.description) : null;
+                    const locationDisplay = event.location || event.location_title || null;
+                    return (
+                      <Pressable
+                        key={`category:${section.category}:${event.id}`}
+                        onPress={() => setExpandedId(isExpanded ? null : `category:${section.category}:${event.id}`)}
+                      >
+                        <Card style={styles.eventCard}>
+                          <View style={styles.eventRow}>
+                            <View style={[styles.timeBadge, { backgroundColor: CATEGORY_COLORS[section.category] }]}>
+                              <Text style={[styles.timeText, { color: '#FFFFFF' }]}>
+                                {event.is_all_day ? 'All Day' : formatTimeFromTS(event.date_ts)}
+                              </Text>
+                            </View>
+                            <View style={styles.eventInfo}>
+                              <Text style={styles.eventTitle} numberOfLines={isExpanded ? undefined : 2}>
+                                {event.title}
+                              </Text>
+                              {locationDisplay ? (
+                                <View style={styles.eventLocationRow}>
+                                  <MapPin size={13} color={COLORS.textSecondary} />
+                                  <Text style={styles.eventLocation}>{locationDisplay}</Text>
+                                </View>
+                              ) : null}
+                              {event.group_title ? (
+                                <Text style={styles.categoryHostText}>{event.group_title}</Text>
+                              ) : null}
+                            </View>
+                            {event.location_lat != null && event.location_lng != null ? (
+                              <Pressable onPress={() => handleOpenOnMap(event)} style={styles.mapActionButton}>
+                                <MapPin size={16} color="#FFFFFF" />
+                              </Pressable>
+                            ) : null}
+                          </View>
+                          {isExpanded ? (
+                            <View style={styles.expandedSection}>
+                              {desc ? <Text style={styles.descText}>{desc}</Text> : null}
+                              <View style={styles.actionRow}>
+                                <Pressable style={styles.addCalBtn} onPress={() => handleAddToCalendar(event)}>
+                                  <View style={styles.addCalContent}>
+                                    <CalendarIcon size={14} color={isDark ? '#FFFFFF' : COLORS.textPrimary} />
+                                    <Text style={styles.addCalText}>Add to Calendar</Text>
+                                  </View>
+                                </Pressable>
+                              </View>
+                            </View>
+                          ) : null}
+                        </Card>
+                      </Pressable>
+                    );
+                  })
+                )}
+              </View>
+            ))}
 
-            {dayEvents.length === 0 && !loading ? (
+            {eventsViewMode === 'calendar' && dayEvents.length === 0 && !loading ? (
               <View style={styles.emptyState}>
                 <CalendarIcon size={40} color={COLORS.textSecondary} />
                 <Text style={styles.emptyTitle}>Clear Schedule</Text>
@@ -579,6 +830,69 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             </Pressable>
           </View>
         </View>
+      </Modal>
+      <Modal
+        visible={isFilterMenuVisible && eventsViewMode === 'calendar'}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsFilterMenuVisible(false)}
+      >
+        <Pressable style={styles.filterOverlay} onPress={() => setIsFilterMenuVisible(false)}>
+          <Pressable style={styles.filterSheet} onPress={() => {}}>
+            {[
+              { key: 'all', label: 'All Events' },
+              { key: 'free_food', label: 'Free Food' },
+              { key: 'has_map', label: 'Map Pins' },
+              { key: 'personal', label: 'Personal' },
+            ].map((filter) => {
+              const selected = eventFilter === filter.key;
+              return (
+                <Pressable
+                  key={filter.key}
+                  style={styles.filterSheetOption}
+                  onPress={() => {
+                    setEventFilter(filter.key as typeof eventFilter);
+                    setIsFilterMenuVisible(false);
+                  }}
+                >
+                  <Text style={[styles.filterSheetOptionText, selected && styles.filterSheetOptionTextActive]}>
+                    {filter.label}
+                  </Text>
+                  {selected ? <Text style={styles.filterSheetSelectedMark}>Done</Text> : null}
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
+      </Modal>
+      <Modal
+        visible={isMajorMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsMajorMenuVisible(false)}
+      >
+        <Pressable style={styles.filterOverlay} onPress={() => setIsMajorMenuVisible(false)}>
+          <Pressable style={styles.filterSheet} onPress={() => {}}>
+            {MAJOR_OPTIONS.map((major) => {
+              const selected = selectedMajor === major;
+              return (
+                <Pressable
+                  key={major}
+                  style={styles.filterSheetOption}
+                  onPress={() => {
+                    setSelectedMajor(major);
+                    setIsMajorMenuVisible(false);
+                  }}
+                >
+                  <Text style={[styles.filterSheetOptionText, selected && styles.filterSheetOptionTextActive]}>
+                    {major}
+                  </Text>
+                  {selected ? <Text style={styles.filterSheetSelectedMark}>Done</Text> : null}
+                </Pressable>
+              );
+            })}
+          </Pressable>
+        </Pressable>
       </Modal>
     </View>
   );
@@ -659,11 +973,124 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) => StyleShee
     borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
     marginBottom: 4,
   },
+  eventsModeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 18,
+    paddingBottom: 12,
+  },
+  eventsModePill: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingVertical: 10,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.04)',
+  },
+  eventsModePillActive: {
+    backgroundColor: isDark ? 'rgba(12,12,14,0.92)' : 'rgba(12,12,14,0.92)',
+    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(12,12,14,0.92)',
+  },
+  eventsModePillText: {
+    color: COLORS.textPrimary,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  eventsModePillTextActive: {
+    color: '#FFFFFF',
+  },
   calendarContainer: {
     backgroundColor: 'transparent',
     paddingHorizontal: 12,
     paddingTop: 4,
     paddingBottom: 18,
+  },
+  categoriesToolbar: {
+    paddingHorizontal: 18,
+    paddingBottom: 18,
+    gap: 12,
+  },
+  majorSpecificRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  majorSpecificLabel: {
+    color: COLORS.textPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  majorToggle: {
+    width: 52,
+    height: 32,
+    borderRadius: 16,
+    padding: 3,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.12)',
+    justifyContent: 'center',
+  },
+  majorToggleActive: {
+    backgroundColor: COLORS.primary,
+  },
+  majorToggleKnob: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#FFFFFF',
+  },
+  majorToggleKnobActive: {
+    alignSelf: 'flex-end',
+  },
+  majorPicker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.04)',
+  },
+  majorPickerLabel: {
+    color: COLORS.textPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  socialModeRow: {
+    gap: 8,
+  },
+  socialModeLabel: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  socialModeToggle: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  socialModePill: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.04)',
+    paddingVertical: 10,
+  },
+  socialModePillActive: {
+    backgroundColor: isDark ? 'rgba(12,12,14,0.92)' : 'rgba(12,12,14,0.92)',
+    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(12,12,14,0.92)',
+  },
+  socialModePillText: {
+    color: COLORS.textPrimary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  socialModePillTextActive: {
+    color: '#FFFFFF',
   },
   weekHeaderRow: {
     flexDirection: 'row',
@@ -819,31 +1246,6 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) => StyleShee
     paddingHorizontal: 20,
     paddingBottom: 12,
   },
-  filterRow: {
-    paddingHorizontal: 20,
-    paddingBottom: 14,
-    gap: 10,
-  },
-  filterChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 999,
-    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(12,12,14,0.05)',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  filterChipActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  filterChipText: {
-    color: COLORS.textPrimary,
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  filterChipTextActive: {
-    color: '#FFFFFF',
-  },
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -854,11 +1256,66 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) => StyleShee
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+  searchIconButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   searchInput: {
     flex: 1,
     fontSize: 14,
     color: COLORS.textPrimary,
     marginLeft: 10,
+  },
+  searchFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingLeft: 10,
+    marginLeft: 10,
+    borderLeftWidth: 1,
+    borderLeftColor: COLORS.border,
+  },
+  searchFilterButtonText: {
+    color: COLORS.textPrimary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  filterOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    justifyContent: 'flex-start',
+    paddingTop: embedded ? 180 : 210,
+    paddingHorizontal: 22,
+  },
+  filterSheet: {
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: isDark ? 'rgba(12,12,14,0.98)' : 'rgba(255,255,255,0.98)',
+  },
+  filterSheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  filterSheetOptionText: {
+    color: COLORS.textPrimary,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  filterSheetOptionTextActive: {
+    color: COLORS.primary,
+  },
+  filterSheetSelectedMark: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
   },
   loadingState: {
     flex: 1,
@@ -877,6 +1334,47 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) => StyleShee
   scrollContent: {
     paddingHorizontal: 20,
     paddingBottom: 40,
+  },
+  categorySection: {
+    marginBottom: 18,
+  },
+  categorySectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 10,
+  },
+  categorySectionTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  categorySectionCount: {
+    color: 'rgba(255,255,255,0.88)',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  categorySectionHint: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  categoryEmptyCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(12,12,14,0.03)',
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  categoryEmptyText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   eventCard: {
     marginBottom: 12,
@@ -925,6 +1423,12 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) => StyleShee
   eventLocation: {
     fontSize: 13,
     color: COLORS.textSecondary,
+  },
+  categoryHostText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 6,
+    fontWeight: '700',
   },
   freeFoodBadge: {
     marginTop: 8,

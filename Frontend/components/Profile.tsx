@@ -397,16 +397,6 @@ export function Profile() {
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
 
-        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('ScheduleList')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-            <CalendarIcon size={20} color="#F3F1ED" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>My Saved Schedules</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
-
         <Pressable style={styles.toolRow} onPress={openRegistrationReadiness}>
           <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
             <GraduationCap size={20} color="#F3F1ED" />
