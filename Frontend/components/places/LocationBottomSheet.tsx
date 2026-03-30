@@ -961,80 +961,72 @@ export function LocationBottomSheet({
         transparent={true}
         onRequestClose={() => setAllReviewsModalVisible(false)}
       >
-        <View style={styles.fullReviewsContainer}>
-          <View style={styles.fullReviewsHeader}>
-            <TouchableOpacity
-              onPress={() => setAllReviewsModalVisible(false)}
-              style={styles.backBtn}
-            >
-              <X size={24} color="#FFF" />
-            </TouchableOpacity>
-            <View style={{ flex: 1, alignItems: "center" }}>
-              <Text style={styles.fullReviewsTitle}>User Reviews</Text>
-              <Text
-                style={{ color: "#888", fontSize: 12, fontWeight: "600" }}
-              >
-                {selectedId}
-              </Text>
-            </View>
-            <View style={{ width: 40 }} />
-          </View>
-
-          {isFetchingReviews ? (
-            <View
-              style={{
-                flex: 1,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              <ActivityIndicator size="large" color="#FFD700" />
-              <Text
-                style={{
-                  color: "#FFF",
-                  marginTop: 16,
-                  fontWeight: "600",
-                }}
-              >
-                Loading Reviews...
-              </Text>
-            </View>
-          ) : (
-            <ScrollView
-              contentContainerStyle={{ padding: 20, paddingBottom: 60 }}
-              showsVerticalScrollIndicator={false}
-            >
-              {streamReviews.length > 0 ? (
-                streamReviews.map((rev, i) => (
-                  <View key={i} style={styles.reviewItem}>
-                    <View style={styles.reviewMeta}>
-                      <Text style={styles.reviewUser}>{rev.user}</Text>
-                      <View style={styles.reviewStars}>
-                        {[1, 2, 3, 4, 5].map((s) => (
-                          <Star
-                            key={s}
-                            size={11}
-                            fill={
-                              s <= rev.rating ? "#FFD700" : "transparent"
-                            }
-                            color={s <= rev.rating ? "#FFD700" : "#444"}
-                          />
-                        ))}
-                      </View>
-                    </View>
-                    <Text style={styles.reviewComment}>{rev.comment}</Text>
+        <TouchableWithoutFeedback
+          onPress={() => setAllReviewsModalVisible(false)}
+        >
+          <View style={styles.fullReviewsOverlay}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+              <View style={styles.fullReviewsContainer}>
+                <View style={styles.dragHandle} />
+                <View style={styles.fullReviewsHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fullReviewsTitle}>User Reviews</Text>
+                    <Text style={styles.fullReviewsSubtitle}>{selectedId}</Text>
                   </View>
-                ))
-              ) : (
-                <View style={styles.emptyReviews}>
-                  <Text style={styles.emptyReviewsText}>
-                    No reviews found for this location.
-                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setAllReviewsModalVisible(false)}
+                    style={styles.backBtn}
+                  >
+                    <X size={18} color={COLORS.textSecondary} />
+                  </TouchableOpacity>
                 </View>
-              )}
-            </ScrollView>
-          )}
-        </View>
+
+                {isFetchingReviews ? (
+                  <View style={styles.fullReviewsLoading}>
+                    <ActivityIndicator size="large" color={COLORS.primary} />
+                    <Text style={styles.fullReviewsLoadingText}>
+                      Loading reviews...
+                    </Text>
+                  </View>
+                ) : (
+                  <ScrollView
+                    contentContainerStyle={styles.fullReviewsScroll}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    {streamReviews.length > 0 ? (
+                      streamReviews.map((rev, i) => (
+                        <View key={i} style={styles.reviewItem}>
+                          <View style={styles.reviewMeta}>
+                            <Text style={styles.reviewUser}>{rev.user}</Text>
+                            <View style={styles.reviewStars}>
+                              {[1, 2, 3, 4, 5].map((s) => (
+                                <Star
+                                  key={s}
+                                  size={11}
+                                  fill={
+                                    s <= rev.rating ? "#FFD700" : "transparent"
+                                  }
+                                  color={s <= rev.rating ? "#FFD700" : "#444"}
+                                />
+                              ))}
+                            </View>
+                          </View>
+                          <Text style={styles.reviewComment}>{rev.comment}</Text>
+                        </View>
+                      ))
+                    ) : (
+                      <View style={styles.emptyReviews}>
+                        <Text style={styles.emptyReviewsText}>
+                          No reviews found for this location.
+                        </Text>
+                      </View>
+                    )}
+                  </ScrollView>
+                )}
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </>
   );

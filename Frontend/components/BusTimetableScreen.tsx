@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  ImageBackground,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -42,7 +41,7 @@ function TimetableRow({ entry }: { entry: any }) {
 }
 
 export default function BusTimetableScreen({ navigation, route }: any) {
-  const { theme, wallpaperUri } = useTheme();
+  const { theme } = useTheme();
   const darkMode = theme === 'dark';
   const mode = route.params?.mode || 'single';
   const routeInfo = route.params?.route;
@@ -51,28 +50,24 @@ export default function BusTimetableScreen({ navigation, route }: any) {
   const liveBusCount = route.params?.liveBusCount || 0;
   const nearbyTransitInsight = route.params?.nearbyTransitInsight;
 
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : darkMode
-      ? require('../assets/black_marble.jpg')
-      : require('../assets/white_marble.jpg');
-
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: darkMode ? '#060607' : '#F5F2EC' }]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: darkMode ? '#0A0A0C' : '#F3F4F7' }]}>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
-      <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View
           style={[
-            StyleSheet.absoluteFill,
-            { backgroundColor: darkMode ? 'rgba(0,0,0,0.60)' : 'rgba(255,255,255,0.70)' },
+            styles.sheetShell,
+            {
+              backgroundColor: darkMode ? 'rgba(12,12,14,0.96)' : 'rgba(255,255,255,0.98)',
+              borderColor: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
+            },
           ]}
-        />
-      </ImageBackground>
-
-      <ScrollView contentContainerStyle={styles.content}>
+        >
+        <View style={styles.handleBar} />
         <View style={styles.header}>
           <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-            <ChevronLeft size={22} color="#F3F1ED" />
+            <ChevronLeft size={20} color={darkMode ? '#F3F1ED' : '#111111'} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>
@@ -167,6 +162,7 @@ export default function BusTimetableScreen({ navigation, route }: any) {
             )}
           </>
         )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -174,28 +170,43 @@ export default function BusTimetableScreen({ navigation, route }: any) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  content: { padding: 18, paddingBottom: 40 },
-  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 },
+  content: { padding: 12, paddingBottom: 28 },
+  sheetShell: {
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+  },
+  handleBar: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: 10,
+    backgroundColor: 'rgba(140,140,148,0.38)',
+  },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   backBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(8,8,10,0.78)',
+    backgroundColor: 'rgba(140,140,148,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(140,140,148,0.16)',
     marginRight: 12,
   },
-  title: { color: '#F3F1ED', fontSize: 28, fontWeight: '900', letterSpacing: -0.8 },
-  subtitle: { color: '#C8C8CF', fontSize: 12, fontWeight: '600', marginTop: 3 },
+  title: { color: '#F3F1ED', fontSize: 24, fontWeight: '800', letterSpacing: -0.5 },
+  subtitle: { color: '#A7A7AE', fontSize: 12, fontWeight: '600', marginTop: 3 },
   heroCard: {
     backgroundColor: 'rgba(12,12,14,0.86)',
-    borderRadius: 28,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-    padding: 18,
-    marginBottom: 18,
+    padding: 16,
+    marginBottom: 14,
   },
   heroHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   heroTitle: { color: '#F3F1ED', fontSize: 18, fontWeight: '800' },
@@ -209,13 +220,13 @@ const styles = StyleSheet.create({
   },
   routeBadgeText: { color: '#FFF', fontSize: 14, fontWeight: '900' },
   insightCard: {
-    marginTop: 16,
-    gap: 10,
+    marginTop: 14,
+    gap: 8,
     backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 20,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.05)',
-    padding: 14,
+    padding: 12,
   },
   insightRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   insightText: { color: '#E0E0E6', fontSize: 12, lineHeight: 18, flex: 1 },
@@ -223,11 +234,11 @@ const styles = StyleSheet.create({
   sectionTitle: { color: '#F3F1ED', fontSize: 13, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
   boardCard: {
     backgroundColor: 'rgba(12,12,14,0.86)',
-    borderRadius: 26,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-    padding: 16,
-    marginBottom: 14,
+    padding: 14,
+    marginBottom: 12,
     gap: 10,
   },
   row: {

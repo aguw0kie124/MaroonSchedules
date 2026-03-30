@@ -9,7 +9,13 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { ChevronLeft, Clock3, MapPin, UtensilsCrossed } from 'lucide-react-native';
+import {
+  ChevronDown,
+  ChevronLeft,
+  Clock3,
+  MapPin,
+  UtensilsCrossed,
+} from 'lucide-react-native';
 import { Card } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
@@ -57,6 +63,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
   const [menusByPeriod, setMenusByPeriod] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
   const menu = menusByPeriod[activeMealPeriod] || null;
   const categoryCount = menu?.categories?.length || 0;
@@ -118,6 +125,14 @@ export default function FullMenuScreen({ navigation, route }: any) {
   useEffect(() => {
     load(activeMealPeriod);
   }, [activeMealPeriod, load]);
+
+  useEffect(() => {
+    const next: Record<string, boolean> = {};
+    (menu?.categories || []).forEach((category: any, index: number) => {
+      next[category.name] = index === 0;
+    });
+    setExpandedCategories(next);
+  }, [menu]);
 
   useEffect(() => {
     if (!location || !isDiningHall) return;
@@ -248,39 +263,74 @@ export default function FullMenuScreen({ navigation, route }: any) {
 
             {(menu?.categories || []).map((category: any) => (
               <Card key={category.name} style={s.categoryCard}>
-                <View style={s.categoryHeader}>
-                  <View style={{ flex: 1, paddingRight: 12 }}>
-                    <Text style={[s.categoryTitle, { color: T.text }]}>
-                      {category.name}
-                    </Text>
-                    <Text style={[s.categorySubtitle, { color: T.text3 }]}>
-                      {category.items.length} items
+                <TouchableOpacity
+                  activeOpacity={0.88}
+                  style={s.categoryHeaderPressable}
+                  onPress={() =>
+                    setExpandedCategories((current) => ({
+                      ...current,
+                      [category.name]: !current[category.name],
+                    }))
+                  }
+                >
+                  <View style={s.categoryHeader}>
+                    <View style={{ flex: 1, paddingRight: 12 }}>
+                      <Text style={[s.categoryTitle, { color: T.text }]}>
+                        {category.name}
+                      </Text>
+                      <Text style={[s.categorySubtitle, { color: T.text3 }]}>
+                        {category.items.length} items
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        s.categoryToggle,
+                        { backgroundColor: T.bg3, borderColor: T.border },
+                      ]}
+                    >
+                      <ChevronDown
+                        size={16}
+                        color={T.text3}
+                        style={{
+                          transform: [
+                            { rotate: expandedCategories[category.name] ? '180deg' : '0deg' },
+                          ],
+                        }}
+                      />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+
+                {expandedCategories[category.name] ? (
+                  <View style={s.categoryList}>
+                    {category.items.map((item: any, index: number) => {
+                      const meta = buildItemMeta(item, showLocationForItems);
+                      return (
+                        <View
+                          key={`${category.name}-${item.location || 'menu'}-${item.name}`}
+                          style={[
+                            s.itemRow,
+                            { borderTopColor: T.border },
+                            index === 0 && s.itemRowFirst,
+                          ]}
+                        >
+                          <Text style={[s.itemName, { color: T.text }]}>{item.name}</Text>
+                          {meta ? (
+                            <Text style={[s.itemMeta, { color: T.text3 }]} numberOfLines={1}>
+                              {meta}
+                            </Text>
+                          ) : null}
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <View style={s.categoryPreviewRow}>
+                    <Text style={[s.categoryPreviewText, { color: T.text3 }]} numberOfLines={1}>
+                      {category.items.slice(0, 2).map((item: any) => item.name).join(' · ')}
                     </Text>
                   </View>
-                </View>
-
-                <View style={s.categoryList}>
-                  {category.items.map((item: any, index: number) => {
-                    const meta = buildItemMeta(item, showLocationForItems);
-                    return (
-                      <View
-                        key={`${category.name}-${item.location || 'menu'}-${item.name}`}
-                        style={[
-                          s.itemRow,
-                          { borderTopColor: T.border },
-                          index === 0 && s.itemRowFirst,
-                        ]}
-                      >
-                        <Text style={[s.itemName, { color: T.text }]}>{item.name}</Text>
-                        {meta ? (
-                          <Text style={[s.itemMeta, { color: T.text3 }]} numberOfLines={1}>
-                            {meta}
-                          </Text>
-                        ) : null}
-                      </View>
-                    );
-                  })}
-                </View>
+                )}
               </Card>
             ))}
           </>
@@ -425,6 +475,9 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 2,
   },
+  categoryHeaderPressable: {
+    marginBottom: 2,
+  },
   categoryTitle: {
     fontSize: 16,
     fontWeight: '800',
@@ -435,8 +488,26 @@ const s = StyleSheet.create({
     fontWeight: '600',
     marginTop: 3,
   },
+  categoryToggle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   categoryList: {
     marginTop: 6,
+  },
+  categoryPreviewRow: {
+    marginTop: 8,
+    paddingTop: 10,
+    borderTopWidth: 1,
+  },
+  categoryPreviewText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '500',
   },
   itemRow: {
     paddingVertical: 11,

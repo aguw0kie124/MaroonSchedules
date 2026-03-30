@@ -249,6 +249,41 @@ export function PlacesList({
         : null;
     const recreationFacility =
       recreationFacilityMap.get(getCanonicalLocationName(loc.location)) || null;
+    const primaryMeta = loc.classMeetings?.length
+      ? `${loc.classMeetings.length} class${loc.classMeetings.length === 1 ? "" : "es"}`
+      : loc.type === "Rec"
+        ? recreationFacility?.today_hours || recreationFacility?.hours_hint || loc.hours || "Hours available"
+        : loc.hours || loc.description || loc.type;
+    const secondaryMeta =
+      loc.type === "Parking"
+        ? parkingRecommendation?.badge || null
+        : loc.percent_full != null &&
+            (loc.type === "Library" || loc.type === "Rec")
+          ? `${loc.percent_full}% full`
+          : loc.type;
+    const statusChips: string[] = [];
+
+    if (loc.classMeetings?.length) {
+      statusChips.push("Classes here");
+    }
+    if (loc.hours) {
+      statusChips.push("Open");
+    }
+    if (
+      loc.percent_full != null &&
+      (loc.type === "Library" || loc.type === "Rec")
+    ) {
+      statusChips.push(
+        loc.percent_full >= 80
+          ? "Busy"
+          : loc.percent_full >= 45
+            ? "Moderate"
+            : "Light",
+      );
+    }
+    if (loc.type === "Parking" && parkingRecommendation?.badge) {
+      statusChips.push(parkingRecommendation.badge);
+    }
 
     return (
       <Card key={`list-${loc.location}`} style={[styles.placesSheetItemCard, compact && styles.placesSheetItemCardCompact]}>
@@ -267,6 +302,16 @@ export function PlacesList({
             )}
           </View>
           <View style={styles.placesSheetItemBody}>
+            <View style={styles.placesSheetItemTagRow}>
+              <View style={styles.placesSheetItemTag}>
+                <Text style={styles.placesSheetItemTagText}>{loc.type}</Text>
+              </View>
+              {secondaryMeta && secondaryMeta !== loc.type ? (
+                <Text style={styles.placesSheetItemTagMeta} numberOfLines={1}>
+                  {secondaryMeta}
+                </Text>
+              ) : null}
+            </View>
             <View style={styles.placesSheetItemHeader}>
               <Text style={styles.placesSheetItemTitle} numberOfLines={1}>
                 {loc.location}
@@ -276,12 +321,17 @@ export function PlacesList({
               </Text>
             </View>
             <Text style={styles.placesSheetItemMeta} numberOfLines={compact ? 1 : 2}>
-              {loc.classMeetings?.length
-                ? `${loc.classMeetings.length} class${loc.classMeetings.length === 1 ? "" : "es"}`
-                : loc.type === "Rec"
-                  ? `Today: ${recreationFacility?.today_hours || recreationFacility?.hours_hint || loc.hours || "Check official page"}`
-                  : loc.description || loc.hours || loc.type}
+              {primaryMeta}
             </Text>
+            {statusChips.length ? (
+              <View style={styles.placesSheetItemStatusRow}>
+                {statusChips.slice(0, 3).map((chip) => (
+                  <View key={`${loc.location}-${chip}`} style={styles.placesSheetItemStatusChip}>
+                    <Text style={styles.placesSheetItemStatusChipText}>{chip}</Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
             {parkingRecommendation ? (
               <Text style={styles.placesSheetItemHint} numberOfLines={1}>
                 {parkingRecommendation.badge} · {parkingRecommendation.detail}
@@ -339,11 +389,6 @@ export function PlacesList({
             sortedFilteredLocations.map((loc) => renderPlaceCard(loc))
           ) : (
             <View style={styles.placesSheetCollapsedBody}>
-              <Text style={styles.placesSheetCollapsedBodyText}>
-                {activeLayer === "Schedule"
-                  ? "Pull up for the class list."
-                  : "Pull up for the full list."}
-              </Text>
               <View style={styles.placesSheetCollapsedSummary}>
                 <Text style={styles.placesSheetCollapsedSummaryTitle}>
                   {activeLayer === "Schedule"

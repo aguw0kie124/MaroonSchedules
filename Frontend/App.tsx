@@ -270,7 +270,11 @@ function RootNavigator() {
           <Stack.Screen name="ScheduleDetail" component={ScheduleDetailScreen} options={{ headerShown: true, title: 'Schedule Details' }} />
           <Stack.Screen name="LocationSearch" component={LocationSearchScreen} options={{ headerShown: true, title: 'Location Traffic Search' }} />
           <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="BusTimetable" component={BusTimetableScreen} options={{ headerShown: false }} />
+          <Stack.Screen
+            name="BusTimetable"
+            component={BusTimetableScreen}
+            options={{ headerShown: false, presentation: 'modal' }}
+          />
           <Stack.Screen name="TransitTripPlanner" component={TransitTripPlannerScreen} options={{ headerShown: false }} />
           <Stack.Screen name="TransitTripResults" component={TransitTripResultsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CampusMap" component={CampusMapScreen} options={{ headerShown: false }} />
@@ -282,7 +286,11 @@ function RootNavigator() {
           <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CampusFeed" component={CampusFeedScreen} options={{ headerShown: false }} />
 
-          <Stack.Screen name="FullMenu" component={FullMenuScreen} options={{ headerShown: false }} />
+          <Stack.Screen
+            name="FullMenu"
+            component={FullMenuScreen}
+            options={{ headerShown: false, presentation: 'modal' }}
+          />
 
           <Stack.Screen name="CanvasDashboard" component={CanvasDashboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CanvasCourses" component={CanvasCoursesScreen} options={{ headerShown: false }} />
