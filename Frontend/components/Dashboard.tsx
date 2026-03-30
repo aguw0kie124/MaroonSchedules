@@ -247,7 +247,10 @@ export function Dashboard() {
               onPress={() =>
                 hasStandaloneBus
                   ? navigation.navigate('BusRoutes')
-                  : navigation.navigate('Places', { initialLayer: 'Bus', focusToken: Date.now() })
+                  : navigation.navigate('Main', {
+                      screen: 'Places',
+                      params: { initialLayer: 'Bus', focusToken: Date.now() }
+                    })
               }
             >
               <Text style={styles.primaryActionText}>Transit</Text>

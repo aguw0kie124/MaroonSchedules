@@ -469,14 +469,17 @@ export function ChatScreen({ route, navigation }: Props) {
             {hasCoords && (
               <Pressable
                 style={{ flex: 1, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }}
-                onPress={() => navigation.navigate('Places', {
-                  initialLayer: 'Academic',
-                  eventFocus: {
-                    eventId: attachment.event_id, title: attachment.title,
-                    location: attachment.location || null, latitude: attachment.location_lat,
-                    longitude: attachment.location_lng, startTime: attachment.date_iso,
-                    link: null, hasFood: false,
-                  },
+                onPress={() => navigation.navigate('Main', {
+                  screen: 'Places',
+                  params: {
+                    initialLayer: 'Academic',
+                    eventFocus: {
+                      eventId: attachment.event_id, title: attachment.title,
+                      location: attachment.location || null, latitude: attachment.location_lat,
+                      longitude: attachment.location_lng, startTime: attachment.date_iso,
+                      link: null, hasFood: false,
+                    },
+                  }
                 })}
               >
                 <MapPin size={20} color="#007AFF" />

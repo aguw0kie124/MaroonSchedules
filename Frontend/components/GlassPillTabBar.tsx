@@ -73,9 +73,7 @@ export function GlassPillTabBar({
           const icon = options.tabBarIcon?.({
             focused: isFocused,
             color: isFocused
-              ? theme === 'dark'
-                ? '#FFFFFF'
-                : COLORS.primary
+              ? COLORS.primary
               : COLORS.textTertiary,
             size: 20,
           });
@@ -162,14 +160,12 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       alignItems: 'center',
       justifyContent: 'center',
       gap: 4,
-      paddingHorizontal: 6,
-      paddingVertical: 8,
-      borderRadius: 20,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
+      borderRadius: 16,
     },
     itemFocused: {
-      backgroundColor: isDark
-        ? 'rgba(0,0,0,0.68)'
-        : 'rgba(12,12,14,0.88)',
+      // Background removed to fix obnoxiously large rectangle
     },
     itemCollapsed: {
       flex: 0,
@@ -185,7 +181,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     itemFocusedCollapsed: {
       backgroundColor: isDark
         ? 'rgba(0,0,0,0.82)'
-        : 'rgba(12,12,14,0.92)',
+        : 'rgba(255,255,255,1)',
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
       shadowColor: '#000',
@@ -205,7 +201,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       textAlign: 'center',
     },
     labelFocused: {
-      color: '#FFFFFF',
+      color: COLORS.primary,
     },
     labelCollapsed: {
       fontSize: 11,

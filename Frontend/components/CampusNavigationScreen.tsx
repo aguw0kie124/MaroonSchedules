@@ -781,7 +781,7 @@ export function CampusNavigationScreen() {
                   if (navigation.canGoBack()) {
                     navigation.goBack();
                   } else {
-                    navigation.navigate('Places');
+                    navigation.navigate('Main', { screen: 'Places' });
                   }
                 }}
               >

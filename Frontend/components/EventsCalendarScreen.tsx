@@ -66,15 +66,15 @@ type EventsView = 'grid' | 'flashcards' | 'inbox';
 
 const ALL_CATEGORIES: ExploreCategory[] = ['Food', 'Sports', 'Social', 'Religion', 'Advocacy', 'Academic', 'Entertainment', 'Health & Wellness'];
 
-const CATEGORY_META: Record<ExploreCategory, { color: string }> = {
-  Food: { color: '#FF7A00' },
+export const CATEGORY_META: Record<string, { color: string }> = {
+  Food: { color: '#FF9500' },
   Sports: { color: '#007AFF' },
-  Social: { color: '#FF4F7B' },
-  Religion: { color: '#8C52FF' },
-  Advocacy: { color: '#00A86B' },
-  Academic: { color: '#3A86FF' },
-  Entertainment: { color: '#6D5EF7' },
-  'Health & Wellness': { color: '#30D158' },
+  Social: { color: '#FF2D55' },
+  Religion: { color: '#5856D6' },
+  Advocacy: { color: '#34C759' },
+  Academic: { color: '#5AC8FA' },
+  Entertainment: { color: '#AF52DE' },
+  'Health & Wellness': { color: '#FFCC00' },
 };
 
 const MAJOR_OPTIONS: MajorOption[] = [
@@ -160,7 +160,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set());
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [flashcardIndex, setFlashcardIndex] = useState(0);
-  const [majorMenuVisible, setMajorMenuVisible] = useState(false);
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [shareEvent, setShareEvent] = useState<TAMUEvent | null>(null);
   const [friendsList, setFriendsList] = useState<Array<{ id: string; name: string; email: string; profile_image_url?: string }>>([]);
@@ -171,8 +171,19 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const {
     isMajorSpecific, selectedMajor, setMajorSpecific, setSelectedMajor,
     scheduledEvents, scheduleEvent, savedEventIds, saveEvent, unsaveEvent,
-    dislikedEventIds, dislikeEvent, receivedInvites, acceptInvite, rejectInvite,
+    dislikedEventIds, dislikeEvent, removeIdsFromDisliked, clearDisliked,
+    receivedInvites, acceptInvite, rejectInvite,
   } = useEventStore();
+
+  /* Animation state lifted for full-screen sync */
+  const pan = useRef(new Animated.ValueXY()).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+
+  const backgroundColor = pan.x.interpolate({
+    inputRange: [-SCREEN_WIDTH * 0.7, 0, SCREEN_WIDTH * 0.7],
+    outputRange: ['#800000', 'rgba(0,0,0,0)', '#2E7D32'],
+    extrapolate: 'clamp',
+  });
 
   /* Fetch events */
   useEffect(() => { fetchEvents(); }, []);
@@ -253,15 +264,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     setView('flashcards');
   }, []);
 
-  const handleSwipeRight = useCallback((event: TAMUEvent) => {
-    /* Auto-save on swipe right */
-    saveEvent(String(event.id));
-  }, [saveEvent]);
-
-  const handleSwipeLeft = useCallback((event: TAMUEvent) => {
-    dislikeEvent(String(event.id));
-  }, [dislikeEvent]);
-
   const handleSchedule = useCallback((event: TAMUEvent) => {
     const se: ScheduledEvent = {
       id: String(event.id), title: event.title, location: event.location,
@@ -271,6 +273,19 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     };
     scheduleEvent(se);
   }, [scheduleEvent]);
+
+  const handleSwipeRight = useCallback((event: TAMUEvent) => {
+    /* Add to schedule on swipe right (to show in Places) */
+    handleSchedule(event);
+    pan.setValue({ x: 0, y: 0 });
+    opacity.setValue(1);
+  }, [handleSchedule, pan, opacity]);
+
+  const handleSwipeLeft = useCallback((event: TAMUEvent) => {
+    dislikeEvent(String(event.id));
+    pan.setValue({ x: 0, y: 0 });
+    opacity.setValue(1);
+  }, [dislikeEvent, pan, opacity]);
 
   const loadFriends = useCallback(async () => {
     setFriendsLoading(true);
@@ -339,32 +354,54 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const handleMapOpen = useCallback((event: TAMUEvent) => {
     if (event.location_lat != null && event.location_lng != null) {
-      navigation.navigate('Places', {
-        initialLayer: 'Academic',
-        focusToken: `event:${event.id}:${event.date_ts}`,
-        eventFocus: {
-          eventId: String(event.id), title: event.title,
-          location: event.location || null, latitude: event.location_lat,
-          longitude: event.location_lng, startTime: event.date_iso,
-          link: event.url || null, hasFood: !!event.has_food,
-        },
+      navigation.navigate('Main', {
+        screen: 'Places',
+        params: {
+          initialLayer: 'Academic',
+          focusToken: `event:${event.id}:${event.date_ts}`,
+          eventFocus: {
+            eventId: String(event.id), title: event.title,
+            location: event.location || null, latitude: event.location_lat,
+            longitude: event.location_lng, startTime: event.date_iso,
+            link: event.url || null, hasFood: !!event.has_food,
+          },
+        }
       });
     }
   }, [navigation]);
 
   const handleMapNav = useCallback((event: TAMUEvent) => {
     if (event.location_lat != null && event.location_lng != null) {
-      navigation.navigate('Places', {
-        initialLayer: 'Academic', focusToken: `event:${event.id}:${event.date_ts}`,
-        eventFocus: {
-          eventId: String(event.id), title: event.title,
-          location: event.location || null, latitude: event.location_lat,
-          longitude: event.location_lng, startTime: event.date_iso,
-          link: event.url || null, hasFood: !!event.has_food,
-        },
+      navigation.navigate('Main', {
+        screen: 'Places',
+        params: {
+          initialLayer: 'Academic', focusToken: `event:${event.id}:${event.date_ts}`,
+          eventFocus: {
+            eventId: String(event.id), title: event.title,
+            location: event.location || null, latitude: event.location_lat,
+            longitude: event.location_lng, startTime: event.date_iso,
+            link: event.url || null, hasFood: !!event.has_food,
+          },
+        }
       });
     }
   }, [navigation]);
+
+  const handleRestoreCategory = useCallback((category?: ExploreCategory) => {
+    if (!category) {
+      clearDisliked();
+      setSettingsModalVisible(false);
+      return;
+    }
+    const idsToRestore = dislikedEventIds.filter((id) => {
+      const ev = events.find((e) => String(e.id) === id);
+      return ev && classifyCategory(ev) === category;
+    });
+    if (idsToRestore.length > 0) {
+      removeIdsFromDisliked(idsToRestore);
+    }
+    setSettingsModalVisible(false);
+  }, [dislikedEventIds, events, clearDisliked, removeIdsFromDisliked]);
 
   const s = getStyles(COLORS, isDark, embedded);
 
@@ -432,7 +469,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               <Inbox size={18} color={COLORS.textPrimary} />
               {receivedInvites.length > 0 && <View style={s.inboxBadge}><Text style={s.inboxBadgeText}>{receivedInvites.length}</Text></View>}
             </Pressable>
-            <Pressable style={s.savedBtn} onPress={() => setMajorMenuVisible(true)}>
+            <Pressable style={s.savedBtn} onPress={() => setSettingsModalVisible(true)}>
               <Settings size={18} color={COLORS.textPrimary} />
             </Pressable>
           </View>
@@ -445,7 +482,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             </Pressable>
           </View>
           {isMajorSpecific && (
-            <Pressable style={s.majorPicker} onPress={() => setMajorMenuVisible(true)}>
+            <Pressable style={s.majorPicker} onPress={() => setSettingsModalVisible(true)}>
               <Text style={s.majorPickerText}>{selectedMajor}</Text>
               <ChevronDown size={16} color={COLORS.textPrimary} />
             </Pressable>
@@ -483,17 +520,39 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           </Pressable>
         )}
 
-        {/* Major Picker Modal */}
-        <Modal visible={majorMenuVisible} transparent animationType="fade" onRequestClose={() => setMajorMenuVisible(false)}>
-          <Pressable style={s.modalOverlay} onPress={() => setMajorMenuVisible(false)}>
+        {/* Settings / Major Picker Modal */}
+        <Modal visible={settingsModalVisible} transparent animationType="fade" onRequestClose={() => setSettingsModalVisible(false)}>
+          <Pressable style={s.modalOverlay} onPress={() => setSettingsModalVisible(false)}>
             <Pressable style={s.modalSheet} onPress={() => {}}>
-              <Text style={s.modalSheetTitle}>Select Major</Text>
-              {MAJOR_OPTIONS.map((m) => (
-                <Pressable key={m} style={s.modalOption} onPress={() => { setSelectedMajor(m); setMajorMenuVisible(false); }}>
-                  <Text style={[s.modalOptionText, selectedMajor === m && { color: COLORS.primary, fontWeight: '900' }]}>{m}</Text>
-                  {selectedMajor === m && <Check size={16} color={COLORS.primary} />}
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={s.modalSheetTitle}>Settings</Text>
+                
+                <Text style={s.modalSectionLabel}>MAJOR FILTER</Text>
+                {MAJOR_OPTIONS.map((m) => (
+                  <Pressable key={m} style={s.modalOption} onPress={() => { setSelectedMajor(m); setSettingsModalVisible(false); }}>
+                    <Text style={[s.modalOptionText, selectedMajor === m && { color: COLORS.primary, fontWeight: '900' }]}>{m}</Text>
+                    {selectedMajor === m && <Check size={16} color={COLORS.primary} />}
+                  </Pressable>
+                ))}
+
+                <View style={{ height: 20 }} />
+                <Text style={s.modalSectionLabel}>RESTORE HIDDEN EVENTS</Text>
+                <Pressable style={s.modalOption} onPress={() => handleRestoreCategory()}>
+                  <Text style={[s.modalOptionText, { color: '#FF453A' }]}>Restore All</Text>
                 </Pressable>
-              ))}
+                {ALL_CATEGORIES.map((cat) => {
+                  const count = dislikedEventIds.filter(id => {
+                    const ev = events.find(e => String(e.id) === id);
+                    return ev && classifyCategory(ev) === cat;
+                  }).length;
+                  if (count === 0) return null;
+                  return (
+                    <Pressable key={`restore-${cat}`} style={s.modalOption} onPress={() => handleRestoreCategory(cat)}>
+                      <Text style={s.modalOptionText}>Restore {cat} ({count})</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </Pressable>
           </Pressable>
         </Modal>
@@ -509,7 +568,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     const hasSocial = selectedCategories.has('Social');
     const isFinished = !currentEvent;
     return (
-      <View style={s.container}>
+      <Animated.View style={[s.container, { backgroundColor }]}>
         <View style={s.fcHeader}>
           <Pressable style={s.fcBack} onPress={() => setView('grid')}>
             <ChevronLeft size={20} color={COLORS.textPrimary} />
@@ -549,21 +608,19 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             event={currentEvent}
             COLORS={COLORS}
             isDark={isDark}
+            pan={pan}
+            opacity={opacity}
             isSaved={savedEventIds.includes(String(currentEvent.id))}
             isScheduled={scheduledEvents.some((se) => se.id === String(currentEvent.id))}
             onSwipeRight={() => { handleSwipeRight(currentEvent); setFlashcardIndex((i) => i + 1); }}
             onSwipeLeft={() => { handleSwipeLeft(currentEvent); setFlashcardIndex((i) => i + 1); }}
             onSchedule={() => handleSchedule(currentEvent)}
             onShare={() => handleShare(currentEvent)}
-            onSave={() => {
-              const id = String(currentEvent.id);
-              savedEventIds.includes(id) ? unsaveEvent(id) : saveEvent(id);
-            }}
             onMap={() => handleMapOpen(currentEvent)}
           />
         )}
       {renderShareModal()}
-      </View>
+      </Animated.View>
     );
   }
 
@@ -606,9 +663,12 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   <XIcon size={18} color="#FFF" />
                 </Pressable>
                 {inv.location_lat != null && inv.location_lng != null && (
-                  <Pressable style={[s.inviteActionBtn, { backgroundColor: '#007AFF' }]} onPress={() => navigation.navigate('Places', {
-                    initialLayer: 'Academic',
-                    eventFocus: { eventId: inv.eventId, title: inv.title, location: inv.location || null, latitude: inv.location_lat, longitude: inv.location_lng, startTime: inv.date_iso, link: null, hasFood: false },
+                  <Pressable style={[s.inviteActionBtn, { backgroundColor: '#007AFF' }]} onPress={() => navigation.navigate('Main', {
+                    screen: 'Places',
+                    params: {
+                      initialLayer: 'Academic',
+                      eventFocus: { eventId: inv.eventId, title: inv.title, location: inv.location || null, latitude: inv.location_lat, longitude: inv.location_lng, startTime: inv.date_iso, link: null, hasFood: false },
+                    }
                   })}>
                     <Map size={18} color="#FFF" />
                   </Pressable>
@@ -629,14 +689,13 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
    ═══════════════════════════════════════════════════════════ */
 function FlashcardView({
   event, COLORS, isDark, isSaved, isScheduled,
-  onSwipeRight, onSwipeLeft, onSchedule, onShare, onSave, onMap,
+  pan, opacity, onSwipeRight, onSwipeLeft, onSchedule, onShare, onMap,
 }: {
   event: TAMUEvent; COLORS: any; isDark: boolean; isSaved: boolean; isScheduled: boolean;
+  pan: Animated.ValueXY; opacity: Animated.Value;
   onSwipeRight: () => void; onSwipeLeft: () => void;
-  onSchedule: () => void; onShare: () => void; onSave: () => void; onMap: () => void;
+  onSchedule: () => void; onShare: () => void; onMap: () => void;
 }) {
-  const pan = useRef(new Animated.ValueXY()).current;
-  const opacity = useRef(new Animated.Value(1)).current;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -662,8 +721,6 @@ function FlashcardView({
   ).current;
 
   const rotate = pan.x.interpolate({ inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH], outputRange: ['-12deg', '0deg', '12deg'] });
-  const likeOp = pan.x.interpolate({ inputRange: [0, SCREEN_WIDTH * 0.3], outputRange: [0, 1], extrapolate: 'clamp' });
-  const nopeOp = pan.x.interpolate({ inputRange: [-SCREEN_WIDTH * 0.3, 0], outputRange: [1, 0], extrapolate: 'clamp' });
 
   const desc = event.description ? stripHtml(event.description) : null;
   const loc = event.location || event.location_title || null;
@@ -678,15 +735,6 @@ function FlashcardView({
         {...panResponder.panHandlers}
         style={[s.card, { transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }], opacity }]}
       >
-        {/* Swipe indicators */}
-        <Animated.View style={[s.indicator, s.likeInd, { opacity: likeOp }]}>
-          <Heart size={32} color="#30D158" />
-          <Text style={[s.indText, { color: '#30D158' }]}>LIKE</Text>
-        </Animated.View>
-        <Animated.View style={[s.indicator, s.nopeInd, { opacity: nopeOp }]}>
-          <ThumbsDown size={32} color="#FF453A" />
-          <Text style={[s.indText, { color: '#FF453A' }]}>NOPE</Text>
-        </Animated.View>
 
         <View style={[s.catStrip, { backgroundColor: catColor }]}>
           <Text style={s.catLabel}>{classifyCategory(event)}</Text>
@@ -718,20 +766,11 @@ function FlashcardView({
 
       {/* Action buttons below card */}
       <View style={s.actions}>
-        <Pressable style={[s.actionBtn, { backgroundColor: '#FF453A' }]} onPress={onSwipeLeft}>
-          <XIcon size={22} color="#FFF" />
-        </Pressable>
         <Pressable style={[s.actionBtn, { backgroundColor: isScheduled ? '#30D158' : '#007AFF' }]} onPress={onSchedule}>
           <CalendarIcon size={20} color="#FFF" />
         </Pressable>
         <Pressable style={[s.actionBtn, { backgroundColor: '#FF9500' }]} onPress={onShare}>
           <Send size={20} color="#FFF" />
-        </Pressable>
-        <Pressable style={[s.actionBtn, { backgroundColor: isSaved ? '#FFD60A' : '#8E8E93' }]} onPress={onSave}>
-          <Bookmark size={20} color="#FFF" fill={isSaved ? '#FFF' : 'none'} />
-        </Pressable>
-        <Pressable style={[s.actionBtn, { backgroundColor: '#30D158' }]} onPress={onSwipeRight}>
-          <Heart size={22} color="#FFF" />
         </Pressable>
       </View>
     </View>
@@ -802,9 +841,10 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     /* Modal */
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', paddingHorizontal: 24 },
     modalSheet: { borderRadius: 24, backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', overflow: 'hidden', paddingBottom: 12 },
-    modalSheetTitle: { fontSize: 18, fontWeight: '900', color: COLORS.textPrimary, padding: 18 },
-    modalOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-    modalOptionText: { fontSize: 15, fontWeight: '600', color: COLORS.textPrimary },
+    modalSheetTitle: { fontSize: 24, fontWeight: '900', color: COLORS.textPrimary, padding: 22, paddingBottom: 12, letterSpacing: -0.5 },
+    modalSectionLabel: { fontSize: 11, fontWeight: '800', color: COLORS.textTertiary, paddingHorizontal: 22, marginTop: 16, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 },
+    modalOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 22, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+    modalOptionText: { fontSize: 16, fontWeight: '700', color: COLORS.textPrimary },
     /* Inbox */
     inboxTitle: { fontSize: 20, fontWeight: '900', color: COLORS.textPrimary, marginLeft: 4 },
     inboxScroll: { paddingHorizontal: 18, paddingTop: 12, gap: 12 },

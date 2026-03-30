@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""TAMU Events Crawler — CLI entry point.
+"""TAMU Events Crawler v3 — CLI entry point.
 
 Usage:
     python crawler.py crawl --all
     python crawler.py crawl --source=main_calendar
     python crawler.py crawl --dry-run
+    python crawler.py crawl --food-only --confidence=0.7
     python crawler.py stats
+    python crawler.py diagnose --query "Good Bull Pitch"
+    python crawler.py discover
+    python crawler.py rebuild-index
 """
 
 from __future__ import annotations
@@ -15,6 +19,13 @@ import json
 import logging
 import os
 import sys
+
+if sys.stdout and getattr(sys.stdout, "encoding", None) != "utf-8":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -29,6 +40,7 @@ from deduper import deduplicate
 from http_client import CrawlerHttpClient
 from models import Event, SourceConfig, SourceRegistry
 from normalizer import normalize_batch
+from output_csv import generate_all_summaries
 from parsers import get_parser
 from state import CrawlState
 
@@ -58,6 +70,8 @@ def setup_logging(verbose: bool = False) -> None:
 
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
+    # Clear existing handlers to avoid duplicates on re-run
+    root.handlers.clear()
     root.addHandler(file_handler)
     root.addHandler(console_handler)
 
@@ -166,6 +180,7 @@ async def crawl_source(
             except Exception as exc:
                 logger.warning("Error crawling %s page %d: %s", src_name, page, exc)
                 break
+
     elif src_type == "html_search":
         # Search-query source: iterate over query terms
         base = source.base_url or source.url or ""
@@ -186,6 +201,7 @@ async def crawl_source(
                 logger.warning(
                     "Error searching %s for '%s': %s", src_name, query, exc
                 )
+
     elif src_type == "rss_directory":
         # RSS directory needs the http_client for sub-fetches
         try:
@@ -197,8 +213,43 @@ async def crawl_source(
                 )
         except Exception as exc:
             logger.warning("Error crawling RSS directory %s: %s", src_name, exc)
+
+    elif src_type == "html_multi_url":
+        # Multi-URL source: fetch seed page + explicit URLs with link following
+        try:
+            body = None
+            if url:
+                body, status, _ = await http_client.fetch(url)
+                if body and status != 304:
+                    save_raw(src_name, body)
+
+            raw_events = await parser(
+                body, src_name, url or "",
+                http_client=http_client,
+                urls=source.urls or [],
+            )
+        except Exception as exc:
+            logger.warning("Error crawling multi-URL source %s: %s", src_name, exc)
+            state.update_source_state(src_name, errors=1)
+            return []
+
+    elif src_type == "html_events":
+        # Single HTML events page
+        try:
+            body, status, _ = await http_client.fetch(url)
+            if body and status != 304:
+                save_raw(src_name, body)
+                raw_events = await parser(body, src_name, url)
+            elif status == 304:
+                logger.info("Source %s not modified, skipping", src_name)
+                return []
+        except Exception as exc:
+            logger.error("Error crawling HTML events %s: %s", src_name, exc)
+            state.update_source_state(src_name, errors=1)
+            return []
+
     else:
-        # Standard single-URL source
+        # Standard single-URL source (livewhale_json, html)
         try:
             body, status, _ = await http_client.fetch(url)
             if body and status != 304:
@@ -211,6 +262,17 @@ async def crawl_source(
             logger.error("Error crawling %s: %s", src_name, exc)
             state.update_source_state(src_name, errors=1)
             return []
+
+    # Opportunistic RSS / iCal discovery for HTML pages
+    if src_type in ("html_events", "html_multi_url", "html_pagination", "html_search") and "body" in locals() and body:
+        try:
+            from parsers.rss import parse_rss_directory
+            rss_events = await parse_rss_directory(body, src_name, url, http_client=http_client)
+            if rss_events:
+                logger.info("Opportunistic RSS discovery found %d events", len(rss_events))
+                raw_events.extend(rss_events)
+        except Exception as exc:
+            logger.debug("Opportunistic RSS for %s skipped: %s", src_name, exc)
 
     # Normalise
     events = normalize_batch(raw_events, source.priority.value)
@@ -301,8 +363,16 @@ async def run_crawl(
     truly_new = new_hashes - known_hashes
     state.add_known_hashes(new_hashes)
 
-    # Write output
+    # Write JSONL output
     write_events_jsonl(deduped)
+
+    # Generate CSV summaries
+    try:
+        events_dicts = [json.loads(e.to_jsonl()) for e in deduped]
+        csv_files = generate_all_summaries(events_dicts)
+        logger.info("Generated %d CSV summary files", len(csv_files))
+    except Exception as exc:
+        logger.warning("Error generating CSV summaries: %s", exc)
 
     # Save state
     state.save()
@@ -333,9 +403,21 @@ def print_health_report(
         ft = getattr(e, 'food_type', 'unknown')
         food_types[ft] = food_types.get(ft, 0) + 1
 
+    # Category counts
+    cat_counts: Dict[str, int] = {}
+    for cat in ["social", "sports", "academic", "food", "advocacy",
+                "entertainment", "health_wellness", "religion"]:
+        cat_counts[cat] = sum(1 for e in events if getattr(e, cat, 0) == 1)
+
+    # Department counts
+    dept_counts: Dict[str, int] = {}
+    for e in events:
+        dept = e.department_code or "unmapped"
+        dept_counts[dept] = dept_counts.get(dept, 0) + 1
+
     report = f"""
 ╔══════════════════════════════════════════════════╗
-║       TAMU Events Crawler v2 Report         ║
+║       TAMU Events Crawler v3 Report         ║
 ╠══════════════════════════════════════════════════╣
 ║ Sources crawled:       {len(sources):>5}                     ║
 ║ Total events:          {len(events):>5}                     ║
@@ -344,6 +426,17 @@ def print_health_report(
 ║ Food events (high):    {len(high_food):>5}                     ║
 ╚══════════════════════════════════════════════════╝"""
     print(report)
+
+    # Category breakdown
+    print("\n🏷️  Category Breakdown:")
+    for cat, count in sorted(cat_counts.items(), key=lambda x: -x[1]):
+        bar = "█" * min(count, 30)
+        print(f"    {cat:18s} {count:>4} {bar}")
+
+    # Department breakdown (top 15)
+    print("\n🏫 Department Breakdown (top 15):")
+    for dept, count in sorted(dept_counts.items(), key=lambda x: -x[1])[:15]:
+        print(f"    {dept:20s} {count:>4}")
 
     # Food type breakdown
     if food_types:
@@ -366,7 +459,7 @@ def print_health_report(
     for e in events:
         source_counts[e.source_name] = source_counts.get(e.source_name, 0) + 1
     for name, count in sorted(source_counts.items(), key=lambda x: -x[1]):
-        print(f"  {name:30s} {count:>5}")
+        print(f"  {name:35s} {count:>5}")
 
     print()
 
@@ -378,7 +471,7 @@ def print_health_report(
 
 @click.group()
 def cli() -> None:
-    """TAMU Campus Events Crawler — scrape, normalise, and prioritise events."""
+    """TAMU Campus Events Crawler v3 — scrape, classify, and prioritise events."""
     pass
 
 
@@ -399,7 +492,7 @@ def crawl(
 ) -> None:
     """Run the event crawler."""
     setup_logging(verbose)
-    logger.info("TAMU Events Crawler v2 starting...")
+    logger.info("TAMU Events Crawler v3 starting...")
 
     sources = load_sources()
     logger.info("Loaded %d sources from sources.yaml", len(sources))
@@ -430,8 +523,10 @@ def stats() -> None:
     if state._state.get("sources"):
         print("\nPer-source stats:")
         for name, info in sorted(state._state["sources"].items()):
-            print(f"  {name:30s} | events: {info.get('event_count', 0):>4} | "
-                  f"last: {info.get('last_crawled_at', 'never')}")
+            errors = info.get('errors', 0)
+            err_label = f" ❗{errors}err" if errors else ""
+            print(f"  {name:35s} | events: {info.get('event_count', 0):>4} | "
+                  f"last: {info.get('last_crawled_at', 'never')}{err_label}")
 
     # Check output file
     output = Path("data/normalized/events.jsonl")
@@ -439,9 +534,11 @@ def stats() -> None:
         lines = output.read_text(encoding="utf-8").strip().split("\n")
         print(f"\nOutput file: {output} ({len(lines)} events)")
 
-        # Count food events and types
+        # Count food events, categories, departments
         food_count = 0
         food_types: Dict[str, int] = {}
+        cat_counts: Dict[str, int] = {}
+        dept_counts: Dict[str, int] = {}
         for line in lines:
             try:
                 data = json.loads(line)
@@ -449,15 +546,74 @@ def stats() -> None:
                     food_count += 1
                     ft = data.get("food_type", "unknown")
                     food_types[ft] = food_types.get(ft, 0) + 1
+                for cat in ["social", "sports", "academic", "food", "advocacy",
+                             "entertainment", "health_wellness", "religion"]:
+                    if data.get(cat, 0) == 1:
+                        cat_counts[cat] = cat_counts.get(cat, 0) + 1
+                dept = data.get("department_code") or "unmapped"
+                dept_counts[dept] = dept_counts.get(dept, 0) + 1
             except json.JSONDecodeError:
                 pass
+
         print(f"Food events: {food_count}")
         if food_types:
             print("Food type breakdown:")
             for ft, ct in sorted(food_types.items(), key=lambda x: -x[1]):
                 print(f"  {ft:15s} {ct:>4}")
+        if cat_counts:
+            print("\nCategory breakdown:")
+            for cat, ct in sorted(cat_counts.items(), key=lambda x: -x[1]):
+                print(f"  {cat:18s} {ct:>4}")
+        if dept_counts:
+            print("\nDepartment breakdown (top 10):")
+            for dept, ct in sorted(dept_counts.items(), key=lambda x: -x[1])[:10]:
+                print(f"  {dept:20s} {ct:>4}")
     else:
         print("\nNo output file yet. Run 'python crawler.py crawl' first.")
+
+
+@cli.command()
+@click.option("--query", "-q", required=True, help="Event title/phrase to search for")
+@click.option("--verbose", "-v", is_flag=True, default=False, help="Debug logging")
+def diagnose(query: str, verbose: bool) -> None:
+    """Debug why a specific event is missing from crawl results."""
+    setup_logging(verbose)
+    from diagnostics.missing_event import diagnose_missing_event
+    report = diagnose_missing_event(query)
+    print(report)
+
+
+@cli.command()
+@click.option("--verbose", "-v", is_flag=True, default=False, help="Debug logging")
+def discover(verbose: bool) -> None:
+    """Discover new sources from existing seed pages."""
+    setup_logging(verbose)
+    logger.info("Source discovery not yet implemented — run 'crawl' to use configured sources.")
+    logger.info("Loaded sources:")
+    sources = load_sources()
+    for s in sources:
+        url = s.url or s.base_url or "(multi-url)"
+        print(f"  [{s.priority.value:6s}] {s.name:35s} {s.type:20s} {url[:60]}")
+    print(f"\nTotal: {len(sources)} sources configured")
+
+
+@cli.command(name="rebuild-index")
+@click.option("--verbose", "-v", is_flag=True, default=False, help="Debug logging")
+def rebuild_index(verbose: bool) -> None:
+    """Rebuild CSV summaries from existing JSONL output."""
+    setup_logging(verbose)
+    logger.info("Rebuilding CSV summaries from events.jsonl...")
+
+    output = Path("data/normalized/events.jsonl")
+    if not output.exists():
+        logger.error("No events.jsonl found. Run 'crawl' first.")
+        return
+
+    from output_csv import generate_all_summaries
+    csv_files = generate_all_summaries()
+    print(f"\nGenerated {len(csv_files)} CSV summary files:")
+    for f in csv_files:
+        print(f"  📄 {f}")
 
 
 if __name__ == "__main__":

@@ -81,10 +81,10 @@ export const PLACES_VIEW_MODE_OPTIONS: Array<{ id: PlacesViewMode; label: string
 ];
 
 export const DEFAULT_NAV_ITEMS: ToggleLayoutItem<NavItemId>[] = [
-  { id: 'Places', label: 'Places', visible: true, order: 0 },
-  { id: 'Events', label: 'Events', visible: true, order: 1 },
-  { id: 'Dining', label: 'Dining', visible: true, order: 2 },
-  { id: 'Social', label: 'Social', visible: true, order: 3 },
+  { id: 'Events', label: 'Events', visible: true, order: 0 },
+  { id: 'Places', label: 'Places', visible: true, order: 1 },
+  { id: 'Social', label: 'Social', visible: true, order: 2 },
+  { id: 'Dining', label: 'Dining', visible: true, order: 3 },
   { id: 'Dashboard', label: 'Home', visible: false, order: 4 },
   { id: 'Timer', label: 'Timer', visible: false, order: 5 },
   { id: 'BusRoutes', label: 'Bus Routes', visible: false, order: 6 },
@@ -248,7 +248,7 @@ function buildPresetState(preset: ShellPresetId) {
         defaultLandingTab: 'Places' as NavItemId,
         parkingPermit: 'visitor' as ParkingPermit,
         placesViewMode: 'map' as PlacesViewMode,
-        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Places', 'Events', 'Dining', 'Social']),
+        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Events', 'Places', 'Social', 'Dining']),
         homeSections: applyVisibleOrder(DEFAULT_HOME_SECTIONS, ['schedule', 'transit', 'dining', 'events', 'alerts']),
         placesPills: applyVisibleOrder(DEFAULT_PLACES_PILLS, ['Today', 'Bus', 'Dining', 'Heatmap']),
       };
@@ -259,7 +259,7 @@ function buildPresetState(preset: ShellPresetId) {
         defaultLandingTab: 'Places' as NavItemId,
         parkingPermit: 'garage' as ParkingPermit,
         placesViewMode: 'list' as PlacesViewMode,
-        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Places', 'Events', 'Dining', 'Social', 'BusRoutes']),
+        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Events', 'Places', 'Social', 'Dining', 'BusRoutes']),
         homeSections: applyVisibleOrder(DEFAULT_HOME_SECTIONS, ['transit', 'schedule', 'alerts', 'dining']),
         placesPills: applyVisibleOrder(DEFAULT_PLACES_PILLS, ['Today', 'Bus', 'Heatmap', 'Parking', 'Dining']),
       };
@@ -270,7 +270,7 @@ function buildPresetState(preset: ShellPresetId) {
         defaultLandingTab: 'Places' as NavItemId,
         parkingPermit: 'resident' as ParkingPermit,
         placesViewMode: 'map' as PlacesViewMode,
-        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Places', 'Events', 'Dining', 'Social']),
+        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Events', 'Places', 'Social', 'Dining']),
         homeSections: applyVisibleOrder(DEFAULT_HOME_SECTIONS, ['dining', 'events', 'schedule', 'alerts', 'transit']),
         placesPills: applyVisibleOrder(DEFAULT_PLACES_PILLS, ['Today', 'Dining', 'Bus', 'Heatmap', 'Parking']),
       };
@@ -281,7 +281,7 @@ function buildPresetState(preset: ShellPresetId) {
         defaultLandingTab: 'Places' as NavItemId,
         parkingPermit: 'any_valid' as ParkingPermit,
         placesViewMode: 'map' as PlacesViewMode,
-        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Places', 'Events', 'Dining', 'Social', 'BusRoutes', 'Menus', 'Timer']),
+        navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Events', 'Places', 'Social', 'Dining', 'BusRoutes', 'Menus', 'Timer']),
         homeSections: applyVisibleOrder(DEFAULT_HOME_SECTIONS, ['schedule', 'transit', 'dining', 'alerts', 'events']),
         placesPills: applyVisibleOrder(DEFAULT_PLACES_PILLS, ['Today', 'Bus', 'Dining', 'Heatmap', 'Parking', 'Library', 'Academic', 'Rec', 'Study']),
       };
@@ -335,7 +335,7 @@ const defaultPresetState = {
   defaultLandingTab: 'Places' as NavItemId,
   parkingPermit: 'visitor' as ParkingPermit,
   placesViewMode: 'map' as PlacesViewMode,
-  navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Places', 'Events', 'Dining', 'Social']),
+  navItems: applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Events', 'Places', 'Social', 'Dining']),
   homeSections: applyVisibleOrder(DEFAULT_HOME_SECTIONS, ['schedule', 'alerts']),
   placesPills: applyVisibleOrder(DEFAULT_PLACES_PILLS, ['Today', 'Bus', 'Dining']),
 };
@@ -429,14 +429,14 @@ export const useAppShellStore = create<AppShellState>()(
     }),
     {
       name: 'app-shell-store',
-      version: 7,
+      version: 8,
       storage: createJSONStorage(() => AsyncStorage),
       migrate: (persistedState: any, version) => {
-        if (!persistedState || version >= 7) {
+        if (!persistedState || version >= 8) {
           return persistedState;
         }
 
-        const migratedNavItems = applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Places', 'Events', 'Dining', 'Social']);
+        const migratedNavItems = applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Events', 'Places', 'Social', 'Dining']);
         
         let migratedPlacesPills = persistedState.placesPills || defaultPresetState.placesPills;
         if (Array.isArray(migratedPlacesPills)) {

@@ -139,10 +139,22 @@ def _normalize_event_row(raw: Dict[str, Any]) -> Dict[str, Any] | None:
         "host_name": raw.get("host_name"),
         "source_name": raw.get("source_name"),
         "tags": raw.get("tags") or [],
-        "has_food": bool(raw.get("has_food")),
+        "has_food": bool(raw.get("has_food") or raw.get("food", 0)),
         "food_confidence": float(raw.get("food_confidence") or 0.0),
         "food_type": raw.get("food_type") or "unknown",
         "food_reasons": raw.get("food_reasons") or [],
+        "categories": {
+            "social": int(raw.get("social", 0)),
+            "sports": int(raw.get("sports", 0)),
+            "academic": int(raw.get("academic", 0)),
+            "food": int(raw.get("food", 0)),
+            "advocacy": int(raw.get("advocacy", 0)),
+            "entertainment": int(raw.get("entertainment", 0)),
+            "health_wellness": int(raw.get("health_wellness", 0)),
+            "religion": int(raw.get("religion", 0)),
+            "casual": int(raw.get("casual", 0)),
+            "professional": int(raw.get("professional", 0)),
+        },
         "map_available": lat is not None and lng is not None,
     }
 

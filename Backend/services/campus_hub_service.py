@@ -987,7 +987,11 @@ def create_connection_request(requester_id: str, recipient_id: str) -> Dict[str,
         return {"status": "error", "message": str(exc)}
 
 
-def get_events_snapshot(clerk_id: str | None = None, limit: int = 8) -> List[Dict[str, Any]]:
+def get_events_snapshot(
+    clerk_id: str | None = None,
+    limit: int = 8,
+    category: str | None = None,
+) -> List[Dict[str, Any]]:
     _ensure_social_tables()
     rsvp_lookup: Dict[str, str] = {}
     if clerk_id:
@@ -999,6 +1003,11 @@ def get_events_snapshot(clerk_id: str | None = None, limit: int = 8) -> List[Dic
 
     crawler_events = campus_events_service.load_campus_events()
     if crawler_events:
+        if category:
+            crawler_events = [
+                e for e in crawler_events
+                if e.get("categories", {}).get(category.lower()) == 1
+            ]
         limited = crawler_events[:limit] if limit else crawler_events
         return [
             {

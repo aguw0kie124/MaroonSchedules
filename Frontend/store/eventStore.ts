@@ -35,6 +35,7 @@ export interface ScheduledEvent {
   location_lat?: number | null;
   location_lng?: number | null;
   category: string;
+  categories?: Record<string, number>;
 }
 
 export interface EventInvite {
@@ -50,6 +51,7 @@ export interface EventInvite {
   senderName: string;
   receivedAt: number;
   category: string;
+  categories?: Record<string, number>;
 }
 
 interface EventState {
@@ -71,6 +73,7 @@ interface EventState {
   /* Disliked events (swiped left) */
   dislikedEventIds: string[];
   dislikeEvent: (id: string) => void;
+  removeIdsFromDisliked: (ids: string[]) => void;
   clearDisliked: () => void;
 
   /* Received invites */
@@ -117,10 +120,15 @@ export const useEventStore = create<EventState>()(
       /* Disliked events */
       dislikedEventIds: [],
       dislikeEvent: (id) =>
-        set((state) => {
-          if (state.dislikedEventIds.includes(id)) return state;
-          return { dislikedEventIds: [...state.dislikedEventIds, id] };
-        }),
+        set((state) => ({
+          dislikedEventIds: state.dislikedEventIds.includes(id)
+            ? state.dislikedEventIds
+            : [...state.dislikedEventIds, id],
+        })),
+      removeIdsFromDisliked: (ids) =>
+        set((state) => ({
+          dislikedEventIds: state.dislikedEventIds.filter(id => !ids.includes(id)),
+        })),
       clearDisliked: () => set({ dislikedEventIds: [] }),
 
       /* Received invites */
