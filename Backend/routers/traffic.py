@@ -115,8 +115,10 @@ class TAMUFacilityTracker:
             try:
                 start_ts = event.get("ts_start")
                 end_ts = event.get("ts_end")
-                start_time = datetime.fromtimestamp(start_ts).strftime("%Y-%m-%d %I:%M %p") if start_ts else "N/A"
-                end_time = datetime.fromtimestamp(end_ts).strftime("%Y-%m-%d %I:%M %p") if end_ts else "N/A"
+                start_time = datetime.fromtimestamp(start_ts).strftime(
+                    "%Y-%m-%d %I:%M %p") if start_ts else "N/A"
+                end_time = datetime.fromtimestamp(end_ts).strftime(
+                    "%Y-%m-%d %I:%M %p") if end_ts else "N/A"
                 parsed.append({
                     "title": event.get("title", "Untitled Event"),
                     "location": event.get("location", "Unknown"),
@@ -151,16 +153,23 @@ class TAMUFacilityTracker:
             hours = "7:30 AM – 6:00 PM"
 
         review_pool = [
-            {"user": "Parin V.",  "rating": 5, "comment": "Great spot, really enjoy the facilities here."},
-            {"user": "Asvath M.", "rating": 4, "comment": "Solid choice for studying or grabbing a bite."},
-            {"user": "Adhip K.",  "rating": 5, "comment": "One of my favorite places on campus!"},
-            {"user": "Parin V.",  "rating": 4, "comment": "Atmosphere is great today."},
-            {"user": "Asvath M.", "rating": 3, "comment": "Decent, but can get loud during peak hours."},
-            {"user": "Adhip K.",  "rating": 4, "comment": "Highly recommend checking this out."},
+            {"user": "Parin V.",  "rating": 5,
+                "comment": "Great spot, really enjoy the facilities here."},
+            {"user": "Asvath M.", "rating": 4,
+                "comment": "Solid choice for studying or grabbing a bite."},
+            {"user": "Adhip K.",  "rating": 5,
+                "comment": "One of my favorite places on campus!"},
+            {"user": "Parin V.",  "rating": 4,
+                "comment": "Atmosphere is great today."},
+            {"user": "Asvath M.", "rating": 3,
+                "comment": "Decent, but can get loud during peak hours."},
+            {"user": "Adhip K.",  "rating": 4,
+                "comment": "Highly recommend checking this out."},
         ]
         selected = [
             random.choice([r for r in review_pool if r["user"] == "Parin V."]),
-            random.choice([r for r in review_pool if r["user"] == "Asvath M."]),
+            random.choice(
+                [r for r in review_pool if r["user"] == "Asvath M."]),
             random.choice([r for r in review_pool if r["user"] == "Adhip K."]),
         ]
         random.shuffle(selected)
@@ -173,12 +182,13 @@ class TAMUFacilityTracker:
 
         # ── 1. Rec Centers: aggregate sub-locations by FacilityName ──────────
         rec_raw = self.fetch_rec_data()
-        facility_totals: Dict[str, Dict] = defaultdict(lambda: {"count": 0, "capacity": 0})
+        facility_totals: Dict[str, Dict] = defaultdict(
+            lambda: {"count": 0, "capacity": 0})
         for entry in rec_raw:
             fname = entry.get("FacilityName", "")
             if fname not in REC_FACILITY_MAP:
                 continue  # skip Penberthy, PEAP, Aquatics
-            facility_totals[fname]["count"]    += entry.get("LastCount", 0)
+            facility_totals[fname]["count"] += entry.get("LastCount", 0)
             facility_totals[fname]["capacity"] += entry.get("TotalCapacity", 1)
 
         for api_name, display_name in REC_FACILITY_MAP.items():
@@ -221,7 +231,8 @@ class TAMUFacilityTracker:
             })
 
         # ── 3. Dining: AI-estimated using live campus average ────────────────
-        avg_occupancy = sum(live_percents) / len(live_percents) if live_percents else 42.0
+        avg_occupancy = sum(live_percents) / \
+            len(live_percents) if live_percents else 42.0
         live_display_names = {r["location"] for r in result}
 
         for loc_name, info in LOCATION_DATA.items():
@@ -229,7 +240,8 @@ class TAMUFacilityTracker:
                 continue
             if loc_name in live_display_names:
                 continue
-            est = round(min(95, max(5, avg_occupancy + random.uniform(-15, 20))), 1)
+            est = round(
+                min(95, max(5, avg_occupancy + random.uniform(-15, 20))), 1)
             meta = self.get_mock_metadata(loc_name, "Dining")
             result.append({
                 "location": loc_name,
@@ -272,11 +284,13 @@ class TAMUFacilityTracker:
             embedded_data = json.dumps(self.data, default=str)
         except Exception:
             embedded_data = str(self.data)
-        user_message = {"role": "user", "content": f"User Query: {prompt}\nLive Data: {embedded_data}"}
+        user_message = {
+            "role": "user", "content": f"User Query: {prompt}\nLive Data: {embedded_data}"}
         messages = [{"role": "system", "content": system_prompt}, user_message]
         try:
             client = Perplexity()
-            response = client.chat.completions.create(model="sonar", messages=messages)
+            response = client.chat.completions.create(
+                model="sonar", messages=messages)
             resp_text = response.choices[0].message.content.strip()
         except Exception:
             resp_text = ""
@@ -297,16 +311,19 @@ class TAMUFacilityTracker:
         if parsed is not None and isinstance(parsed, list):
             normalized = []
             for item in parsed[:3]:
-                name = str(item.get("name", "")) if isinstance(item, dict) else ""
-                percent = float(item.get("percent_full", 0)) if isinstance(item, dict) else 0.0
-                available = int(item.get("available_seats", 0)) if isinstance(item, dict) else 0
-                normalized.append({"name": name, "percent_full": percent, "available_seats": available})
+                name = str(item.get("name", "")) if isinstance(
+                    item, dict) else ""
+                percent = float(item.get("percent_full", 0)
+                                ) if isinstance(item, dict) else 0.0
+                available = int(item.get("available_seats", 0)
+                                ) if isinstance(item, dict) else 0
+                normalized.append(
+                    {"name": name, "percent_full": percent, "available_seats": available})
             return json.dumps(normalized)
         return json.dumps([{"name": "Parsing failed", "percent_full": 0, "available_seats": 0}])
 
 
 tracker = TAMUFacilityTracker()
-
 
 
 class AggieSpiritProxy:
@@ -326,15 +343,19 @@ class AggieSpiritProxy:
             if self._auth_headers and not force_refresh:
                 return self._auth_headers
 
-            response = self.session.get(f"{self.base_url}/RouteMap", timeout=15)
+            response = self.session.get(
+                f"{self.base_url}/RouteMap", timeout=15)
             response.raise_for_status()
             html = response.text
 
-            html_token_match = re.search(r'name="__RequestVerificationToken" type="hidden" value="([^"]+)"', html)
-            cookie_token = self.session.cookies.get(".MyRide.RequestVerificationToken")
+            html_token_match = re.search(
+                r'name="__RequestVerificationToken" type="hidden" value="([^"]+)"', html)
+            cookie_token = self.session.cookies.get(
+                ".MyRide.RequestVerificationToken")
 
             if not html_token_match or not cookie_token:
-                raise RuntimeError("Could not initialize AggieSpirit verification token")
+                raise RuntimeError(
+                    "Could not initialize AggieSpirit verification token")
 
             self._form_token = html_token_match.group(1)
             self._auth_headers = {
@@ -350,18 +371,21 @@ class AggieSpiritProxy:
         headers = self._build_auth_headers()
         headers = dict(headers)
         headers["Content-Type"] = content_type
-        response = self.session.post(f"{self.base_url}{path}", headers=headers, data=body, timeout=20)
+        response = self.session.post(
+            f"{self.base_url}{path}", headers=headers, data=body, timeout=20)
         if response.status_code in (401, 403) and retry:
             headers = self._build_auth_headers(force_refresh=True)
             headers = dict(headers)
             headers["Content-Type"] = content_type
-            response = self.session.post(f"{self.base_url}{path}", headers=headers, data=body, timeout=20)
+            response = self.session.post(
+                f"{self.base_url}{path}", headers=headers, data=body, timeout=20)
         response.raise_for_status()
         return response.json()
 
     @staticmethod
     def _route_color(route_key: str) -> str:
-        palette = ["#500000", "#7E0000", "#B34100", "#0B6E4F", "#165DFF", "#6B3FA0", "#007A78", "#A63D40"]
+        palette = ["#500000", "#7E0000", "#B34100", "#0B6E4F",
+                   "#165DFF", "#6B3FA0", "#007A78", "#A63D40"]
         if not route_key:
             return palette[0]
         hash_value = 0
@@ -371,7 +395,8 @@ class AggieSpiritProxy:
 
     def get_active_routes(self) -> List[str]:
         try:
-            routes = self._post("/Home/GetActiveRoutes", "null", content_type="application/json")
+            routes = self._post("/Home/GetActiveRoutes",
+                                "null", content_type="application/json")
             if isinstance(routes, list) and routes:
                 self._active_cache = routes
             return routes if isinstance(routes, list) and routes else self._active_cache
@@ -401,15 +426,39 @@ class AggieSpiritProxy:
         try:
             payload = f"routeKeys%5B%5D={quote(route_key)}"
             data = self._post("/RouteMap/GetPatternPaths/", payload)
+
+            # Fetch base data to resolve directionKey -> directionName
+            base_data = self._post("/RouteMap/GetBaseData/", "")
+            direction_map = {}
+            if isinstance(base_data, dict) and "routes" in base_data:
+                for route in base_data["routes"]:
+                    for dir_item in route.get("directionList", []):
+                        d_key = dir_item.get("direction", {}).get(
+                            "key") or dir_item.get("key")
+                        d_name = dir_item.get("direction", {}).get(
+                            "name") or dir_item.get("name")
+                        if d_key and d_name:
+                            direction_map[d_key] = d_name
+
             points: List[Dict[str, float]] = []
             stops: List[Dict[str, Any]] = []
             seen_stops = set()
             if data:
                 for item in data[0].get("patternPaths", []):
+                    dir_obj = item.get("direction") or {}
+                    dir_key = dir_obj.get("key") or item.get(
+                        "directionKey") or ""
+
+                    # Look up the actual direction name using the map we built
+                    dir_name = dir_obj.get("name") or item.get(
+                        "directionName") or direction_map.get(dir_key, "")
+
                     for point in item.get("patternPoints", []):
                         points.append({
                             "latitude": point.get("latitude"),
                             "longitude": point.get("longitude"),
+                            "DirectionCode": dir_key,
+                            "DirectionName": dir_name,
                         })
                         stop = point.get("stop")
                         if stop and stop.get("stopCode") not in seen_stops:
@@ -419,19 +468,23 @@ class AggieSpiritProxy:
                                 "Latitude": point.get("latitude"),
                                 "Longitude": point.get("longitude"),
                                 "StopCode": stop.get("stopCode"),
+                                "DirectionCode": dir_key,
+                                "DirectionName": dir_name,
                             })
             snapshot = {"points": points, "stops": stops}
             if points or stops:
                 self._pattern_cache[route_key] = snapshot
             return snapshot if points or stops else self._pattern_cache.get(route_key, {"points": [], "stops": []})
-        except Exception:
+        except Exception as e:
+            print(f"Error in get_pattern: {e}")
             return self._pattern_cache.get(route_key, {"points": [], "stops": []})
 
     def get_vehicles(self, route_id: str = "") -> Dict[str, Any]:
         normalized_route_id = (route_id or "").strip().lower()
         try:
             route_keys: List[str] = []
-            route_lookup = {route["Key"]: route for route in self.get_routes() if route.get("Key")}
+            route_lookup = {
+                route["Key"]: route for route in self.get_routes() if route.get("Key")}
             if route_id:
                 route_keys = [route_id]
             else:
@@ -442,19 +495,39 @@ class AggieSpiritProxy:
                 cached = self._vehicle_cache.get(cache_key, [])
                 return {"vehicles": cached, "live": False, "used_cache": bool(cached)}
 
-            payload = "&".join([f"routeKeys%5B%5D={quote(route_key)}" for route_key in route_keys])
+            # Fetch base data to resolve directionKey -> directionName
+            base_data = self._post("/RouteMap/GetBaseData/", "")
+            direction_map = {}
+            if isinstance(base_data, dict) and "routes" in base_data:
+                for route in base_data["routes"]:
+                    for dir_item in route.get("directionList", []):
+                        d_key = dir_item.get("direction", {}).get(
+                            "key") or dir_item.get("key")
+                        d_name = dir_item.get("direction", {}).get(
+                            "name") or dir_item.get("name")
+                        if d_key and d_name:
+                            direction_map[d_key] = d_name
+
+            payload = "&".join(
+                [f"routeKeys%5B%5D={quote(route_key)}" for route_key in route_keys])
             data = self._post("/RouteMap/GetVehicles/", payload)
             vehicles: List[Dict[str, Any]] = []
             for route in data or []:
                 route_meta = route_lookup.get(route.get("routeKey"))
                 identifiers = [
                     str(route.get("routeKey") or "").strip().lower(),
-                    str(route.get("shortName") or route_meta.get("ShortName") if route_meta else "").strip().lower(),
-                    str(route.get("name") or route_meta.get("Name") if route_meta else "").strip().lower(),
+                    str(route.get("shortName") or route_meta.get(
+                        "ShortName") if route_meta else "").strip().lower(),
+                    str(route.get("name") or route_meta.get("Name")
+                        if route_meta else "").strip().lower(),
                 ]
                 if normalized_route_id and normalized_route_id not in identifiers:
                     continue
                 for direction in route.get("vehiclesByDirections", []) or []:
+                    dir_key = direction.get("directionKey")
+                    dir_name = direction.get(
+                        "directionName") or direction_map.get(dir_key, "")
+
                     for vehicle in direction.get("vehicles", []) or []:
                         location = vehicle.get("location") or {}
                         vehicles.append({
@@ -465,6 +538,8 @@ class AggieSpiritProxy:
                             "Heading": location.get("heading"),
                             "PassengersOnboard": vehicle.get("passengersOnboard"),
                             "Capacity": vehicle.get("passengerCapacity"),
+                            "DirectionCode": dir_key,
+                            "DirectionName": dir_name,
                             "RouteKey": route.get("routeKey"),
                             "RouteShortName": route.get("shortName") or (route_meta.get("ShortName") if route_meta else None),
                             "RouteName": route.get("name") or (route_meta.get("Name") if route_meta else None),
@@ -474,7 +549,8 @@ class AggieSpiritProxy:
             cache_key = normalized_route_id or "__all__"
             if vehicles:
                 self._vehicle_cache[cache_key] = vehicles
-                self._vehicle_cache["__all__"] = vehicles if not normalized_route_id else self._vehicle_cache.get("__all__", vehicles)
+                self._vehicle_cache["__all__"] = vehicles if not normalized_route_id else self._vehicle_cache.get(
+                    "__all__", vehicles)
             cached = self._vehicle_cache.get(cache_key, [])
             return {"vehicles": vehicles if vehicles else cached, "live": bool(vehicles), "used_cache": not bool(vehicles) and bool(cached)}
         except Exception:
@@ -484,6 +560,7 @@ class AggieSpiritProxy:
 
 
 transit_proxy = AggieSpiritProxy()
+
 
 class QueryRequest(BaseModel):
     query: str
@@ -524,14 +601,16 @@ def get_transit_route(route_key: str):
 @router.get("/transit/vehicles")
 def get_transit_vehicles(route_id: str = Query("")):
     return transit_proxy.get_vehicles(route_id)
+
+
 @router.post("/create-event")
 def create_event(event: EventRequest):
     event_dict = event.dict()
     base_url = "https://calendar.google.com/calendar/r/eventedit?"
     params = (
         f"text={quote(event_dict.get('text', ''))}"
-        f"&dates={event_dict.get('start','')}/{event_dict.get('end','')}"
-        f"&details={quote(event_dict.get('details',''))}"
-        f"&location={quote(event_dict.get('location',''))}"
+        f"&dates={event_dict.get('start', '')}/{event_dict.get('end', '')}"
+        f"&details={quote(event_dict.get('details', ''))}"
+        f"&location={quote(event_dict.get('location', ''))}"
     )
     return {"message": "Google Calendar link created!", "link": base_url + params}

@@ -168,7 +168,9 @@ export const transitService = {
             (data.points || []).forEach((pt: any) => {
                 points.push({
                     latitude: pt.latitude,
-                    longitude: pt.longitude
+                    longitude: pt.longitude,
+                    DirectionCode: pt.DirectionCode || '',
+                    DirectionName: pt.DirectionName || '',
                 });
             });
             (data.stops || []).forEach((stop: any) => {
