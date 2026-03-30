@@ -45,8 +45,10 @@ export const TAMU_BBOX = {
   east: -96.320,
 };
 
+import ALL_BUILDINGS from './all_buildings.json';
+
 // ─── Buildings ──────────────────────────────────────────────
-export const BUILDINGS: CampusBuilding[] = [
+const HARDCODED_BUILDINGS: CampusBuilding[] = [
   // Academic
   { id: 'zach', name: 'Zachry Engineering Education Complex', shortName: 'ZACH', latitude: 30.621252, longitude: -96.340241, type: 'academic' },
   { id: 'bloc', name: 'Blocker Building', shortName: 'BLOC', latitude: 30.619539, longitude: -96.342120, type: 'academic' },
@@ -109,6 +111,20 @@ export const BUILDINGS: CampusBuilding[] = [
   { id: 'aston', name: 'Aston Hall', shortName: 'ASTON', latitude: 30.614675, longitude: -96.336307, type: 'housing' },
   { id: 'krueger', name: 'Krueger Hall', shortName: 'KRUEGER', latitude: 30.615948, longitude: -96.335541, type: 'housing' },
   { id: 'davis-gary', name: 'Davis-Gary Hall', shortName: 'DAVIS-GARY', latitude: 30.615533, longitude: -96.346435, type: 'housing' },
+];
+
+const hardcodedIds = new Set(HARDCODED_BUILDINGS.map(b => b.shortName.toLowerCase()));
+
+export const BUILDINGS: CampusBuilding[] = [
+  ...HARDCODED_BUILDINGS,
+  ...ALL_BUILDINGS.filter(b => !hardcodedIds.has(b.shortName.toLowerCase())).map(b => ({
+    id: b.id,
+    name: b.name,
+    shortName: b.shortName,
+    latitude: b.latitude,
+    longitude: b.longitude,
+    type: b.type as any
+  }))
 ];
 
 // ─── Amenities ──────────────────────────────────────────────

@@ -18,6 +18,7 @@ import {
   BellRing,
   Bus,
   Clock,
+  CalendarDays,
   GraduationCap,
   Cog,
   Check,
@@ -27,6 +28,7 @@ import {
 import { Card, useTheme } from './SharedUI';
 import { PageModuleEditor } from './PageModuleEditor';
 import { useCampusHubStore } from '../store/campusHubStore';
+import { useEventStore } from '../store/eventStore';
 import {
   HomeSectionId,
   UIDensity,
@@ -78,6 +80,7 @@ export function Dashboard() {
   const isFocused = useIsFocused();
   const { user } = useUser();
   const { snapshot, loading, hydrate } = useCampusHubStore();
+  const scheduledEvents = useEventStore((state) => state.scheduledEvents);
   const homeSections = useAppShellStore((state) => state.homeSections);
   const navItems = useAppShellStore((state) => state.navItems);
   const moveHomeSection = useAppShellStore((state) => state.moveHomeSection);
@@ -221,6 +224,21 @@ export function Dashboard() {
             ) : (
               <View />
             )}
+            {scheduledEvents.length > 0 && scheduledEvents.map((se) => (
+              <View key={`se-${se.id}`} style={styles.timelineRow}>
+                <View style={[styles.timelineBadge, { backgroundColor: 'rgba(255,122,0,0.12)', borderColor: 'rgba(255,122,0,0.2)' }]}>
+                  <CalendarDays size={13} color="#FF7A00" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.timelineTitle}>{se.title}</Text>
+                  {se.location ? <Text style={styles.timelineBody}>{se.location}</Text> : null}
+                  <Text style={styles.timelineMeta}>
+                    {new Date(se.date_ts * 1000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                    {se.category ? ` · ${se.category}` : ''}
+                  </Text>
+                </View>
+              </View>
+            ))}
           </View>
 
           <View style={styles.actionRow}>

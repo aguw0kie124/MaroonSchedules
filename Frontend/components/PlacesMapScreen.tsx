@@ -2698,9 +2698,47 @@ export function PlacesMapScreen() {
           </Marker>
         ) : null}
 
+        {/* Classes Layer: Numbered Pins */}
+        {activeLayer === "Classes" &&
+          selectedDayClassLocations.map((cls, index) => {
+            const isCurrent = cls.id === currentOrNextClass?.id;
+            return (
+              <Marker
+                key={`class-pin-${cls.id}`}
+                identifier={`class-pin-${cls.id}`}
+                coordinate={{
+                  latitude: cls.coord.lat,
+                  longitude: cls.coord.lng,
+                }}
+                tracksViewChanges={false}
+                anchor={{ x: 0.5, y: 1 }}
+                zIndex={isCurrent ? 230 : 210}
+                onPress={() => setSelectedId(cls.id || null)}
+              >
+                <View style={styles.pinContainer} pointerEvents="none">
+                  <View
+                    style={[
+                      styles.pinHead,
+                      { backgroundColor: isCurrent ? "#FF8A00" : "#500000" },
+                    ]}
+                  >
+                    <Text style={{ color: "#FFF", fontWeight: "900", fontSize: 16 }}>{index + 1}</Text>
+                  </View>
+                  <View
+                    style={[
+                      styles.pinTail,
+                      { borderTopColor: isCurrent ? "#FF8A00" : "#500000" },
+                    ]}
+                  />
+                </View>
+              </Marker>
+            );
+          })}
+
         {/* Marker rendering fixes: Ensure markers are always rendered for active categories */}
         {locations
           .filter((loc) => {
+            if (activeLayer === "Classes") return false; // Handled by custom numbered pins above
             if (activeLayer === "Heatmap" || activeLayer === "Bus")
               return loc.location === selectedId;
             const isDiningTab = activeLayer === "Dining";
@@ -2930,17 +2968,19 @@ export function PlacesMapScreen() {
                   onPress={() => setIsScheduleDropdownOpen((current) => !current)}
                   activeOpacity={0.88}
                 >
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.classesInlineLabel}>Current Schedule</Text>
-                    <Text style={styles.classesInlineTitle} numberOfLines={1}>
-                      {loadingSchedules
-                        ? "Loading..."
-                        : selectedSchedule
-                          ? selectedSchedule.name
-                          : schedules.length > 0
-                            ? "Choose schedule"
-                            : "Add a schedule"}
-                    </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', maxWidth: 160 }}>
+                    {selectedSchedule ? (
+                      <Text style={styles.classesInlineTitle} numberOfLines={1}>
+                        {selectedSchedule.name}
+                      </Text>
+                    ) : (
+                      <>
+                        <Text style={styles.classesInlineLabel}>Current Schedule</Text>
+                        <Text style={styles.classesInlineTitle} numberOfLines={1}>
+                          {loadingSchedules ? "..." : schedules.length > 0 ? "Choose" : "Add"}
+                        </Text>
+                      </>
+                    )}
                   </View>
                   {isScheduleDropdownOpen ? (
                     <ChevronUp size={16} color={COLORS.textTertiary} />
@@ -3054,7 +3094,7 @@ export function PlacesMapScreen() {
               </View>
             ) : null}
 
-            <View style={styles.classDayRail}>
+            <View style={[styles.classDayRail, { marginTop: 8 }]}>
               {DAY_PILL_LABELS.map((dayLabel, index) => {
                 const selected = selectedClassDay === index;
                 return (
@@ -3078,52 +3118,110 @@ export function PlacesMapScreen() {
               })}
             </View>
 
-            {selectedSchedule && currentOrNextClass ? (
-              <View style={styles.classesSummaryCard}>
-                <View style={styles.classesSummaryHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.classesSummaryTitle}>
-                      {currentOrNextClass.classInfo?.courseCode || "Next class"}
-                    </Text>
-                    <Text style={styles.classesSummaryMeta} numberOfLines={2}>
-                      {`${currentOrNextClass.classInfo?.courseTitle || currentOrNextClass.location} • ${currentOrNextClass.classInfo?.beginTime || ""}${currentOrNextClass.classInfo?.endTime ? ` - ${currentOrNextClass.classInfo?.endTime}` : ""}`}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.classQuickAction}
-                    onPress={() =>
-                      navigation.navigate("CampusNavigation", {
-                        preferredMode: "walk",
-                        initialDestination: {
-                          id: currentOrNextClass.id || currentOrNextClass.location,
-                          name: currentOrNextClass.location,
-                          shortName:
-                            currentOrNextClass.classInfo?.courseCode || currentOrNextClass.location,
-                          latitude: currentOrNextClass.coord.lat,
-                          longitude: currentOrNextClass.coord.lng,
-                          type: "academic",
-                        },
-                      })
-                    }
-                  >
-                    <Navigation size={14} color="#FFFFFF" />
-                    <Text style={styles.classQuickActionText}>Open</Text>
-                  </TouchableOpacity>
-                </View>
+            {selectedSchedule && selectedDayClassLocations.length > 0 ? (
+              placesViewMode === "list" ? (
+                <ScrollView 
+                  style={styles.classesListContainer}
+                  contentContainerStyle={{ gap: 10, paddingBottom: 16 }}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {selectedDayClassLocations.map((cls, index) => {
+                    const isPast = (parseMeetingTimeToMinutes(cls.classInfo?.endTime) ?? Number.MAX_SAFE_INTEGER) < minutesIntoDay && selectedClassDay === todayDayIndex;
+                    const isCurrent = cls.id === currentOrNextClass?.id;
+                    
+                    return (
+                      <TouchableOpacity
+                        key={cls.id}
+                        style={[
+                          styles.classesListItem,
+                          isPast && styles.classesListItemPast,
+                          isCurrent && styles.classesListItemCurrent
+                        ]}
+                        onPress={() => {
+                          navigation.navigate("CampusNavigation", {
+                            preferredMode: "walk",
+                            initialDestination: {
+                              id: cls.id || cls.location,
+                              name: cls.location,
+                              shortName: cls.classInfo?.courseCode || cls.location,
+                              latitude: cls.coord.lat,
+                              longitude: cls.coord.lng,
+                              type: "academic",
+                            },
+                          });
+                        }}
+                      >
+                        <View style={[styles.classNumberBadge, isPast && styles.classNumberBadgePast, isCurrent && styles.classNumberBadgeCurrent]}>
+                          <Text style={[styles.classNumberText, isPast && styles.classNumberTextPast, isCurrent && styles.classNumberTextCurrent]}>{index + 1}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.classesSummaryTitle, isPast && styles.classesSummaryTitlePast]}>
+                            {cls.classInfo?.courseCode || "Class"}
+                          </Text>
+                          <Text style={[styles.classesSummaryMeta, isPast && styles.classesSummaryMetaPast]} numberOfLines={1}>
+                            {`${cls.classInfo?.beginTime || ""}${cls.classInfo?.endTime ? ` - ${cls.classInfo?.endTime}` : ""} • ${cls.location}`}
+                          </Text>
+                        </View>
+                        <View style={styles.classListItemAction}>
+                          <Navigation size={14} color="#FFFFFF" />
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              ) : (
+                currentOrNextClass ? (
+                  <View style={styles.classesSummaryCard}>
+                    <View style={styles.classesSummaryHeader}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.classesSummaryTitle}>
+                          {currentOrNextClass.classInfo?.courseCode || "Next class"}
+                        </Text>
+                        <Text style={styles.classesSummaryMeta} numberOfLines={2}>
+                          {`${currentOrNextClass.classInfo?.courseTitle || currentOrNextClass.location} • ${currentOrNextClass.classInfo?.beginTime || ""}${currentOrNextClass.classInfo?.endTime ? ` - ${currentOrNextClass.classInfo?.endTime}` : ""}`}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.classQuickAction}
+                        onPress={() =>
+                          navigation.navigate("CampusNavigation", {
+                            preferredMode: "walk",
+                            initialDestination: {
+                              id: currentOrNextClass.id || currentOrNextClass.location,
+                              name: currentOrNextClass.location,
+                              shortName: currentOrNextClass.classInfo?.courseCode || currentOrNextClass.location,
+                              latitude: currentOrNextClass.coord.lat,
+                              longitude: currentOrNextClass.coord.lng,
+                              type: "academic",
+                            },
+                          })
+                        }
+                      >
+                        <Navigation size={14} color="#FFFFFF" />
+                        <Text style={styles.classQuickActionText}>Open</Text>
+                      </TouchableOpacity>
+                    </View>
 
-                {followingClass ? (
-                  <View style={styles.classTransitHint}>
-                    <Text style={styles.classTransitHintTitle}>
-                      Next stop after this
-                    </Text>
-                    <Text style={styles.classTransitHintBody} numberOfLines={2}>
-                      {followingClass.classInfo?.courseCode || followingClass.location}
-                      {classTransitPlan
-                        ? ` • Route ${classTransitPlan.routeShortName} in about ${classTransitPlan.estimatedTimeMinutes} min`
-                        : " • Walk or bus plan available when live transit matches"}
-                    </Text>
+                    {followingClass ? (
+                      <View style={styles.classTransitHint}>
+                        <Text style={styles.classTransitHintTitle}>
+                          Next stop after this
+                        </Text>
+                        <Text style={styles.classTransitHintBody} numberOfLines={2}>
+                          {followingClass.classInfo?.courseCode || followingClass.location}
+                          {classTransitPlan
+                            ? ` • Route ${classTransitPlan.routeShortName} in about ${classTransitPlan.estimatedTimeMinutes} min`
+                            : " • Walk or bus plan available when live transit matches"}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
-                ) : null}
+                ) : null
+              )
+            ) : selectedSchedule ? (
+              <View style={styles.classesSummaryCard}>
+                <Text style={styles.classesSummaryTitle}>No Classes</Text>
+                <Text style={styles.classesSummaryMeta}>You have no classes scheduled for this day.</Text>
               </View>
             ) : null}
           </View>
@@ -3294,7 +3392,7 @@ export function PlacesMapScreen() {
         </View>
       )}
 
-      {placesViewMode === "list" && activeLayer !== "Bus" && activeLayer !== "Heatmap" && (
+      {placesViewMode === "list" && activeLayer !== "Bus" && activeLayer !== "Heatmap" && activeLayer !== "Classes" && (
         <View style={styles.placesListOverlay} pointerEvents="box-none">
           <Card style={styles.placesListCard}>
             <View style={styles.placesListHeader}>
@@ -4592,6 +4690,79 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       fontSize: 12,
       fontWeight: "800",
     },
+    classListItemAction: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: "#1E6BFF",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    classesListContainer: {
+      maxHeight: 320,
+      marginTop: 8,
+      backgroundColor: isDark ? "rgba(18,18,20,0.97)" : "rgba(255,255,255,0.98)",
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
+      padding: 8,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: isDark ? 0.3 : 0.1,
+      shadowRadius: 10,
+      elevation: 8,
+    },
+    classesListItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: 12,
+      backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,12,14,0.04)",
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.06)",
+      gap: 12,
+    },
+    classesListItemCurrent: {
+      backgroundColor: isDark ? "rgba(80,0,0,0.2)" : "rgba(80,0,0,0.08)",
+      borderColor: "rgba(80,0,0,0.3)",
+    },
+    classesListItemPast: {
+      opacity: 0.6,
+    },
+    classNumberBadge: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(12,12,14,0.08)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    classNumberBadgeCurrent: {
+      backgroundColor: "#500000",
+    },
+    classNumberBadgePast: {
+      backgroundColor: "transparent",
+      borderWidth: 1,
+      borderColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(12,12,14,0.15)",
+    },
+    classNumberText: {
+      fontSize: 14,
+      fontWeight: "800",
+      color: COLORS.textPrimary,
+    },
+    classNumberTextCurrent: {
+      color: "#FFFFFF",
+    },
+    classNumberTextPast: {
+      color: COLORS.textTertiary,
+    },
+    classesSummaryTitlePast: {
+      color: COLORS.textSecondary,
+    },
+    classesSummaryMetaPast: {
+      color: COLORS.textTertiary,
+    },
+
     focusedEventCard: {
       position: "absolute",
       left: 16,
@@ -5071,7 +5242,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       color: "#FFFFFF",
     },
     classesSummaryCard: {
-      backgroundColor: isDark ? "rgba(12,12,14,0.90)" : "rgba(255,255,255,0.98)",
+      backgroundColor: isDark ? "rgba(18,18,20,0.97)" : "rgba(255,255,255,0.98)",
       borderRadius: 20,
       borderWidth: 1,
       borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
