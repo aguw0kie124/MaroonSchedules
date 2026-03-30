@@ -259,16 +259,12 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [events, setEvents] = useState<TAMUEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [eventsViewMode, setEventsViewMode] = useState<EventsViewMode>('calendar');
   const [searchQuery, setSearchQuery] = useState('');
-  const [eventFilter, setEventFilter] = useState<'all' | 'free_food' | 'has_map' | 'personal'>('all');
-  const [isFilterMenuVisible, setIsFilterMenuVisible] = useState(false);
   const [isMajorSpecific, setIsMajorSpecific] = useState(false);
   const [selectedMajor, setSelectedMajor] = useState<MajorOption>('Engineering');
   const [isMajorMenuVisible, setIsMajorMenuVisible] = useState(false);
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [expandedId, setExpandedId] = useState<string | number | null>(null);
-  const [selectedDate, setSelectedDate] = useState(getLocalDateString());
   const [isPanelExpanded, setIsPanelExpanded] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [newEvent, setNewEvent] = useState({ title: '', description: '', location: '', time: '12:00 PM' });
@@ -330,69 +326,36 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     }
   };
 
-  const grouped = useMemo(() => {
-    const allEvents = [...events, ...personalEvents];
-    const groups: Record<string, (TAMUEvent | any)[]> = {};
-    for (const event of allEvents) {
-      const dateKey = event.date_iso ? event.date_iso.split('T')[0] : formatDateFromTS(event.date_ts);
-      if (!groups[dateKey]) groups[dateKey] = [];
-      groups[dateKey].push(event);
-    }
-    return groups;
-  }, [events, personalEvents]);
-
-  const dayEvents = useMemo(() => {
-    const list = grouped[selectedDate] || [];
-    const filteredByType = list.filter((event) => {
-      if (eventFilter === 'free_food') return !!event.has_food;
-      if (eventFilter === 'has_map') return event.location_lat != null && event.location_lng != null;
-      if (eventFilter === 'personal') return !!event.tags?.includes('Personal');
-      return true;
-    });
-    if (!searchQuery.trim()) return filteredByType;
-    const query = searchQuery.toLowerCase();
-    return filteredByType.filter((event) =>
-      event.title.toLowerCase().includes(query) ||
-      (event.description && event.description.toLowerCase().includes(query)) ||
-      (event.location && event.location.toLowerCase().includes(query)) ||
-      (event.group_title && event.group_title.toLowerCase().includes(query))
-    );
-  }, [eventFilter, grouped, searchQuery, selectedDate]);
   const discoverEvents = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    return events.filter((event) => {
+    return [...events, ...personalEvents].filter((event) => {
       if (query && !getEventSearchBlob(event).includes(query)) return false;
       if (isMajorSpecific && !matchesMajor(event, selectedMajor)) return false;
       const category = classifyEventCategory(event);
       if (category === 'Social' && getSocialMode(event) !== socialMode) return false;
       return true;
     });
-  }, [events, isMajorSpecific, searchQuery, selectedMajor, socialMode]);
+  }, [events, isMajorSpecific, personalEvents, searchQuery, selectedMajor, socialMode]);
   const categorizedEvents = useMemo(() => {
     return (['Food', 'Entertainment', 'Advocacy', 'Sports', 'Religion', 'Social'] as ExploreCategory[]).map((category) => ({
       category,
       events: discoverEvents.filter((event) => classifyEventCategory(event) === category).slice(0, 8),
     }));
   }, [discoverEvents]);
-  const weekDays = useMemo(() => buildWeek(selectedDate), [selectedDate]);
-  const weekLabel = useMemo(
-    () => new Date(`${selectedDate}T12:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
-    [selectedDate],
-  );
-
   const handleAddPersonalEvent = () => {
     if (!newEvent.title.trim()) {
       Alert.alert('Error', 'Please enter a title');
       return;
     }
 
+    const todayDateKey = getLocalDateString();
     const event: PersonalEvent = {
       id: Date.now(),
       title: newEvent.title,
       description: newEvent.description,
       location: newEvent.location,
-      date_ts: Math.floor(new Date(`${selectedDate}T${newEvent.time.includes(':') ? newEvent.time : '12:00'}`).getTime() / 1000),
-      date_iso: selectedDate,
+      date_ts: Math.floor(new Date(`${todayDateKey}T${newEvent.time.includes(':') ? newEvent.time : '12:00'}`).getTime() / 1000),
+      date_iso: todayDateKey,
       time: newEvent.time,
     };
 
@@ -454,55 +417,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           </Pressable>
         </View>
 
-        <View style={styles.eventsModeRow}>
-          {([
-            { key: 'calendar', label: 'Calendar' },
-            { key: 'categories', label: 'Categories' },
-          ] as Array<{ key: EventsViewMode; label: string }>).map((item) => {
-            const selected = eventsViewMode === item.key;
-            return (
-              <Pressable
-                key={item.key}
-                style={[styles.eventsModePill, selected && styles.eventsModePillActive]}
-                onPress={() => setEventsViewMode(item.key)}
-              >
-                <Text style={[styles.eventsModePillText, selected && styles.eventsModePillTextActive]}>
-                  {item.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        {eventsViewMode === 'calendar' ? (
-        <View style={styles.calendarContainer}>
-          <View style={styles.weekHeaderRow}>
-            <Pressable style={styles.weekNavButton} onPress={() => setSelectedDate((current) => shiftDateKey(current, -7))}>
-              <ChevronLeft size={18} color={COLORS.textPrimary} />
-            </Pressable>
-            <Text style={styles.weekLabel}>{weekLabel}</Text>
-            <Pressable style={styles.weekNavButton} onPress={() => setSelectedDate((current) => shiftDateKey(current, 7))}>
-              <ChevronRight size={18} color={COLORS.textPrimary} />
-            </Pressable>
-          </View>
-          <View style={styles.weekRow}>
-            {weekDays.map((day) => {
-              const isSelected = day.key === selectedDate;
-              return (
-                <Pressable
-                  key={day.key}
-                  style={[styles.weekDayPill, isSelected && styles.weekDayPillActive]}
-                  onPress={() => setSelectedDate(day.key)}
-                >
-                  <Text style={[styles.weekDayLabel, isSelected && styles.weekDayLabelActive]}>{day.label}</Text>
-                  <Text style={[styles.weekDayNumber, isSelected && styles.weekDayNumberActive]}>{day.day}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-        ) : (
-          <View style={styles.categoriesToolbar}>
+        <View style={styles.categoriesToolbar}>
             <View style={styles.majorSpecificRow}>
               <Text style={styles.majorSpecificLabel}>Major specific</Text>
               <Pressable
@@ -540,8 +455,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 })}
               </View>
             </View>
-          </View>
-        )}
+        </View>
       </View>
 
       {error ? (
@@ -557,20 +471,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         <View style={styles.panelHandle} />
         <View style={styles.panelHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.dateHeaderText}>
-              {eventsViewMode === 'calendar'
-                ? dayEvents.length > 0
-                  ? formatLocalDate(selectedDate)
-                  : `No events for ${formatLocalDate(selectedDate)}`
-                : 'Explore by Category'}
-            </Text>
-            <Text style={styles.panelSubtitle}>
-              {eventsViewMode === 'calendar'
-                ? dayEvents.length > 0
-                  ? `${dayEvents.length} events for this day`
-                  : 'Add a personal event or switch dates'
-                : `${discoverEvents.length} events matched across your category feed`}
-            </Text>
+            <Text style={styles.dateHeaderText}>Explore by Category</Text>
+            <Text style={styles.panelSubtitle}>{`${discoverEvents.length} events matched across your category feed`}</Text>
           </View>
           <View style={styles.panelActions}>
             <Pressable style={styles.panelToggleButton} onPress={() => setIsPanelExpanded((current) => !current)}>
@@ -585,30 +487,16 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
         <View style={styles.searchContainer}>
           <View style={styles.searchBox}>
-            <Pressable style={styles.searchIconButton} onPress={() => setIsFilterMenuVisible(true)}>
+            <Pressable style={styles.searchIconButton} onPress={() => setIsMajorMenuVisible(true)}>
               <Search size={18} color={COLORS.textSecondary} />
             </Pressable>
             <TextInput
               style={styles.searchInput}
-              placeholder={eventsViewMode === 'calendar' ? 'Filter events for this day...' : 'Search all event categories...'}
+              placeholder="Search all event categories..."
               placeholderTextColor={COLORS.textSecondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
-            {eventsViewMode === 'calendar' ? (
-            <Pressable style={styles.searchFilterButton} onPress={() => setIsFilterMenuVisible(true)}>
-              <Filter size={15} color={COLORS.textPrimary} />
-              <Text style={styles.searchFilterButtonText}>
-                {eventFilter === 'all'
-                  ? 'All'
-                  : eventFilter === 'free_food'
-                    ? 'Free Food'
-                    : eventFilter === 'has_map'
-                      ? 'Map Pins'
-                      : 'Personal'}
-              </Text>
-            </Pressable>
-            ) : null}
           </View>
         </View>
 
@@ -619,73 +507,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           </View>
         ) : (
           <ScrollView style={styles.listScroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            {eventsViewMode === 'calendar' ? dayEvents.map((event) => {
-              const isExpanded = expandedId === event.id;
-              const isPersonal = event.tags?.includes('Personal');
-              const desc = event.description ? stripHtml(event.description) : null;
-              const locationDisplay = event.location || event.location_title || null;
-
-              return (
-                <Pressable
-                  key={event.id}
-                  onPress={() => setExpandedId(isExpanded ? null : event.id)}
-                >
-                  <Card style={styles.eventCard}>
-                    <View style={styles.eventRow}>
-                      <View style={[styles.timeBadge, isPersonal && styles.personalTimeBadge]}>
-                        <Text style={styles.timeText}>
-                          {event.is_all_day ? 'All Day' : formatTimeFromTS(event.date_ts)}
-                        </Text>
-                      </View>
-                      <View style={styles.eventInfo}>
-                        <Text style={styles.eventTitle} numberOfLines={isExpanded ? undefined : 2}>
-                          {event.title}
-                        </Text>
-                        {locationDisplay ? (
-                          <View style={styles.eventLocationRow}>
-                            <MapPin size={13} color={COLORS.textSecondary} />
-                            <Text style={styles.eventLocation}>{locationDisplay}</Text>
-                          </View>
-                        ) : null}
-                        {event.has_food ? (
-                          <View style={styles.freeFoodBadge}>
-                            <Text style={styles.freeFoodBadgeText}>
-                              {event.food_type ? `Free Food • ${event.food_type}` : 'Free Food'}
-                            </Text>
-                          </View>
-                        ) : null}
-                      </View>
-                      <View style={styles.eventSideActions}>
-                        {event.location_lat != null && event.location_lng != null ? (
-                          <Pressable onPress={() => handleOpenOnMap(event)} style={styles.mapActionButton}>
-                            <MapPin size={16} color="#FFFFFF" />
-                          </Pressable>
-                        ) : null}
-                        {isPersonal ? (
-                          <Pressable onPress={() => removeEvent(event.id as number)} style={styles.deleteBtn}>
-                            <Trash2 size={18} color={COLORS.textPrimary} />
-                          </Pressable>
-                        ) : null}
-                      </View>
-                    </View>
-
-                    {isExpanded ? (
-                      <View style={styles.expandedSection}>
-                        {desc ? <Text style={styles.descText}>{desc}</Text> : null}
-                        <View style={styles.actionRow}>
-                          <Pressable style={styles.addCalBtn} onPress={() => handleAddToCalendar(event)}>
-                            <View style={styles.addCalContent}>
-                              <CalendarIcon size={14} color={isDark ? '#FFFFFF' : COLORS.textPrimary} />
-                              <Text style={styles.addCalText}>Add to Calendar</Text>
-                            </View>
-                          </Pressable>
-                        </View>
-                      </View>
-                    ) : null}
-                  </Card>
-                </Pressable>
-              );
-            }) : categorizedEvents.map((section) => (
+            {categorizedEvents.map((section) => (
               <View key={section.category} style={styles.categorySection}>
                 <View style={[styles.categorySectionHeader, { backgroundColor: CATEGORY_COLORS[section.category] }]}>
                   <Text style={styles.categorySectionTitle}>{section.category}</Text>
@@ -704,7 +526,15 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   section.events.map((event) => {
                     const isExpanded = expandedId === `category:${section.category}:${event.id}`;
                     const desc = event.description ? stripHtml(event.description) : null;
-                    const locationDisplay = event.location || event.location_title || null;
+                    const isCampusEvent = 'location_lat' in event || 'location_lng' in event || 'group_title' in event;
+                    const locationDisplay = event.location || ('location_title' in event ? event.location_title : null) || null;
+                    const isAllDay = 'is_all_day' in event ? !!event.is_all_day : false;
+                    const hostLabel = 'group_title' in event ? event.group_title : null;
+                    const canOpenOnMap =
+                      'location_lat' in event &&
+                      'location_lng' in event &&
+                      event.location_lat != null &&
+                      event.location_lng != null;
                     return (
                       <Pressable
                         key={`category:${section.category}:${event.id}`}
@@ -714,7 +544,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                           <View style={styles.eventRow}>
                             <View style={[styles.timeBadge, { backgroundColor: CATEGORY_COLORS[section.category] }]}>
                               <Text style={[styles.timeText, { color: '#FFFFFF' }]}>
-                                {event.is_all_day ? 'All Day' : formatTimeFromTS(event.date_ts)}
+                                {isAllDay ? 'All Day' : formatTimeFromTS(event.date_ts)}
                               </Text>
                             </View>
                             <View style={styles.eventInfo}>
@@ -727,12 +557,12 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                                   <Text style={styles.eventLocation}>{locationDisplay}</Text>
                                 </View>
                               ) : null}
-                              {event.group_title ? (
-                                <Text style={styles.categoryHostText}>{event.group_title}</Text>
+                              {hostLabel ? (
+                                <Text style={styles.categoryHostText}>{hostLabel}</Text>
                               ) : null}
                             </View>
-                            {event.location_lat != null && event.location_lng != null ? (
-                              <Pressable onPress={() => handleOpenOnMap(event)} style={styles.mapActionButton}>
+                            {canOpenOnMap ? (
+                              <Pressable onPress={() => handleOpenOnMap(event as TAMUEvent)} style={styles.mapActionButton}>
                                 <MapPin size={16} color="#FFFFFF" />
                               </Pressable>
                             ) : null}
@@ -741,7 +571,20 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                             <View style={styles.expandedSection}>
                               {desc ? <Text style={styles.descText}>{desc}</Text> : null}
                               <View style={styles.actionRow}>
-                                <Pressable style={styles.addCalBtn} onPress={() => handleAddToCalendar(event)}>
+                                <Pressable
+                                  style={styles.addCalBtn}
+                                  onPress={() =>
+                                    handleAddToCalendar(
+                                      isCampusEvent
+                                        ? (event as TAMUEvent)
+                                        : ({
+                                            ...event,
+                                            location_title: event.location || null,
+                                            is_all_day: 0,
+                                          } as TAMUEvent),
+                                    )
+                                  }
+                                >
                                   <View style={styles.addCalContent}>
                                     <CalendarIcon size={14} color={isDark ? '#FFFFFF' : COLORS.textPrimary} />
                                     <Text style={styles.addCalText}>Add to Calendar</Text>
@@ -757,14 +600,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 )}
               </View>
             ))}
-
-            {eventsViewMode === 'calendar' && dayEvents.length === 0 && !loading ? (
-              <View style={styles.emptyState}>
-                <CalendarIcon size={40} color={COLORS.textSecondary} />
-                <Text style={styles.emptyTitle}>Clear Schedule</Text>
-                <Text style={styles.emptySubtitle}>No events found for {selectedDate}.</Text>
-              </View>
-            ) : null}
           </ScrollView>
         )}
       </View>
@@ -830,40 +665,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             </Pressable>
           </View>
         </View>
-      </Modal>
-      <Modal
-        visible={isFilterMenuVisible && eventsViewMode === 'calendar'}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsFilterMenuVisible(false)}
-      >
-        <Pressable style={styles.filterOverlay} onPress={() => setIsFilterMenuVisible(false)}>
-          <Pressable style={styles.filterSheet} onPress={() => {}}>
-            {[
-              { key: 'all', label: 'All Events' },
-              { key: 'free_food', label: 'Free Food' },
-              { key: 'has_map', label: 'Map Pins' },
-              { key: 'personal', label: 'Personal' },
-            ].map((filter) => {
-              const selected = eventFilter === filter.key;
-              return (
-                <Pressable
-                  key={filter.key}
-                  style={styles.filterSheetOption}
-                  onPress={() => {
-                    setEventFilter(filter.key as typeof eventFilter);
-                    setIsFilterMenuVisible(false);
-                  }}
-                >
-                  <Text style={[styles.filterSheetOptionText, selected && styles.filterSheetOptionTextActive]}>
-                    {filter.label}
-                  </Text>
-                  {selected ? <Text style={styles.filterSheetSelectedMark}>Done</Text> : null}
-                </Pressable>
-              );
-            })}
-          </Pressable>
-        </Pressable>
       </Modal>
       <Modal
         visible={isMajorMenuVisible}
