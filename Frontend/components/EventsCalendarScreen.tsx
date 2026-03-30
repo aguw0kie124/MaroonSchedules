@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useUser } from '@clerk/clerk-expo';
 import { useTheme } from './SharedUI';
 import { useEventStore } from '../store/eventStore';
 import type { ScheduledEvent, MajorOption } from '../store/eventStore';
@@ -35,6 +36,9 @@ import {
   ThumbsDown,
   Settings,
   Map,
+  List,
+  Search,
+  MapPin as MapPinIcon,
 } from 'lucide-react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -48,6 +52,7 @@ interface CampusEventResponse {
   start_time: string; end_time?: string | null; link?: string | null; source_url?: string | null;
   host_name?: string | null; source_name?: string | null; tags?: string[] | null;
   has_food?: boolean; food_confidence?: number; food_type?: string | null;
+  categories?: Record<string, number>;
 }
 
 interface TAMUEvent {
@@ -58,19 +63,20 @@ interface TAMUEvent {
   event_types?: string[] | null; group_title?: string;
   location_lat?: number | null; location_lng?: number | null;
   has_food?: boolean; food_confidence?: number; food_type?: string | null;
+  categories?: Record<string, number>;
 }
 
-type ExploreCategory = 'Food' | 'Sports' | 'Social' | 'Religion' | 'Advocacy' | 'Academic' | 'Entertainment' | 'Health & Wellness';
+type ExploreCategory = 'Food' | 'Sports' | 'Social' | 'Miscellaneous' | 'Advocacy' | 'Academic' | 'Entertainment' | 'Health & Wellness';
 type SocialMode = 'casual' | 'professional';
 type EventsView = 'grid' | 'flashcards' | 'inbox';
 
-const ALL_CATEGORIES: ExploreCategory[] = ['Food', 'Sports', 'Social', 'Religion', 'Advocacy', 'Academic', 'Entertainment', 'Health & Wellness'];
+const ALL_CATEGORIES: ExploreCategory[] = ['Food', 'Sports', 'Social', 'Miscellaneous', 'Advocacy', 'Academic', 'Entertainment', 'Health & Wellness'];
 
 export const CATEGORY_META: Record<string, { color: string }> = {
   Food: { color: '#FF9500' },
   Sports: { color: '#007AFF' },
   Social: { color: '#FF2D55' },
-  Religion: { color: '#5856D6' },
+  Miscellaneous: { color: '#5856D6' },
   Advocacy: { color: '#34C759' },
   Academic: { color: '#5AC8FA' },
   Entertainment: { color: '#AF52DE' },
@@ -94,15 +100,41 @@ function getSearchBlob(event: TAMUEvent) {
 }
 
 function classifyCategory(event: TAMUEvent): ExploreCategory {
+  if (event.categories) {
+    if (event.categories.food) return 'Food';
+    if (event.categories.sports) return 'Sports';
+    if (event.categories.entertainment) return 'Entertainment';
+    if (event.categories.advocacy) return 'Advocacy';
+    if (event.categories.academic) return 'Academic';
+    if (event.categories.health_wellness) return 'Health & Wellness';
+    if (event.categories.social) return 'Social';
+    if (event.categories.miscellaneous || event.categories.religion) return 'Miscellaneous';
+  }
+
   const b = getSearchBlob(event);
   if (event.has_food || /\bfood\b|\bmeal\b|\bdinner\b|\blunch\b|\bbreakfast\b|\bfree pizza\b|\brefreshments\b/.test(b)) return 'Food';
   if (/\bsport\b|\bgame\b|\bmatch\b|\btournament\b|\bfitness\b|\brec\b|\bathletic\b|\bworkout\b/.test(b)) return 'Sports';
   if (/\bconcert\b|\bshow\b|\bmovie\b|\bcomedy\b|\bmusic\b|\bperformance\b|\bfestival\b|\bkaraoke\b|\bgame night\b/.test(b)) return 'Entertainment';
   if (/\badvocacy\b|\bactivism\b|\bpolicy\b|\bawareness\b|\bcommunity service\b|\bvolunteer\b|\bjustice\b|\bsustainability\b/.test(b)) return 'Advocacy';
-  if (/\bchurch\b|\bfaith\b|\bprayer\b|\bbible\b|\bworship\b|\bministry\b|\bmosque\b|\btemple\b|\brelig/i.test(b)) return 'Religion';
   if (/\blecture\b|\bseminar\b|\bstudy\b|\bresearch\b|\bacademic\b|\blab\b|\btutoring\b|\bscholar/i.test(b)) return 'Academic';
   if (/\byoga\b|\bmeditat\b|\bmental health\b|\bwellness\b|\bself.care\b|\bmindful\b|\btherapy\b|\bhealth fair/i.test(b)) return 'Health & Wellness';
-  return 'Social';
+  return 'Miscellaneous'; // Fallback
+}
+
+function handleGoogleCalendar(event: TAMUEvent) {
+  const formatGCalDate = (ts: number) => {
+    return new Date(ts * 1000).toISOString().replace(/-|:|\.\d\d\d/g, '');
+  };
+
+  const start = formatGCalDate(event.date_ts);
+  const end = event.date2_ts ? formatGCalDate(event.date2_ts) : formatGCalDate(event.date_ts + 3600); // Default 1hr
+  
+  const title = encodeURIComponent(event.title);
+  const desc = encodeURIComponent(stripHtml(event.description || ''));
+  const loc = encodeURIComponent(event.location || '');
+  
+  const url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${desc}&location=${loc}`;
+  Linking.openURL(url).catch(err => console.error('Error opening Google Calendar', err));
 }
 
 function getSocialMode(event: TAMUEvent): SocialMode {
@@ -153,6 +185,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
   const navigation = useNavigation<any>();
+  const { user } = useUser();
 
   const [events, setEvents] = useState<TAMUEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -167,6 +200,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [friendSearch, setFriendSearch] = useState('');
   const [selectedFriends, setSelectedFriends] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isListView, setIsListView] = useState(false);
+  const [detailEvent, setDetailEvent] = useState<TAMUEvent | null>(null);
 
   const {
     isMajorSpecific, selectedMajor, setMajorSpecific, setSelectedMajor,
@@ -212,6 +248,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             location_lat: e.location_lat ?? null, location_lng: e.location_lng ?? null,
             has_food: !!e.has_food, food_confidence: e.food_confidence ?? 0,
             food_type: e.food_type ?? null,
+            categories: e.categories || undefined,
           };
         })
         .sort((a, b) => a.date_ts - b.date_ts);
@@ -237,19 +274,36 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     return counts;
   }, [events, isMajorSpecific, selectedMajor, nowTs]);
 
+  /* Filtered events base */
+  const filteredEventsBase = useMemo(() => {
+    let base = events.filter(e => e.date_ts >= nowTs);
+    
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      base = base.filter(e => {
+        const blob = getSearchBlob(e);
+        return blob.includes(q);
+      });
+    }
+
+    if (isMajorSpecific) {
+      base = base.filter(e => matchesMajor(e, selectedMajor));
+    }
+
+    return base;
+  }, [events, searchQuery, isMajorSpecific, selectedMajor, nowTs]);
+
   /* Flashcard stack */
   const flashcardStack = useMemo(() => {
     if (selectedCategories.size === 0) return [];
-    return events.filter((e) => {
-      if (e.date_ts < nowTs) return false;
+    return filteredEventsBase.filter((e) => {
       if (dislikedEventIds.includes(String(e.id))) return false;
-      if (isMajorSpecific && !matchesMajor(e, selectedMajor)) return false;
       const cat = classifyCategory(e);
       if (!selectedCategories.has(cat)) return false;
       if (cat === 'Social' && getSocialMode(e) !== socialMode) return false;
       return true;
     });
-  }, [events, selectedCategories, dislikedEventIds, isMajorSpecific, selectedMajor, socialMode, nowTs]);
+  }, [filteredEventsBase, selectedCategories, dislikedEventIds, socialMode]);
 
   const toggleCategory = useCallback((cat: ExploreCategory) => {
     setSelectedCategories((prev) => {
@@ -264,7 +318,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     setView('flashcards');
   }, []);
 
-  const handleSchedule = useCallback((event: TAMUEvent) => {
+  const handleSchedule = useCallback(async (event: TAMUEvent) => {
     const se: ScheduledEvent = {
       id: String(event.id), title: event.title, location: event.location,
       description: event.description, date_ts: event.date_ts, date_iso: event.date_iso,
@@ -272,7 +326,23 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       location_lng: event.location_lng, category: classifyCategory(event),
     };
     scheduleEvent(se);
-  }, [scheduleEvent]);
+
+    if (user?.id) {
+       try {
+         await fetch(`${API_URL}/campus/events/rsvp`, {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({
+             clerk_id: user.id,
+             event_id: String(event.id),
+             response: 'going'
+           })
+         });
+       } catch (err) {
+         console.error('[Events] RSVP error:', err);
+       }
+    }
+  }, [scheduleEvent, user]);
 
   const handleSwipeRight = useCallback((event: TAMUEvent) => {
     /* Add to schedule on swipe right (to show in Places) */
@@ -487,6 +557,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               <ChevronDown size={16} color={COLORS.textPrimary} />
             </Pressable>
           )}
+
         </View>
 
         {loading ? (
@@ -494,21 +565,25 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         ) : (
           <ScrollView contentContainerStyle={s.gridScroll} showsVerticalScrollIndicator={false}>
             <View style={s.grid}>
-              {[...ALL_CATEGORIES].sort((a, b) => (categoryCounts[b] || 0) - (categoryCounts[a] || 0)).map((cat) => {
-                const meta = CATEGORY_META[cat];
-                const selected = selectedCategories.has(cat);
-                const count = categoryCounts[cat] || 0;
-                const isEmpty = count === 0;
-                return (
-                  <Pressable key={cat} style={[s.tile, { backgroundColor: meta.color }, isEmpty && s.tileEmpty]} onPress={() => { if (!isEmpty) toggleCategory(cat); }}>
-                    <View style={[s.selectCircle, selected && s.selectCircleOn]}>
-                      {selected && <Check size={14} color="#FFFFFF" />}
-                    </View>
-                    <Text style={s.tileName}>{cat}</Text>
-                    <Text style={s.tileCount}>{count} events</Text>
-                  </Pressable>
-                );
-              })}
+              {((([...ALL_CATEGORIES] as ExploreCategory[])
+                .filter(c => c !== 'Miscellaneous')) as ExploreCategory[])
+                .sort((a, b) => (categoryCounts[b] || 0) - (categoryCounts[a] || 0))
+                .concat(['Miscellaneous' as ExploreCategory])
+                .map((cat) => {
+                  const meta = CATEGORY_META[cat];
+                  const selected = selectedCategories.has(cat);
+                  const count = categoryCounts[cat] || 0;
+                  const isEmpty = count === 0;
+                  return (
+                    <Pressable key={cat} style={[s.tile, { backgroundColor: meta.color }, isEmpty && s.tileEmpty]} onPress={() => { if (!isEmpty) toggleCategory(cat); }}>
+                      <View style={[s.selectCircle, selected && s.selectCircleOn]}>
+                        {selected && <Check size={14} color="#FFFFFF" />}
+                      </View>
+                      <Text style={s.tileName}>{cat}</Text>
+                      <Text style={s.tileCount}>{count} events</Text>
+                    </Pressable>
+                  );
+                })}
             </View>
             <View style={{ height: 120 }} />
           </ScrollView>
@@ -573,14 +648,36 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           <Pressable style={s.fcBack} onPress={() => setView('grid')}>
             <ChevronLeft size={20} color={COLORS.textPrimary} />
           </Pressable>
-          <View style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={s.fcProgress}>{isFinished ? 'Done!' : `${flashcardIndex + 1} of ${flashcardStack.length}`}</Text>
-          </View>
-          <View style={s.fcMajorToggle}>
-            <Text style={s.fcMajorLabel}>Major</Text>
-            <Pressable style={[s.toggleSmall, isMajorSpecific && s.toggleSmallOn]} onPress={() => setMajorSpecific(!isMajorSpecific)}>
-              <View style={[s.toggleKnobSmall, isMajorSpecific && s.toggleKnobSmallOn]} />
-            </Pressable>
+          {isListView && !isFinished ? (
+              <View style={[s.searchBarContainer, { flex: 1, marginTop: 0, height: 42, marginHorizontal: 8 }]}>
+                <Search size={16} color={COLORS.textTertiary} />
+                <TextInput
+                  style={[s.searchBarInput, { fontSize: 13 }]}
+                  placeholder="Search events..."
+                  placeholderTextColor={COLORS.textTertiary}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  clearButtonMode="while-editing"
+                />
+              </View>
+          ) : (
+            <View style={{ flex: 1, alignItems: 'center' }}>
+                <Text style={s.fcProgress}>{isFinished ? 'Done!' : `${flashcardIndex + 1} of ${flashcardStack.length}`}</Text>
+            </View>
+          )}
+          <View style={s.fcMajorToggleWrap}>
+            <View style={s.fcMajorToggle}>
+                <Text style={s.fcMajorLabel}>Major Only</Text>
+                <Pressable style={[s.toggleSmall, isMajorSpecific && s.toggleSmallOn]} onPress={() => setMajorSpecific(!isMajorSpecific)}>
+                    <View style={[s.toggleKnobSmall, isMajorSpecific && s.toggleKnobSmallOn]} />
+                </Pressable>
+            </View>
+            <View style={s.fcMajorToggle}>
+                <Text style={s.fcMajorLabel}>List View</Text>
+                <Pressable style={[s.toggleSmall, isListView && s.toggleSmallOn]} onPress={() => setIsListView(!isListView)}>
+                    <View style={[s.toggleKnobSmall, isListView && s.toggleKnobSmallOn]} />
+                </Pressable>
+            </View>
           </View>
         </View>
 
@@ -602,6 +699,19 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               <Text style={s.finishedBtnText}>Back to Categories</Text>
             </Pressable>
           </View>
+        ) : isListView ? (
+          <ScrollView contentContainerStyle={s.listScroll} showsVerticalScrollIndicator={false}>
+            {flashcardStack.map((e) => (
+              <Pressable key={String(e.id)} style={s.listRow} onPress={() => setDetailEvent(e)}>
+                <View style={[s.listDot, { backgroundColor: CATEGORY_META[classifyCategory(e)]?.color || COLORS.primary }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.listRowName} numberOfLines={1}>{e.title}</Text>
+                  <Text style={s.listRowSub}>{formatDate(e.date_ts)} · {formatTime(e.date_ts)}</Text>
+                </View>
+              </Pressable>
+            ))}
+            <View style={{ height: 100 }} />
+          </ScrollView>
         ) : (
           <FlashcardView
             key={`fc-${currentEvent.id}`}
@@ -620,6 +730,48 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           />
         )}
       {renderShareModal()}
+      {detailEvent && (
+        <Modal visible={!!detailEvent} transparent animationType="fade">
+            <Pressable style={s.modalOverlay} onPress={() => setDetailEvent(null)}>
+                <View style={s.detailSheet}>
+                    <Text style={s.detailTitle}>{detailEvent.title}</Text>
+                    <View style={s.detailMeta}>
+                        <View style={s.locRow}>
+                            <MapPinIcon size={14} color={COLORS.textSecondary} />
+                            <Text style={s.detailMetaText}>{detailEvent.location || 'College Station'}</Text>
+                        </View>
+                        <View style={s.locRow}>
+                            <CalendarIcon size={14} color={COLORS.textSecondary} />
+                            <Text style={s.detailMetaText}>{formatDate(detailEvent.date_ts)} at {formatTime(detailEvent.date_ts)}</Text>
+                        </View>
+                    </View>
+                    
+                    {detailEvent.description && (
+                        <ScrollView style={s.detailDescScroll}>
+                             <Text style={s.detailDesc}>{stripHtml(detailEvent.description)}</Text>
+                        </ScrollView>
+                    )}
+
+                    <View style={s.detailActions}>
+                        <Pressable style={[s.detailBtn, { backgroundColor: COLORS.primary }]} onPress={() => { handleSchedule(detailEvent); handleGoogleCalendar(detailEvent); }}>
+                            <CalendarIcon size={18} color="#FFF" />
+                            <Text style={s.detailBtnText}>Add to Calendar</Text>
+                        </Pressable>
+                        <View style={s.detailRow}>
+                            <Pressable style={s.detailSubBtn} onPress={() => handleShare(detailEvent)}>
+                                <Send size={18} color={COLORS.textPrimary} />
+                                <Text style={s.detailSubText}>Share</Text>
+                            </Pressable>
+                            <Pressable style={s.detailSubBtn} onPress={() => handleMapNav(detailEvent)}>
+                                <Map size={18} color={COLORS.textPrimary} />
+                                <Text style={s.detailSubText}>Map</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                </View>
+            </Pressable>
+        </Modal>
+      )}
       </Animated.View>
     );
   }
@@ -815,11 +967,16 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     /* Loading */
     loadWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
     loadText: { color: COLORS.textSecondary, fontSize: 15 },
+    /* Search Bar */
+    searchBarContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)', borderRadius: 14, paddingHorizontal: 12, height: 46, marginTop: 4, borderWidth: 1, borderColor: COLORS.border },
+    searchIconWrap: { marginRight: 8 },
+    searchBarInput: { flex: 1, color: COLORS.textPrimary, fontSize: 15, fontWeight: '600' },
     /* Flashcard header */
     fcHeader: { paddingTop: embedded ? 8 : 58, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10, paddingBottom: 8 },
     fcBack: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(12,12,14,0.05)', borderWidth: 1, borderColor: COLORS.border },
     fcProgress: { fontSize: 14, fontWeight: '800', color: COLORS.textSecondary },
-    fcMajorToggle: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    fcMajorToggleWrap: { flexDirection: 'column', gap: 4 },
+    fcMajorToggle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6 },
     fcMajorLabel: { fontSize: 12, fontWeight: '700', color: COLORS.textSecondary },
     toggleSmall: { width: 40, height: 24, borderRadius: 12, padding: 2, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.12)', justifyContent: 'center' },
     toggleSmallOn: { backgroundColor: COLORS.primary },
@@ -875,6 +1032,28 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     /* Send FAB */
     sendFab: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginHorizontal: 18, marginTop: 12, backgroundColor: isDark ? '#FFFFFF' : '#121214', paddingVertical: 14, borderRadius: 16 },
     sendFabText: { fontSize: 15, fontWeight: '900', color: isDark ? '#121214' : '#FFFFFF' },
+    /* List View */
+    listScroll: { paddingHorizontal: 16, paddingTop: 10 },
+    listRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 18, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
+    listDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
+    listRowName: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 2 },
+    listRowSub: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '600' },
+    listActions: { flexDirection: 'row', gap: 8, marginLeft: 10 },
+    listIconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)', alignItems: 'center', justifyContent: 'center' },
+    /* Detail Sheet */
+    detailSheet: { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF', borderRadius: 32, padding: 24, width: '100%', maxHeight: '80%', shadowColor: '#000', shadowOffset: { width: 0, height: -10 }, shadowOpacity: 0.3, shadowRadius: 20, elevation: 20 },
+    detailTitle: { fontSize: 24, fontWeight: '900', color: COLORS.textPrimary, letterSpacing: -0.5, marginBottom: 12 },
+    detailMeta: { gap: 8, marginBottom: 20 },
+    locRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    detailMetaText: { fontSize: 14, color: COLORS.textSecondary, fontWeight: '600' },
+    detailDescScroll: { maxHeight: 200, marginBottom: 24 },
+    detailDesc: { fontSize: 15, color: COLORS.textSecondary, lineHeight: 22 },
+    detailActions: { gap: 12 },
+    detailBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 56, borderRadius: 18 },
+    detailBtnText: { color: '#FFF', fontSize: 16, fontWeight: '900' },
+    detailRow: { flexDirection: 'row', gap: 12 },
+    detailSubBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 50, borderRadius: 16, borderWidth: 1, borderColor: COLORS.border, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' },
+    detailSubText: { fontSize: 14, fontWeight: '700', color: COLORS.textPrimary },
   });
 
 /* ═══════════════════════════════════════════════════════════

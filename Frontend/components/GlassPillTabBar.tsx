@@ -23,7 +23,7 @@ export function GlassPillTabBar({
 }: BottomTabBarProps) {
   const { COLORS, theme } = useTheme();
   const isBottomBarHidden = useAppShellStore((state) => state.isBottomBarHidden);
-  const [collapsedRouteKey, setCollapsedRouteKey] = React.useState<string | null>(null);
+  const [collapsedRouteKey, setCollapsedRouteKey] = React.useState<string | null>(state.routes[state.index].key);
   const styles = getStyles(COLORS, theme === 'dark');
 
   if (isBottomBarHidden) {

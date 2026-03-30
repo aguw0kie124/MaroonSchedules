@@ -80,7 +80,9 @@ import {
   useAppShellStore,
 } from "../store/appShellStore";
 import {
+  DiningMealPeriod,
   fetchDiningFullMenuCached,
+  getCurrentMealPeriod,
   getDiningMealPeriodForLocation,
   getDiningMenuCandidates,
 } from "../services/diningMenuCache";
@@ -948,6 +950,8 @@ export function PlacesMapScreen() {
   const [isFetchingDining, setIsFetchingDining] = useState(false);
   const [diningMenuOptions, setDiningMenuOptions] = useState<string[]>([]);
   const [activeDiningMenu, setActiveDiningMenu] = useState<string | null>(null);
+  const [diningMealPeriod, setDiningMealPeriod] = useState<DiningMealPeriod>("lunch");
+  const [diningSheetTab, setDiningSheetTab] = useState<'reviews' | 'menus'>('reviews');
   const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
   const [isFetchingReviews, setIsFetchingReviews] = useState(false);
   const schedules = useAppShellStore((state) => state.schedules);
@@ -1223,32 +1227,14 @@ export function PlacesMapScreen() {
       .filter((event) => {
         if (!event.date_iso) return false;
         const eventDate = new Date(event.date_iso);
- 
+
         // 1. Check if the event matches the DAY of the week in our 7-day rail (SMTWTFS)
         const eventDayIndex = eventDate.getDay();
         if (eventDayIndex !== selectedClassDay) return false;
 
-        // 2. Persistent future "Today":
-        // If the user is looking at a day that happens to be "Today" in the system...
-        if (selectedClassDay === todayDayIndex) {
-          // Verify it's actually the SAME CALENDAR DATE (not just same day of week)
-          const now = new Date();
-          const isSameCalendarDate = 
-            eventDate.getFullYear() === now.getFullYear() &&
-            eventDate.getMonth() === now.getMonth() &&
-            eventDate.getDate() === now.getDate();
+        // 3. (REMOVED AUTO-HIDE) Show all events for the selected day regardless of end time
+        // This ensures the timeline remains a complete record of the day.
 
-          if (!isSameCalendarDate) return false;
-
-          // 3. AUTO-HIDE: Hide events that have already ended
-          const startTimeMinutes = eventDate.getHours() * 60 + eventDate.getMinutes();
-          // Assume 60 min duration if no explicit endDate_ts
-          const duration = event.endDate_ts ? (event.endDate_ts - event.date_ts) / 60 : 60;
-          const endMinutes = startTimeMinutes + duration;
-          
-          if (endMinutes < minutesIntoDay) return false;
-        }
- 
         return true;
       })
       .map((event) => {
@@ -1292,11 +1278,7 @@ export function PlacesMapScreen() {
       });
 
     // 4. Filter classes for Today to hide those that have already ended
-    const filteredClasses = classes.filter(cls => {
-      if (selectedClassDay !== todayDayIndex) return true;
-      const endMinutes = parseMeetingTimeToMinutes(cls.classInfo?.endTime);
-      return endMinutes == null || endMinutes >= minutesIntoDay;
-    });
+    const filteredClasses = classes; // (REMOVED AUTO-HIDE) Show all classes for the selected day
 
     return [...filteredClasses, ...events].filter(Boolean).sort((a, b) => a.startTimeMinutes - b.startTimeMinutes);
   }, [selectedDayClassLocations, scheduledEvents, selectedClassDay, campusEventMarkers, todayDayIndex, minutesIntoDay]);
@@ -1794,6 +1776,7 @@ export function PlacesMapScreen() {
       setHubRestaurants([]);
       setDiningMenuOptions([]);
       setActiveDiningMenu(null);
+      setDiningMealPeriod(getCurrentMealPeriod());
       setDiningMenuPreview(null);
     }
   }, [selectedId, animateSheet]);
@@ -1834,7 +1817,7 @@ export function PlacesMapScreen() {
       if (nextMenuLocation) {
         const menuPreview = await fetchDiningFullMenuCached({
           location: nextMenuLocation,
-          mealPeriod: getDiningMealPeriodForLocation(nextMenuLocation),
+          mealPeriod: diningMealPeriod,
         });
         setDiningMenuPreview(menuPreview);
       } else {
@@ -2397,10 +2380,19 @@ export function PlacesMapScreen() {
       .slice(0, 8);
   }, [locations, searchQuery, userCoord]);
 
-  const selectedLoc = useMemo(
-    () => [...locations, ...classLocations].find((l) => (l.id || l.location) === selectedId),
-    [classLocations, locations, selectedId],
-  );
+  const selectedLoc = useMemo(() => {
+    // 1. Primary search in full locations & schedules
+    const baseLoc = [...locations, ...classLocations].find(
+      (l) => (l.id || l.location) === selectedId,
+    );
+    if (baseLoc) return baseLoc;
+
+    // 2. Secondary search in temporal timeline items (Today tab)
+    const timelineItem = selectedDayTimeline.find(
+      (item) => item.timelineKey === selectedId || item.id === selectedId,
+    );
+    return timelineItem?.location || null;
+  }, [classLocations, locations, selectedId, selectedDayTimeline]);
 
   useEffect(() => {
     if (
@@ -2442,11 +2434,11 @@ export function PlacesMapScreen() {
     }
 
     mapRef.current.fitToCoordinates(points, {
-      edgePadding: { 
-        top: activeLayer === "Today" ? 380 : 210, 
-        right: activeLayer === "Today" ? 30 : 48, 
-        bottom: activeLayer === "Today" ? 140 : 250, 
-        left: activeLayer === "Today" ? 30 : 48 
+      edgePadding: {
+        top: activeLayer === "Today" ? 380 : 210,
+        right: activeLayer === "Today" ? 30 : 48,
+        bottom: activeLayer === "Today" ? 140 : 250,
+        left: activeLayer === "Today" ? 30 : 48
       },
       animated: true,
     });
@@ -2535,9 +2527,9 @@ export function PlacesMapScreen() {
   }, [activeDiningMenu]);
 
   const openFullMenu = useCallback(
-    (locationName: string) => {
+    (locationName: string, mealPeriod?: DiningMealPeriod) => {
       const rootNavigation = navigation.getParent?.("RootStack") || navigation.getParent?.();
-      const targetMeal = getDiningMealPeriodForLocation(locationName);
+      const targetMeal = mealPeriod || getDiningMealPeriodForLocation(locationName);
       const params = {
         location: locationName,
         mealPeriod: targetMeal,
@@ -2678,10 +2670,6 @@ export function PlacesMapScreen() {
             setSearchQuery("");
           }
         }}
-        onMarkerPress={(e) => {
-          const id = e.nativeEvent.id;
-          if (id) setSelectedId(id);
-        }}
       >
         {/* AI-estimated campus-wide density zones */}
         {activeLayer === "Heatmap" &&
@@ -2750,7 +2738,10 @@ export function PlacesMapScreen() {
                 latitude: stop.Latitude,
                 longitude: stop.Longitude,
               }}
-              onPress={() => handleStopPress(stop)}
+              onPress={(e) => {
+                e.stopPropagation();
+                handleStopPress(stop);
+              }}
               tracksViewChanges={false}
               zIndex={100}
             >
@@ -2774,7 +2765,8 @@ export function PlacesMapScreen() {
                 anchor={{ x: 0.5, y: 0.5 }}
                 zIndex={isTrackedBus ? 240 : 200}
                 flat={true}
-                onPress={() => {
+                onPress={(e) => {
+                  e.stopPropagation();
                   setSelectedBus(bus);
                   setSelectedStop(null);
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -2829,7 +2821,8 @@ export function PlacesMapScreen() {
                 tracksViewChanges={false}
                 anchor={{ x: 0.5, y: 1 }}
                 zIndex={isCurrent ? 230 : 210}
-                onPress={() => {
+                onPress={(e) => {
+                  e.stopPropagation();
                   if (item.timelineType === 'class') {
                     setSelectedId(item.id);
                   } else {
@@ -2852,11 +2845,11 @@ export function PlacesMapScreen() {
                       {
                         backgroundColor: isCurrent
                           ? "#FF8A00"
-                          : (item.timelineType === 'event' 
-                              ? (CATEGORY_META[item.category]?.color || 
-                                 CATEGORY_META[String(item.category).charAt(0).toUpperCase() + String(item.category).slice(1).toLowerCase()]?.color || 
-                                 "#D4AF37") 
-                              : "#500000"),
+                          : (item.timelineType === 'event'
+                            ? (CATEGORY_META[item.category]?.color ||
+                              CATEGORY_META[String(item.category).charAt(0).toUpperCase() + String(item.category).slice(1).toLowerCase()]?.color ||
+                              "#D4AF37")
+                            : "#500000"),
                         borderColor: isCurrent ? "#FFFFFF" : "transparent",
                         borderWidth: isCurrent ? 2 : 0,
                       },
@@ -2867,14 +2860,14 @@ export function PlacesMapScreen() {
                   <View
                     style={[
                       styles.pinTail,
-                      { 
-                        borderTopColor: isCurrent 
-                          ? "#FF8A00" 
-                          : (item.timelineType === 'event' 
-                              ? (CATEGORY_META[item.category]?.color || 
-                                 CATEGORY_META[String(item.category).charAt(0).toUpperCase() + String(item.category).slice(1).toLowerCase()]?.color || 
-                                 "#D4AF37") 
-                              : "#500000") 
+                      {
+                        borderTopColor: isCurrent
+                          ? "#FF8A00"
+                          : (item.timelineType === 'event'
+                            ? (CATEGORY_META[item.category]?.color ||
+                              CATEGORY_META[String(item.category).charAt(0).toUpperCase() + String(item.category).slice(1).toLowerCase()]?.color ||
+                              "#D4AF37")
+                            : "#500000")
                       },
                     ]}
                   />
@@ -2891,7 +2884,10 @@ export function PlacesMapScreen() {
                 key={`dining-event-${event.eventId}`}
                 coordinate={{ latitude: event.latitude, longitude: event.longitude }}
                 anchor={{ x: 0.5, y: 1 }}
-                onPress={() => setFocusedEvent(event)}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setFocusedEvent(event);
+                }}
               >
                 <View style={styles.freeFoodPinContainer}>
                   <View style={styles.freeFoodPinHead}>
@@ -2910,7 +2906,10 @@ export function PlacesMapScreen() {
                     latitude: loc.coord?.lat || 0,
                     longitude: loc.coord?.lng || 0,
                   }}
-                  onPress={() => handleSelectLocation(loc)}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleSelectLocation(loc);
+                  }}
                 >
                   <View style={styles.pinContainer} pointerEvents="none">
                     <View style={[styles.pinHead, { backgroundColor: "#500000", padding: 6 }]}>
@@ -2951,7 +2950,10 @@ export function PlacesMapScreen() {
                 tracksViewChanges={false}
                 anchor={{ x: 0.5, y: 1 }}
                 zIndex={isSelected ? 100 : 1}
-                onPress={() => setSelectedId(markerId)}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setSelectedId(markerId);
+                }}
               >
                 <View style={styles.pinContainer} pointerEvents="none">
                   <View
@@ -3150,122 +3152,68 @@ export function PlacesMapScreen() {
         )}
       </View>
 
-        {activeLayer === "Today" ? (
-          <View style={styles.classesOverlayCard}>
-            {/* Schedule selection moved to Profile */}
-
-            <View style={[styles.classDayRail, { marginTop: 0 }]}>
-              {DAY_PILL_LABELS.map((dayLabel, index) => {
-                const selected = selectedClassDay === index;
-                return (
-                  <TouchableOpacity
-                    key={`class-day-${dayLabel}-${index}`}
-                    style={[styles.classDayPill, selected && styles.classDayPillActive]}
-                    onPress={() => {
-                      setSelectedClassDay(index);
-                      setSelectedId(null);
-                      setFocusedEvent(null);
-                      lastPlacesFitKey.current = null;
-                      setPlacesRefitTick((current) => current + 1);
-                    }}
-                    activeOpacity={0.88}
-                  >
-                    <Text style={[styles.classDayPillText, selected && styles.classDayPillTextActive]}>
-                      {dayLabel}
+      {activeLayer === "Today" && placesViewMode === "map" && currentOrNextClass && (
+        <View style={styles.classesOverlayContainer} pointerEvents="box-none">
+          <Card style={styles.classesOverlayCard}>
+            <View style={styles.classesOverlayHeader}>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <View style={[
+                    styles.focusBadge,
+                    { backgroundColor: (currentOrNextClass.timelineType === 'event' ? '#FF7A00' : '#500000') }
+                  ]}>
+                    <Text style={styles.focusBadgeText}>
+                      {selectedClassDay === todayDayIndex && currentOrNextClass.startTimeMinutes <= minutesIntoDay ? "NOW" : "NEXT"}
                     </Text>
-                  </TouchableOpacity>
-                );
-              })}
+                  </View>
+                  <Text style={styles.classesOverlayTitle}>
+                    {currentOrNextClass.startTimeLabel}
+                  </Text>
+                </View>
+                <Text style={styles.classesOverlayCourse} numberOfLines={1}>
+                  {currentOrNextClass.title}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.classesActionBtn}
+                onPress={() => {
+                  navigation.navigate("CampusNavigation", {
+                    preferredMode: "walk",
+                    initialDestination: {
+                      id: currentOrNextClass.id || currentOrNextClass.timelineKey,
+                      name: currentOrNextClass.title,
+                      shortName: (currentOrNextClass as any).classInfo?.courseCode || currentOrNextClass.title,
+                      latitude: currentOrNextClass.location?.coord?.lat || (currentOrNextClass as any).location_lat || 0,
+                      longitude: currentOrNextClass.location?.coord?.lng || (currentOrNextClass as any).location_lng || 0,
+                      type: currentOrNextClass.timelineType === 'class' ? 'academic' : 'event',
+                    }
+                  });
+                }}
+              >
+                <Navigation size={20} color="#FFF" />
+              </TouchableOpacity>
             </View>
 
-            {selectedSchedule && selectedDayClassLocations.length > 0 ? (
-              placesViewMode === "list" ? null :
-                currentOrNextClass ? (() => {
-                  const isEvent = currentOrNextClass.timelineType === 'event';
-                  const titleStr = isEvent ? currentOrNextClass.title : (currentOrNextClass as any).classInfo?.courseCode || "Next up";
-                  const metaStr = isEvent
-                    ? `${currentOrNextClass.locationLabel} • ${currentOrNextClass.startTimeLabel}`
-                    : `${(currentOrNextClass as any).classInfo?.courseTitle || currentOrNextClass.location} • ${(currentOrNextClass as any).classInfo?.beginTime || ""}${(currentOrNextClass as any).classInfo?.endTime ? ` - ${(currentOrNextClass as any).classInfo?.endTime}` : ""}`;
+            <View style={styles.classesOverlayFooter}>
+              <View style={styles.classesOverlayMeta}>
+                <MapPin size={14} color={COLORS.textTertiary} />
+                <Text style={styles.classesOverlayTime} numberOfLines={1}>
+                  {currentOrNextClass.locationLabel}
+                </Text>
+              </View>
+              {followingClass && (
+                <View style={styles.followingHint}>
+                  <Text style={styles.followingHintText}>
+                    Followed by {followingClass.title}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </Card>
+        </View>
+      )}
 
-                  const getLat = (item: any) => item.timelineType === 'event' ? (item.location?.coord?.lat || item.location_lat || 0) : (item.coord?.lat || 0);
-                  const getLng = (item: any) => item.timelineType === 'event' ? (item.location?.coord?.lng || item.location_lng || 0) : (item.coord?.lng || 0);
-                  const getShortName = (item: any) => item.timelineType === 'event' ? (item.locationLabel || "Event") : (item.classInfo?.courseCode || item.location);
-                  const classLocationStr = isEvent ? "" : (currentOrNextClass.location as unknown as string);
-
-                  return (
-                    <View style={styles.classesSummaryCard}>
-                      <View style={styles.classesSummaryHeader}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={styles.classesSummaryTitle} numberOfLines={1}>
-                            {titleStr}
-                          </Text>
-                          <Text style={styles.classesSummaryMeta} numberOfLines={2}>
-                            {metaStr}
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.summaryActionRow}>
-                        <View style={styles.summaryViewModeToggle}>
-                          <TouchableOpacity
-                            style={[styles.summaryViewBtn, (placesViewMode as any) === 'map' && styles.summaryViewBtnActive]}
-                            onPress={() => {
-                              setPlacesViewMode('map');
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            }}
-                          >
-                            <Text style={[styles.summaryViewBtnText, (placesViewMode as any) === 'map' && styles.summaryViewBtnTextActive]}>Map</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[styles.summaryViewBtn, (placesViewMode as any) === 'list' && styles.summaryViewBtnActive]}
-                            onPress={() => {
-                              setPlacesViewMode('list');
-                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            }}
-                          >
-                            <Text style={[styles.summaryViewBtnText, (placesViewMode as any) === 'list' && styles.summaryViewBtnActive]}>List</Text>
-                          </TouchableOpacity>
-                        </View>
-
-                        <TouchableOpacity
-                          style={styles.classQuickAction}
-                          onPress={() =>
-                            navigation.navigate("CampusNavigation", {
-                              preferredMode: "walk",
-                              initialDestination: {
-                                id: currentOrNextClass.id || classLocationStr || "event",
-                                name: isEvent ? currentOrNextClass.locationLabel : classLocationStr,
-                                shortName: getShortName(currentOrNextClass),
-                                latitude: getLat(currentOrNextClass),
-                                longitude: getLng(currentOrNextClass),
-                                type: isEvent ? "event" : "academic",
-                              },
-                            })
-                          }
-                        >
-                          <Navigation size={14} color="#FFFFFF" />
-                          <Text style={styles.classQuickActionText}>Open</Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      {followingClass ? (
-                        <View style={styles.classTransitHint}>
-                          <Text style={styles.classTransitHintTitle}>
-                            Next stop after this
-                          </Text>
-                          <Text style={styles.classTransitHintBody} numberOfLines={2}>
-                            {followingClass.timelineType === 'event' ? followingClass.title : ((followingClass as any).classInfo?.courseCode || followingClass.location)}
-                            {classTransitPlan
-                               ? ` • Route ${classTransitPlan.routeShortName} in about ${classTransitPlan.estimatedTimeMinutes} min`
-                               : " • Walk or bus plan available when live transit matches"}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                })() : null
-            ) : null}
-          </View>
-        ) : null}
 
       {/* Bus Route Selector Overlay - Independent and Left Aligned */}
       {activeLayer === "Bus" && busRoutes.length > 0 && (
@@ -3435,8 +3383,8 @@ export function PlacesMapScreen() {
           style={[
             styles.placesListOverlay,
             {
-              top: activeLayer === "Today" ? 210 : 178,
-              maxHeight: SCREEN_HEIGHT - (activeLayer === "Today" ? 210 : 178) - 100,
+              top: activeLayer === "Today" ? 220 : 178, // Adjusted for floating rail
+              maxHeight: SCREEN_HEIGHT - (activeLayer === "Today" ? 220 : 178) - 100,
             }
           ]}
           pointerEvents="box-none"
@@ -3448,13 +3396,15 @@ export function PlacesMapScreen() {
                   <Text style={styles.placesListTitle}>
                     {activeLayer === "Today" ? "Today's Schedule" : (activeLayer === "Dining" ? "Dining" : `${activeLayer} Places`)}
                   </Text>
-                  <Text style={styles.placesListSubtitle}>
-                    {activeLayer === "Today"
-                      ? null
-                      : activeLayer === "Dining"
-                        ? (diningViewType === 'events' ? "Upcoming campus events with free food." : "Daily menus for dining halls and hubs.")
-                        : "Unified campus nodes with shared metadata."}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.placesListSubtitle}>
+                      {activeLayer === "Today"
+                        ? "Chronological flow of your day."
+                        : activeLayer === "Dining"
+                          ? (diningViewType === 'events' ? "Upcoming campus events with free food." : "Daily menus for dining halls and hubs.")
+                          : "Unified campus nodes with shared metadata."}
+                    </Text>
+                  </View>
                 </View>
                 {activeLayer === "Dining" ? (
                   <View style={styles.diningSegmentedToggle}>
@@ -3479,28 +3429,7 @@ export function PlacesMapScreen() {
                       <Text style={[styles.diningToggleText, diningViewType === 'menus' && styles.diningToggleTextActive]}>Menus</Text>
                     </TouchableOpacity>
                   </View>
-                ) : (
-                  <View style={styles.viewModeToggleList}>
-                    <TouchableOpacity
-                      style={[styles.viewModeBtnSmall, (placesViewMode as any) === 'map' && styles.viewModeBtnSmallActive]}
-                      onPress={() => {
-                        setPlacesViewMode('map');
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      }}
-                    >
-                      <Text style={[styles.viewModeTextSmall, (placesViewMode as any) === 'map' && styles.viewModeTextSmallActive]}>Map</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.viewModeBtnSmall, (placesViewMode as any) === 'list' && styles.viewModeBtnSmallActive]}
-                      onPress={() => {
-                        setPlacesViewMode('list');
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      }}
-                    >
-                      <Text style={[styles.viewModeTextSmall, (placesViewMode as any) === 'list' && styles.viewModeTextSmallActive]}>List</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
+                ) : null}
               </View>
             </View>
 
@@ -3531,20 +3460,26 @@ export function PlacesMapScreen() {
                         <Text style={styles.timelineTime}>{item.startTimeLabel}</Text>
                         <View style={[
                           styles.timelineDot,
-                          item.timelineType === 'event'
-                            ? { backgroundColor: CATEGORY_META[(item as any).category]?.color || "#FF7A00" }
-                            : (item.timelineType === 'class' ? { backgroundColor: COLORS.primary } : null)
+                          item.timelineType === 'event' && styles.timelineDotEvent,
+                          { backgroundColor: item.timelineType === 'event' ? (CATEGORY_META[item.category]?.color || "#FF7A00") : COLORS.primary }
                         ]} />
                         <View style={styles.timelineConnector} />
                       </View>
                       <View style={styles.timelineContent}>
                         <View style={styles.timelineHeader}>
-                          <Text style={styles.timelineTitle} numberOfLines={1}>{item.title}</Text>
-                          <View style={[styles.timelineBadge, item.timelineType === 'event' ? styles.timelineBadgeEvent : styles.timelineBadgeClass]}>
-                            <Text style={styles.timelineBadgeText}>{item.timelineType.toUpperCase()}</Text>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.timelineTitle}>{item.title}</Text>
+                            <Text style={styles.timelineLocation}>{item.locationLabel}</Text>
+                          </View>
+                          <View style={[
+                            styles.timelineBadge,
+                            item.timelineType === 'class' ? styles.timelineBadgeClass : styles.timelineBadgeEvent
+                          ]}>
+                            <Text style={styles.timelineBadgeText}>
+                              {item.timelineType === 'class' ? "CLASS" : "EVENT"}
+                            </Text>
                           </View>
                         </View>
-                        <Text style={styles.timelineLocation}>{item.locationLabel}</Text>
 
                         {item.location && (
                           <TouchableOpacity
@@ -3552,19 +3487,18 @@ export function PlacesMapScreen() {
                             onPress={(e) => {
                               e.stopPropagation();
                               navigation.navigate("CampusNavigation", {
-                                preferredMode: "walk",
                                 initialDestination: {
-                                  id: item.id || item.locationLabel,
-                                  name: item.locationLabel,
-                                  shortName: item.locationLabel,
+                                  id: item.location?.location || item.locationLabel,
+                                  name: item.location?.location || item.locationLabel,
+                                  shortName: item.location?.shortName || item.locationLabel,
                                   latitude: item.location?.coord?.lat || 0,
                                   longitude: item.location?.coord?.lng || 0,
-                                  type: item.timelineType === 'event' ? "event" : "academic",
-                                },
+                                  type: item.timelineType === 'class' ? 'academic' : 'event',
+                                }
                               });
                             }}
                           >
-                            <Navigation size={12} color={COLORS.primary} />
+                            <Navigation size={12} color="#007AFF" />
                             <Text style={styles.timelineDirectionsText}>Get Directions</Text>
                           </TouchableOpacity>
                         )}
@@ -3818,7 +3752,7 @@ export function PlacesMapScreen() {
       )}
 
       {/* ── Google Maps-style Bottom Sheet ─────────────────────────────── */}
-      {selectedId && !selectedStop && !selectedBus && (
+      {selectedId && selectedLoc && !selectedStop && !selectedBus && (
         <Animated.View
           style={[styles.bottomSheet, { transform: [{ translateY: sheetY }] }]}
           {...panResponder.panHandlers}
@@ -3830,66 +3764,43 @@ export function PlacesMapScreen() {
             <>
               {/* Header — always visible at peek height */}
               <View style={styles.sheetHeader}>
-                <View style={{ flex: 1, paddingRight: 12 }}>
+                <View style={{ flex: 1, paddingRight: 60 }}>
                   <Text style={styles.locationName}>
                     {selectedLoc.location}
                   </Text>
                   <View style={styles.sheetBadgeRow}>
-                    <Text style={styles.typeTextSlim}>{selectedLoc.type}</Text>
-                    {selectedLoc.is_live ? (
-                      <View style={styles.liveBadgeSlim}>
-                        <Text style={styles.dotSeparator}>•</Text>
-                        <View style={styles.livePulse} />
-                        <Text style={styles.liveTextSlim}>Live Traffic</Text>
-                      </View>
-                    ) : (
-                      <View style={styles.aiBadgeSlim}>
-                        <Text style={styles.dotSeparator}>•</Text>
-                        <Text style={styles.aiTextSlim}>Directory</Text>
-                      </View>
-                    )}
+                    <Text style={styles.typeTextSlim}>{selectedLoc.type} • Directory</Text>
                   </View>
                 </View>
 
-                <View style={{ alignItems: "center", gap: 12 }}>
+                <View style={styles.headerActionStack}>
                   <TouchableOpacity
-                    onPress={() => setSelectedId(null)}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      setSelectedId(null);
+                    }}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    style={styles.dismissBtn}
+                    style={styles.dismissBtnHeader}
                   >
                     <X size={18} color={COLORS.textTertiary} />
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={styles.circularActionBtn}
+                    style={styles.floatingNavBtn}
                     onPress={() =>
                       navigation.navigate("CampusNavigation", {
                         initialDestination: {
                           id: selectedLoc.location,
                           name: selectedLoc.location,
-                          shortName:
-                            selectedLoc.shortName || selectedLoc.location,
+                          shortName: selectedLoc.shortName || selectedLoc.location,
                           latitude: selectedLoc.coord?.lat || 0,
                           longitude: selectedLoc.coord?.lng || 0,
-                          type:
-                            selectedLoc.type === "Academic"
-                              ? "academic"
-                              : selectedLoc.type === "Library"
-                                ? "library"
-                                : selectedLoc.type === "Dining"
-                                  ? "dining"
-                                  : selectedLoc.type === "Rec"
-                                    ? "recreation"
-                                    : selectedLoc.type === "Housing"
-                                      ? "housing"
-                                      : selectedLoc.type === "Athletics"
-                                        ? "athletics"
-                                        : "landmark",
+                          type: selectedLoc.type === "Dining" ? "dining" : "landmark",
                         },
                       })
                     }
                   >
-                    <Navigation size={20} fill="#FFF" color="#FFF" />
+                    <Navigation size={22} fill="#FFF" color="#FFF" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -3900,148 +3811,130 @@ export function PlacesMapScreen() {
                 </Text>
               ) : null}
 
-              {(() => {
-                const parkingRecommendation =
-                  selectedLoc.type === "Parking"
-                    ? getParkingRecommendation(selectedLoc.location, parkingPermit)
-                    : null;
-                const contextLink = getLocationContextLink(selectedLoc);
-                const externalLink = getPlaceExternalLink(selectedLoc);
-                return (
-                  <>
-                    <View style={styles.quickActionRow}>
-                      <TouchableOpacity
-                        style={styles.quickActionPill}
-                        onPress={() => Linking.openURL(externalLink.url).catch((error) => {
-                          console.warn("Unable to open place external link", error);
-                        })}
-                      >
-                        <ExternalLink size={14} color={COLORS.textPrimary} />
-                        <Text style={styles.quickActionText}>{externalLink.label}</Text>
-                      </TouchableOpacity>
-
-                      {(selectedLoc.type === "Dining" || selectedLoc.type === "Hub") && activeDiningMenu ? (
-                        <TouchableOpacity
-                          style={[styles.quickActionPill, styles.quickActionPrimary]}
-                          onPress={() => openFullMenu(activeDiningMenu)}
-                        >
-                          <Utensils size={14} color="#FFFFFF" />
-                          <Text style={styles.quickActionPrimaryText}>Open Menu</Text>
-                        </TouchableOpacity>
-                      ) : null}
-
-                      {contextLink ? (
-                        <TouchableOpacity
-                          style={styles.quickActionPill}
-                          onPress={() => Linking.openURL(contextLink.url).catch((error) => {
-                            console.warn("Unable to open place context link", error);
-                          })}
-                        >
-                          <ExternalLink size={14} color={COLORS.textPrimary} />
-                          <Text style={styles.quickActionText}>{contextLink.label}</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
-
-                    {parkingRecommendation ? (
-                      <View style={styles.contextCard}>
-                        <Text style={styles.contextCardTitle}>{parkingRecommendation.badge}</Text>
-                        <Text style={styles.contextCardBody}>{parkingRecommendation.detail}</Text>
-                      </View>
-                    ) : null}
-
-                    {selectedLoc.current_event ? (
-                      <View style={styles.contextCard}>
-                        <Text style={styles.contextCardTitle}>Active at this place</Text>
-                        <Text style={styles.contextCardBody}>{selectedLoc.current_event}</Text>
-                      </View>
-                    ) : null}
-                  </>
-                );
-              })()}
-
-              {/* Hub Restaurants */}
-              {hubRestaurants.length > 0 ? (
-                <View style={styles.infoBlock}>
-                  <View style={{ marginBottom: 16 }}>
-                    <Text style={styles.sectionTitle}>Inside this Hub</Text>
-                    <View style={styles.restaurantChipList}>
-                      {hubRestaurants.map((r, i) => (
-                        <TouchableOpacity
-                          key={i}
-                          style={[
-                            styles.restaurantChip,
-                            activeDiningMenu === getDiningMenuCandidates(r)[0] && styles.restaurantChipActive,
-                          ]}
-                          onPress={() => {
-                            const nextMenu = getDiningMenuCandidates(r)[0];
-                            if (nextMenu) {
-                              setActiveDiningMenu(nextMenu);
-                            }
-                          }}
-                        >
-                          <Text style={styles.restaurantChipText}>{r}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                    <Text style={styles.hoursText}>
-                      Tap a restaurant to preview its menu and open the full cached menu instantly.
-                    </Text>
-                  </View>
-                  <View style={styles.hoursInfo}>
-                    <Clock size={12} color={COLORS.textTertiary} />
-                    <Text style={styles.hoursText}>
-                      {selectedLoc.hours || "Open Today · 7:00 AM – 10:00 PM"}
-                    </Text>
-                  </View>
+              {/* Action Buttons Row */}
+              {(selectedLoc.type === "Dining" || selectedLoc.type === "Hub") ? (
+                <View style={styles.diningSheetActionRow}>
+                  <TouchableOpacity 
+                    style={styles.diningActionPillWhite}
+                    onPress={() => Linking.openURL(getPlaceExternalLink(selectedLoc).url).catch(() => {})}
+                  >
+                    <ExternalLink size={14} color="#0C0C0E" />
+                    <Text style={styles.diningActionTextWhite}>Dining Site</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.diningActionPillMaroon}
+                    onPress={() => setDiningSheetTab('menus')}
+                  >
+                    <Utensils size={14} color="#FFF" />
+                    <Text style={styles.diningActionTextMaroon}>Menus</Text>
+                  </TouchableOpacity>
                 </View>
-              ) : (
-                <View style={styles.infoBlock}>
-                  {selectedLoc.type === 'Library' || selectedLoc.type === 'Rec' ? (
-                    <View style={styles.occupancyBlock}>
-                      <View style={styles.occupancyHeaderRow}>
-                        <Layers size={18} color={getStatusColor(selectedLoc.percent_full)} />
-                        <View style={{ marginLeft: 8, flex: 1 }}>
-                          <Text style={styles.occupancyLiveLabel}>Live Occupancy</Text>
-                          <Text style={[styles.occupancyLiveText, { color: getStatusColor(selectedLoc.percent_full) }]}>
-                            {selectedLoc.percent_full}% Full
-                          </Text>
-                        </View>
-                      </View>
-                      <View style={styles.occupancyTrack}>
-                        <View style={[styles.occupancyFill, {
-                          width: `${selectedLoc.percent_full}%` as any,
-                          backgroundColor: getStatusColor(selectedLoc.percent_full)
-                        }]} />
-                      </View>
-                      <View style={styles.hoursInfo}>
-                        <Clock size={16} color={COLORS.textTertiary} />
-                        <Text style={styles.hoursText}>
-                          {selectedLoc.type === 'Rec'
-                            ? `Today: ${selectedRecreationFacility?.today_hours || selectedRecreationFacility?.hours_hint || selectedLoc.hours || 'Check official facility page'}`
-                            : selectedLoc.hours || '6:00 AM – 12:00 AM'}
-                        </Text>
-                      </View>
-                      {selectedLoc.type === 'Rec' && selectedRecreationFacility?.source_url ? (
-                        <TouchableOpacity
-                          style={styles.inlineLinkRow}
-                          onPress={() => Linking.openURL(selectedRecreationFacility.source_url).catch(() => { })}
-                        >
-                          <ExternalLink size={14} color={COLORS.textPrimary} />
-                          <Text style={styles.inlineLinkText}>Open official facility page</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
-                  ) : (
-                    <View style={styles.hoursInfoBlock}>
-                      <Clock size={16} color={COLORS.textTertiary} />
-                      <Text style={styles.hoursText}>
-                        {selectedLoc.hours || "6:00 AM – 12:00 AM"}
-                      </Text>
-                    </View>
-                  )}
+              ) : null}
+
+              {/* Info Block (Hours) */}
+              <View style={styles.infoBlockHours}>
+                <Clock size={16} color={COLORS.textTertiary} />
+                <Text style={styles.hoursTextLarge}>
+                  {selectedLoc.hours || "7:00 AM – 10:00 PM"}
+                </Text>
+              </View>
+
+              <View style={styles.sheetDividerDense} />
+
+              {/* Segmented Control */}
+              {(selectedLoc.type === "Dining" || selectedLoc.type === "Hub") && (
+                <View style={styles.segmentedControlCard}>
+                  <TouchableOpacity 
+                    style={[styles.segmentBtn, diningSheetTab === 'reviews' && styles.segmentBtnActive]}
+                    onPress={() => setDiningSheetTab('reviews')}
+                  >
+                    <Text style={[styles.segmentBtnText, diningSheetTab === 'reviews' && styles.segmentBtnTextActive]}>Reviews</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.segmentBtn, diningSheetTab === 'menus' && styles.segmentBtnActive]}
+                    onPress={() => setDiningSheetTab('menus')}
+                  >
+                    <Text style={[styles.segmentBtnText, diningSheetTab === 'menus' && styles.segmentBtnTextActive]}>Menus</Text>
+                  </TouchableOpacity>
                 </View>
               )}
+
+              {/* Scrollable Content */}
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 60 }}
+              >
+                {diningSheetTab === 'reviews' ? (
+                  <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+                    <View style={styles.reviewsPremiumHeader}>
+                      <Text style={styles.reviewsTitleCaps}>REVIEWS</Text>
+                      <View style={{ flexDirection: 'row', gap: 16 }}>
+                        <TouchableOpacity onPress={() => setReviewModalVisible(true)}>
+                          <Text style={styles.addReviewLink}>+ ADD REVIEW</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => setAllReviewsModalVisible(true)}>
+                          <Text style={styles.seeAllLink}>SEE ALL</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {streamReviews.length > 0 ? (
+                      streamReviews.slice(0, 5).map((rev, i) => (
+                        <View key={rev.id || i} style={styles.reviewItemPremium}>
+                          <View style={styles.reviewUserRowPremium}>
+                            <View style={styles.avatarCirclePremium}>
+                              <Text style={styles.avatarLetterPremium}>{rev.user[0]}</Text>
+                            </View>
+                            <View style={{ flex: 1 }}>
+                              <View style={styles.reviewNameStarsRow}>
+                                <Text style={styles.reviewerNamePremium}>{rev.user}</Text>
+                                <View style={styles.starsRowPremium}>
+                                  {[1, 2, 3, 4, 5].map((s) => (
+                                    <Star key={s} size={11} fill={s <= rev.rating ? "#FFD700" : "transparent"} color={s <= rev.rating ? "#FFD700" : "#555"} />
+                                  ))}
+                                </View>
+                              </View>
+                              <Text style={styles.reviewCommentPremium}>{rev.comment}</Text>
+                            </View>
+                          </View>
+                        </View>
+                      ))
+                    ) : (
+                      <View style={styles.emptyReviewsPremium}>
+                        <Text style={styles.emptyReviewsTextPremium}>No reviews yet. Be the first!</Text>
+                      </View>
+                    )}
+                  </View>
+                ) : (
+                  <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+                    {/* Standard Menu Logic */}
+                    {(selectedLoc.type === "Dining" || selectedLoc.type === "Hub") && activeDiningMenu ? (
+                      <>
+                        <View style={styles.mealSwitcherPremium}>
+                          {(["breakfast", "lunch", "dinner"] as DiningMealPeriod[]).map((p) => (
+                            <TouchableOpacity
+                              key={p}
+                              style={[styles.mealBtnPremium, diningMealPeriod === p && styles.mealBtnActivePremium]}
+                              onPress={() => setDiningMealPeriod(p)}
+                            >
+                              <Text style={[styles.mealBtnTextPremium, diningMealPeriod === p && styles.mealBtnTextActivePremium]}>
+                                {p.charAt(0).toUpperCase() + p.slice(1)}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                        <TouchableOpacity
+                          style={styles.openFullMenuBtnPremium}
+                          onPress={() => openFullMenu(activeDiningMenu, diningMealPeriod)}
+                        >
+                          <Utensils size={14} color="#FFFFFF" />
+                          <Text style={styles.openFullMenuTextPremium}>Open Full {diningMealPeriod.charAt(0).toUpperCase() + diningMealPeriod.slice(1)} Menu</Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : null}
+                  </View>
+                )}
+              </ScrollView>
 
               <View style={styles.sheetDivider} />
 
@@ -4190,6 +4083,57 @@ export function PlacesMapScreen() {
             </>
           ) : null}
         </Animated.View>
+      )}
+
+      {/* --- SHARED TODAY CONTROLS (Map & List) --- */}
+      {activeLayer === "Today" && (
+        <View style={styles.todayControlsContainer}>
+          {/* Map/List Toggle */}
+          <View style={styles.summaryViewModeToggleFloating}>
+            <TouchableOpacity
+              style={[styles.viewModeBtn, placesViewMode === 'map' && styles.viewModeBtnActive]}
+              onPress={() => {
+                setPlacesViewMode('map');
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }}
+            >
+              <Text style={[styles.viewModeText, placesViewMode === 'map' && styles.viewModeTextActive]}>Map</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.viewModeBtn, placesViewMode === 'list' && styles.viewModeBtnActive]}
+              onPress={() => {
+                setPlacesViewMode('list');
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }}
+            >
+              <Text style={[styles.viewModeText, placesViewMode === 'list' && styles.viewModeTextActive]}>List</Text>
+            </TouchableOpacity>
+          </View>
+          {/* Day Rail */}
+          <View style={styles.classDayRail}>
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((dayLabel, index) => {
+              const selected = selectedClassDay === index;
+              return (
+                <TouchableOpacity
+                  key={`class-day-floating-${dayLabel}-${index}`}
+                  style={[styles.classDayPill, selected && styles.classDayPillActive]}
+                  onPress={() => {
+                    setSelectedClassDay(index);
+                    setSelectedId(null);
+                    setFocusedEvent(null);
+                    lastPlacesFitKey.current = null;
+                    setPlacesRefitTick(current => current + 1);
+                  }}
+                  activeOpacity={0.88}
+                >
+                  <Text style={[styles.classDayPillText, selected && styles.classDayPillTextActive]}>
+                    {dayLabel}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
       )}
 
       {focusedEvent && !selectedId && !selectedStop && !selectedBus ? (
@@ -4466,6 +4410,36 @@ export function PlacesMapScreen() {
 
 const getStyles = (COLORS: any, isDark: boolean) =>
   StyleSheet.create({
+    mealSwitcher: {
+      flexDirection: 'row',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+      borderRadius: 12,
+      padding: 4,
+      marginTop: 8,
+    },
+    mealBtn: {
+      flex: 1,
+      paddingVertical: 8,
+      alignItems: 'center',
+      borderRadius: 8,
+    },
+    mealBtnActive: {
+      backgroundColor: COLORS.surface,
+      shadowColor: '#000',
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 2,
+    },
+    mealBtnText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: COLORS.textSecondary,
+    },
+    mealBtnTextActive: {
+      color: COLORS.primary,
+      fontWeight: '800',
+    },
     container: { flex: 1, backgroundColor: COLORS.background },
     map: { flex: 1, width: "100%" },
     loader: {
@@ -6331,7 +6305,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     timelineRow: {
       flexDirection: 'row',
-      gap: 24,
+      gap: 16,
       marginBottom: 0,
     },
     timelineSidebar: {
@@ -6348,14 +6322,12 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     timelineDot: {
       position: 'absolute',
-      right: -18,
+      right: -10,
       top: 6,
-      width: 12,
-      height: 12,
-      borderRadius: 6,
+      width: 10,
+      height: 10,
+      borderRadius: 5,
       backgroundColor: COLORS.primary,
-      borderWidth: 2,
-      borderColor: isDark ? "#121214" : "#FFFFFF",
       zIndex: 2,
     },
     timelineDotEvent: {
@@ -6363,9 +6335,9 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     timelineConnector: {
       position: 'absolute',
-      right: -13,
+      right: -6,
       top: 18,
-      bottom: -30,
+      bottom: -10,
       width: 2,
       backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
       zIndex: 1,
@@ -6382,21 +6354,22 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       marginBottom: 4,
     },
     timelineTitle: {
-      fontSize: 15,
-      fontWeight: '800',
+      fontSize: 16,
+      fontWeight: '900',
       color: COLORS.textPrimary,
-      flex: 1,
+      marginBottom: 2,
     },
     timelineBadge: {
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 6,
+      alignSelf: 'flex-start',
     },
     timelineBadgeClass: {
       backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.06)",
     },
     timelineBadgeEvent: {
-      backgroundColor: "#FF7A0020",
+      backgroundColor: isDark ? "rgba(255,122,0,0.15)" : "rgba(255,122,0,0.1)",
     },
     timelineBadgeText: {
       fontSize: 9,
@@ -6413,16 +6386,13 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "rgba(12,12,14,0.02)",
       alignSelf: 'flex-start',
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 10,
+      marginTop: 4,
     },
     timelineDirectionsText: {
-      fontSize: 12,
+      fontSize: 13,
       fontWeight: '800',
-      color: COLORS.primary,
+      color: "#007AFF",
     },
     emptyListState: {
       alignItems: 'center',
@@ -6678,5 +6648,353 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       borderRadius: 20,
       marginHorizontal: 16,
       marginBottom: 20,
+    },
+    // --- EXPERT APPLE DINING UI STYLES ---
+    headerActionStack: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 16,
+    },
+    dismissBtnHeader: {
+      padding: 4,
+    },
+    floatingNavBtn: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      backgroundColor: '#007AFF', // Standard Apple Maps Blue
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: "#007AFF",
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 6,
+    },
+    diningSheetActionRow: {
+      flexDirection: 'row',
+      paddingHorizontal: 16,
+      gap: 12,
+      marginBottom: 16,
+    },
+    diningActionPillWhite: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: 44,
+      borderRadius: 12,
+      backgroundColor: '#FFFFFF',
+      borderWidth: 1,
+      borderColor: '#E5E5EA',
+      gap: 8,
+    },
+    diningActionPillMaroon: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: 44,
+      borderRadius: 12,
+      backgroundColor: '#500000', // Our Maroon
+      gap: 8,
+    },
+    diningActionTextWhite: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: '#0C0C0E',
+    },
+    diningActionTextMaroon: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: '#FFFFFF',
+    },
+    infoBlockHours: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      gap: 8,
+      marginBottom: 16,
+    },
+    hoursTextLarge: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: COLORS.textSecondary,
+    },
+    sheetDividerDense: {
+      height: 1,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+      marginHorizontal: 16,
+      marginBottom: 16,
+    },
+    segmentedControlCard: {
+      flexDirection: 'row',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+      borderRadius: 20,
+      padding: 3,
+      marginHorizontal: 16,
+      gap: 4,
+      marginBottom: 12,
+    },
+    segmentBtn: {
+      flex: 1,
+      paddingVertical: 10,
+      alignItems: 'center',
+      borderRadius: 17,
+    },
+    segmentBtnActive: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : '#FFFFFF',
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    segmentBtnText: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: COLORS.textSecondary,
+    },
+    segmentBtnTextActive: {
+      color: COLORS.textPrimary,
+    },
+    reviewsPremiumHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 16,
+    },
+    reviewsTitleCaps: {
+      fontSize: 12,
+      fontWeight: '900',
+      color: COLORS.textTertiary,
+      letterSpacing: 1,
+    },
+    addReviewLink: {
+      fontSize: 12,
+      fontWeight: '900',
+      color: '#32D74B', // Vibrant Green
+    },
+    seeAllLink: {
+      fontSize: 12,
+      fontWeight: '900',
+      color: '#FFD60A', // Vibrant Yellow
+    },
+    reviewItemPremium: {
+      marginBottom: 20,
+    },
+    reviewUserRowPremium: {
+      flexDirection: 'row',
+      gap: 12,
+    },
+    avatarCirclePremium: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarLetterPremium: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+    },
+    reviewerNamePremium: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+      marginBottom: 2,
+    },
+    starsRowPremium: {
+      flexDirection: 'row',
+      gap: 2,
+      marginBottom: 4,
+    },
+    reviewNameStarsRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    reviewCommentPremium: {
+      fontSize: 14,
+      color: COLORS.textPrimary,
+      fontWeight: '500',
+      lineHeight: 18,
+    },
+    emptyReviewsPremium: {
+      paddingVertical: 30,
+      alignItems: 'center',
+    },
+    emptyReviewsTextPremium: {
+      color: COLORS.textTertiary,
+      fontSize: 14,
+    },
+    // Menus Premium Enhancements
+    mealSwitcherPremium: {
+      flexDirection: 'row',
+      gap: 12,
+      marginBottom: 20,
+    },
+    mealBtnPremium: {
+      flex: 1,
+      height: 40,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+    },
+    mealBtnActivePremium: {
+      backgroundColor: COLORS.primary,
+    },
+    mealBtnTextPremium: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: COLORS.textSecondary,
+    },
+    mealBtnTextActivePremium: {
+      color: '#FFF',
+    },
+    openFullMenuBtnPremium: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#500000',
+      height: 48,
+      borderRadius: 14,
+      gap: 10,
+    },
+    openFullMenuTextPremium: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: '#FFF',
+    },
+    // --- TODAY TAB FLOATING CONTROLS ---
+    todayControlsContainer: {
+      position: 'absolute',
+      top: 110,
+      left: 0,
+      right: 0,
+      alignItems: 'flex-start', // Move to left
+      paddingLeft: 20, // Add spacing from edge
+      zIndex: 100,
+      gap: 12,
+    },
+    summaryViewModeToggleFloating: {
+      flexDirection: 'row',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+      borderRadius: 14,
+      padding: 4,
+      width: 140, // Slightly narrower for left alignment
+      height: 38,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+    },
+    classesOverlayContainer: {
+      position: 'absolute',
+      bottom: 20,
+      left: 16,
+      right: 16,
+      zIndex: 1000,
+    },
+    classesOverlayCard: {
+      backgroundColor: isDark ? "rgba(12,12,14,0.92)" : "rgba(255,255,255,0.96)",
+      borderRadius: 24,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: isDark ? "rgba(255,255,255,0.12)" : "rgba(12,12,14,0.08)",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.25,
+      shadowRadius: 16,
+      elevation: 12,
+    },
+    classesOverlayHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+    },
+    classesOverlayTitle: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: COLORS.textTertiary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    classesOverlayCourse: {
+      fontSize: 18,
+      fontWeight: '900',
+      color: COLORS.textPrimary,
+    },
+    classesActionBtn: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: "#007AFF",
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    focusBadge: {
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+    },
+    focusBadgeText: {
+      fontSize: 9,
+      fontWeight: '900',
+      color: '#FFF',
+    },
+    classesOverlayFooter: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      borderTopWidth: 1,
+      borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(12,12,14,0.04)',
+      paddingTop: 12,
+    },
+    classesOverlayMeta: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      flex: 1,
+    },
+    classesOverlayTime: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: COLORS.textSecondary,
+    },
+    followingHint: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.04)',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+    },
+    followingHintText: {
+      fontSize: 10,
+      fontWeight: '700',
+      color: COLORS.textTertiary,
+    },
+    viewModeBtn: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 10,
+    },
+    viewModeBtnActive: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : '#FFFFFF',
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2,
+    },
+    viewModeText: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: COLORS.textSecondary,
+    },
+    viewModeTextActive: {
+      color: COLORS.textPrimary,
     },
   });
