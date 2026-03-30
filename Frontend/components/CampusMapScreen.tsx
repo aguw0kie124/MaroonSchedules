@@ -109,6 +109,7 @@ export function CampusMapScreen() {
       const data = await res.data;
       const mapped = data
         .map((d: any) => {
+          if (!d) return null;
           let coord = null;
           const safeLocation = d.location || "";
           // 1. Exact string fuzzy matching
@@ -145,7 +146,7 @@ export function CampusMapScreen() {
 
           return { ...d, coord };
         })
-        .filter((d: any) => d.coord !== null);
+        .filter((d: any) => d && d.coord !== null);
       setLocations(mapped);
     } catch (err) {
       console.warn("Failed to fetch traffic data", err);
@@ -188,31 +189,38 @@ export function CampusMapScreen() {
 
           return (
             <React.Fragment key={`${loc.location}-${idx}`}>
-              <Circle
-                center={{ latitude: loc.coord.lat, longitude: loc.coord.lng }}
-                radius={radius}
-                fillColor={fill}
-                strokeColor={stroke}
-                strokeWidth={1}
-              />
-              <Marker
-                coordinate={{
-                  latitude: loc.coord.lat,
-                  longitude: loc.coord.lng,
-                }}
-                anchor={{ x: 0.5, y: 0.5 }}
-                title={loc.location}
-                description={`Live Capacity: ${loc.percent_full}%`}
-              >
-                <View
-                  style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: stroke,
+              {loc.coord && (
+                <Circle
+                  center={{
+                    latitude: loc.coord?.lat || 0,
+                    longitude: loc.coord?.lng || 0,
                   }}
+                  radius={radius}
+                  fillColor={fill}
+                  strokeColor={stroke}
+                  strokeWidth={1}
                 />
-              </Marker>
+              )}
+              {loc.coord && (
+                <Marker
+                  coordinate={{
+                    latitude: loc.coord?.lat || 0,
+                    longitude: loc.coord?.lng || 0,
+                  }}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  title={loc.location}
+                  description={`Live Capacity: ${loc.percent_full}%`}
+                >
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: stroke,
+                    }}
+                  />
+                </Marker>
+              )}
             </React.Fragment>
           );
         })}
