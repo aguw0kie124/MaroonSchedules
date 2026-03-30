@@ -293,21 +293,21 @@ export const SectionRow = ({ section, onAdd, onRemove, isAdded }: any) => {
 const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   card: {
     backgroundColor: isDark ? 'rgba(12,12,14,0.84)' : 'rgba(255,255,255,0.88)',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderRadius: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: isDark ? 0.18 : 0.08,
-    shadowRadius: 18,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: isDark ? 0.12 : 0.05,
+    shadowRadius: 10,
+    elevation: 4,
   },
   button: {
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 8, // Sharper, more modern corners
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -325,27 +325,27 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   },
   sectionTitle: {
       fontWeight: '800', // Heavy Apple SF Pro Display
-      fontSize: 18,
+      fontSize: 17,
       marginBottom: 2,
       letterSpacing: -0.5,
       color: COLORS.textPrimary
   },
   sectionInfo: {
-      fontSize: 15,
+      fontSize: 14,
       color: COLORS.textSecondary,
-      marginBottom: 4,
+      marginBottom: 3,
   },
   bookmarkBtn: {
-      padding: 8,
+      padding: 7,
       marginLeft: 8,
       backgroundColor: '#1E1E1E',
-      borderRadius: 20,
+      borderRadius: 14,
       borderWidth: 1,
       borderColor: COLORS.border,
   },
   actionBtn: {
       paddingVertical: 8, 
-      paddingHorizontal: 16, 
+      paddingHorizontal: 14, 
       borderRadius: 12
   }
 });

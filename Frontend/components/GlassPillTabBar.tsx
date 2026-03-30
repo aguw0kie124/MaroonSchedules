@@ -86,7 +86,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       justifyContent: 'space-between',
       width: '100%',
       paddingHorizontal: 8,
-      paddingVertical: 8,
+      paddingVertical: 7,
       borderRadius: 999,
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
@@ -94,10 +94,10 @@ const getStyles = (COLORS: any, isDark: boolean) =>
         ? 'rgba(16,16,18,0.88)'
         : 'rgba(255,255,255,0.88)',
       shadowColor: '#000',
-      shadowOpacity: 0.12,
-      shadowRadius: 18,
-      shadowOffset: { width: 0, height: 10 },
-      elevation: 12,
+      shadowOpacity: 0.08,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 5,
     },
     item: {
       flex: 1,
@@ -106,8 +106,8 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       justifyContent: 'center',
       gap: 4,
       paddingHorizontal: 6,
-      paddingVertical: 8,
-      borderRadius: 20,
+      paddingVertical: 7,
+      borderRadius: 14,
     },
     itemFocused: {
       backgroundColor: isDark
