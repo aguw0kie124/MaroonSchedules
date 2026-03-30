@@ -2,7 +2,7 @@ import axios from 'axios';
 import { API_URL } from '../config';
 
 const BASE_URL = 'https://aggiespirit.ts.tamu.edu';
-const ROUTE_COLORS = ['#500000', '#7E0000', '#B34100', '#0B6E4F', '#165DFF', '#6B3FA0', '#007A78', '#A63D40'];
+const ROUTE_COLORS = ['#500000', '#7E0000', '#3B82F6', '#0B6E4F', '#165DFF', '#6B3FA0', '#007A78', '#A63D40'];
 
 export interface BusRoute {
     id: string;

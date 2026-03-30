@@ -95,9 +95,9 @@ export const BUILDINGS: CampusBuilding[] = [
   { id: 'kyle', name: 'Kyle Field', shortName: 'KYLE', latitude: 30.609936, longitude: -96.340453, type: 'athletics' },
   { id: 'reed', name: 'Reed Arena', shortName: 'REED', latitude: 30.605848, longitude: -96.346208, type: 'athletics' },
   { id: 'olsen', name: 'Olsen Field (Blue Bell Park)', shortName: 'OLSEN', latitude: 30.605389, longitude: -96.341526, type: 'athletics' },
-  { id: 'rec', name: 'Student Recreation Center', shortName: 'REC', latitude: 30.607120, longitude: -96.345403, type: 'recreation' },
-  { id: 'southside-rec', name: 'Southside Recreation Center', shortName: 'SSRC', latitude: 30.615185, longitude: -96.334412, type: 'recreation' },
-  { id: 'polo-rec', name: 'Polo Road Recreation Center', shortName: 'POLO REC', latitude: 30.622968, longitude: -96.340926, type: 'recreation' },
+  { id: 'rec', name: 'Student Recreation Center', shortName: 'REC', latitude: 30.607133, longitude: -96.342862, type: 'recreation' },
+  { id: 'southside-rec', name: 'Southside Recreation Center', shortName: 'SSRC', latitude: 30.615518, longitude: -96.333422, type: 'recreation' },
+  { id: 'polo-rec', name: 'Polo Road Recreation Center', shortName: 'POLO REC', latitude: 30.623467, longitude: -96.338006, type: 'recreation' },
   { id: 'polo', name: 'Polo Road Rec Fields', shortName: 'POLO', latitude: 30.624960, longitude: -96.335857, type: 'recreation' },
 
   // Housing
@@ -121,7 +121,7 @@ export const AMENITIES: CampusAmenity[] = [
 
   // Dining
   { id: 'sbisa', name: 'Sbisa Dining Hall', latitude: 30.617135, longitude: -96.343777, type: 'dining' },
-  { id: 'commons', name: 'The Commons Dining Hall', latitude: 30.610450, longitude: -96.334950, type: 'dining' },
+  { id: 'commons', name: 'The Commons Dining Hall', latitude: 30.615519, longitude: -96.336161, type: 'dining' },
   { id: 'duncan', name: 'Duncan Dining Hall', latitude: 30.612072, longitude: -96.335505, type: 'dining' },
   { id: 'hulla-dining', name: 'Hullabaloo Food Court', latitude: 30.616460, longitude: -96.346322, type: 'dining' },
   { id: 'underground-food', name: 'Underground Food Court', latitude: 30.617020, longitude: -96.343250, type: 'dining' },
