@@ -1,15 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ActivityIndicator,
-  Image,
   ImageBackground,
+  Linking,
+  Modal,
   Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import * as Location from 'expo-location';
@@ -17,12 +16,10 @@ import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import {
   BellRing,
-  Check,
   ChevronDown,
-  ChevronUp,
+  ExternalLink,
   MapPin,
-  Plus,
-  Trash2,
+  X,
 } from 'lucide-react-native';
 import { Card, useTheme } from './SharedUI';
 import { PageModuleEditor } from './PageModuleEditor';
@@ -36,10 +33,7 @@ import {
 } from '../store/appShellStore';
 import { BUILDINGS, TAMU_CENTER } from '../data/campus';
 import { haversineDistanceMeters } from './places/utils';
-import {
-  fetchDiningFullMenuCached,
-  getCurrentMealPeriod,
-} from '../services/diningMenuCache';
+import { fetchDiningFullMenuCached, getCurrentMealPeriod } from '../services/diningMenuCache';
 
 const WEEK_DAYS = [
   { label: 'Mon', value: 'M' },
@@ -49,7 +43,6 @@ const WEEK_DAYS = [
   { label: 'Fri', value: 'F' },
 ];
 
-const HOME_TODO_KEY = 'home_todo_items';
 const HOME_DINING_HALLS = ['Sbisa Dining Hall', 'The Commons Dining Hall', 'Duncan Dining Hall'];
 
 function getDefaultDay() {
@@ -93,12 +86,9 @@ export function Dashboard() {
   const toggleHomeSection = useAppShellStore((state) => state.toggleHomeSection);
   const density = useAppShellStore((state) => state.density);
 
-  const orderedHomeSections = useMemo(
-    () => getOrderedItems(homeSections).filter((item) => item.id === 'schedule'),
-    [homeSections],
-  );
+  const orderedHomeSections = useMemo(() => getOrderedItems(homeSections), [homeSections]);
   const visibleHomeSections = useMemo(
-    () => getOrderedVisibleItems(homeSections).filter((item) => item.id === 'schedule'),
+    () => getOrderedVisibleItems(homeSections).filter((item) => item.id === 'schedule' || item.id === 'alerts'),
     [homeSections],
   );
   const rankedHomeSections = useMemo(
@@ -113,8 +103,8 @@ export function Dashboard() {
 
   const [selectedDay, setSelectedDay] = useState(getDefaultDay());
   const [isEditorVisible, setIsEditorVisible] = useState(false);
-  const [todoInput, setTodoInput] = useState('');
-  const [todoItems, setTodoItems] = useState<Array<{ id: string; text: string; done: boolean }>>([]);
+  const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
+  const [isScheduleMenuOpen, setIsScheduleMenuOpen] = useState(false);
   const [userCoord, setUserCoord] = useState<{ latitude: number; longitude: number } | null>(null);
   const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
   const [isDiningLoading, setIsDiningLoading] = useState(false);
@@ -124,20 +114,6 @@ export function Dashboard() {
       hydrate(user.id).catch(() => {});
     }
   }, [hydrate, isFocused, user?.id]);
-
-  useEffect(() => {
-    AsyncStorage.getItem(HOME_TODO_KEY)
-      .then((value) => {
-        if (value) {
-          setTodoItems(JSON.parse(value));
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    AsyncStorage.setItem(HOME_TODO_KEY, JSON.stringify(todoItems)).catch(() => {});
-  }, [todoItems]);
 
   useEffect(() => {
     let mounted = true;
@@ -182,8 +158,8 @@ export function Dashboard() {
   const notificationLimit = getDensityLimit(density, { minimal: 2, standard: 3, full: 5 });
   const courseLimit = getDensityLimit(density, { minimal: 2, standard: 3, full: 5 });
   const priorityNotifications = notifications.slice(0, notificationLimit);
-  const visibleTodoItems = todoItems.slice(0, 3);
   const spotlightEvents = useMemo(() => (snapshot?.events || []).slice(0, 6), [snapshot?.events]);
+  const campusServices = useMemo(() => (snapshot?.services || []).slice(0, 4), [snapshot?.services]);
   const todayLabel = useMemo(
     () =>
       new Intl.DateTimeFormat('en-US', {
@@ -258,23 +234,6 @@ export function Dashboard() {
     };
   }, [nearestDiningHall?.name]);
 
-  const addTodoItem = () => {
-    const trimmed = todoInput.trim();
-    if (!trimmed) return;
-    setTodoItems((current) => [{ id: `${Date.now()}`, text: trimmed, done: false }, ...current]);
-    setTodoInput('');
-  };
-
-  const toggleTodoItem = (id: string) => {
-    setTodoItems((current) =>
-      current.map((item) => (item.id === id ? { ...item, done: !item.done } : item)),
-    );
-  };
-
-  const deleteTodoItem = (id: string) => {
-    setTodoItems((current) => current.filter((item) => item.id !== id));
-  };
-
   const openRootScreen = (screen: string, params?: Record<string, unknown>) => {
     const rootNavigation = navigation.getParent?.('RootStack') || navigation.getParent?.();
     if (rootNavigation?.navigate) {
@@ -282,15 +241,6 @@ export function Dashboard() {
       return;
     }
     navigation.navigate(screen, params);
-  };
-
-  const openCurrentClassMap = () => {
-    if (!currentCourse?.location) return;
-    openRootScreen('Places', {
-      initialLayer: 'Schedule',
-      initialLocation: currentCourse.location,
-      focusToken: Date.now(),
-    });
   };
 
   const openDayMap = () => {
@@ -304,6 +254,11 @@ export function Dashboard() {
     openRootScreen('ScheduleList');
   };
 
+  const openExternalUrl = (url?: string) => {
+    if (!url) return;
+    Linking.openURL(url).catch(() => {});
+  };
+
   const renderSectionCard = (sectionId: HomeSectionId) => {
     if (sectionId === 'schedule') {
       return (
@@ -312,11 +267,41 @@ export function Dashboard() {
             <View style={styles.scheduleHeaderBlock}>
               <Text style={styles.moduleTitle}>Today&apos;s Schedule</Text>
             </View>
-            <Pressable style={styles.scheduleSelectButton} onPress={openScheduleManager}>
+            <Pressable
+              style={styles.scheduleSelectButton}
+              onPress={() => setIsScheduleMenuOpen((current) => !current)}
+            >
               <Text style={styles.scheduleSelectText}>Select</Text>
               <ChevronDown size={14} color={COLORS.textPrimary} />
             </Pressable>
           </View>
+
+          {isScheduleMenuOpen ? (
+            <View style={styles.scheduleDropdownMenu}>
+              <Pressable
+                style={styles.scheduleDropdownItem}
+                onPress={() => {
+                  setIsScheduleMenuOpen(false);
+                  openScheduleManager();
+                }}
+              >
+                <Text style={styles.scheduleDropdownTitle}>Manage schedules</Text>
+                <Text style={styles.scheduleDropdownMeta}>
+                  {academic?.scheduleName || 'Choose a saved schedule'}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={styles.scheduleDropdownItem}
+                onPress={() => {
+                  setIsScheduleMenuOpen(false);
+                  openDayMap();
+                }}
+              >
+                <Text style={styles.scheduleDropdownTitle}>Open day map</Text>
+                <Text style={styles.scheduleDropdownMeta}>See class locations in Places</Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           <View style={styles.scheduleSummaryRow}>
             <View style={styles.scheduleSummaryCard}>
@@ -403,7 +388,10 @@ export function Dashboard() {
             <Text style={styles.headerSubtitle}>{todayLabel}</Text>
           </View>
           <View style={styles.headerActions}>
-            <Pressable style={styles.avatar} onPress={() => openRootScreen('CampusFeed')}>
+            <Pressable
+              style={styles.avatar}
+              onPress={() => setIsNotificationDrawerOpen((current) => !current)}
+            >
               <BellRing size={18} color="#FFFFFF" />
             </Pressable>
           </View>
@@ -416,21 +404,14 @@ export function Dashboard() {
           </Card>
         ) : (
           <>
-            {rankedHomeSections.find((section) => section.id === 'schedule')
-              ? renderSectionCard('schedule')
-              : null}
-
-            <Card style={styles.compactCard}>
-              <View style={styles.moduleHeader}>
-                <View>
-                  <Text style={styles.moduleEyebrow}>Spotlight</Text>
-                  <Text style={styles.moduleTitle}>Campus events for today</Text>
-                </View>
-                <Pressable style={styles.inlineActionMuted} onPress={() => openRootScreen('EventsCalendar')}>
-                  <Text style={styles.inlineActionMutedText}>All events</Text>
+            <View style={styles.feedSection}>
+              <View style={styles.feedSectionHeader}>
+                <Text style={styles.moduleEyebrow}>Spotlight</Text>
+                <Pressable onPress={() => openRootScreen('EventsCalendar')}>
+                  <Text style={styles.feedSectionAction}>All events</Text>
                 </Pressable>
               </View>
-              {spotlightEvents.length > 0 ? (
+              {spotlightEvents.length > 0 || nearestDiningHall?.name ? (
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -453,60 +434,127 @@ export function Dashboard() {
                       </Text>
                     </Pressable>
                   ))}
+                  {nearestDiningHall?.name ? (
+                    <Pressable
+                      style={styles.spotlightEventCard}
+                      onPress={() =>
+                        openRootScreen('Places', {
+                          initialLayer: 'Dining',
+                          initialLocation: nearestDiningHall.name,
+                          focusToken: Date.now(),
+                        })
+                      }
+                    >
+                      <Text style={styles.spotlightEventEyebrow}>Dining</Text>
+                      <Text style={styles.spotlightEventTitle} numberOfLines={2}>
+                        {nearestDiningHall.name}
+                      </Text>
+                      <Text style={styles.spotlightEventMeta} numberOfLines={3}>
+                        {isDiningLoading
+                          ? 'Loading nearby menu...'
+                          : diningMenuPreview?.categories?.[0]?.items?.length
+                            ? diningMenuPreview.categories[0].items
+                                .slice(0, 2)
+                                .map((item: any) => item.name)
+                                .join(' · ')
+                            : 'Open dining view'}
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </ScrollView>
               ) : (
                 <Text style={styles.emptyState}>No campus events surfaced for today yet.</Text>
               )}
-            </Card>
+            </View>
+
+            {rankedHomeSections.find((section) => section.id === 'schedule')
+              ? renderSectionCard('schedule')
+              : null}
+
+            {campusServices.length > 0 ? (
+              <View style={styles.feedSection}>
+                <View style={styles.feedSectionHeader}>
+                  <Text style={styles.moduleEyebrow}>Campus Essentials</Text>
+                </View>
+                <View style={styles.listBlock}>
+                  {campusServices.map((service) => (
+                    <Pressable
+                      key={service.id}
+                      style={styles.essentialRow}
+                      onPress={() => openExternalUrl(service.url)}
+                    >
+                      <View style={styles.essentialIconWrap}>
+                        <BellRing size={18} color={COLORS.primary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.essentialTitle}>{service.title}</Text>
+                        <Text style={styles.essentialBody} numberOfLines={2}>
+                          {service.summary}
+                        </Text>
+                      </View>
+                      <ExternalLink size={18} color={COLORS.primary} />
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : null}
           </>
         )}
+      </ScrollView>
 
-        <Card style={styles.compactCard}>
-          <View style={styles.moduleHeader}>
-            <View>
-              <Text style={styles.moduleEyebrow}>Quick tasks</Text>
-              <Text style={styles.moduleTitle}>Keep the day moving</Text>
+      <Modal
+        visible={isNotificationDrawerOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsNotificationDrawerOpen(false)}
+      >
+        <View style={styles.notificationModalBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setIsNotificationDrawerOpen(false)}
+          />
+          <View style={styles.notificationModalShell}>
+            <View style={styles.notificationModalHeader}>
+              <Text style={styles.notificationDrawerTitle}>Notifications</Text>
+              <Pressable
+                style={styles.notificationCloseButton}
+                onPress={() => setIsNotificationDrawerOpen(false)}
+              >
+                <X size={16} color={COLORS.textPrimary} />
+              </Pressable>
             </View>
-            <Check size={18} color={COLORS.primary} />
-          </View>
-          <View style={styles.todoComposer}>
-            <TextInput
-              value={todoInput}
-              onChangeText={setTodoInput}
-              placeholder="Add a task..."
-              placeholderTextColor={COLORS.textTertiary}
-              style={styles.todoInput}
-              onSubmitEditing={addTodoItem}
-              returnKeyType="done"
-            />
-            <Pressable style={styles.todoAddButton} onPress={addTodoItem}>
-              <Plus size={16} color="#FFFFFF" />
-            </Pressable>
-          </View>
-          <View style={styles.listBlock}>
-            {visibleTodoItems.length ? (
-              visibleTodoItems.map((item) => (
-                <View key={item.id} style={styles.todoRow}>
-                  <Pressable style={styles.todoMain} onPress={() => toggleTodoItem(item.id)}>
-                    <View style={[styles.todoCheck, item.done && styles.todoCheckActive]}>
-                      {item.done ? <Check size={13} color="#FFFFFF" /> : null}
-                    </View>
-                    <Text style={[styles.todoText, item.done && styles.todoTextDone]}>{item.text}</Text>
-                  </Pressable>
-                  <Pressable style={styles.todoDeleteButton} onPress={() => deleteTodoItem(item.id)}>
-                    <Trash2 size={15} color={COLORS.textSecondary} />
-                  </Pressable>
+            {priorityNotifications.length > 0 ? (
+              priorityNotifications.map((notification) => (
+                <View key={notification.id} style={styles.notificationDrawerItem}>
+                  <View
+                    style={[
+                      styles.alertDot,
+                      { backgroundColor: getUrgencyColor(notification.urgency, COLORS) },
+                    ]}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.timelineTitle}>{notification.title}</Text>
+                    <Text style={styles.timelineBody} numberOfLines={2}>
+                      {notification.detail}
+                    </Text>
+                  </View>
                 </View>
               ))
             ) : (
-              <Text style={styles.emptyState}>No quick tasks yet.</Text>
+              <Text style={styles.emptyState}>No urgent notifications right now.</Text>
             )}
-            {todoItems.length > visibleTodoItems.length ? (
-              <Text style={styles.compactMeta}>{`${todoItems.length - visibleTodoItems.length} more task${todoItems.length - visibleTodoItems.length === 1 ? '' : 's'}`}</Text>
-            ) : null}
+            <Pressable
+              style={styles.notificationDrawerAction}
+              onPress={() => {
+                setIsNotificationDrawerOpen(false);
+                openRootScreen('CampusFeed');
+              }}
+            >
+              <Text style={styles.feedSectionAction}>Open social hub</Text>
+            </Pressable>
           </View>
-        </Card>
-      </ScrollView>
+        </View>
+      </Modal>
 
       <PageModuleEditor
         visible={isEditorVisible}
@@ -562,17 +610,13 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     avatar: {
       width: 50,
       height: 50,
-      borderRadius: 16,
+      borderRadius: 18,
       overflow: 'hidden',
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: COLORS.primary,
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
-    },
-    avatarImage: {
-      width: '100%',
-      height: '100%',
     },
     loadingCard: {
       flexDirection: 'row',
@@ -584,14 +628,81 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       fontSize: 14,
       fontWeight: '600',
     },
-    compactCard: {
+    spotlightHeroCard: {
+      gap: 14,
+      borderRadius: 24,
+      paddingVertical: 18,
+      backgroundColor: isDark ? 'rgba(18,18,20,0.94)' : 'rgba(255,255,255,0.96)',
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
+    },
+    spotlightHeroTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
       gap: 12,
-      borderRadius: 16,
-      paddingVertical: 14,
+    },
+    spotlightWeatherPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      overflow: 'hidden',
+      color: COLORS.textPrimary,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(12,12,14,0.05)',
+      fontSize: 12,
+      fontWeight: '800',
+    },
+    spotlightHeroTitle: {
+      fontSize: 19,
+      lineHeight: 25,
+      fontWeight: '900',
+      color: COLORS.textPrimary,
+      letterSpacing: -0.4,
+    },
+    spotlightHeroBody: {
+      fontSize: 14,
+      lineHeight: 21,
+      color: COLORS.textSecondary,
+    },
+    spotlightActionRow: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    primaryHeroAction: {
+      flex: 1,
+      minHeight: 50,
+      borderRadius: 999,
+      backgroundColor: COLORS.primary,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+    },
+    primaryHeroActionText: {
+      color: '#FFFFFF',
+      fontSize: 15,
+      fontWeight: '800',
+    },
+    secondaryHeroAction: {
+      minWidth: 138,
+      minHeight: 50,
+      borderRadius: 999,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(12,12,14,0.04)',
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: 14,
+    },
+    secondaryHeroActionText: {
+      color: COLORS.textPrimary,
+      fontSize: 14,
+      fontWeight: '800',
     },
     scheduleSection: {
-      paddingTop: 10,
-      paddingBottom: 8,
+      paddingTop: 12,
+      paddingBottom: 10,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderColor: COLORS.border,
@@ -609,18 +720,40 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     scheduleSelectButton: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
-      minHeight: 38,
-      paddingHorizontal: 14,
-      borderRadius: 999,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(12,12,14,0.05)',
-      borderWidth: 1,
-      borderColor: COLORS.border,
+      gap: 6,
+      minHeight: 30,
+      paddingHorizontal: 8,
+      borderRadius: 10,
+      backgroundColor: 'transparent',
     },
     scheduleSelectText: {
       color: COLORS.textPrimary,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    scheduleDropdownMenu: {
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: isDark ? 'rgba(18,18,20,0.98)' : 'rgba(255,255,255,0.98)',
+      overflow: 'hidden',
+    },
+    scheduleDropdownItem: {
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: COLORS.border,
+      gap: 3,
+    },
+    scheduleDropdownTitle: {
+      color: COLORS.textPrimary,
       fontSize: 13,
-      fontWeight: '800',
+      fontWeight: '700',
+    },
+    scheduleDropdownMeta: {
+      color: COLORS.textSecondary,
+      fontSize: 11,
+      lineHeight: 15,
     },
     scheduleSummaryRow: {
       flexDirection: 'row',
@@ -628,10 +761,10 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     scheduleSummaryCard: {
       flex: 1,
-      paddingHorizontal: 10,
-      paddingVertical: 7,
+      paddingHorizontal: 8,
+      paddingVertical: 6,
       borderRadius: 12,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.04)',
+      backgroundColor: 'transparent',
       borderWidth: 1,
       borderColor: COLORS.border,
     },
@@ -647,12 +780,6 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       fontWeight: '800',
       color: COLORS.textPrimary,
       marginTop: 2,
-    },
-    moduleHeader: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      justifyContent: 'space-between',
-      gap: 16,
     },
     moduleEyebrow: {
       fontSize: 12,
@@ -670,32 +797,12 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       lineHeight: 24,
     },
     scheduleMapAction: {
-      width: 44,
-      minHeight: 44,
+      width: 36,
+      minHeight: 36,
       borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: COLORS.primary,
-    },
-    moduleBody: {
-      fontSize: 14,
-      lineHeight: 21,
-      color: COLORS.textSecondary,
-    },
-    inlineActionMuted: {
-      minHeight: 34,
-      paddingHorizontal: 12,
-      borderRadius: 12,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: COLORS.surfaceElevated,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-    },
-    inlineActionMutedText: {
-      color: COLORS.textPrimary,
-      fontSize: 12,
-      fontWeight: '800',
     },
     weekStrip: {
       flexDirection: 'row',
@@ -709,24 +816,81 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       minWidth: 0,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: 10,
-      borderRadius: 14,
+      paddingVertical: 8,
+      borderRadius: 12,
       borderWidth: 1,
       borderColor: COLORS.border,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.04)',
+      backgroundColor: 'transparent',
     },
     dayButtonActive: {
       backgroundColor: COLORS.primary,
       borderColor: COLORS.primary,
     },
     dayText: {
-      fontSize: 12,
-      fontWeight: '800',
+      fontSize: 11,
+      fontWeight: '700',
       color: COLORS.textPrimary,
       textAlign: 'center',
     },
     dayTextActive: {
       color: '#FFFFFF',
+    },
+    notificationModalBackdrop: {
+      flex: 1,
+      backgroundColor: isDark ? 'rgba(0,0,0,0.34)' : 'rgba(12,12,14,0.18)',
+      justifyContent: 'flex-start',
+      alignItems: 'center',
+      paddingTop: 92,
+      paddingHorizontal: 16,
+    },
+    notificationModalShell: {
+      width: '100%',
+      maxWidth: 360,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: isDark ? 'rgba(18,18,20,0.92)' : 'rgba(255,255,255,0.92)',
+      paddingHorizontal: 14,
+      paddingTop: 14,
+      paddingBottom: 12,
+      shadowColor: '#000000',
+      shadowOpacity: isDark ? 0.28 : 0.12,
+      shadowRadius: 18,
+      shadowOffset: { width: 0, height: 12 },
+      elevation: 8,
+      gap: 10,
+    },
+    notificationModalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    notificationDrawerTitle: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+    },
+    notificationDrawerItem: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+    },
+    notificationCloseButton: {
+      width: 30,
+      height: 30,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(12,12,14,0.05)',
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    notificationDrawerAction: {
+      paddingTop: 6,
+      alignItems: 'flex-start',
     },
     listBlock: {
       gap: 10,
@@ -779,86 +943,49 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       fontSize: 12,
       color: COLORS.textTertiary,
     },
-    todoComposer: {
-      flexDirection: 'row',
-      alignItems: 'center',
+    feedSection: {
       gap: 10,
+      paddingTop: 8,
+      paddingBottom: 6,
     },
-    todoInput: {
-      flex: 1,
-      minHeight: 44,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      backgroundColor: COLORS.surfaceElevated,
-      paddingHorizontal: 14,
-      color: COLORS.textPrimary,
-      fontSize: 14,
-      fontWeight: '600',
-    },
-    todoAddButton: {
-      width: 44,
-      height: 44,
-      borderRadius: 14,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: COLORS.primary,
-    },
-    todoRow: {
+    feedSectionHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 12,
-      paddingVertical: 2,
-    },
-    todoMain: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
+      justifyContent: 'space-between',
       gap: 12,
     },
-    todoCheck: {
-      width: 22,
-      height: 22,
-      borderRadius: 7,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      backgroundColor: COLORS.surfaceElevated,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    todoCheckActive: {
-      backgroundColor: COLORS.primary,
-      borderColor: COLORS.primary,
-    },
-    todoDeleteButton: {
-      width: 30,
-      height: 30,
-      borderRadius: 10,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.04)',
-      borderWidth: 1,
-      borderColor: COLORS.border,
-    },
-    todoText: {
-      flex: 1,
+    feedSectionAction: {
+      color: COLORS.primary,
       fontSize: 14,
-      color: COLORS.textPrimary,
-      fontWeight: '600',
+      fontWeight: '800',
     },
-    todoTextDone: {
+    timelineTitle: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+      marginBottom: 2,
+    },
+    timelineBody: {
+      fontSize: 13,
+      lineHeight: 18,
       color: COLORS.textSecondary,
-      textDecorationLine: 'line-through',
+    },
+    alertRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      paddingVertical: 4,
+    },
+    alertDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      marginTop: 6,
     },
     emptyState: {
       fontSize: 13,
       lineHeight: 19,
       color: COLORS.textSecondary,
-    },
-    compactMeta: {
-      fontSize: 12,
-      color: COLORS.textTertiary,
-      fontWeight: '600',
     },
     spotlightEventsRow: {
       gap: 10,
@@ -866,11 +993,11 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     spotlightEventCard: {
       width: 184,
-      minHeight: 122,
+      minHeight: 116,
       paddingHorizontal: 14,
-      paddingVertical: 14,
+      paddingVertical: 13,
       borderRadius: 16,
-      backgroundColor: COLORS.surfaceElevated,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.03)',
       borderWidth: 1,
       borderColor: COLORS.border,
       justifyContent: 'space-between',
@@ -894,5 +1021,34 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       lineHeight: 17,
       color: COLORS.textSecondary,
       marginTop: 10,
+    },
+    essentialRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      paddingVertical: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: COLORS.border,
+    },
+    essentialIconWrap: {
+      width: 48,
+      height: 48,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.04)',
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    essentialTitle: {
+      fontSize: 16,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+      marginBottom: 4,
+    },
+    essentialBody: {
+      fontSize: 13,
+      lineHeight: 19,
+      color: COLORS.textSecondary,
     },
   });

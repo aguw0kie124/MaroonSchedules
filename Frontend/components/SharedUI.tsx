@@ -36,8 +36,8 @@ export const LIGHT_COLORS = {
   warning: '#FF9500',
 };
 
-export const DEFAULT_LIGHT_ACCENT = '#8E8E93';
-export const DEFAULT_DARK_ACCENT = '#8E8E93';
+export const DEFAULT_LIGHT_ACCENT = '#500000';
+export const DEFAULT_DARK_ACCENT = '#500000';
 
 export function getDefaultAccentColor(theme: 'light' | 'dark') {
   return theme === 'dark' ? DEFAULT_DARK_ACCENT : DEFAULT_LIGHT_ACCENT;
