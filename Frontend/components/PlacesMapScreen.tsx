@@ -185,107 +185,107 @@ const CAMPUS_ZONES: Array<{
   type: "Rec" | "Library" | "Dining";
   hours?: string;
 }> = [
-  {
-    name: "Student Recreation Center",
-    ...getCanonicalCoords("Student Recreation Center", {
-      lat: 30.6094,
-      lng: -96.34,
-    }),
-    peak: 70,
-    off: 10,
-    radius: 220,
-    type: "Rec",
-    hours: "6:00 AM – 11:59 PM", // Updated based on March 26 data
-  },
-  {
-    name: "Southside Recreation Center",
-    ...getCanonicalCoords("Southside Recreation Center", {
-      lat: 30.6093,
-      lng: -96.339,
-    }),
-    peak: 65,
-    off: 10,
-    radius: 200,
-    type: "Rec",
-  },
-  {
-    name: "Polo Road Recreation Center",
-    ...getCanonicalCoords("Polo Road Recreation Center", {
-      lat: 30.6237,
-      lng: -96.3395,
-    }),
-    peak: 55,
-    off: 8,
-    radius: 200,
-    type: "Rec",
-  },
-  {
-    name: "Sterling C. Evans Library",
-    ...getCanonicalCoords("Sterling C. Evans Library", {
-      lat: 30.6171,
-      lng: -96.3387,
-    }),
-    peak: 82,
-    off: 18,
-    radius: 160,
-    type: "Library",
-  },
-  {
-    name: "Evans Library Annex",
-    ...getCanonicalCoords("Evans Library Annex", {
-      lat: 30.6168,
-      lng: -96.3383,
-    }),
-    peak: 70,
-    off: 15,
-    radius: 120,
-    type: "Library",
-  },
-  {
-    name: "West Campus Library",
-    ...getCanonicalCoords("West Campus Library", {
-      lat: 30.6146,
-      lng: -96.344,
-    }),
-    peak: 60,
-    off: 14,
-    radius: 160,
-    type: "Library",
-  },
-  {
-    name: "Memorial Student Center",
-    ...getCanonicalCoords("Memorial Student Center", {
-      lat: 30.6123,
-      lng: -96.3415,
-    }),
-    peak: 85,
-    off: 15,
-    radius: 180,
-    type: "Dining",
-  },
-  {
-    name: "Polo Road Garage Dining",
-    ...getCanonicalCoords("Polo Road Garage Dining", {
-      lat: 30.6235,
-      lng: -96.3388,
-    }),
-    peak: 80,
-    off: 10,
-    radius: 180,
-    type: "Dining",
-  },
-  {
-    name: "Sbisa Dining Hall",
-    ...getCanonicalCoords("Sbisa Dining Hall", {
-      lat: 30.617135,
-      lng: -96.343777,
-    }),
-    peak: 70,
-    off: 5,
-    radius: 150,
-    type: "Dining",
-  },
-];
+    {
+      name: "Student Recreation Center",
+      ...getCanonicalCoords("Student Recreation Center", {
+        lat: 30.6094,
+        lng: -96.34,
+      }),
+      peak: 70,
+      off: 10,
+      radius: 220,
+      type: "Rec",
+      hours: "6:00 AM – 11:59 PM", // Updated based on March 26 data
+    },
+    {
+      name: "Southside Recreation Center",
+      ...getCanonicalCoords("Southside Recreation Center", {
+        lat: 30.6093,
+        lng: -96.339,
+      }),
+      peak: 65,
+      off: 10,
+      radius: 200,
+      type: "Rec",
+    },
+    {
+      name: "Polo Road Recreation Center",
+      ...getCanonicalCoords("Polo Road Recreation Center", {
+        lat: 30.6237,
+        lng: -96.3395,
+      }),
+      peak: 55,
+      off: 8,
+      radius: 200,
+      type: "Rec",
+    },
+    {
+      name: "Sterling C. Evans Library",
+      ...getCanonicalCoords("Sterling C. Evans Library", {
+        lat: 30.6171,
+        lng: -96.3387,
+      }),
+      peak: 82,
+      off: 18,
+      radius: 160,
+      type: "Library",
+    },
+    {
+      name: "Evans Library Annex",
+      ...getCanonicalCoords("Evans Library Annex", {
+        lat: 30.6168,
+        lng: -96.3383,
+      }),
+      peak: 70,
+      off: 15,
+      radius: 120,
+      type: "Library",
+    },
+    {
+      name: "West Campus Library",
+      ...getCanonicalCoords("West Campus Library", {
+        lat: 30.6146,
+        lng: -96.344,
+      }),
+      peak: 60,
+      off: 14,
+      radius: 160,
+      type: "Library",
+    },
+    {
+      name: "Memorial Student Center",
+      ...getCanonicalCoords("Memorial Student Center", {
+        lat: 30.6123,
+        lng: -96.3415,
+      }),
+      peak: 85,
+      off: 15,
+      radius: 180,
+      type: "Dining",
+    },
+    {
+      name: "Polo Road Garage Dining",
+      ...getCanonicalCoords("Polo Road Garage Dining", {
+        lat: 30.6235,
+        lng: -96.3388,
+      }),
+      peak: 80,
+      off: 10,
+      radius: 180,
+      type: "Dining",
+    },
+    {
+      name: "Sbisa Dining Hall",
+      ...getCanonicalCoords("Sbisa Dining Hall", {
+        lat: 30.617135,
+        lng: -96.343777,
+      }),
+      peak: 70,
+      off: 5,
+      radius: 150,
+      type: "Dining",
+    },
+  ];
 
 function getTimeOfDayFactor(): number {
   const hour = new Date().getHours();
@@ -743,9 +743,9 @@ function haversineDistanceMeters(
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.sin(dLng / 2) *
-      Math.sin(dLng / 2) *
-      Math.cos(startLatRad) *
-      Math.cos(endLatRad);
+    Math.sin(dLng / 2) *
+    Math.cos(startLatRad) *
+    Math.cos(endLatRad);
 
   return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
@@ -1149,9 +1149,9 @@ export function PlacesMapScreen() {
         ...item,
         classInfo: item.classInfo
           ? {
-              ...item.classInfo,
-              sectionId: item.classInfo.sectionId,
-            }
+            ...item.classInfo,
+            sectionId: item.classInfo.sectionId,
+          }
           : undefined,
       }))
       .map((item, index) => ({
@@ -1203,13 +1203,13 @@ export function PlacesMapScreen() {
 
   const selectedDayTimeline = useMemo(() => {
     const dayLabel = DAY_LABELS[selectedClassDay];
-    
+
     // Convert class locations to timeline items
     const classes = selectedDayClassLocations.map((loc) => ({
       ...loc,
       timelineType: 'class' as const,
       timelineKey: `class-${loc.id}`,
-      startTimeLabel: loc.classInfo?.beginTime || 'Time TBA',
+      startTimeLabel: (loc.classInfo?.beginTime || 'Time TBA').replace(/^0/, ''),
       startTimeMinutes: parseMeetingTimeToMinutes(loc.classInfo?.beginTime) || 0,
       title: loc.classInfo?.courseCode || loc.location,
       locationLabel: loc.classInfo?.building ? `${loc.classInfo.building} ${loc.classInfo.room || ''}` : loc.location,
@@ -1221,24 +1221,40 @@ export function PlacesMapScreen() {
       .filter((event) => {
         if (!event.date_iso) return false;
         const eventDate = new Date(event.date_iso);
-        
-        // Match day of week index to the selectedClassDay index
+ 
+        // 1. Check if the event matches the DAY of the week in our 7-day rail (SMTWTFS)
         const eventDayIndex = eventDate.getDay();
-        const isSameDayOfWeek = eventDayIndex === selectedClassDay;
-        
-        // For "Today" view (current system day), we also want to ensure the event isn't in the past
-        if (eventDayIndex === todayDayIndex && selectedClassDay === todayDayIndex) {
-          return eventDate.getTime() > Date.now() - 3600000; // Show events up to 1 hour ago
+        if (eventDayIndex !== selectedClassDay) return false;
+
+        // 2. Persistent future "Today":
+        // If the user is looking at a day that happens to be "Today" in the system...
+        if (selectedClassDay === todayDayIndex) {
+          // Verify it's actually the SAME CALENDAR DATE (not just same day of week)
+          const now = new Date();
+          const isSameCalendarDate = 
+            eventDate.getFullYear() === now.getFullYear() &&
+            eventDate.getMonth() === now.getMonth() &&
+            eventDate.getDate() === now.getDate();
+
+          if (!isSameCalendarDate) return false;
+
+          // 3. AUTO-HIDE: Hide events that have already ended
+          const startTimeMinutes = eventDate.getHours() * 60 + eventDate.getMinutes();
+          // Assume 60 min duration if no explicit endDate_ts
+          const duration = event.endDate_ts ? (event.endDate_ts - event.date_ts) / 60 : 60;
+          const endMinutes = startTimeMinutes + duration;
+          
+          if (endMinutes < minutesIntoDay) return false;
         }
-        
-        return isSameDayOfWeek;
+ 
+        return true;
       })
       .map((event) => {
         const location = campusEventMarkers.find((m) => m.eventId === event.id) ? {
           location: event.location || event.title,
-          coord: { 
-            lat: campusEventMarkers.find((m) => m.eventId === event.id)!.latitude, 
-            lng: campusEventMarkers.find((m) => m.eventId === event.id)!.longitude 
+          coord: {
+            lat: campusEventMarkers.find((m) => m.eventId === event.id)!.latitude,
+            lng: campusEventMarkers.find((m) => m.eventId === event.id)!.longitude
           },
           type: 'Dining' as LocationType,
           percent_full: 0,
@@ -1265,7 +1281,7 @@ export function PlacesMapScreen() {
           ...event,
           timelineType: 'event' as const,
           timelineKey: `event-${event.id}`,
-          startTimeLabel: event.date_iso ? new Date(event.date_iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'Time TBA',
+          startTimeLabel: event.date_iso ? new Date(event.date_iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).replace(/^0/, '') : 'Time TBA',
           startTimeMinutes: event.date_iso ? (new Date(event.date_iso).getHours() * 60 + new Date(event.date_iso).getMinutes()) : 0,
           title: event.title,
           locationLabel: event.location || 'Campus',
@@ -1273,8 +1289,15 @@ export function PlacesMapScreen() {
         };
       });
 
-    return [...classes, ...events].filter(Boolean).sort((a, b) => a.startTimeMinutes - b.startTimeMinutes);
-  }, [selectedDayClassLocations, scheduledEvents, selectedClassDay, campusEventMarkers, todayDayIndex]);
+    // 4. Filter classes for Today to hide those that have already ended
+    const filteredClasses = classes.filter(cls => {
+      if (selectedClassDay !== todayDayIndex) return true;
+      const endMinutes = parseMeetingTimeToMinutes(cls.classInfo?.endTime);
+      return endMinutes == null || endMinutes >= minutesIntoDay;
+    });
+
+    return [...filteredClasses, ...events].filter(Boolean).sort((a, b) => a.startTimeMinutes - b.startTimeMinutes);
+  }, [selectedDayClassLocations, scheduledEvents, selectedClassDay, campusEventMarkers, todayDayIndex, minutesIntoDay]);
 
   const currentOrNextClass = useMemo(
     () => {
@@ -1303,7 +1326,7 @@ export function PlacesMapScreen() {
     const currentIndex = selectedDayTimeline.findIndex((item) => item.timelineKey === currentOrNextClass.timelineKey);
     const next = currentIndex >= 0 ? selectedDayTimeline[currentIndex + 1] || null : null;
     if (!next) return null;
-    
+
     // Only apply the 90-minute gap limit rule rigorously for consecutive classes
     if (currentOrNextClass.timelineType === 'class' && next.timelineType === 'class') {
       const currentEnd = parseMeetingTimeToMinutes(currentOrNextClass.classInfo?.endTime);
@@ -1317,7 +1340,7 @@ export function PlacesMapScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    
+
     // Extract coordinates dynamically based on timeline type
     const getLat = (item: any) => item.timelineType === 'event' ? (item.location?.coord?.lat || item.location_lat || 0) : (item.coord?.lat || 0);
     const getLng = (item: any) => item.timelineType === 'event' ? (item.location?.coord?.lng || item.location_lng || 0) : (item.coord?.lng || 0);
@@ -1526,7 +1549,7 @@ export function PlacesMapScreen() {
       return [];
     }
 
-      return busStops.slice(0, 12).map((stop, index) => {
+    return busStops.slice(0, 12).map((stop, index) => {
       if (busVehicles.length === 0) {
         return {
           stop,
@@ -1553,15 +1576,15 @@ export function PlacesMapScreen() {
         };
       }
 
-        return {
-          stop,
-          sequence: index + 1,
-          etaLabel: nextBus.etaMinutes <= 1 ? "Now" : `${nextBus.etaMinutes} min`,
-          detail: nextBus.bus.RouteShortName
-            ? `Route ${nextBus.bus.RouteShortName}`
-            : nextBus.bus.Name || "Live bus",
-        };
-      });
+      return {
+        stop,
+        sequence: index + 1,
+        etaLabel: nextBus.etaMinutes <= 1 ? "Now" : `${nextBus.etaMinutes} min`,
+        detail: nextBus.bus.RouteShortName
+          ? `Route ${nextBus.bus.RouteShortName}`
+          : nextBus.bus.Name || "Live bus",
+      };
+    });
   }, [activeLayer, busStops, busVehicles, routePatterns, selectedRoute]);
   const allRouteBoards = useMemo(() => {
     if (!isAllBusRoutesSelected) {
@@ -1607,9 +1630,9 @@ export function PlacesMapScreen() {
     visibleCategories.length <= 1 || topBarItems.length <= 1
       ? 0
       : indicatorAnim.interpolate({
-          inputRange: visibleCategories.map((_, index) => index),
-          outputRange: visibleCategories.map((_, index) => index * categorySlotWidth + 2),
-        });
+        inputRange: visibleCategories.map((_, index) => index),
+        outputRange: visibleCategories.map((_, index) => index * categorySlotWidth + 2),
+      });
 
   useEffect(() => {
     if (!visibleCategories.some((category) => category.id === activeLayer)) {
@@ -1683,7 +1706,7 @@ export function PlacesMapScreen() {
 
   useEffect(() => {
     if (user?.id && (activeLayer === "Rec" || activeLayer === "Library")) {
-      hydrateCampusHub(user.id).catch(() => {});
+      hydrateCampusHub(user.id).catch(() => { });
     }
   }, [activeLayer, hydrateCampusHub, user?.id]);
 
@@ -1960,8 +1983,8 @@ export function PlacesMapScreen() {
             distanceMeters: Math.min(
               directDistanceMeters,
               wrappedDelta +
-                stopProgress.offsetMeters +
-                busProgress.offsetMeters,
+              stopProgress.offsetMeters +
+              busProgress.offsetMeters,
             ),
           };
         })
@@ -2417,7 +2440,12 @@ export function PlacesMapScreen() {
     }
 
     mapRef.current.fitToCoordinates(points, {
-      edgePadding: { top: 210, right: 48, bottom: 250, left: 48 },
+      edgePadding: { 
+        top: activeLayer === "Today" ? 380 : 210, 
+        right: activeLayer === "Today" ? 30 : 48, 
+        bottom: activeLayer === "Today" ? 140 : 250, 
+        left: activeLayer === "Today" ? 30 : 48 
+      },
       animated: true,
     });
   }, [activeLayer, activeMapPoints, focusedEvent, placesRefitTick, placesViewMode, selectedId]);
@@ -2528,17 +2556,17 @@ export function PlacesMapScreen() {
   const openBusTimetable = useCallback(() => {
     const params = isAllBusRoutesSelected
       ? {
-          mode: "all",
-          boards: allRouteBoards,
-          liveBusCount: busVehicles.length,
-        }
+        mode: "all",
+        boards: allRouteBoards,
+        liveBusCount: busVehicles.length,
+      }
       : {
-          mode: "single",
-          route: selectedRoute,
-          entries: stopTimetable,
-          liveBusCount: busVehicles.length,
-          nearbyTransitInsight,
-        };
+        mode: "single",
+        route: selectedRoute,
+        entries: stopTimetable,
+        liveBusCount: busVehicles.length,
+        nearbyTransitInsight,
+      };
 
     const rootNavigation = navigation.getParent?.("RootStack") || navigation.getParent?.();
     if (rootNavigation?.navigate) {
@@ -2686,29 +2714,29 @@ export function PlacesMapScreen() {
 
         {activeLayer === "Bus" && isAllBusRoutesSelected
           ? busRoutes.map((route) => {
-              const routePattern = allRoutePatternsById[route.Key]?.points || [];
-              if (!routePattern.length) return null;
-              return (
-                <Polyline
-                  key={`all-route-${route.Key}`}
-                  coordinates={routePattern}
-                  strokeColor={route.Color || transitService.getRouteColor(route.Key)}
-                  strokeWidth={4}
-                  lineDashPattern={[0]}
-                />
-              );
-            })
-          : routePatterns.length > 0 && (
+            const routePattern = allRoutePatternsById[route.Key]?.points || [];
+            if (!routePattern.length) return null;
+            return (
               <Polyline
-                coordinates={routePatterns}
-                strokeColor={
-                  selectedRoute?.Color ||
-                  transitService.getRouteColor(selectedBusRouteId || "")
-                }
-                strokeWidth={6}
+                key={`all-route-${route.Key}`}
+                coordinates={routePattern}
+                strokeColor={route.Color || transitService.getRouteColor(route.Key)}
+                strokeWidth={4}
                 lineDashPattern={[0]}
               />
-            )}
+            );
+          })
+          : routePatterns.length > 0 && (
+            <Polyline
+              coordinates={routePatterns}
+              strokeColor={
+                selectedRoute?.Color ||
+                transitService.getRouteColor(selectedBusRouteId || "")
+              }
+              strokeWidth={6}
+              lineDashPattern={[0]}
+            />
+          )}
 
         {/* Transit Layer: Bus Stops (MaroonRides Style: Blue Pins) */}
         {activeLayer === "Bus" &&
@@ -2820,9 +2848,13 @@ export function PlacesMapScreen() {
                     style={[
                       styles.pinHead,
                       {
-                        backgroundColor: isCurrent 
-                          ? "#FF8A00" 
-                          : (item.timelineType === 'event' ? (CATEGORY_META[item.category]?.color || "#D4AF37") : "#500000"),
+                        backgroundColor: isCurrent
+                          ? "#FF8A00"
+                          : (item.timelineType === 'event' 
+                              ? (CATEGORY_META[item.category]?.color || 
+                                 CATEGORY_META[String(item.category).charAt(0).toUpperCase() + String(item.category).slice(1).toLowerCase()]?.color || 
+                                 "#D4AF37") 
+                              : "#500000"),
                         borderColor: isCurrent ? "#FFFFFF" : "transparent",
                         borderWidth: isCurrent ? 2 : 0,
                       },
@@ -2833,7 +2865,15 @@ export function PlacesMapScreen() {
                   <View
                     style={[
                       styles.pinTail,
-                      { borderTopColor: isCurrent ? "#FF8A00" : (item.timelineType === 'event' ? (CATEGORY_META[item.category]?.color || "#D4AF37") : "#500000") },
+                      { 
+                        borderTopColor: isCurrent 
+                          ? "#FF8A00" 
+                          : (item.timelineType === 'event' 
+                              ? (CATEGORY_META[item.category]?.color || 
+                                 CATEGORY_META[String(item.category).charAt(0).toUpperCase() + String(item.category).slice(1).toLowerCase()]?.color || 
+                                 "#D4AF37") 
+                              : "#500000") 
+                      },
                     ]}
                   />
                 </View>
@@ -2843,41 +2883,41 @@ export function PlacesMapScreen() {
 
         {/* Dining Layer: Events vs Menus toggle handled markers */}
         {activeLayer === "Dining" &&
-          (diningViewType === "events" 
+          (diningViewType === "events"
             ? upcomingFreeFoodEvents.map((event) => (
+              <Marker
+                key={`dining-event-${event.eventId}`}
+                coordinate={{ latitude: event.latitude, longitude: event.longitude }}
+                anchor={{ x: 0.5, y: 1 }}
+                onPress={() => setFocusedEvent(event)}
+              >
+                <View style={styles.freeFoodPinContainer}>
+                  <View style={styles.freeFoodPinHead}>
+                    <Flame size={18} color="#FFFFFF" />
+                  </View>
+                  <View style={styles.freeFoodPinTail} />
+                </View>
+              </Marker>
+            ))
+            : locations
+              .filter(l => l.type === 'Dining' || l.type === 'Hub')
+              .map((loc) => (
                 <Marker
-                  key={`dining-event-${event.eventId}`}
-                  coordinate={{ latitude: event.latitude, longitude: event.longitude }}
-                  anchor={{ x: 0.5, y: 1 }}
-                  onPress={() => setFocusedEvent(event)}
+                  key={`dining-loc-${loc.location}`}
+                  coordinate={{
+                    latitude: loc.coord?.lat || 0,
+                    longitude: loc.coord?.lng || 0,
+                  }}
+                  onPress={() => handleSelectLocation(loc)}
                 >
-                  <View style={styles.freeFoodPinContainer}>
-                    <View style={styles.freeFoodPinHead}>
-                      <Flame size={18} color="#FFFFFF" />
+                  <View style={styles.pinContainer} pointerEvents="none">
+                    <View style={[styles.pinHead, { backgroundColor: "#500000", padding: 6 }]}>
+                      <Utensils size={16} color="#FFF" />
                     </View>
-                    <View style={styles.freeFoodPinTail} />
+                    <View style={[styles.pinTail, { borderTopColor: "#500000" }]} />
                   </View>
                 </Marker>
               ))
-            : locations
-                .filter(l => l.type === 'Dining' || l.type === 'Hub')
-                .map((loc) => (
-                  <Marker
-                    key={`dining-loc-${loc.location}`}
-                    coordinate={{
-                      latitude: loc.coord?.lat || 0,
-                      longitude: loc.coord?.lng || 0,
-                    }}
-                    onPress={() => handleSelectLocation(loc)}
-                  >
-                    <View style={styles.pinContainer} pointerEvents="none">
-                      <View style={[styles.pinHead, { backgroundColor: "#500000", padding: 6 }]}>
-                         <Utensils size={16} color="#FFF" />
-                      </View>
-                      <View style={[styles.pinTail, { borderTopColor: "#500000" }]} />
-                    </View>
-                  </Marker>
-                ))
           )
         }
 
@@ -2895,8 +2935,8 @@ export function PlacesMapScreen() {
             );
           })
           .map((loc) => {
-        const markerId = loc.id || loc.location;
-        const isSelected = selectedId === markerId;
+            const markerId = loc.id || loc.location;
+            const isSelected = selectedId === markerId;
             const catIcon = getCategoryIcon(loc.type);
             return (
               <Marker
@@ -3226,79 +3266,63 @@ export function PlacesMapScreen() {
                 currentOrNextClass ? (() => {
                   const isEvent = currentOrNextClass.timelineType === 'event';
                   const titleStr = isEvent ? currentOrNextClass.title : (currentOrNextClass as any).classInfo?.courseCode || "Next up";
-                  const metaStr = isEvent 
+                  const metaStr = isEvent
                     ? `${currentOrNextClass.locationLabel} • ${currentOrNextClass.startTimeLabel}`
                     : `${(currentOrNextClass as any).classInfo?.courseTitle || currentOrNextClass.location} • ${(currentOrNextClass as any).classInfo?.beginTime || ""}${(currentOrNextClass as any).classInfo?.endTime ? ` - ${(currentOrNextClass as any).classInfo?.endTime}` : ""}`;
-                  
+
                   const getLat = (item: any) => item.timelineType === 'event' ? (item.location?.coord?.lat || item.location_lat || 0) : (item.coord?.lat || 0);
                   const getLng = (item: any) => item.timelineType === 'event' ? (item.location?.coord?.lng || item.location_lng || 0) : (item.coord?.lng || 0);
                   const getShortName = (item: any) => item.timelineType === 'event' ? (item.locationLabel || "Event") : (item.classInfo?.courseCode || item.location);
                   const classLocationStr = isEvent ? "" : (currentOrNextClass.location as unknown as string);
 
                   return (
-                  <View style={styles.classesSummaryCard}>
-                    <View style={styles.classesSummaryHeader}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.classesSummaryTitle} numberOfLines={1}>
-                          {titleStr}
-                        </Text>
-                        <Text style={styles.classesSummaryMeta} numberOfLines={2}>
-                          {metaStr}
-                        </Text>
+                    <View style={styles.classesSummaryCard}>
+                      <View style={styles.classesSummaryHeader}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.classesSummaryTitle} numberOfLines={1}>
+                            {titleStr}
+                          </Text>
+                          <Text style={styles.classesSummaryMeta} numberOfLines={2}>
+                            {metaStr}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.classQuickAction}
+                          onPress={() =>
+                            navigation.navigate("CampusNavigation", {
+                              preferredMode: "walk",
+                              initialDestination: {
+                                id: currentOrNextClass.id || classLocationStr || "event",
+                                name: isEvent ? currentOrNextClass.locationLabel : classLocationStr,
+                                shortName: getShortName(currentOrNextClass),
+                                latitude: getLat(currentOrNextClass),
+                                longitude: getLng(currentOrNextClass),
+                                type: isEvent ? "event" : "academic",
+                              },
+                            })
+                          }
+                        >
+                          <Navigation size={14} color="#FFFFFF" />
+                          <Text style={styles.classQuickActionText}>Open</Text>
+                        </TouchableOpacity>
                       </View>
-                      <TouchableOpacity
-                        style={styles.classQuickAction}
-                        onPress={() =>
-                          navigation.navigate("CampusNavigation", {
-                            preferredMode: "walk",
-                            initialDestination: {
-                              id: currentOrNextClass.id || classLocationStr || "event",
-                              name: isEvent ? currentOrNextClass.locationLabel : classLocationStr,
-                              shortName: getShortName(currentOrNextClass),
-                              latitude: getLat(currentOrNextClass),
-                              longitude: getLng(currentOrNextClass),
-                              type: isEvent ? "event" : "academic",
-                            },
-                          })
-                        }
-                      >
-                        <Navigation size={14} color="#FFFFFF" />
-                        <Text style={styles.classQuickActionText}>Open</Text>
-                      </TouchableOpacity>
-                    </View>
 
-                    {followingClass ? (
-                      <View style={styles.classTransitHint}>
-                        <Text style={styles.classTransitHintTitle}>
-                          Next stop after this
-                        </Text>
-                        <Text style={styles.classTransitHintBody} numberOfLines={2}>
-                          {followingClass.timelineType === 'event' ? followingClass.title : ((followingClass as any).classInfo?.courseCode || followingClass.location)}
-                          {classTransitPlan
-                            ? ` • Route ${classTransitPlan.routeShortName} in about ${classTransitPlan.estimatedTimeMinutes} min`
-                            : " • Walk or bus plan available when live transit matches"}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
+                      {followingClass ? (
+                        <View style={styles.classTransitHint}>
+                          <Text style={styles.classTransitHintTitle}>
+                            Next stop after this
+                          </Text>
+                          <Text style={styles.classTransitHintBody} numberOfLines={2}>
+                            {followingClass.timelineType === 'event' ? followingClass.title : ((followingClass as any).classInfo?.courseCode || followingClass.location)}
+                            {classTransitPlan
+                               ? ` • Route ${classTransitPlan.routeShortName} in about ${classTransitPlan.estimatedTimeMinutes} min`
+                               : " • Walk or bus plan available when live transit matches"}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
                   );
-                })() : (
-                  <View style={styles.classesSummaryCard}>
-                    <Text style={styles.classesSummaryTitle}>
-                      {selectedClassDay === todayDayIndex ? "Day Complete!" : "No Schedule"}
-                    </Text>
-                    <Text style={styles.classesSummaryMeta}>
-                      {selectedClassDay === todayDayIndex 
-                        ? "You've finished all your scheduled events and classes for today." 
-                        : "You have no events or classes scheduled for this day."}
-                    </Text>
-                  </View>
-                )
-            ) : selectedSchedule ? (
-              <View style={styles.classesSummaryCard}>
-                <Text style={styles.classesSummaryTitle}>No Classes</Text>
-                <Text style={styles.classesSummaryMeta}>You have no classes scheduled for this day.</Text>
-              </View>
+                })() : null
             ) : null}
           </View>
         ) : null}
@@ -3342,7 +3366,7 @@ export function PlacesMapScreen() {
                     {isAllBusRoutesSelected
                       ? "ALL"
                       : busRoutes.find((r) => r.Key === selectedBusRouteId)
-                          ?.ShortName || "??"}
+                        ?.ShortName || "??"}
                   </Text>
                 </View>
               </View>
@@ -3352,7 +3376,7 @@ export function PlacesMapScreen() {
                   {isAllBusRoutesSelected
                     ? "Show All Routes"
                     : busRoutes.find((r) => r.Key === selectedBusRouteId)?.Name ||
-                      "Select Route"}
+                    "Select Route"}
                 </Text>
               </View>
               <View style={styles.chevronIcon}>
@@ -3469,14 +3493,14 @@ export function PlacesMapScreen() {
       )}
 
       {placesViewMode === "list" && activeLayer !== "Bus" && activeLayer !== "Heatmap" && (
-        <View 
+        <View
           style={[
-            styles.placesListOverlay, 
-            { 
+            styles.placesListOverlay,
+            {
               top: activeLayer === "Today" ? 210 : 178,
-              bottom: 84
+              maxHeight: SCREEN_HEIGHT - (activeLayer === "Today" ? 210 : 178) - 100,
             }
-          ]} 
+          ]}
           pointerEvents="box-none"
         >
           <Card style={styles.placesListCard}>
@@ -3487,16 +3511,16 @@ export function PlacesMapScreen() {
                     {activeLayer === "Today" ? "Today's Schedule" : (activeLayer === "Dining" ? "Dining" : `${activeLayer} Places`)}
                   </Text>
                   <Text style={styles.placesListSubtitle}>
-                    {activeLayer === "Today" 
-                      ? "Classes and campus events in chronological order." 
-                      : activeLayer === "Dining" 
+                    {activeLayer === "Today"
+                      ? null
+                      : activeLayer === "Dining"
                         ? (diningViewType === 'events' ? "Upcoming campus events with free food." : "Daily menus for dining halls and hubs.")
                         : "Unified campus nodes with shared metadata."}
                   </Text>
                 </View>
                 {activeLayer === "Dining" && (
                   <View style={styles.diningSegmentedToggle}>
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       style={[styles.diningToggleBtn, diningViewType === 'events' && styles.diningToggleBtnActive]}
                       onPress={() => {
                         setDiningViewType('events');
@@ -3506,7 +3530,7 @@ export function PlacesMapScreen() {
                       <Flame size={14} color={diningViewType === 'events' ? '#FFF' : COLORS.textTertiary} />
                       <Text style={[styles.diningToggleText, diningViewType === 'events' && styles.diningToggleTextActive]}>Events</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity 
+                    <TouchableOpacity
                       style={[styles.diningToggleBtn, diningViewType === 'menus' && styles.diningToggleBtnActive]}
                       onPress={() => {
                         setDiningViewType('menus');
@@ -3546,7 +3570,12 @@ export function PlacesMapScreen() {
                     >
                       <View style={styles.timelineSidebar}>
                         <Text style={styles.timelineTime}>{item.startTimeLabel}</Text>
-                        <View style={[styles.timelineDot, item.timelineType === 'event' && styles.timelineDotEvent]} />
+                        <View style={[
+                          styles.timelineDot,
+                          item.timelineType === 'event'
+                            ? { backgroundColor: CATEGORY_META[(item as any).category]?.color || "#FF7A00" }
+                            : (item.timelineType === 'class' ? { backgroundColor: COLORS.primary } : null)
+                        ]} />
                         <View style={styles.timelineConnector} />
                       </View>
                       <View style={styles.timelineContent}>
@@ -3557,14 +3586,23 @@ export function PlacesMapScreen() {
                           </View>
                         </View>
                         <Text style={styles.timelineLocation}>{item.locationLabel}</Text>
-                        
+
                         {item.location && (
-                          <TouchableOpacity 
+                          <TouchableOpacity
                             style={styles.timelineDirectionsBtn}
                             onPress={(e) => {
                               e.stopPropagation();
-                              const url = `https://www.google.com/maps/dir/?api=1&destination=${item.location?.coord?.lat || 0},${item.location?.coord?.lng || 0}`;
-                              Linking.openURL(url);
+                              navigation.navigate("CampusNavigation", {
+                                preferredMode: "walk",
+                                initialDestination: {
+                                  id: item.id || item.locationLabel,
+                                  name: item.locationLabel,
+                                  shortName: item.locationLabel,
+                                  latitude: item.location?.coord?.lat || 0,
+                                  longitude: item.location?.coord?.lng || 0,
+                                  type: item.timelineType === 'event' ? "event" : "academic",
+                                },
+                              });
                             }}
                           >
                             <Navigation size={12} color={COLORS.primary} />
@@ -3605,7 +3643,7 @@ export function PlacesMapScreen() {
                               <Text style={styles.sbisaCardDistance}>• {getDistanceLabel(distanceMeters)}</Text>
                             </View>
                           </View>
-                          <TouchableOpacity 
+                          <TouchableOpacity
                             style={styles.sbisaDirectionsBtn}
                             onPress={(e) => {
                               e.stopPropagation();
@@ -3663,7 +3701,7 @@ export function PlacesMapScreen() {
                             <Text style={styles.sbisaCardDistance}>• {event.location || "Campus"}</Text>
                           </View>
                         </View>
-                        <TouchableOpacity 
+                        <TouchableOpacity
                           style={[styles.sbisaDirectionsBtn, { backgroundColor: "#FF7A00" }]}
                           onPress={(e) => {
                             e.stopPropagation();
@@ -3742,7 +3780,7 @@ export function PlacesMapScreen() {
                   color={COLORS.textTertiary}
                   style={{ marginRight: 4 }}
                 />
-                  <Text style={styles.dockedStopProximity}>
+                <Text style={styles.dockedStopProximity}>
                   {nearestBusInfo || 'Stop details loading'}
                 </Text>
               </View>
@@ -3781,7 +3819,7 @@ export function PlacesMapScreen() {
                     {
                       backgroundColor:
                         selectedBus.PassengersOnboard / selectedBus.Capacity >
-                        0.8
+                          0.8
                           ? "#FF3B3020"
                           : "#32D74B20",
                     },
@@ -3793,7 +3831,7 @@ export function PlacesMapScreen() {
                       {
                         color:
                           selectedBus.PassengersOnboard / selectedBus.Capacity >
-                          0.8
+                            0.8
                             ? "#FF3B30"
                             : "#32D74B",
                       },
@@ -3801,7 +3839,7 @@ export function PlacesMapScreen() {
                   >
                     {Math.round(
                       (selectedBus.PassengersOnboard / selectedBus.Capacity) *
-                        100,
+                      100,
                     )}
                     % Full
                   </Text>
@@ -3853,7 +3891,7 @@ export function PlacesMapScreen() {
                     )}
                   </View>
                 </View>
-                
+
                 <View style={{ alignItems: "center", gap: 12 }}>
                   <TouchableOpacity
                     onPress={() => setSelectedId(null)}
@@ -3862,7 +3900,7 @@ export function PlacesMapScreen() {
                   >
                     <X size={18} color={COLORS.textTertiary} />
                   </TouchableOpacity>
-                  
+
                   <TouchableOpacity
                     style={styles.circularActionBtn}
                     onPress={() =>
@@ -3918,10 +3956,10 @@ export function PlacesMapScreen() {
                         onPress={() => Linking.openURL(externalLink.url).catch((error) => {
                           console.warn("Unable to open place external link", error);
                         })}
-                        >
-                          <ExternalLink size={14} color={COLORS.textPrimary} />
-                          <Text style={styles.quickActionText}>{externalLink.label}</Text>
-                        </TouchableOpacity>
+                      >
+                        <ExternalLink size={14} color={COLORS.textPrimary} />
+                        <Text style={styles.quickActionText}>{externalLink.label}</Text>
+                      </TouchableOpacity>
 
                       {(selectedLoc.type === "Dining" || selectedLoc.type === "Hub") && activeDiningMenu ? (
                         <TouchableOpacity
@@ -4003,13 +4041,13 @@ export function PlacesMapScreen() {
                   {selectedLoc.type === 'Library' || selectedLoc.type === 'Rec' ? (
                     <View style={styles.occupancyBlock}>
                       <View style={styles.occupancyHeaderRow}>
-                         <Layers size={18} color={getStatusColor(selectedLoc.percent_full)} />
-                         <View style={{ marginLeft: 8, flex: 1 }}>
-                            <Text style={styles.occupancyLiveLabel}>Live Occupancy</Text>
-                            <Text style={[styles.occupancyLiveText, { color: getStatusColor(selectedLoc.percent_full) }]}>
-                               {selectedLoc.percent_full}% Full
-                            </Text>
-                         </View>
+                        <Layers size={18} color={getStatusColor(selectedLoc.percent_full)} />
+                        <View style={{ marginLeft: 8, flex: 1 }}>
+                          <Text style={styles.occupancyLiveLabel}>Live Occupancy</Text>
+                          <Text style={[styles.occupancyLiveText, { color: getStatusColor(selectedLoc.percent_full) }]}>
+                            {selectedLoc.percent_full}% Full
+                          </Text>
+                        </View>
                       </View>
                       <View style={styles.occupancyTrack}>
                         <View style={[styles.occupancyFill, {
@@ -4028,7 +4066,7 @@ export function PlacesMapScreen() {
                       {selectedLoc.type === 'Rec' && selectedRecreationFacility?.source_url ? (
                         <TouchableOpacity
                           style={styles.inlineLinkRow}
-                          onPress={() => Linking.openURL(selectedRecreationFacility.source_url).catch(() => {})}
+                          onPress={() => Linking.openURL(selectedRecreationFacility.source_url).catch(() => { })}
                         >
                           <ExternalLink size={14} color={COLORS.textPrimary} />
                           <Text style={styles.inlineLinkText}>Open official facility page</Text>
@@ -4239,8 +4277,17 @@ export function PlacesMapScreen() {
             <TouchableOpacity
               style={[styles.premiumDirectionsBtn, { backgroundColor: "#FF7A00" }]}
               onPress={() => {
-                const url = `https://www.google.com/maps/dir/?api=1&destination=${focusedEvent.latitude},${focusedEvent.longitude}`;
-                Linking.openURL(url);
+                navigation.navigate("CampusNavigation", {
+                  preferredMode: "walk",
+                  initialDestination: {
+                    id: focusedEvent.eventId,
+                    name: focusedEvent.title,
+                    shortName: focusedEvent.location || focusedEvent.title,
+                    latitude: focusedEvent.latitude,
+                    longitude: focusedEvent.longitude,
+                    type: "event",
+                  },
+                });
               }}
             >
               <Navigation size={14} color="#FFFFFF" strokeWidth={3} />
@@ -5023,7 +5070,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       lineHeight: 18,
     },
 
-    occupancyBlock:  {
+    occupancyBlock: {
       marginBottom: 8,
       backgroundColor: isDark ? '#161616' : 'rgba(12,12,14,0.035)',
       padding: 16,
@@ -5034,11 +5081,11 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     occupancyHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
     occupancyLiveLabel: { fontSize: 13, color: COLORS.textSecondary, fontWeight: '600', marginBottom: 2 },
     occupancyLiveText: { fontSize: 16, fontWeight: '800' },
-    occupancyTrack:  {
-        height: 6, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
-        borderRadius: 3, overflow: 'hidden', marginBottom: 16,
+    occupancyTrack: {
+      height: 6, backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
+      borderRadius: 3, overflow: 'hidden', marginBottom: 16,
     },
-    occupancyFill:   { height: '100%', borderRadius: 3 },
+    occupancyFill: { height: '100%', borderRadius: 3 },
 
     hoursInfo: { flexDirection: "row", alignItems: "center", gap: 8 },
     hoursText: { fontSize: 14, color: COLORS.textSecondary, fontWeight: "600" },
@@ -5300,38 +5347,38 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
 
     classesOverlayCard: {
-      marginTop: 6,
+      marginTop: 0,
       gap: 8,
     },
     classesInlinePill: {
       flex: 1,
-      minHeight: 50,
+      height: 42,
       flexDirection: "row",
       alignItems: "center",
-      gap: 10,
+      gap: 8,
       borderRadius: 999,
       borderWidth: 1,
       borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.08)",
       backgroundColor: isDark ? "rgba(14,14,16,0.86)" : "rgba(255,255,255,0.88)",
-      paddingHorizontal: 14,
+      paddingHorizontal: 12,
     },
     classesInlineLabel: {
       color: COLORS.textTertiary,
-      fontSize: 9,
+      fontSize: 8,
       fontWeight: "800",
       textTransform: "uppercase",
       letterSpacing: 0.7,
     },
     classesInlineTitle: {
       color: COLORS.textPrimary,
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: "800",
-      marginTop: 2,
+      marginTop: 1,
     },
     classesInlineAddButton: {
-      width: 50,
-      height: 50,
-      borderRadius: 25,
+      width: 42,
+      height: 42,
+      borderRadius: 21,
       alignItems: "center",
       justifyContent: "center",
       borderWidth: 1,
@@ -5685,7 +5732,6 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       zIndex: 3400,
     },
     placesListCard: {
-      flex: 1,
       paddingBottom: 6,
       backgroundColor: isDark ? 'rgba(12,12,14,0.88)' : 'rgba(255,255,255,0.94)',
       borderWidth: 1,
@@ -6268,7 +6314,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     timelineRow: {
       flexDirection: 'row',
-      gap: 16,
+      gap: 24,
       marginBottom: 0,
     },
     timelineSidebar: {
@@ -6285,7 +6331,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     timelineDot: {
       position: 'absolute',
-      right: -24,
+      right: -18,
       top: 6,
       width: 12,
       height: 12,
@@ -6300,7 +6346,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     timelineConnector: {
       position: 'absolute',
-      right: -19,
+      right: -13,
       top: 18,
       bottom: -30,
       width: 2,
