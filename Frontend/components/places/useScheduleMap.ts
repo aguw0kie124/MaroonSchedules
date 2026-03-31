@@ -5,7 +5,7 @@ import { useCampusHubStore } from "../../store/campusHubStore";
 import { BUILDINGS } from "../../data/campus";
 import { useEventStore } from "../../store/eventStore";
 import type { CampusLocation, LocationType, ScheduleMeetingEntry, ScheduleMapOption } from "./types";
-import { resolveScheduleBuilding, getCanonicalLocationName } from "./campusData";
+import { resolveScheduleBuilding, getCanonicalLocationName, getBuildingCategory } from "./campusData";
 
 export function useScheduleMap(fullCampusIndex: CampusLocation[], selectedDate: Date = new Date()) {
   const { user } = useUser();
@@ -109,6 +109,7 @@ export function useScheduleMap(fullCampusIndex: CampusLocation[], selectedDate: 
             locationLabel,
             scheduleLabel: uploadedLabel,
             type: "class",
+            category: getBuildingCategory(building),
           } as ScheduleMeetingEntry;
         });
 
@@ -142,6 +143,7 @@ export function useScheduleMap(fullCampusIndex: CampusLocation[], selectedDate: 
             locationLabel,
             scheduleLabel,
             type: "class",
+            category: getBuildingCategory(building),
           } as ScheduleMeetingEntry;
         });
 
@@ -171,6 +173,7 @@ export function useScheduleMap(fullCampusIndex: CampusLocation[], selectedDate: 
             lat: event.location_lat,
             lng: event.location_lng,
             date_ts: event.date_ts,
+            category: event.category,
             type: "event",
           } as any;
         });

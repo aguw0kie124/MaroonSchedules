@@ -437,12 +437,28 @@ export const useAppShellStore = create<AppShellState>()(
     }),
     {
       name: 'app-shell-store',
-      version: 10,
+      version: 11,
       storage: createJSONStorage(() => AsyncStorage),
       migrate: (persistedState: any, version: number) => {
         if (!persistedState) return persistedState;
         
         let newState = { ...persistedState };
+
+        if (version < 11) {
+          // Force "Today" to be the very first pill in the Map layer scroller
+          if (Array.isArray(newState.placesPills)) {
+            const items = [...newState.placesPills];
+            const index = items.findIndex((p: any) => p.id === "Today");
+            if (index !== -1) {
+              const [today] = items.splice(index, 1);
+              items.unshift(today);
+              newState.placesPills = items.map((p, i) => ({ ...p, order: i }));
+            } else {
+              // If somehow Today is missing, ensure it's added at the front
+              newState.placesPills = applyVisibleOrder(DEFAULT_PLACES_PILLS, ['Today', 'Bus', 'Dining']);
+            }
+          }
+        }
 
         if (version < 10) {
           // Force new order: Events, Places, Dining, Social

@@ -127,21 +127,20 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     shell: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
+      justifyContent: 'space-evenly',
       width: '100%',
-      paddingHorizontal: 8,
       paddingVertical: 8,
       borderRadius: 999,
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
       backgroundColor: isDark
         ? 'rgba(16,16,18,0.88)'
         : 'rgba(255,255,255,0.88)',
-      shadowColor: '#000',
-      shadowOpacity: 0.12,
-      shadowRadius: 18,
-      shadowOffset: { width: 0, height: 10 },
-      elevation: 12,
+      borderWidth: 0,
+      borderColor: "transparent",
+      shadowColor: 'transparent',
+      shadowOpacity: 0,
+      shadowRadius: 0,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 0,
     },
     shellCollapsed: {
       width: 'auto',
@@ -155,14 +154,13 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       elevation: 0,
     },
     item: {
-      flex: 1,
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 4,
-      paddingHorizontal: 8,
       paddingVertical: 6,
       borderRadius: 16,
+      minWidth: 64,
     },
     itemFocused: {
       // Background removed to fix obnoxiously large rectangle
@@ -182,13 +180,13 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       backgroundColor: isDark
         ? 'rgba(0,0,0,0.82)'
         : 'rgba(255,255,255,1)',
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
-      shadowColor: '#000',
-      shadowOpacity: 0.16,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 8 },
-      elevation: 10,
+      borderWidth: 0,
+      borderColor: "transparent",
+      shadowColor: 'transparent',
+      shadowOpacity: 0,
+      shadowRadius: 0,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 0,
     },
     iconWrap: {
       alignItems: 'center',

@@ -39,6 +39,20 @@ export const getCategoryIcon = (type: LocationType, color = "#FFFFFF", size = 24
 };
 
 export const getCategoryColor = (type: string | undefined): string => {
+  if (!type) return "#500000";
+  const t = type.toLowerCase();
+  
+  if (t.includes("engineering")) return "#007AFF"; // Blue
+  if (t.includes("business")) return "#FF9500";    // Orange
+  if (t.includes("science")) return "#32D74B";      // Green
+  if (t.includes("social")) return "#FF2D55";       // Pink
+  if (t.includes("dining")) return "#FF3B30";       // Red
+  if (t.includes("library")) return "#5856D6";      // Purple
+  if (t.includes("rec")) return "#00C7BE";          // Teal
+  if (t.includes("study")) return "#AF52DE";        // Indigo
+  if (t.includes("parking")) return "#8E8E93";      // Grey
+  if (t.includes("bus")) return "#007AFF";          // Blue
+  
   switch (type) {
     case "Academic": return "#500000"; // Maroon
     case "Dining": return "#FF3B30";   // Red

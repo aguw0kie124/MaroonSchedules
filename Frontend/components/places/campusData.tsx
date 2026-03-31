@@ -296,6 +296,31 @@ export function resolveScheduleBuilding(
   return null;
 }
 
+// ── Building categorization ──────────────────────────────────
+export function getBuildingCategory(buildingName?: string | null): string {
+  const norm = normalizeBuildingKey(buildingName);
+  
+  // Engineering & Tech
+  if (["AERO", "RDMC", "ETB", "CHEN", "CVLB", "ZACH", "WERC", "PETR", "HRBB"].includes(norm)) return "engineering";
+  
+  // Science & Math
+  if (["HELD", "BSBE", "CHEM", "PHYS", "CYCL", "MITC", "BLOC"].includes(norm)) return "science";
+  
+  // Business & Admin
+  if (["WCBA", "GSC", "JBW", "ADMN"].includes(norm)) return "business";
+  
+  // Social & Humanities
+  if (["LAAH", "PSYC", "BUSH", "ALLN", "MSY"].includes(norm)) return "social";
+
+  // Check lookup type
+  const building = BUILDING_LOOKUP.get(norm);
+  if (building?.type === "recreation") return "rec";
+  if (building?.type === "library") return "library";
+  if (building?.type === "dining") return "dining";
+  
+  return "academic";
+}
+
 // ── Build the full campus directory ───────────────────────────
 export function buildCampusDirectory(): CampusLocation[] {
   const buildingLocations = BUILDINGS.map((building) => ({

@@ -88,6 +88,7 @@ interface LocationBottomSheetProps {
   // Bus state — to know when not to show
   selectedStop: any;
   selectedBus: any;
+  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "bus") => void;
 }
 
 export function LocationBottomSheet({
@@ -126,6 +127,7 @@ export function LocationBottomSheet({
   getPlaceExternalLink,
   selectedStop,
   selectedBus,
+  openNavigationToLocation,
 }: LocationBottomSheetProps) {
   // ── Bottom sheet animation ──────────────────────────────────
   const sheetY = useRef(new Animated.Value(SNAP_HIDDEN)).current;
@@ -324,11 +326,15 @@ export function LocationBottomSheet({
                   <View style={styles.quickActionRow}>
                     <TouchableOpacity
                       style={styles.quickActionPill}
-                      onPress={() =>
-                        Linking.openURL(externalLink.url).catch((error) => {
-                          console.warn("Unable to open place external link", error);
-                        })
-                      }
+                      onPress={() => {
+                        if (externalLink.label === "Open in Maps" && openNavigationToLocation && selectedLoc) {
+                          openNavigationToLocation(selectedLoc);
+                        } else {
+                          Linking.openURL(externalLink.url).catch((error) => {
+                            console.warn("Unable to open place external link", error);
+                          });
+                        }
+                      }}
                     >
                       <ExternalLink size={14} color="#F3F1ED" />
                         <Text style={styles.quickActionText}>

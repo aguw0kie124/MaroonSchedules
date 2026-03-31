@@ -47,6 +47,7 @@ interface PlacesListProps {
   isTodayExpanded?: boolean;
   setIsTodayExpanded?: (expanded: boolean) => void;
   onShare?: (content: ShareContent) => void;
+  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "bus") => void;
 }
 
 export function PlacesList({
@@ -74,6 +75,7 @@ export function PlacesList({
   isTodayExpanded,
   setIsTodayExpanded,
   onShare,
+  openNavigationToLocation,
 }: PlacesListProps) {
   const isTodayLayer = activeLayer === "Today";
   const shouldShowSheet =
@@ -219,45 +221,45 @@ export function PlacesList({
               <Text style={styles.nextUpTitle} numberOfLines={1}>{nextEntry.name}</Text>
               <Text style={styles.nextUpLocation} numberOfLines={1}>{nextEntry.locationLabel}</Text>
             </View>
-            <TouchableOpacity 
-              style={{ padding: 8 }}
-              onPress={() => onShare?.({
-                title: nextEntry.name,
-                message: `Heading to ${nextEntry.name} at ${nextEntry.locationLabel}!`,
-                url: "https://maroonschedules.tamu.edu"
-              })}
-            >
-              <Share2 size={18} color={COLORS.textSecondary} />
-            </TouchableOpacity>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <TouchableOpacity 
+                style={styles.nextUpDirectionsPill} 
+                onPress={() => {
+                  if (openNavigationToLocation && nextEntry) {
+                    const loc = sortedFilteredLocations.find((l: any) => 
+                      l.location === nextEntry.building || 
+                      l.shortName === nextEntry.building ||
+                      l.location.includes(nextEntry.building)
+                    );
+                    
+                    if (loc) {
+                      openNavigationToLocation(loc);
+                    } else {
+                      openNavigationToLocation({
+                        location: nextEntry.building,
+                        type: "Building",
+                        coord: (nextEntry as any).lat ? { lat: (nextEntry as any).lat, lng: (nextEntry as any).lng } : { lat: 30.6181, lng: -96.3365 }
+                      } as any);
+                    }
+                  }
+                }}
+              >
+                <Navigation size={14} color="#FFFFFF" />
+                <Text style={styles.nextUpDirectionsPillText}>Directions</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.nextUpShareIcon}
+                onPress={() => onShare?.({
+                  title: nextEntry.name,
+                  message: `Heading to ${nextEntry.name} at ${nextEntry.locationLabel}!`,
+                  url: "https://maroonschedules.tamu.edu"
+                })}
+              >
+                <Share2 size={16} color={COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
           </View>
-          
-          <TouchableOpacity 
-            style={styles.nextUpHintBox} 
-            onPress={() => {
-              if (handleSelectLocation && nextEntry) {
-                // Find the campus location that matches this building
-                let loc = sortedFilteredLocations.find((l: any) => 
-                  l.location === nextEntry.building || 
-                  l.shortName === nextEntry.building ||
-                  l.location.includes(nextEntry.building)
-                );
-                
-                // If not found in current list, try the entry's own attached coord
-                if (loc && loc.coord) {
-                  handleSelectLocation(loc);
-                } else if ((nextEntry as any).lat && (nextEntry as any).lng) {
-                  handleSelectLocation({
-                    location: nextEntry.building,
-                    coord: { lat: (nextEntry as any).lat, lng: (nextEntry as any).lng }
-                  } as any);
-                }
-              }
-            }}
-            activeOpacity={0.7}
-          >
-            <Navigation size={14} color={COLORS.primary} />
-            <Text style={styles.nextUpHintText}>{travelLabel}</Text>
-          </TouchableOpacity>
         </View>
       );
     }
@@ -273,11 +275,34 @@ export function PlacesList({
        );
     }
 
+    const handleTimelineGetDirections = (building: string) => {
+      if (!openNavigationToLocation) return;
+      
+      // Try to find full location data
+      const loc = sortedFilteredLocations.find(l => 
+        l.location === building || 
+        l.shortName === building || 
+        l.location.includes(building)
+      );
+      
+      if (loc) {
+        openNavigationToLocation(loc);
+      } else {
+        // Fallback with minimal info
+        openNavigationToLocation({
+          location: building,
+          type: "Building",
+          coord: (nextEntry && (nextEntry as any).lat) ? { lat: (nextEntry as any).lat, lng: (nextEntry as any).lng } : { lat: 30.6181, lng: -96.3365 }
+        } as any);
+      }
+    };
+
     return (
       <TodayTimeline
         styles={styles}
         COLORS={COLORS}
         activeScheduleOption={activeScheduleOption}
+        onGetDirections={handleTimelineGetDirections}
       />
     );
   };

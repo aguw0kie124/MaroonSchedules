@@ -26,6 +26,7 @@ import {
   TouchableOpacity,
   Animated,
   Platform,
+  Dimensions,
 } from "react-native";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
@@ -41,7 +42,8 @@ import {
   Plus,
   Locate,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Bus,
 } from "lucide-react-native";
 import { createRoute, WalkingRoute } from "../services/campusDirections";
 import { useTheme } from "./SharedUI";
@@ -105,7 +107,9 @@ import {
 } from "./places/campusData";
 import {
   getStatusColor,
+  getCategoryColor,
   haversineDistanceMeters,
+  getDistanceLabel,
   getParkingRecommendation,
   getCategoryIcon,
 } from "./places/utils";
@@ -601,31 +605,82 @@ export function PlacesMapScreen() {
     setBusVehicles(vehicles || []);
   }, []);
 
-  // ── Intelligent Auto-Zoom ─────────────────────────────────
+  // ── Auto-zoom and fitting logic ───────────────────────────
   useEffect(() => {
-    if (!mapRef.current || filteredLocations.length === 0) return;
+    if (!mapRef.current) return;
 
-    const coords = filteredLocations
-      .filter(loc => loc.coord)
-      .map(loc => ({ latitude: loc.coord.lat, longitude: loc.coord.lng }));
+    let coords: { latitude: number; longitude: number }[] = [];
 
-    if (activeLayer === "Today" && userCoord) {
-      coords.push(userCoord);
+    if (activeLayer === "Bus") {
+      // Fit to all active vehicles OR the selected route pattern
+      if (isAllBusRoutesSelected) {
+        if (busVehicles.length > 0) {
+          coords = busVehicles.map((bv: any) => ({
+            latitude: bv.Latitude || bv.lat,
+            longitude: bv.Longitude || bv.lng,
+          }));
+        }
+      } else if (routePatterns.length > 0) {
+        coords = routePatterns;
+      }
+    } else if (activeLayer === "Today") {
+      // Fit to all scheduled destination coordinates + user position
+      coords = sortedFilteredLocations
+        .filter(loc => loc.coord)
+        .map(loc => ({ latitude: loc.coord.lat, longitude: loc.coord.lng }));
+      if (userCoord) coords.push(userCoord);
+    } else {
+      // General map fit for other layers (Dining, Parking, Places)
+      if (selectedLoc) {
+        coords = [{ latitude: selectedLoc.coord.lat, longitude: selectedLoc.coord.lng }];
+      } else if (filteredLocations.length > 0 && filteredLocations.length < 50) {
+        // Only fit to filtered list if it's manageable and no specific location is focused
+        coords = filteredLocations
+          .filter(loc => loc.coord)
+          .map(loc => ({ latitude: loc.coord.lat, longitude: loc.coord.lng }));
+      }
     }
 
     if (coords.length > 0) {
-      // Determine padding based on UI:
-      // Today: 20px below "date box" (~160px from top) and 20px above tab bar (~100px from bottom)
-      // Others: 20px below category bar (~110px from top) and 20px above tab bar (~100px from bottom)
-      const topPadding = activeLayer === "Today" ? 170 : 110;
-      const bottomPadding = 100;
+      const { width, height } = Dimensions.get('window');
+      const isToday = activeLayer === "Today";
+      const isBus = activeLayer === "Bus";
+      
+      // Dynamic padding to ensure data is centered in the visible ~65% of the viewport
+      // Dynamic padding to ensure data is centered in the visible area below the Today box
+      // Today: Scale with screen height (roughly 58% on pro phones, less on smaller)
+      // pins have height (40px) and we want 20px margin.
+      const topPadding = isToday ? Math.min(height * 0.58, 540) : 120;
+      const bottomPadding = 120;
+      const sidePadding = isToday ? 20 : width * 0.15;
+
+      // Force 2D view (0 pitch) for Today to ensure padding logic is pixel-accurate
+      if (isToday && isMapTilted) {
+        setIsMapTilted(false);
+        mapRef.current.animateCamera({ pitch: 0, heading: 0 }, { duration: 400 });
+      }
 
       mapRef.current.fitToCoordinates(coords, {
-        edgePadding: { top: topPadding, right: 20, bottom: bottomPadding, left: 20 },
+        edgePadding: { 
+          top: topPadding, 
+          right: sidePadding, 
+          bottom: bottomPadding, 
+          left: sidePadding 
+        },
         animated: true,
       });
     }
-  }, [filteredLocations, activeLayer, userCoord]);
+  }, [
+    activeLayer,
+    filteredLocations,
+    isMapTilted,
+    busVehicles,
+    routePatterns,
+    selectedLoc,
+    userCoord,
+    isAllBusRoutesSelected,
+    selectedRoute
+  ]);
 
   const handleSelectBusRoute = useCallback(async (routeId: string, availableRoutes: any[] = busRoutes) => {
     setSelectedBusRouteId(routeId); setSelectedStop(null); setSelectedBus(null);
@@ -903,13 +958,13 @@ export function PlacesMapScreen() {
 
         {/* Bus route polylines */}
         {activeLayer === "Bus" && !isAllBusRoutesSelected && routePatterns.length > 0 && (
-          <Polyline coordinates={routePatterns} strokeColor={selectedRoute?.Color || "#007AFF"} strokeWidth={4} />
+          <Polyline coordinates={routePatterns} strokeColor={selectedRoute?.Color || "#007AFF"} strokeWidth={6} />
         )}
         {activeLayer === "Bus" && isAllBusRoutesSelected &&
           Object.entries(allRoutePatternsById).map(([routeKey, pattern]) => {
             const route = busRoutes.find((r) => r.Key === routeKey);
             return pattern.points.length > 0 ? (
-              <Polyline key={routeKey} coordinates={pattern.points} strokeColor={route?.Color || "#007AFF"} strokeWidth={3} />
+              <Polyline key={routeKey} coordinates={pattern.points} strokeColor={route?.Color || "#007AFF"} strokeWidth={6} />
             ) : null;
           })}
 
@@ -928,18 +983,36 @@ export function PlacesMapScreen() {
         ))}
 
         {/* Bus vehicles */}
-        {activeLayer === "Bus" && busVehicles.map((bus, i) => (
-          <Marker
-            key={`bus-${bus.Name || i}`}
-            coordinate={{ latitude: bus.Latitude, longitude: bus.Longitude }}
-            onPress={() => { setSelectedBus(bus); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-            anchor={{ x: 0.5, y: 0.5 }}
-          >
-            <Animated.View style={[styles.busVehicleMarker, { transform: [{ scale: busPulseAnim }] }]}>
-              <View style={styles.busVehicleMarkerInner} />
-            </Animated.View>
-          </Marker>
-        ))}
+        {activeLayer === "Bus" && busVehicles.map((bus, i) => {
+          const isTrackedBus = selectedBus?.Name === bus.Name;
+          const routeShortName = bus.routeShortName || bus.RouteShortName || selectedRoute?.ShortName || "";
+          const routeColor = bus.routeColor || bus.RouteColor || selectedRoute?.Color || "#007AFF";
+          
+          return (
+            <Marker
+              key={`bus-${bus.Id || bus.Name || i}`}
+              coordinate={{ latitude: bus.Latitude || bus.lat, longitude: bus.Longitude || bus.lng }}
+              onPress={() => { setSelectedBus(bus); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
+              anchor={{ x: 0.5, y: 0.5 }}
+              zIndex={isTrackedBus ? 1000 : 500}
+            >
+              <View style={[
+                styles.busMarker, 
+                { 
+                  backgroundColor: routeColor,
+                  transform: [
+                    { rotate: `${bus.heading || bus.Heading || 0}deg` }, 
+                    { scale: isTrackedBus ? 1.15 : 1 }
+                  ] 
+                }
+              ]}>
+                <View style={{ transform: [{ rotate: `-${bus.heading || bus.Heading || 0}deg` }] }}>
+                  <Text style={styles.busMarkerText}>{routeShortName}</Text>
+                </View>
+              </View>
+            </Marker>
+          );
+        })}
 
         {/* Walking Route Polyline */}
         {activeLayer === "Today" && activeWalkingRoute && (
@@ -955,7 +1028,9 @@ export function PlacesMapScreen() {
         {activeLayer !== "Bus" && markerLocations.map((loc) => {
           const isSelected = loc.location === selectedId;
           const isTodayLayer = activeLayer === "Today";
-          const pinColor = isTodayLayer ? (loc.classMeetings?.[0]?.type === "event" ? "#FF9500" : "#500000") : getStatusColor(loc.percent_full);
+          const pinColor = isTodayLayer 
+            ? getCategoryColor(loc.classMeetings?.[0]?.category)
+            : getStatusColor(loc.percent_full);
           const pinText = isTodayLayer && loc.sequenceIndex ? loc.sequenceIndex.toString() : null;
 
           return (
@@ -1019,34 +1094,69 @@ export function PlacesMapScreen() {
               }}
               onOpenSettings={() => setIsEditorVisible(true)}
             />
+            <View style={styles.mapControls}>
+              <TouchableOpacity
+                style={styles.mapButton}
+                onPress={() => {
+                  const coords = activeLayer === "Today" 
+                    ? markerLocations.map(l => ({ latitude: l.coord.lat, longitude: l.coord.lng }))
+                    : [];
+                  if (coords.length > 0 && mapRef.current) {
+                    const { width, height } = Dimensions.get('window');
+                    const topPadding = activeLayer === "Today" ? Math.min(height * 0.58, 540) : 120;
+                    mapRef.current.fitToCoordinates(coords, {
+                      edgePadding: { top: topPadding, right: 20, bottom: 120, left: 20 },
+                      animated: true
+                    });
+                  }
+                }}
+              >
+                <Maximize2 size={20} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.mapButton}
+                onPress={toggleMapPitch}
+              >
+                <Compass size={22} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.mapButton}
+                onPress={centerOnUserLocation}
+              >
+                <LocateFixed size={22} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            </View>
           </View>
+        )}
+
+        {/* Bus layer UI integrated into top stack flow */}
+        {activeLayer === "Bus" && (
+          <BusRouteSelector
+            styles={styles}
+            COLORS={COLORS}
+            busRoutes={busRoutes}
+            selectedBusRouteId={selectedBusRouteId}
+            selectedRoute={selectedRoute}
+            isAllBusRoutesSelected={isAllBusRoutesSelected}
+            isRouteDropdownOpen={isRouteDropdownOpen}
+            setIsRouteDropdownOpen={setIsRouteDropdownOpen}
+            filteredBusRoutes={filteredBusRoutes}
+            handleSelectBusRoute={handleSelectBusRoute}
+            openBusTimetable={() => navigation.navigate("BusTimetable")}
+            openTransitTripPlanner={() => navigation.navigate("TransitTripPlanner")}
+            selectedStop={selectedStop}
+            setSelectedStop={setSelectedStop}
+            selectedBus={selectedBus}
+            setSelectedBus={setSelectedBus}
+            nearestBusInfo={nearestBusInfo}
+            handleStopPress={handleStopPress}
+          />
         )}
       </View>
 
       {/* Global Search Results Overlay moved to bottom for z-index priority */}
-
-      {/* Bus layer UI */}
-      {activeLayer === "Bus" && (
-        <BusRouteSelector
-          styles={styles}
-          COLORS={COLORS}
-          busRoutes={busRoutes}
-          selectedBusRouteId={selectedBusRouteId}
-          selectedRoute={selectedRoute}
-          isAllBusRoutesSelected={isAllBusRoutesSelected}
-          isRouteDropdownOpen={isRouteDropdownOpen}
-          setIsRouteDropdownOpen={setIsRouteDropdownOpen}
-          filteredBusRoutes={filteredBusRoutes}
-          handleSelectBusRoute={handleSelectBusRoute}
-          openBusTimetable={openBusTimetable}
-          selectedStop={selectedStop}
-          setSelectedStop={setSelectedStop}
-          selectedBus={selectedBus}
-          setSelectedBus={setSelectedBus}
-          nearestBusInfo={nearestBusInfo}
-          handleStopPress={handleStopPress}
-        />
-      )}
 
       <View style={styles.mapFabStack} pointerEvents="box-none">
         <TouchableOpacity
@@ -1108,6 +1218,7 @@ export function PlacesMapScreen() {
             isTodayExpanded={isTodayExpanded}
             setIsTodayExpanded={setIsTodayExpanded}
             onShare={useShareStore.getState().openShare}
+            openNavigationToLocation={openNavigationToLocation}
           />
         </View>
       ) : (
@@ -1172,6 +1283,7 @@ export function PlacesMapScreen() {
         getPlaceExternalLink={getPlaceExternalLink}
         selectedStop={selectedStop}
         selectedBus={selectedBus}
+        openNavigationToLocation={openNavigationToLocation}
       />
 
       {/* Module editor modal */}

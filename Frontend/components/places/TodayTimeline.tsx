@@ -13,12 +13,14 @@ interface TodayTimelineProps {
   styles: any;
   COLORS: any;
   activeScheduleOption: ScheduleMapOption | null;
+  onGetDirections?: (building: string) => void;
 }
 
 export function TodayTimeline({
   styles,
   COLORS,
   activeScheduleOption,
+  onGetDirections,
 }: TodayTimelineProps) {
   const sortedEntries = React.useMemo(() => {
     if (!activeScheduleOption?.entries) return [];
@@ -56,9 +58,13 @@ export function TodayTimeline({
   }
 
   const handleGetDirections = (entry: ScheduleMeetingEntry) => {
-    const query = encodeURIComponent(`${entry.building} TAMU`);
-    const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
-    Linking.openURL(url).catch((err) => console.error("Couldn't load page", err));
+    if (onGetDirections && entry.building) {
+      onGetDirections(entry.building);
+    } else {
+      const query = encodeURIComponent(`${entry.building || entry.locationLabel} TAMU`);
+      const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+      Linking.openURL(url).catch((err) => console.error("Couldn't load page", err));
+    }
   };
 
   const getDotColor = (type?: string) => {

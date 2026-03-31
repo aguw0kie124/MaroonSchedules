@@ -53,6 +53,7 @@ export interface ScheduleMeetingEntry {
   sequenceIndex?: number;
   date_ts?: number;
   type?: "class" | "event";
+  category?: string;
   lat?: number;
   lng?: number;
 }

@@ -36,7 +36,6 @@ import { LocationSearchScreen } from './components/LocationSearchScreen';
 // import { ExtrasSidebar } from './components/ExtrasSidebar';
 import { CampusNavigationScreen } from './components/CampusNavigationScreen';
 import BusTimetableScreen from './components/BusTimetableScreen';
-import TransitTripPlannerScreen from './components/TransitTripPlannerScreen';
 import { PlacesMapScreen } from './components/PlacesMapScreen';
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
 import { ForYouScreen } from './components/ForYouScreen';
@@ -49,6 +48,8 @@ import { GradesScreen } from './components/GradesScreen';
 import { TimerScreen } from './components/TimerScreen';
 import { ShareOverlay } from './components/ShareOverlay';
 import { LeaderboardScreen } from './components/LeaderboardScreen';
+import TransitTripPlannerScreen from "./components/places/TransitTripPlannerScreen";
+import { TransitTripResultsScreen } from "./components/places/TransitTripResultsScreen";
 
 import DiningDashboard from './components/dining/DiningDashboard';
 import MealOptimizerScreen from './components/dining/MealOptimizerScreen';
@@ -296,7 +297,6 @@ function RootNavigator() {
           <Stack.Screen name="AnnexRentalDetail" component={AnnexRentalDetailScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
           <Stack.Screen name="BusTimetable" component={BusTimetableScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="TransitTripPlanner" component={TransitTripPlannerScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CampusMap" component={CampusMapScreen} options={{ headerShown: false }} />
           <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
           <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: false }} />
@@ -306,6 +306,16 @@ function RootNavigator() {
           <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CampusFeed" component={CampusFeedScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
+          <Stack.Screen 
+            name="TransitTripPlanner" 
+            component={TransitTripPlannerScreen} 
+            options={{ headerShown: false, animation: 'slide_from_bottom' }} 
+          />
+          <Stack.Screen 
+            name="TransitTripResults" 
+            component={TransitTripResultsScreen} 
+            options={{ headerShown: false, animation: 'slide_from_right' }} 
+          />
 
           <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: false }} />
           <Stack.Screen name="MealOptimizer" component={MealOptimizerScreen} options={{ headerShown: false }} />
