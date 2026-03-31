@@ -48,6 +48,7 @@ import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
 import { TimerScreen } from './components/TimerScreen';
 import { ShareOverlay } from './components/ShareOverlay';
+import { LeaderboardScreen } from './components/LeaderboardScreen';
 
 import DiningDashboard from './components/dining/DiningDashboard';
 import MealOptimizerScreen from './components/dining/MealOptimizerScreen';
@@ -304,6 +305,7 @@ function RootNavigator() {
           <Stack.Screen name="CampusConnector" component={CampusConnectorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CampusFeed" component={CampusFeedScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
 
           <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: false }} />
           <Stack.Screen name="MealOptimizer" component={MealOptimizerScreen} options={{ headerShown: false }} />

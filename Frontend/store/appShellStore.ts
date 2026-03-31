@@ -437,12 +437,18 @@ export const useAppShellStore = create<AppShellState>()(
     }),
     {
       name: 'app-shell-store',
-      version: 9,
+      version: 10,
       storage: createJSONStorage(() => AsyncStorage),
       migrate: (persistedState: any, version: number) => {
         if (!persistedState) return persistedState;
         
         let newState = { ...persistedState };
+
+        if (version < 10) {
+          // Force new order: Events, Places, Dining, Social
+          newState.navItems = applyVisibleOrder(DEFAULT_NAV_ITEMS, ['Events', 'Places', 'Dining', 'Social']);
+          newState.defaultLandingTab = 'Events';
+        }
 
         if (version < 9) {
           // Promote 'Events' as the default landing tab for all users transitioning to the refined layout
