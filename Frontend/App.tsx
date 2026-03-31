@@ -1,49 +1,54 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import { createStackNavigator } from '@react-navigation/stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
-import * as SecureStore from 'expo-secure-store';
-import * as WebBrowser from 'expo-web-browser';
+import React from "react";
+import { View, StyleSheet } from "react-native";
+import { createStackNavigator } from "@react-navigation/stack";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import {
+  ClerkProvider,
+  ClerkLoaded,
+  useAuth,
+  useUser,
+} from "@clerk/clerk-expo";
+import * as SecureStore from "expo-secure-store";
+import * as WebBrowser from "expo-web-browser";
 
 WebBrowser.maybeCompleteAuthSession();
 
-import { Onboarding } from './components/Onboarding';
-import { Dashboard } from './components/Dashboard';
-import { Profile } from './components/Profile';
-import { RecreationFacilitiesScreen } from './components/RecreationFacilitiesScreen';
-import { CourseDetail } from './components/CourseDetail';
-import { AuthLanding } from './components/AuthLanding';
-import { LoginScreen } from './components/LoginScreen';
-import { ChatScreen } from './components/ChatScreen';
-import { UsersScreen } from './components/UsersScreen';
-import { ChannelListScreen } from './components/ChannelListScreen';
+import { Onboarding } from "./components/Onboarding";
+import { Dashboard } from "./components/Dashboard";
+import { Profile } from "./components/Profile";
+import { RecreationFacilitiesScreen } from "./components/RecreationFacilitiesScreen";
+import { CourseDetail } from "./components/CourseDetail";
+import { AuthLanding } from "./components/AuthLanding";
+import { LoginScreen } from "./components/LoginScreen";
+import { ChatScreen } from "./components/ChatScreen";
+import { UsersScreen } from "./components/UsersScreen";
+import { ChannelListScreen } from "./components/ChannelListScreen";
 
-import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
-import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
-import { ScheduleListScreen } from './components/ScheduleListScreen';
-import { ScheduleDetailScreen } from './components/ScheduleDetailScreen';
+import { NewCourseSearchScreen } from "./components/NewCourseSearchScreen";
+import { NewCourseDetailScreen } from "./components/NewCourseDetailScreen";
+import { ScheduleListScreen } from "./components/ScheduleListScreen";
+import { ScheduleDetailScreen } from "./components/ScheduleDetailScreen";
 // import { ExtrasSidebar } from './components/ExtrasSidebar';
-import { CampusNavigationScreen } from './components/CampusNavigationScreen';
-import { BusTimetableScreen } from './components/BusTimetableScreen';
-import { TransitTripPlannerScreen } from './components/TransitTripPlannerScreen';
-import { TransitTripResultsScreen } from './components/TransitTripResultsScreen';
-import { PlacesMapScreen } from './components/PlacesMapScreen';
-import { EventsCalendarScreen } from './components/EventsCalendarScreen';
-import { CampusFeedScreen } from './components/CampusFeedScreen';
-import { ReelsScreen } from './components/ReelsScreen';
+import { CampusNavigationScreen } from "./components/CampusNavigationScreen";
+import BusTimetableScreen from "./components/BusTimetableScreen";
+import { TransitTripPlannerScreen } from "./components/TransitTripPlannerScreen";
+import { TransitTripResultsScreen } from "./components/TransitTripResultsScreen";
+import { PlacesMapScreen } from "./components/PlacesMapScreen";
+import { EventsCalendarScreen } from "./components/EventsCalendarScreen";
+import { CampusFeedScreen } from "./components/CampusFeedScreen";
+import { ReelsScreen } from "./components/ReelsScreen";
 
-import { SocialHubScreen } from './components/SocialHubScreen';
-import { GradesScreen } from './components/GradesScreen';
-import { LeaderboardScreen } from './components/LeaderboardScreen';
-import { ShareOverlay } from './components/ShareOverlay';
+import { SocialHubScreen } from "./components/SocialHubScreen";
+import { GradesScreen } from "./components/GradesScreen";
+import { LeaderboardScreen } from "./components/LeaderboardScreen";
+import { ShareOverlay } from "./components/ShareOverlay";
 
-import FullMenuScreen from './components/dining/FullMenuScreen';
+import FullMenuScreen from "./components/dining/FullMenuScreen";
 
-import { Home, Map, Trophy, Users, User } from 'lucide-react-native';
-import { useTheme, useThemeStore } from './components/SharedUI';
+import { Home, Map, Trophy, Users, User } from "lucide-react-native";
+import { useTheme, useThemeStore } from "./components/SharedUI";
 
-import { syncUser } from './api/client';
+import { syncUser } from "./api/client";
 
 /**
  * Invisible component that syncs the signed-in Clerk user to the PostgreSQL
@@ -64,9 +69,14 @@ function UserSync({ children }: { children: React.ReactNode }) {
         user.primaryEmailAddress?.emailAddress,
         user.fullName ?? undefined,
         user.imageUrl ?? undefined,
-      ).catch((err: any) => console.warn('UserSync failed:', err));
+      ).catch((err: any) => console.warn("UserSync failed:", err));
     }
-  }, [user?.id, user?.primaryEmailAddress?.emailAddress, user?.fullName, user?.imageUrl]);
+  }, [
+    user?.id,
+    user?.primaryEmailAddress?.emailAddress,
+    user?.fullName,
+    user?.imageUrl,
+  ]);
 
   return <>{children}</>;
 }
@@ -91,9 +101,14 @@ const tokenCache = {
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 if (!publishableKey) {
-  throw new Error('Missing Publishable Key. Please set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in your .env file.');
+  throw new Error(
+    "Missing Publishable Key. Please set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in your .env file.",
+  );
 } else {
-  console.log('Clerk Publishable Key detected:', publishableKey.substring(0, 12) + '...');
+  console.log(
+    "Clerk Publishable Key detected:",
+    publishableKey.substring(0, 12) + "...",
+  );
 }
 
 const Stack = createStackNavigator();
@@ -103,37 +118,37 @@ function MainTabs() {
   const { COLORS } = useTheme();
   const tabScreens = [
     {
-      name: 'Dashboard',
+      name: "Dashboard",
       component: Dashboard,
-      title: 'Home',
+      title: "Home",
       icon: Home,
       initialParams: undefined,
     },
     {
-      name: 'Leaderboard',
+      name: "Leaderboard",
       component: LeaderboardScreen,
-      title: 'Rankings',
+      title: "Rankings",
       icon: Trophy,
       initialParams: undefined,
     },
     {
-      name: 'Places',
+      name: "Places",
       component: PlacesMapScreen,
-      title: 'Places',
+      title: "Places",
       icon: Map,
       initialParams: undefined,
     },
     {
-      name: 'Social',
+      name: "Social",
       component: SocialHubScreen,
-      title: 'Social',
+      title: "Social",
       icon: Users,
       initialParams: undefined,
     },
     {
-      name: 'Settings',
+      name: "Settings",
       component: Profile,
-      title: 'Settings',
+      title: "Settings",
       icon: User,
       initialParams: undefined,
     },
@@ -152,13 +167,13 @@ function MainTabs() {
           borderTopWidth: 1,
           borderTopColor: COLORS.border,
           backgroundColor: COLORS.surface,
-          shadowColor: '#000000',
+          shadowColor: "#000000",
           shadowOpacity: 0.06,
           shadowRadius: 8,
           shadowOffset: { width: 0, height: -3 },
           elevation: 8,
         },
-        tabBarActiveTintColor: '#500000',
+        tabBarActiveTintColor: "#500000",
         tabBarInactiveTintColor: COLORS.textTertiary,
       }}
     >
@@ -171,7 +186,7 @@ function MainTabs() {
           options={{
             title: screen.title,
             tabBarIcon: ({ color, focused }) => {
-              const isMap = screen.name === 'Places';
+              const isMap = screen.name === "Places";
 
               if (isMap) {
                 return (
@@ -180,11 +195,13 @@ function MainTabs() {
                       width: 58,
                       height: 58,
                       borderRadius: 29,
-                      backgroundColor: focused ? '#500000' : 'rgba(80, 0, 0, 0.7)',
-                      alignItems: 'center',
-                      justifyContent: 'center',
+                      backgroundColor: focused
+                        ? "#500000"
+                        : "rgba(80, 0, 0, 0.7)",
+                      alignItems: "center",
+                      justifyContent: "center",
                       marginTop: -10,
-                      shadowColor: '#500000',
+                      shadowColor: "#500000",
                       shadowOffset: { width: 0, height: focused ? 8 : 4 },
                       shadowOpacity: focused ? 0.6 : 0.3,
                       shadowRadius: focused ? 12 : 8,
@@ -198,13 +215,16 @@ function MainTabs() {
                 );
               }
 
-              const isEnlarged = screen.name === 'Social' || screen.name === 'Settings';
+              const isEnlarged =
+                screen.name === "Social" || screen.name === "Settings";
               const size = isEnlarged ? 28 : 24;
 
               return (
-                <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                <View
+                  style={{ alignItems: "center", justifyContent: "center" }}
+                >
                   <screen.icon
-                    color={focused ? '#500000' : color}
+                    color={focused ? "#500000" : color}
                     size={size}
                     strokeWidth={focused ? 2.5 : 2}
                   />
@@ -227,15 +247,22 @@ function RootNavigator() {
   }
 
   const navigator = (
-    <Stack.Navigator id="RootStack" screenOptions={{
-      headerShown: false,
-      headerStyle: { backgroundColor: COLORS.background },
-      headerTintColor: COLORS.textPrimary,
-    }}>
+    <Stack.Navigator
+      id="RootStack"
+      screenOptions={{
+        headerShown: false,
+        headerStyle: { backgroundColor: COLORS.background },
+        headerTintColor: COLORS.textPrimary,
+      }}
+    >
       {isSignedIn ? (
         <>
           <Stack.Screen name="Main" component={MainTabs} />
-          <Stack.Screen name="CourseDetail" component={CourseDetail} options={{ headerShown: true }} />
+          <Stack.Screen
+            name="CourseDetail"
+            component={CourseDetail}
+            options={{ headerShown: true }}
+          />
           <Stack.Screen
             name="ChatScreen"
             component={ChatScreen}
@@ -252,31 +279,83 @@ function RootNavigator() {
             options={{ headerShown: false }}
           />
 
-          <Stack.Screen name="NewCourseSearch" component={NewCourseSearchScreen} options={{ headerShown: true, title: 'Course Search' }} />
-          <Stack.Screen name="NewCourseDetail" component={NewCourseDetailScreen} options={{ headerShown: true, title: 'Course Details' }} />
-          <Stack.Screen name="ScheduleList" component={ScheduleListScreen} options={{ headerShown: true, title: 'My Schedules' }} />
-          <Stack.Screen name="ScheduleDetail" component={ScheduleDetailScreen} options={{ headerShown: true, title: 'Schedule Details' }} />
-          <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
+          <Stack.Screen
+            name="NewCourseSearch"
+            component={NewCourseSearchScreen}
+            options={{ headerShown: true, title: "Course Search" }}
+          />
+          <Stack.Screen
+            name="NewCourseDetail"
+            component={NewCourseDetailScreen}
+            options={{ headerShown: true, title: "Course Details" }}
+          />
+          <Stack.Screen
+            name="ScheduleList"
+            component={ScheduleListScreen}
+            options={{ headerShown: true, title: "My Schedules" }}
+          />
+          <Stack.Screen
+            name="ScheduleDetail"
+            component={ScheduleDetailScreen}
+            options={{ headerShown: true, title: "Schedule Details" }}
+          />
+          <Stack.Screen
+            name="CampusNavigation"
+            component={CampusNavigationScreen}
+            options={{ headerShown: false }}
+          />
           <Stack.Screen
             name="BusTimetable"
             component={BusTimetableScreen}
-            options={{ headerShown: false, presentation: 'modal' }}
+            options={{ headerShown: false, presentation: "modal" }}
           />
-          <Stack.Screen name="TransitTripPlanner" component={TransitTripPlannerScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="TransitTripResults" component={TransitTripResultsScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
+          <Stack.Screen
+            name="TransitTripPlanner"
+            component={TransitTripPlannerScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="TransitTripResults"
+            component={TransitTripResultsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="EventsCalendar"
+            component={EventsCalendarScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Leaderboard"
+            component={LeaderboardScreen}
+            options={{ headerShown: false }}
+          />
 
-          <Stack.Screen name="Reels" component={ReelsScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="CampusFeed" component={CampusFeedScreen} options={{ headerShown: false }} />
+          <Stack.Screen
+            name="Reels"
+            component={ReelsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="RecreationFacilities"
+            component={RecreationFacilitiesScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="CampusFeed"
+            component={CampusFeedScreen}
+            options={{ headerShown: false }}
+          />
 
           <Stack.Screen
             name="FullMenu"
             component={FullMenuScreen}
-            options={{ headerShown: false, presentation: 'modal' }}
+            options={{ headerShown: false, presentation: "modal" }}
           />
-          <Stack.Screen name="GradesScreen" component={GradesScreen} options={{ headerShown: true, title: 'Grade Distributions' }} />
+          <Stack.Screen
+            name="GradesScreen"
+            component={GradesScreen}
+            options={{ headerShown: true, title: "Grade Distributions" }}
+          />
         </>
       ) : (
         <>
@@ -284,12 +363,14 @@ function RootNavigator() {
           <Stack.Screen name="AuthLanding">
             {(props: any) => (
               <AuthLanding
-                onLoginPress={() => props.navigation.navigate('Login')}
+                onLoginPress={() => props.navigation.navigate("Login")}
               />
             )}
           </Stack.Screen>
           <Stack.Screen name="Login">
-            {(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />}
+            {(props: any) => (
+              <LoginScreen onBack={() => props.navigation.goBack()} />
+            )}
           </Stack.Screen>
         </>
       )}
@@ -300,9 +381,13 @@ function RootNavigator() {
   return isSignedIn ? <UserSync>{navigator}</UserSync> : navigator;
 }
 
-import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
-import { registerRootComponent } from 'expo';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  NavigationContainer,
+  DefaultTheme,
+  DarkTheme,
+} from "@react-navigation/native";
+import { registerRootComponent } from "expo";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 const queryClient = new QueryClient();
 
@@ -313,7 +398,9 @@ function App() {
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <ClerkLoaded>
         <QueryClientProvider client={queryClient}>
-          <NavigationContainer theme={theme === 'dark' ? DarkTheme : DefaultTheme}>
+          <NavigationContainer
+            theme={theme === "dark" ? DarkTheme : DefaultTheme}
+          >
             <RootNavigator />
             <ShareOverlay />
           </NavigationContainer>

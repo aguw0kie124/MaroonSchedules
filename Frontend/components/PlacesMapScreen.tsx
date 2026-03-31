@@ -805,15 +805,8 @@ export function PlacesMapScreen() {
   const togglePlacesPill = useAppShellStore((state) => state.togglePlacesPill);
   const isStandaloneTransitScreen = route.name === "BusRoutes";
   const orderedPlacesPills = useMemo(
-    () =>
-      getOrderedItems(placesPills).filter(
-        (item) =>
-          !(
-            item.id === "Bus" &&
-            !isStandaloneTransitScreen
-          ),
-      ),
-    [isStandaloneTransitScreen, placesPills],
+    () => getOrderedItems(placesPills),
+    [placesPills],
   );
   const visiblePlacesPills = useMemo(
     () => orderedPlacesPills.filter((item) => item.visible),
