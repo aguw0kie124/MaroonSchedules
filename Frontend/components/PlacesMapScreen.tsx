@@ -178,107 +178,107 @@ const CAMPUS_ZONES: Array<{
   type: "Rec" | "Library" | "Dining";
   hours?: string;
 }> = [
-    {
-      name: "Student Recreation Center",
-      ...getCanonicalCoords("Student Recreation Center", {
-        lat: 30.6094,
-        lng: -96.34,
-      }),
-      peak: 70,
-      off: 10,
-      radius: 220,
-      type: "Rec",
-      hours: "6:00 AM – 11:59 PM", // Updated based on March 26 data
-    },
-    {
-      name: "Southside Recreation Center",
-      ...getCanonicalCoords("Southside Recreation Center", {
-        lat: 30.6093,
-        lng: -96.339,
-      }),
-      peak: 65,
-      off: 10,
-      radius: 200,
-      type: "Rec",
-    },
-    {
-      name: "Polo Road Recreation Center",
-      ...getCanonicalCoords("Polo Road Recreation Center", {
-        lat: 30.6237,
-        lng: -96.3395,
-      }),
-      peak: 55,
-      off: 8,
-      radius: 200,
-      type: "Rec",
-    },
-    {
-      name: "Sterling C. Evans Library",
-      ...getCanonicalCoords("Sterling C. Evans Library", {
-        lat: 30.6171,
-        lng: -96.3387,
-      }),
-      peak: 82,
-      off: 18,
-      radius: 160,
-      type: "Library",
-    },
-    {
-      name: "Evans Library Annex",
-      ...getCanonicalCoords("Evans Library Annex", {
-        lat: 30.6168,
-        lng: -96.3383,
-      }),
-      peak: 70,
-      off: 15,
-      radius: 120,
-      type: "Library",
-    },
-    {
-      name: "West Campus Library",
-      ...getCanonicalCoords("West Campus Library", {
-        lat: 30.6146,
-        lng: -96.344,
-      }),
-      peak: 60,
-      off: 14,
-      radius: 160,
-      type: "Library",
-    },
-    {
-      name: "Memorial Student Center",
-      ...getCanonicalCoords("Memorial Student Center", {
-        lat: 30.6123,
-        lng: -96.3415,
-      }),
-      peak: 85,
-      off: 15,
-      radius: 180,
-      type: "Dining",
-    },
-    {
-      name: "Polo Road Garage Dining",
-      ...getCanonicalCoords("Polo Road Garage Dining", {
-        lat: 30.6235,
-        lng: -96.3388,
-      }),
-      peak: 80,
-      off: 10,
-      radius: 180,
-      type: "Dining",
-    },
-    {
-      name: "Sbisa Dining Hall",
-      ...getCanonicalCoords("Sbisa Dining Hall", {
-        lat: 30.617135,
-        lng: -96.343777,
-      }),
-      peak: 70,
-      off: 5,
-      radius: 150,
-      type: "Dining",
-    },
-  ];
+  {
+    name: "Student Recreation Center",
+    ...getCanonicalCoords("Student Recreation Center", {
+      lat: 30.6094,
+      lng: -96.34,
+    }),
+    peak: 70,
+    off: 10,
+    radius: 220,
+    type: "Rec",
+    hours: "6:00 AM – 11:59 PM", // Updated based on March 26 data
+  },
+  {
+    name: "Southside Recreation Center",
+    ...getCanonicalCoords("Southside Recreation Center", {
+      lat: 30.6093,
+      lng: -96.339,
+    }),
+    peak: 65,
+    off: 10,
+    radius: 200,
+    type: "Rec",
+  },
+  {
+    name: "Polo Road Recreation Center",
+    ...getCanonicalCoords("Polo Road Recreation Center", {
+      lat: 30.6237,
+      lng: -96.3395,
+    }),
+    peak: 55,
+    off: 8,
+    radius: 200,
+    type: "Rec",
+  },
+  {
+    name: "Sterling C. Evans Library",
+    ...getCanonicalCoords("Sterling C. Evans Library", {
+      lat: 30.6171,
+      lng: -96.3387,
+    }),
+    peak: 82,
+    off: 18,
+    radius: 160,
+    type: "Library",
+  },
+  {
+    name: "Evans Library Annex",
+    ...getCanonicalCoords("Evans Library Annex", {
+      lat: 30.6168,
+      lng: -96.3383,
+    }),
+    peak: 70,
+    off: 15,
+    radius: 120,
+    type: "Library",
+  },
+  {
+    name: "West Campus Library",
+    ...getCanonicalCoords("West Campus Library", {
+      lat: 30.6146,
+      lng: -96.344,
+    }),
+    peak: 60,
+    off: 14,
+    radius: 160,
+    type: "Library",
+  },
+  {
+    name: "Memorial Student Center",
+    ...getCanonicalCoords("Memorial Student Center", {
+      lat: 30.6123,
+      lng: -96.3415,
+    }),
+    peak: 85,
+    off: 15,
+    radius: 180,
+    type: "Dining",
+  },
+  {
+    name: "Polo Road Garage Dining",
+    ...getCanonicalCoords("Polo Road Garage Dining", {
+      lat: 30.6235,
+      lng: -96.3388,
+    }),
+    peak: 80,
+    off: 10,
+    radius: 180,
+    type: "Dining",
+  },
+  {
+    name: "Sbisa Dining Hall",
+    ...getCanonicalCoords("Sbisa Dining Hall", {
+      lat: 30.617135,
+      lng: -96.343777,
+    }),
+    peak: 70,
+    off: 5,
+    radius: 150,
+    type: "Dining",
+  },
+];
 
 function getTimeOfDayFactor(): number {
   const hour = new Date().getHours();
@@ -529,70 +529,70 @@ function getParkingRecommendation(
   if (permit === "visitor") {
     return isGarage
       ? {
-        score: 0,
-        badge: "Best Match",
-        detail: "Visitor-friendly garages are prioritized first.",
-      }
+          score: 0,
+          badge: "Best Match",
+          detail: "Visitor-friendly garages are prioritized first.",
+        }
       : {
-        score: 2,
-        badge: "Check Access",
-        detail: "Visitor access is usually easier in campus garages.",
-      };
+          score: 2,
+          badge: "Check Access",
+          detail: "Visitor access is usually easier in campus garages.",
+        };
   }
 
   if (permit === "garage") {
     return isGarage
       ? {
-        score: 0,
-        badge: "Garage Fit",
-        detail: "This matches a garage-first parking setup.",
-      }
+          score: 0,
+          badge: "Garage Fit",
+          detail: "This matches a garage-first parking setup.",
+        }
       : {
-        score: 3,
-        badge: "Secondary",
-        detail: "A garage may be a cleaner match for this permit preference.",
-      };
+          score: 3,
+          badge: "Secondary",
+          detail: "A garage may be a cleaner match for this permit preference.",
+        };
   }
 
   if (permit === "west_campus") {
     return isWestCampus
       ? {
-        score: 0,
-        badge: "West Campus",
-        detail: "This is aligned with west campus parking.",
-      }
+          score: 0,
+          badge: "West Campus",
+          detail: "This is aligned with west campus parking.",
+        }
       : {
-        score: isGarage ? 1 : 3,
-        badge: "Secondary",
-        detail: "Useful, but west campus options rank higher.",
-      };
+          score: isGarage ? 1 : 3,
+          badge: "Secondary",
+          detail: "Useful, but west campus options rank higher.",
+        };
   }
 
   if (permit === "resident") {
     return isResidentAdjacent
       ? {
-        score: 0,
-        badge: "Resident Fit",
-        detail: "This lot is surfaced first for residential access.",
-      }
+          score: 0,
+          badge: "Resident Fit",
+          detail: "This lot is surfaced first for residential access.",
+        }
       : {
-        score: isGarage ? 2 : 1,
-        badge: "Check Access",
-        detail: "Verify housing access before relying on this option.",
-      };
+          score: isGarage ? 2 : 1,
+          badge: "Check Access",
+          detail: "Verify housing access before relying on this option.",
+        };
   }
 
   return isGarage
     ? {
-      score: 0,
-      badge: "Recommended",
-      detail: "A strong all-around option for most valid permits.",
-    }
+        score: 0,
+        badge: "Recommended",
+        detail: "A strong all-around option for most valid permits.",
+      }
     : {
-      score: 1,
-      badge: "Available",
-      detail: "Keep this as a fallback if your primary lots are full.",
-    };
+        score: 1,
+        badge: "Available",
+        detail: "Keep this as a fallback if your primary lots are full.",
+      };
 }
 
 function getLocationContextLink(location: CampusLocation) {
@@ -643,9 +643,9 @@ function haversineDistanceMeters(
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.sin(dLng / 2) *
-    Math.sin(dLng / 2) *
-    Math.cos(startLatRad) *
-    Math.cos(endLatRad);
+      Math.sin(dLng / 2) *
+      Math.cos(startLatRad) *
+      Math.cos(endLatRad);
 
   return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
@@ -663,8 +663,28 @@ function getClosestProgressMeters(
   routePoints: Array<{ latitude: number; longitude: number }>,
   target: { latitude: number; longitude: number },
 ) {
-  if (routePoints.length === 0) return null;
-  if (routePoints.length === 1) return 0;
+  if (
+    !routePoints ||
+    !target ||
+    target.latitude == null ||
+    target.longitude == null
+  )
+    return null;
+  const validPoints = routePoints.filter(
+    (p) => p && p.latitude != null && p.longitude != null,
+  );
+  if (validPoints.length === 0) return null;
+  if (validPoints.length === 1) {
+    return {
+      progressMeters: 0,
+      totalRouteMeters: 0,
+      offsetMeters:
+        Math.hypot(
+          target.latitude - validPoints[0].latitude,
+          target.longitude - validPoints[0].longitude,
+        ) * 111320, // rough meter approximation
+    };
+  }
 
   const originLat = target.latitude;
   const targetXY = toLocalXY(target.latitude, target.longitude, originLat);
@@ -672,9 +692,9 @@ function getClosestProgressMeters(
   let bestProgressMeters = 0;
   let bestDistanceMeters = Number.POSITIVE_INFINITY;
 
-  for (let index = 0; index < routePoints.length - 1; index += 1) {
-    const start = routePoints[index];
-    const end = routePoints[index + 1];
+  for (let index = 0; index < validPoints.length - 1; index += 1) {
+    const start = validPoints[index];
+    const end = validPoints[index + 1];
     const startXY = toLocalXY(start.latitude, start.longitude, originLat);
     const endXY = toLocalXY(end.latitude, end.longitude, originLat);
     const dx = endXY.x - startXY.x;
@@ -1129,11 +1149,11 @@ export function PlacesMapScreen() {
     visibleCategories.length <= 1 || topBarItems.length <= 1
       ? 0
       : indicatorAnim.interpolate({
-        inputRange: visibleCategories.map((_, index) => index),
-        outputRange: visibleCategories.map(
-          (_, index) => index * categorySlotWidth + 2,
-        ),
-      });
+          inputRange: visibleCategories.map((_, index) => index),
+          outputRange: visibleCategories.map(
+            (_, index) => index * categorySlotWidth + 2,
+          ),
+        });
 
   useEffect(() => {
     if (!visibleCategories.some((category) => category.id === activeLayer)) {
@@ -1152,7 +1172,18 @@ export function PlacesMapScreen() {
       tension: 260,
       friction: 28,
     }).start();
-  }, [activeLayer, indicatorAnim, visibleCategories]);
+
+    // If we switch away from the Bus tab, reset the bus route selection
+    if (activeLayer !== "Bus" && selectedBusRouteId !== ALL_BUS_ROUTES_KEY) {
+      handleSelectBusRoute(ALL_BUS_ROUTES_KEY);
+    }
+  }, [
+    activeLayer,
+    indicatorAnim,
+    visibleCategories,
+    selectedBusRouteId,
+    handleSelectBusRoute,
+  ]);
 
   useEffect(() => {
     const nextLayer = route.params?.initialLayer;
@@ -1177,7 +1208,7 @@ export function PlacesMapScreen() {
 
   useEffect(() => {
     if (user?.id && (activeLayer === "Rec" || activeLayer === "Library")) {
-      hydrateCampusHub(user.id).catch(() => { });
+      hydrateCampusHub(user.id).catch(() => {});
     }
   }, [activeLayer, hydrateCampusHub, user?.id]);
 
@@ -1260,7 +1291,6 @@ export function PlacesMapScreen() {
       showBusTimetableSheet &&
       activeLayer === "Bus" &&
       !isAllBusRoutesSelected &&
-      !selectedStop &&
       !selectedBus
     ) {
       animateSheet(SNAP_PEEK);
@@ -1429,7 +1459,12 @@ export function PlacesMapScreen() {
 
   const resolveNearestBusForStop = useCallback(
     (stop: any, vehicles: any[]) => {
-      if (!stop || vehicles.length === 0) {
+      if (
+        !stop ||
+        stop.Latitude == null ||
+        stop.Longitude == null ||
+        vehicles.length === 0
+      ) {
         setNearestBusInfo(
           selectedRoute ? "Route loaded" : "Transit route loaded",
         );
@@ -1442,6 +1477,7 @@ export function PlacesMapScreen() {
       });
 
       const rankedBuses = vehicles
+        .filter((b) => b.Latitude != null && b.Longitude != null)
         .map((bus) => {
           const directDistanceMeters = haversineDistanceMeters(
             bus.Latitude,
@@ -1482,8 +1518,8 @@ export function PlacesMapScreen() {
             distanceMeters: Math.min(
               directDistanceMeters,
               wrappedDelta +
-              stopProgress.offsetMeters +
-              busProgress.offsetMeters,
+                stopProgress.offsetMeters +
+                busProgress.offsetMeters,
             ),
           };
         })
@@ -1513,12 +1549,18 @@ export function PlacesMapScreen() {
     [routePatterns, selectedRoute],
   );
 
-  const handleStopPress = (stop: any) => {
+  const handleStopPress = (stop: any, fromTimetable = false) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setSelectedStop(stop);
     setSelectedBus(null);
+    if (!fromTimetable) {
+      setShowBusTimetableSheet(false);
+    }
     setNearestBusInfo("Finding closest bus...");
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    resolveNearestBusForStop(stop, busVehicles);
+    // Run intensive closest-bus calculation asynchronously to not block the UI selection frame
+    requestAnimationFrame(() => {
+      resolveNearestBusForStop(stop, busVehicles);
+    });
   };
 
   const handleSelectBusRoute = useCallback(
@@ -1540,6 +1582,7 @@ export function PlacesMapScreen() {
       setSelectedBus(null);
 
       if (routeId === ALL_BUS_ROUTES_KEY) {
+        setRoutePatterns([]);
         await loadAllBusRoutes(availableRoutes);
         return;
       }
@@ -1601,7 +1644,9 @@ export function PlacesMapScreen() {
         try {
           // Capture the exact route ID we are fetching for
           // so if the user switches routes mid-fetch, we can discard the result
-          const pollRouteId = isAllBusRoutesSelected ? null : selectedBusRouteId;
+          const pollRouteId = isAllBusRoutesSelected
+            ? null
+            : selectedBusRouteId;
 
           const updated = isAllBusRoutesSelected
             ? await transitService.getVehicles()
@@ -1850,19 +1895,19 @@ export function PlacesMapScreen() {
     return [...filteredLocations].sort((left, right) => {
       const leftDistance = userCoord
         ? haversineDistanceMeters(
-          userCoord.latitude,
-          userCoord.longitude,
-          left.coord.lat,
-          left.coord.lng,
-        )
+            userCoord.latitude,
+            userCoord.longitude,
+            left.coord.lat,
+            left.coord.lng,
+          )
         : null;
       const rightDistance = userCoord
         ? haversineDistanceMeters(
-          userCoord.latitude,
-          userCoord.longitude,
-          right.coord.lat,
-          right.coord.lng,
-        )
+            userCoord.latitude,
+            userCoord.longitude,
+            right.coord.lat,
+            right.coord.lng,
+          )
         : null;
 
       if (activeLayer === "Parking") {
@@ -1904,19 +1949,19 @@ export function PlacesMapScreen() {
       .sort((a, b) => {
         const aDistance = userCoord
           ? haversineDistanceMeters(
-            userCoord.latitude,
-            userCoord.longitude,
-            a.coord.lat,
-            a.coord.lng,
-          )
+              userCoord.latitude,
+              userCoord.longitude,
+              a.coord.lat,
+              a.coord.lng,
+            )
           : null;
         const bDistance = userCoord
           ? haversineDistanceMeters(
-            userCoord.latitude,
-            userCoord.longitude,
-            b.coord.lat,
-            b.coord.lng,
-          )
+              userCoord.latitude,
+              userCoord.longitude,
+              b.coord.lat,
+              b.coord.lng,
+            )
           : null;
         const aStarts = a.location.toLowerCase().startsWith(query) ? 0 : 1;
         const bStarts = b.location.toLowerCase().startsWith(query) ? 0 : 1;
@@ -2252,169 +2297,215 @@ export function PlacesMapScreen() {
           </Marker>
         ) : null}
 
-        {activeLayer === "Bus" && isAllBusRoutesSelected
-          ? busRoutes.map((route) => {
-            const routePattern =
-              allRoutePatternsById[route.Key]?.points || [];
-            if (!routePattern.length) return null;
-            return (
-              <Polyline
-                key={`all-route-${route.Key}`}
-                coordinates={routePattern}
-                strokeColor={
-                  route.Color || transitService.getRouteColor(route.Key)
-                }
-                strokeWidth={4}
-                lineDashPattern={[0]}
-              />
-            );
-          })
-          : routePatterns.length > 0 && (
-            <>
-              <Polyline
-                key={`base-path-${selectedBusRouteId}`}
-                coordinates={routePatterns}
-                strokeColor={
-                  (selectedRoute?.Color ||
-                    transitService.getRouteColor(selectedBusRouteId || "")) +
-                  "50"
-                }
-                strokeWidth={6}
-                lineDashPattern={[0]}
-                zIndex={10}
-              />
-              {selectedDirection !== "All" && (
-                <Polyline
-                  key={`active-path-${selectedBusRouteId}-${selectedDirection}`}
-                  coordinates={routePatterns.filter(
-                    (p: any) =>
-                      "DirectionName" in p &&
-                      p.DirectionName === selectedDirection,
+        {activeLayer === "Bus"
+          ? isAllBusRoutesSelected
+            ? busRoutes.map((route) => {
+                const routePattern =
+                  allRoutePatternsById[route.Key]?.points || [];
+                if (!routePattern.length) return null;
+                return (
+                  <Polyline
+                    key={`all-route-${route.Key}`}
+                    coordinates={routePattern}
+                    strokeColor={
+                      route.Color || transitService.getRouteColor(route.Key)
+                    }
+                    strokeWidth={2}
+                    lineDashPattern={[0]}
+                  />
+                );
+              })
+            : routePatterns.length > 0 && (
+                <>
+                  <Polyline
+                    key={`base-path-${selectedBusRouteId}`}
+                    coordinates={routePatterns}
+                    strokeColor={
+                      (selectedRoute?.Color ||
+                        transitService.getRouteColor(
+                          selectedBusRouteId || "",
+                        )) + "50"
+                    }
+                    strokeWidth={4}
+                    lineDashPattern={[0]}
+                    zIndex={10}
+                  />
+                  {selectedDirection !== "All" && (
+                    <Polyline
+                      key={`active-path-${selectedBusRouteId}-${selectedDirection}`}
+                      coordinates={routePatterns.filter(
+                        (p: any) =>
+                          "DirectionName" in p &&
+                          p.DirectionName === selectedDirection,
+                      )}
+                      strokeColor={
+                        selectedRoute?.Color ||
+                        transitService.getRouteColor(selectedBusRouteId || "")
+                      }
+                      strokeWidth={4}
+                      lineDashPattern={[0]}
+                      zIndex={20}
+                    />
                   )}
-                  strokeColor={
-                    selectedRoute?.Color ||
-                    transitService.getRouteColor(selectedBusRouteId || "")
-                  }
-                  strokeWidth={6}
-                  lineDashPattern={[0]}
-                  zIndex={20}
-                />
-              )}
-              {selectedDirection === "All" && (
-                <Polyline
-                  key={`all-path-${selectedBusRouteId}`}
-                  coordinates={routePatterns}
-                  strokeColor={
-                    selectedRoute?.Color ||
-                    transitService.getRouteColor(selectedBusRouteId || "")
-                  }
-                  strokeWidth={6}
-                  lineDashPattern={[0]}
-                  zIndex={20}
-                />
-              )}
-            </>
-          )}
+                  {selectedDirection === "All" && (
+                    <Polyline
+                      key={`all-path-${selectedBusRouteId}`}
+                      coordinates={routePatterns}
+                      strokeColor={
+                        selectedRoute?.Color ||
+                        transitService.getRouteColor(selectedBusRouteId || "")
+                      }
+                      strokeWidth={4}
+                      lineDashPattern={[0]}
+                      zIndex={20}
+                    />
+                  )}
+                </>
+              )
+          : null}
 
         {/* Transit Layer: Bus Stops (MaroonRides Style: Blue Pins) */}
         {activeLayer === "Bus" &&
           !isAllBusRoutesSelected &&
-          busStops.map((stop, idx) => {
-            const isActiveDir =
-              selectedDirection === "All" ||
-              stop.DirectionName === selectedDirection;
-            return (
-              <Marker
-                key={`stop-${selectedBusRouteId}-${stop.StopCode || idx}`}
-                coordinate={{
-                  latitude: stop.Latitude,
-                  longitude: stop.Longitude,
-                }}
-                onPress={() => handleStopPress(stop)}
-                tracksViewChanges={false}
-                zIndex={isActiveDir ? 100 : 50}
-              >
-                <View
-                  style={[
-                    styles.busStopPin,
-                    !isActiveDir && { opacity: 0.25 },
-                  ]}
+          busStops
+            .filter((s) => s.Latitude != null && s.Longitude != null)
+            .map((stop, idx) => {
+              const isActiveDir =
+                selectedDirection === "All" ||
+                stop.DirectionName === selectedDirection;
+
+              // Render regular unselected stops
+              return (
+                <Marker
+                  key={`stop-${selectedBusRouteId}-${stop.StopCode || idx}`}
+                  coordinate={{
+                    latitude: stop.Latitude,
+                    longitude: stop.Longitude,
+                  }}
+                  onPress={() => handleStopPress(stop)}
+                  zIndex={isActiveDir ? 100 : 50}
+                  tracksViewChanges={false}
                 >
-                  <MapPin size={16} color="#FFF" />
-                </View>
-              </Marker>
-            );
-          })}
+                  <View
+                    style={[
+                      styles.busStopPin,
+                      !isActiveDir && { opacity: 0.25 },
+                    ]}
+                  >
+                    <MapPin size={16} color="#FFF" />
+                  </View>
+                </Marker>
+              );
+            })}
+
+        {/* Selected Bus Stop Overlay (Prevents disappearing unselected markers) */}
+        {activeLayer === "Bus" &&
+          !isAllBusRoutesSelected &&
+          selectedStop &&
+          selectedStop.Latitude != null && (
+            <Marker
+              key={`selected-stop-${selectedStop.StopCode}`}
+              coordinate={{
+                latitude: selectedStop.Latitude,
+                longitude: selectedStop.Longitude,
+              }}
+              zIndex={200}
+              onPress={() => setSelectedStop(null)}
+              tracksViewChanges={false}
+            >
+              <View
+                style={[
+                  styles.busStopPin,
+                  {
+                    transform: [{ scale: 1.35 }],
+                    backgroundColor: "#005bb5",
+                    borderColor: "#FFD700",
+                    borderWidth: 3,
+                  },
+                ]}
+              >
+                <MapPin size={16} color="#FFF" />
+              </View>
+            </Marker>
+          )}
 
         {/* Transit Layer: Bus Vehicles (MaroonRides Style: Bus Icons) */}
         {activeLayer === "Bus" &&
           !isAllBusRoutesSelected &&
           busStops.length > 0 &&
-          busVehicles.map((bus) => {
-            const isActiveDir =
-              selectedDirection === "All" ||
-              bus.DirectionName === selectedDirection;
-            return (
-              <Marker
-                key={`bus-${bus.Key}`}
-                coordinate={{
-                  latitude: bus.Latitude,
-                  longitude: bus.Longitude,
-                }}
-                anchor={{ x: 0.5, y: 0.5 }}
-                zIndex={isActiveDir ? 200 : 150}
-                flat={true}
-                tracksViewChanges={false}
-                opacity={isActiveDir ? 1 : 0.25}
-                onPress={() => {
-                  const now = Date.now();
-                  if (now - lastBusTapRef.current < 250) return;
-                  lastBusTapRef.current = now;
+          busVehicles
+            .filter((b) => b.Latitude != null && b.Longitude != null)
+            .map((bus) => {
+              const isActiveDir =
+                selectedDirection === "All" ||
+                bus.DirectionName === selectedDirection;
+              return (
+                <Marker
+                  key={`bus-${bus.Key}`}
+                  coordinate={{
+                    latitude: bus.Latitude,
+                    longitude: bus.Longitude,
+                  }}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  zIndex={isActiveDir ? 200 : 150}
+                  flat={true}
+                  tracksViewChanges={false}
+                  opacity={isActiveDir ? 1 : 0.25}
+                  onPress={() => {
+                    const now = Date.now();
+                    if (now - lastBusTapRef.current < 250) return;
+                    lastBusTapRef.current = now;
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-                  if (
-                    selectedDirection !== "All" &&
-                    bus.DirectionName &&
-                    bus.DirectionName !== selectedDirection
-                  ) {
-                    setSelectedDirection(bus.DirectionName);
-                  }
-                  setSelectedBus(bus);
-                  setSelectedStop(null);
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                }}
-              >
-                <View
-                  style={[
-                    styles.busMarker,
-                    {
-                      backgroundColor: "#FFFFFF",
-                      borderColor:
-                        bus.RouteColor || selectedRoute?.Color || "#500000",
-                      borderWidth: 2,
-                      // Make it a teardrop shape pointing Top-Right (45 degrees)
-                      borderTopRightRadius: 0,
-                      // Rotate the teardrop so its tip points in the bus's heading direction
-                      transform: [{ rotate: `${(bus.Heading || 0) - 45}deg` }],
-                    },
-                  ]}
+                    requestAnimationFrame(() => {
+                      if (
+                        selectedDirection !== "All" &&
+                        bus.DirectionName &&
+                        bus.DirectionName !== selectedDirection
+                      ) {
+                        setSelectedDirection(bus.DirectionName);
+                      }
+                      setSelectedBus(bus);
+                      setSelectedStop(null);
+                    });
+                  }}
                 >
                   <View
-                    // Counter-rotate the inner icon so the bus stays upright
-                    style={{
-                      transform: [{ rotate: `${-((bus.Heading || 0) - 45)}deg` }],
-                    }}
+                    style={[
+                      styles.busMarker,
+                      {
+                        backgroundColor: "#FFFFFF",
+                        borderColor:
+                          bus.RouteColor || selectedRoute?.Color || "#500000",
+                        borderWidth: 2,
+                        // Make it a teardrop shape pointing Top-Right (45 degrees)
+                        borderTopRightRadius: 0,
+                        // Rotate the teardrop so its tip points in the bus's heading direction
+                        transform: [
+                          { rotate: `${(bus.Heading || 0) - 45}deg` },
+                        ],
+                      },
+                    ]}
                   >
-                    <Bus
-                      size={16}
-                      color={
-                        bus.RouteColor || selectedRoute?.Color || "#500000"
-                      }
-                    />
+                    <View
+                      // Counter-rotate the inner icon so the bus stays upright
+                      style={{
+                        transform: [
+                          { rotate: `${-((bus.Heading || 0) - 45)}deg` },
+                        ],
+                      }}
+                    >
+                      <Bus
+                        size={16}
+                        color={
+                          bus.RouteColor || selectedRoute?.Color || "#500000"
+                        }
+                      />
+                    </View>
                   </View>
-                </View>
-              </Marker>
-            );
-          })}
+                </Marker>
+              );
+            })}
 
         {/* Highlight ring for the selected/tracked bus */}
         {activeLayer === "Bus" &&
@@ -2437,9 +2528,13 @@ export function PlacesMapScreen() {
                   width: 44,
                   height: 44,
                   borderRadius: 22,
+                  borderTopRightRadius: 0,
                   borderWidth: 3,
                   borderColor: "#C99700",
                   backgroundColor: "transparent",
+                  transform: [
+                    { rotate: `${(selectedBus.Heading || 0) - 45}deg` },
+                  ],
                 }}
               />
             </Marker>
@@ -2728,7 +2823,7 @@ export function PlacesMapScreen() {
                     {isAllBusRoutesSelected
                       ? "ALL"
                       : busRoutes.find((r) => r.Key === selectedBusRouteId)
-                        ?.ShortName || "??"}
+                          ?.ShortName || "??"}
                   </Text>
                 </View>
               </View>
@@ -2738,7 +2833,7 @@ export function PlacesMapScreen() {
                   {isAllBusRoutesSelected
                     ? "Show All Routes"
                     : busRoutes.find((r) => r.Key === selectedBusRouteId)
-                      ?.Name || "Select Route"}
+                        ?.Name || "Select Route"}
                 </Text>
               </View>
               <View style={styles.chevronIcon}>
@@ -2819,8 +2914,6 @@ export function PlacesMapScreen() {
             </View>
             <ChevronRight size={16} color={COLORS.textTertiary} />
           </TouchableOpacity>
-
-
 
           {isRouteDropdownOpen && (
             <View style={styles.busRoutesDropdown}>
@@ -2921,11 +3014,11 @@ export function PlacesMapScreen() {
                 {sortedFilteredLocations.map((loc) => {
                   const distanceMeters = userCoord
                     ? haversineDistanceMeters(
-                      userCoord.latitude,
-                      userCoord.longitude,
-                      loc.coord.lat,
-                      loc.coord.lng,
-                    )
+                        userCoord.latitude,
+                        userCoord.longitude,
+                        loc.coord.lat,
+                        loc.coord.lng,
+                      )
                     : null;
                   const parkingRecommendation =
                     loc.type === "Parking"
@@ -3045,6 +3138,23 @@ export function PlacesMapScreen() {
                   ID: {selectedBus.Name}
                 </Text>
               </View>
+              {selectedBus.Speed != null && (
+                <View
+                  style={[
+                    styles.busInfoBadge,
+                    { backgroundColor: isDark ? "#2C2C2E" : "#E5E5EA" },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.busInfoBadgeText,
+                      { color: isDark ? "#A1A1A6" : "#666" },
+                    ]}
+                  >
+                    {Math.round(selectedBus.Speed * 2.23694)} mph
+                  </Text>
+                </View>
+              )}
               {selectedBus.Capacity > 0 && (
                 <View
                   style={[
@@ -3052,7 +3162,7 @@ export function PlacesMapScreen() {
                     {
                       backgroundColor:
                         selectedBus.PassengersOnboard / selectedBus.Capacity >
-                          0.8
+                        0.8
                           ? "#FF3B3020"
                           : "#32D74B20",
                     },
@@ -3064,7 +3174,7 @@ export function PlacesMapScreen() {
                       {
                         color:
                           selectedBus.PassengersOnboard / selectedBus.Capacity >
-                            0.8
+                          0.8
                             ? "#FF3B30"
                             : "#32D74B",
                       },
@@ -3072,7 +3182,7 @@ export function PlacesMapScreen() {
                   >
                     {Math.round(
                       (selectedBus.PassengersOnboard / selectedBus.Capacity) *
-                      100,
+                        100,
                     )}
                     % Full
                   </Text>
@@ -3092,132 +3202,161 @@ export function PlacesMapScreen() {
       )}
 
       {/* ── Route Timeline Bottom Sheet ─────────────────────────────── */}
-      {!isAllBusRoutesSelected && activeLayer === "Bus" && !selectedStop && !selectedBus && showBusTimetableSheet && (
-        <Animated.View
-          style={[styles.bottomSheet, { transform: [{ translateY: sheetY }] }]}
-          {...panResponder.panHandlers}
-        >
-          <View style={styles.dragHandle} />
+      {!isAllBusRoutesSelected &&
+        activeLayer === "Bus" &&
+        !selectedBus &&
+        showBusTimetableSheet && (
+          <Animated.View
+            style={[
+              styles.bottomSheet,
+              { transform: [{ translateY: sheetY }] },
+            ]}
+            {...panResponder.panHandlers}
+          >
+            <View style={styles.dragHandle} />
 
-          <View style={styles.sheetHeader}>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Text style={styles.locationName}>
-                {busRoutes.find((r) => r.Key === selectedBusRouteId)?.Name || "Bus Route"}
-              </Text>
-              <View style={styles.sheetBadgeRow}>
-                <Text style={styles.typeTextSlim}>Route Timetable</Text>
-                <View style={styles.liveBadgeSlim}>
-                  <Text style={styles.dotSeparator}>•</Text>
-                  <View style={styles.livePulse} />
-                  <Text style={styles.liveTextSlim}>Live ETA</Text>
+            <View style={styles.sheetHeader}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={styles.locationName}>
+                  {busRoutes.find((r) => r.Key === selectedBusRouteId)?.Name ||
+                    "Bus Route"}
+                </Text>
+                <View style={styles.sheetBadgeRow}>
+                  <Text style={styles.typeTextSlim}>Route Timetable</Text>
+                  <View style={styles.liveBadgeSlim}>
+                    <Text style={styles.dotSeparator}>•</Text>
+                    <View style={styles.livePulse} />
+                    <Text style={styles.liveTextSlim}>Live ETA</Text>
+                  </View>
                 </View>
               </View>
             </View>
-          </View>
 
-          <ScrollView
-            style={{ flex: 1, marginTop: 4 }}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ gap: 8, paddingHorizontal: 16, paddingBottom: 60 }}
-            nestedScrollEnabled={true}
-          >
-            {filteredStopTimetable.map((entry: any) => (
-              <TouchableOpacity
-                key={`${entry.stop?.StopCode || entry.sequence}`}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  padding: 12,
-                  backgroundColor: isDark
-                    ? "rgba(255,255,255,0.03)"
-                    : "rgba(0,0,0,0.02)",
-                  borderRadius: 14,
-                  gap: 12,
-                  borderWidth: 1,
-                  borderColor: isDark
-                    ? "rgba(255,255,255,0.05)"
-                    : "rgba(0,0,0,0.05)",
-                }}
-                onPress={() => {
-                  handleStopPress(entry.stop);
-                }}
-              >
-                <View
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 14,
-                    backgroundColor: isDark ? "#2C2C2E" : "#E5E5EA",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Text
+            <ScrollView
+              style={{ flex: 1, marginTop: 4 }}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{
+                gap: 8,
+                paddingHorizontal: 16,
+                paddingBottom: 60,
+              }}
+              nestedScrollEnabled={true}
+            >
+              {filteredStopTimetable.map((entry: any) => {
+                const isSelected =
+                  selectedStop?.StopCode === entry.stop?.StopCode;
+                return (
+                  <TouchableOpacity
+                    key={`${entry.stop?.StopCode || entry.sequence}`}
                     style={{
-                      fontSize: 13,
-                      fontWeight: "600",
-                      color: isDark ? "#EBEBF5" : "#3A3A3D",
-                    }}
-                  >
-                    {entry.sequence}
-                  </Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      color: COLORS.textPrimary,
-                      fontWeight: "600",
-                      fontSize: 15,
-                    }}
-                  >
-                    {entry.stop?.Name || entry.stop?.StopName || "Bus Stop"}
-                  </Text>
-                  <Text
-                    style={{
-                      color: COLORS.textTertiary,
-                      fontSize: 13,
-                      marginTop: 2,
-                    }}
-                  >
-                    {entry.detail}
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    backgroundColor:
-                      entry.etaLabel === "Now" || entry.etaLabel?.includes("min")
-                        ? isDark
-                          ? "rgba(255,90,90,0.15)"
-                          : "rgba(80,0,0,0.1)"
+                      flexDirection: "row",
+                      alignItems: "center",
+                      padding: 12,
+                      backgroundColor: isSelected
+                        ? "rgba(0, 122, 255, 0.15)"
                         : isDark
-                          ? "rgba(255,255,255,0.1)"
+                          ? "rgba(255,255,255,0.03)"
+                          : "rgba(0,0,0,0.02)",
+                      borderRadius: 14,
+                      gap: 12,
+                      borderWidth: 1,
+                      borderColor: isSelected
+                        ? "rgba(0, 122, 255, 0.5)"
+                        : isDark
+                          ? "rgba(255,255,255,0.05)"
                           : "rgba(0,0,0,0.05)",
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                    borderRadius: 8,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      fontWeight: "700",
-                      color:
-                        entry.etaLabel === "Now" || entry.etaLabel?.includes("min")
-                          ? isDark
-                            ? "#FF5A5A"
-                            : "#500000"
-                          : COLORS.textSecondary,
+                    }}
+                    onPress={() => {
+                      handleStopPress(entry.stop, true);
                     }}
                   >
-                    {entry.etaLabel}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </Animated.View>
-      )}
+                    <View
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 14,
+                        backgroundColor: isSelected
+                          ? "#007AFF"
+                          : isDark
+                            ? "#2C2C2E"
+                            : "#E5E5EA",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "600",
+                          color: isSelected
+                            ? "#FFFFFF"
+                            : isDark
+                              ? "#EBEBF5"
+                              : "#3A3A3D",
+                        }}
+                      >
+                        {entry.sequence}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        numberOfLines={1}
+                        style={{
+                          color: isSelected ? "#007AFF" : COLORS.textPrimary,
+                          fontWeight: "600",
+                          fontSize: 15,
+                        }}
+                      >
+                        {entry.stop?.Name || entry.stop?.StopName || "Bus Stop"}
+                      </Text>
+                      <Text
+                        style={{
+                          color: COLORS.textTertiary,
+                          fontSize: 13,
+                          marginTop: 2,
+                        }}
+                      >
+                        {entry.detail}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        backgroundColor:
+                          entry.etaLabel === "Now" ||
+                          entry.etaLabel?.includes("min")
+                            ? isDark
+                              ? "rgba(255,90,90,0.15)"
+                              : "rgba(80,0,0,0.1)"
+                            : isDark
+                              ? "rgba(255,255,255,0.1)"
+                              : "rgba(0,0,0,0.05)",
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "700",
+                          color:
+                            entry.etaLabel === "Now" ||
+                            entry.etaLabel?.includes("min")
+                              ? isDark
+                                ? "#FF5A5A"
+                                : "#500000"
+                              : COLORS.textSecondary,
+                        }}
+                      >
+                        {entry.etaLabel}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </Animated.View>
+        )}
 
       {/* ── Google Maps-style Bottom Sheet ─────────────────────────────── */}
       {selectedId && activeLayer !== "Bus" && !selectedStop && !selectedBus && (
@@ -3306,9 +3445,9 @@ export function PlacesMapScreen() {
                 const parkingRecommendation =
                   selectedLoc.type === "Parking"
                     ? getParkingRecommendation(
-                      selectedLoc.location,
-                      parkingPermit,
-                    )
+                        selectedLoc.location,
+                        parkingPermit,
+                      )
                     : null;
                 const contextLink = getLocationContextLink(selectedLoc);
                 const externalLink = getPlaceExternalLink(selectedLoc);
@@ -3334,7 +3473,7 @@ export function PlacesMapScreen() {
 
                       {(selectedLoc.type === "Dining" ||
                         selectedLoc.type === "Hub") &&
-                        activeDiningMenu ? (
+                      activeDiningMenu ? (
                         <TouchableOpacity
                           style={[
                             styles.quickActionPill,
@@ -3406,8 +3545,8 @@ export function PlacesMapScreen() {
                           style={[
                             styles.restaurantChip,
                             activeDiningMenu ===
-                            getDiningMenuCandidates(r)[0] &&
-                            styles.restaurantChipActive,
+                              getDiningMenuCandidates(r)[0] &&
+                              styles.restaurantChipActive,
                           ]}
                           onPress={() => {
                             const nextMenu = getDiningMenuCandidates(r)[0];
@@ -3435,7 +3574,7 @@ export function PlacesMapScreen() {
               ) : (
                 <View style={styles.infoBlock}>
                   {selectedLoc.type === "Library" ||
-                    selectedLoc.type === "Rec" ? (
+                  selectedLoc.type === "Rec" ? (
                     <View style={styles.occupancyBlock}>
                       <View style={styles.occupancyHeaderRow}>
                         <Layers
@@ -3480,13 +3619,13 @@ export function PlacesMapScreen() {
                         </Text>
                       </View>
                       {selectedLoc.type === "Rec" &&
-                        selectedRecreationFacility?.source_url ? (
+                      selectedRecreationFacility?.source_url ? (
                         <TouchableOpacity
                           style={styles.inlineLinkRow}
                           onPress={() =>
                             Linking.openURL(
                               selectedRecreationFacility.source_url,
-                            ).catch(() => { })
+                            ).catch(() => {})
                           }
                         >
                           <ExternalLink size={14} color="#F3F1ED" />
@@ -3518,124 +3657,124 @@ export function PlacesMapScreen() {
                 {/* Traffic chart - Remounted for rec centers and libraries */}
                 {(selectedLoc.type === "Library" ||
                   selectedLoc.type === "Rec") && (
-                    <View style={styles.chartContainer}>
-                      <Text style={styles.chartTitle}>
-                        Foot Traffic · Last 8h
-                      </Text>
-                      <View style={styles.chartBars}>
-                        {(
-                          selectedLoc.traffic_history || [
-                            20, 45, 15, 60, 40, 25, 20, 50,
-                          ]
-                        ).map((val: number, i: number) => (
-                          <View key={i} style={styles.barWrapper}>
-                            <View
-                              style={[
-                                styles.barFill,
-                                {
-                                  height: Math.max(8, (val / 100) * 45),
-                                  backgroundColor: getStatusColor(val),
-                                },
-                              ]}
-                            />
-                          </View>
-                        ))}
-                      </View>
+                  <View style={styles.chartContainer}>
+                    <Text style={styles.chartTitle}>
+                      Foot Traffic · Last 8h
+                    </Text>
+                    <View style={styles.chartBars}>
+                      {(
+                        selectedLoc.traffic_history || [
+                          20, 45, 15, 60, 40, 25, 20, 50,
+                        ]
+                      ).map((val: number, i: number) => (
+                        <View key={i} style={styles.barWrapper}>
+                          <View
+                            style={[
+                              styles.barFill,
+                              {
+                                height: Math.max(8, (val / 100) * 45),
+                                backgroundColor: getStatusColor(val),
+                              },
+                            ]}
+                          />
+                        </View>
+                      ))}
                     </View>
-                  )}
+                  </View>
+                )}
 
                 {(selectedLoc.type === "Dining" ||
                   selectedLoc.type === "Hub") && (
-                    <View style={styles.infoBlock}>
-                      <View style={styles.reviewsHeader}>
-                        <Text style={styles.sectionTitle}>Menu Preview</Text>
-                        {activeDiningMenu ? (
-                          <TouchableOpacity
-                            onPress={() => openFullMenu(activeDiningMenu)}
-                          >
-                            <Text style={styles.seeAllText}>Open full menu</Text>
-                          </TouchableOpacity>
-                        ) : null}
-                      </View>
-
-                      {diningMenuOptions.length > 1 ? (
-                        <View style={styles.restaurantChipList}>
-                          {diningMenuOptions.map((option) => (
-                            <TouchableOpacity
-                              key={option}
-                              style={[
-                                styles.restaurantChip,
-                                activeDiningMenu === option &&
-                                styles.restaurantChipActive,
-                              ]}
-                              onPress={() => setActiveDiningMenu(option)}
-                            >
-                              <Text style={styles.restaurantChipText}>
-                                {option}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
+                  <View style={styles.infoBlock}>
+                    <View style={styles.reviewsHeader}>
+                      <Text style={styles.sectionTitle}>Menu Preview</Text>
+                      {activeDiningMenu ? (
+                        <TouchableOpacity
+                          onPress={() => openFullMenu(activeDiningMenu)}
+                        >
+                          <Text style={styles.seeAllText}>Open full menu</Text>
+                        </TouchableOpacity>
                       ) : null}
-
-                      {isFetchingDining ? (
-                        <ActivityIndicator
-                          color={COLORS.primary}
-                          style={{ marginVertical: 18 }}
-                        />
-                      ) : diningMenuPreview?.categories?.length ? (
-                        <View style={styles.menuList}>
-                          {diningMenuPreview.categories
-                            .flatMap((category: any) =>
-                              category.items.slice(0, 2),
-                            )
-                            .slice(0, 6)
-                            .map((item: any) => (
-                              <View
-                                key={`${activeDiningMenu}-${item.name}`}
-                                style={styles.menuItemCard}
-                              >
-                                <View style={styles.menuItemDetails}>
-                                  <Text style={styles.menuItemName}>
-                                    {item.name}
-                                  </Text>
-                                  <View style={styles.menuItemMeta}>
-                                    <Clock size={12} color="#888" />
-                                    <Text style={styles.menuItemCal}>
-                                      {Math.round(item.calories || 0)} kcal
-                                    </Text>
-                                    {item.protein ? (
-                                      <Text style={styles.menuItemCal}>
-                                        {Math.round(item.protein)}g protein
-                                      </Text>
-                                    ) : null}
-                                  </View>
-                                </View>
-                                <TouchableOpacity
-                                  onPress={() =>
-                                    openFullMenu(
-                                      activeDiningMenu || selectedLoc.location,
-                                    )
-                                  }
-                                >
-                                  <ExternalLink
-                                    size={16}
-                                    color={COLORS.primary}
-                                  />
-                                </TouchableOpacity>
-                              </View>
-                            ))}
-                        </View>
-                      ) : (
-                        <View style={styles.emptyReviews}>
-                          <Text style={styles.emptyReviewsText}>
-                            No cached menu preview is available for this location
-                            yet.
-                          </Text>
-                        </View>
-                      )}
                     </View>
-                  )}
+
+                    {diningMenuOptions.length > 1 ? (
+                      <View style={styles.restaurantChipList}>
+                        {diningMenuOptions.map((option) => (
+                          <TouchableOpacity
+                            key={option}
+                            style={[
+                              styles.restaurantChip,
+                              activeDiningMenu === option &&
+                                styles.restaurantChipActive,
+                            ]}
+                            onPress={() => setActiveDiningMenu(option)}
+                          >
+                            <Text style={styles.restaurantChipText}>
+                              {option}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ) : null}
+
+                    {isFetchingDining ? (
+                      <ActivityIndicator
+                        color={COLORS.primary}
+                        style={{ marginVertical: 18 }}
+                      />
+                    ) : diningMenuPreview?.categories?.length ? (
+                      <View style={styles.menuList}>
+                        {diningMenuPreview.categories
+                          .flatMap((category: any) =>
+                            category.items.slice(0, 2),
+                          )
+                          .slice(0, 6)
+                          .map((item: any) => (
+                            <View
+                              key={`${activeDiningMenu}-${item.name}`}
+                              style={styles.menuItemCard}
+                            >
+                              <View style={styles.menuItemDetails}>
+                                <Text style={styles.menuItemName}>
+                                  {item.name}
+                                </Text>
+                                <View style={styles.menuItemMeta}>
+                                  <Clock size={12} color="#888" />
+                                  <Text style={styles.menuItemCal}>
+                                    {Math.round(item.calories || 0)} kcal
+                                  </Text>
+                                  {item.protein ? (
+                                    <Text style={styles.menuItemCal}>
+                                      {Math.round(item.protein)}g protein
+                                    </Text>
+                                  ) : null}
+                                </View>
+                              </View>
+                              <TouchableOpacity
+                                onPress={() =>
+                                  openFullMenu(
+                                    activeDiningMenu || selectedLoc.location,
+                                  )
+                                }
+                              >
+                                <ExternalLink
+                                  size={16}
+                                  color={COLORS.primary}
+                                />
+                              </TouchableOpacity>
+                            </View>
+                          ))}
+                      </View>
+                    ) : (
+                      <View style={styles.emptyReviews}>
+                        <Text style={styles.emptyReviewsText}>
+                          No cached menu preview is available for this location
+                          yet.
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
 
                 {/* Reviews from Stream */}
                 <View style={styles.reviewsHeader}>

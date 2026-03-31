@@ -536,6 +536,7 @@ class AggieSpiritProxy:
                             "Latitude": location.get("latitude"),
                             "Longitude": location.get("longitude"),
                             "Heading": location.get("heading"),
+                            "Speed": location.get("speed") or vehicle.get("speed"),
                             "PassengersOnboard": vehicle.get("passengersOnboard"),
                             "Capacity": vehicle.get("passengerCapacity"),
                             "DirectionCode": dir_key,
