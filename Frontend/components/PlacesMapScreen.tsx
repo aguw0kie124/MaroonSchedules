@@ -5250,7 +5250,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     busVehicleInfoCard: {
       position: "absolute",
-      bottom: FLOATING_CARD_BOTTOM_OFFSET + 12,
+      bottom: 95,
       left: 20,
       right: 20,
       backgroundColor: isDark
