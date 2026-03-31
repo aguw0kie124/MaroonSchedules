@@ -63,12 +63,6 @@ export function TransitTripResultsScreen() {
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark);
 
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : isDark
-      ? require('../assets/black_marble.jpg')
-      : require('../assets/white_marble.jpg');
-
   const origin = route.params?.origin as PlannerLocation | undefined;
   const destination = route.params?.destination as PlannerLocation | undefined;
   const preference = (route.params?.preference || 'best') as TransitTripPreference;
@@ -145,8 +139,8 @@ export function TransitTripResultsScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      {useWallpaper ? (
-        <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
+      {useWallpaper && wallpaperUri ? (
+        <ImageBackground source={{ uri: wallpaperUri }} style={StyleSheet.absoluteFill} resizeMode="cover">
           <View
             style={[
               StyleSheet.absoluteFill,

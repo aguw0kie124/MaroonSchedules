@@ -30,11 +30,6 @@ export function SocialHubScreen() {
   const styles = getStyles(COLORS, T);
   const [activeTab, setActiveTab] = useState<TabKey>('home');
   const [isReelsImmersive, setIsReelsImmersive] = useState(true);
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : isDark
-      ? require('../assets/black_marble.jpg')
-      : require('../assets/white_marble.jpg');
 
   const switchTab = useCallback((tab: TabKey) => {
     setActiveTab(tab);
@@ -92,8 +87,8 @@ export function SocialHubScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle={T.statusBar as any} />
-      {useWallpaper ? (
-        <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
+      {useWallpaper && wallpaperUri ? (
+        <ImageBackground source={{ uri: wallpaperUri }} style={StyleSheet.absoluteFill} resizeMode="cover">
           <View
             style={[
               StyleSheet.absoluteFill,

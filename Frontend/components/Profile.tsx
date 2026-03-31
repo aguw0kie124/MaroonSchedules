@@ -148,11 +148,6 @@ export function Profile() {
 
   const parkingPermit = useAppShellStore((state) => state.parkingPermit);
   const setParkingPermit = useAppShellStore((state) => state.setParkingPermit);
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : isDark
-      ? require('../assets/black_marble.jpg')
-      : require('../assets/white_marble.jpg');
   const accentRatio = useMemo(() => getRatioFromColor(accentColor), [accentColor]);
   const accentPreviewColor = useMemo(() => getSpectrumColorFromRatio(accentRatio), [accentRatio]);
 
@@ -627,8 +622,8 @@ export function Profile() {
 
   return (
     <View style={[styles.container, useWallpaper && styles.transparentContainer]}>
-      {useWallpaper ? (
-        <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
+      {useWallpaper && wallpaperUri ? (
+        <ImageBackground source={{ uri: wallpaperUri }} style={StyleSheet.absoluteFill} resizeMode="cover">
           <View
             style={[
               StyleSheet.absoluteFill,
