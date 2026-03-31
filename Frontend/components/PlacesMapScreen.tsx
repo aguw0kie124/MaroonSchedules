@@ -1399,9 +1399,16 @@ export function PlacesMapScreen() {
     setBusStops([]);
     setRoutePatterns([]);
 
-    const allPoints = patternEntries.flatMap(
-      ([, pattern]) => pattern.points || [],
-    );
+    const allPoints = patternEntries
+      .flatMap(([, pattern]) => pattern.points || [])
+      .filter(
+        (p) =>
+          p &&
+          p.latitude != null &&
+          p.longitude != null &&
+          !isNaN(p.latitude) &&
+          !isNaN(p.longitude),
+      );
     if (mapRef.current && allPoints.length > 0) {
       mapRef.current.fitToCoordinates(allPoints, {
         edgePadding: { top: 220, right: 60, bottom: 110, left: 60 },
@@ -1607,8 +1614,17 @@ export function PlacesMapScreen() {
           setBusStops([]);
         }
 
-        if (mapRef.current && points.length > 0) {
-          mapRef.current.fitToCoordinates(points, {
+        const validPoints = (points || []).filter(
+          (p: any) =>
+            p &&
+            p.latitude != null &&
+            p.longitude != null &&
+            !isNaN(p.latitude) &&
+            !isNaN(p.longitude),
+        );
+
+        if (mapRef.current && validPoints.length > 0) {
+          mapRef.current.fitToCoordinates(validPoints, {
             edgePadding: { top: 220, right: 60, bottom: 80, left: 60 },
             animated: true,
           });
@@ -2004,7 +2020,17 @@ export function PlacesMapScreen() {
       .map((loc) => ({
         latitude: loc.coord.lat,
         longitude: loc.coord.lng,
-      }));
+      }))
+      .filter(
+        (p) =>
+          p &&
+          p.latitude != null &&
+          p.longitude != null &&
+          !isNaN(p.latitude) &&
+          !isNaN(p.longitude),
+      );
+
+    if (points.length === 0) return;
 
     if (points.length === 1) {
       mapRef.current.animateToRegion(
@@ -2377,7 +2403,7 @@ export function PlacesMapScreen() {
               // Render regular unselected stops
               return (
                 <Marker
-                  key={`stop-${selectedBusRouteId}-${stop.StopCode || idx}`}
+                  key={`stop-${selectedBusRouteId}-${stop.StopCode || idx}-${isActiveDir}`}
                   coordinate={{
                     latitude: stop.Latitude,
                     longitude: stop.Longitude,
@@ -2392,7 +2418,7 @@ export function PlacesMapScreen() {
                       !isActiveDir && { opacity: 0.25 },
                     ]}
                   >
-                    <MapPin size={16} color="#FFF" />
+                    <MapPin size={12} color="#FFF" />
                   </View>
                 </Marker>
               );
@@ -2402,7 +2428,9 @@ export function PlacesMapScreen() {
         {activeLayer === "Bus" &&
           !isAllBusRoutesSelected &&
           selectedStop &&
-          selectedStop.Latitude != null && (
+          selectedStop.Latitude != null &&
+          !isNaN(selectedStop.Latitude) &&
+          !isNaN(selectedStop.Longitude) && (
             <Marker
               key={`selected-stop-${selectedStop.StopCode}`}
               coordinate={{
@@ -2417,14 +2445,14 @@ export function PlacesMapScreen() {
                 style={[
                   styles.busStopPin,
                   {
-                    transform: [{ scale: 1.35 }],
+                    transform: [{ scale: 1.25 }],
                     backgroundColor: "#005bb5",
                     borderColor: "#FFD700",
-                    borderWidth: 3,
+                    borderWidth: 2,
                   },
                 ]}
               >
-                <MapPin size={16} color="#FFF" />
+                <MapPin size={12} color="#FFF" />
               </View>
             </Marker>
           )}
@@ -2441,7 +2469,7 @@ export function PlacesMapScreen() {
                 bus.DirectionName === selectedDirection;
               return (
                 <Marker
-                  key={`bus-${bus.Key}`}
+                  key={`bus-${bus.Key}-${isActiveDir}-${bus.Heading || 0}`}
                   coordinate={{
                     latitude: bus.Latitude,
                     longitude: bus.Longitude,
@@ -2511,9 +2539,11 @@ export function PlacesMapScreen() {
         {activeLayer === "Bus" &&
           !isAllBusRoutesSelected &&
           selectedBus &&
-          selectedBus.Latitude != null && (
+          selectedBus.Latitude != null &&
+          !isNaN(selectedBus.Latitude) &&
+          !isNaN(selectedBus.Longitude) && (
             <Marker
-              key="tracked-bus-highlight"
+              key={`tracked-bus-highlight-${selectedBus.Key}-${selectedBus.Heading || 0}`}
               coordinate={{
                 latitude: selectedBus.Latitude,
                 longitude: selectedBus.Longitude,
@@ -5185,11 +5215,11 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       fontWeight: "900",
     },
     busStopPin: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
       backgroundColor: "#007AFF", // Standard Blue
-      borderWidth: 2,
+      borderWidth: 1.5,
       borderColor: "#FFF",
       alignItems: "center",
       justifyContent: "center",
