@@ -41,11 +41,7 @@ import * as Haptics from "expo-haptics";
 import { connectFeedsUser } from "../services/streamFeeds";
 import { API_URL } from "../config";
 import { useCampusHubStore } from "../store/campusHubStore";
-import {
-  getOrderedItems,
-  isNavItemVisible,
-  useAppShellStore,
-} from "../store/appShellStore";
+import { getOrderedItems, useAppShellStore } from "../store/appShellStore";
 import {
   DiningMealPeriod,
   fetchDiningFullMenuCached,
@@ -107,25 +103,13 @@ export function PlacesMapScreen() {
   const insets = useSafeAreaInsets();
 
   // ── App-shell store ───────────────────────────────────────
-  const navItems = useAppShellStore((s) => s.navItems);
   const placesPills = useAppShellStore((s) => s.placesPills);
   const parkingPermit = useAppShellStore((s) => s.parkingPermit);
   const togglePlacesPill = useAppShellStore((s) => s.togglePlacesPill);
   const movePlacesPill = useAppShellStore((s) => s.movePlacesPill);
-  const isStandaloneTransitScreen = route.name === "BusRoutes";
-  const isStandaloneBusVisible = isNavItemVisible(navItems, "BusRoutes");
-
-  const orderedPlacesPills = useMemo(
-    () =>
-      getOrderedItems(placesPills).filter(
-        (item) =>
-          !(item.id === "Bus" && !isStandaloneTransitScreen && isStandaloneBusVisible),
-      ),
-    [isStandaloneBusVisible, isStandaloneTransitScreen, placesPills],
-  );
   const visiblePlacesPills = useMemo(
-    () => orderedPlacesPills.filter((item) => item.visible),
-    [orderedPlacesPills],
+    () => getOrderedItems(placesPills).filter((item) => item.visible),
+    [placesPills],
   );
 
   const campusHubSnapshot = useCampusHubStore((s) => s.snapshot);
@@ -1086,7 +1070,6 @@ export function PlacesMapScreen() {
         selectedBus={selectedBus}
       />
 
-      {/* Module editor modal */}
       {isEditorVisible && (
         <PageModuleEditor
           visible={isEditorVisible}

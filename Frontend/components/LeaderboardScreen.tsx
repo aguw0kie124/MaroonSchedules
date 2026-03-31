@@ -1,11 +1,11 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView, SafeAreaView } from "react-native";
-import { Trophy, Users, MapPin, ChevronRight, Medal } from "lucide-react-native";
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, SafeAreaView } from "react-native";
+import { Info, MapPin, Medal } from "lucide-react-native";
 import { useTheme } from "./SharedUI";
 
 // Mock Data
 const MOCK_PODIUM = [
-  { id: "2", name: "Aditya Sudharshan", points: 6767, checks: 28, color: "#C0C0C0" }, // Silver
+  { id: "2", name: "Asvath Madahn", points: 6767, checks: 28, color: "#C0C0C0" }, // Silver
   { id: "1", name: "Adhip Kumar", points: 69420, checks: 69, color: "#FFD700" }, // Gold
   { id: "3", name: "Parin Vakati", points: 4100, checks: 41, color: "#CD7F32" }, // Bronze
 ];
@@ -21,7 +21,10 @@ const MOCK_RANKS = Array.from({ length: 20 }, (_, i) => ({
 export function LeaderboardScreen() {
   const { COLORS, theme } = useTheme();
   const isDark = theme === "dark";
-  const [activeTab, setActiveTab] = useState<"Global" | "Friends" | "This Week">("Global");
+  const [activeTab, setActiveTab] = useState<"Campus" | "Friends" | "This Week">("Campus");
+  const previewCardBackground = isDark ? "rgba(80, 0, 0, 0.22)" : "#FFF3F0";
+  const previewCardBorder = isDark ? "rgba(255, 212, 204, 0.2)" : "#F3C2B8";
+  const previewBodyColor = isDark ? "rgba(255,255,255,0.78)" : "#6E4C46";
 
   const renderPodium = () => {
     return (
@@ -54,8 +57,29 @@ export function LeaderboardScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: COLORS.background }]}>
       {/* Header */}
       <View style={styles.header}>
+        <View
+          style={[
+            styles.previewCard,
+            {
+              backgroundColor: previewCardBackground,
+              borderColor: previewCardBorder,
+            },
+          ]}
+        >
+          <View style={styles.previewBadge}>
+            <Text style={styles.previewBadgeText}>Preview</Text>
+          </View>
+          <View style={styles.previewHeader}>
+            <Info size={16} color="#500000" />
+            <Text style={[styles.previewTitle, { color: COLORS.textPrimary }]}>Leaderboard coming soon!</Text>
+          </View>
+          <Text style={[styles.previewBody, { color: previewBodyColor }]}>
+            This screen is a preview only. Rankings, check-ins, tabs, and personal placement are not functional yet.
+          </Text>
+        </View>
+
         <Text style={[styles.title, { color: COLORS.textPrimary }]}>Campus Rankings</Text>
-        <Text style={styles.subtitle}>Check into places to earn points!</Text>
+        <Text style={styles.subtitle}>Preview only. Live points and rank updates are not available yet.</Text>
 
         {/* Tabs */}
         <View style={styles.tabsMenu}>
@@ -64,14 +88,17 @@ export function LeaderboardScreen() {
             return (
               <TouchableOpacity
                 key={tab}
-                style={[styles.tab, isActive && { backgroundColor: "#500000" }]}
+                style={[styles.tab, isActive && styles.previewTabActive]}
                 onPress={() => setActiveTab(tab as any)}
+                disabled
+                activeOpacity={1}
               >
-                <Text style={[styles.tabText, isActive && { color: "#FFFFFF", fontWeight: "700" }]}>{tab}</Text>
+                <Text style={[styles.tabText, isActive && styles.previewTabTextActive]}>{tab}</Text>
               </TouchableOpacity>
             )
           })}
         </View>
+        <Text style={styles.tabsHelperText}>Tabs are shown for preview purposes and are currently disabled.</Text>
       </View>
 
       <FlatList
@@ -104,7 +131,7 @@ export function LeaderboardScreen() {
         </View>
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={[styles.rowName, { color: COLORS.textPrimary }]}>You</Text>
-          <Text style={styles.rowChecks}>82 points to Rank 141!</Text>
+          <Text style={styles.rowChecks}>Preview only. Personal rank is not live yet.</Text>
         </View>
         <Text style={[styles.rowPoints, { color: COLORS.textPrimary }]}>1,420</Text>
       </View>
@@ -121,6 +148,41 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 20,
   },
+  previewCard: {
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 18,
+  },
+  previewBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: "#500000",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    marginBottom: 10,
+  },
+  previewBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  previewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  previewTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  previewBody: {
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 10,
+  },
   title: {
     fontSize: 28,
     fontWeight: "800",
@@ -136,6 +198,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(100,100,100,0.1)",
     borderRadius: 99,
     padding: 4,
+    opacity: 0.7,
   },
   tab: {
     flex: 1,
@@ -143,10 +206,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 99,
   },
+  previewTabActive: {
+    backgroundColor: "rgba(80, 0, 0, 0.18)",
+  },
   tabText: {
     fontSize: 13,
     fontWeight: "600",
     color: "#888",
+  },
+  previewTabTextActive: {
+    color: "#500000",
+    fontWeight: "700",
+  },
+  tabsHelperText: {
+    fontSize: 12,
+    color: "#888",
+    marginTop: 8,
   },
   podiumContainer: {
     flexDirection: "row",
@@ -268,5 +343,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
     color: "#500000",
-  }
+  },
 });

@@ -27,7 +27,6 @@ import {
   Eye,
   EyeOff,
   GraduationCap,
-  LayoutGrid,
   LibraryBig,
   LogOut,
   Palette,
@@ -40,24 +39,14 @@ import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
 
-import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme } from './SharedUI';
 import { fetchCampusOverview } from '../api/client';
 import {
   PARKING_PERMIT_OPTIONS,
-  getOrderedItems,
   useAppShellStore,
 } from '../store/appShellStore';
 
 const PROFILE_VISIBILITY_KEY = 'settings_profile_visibility';
-
-const SETTINGS_TABS = [
-  { key: 'personal', label: 'Personal', icon: UserRound },
-  { key: 'layout', label: 'Layout', icon: LayoutGrid },
-  { key: 'resources', label: 'Resources', icon: LibraryBig },
-] as const;
-
-type SettingsTabKey = typeof SETTINGS_TABS[number]['key'];
 type ProfileVisibility = 'public' | 'friends' | 'private';
 
 function channelToHex(channel: number) {
@@ -151,21 +140,14 @@ export function Profile() {
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark);
 
-  const [activeTab, setActiveTab] = useState<SettingsTabKey>('personal');
   const [profileVisibility, setProfileVisibility] = useState<ProfileVisibility>('public');
   const [academicStatus, setAcademicStatus] = useState<any | null>(null);
   const [loadingAcademicStatus, setLoadingAcademicStatus] = useState(true);
   const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
-  const [isBarExpanded, setIsBarExpanded] = useState(false);
   const [accentSliderWidth, setAccentSliderWidth] = useState(0);
 
-  const navItems = useAppShellStore((state) => state.navItems);
-  const moveNavItem = useAppShellStore((state) => state.moveNavItem);
-  const toggleNavItem = useAppShellStore((state) => state.toggleNavItem);
   const parkingPermit = useAppShellStore((state) => state.parkingPermit);
   const setParkingPermit = useAppShellStore((state) => state.setParkingPermit);
-
-  const orderedNavItems = useMemo(() => getOrderedItems(navItems), [navItems]);
   const wallpaperSource = wallpaperUri
     ? { uri: wallpaperUri }
     : isDark
@@ -430,60 +412,10 @@ export function Profile() {
     </>
   );
 
-  const renderLayoutTab = () => (
+  const renderPreferencesSection = () => (
     <>
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>The Bar</Text>
-        <Text style={styles.sectionSubtitle}>Choose your main tabs.</Text>
-
-        <Pressable style={styles.barDropdownHeader} onPress={() => setIsBarExpanded((current) => !current)}>
-          <View style={{ flex: 1 }} />
-          {isBarExpanded ? (
-            <ChevronUp size={20} color={COLORS.textPrimary} />
-          ) : (
-            <ChevronDown size={20} color={COLORS.textPrimary} />
-          )}
-        </Pressable>
-
-        {isBarExpanded ? (
-          <View style={styles.barDropdownBody}>
-            {orderedNavItems.map((item, index) => (
-              <View key={item.id} style={[styles.navCard, index === orderedNavItems.length - 1 && styles.navCardLast]}>
-                <View style={styles.navRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.navTitle}>{item.label}</Text>
-                  </View>
-                  <Switch
-                    value={item.visible}
-                    onValueChange={() => toggleNavItem(item.id)}
-                    trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                    thumbColor="#FFFFFF"
-                  />
-                  <View style={styles.navMoveGroup}>
-                    <Pressable
-                      onPress={() => moveNavItem(item.id, -1)}
-                      disabled={index === 0}
-                      style={[styles.navMoveButton, index === 0 && styles.layoutMoveButtonDisabled]}
-                    >
-                      <ChevronUp size={16} color={index === 0 ? COLORS.textTertiary : COLORS.textPrimary} />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => moveNavItem(item.id, 1)}
-                      disabled={index === orderedNavItems.length - 1}
-                      style={[styles.navMoveButton, index === orderedNavItems.length - 1 && styles.layoutMoveButtonDisabled]}
-                    >
-                      <ChevronDown size={16} color={index === orderedNavItems.length - 1 ? COLORS.textTertiary : COLORS.textPrimary} />
-                    </Pressable>
-                  </View>
-                </View>
-              </View>
-            ))}
-          </View>
-        ) : null}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Parking Permit</Text>
+        <Text style={styles.sectionTitle}>Campus Preferences</Text>
         <View style={styles.preferenceColumn}>
           {PARKING_PERMIT_OPTIONS.map((option) => {
             const selected = parkingPermit === option.id;
@@ -711,21 +643,9 @@ export function Profile() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.tabShell}>
-          <PillTabs
-            items={SETTINGS_TABS.map((tab) => ({ key: tab.key, label: tab.label, icon: tab.icon }))}
-            activeKey={activeTab}
-            onChange={(key) => setActiveTab(key as SettingsTabKey)}
-            floating={false}
-            compact={false}
-            activeTextMode="always"
-            layout="stacked"
-          />
-        </View>
-
-        {activeTab === 'personal' ? renderPersonalTab() : null}
-        {activeTab === 'layout' ? renderLayoutTab() : null}
-        {activeTab === 'resources' ? renderResourcesTab() : null}
+        {renderPersonalTab()}
+        {renderPreferencesSection()}
+        {renderResourcesTab()}
 
         <View style={{ height: 120 }} />
       </ScrollView>

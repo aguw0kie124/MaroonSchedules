@@ -10,10 +10,6 @@ WebBrowser.maybeCompleteAuthSession();
 
 import { Onboarding } from './components/Onboarding';
 import { Dashboard } from './components/Dashboard';
-import { Search } from './components/Search';
-import { Builder } from './components/Builder';
-
-import { Saved } from './components/Saved';
 import { Profile } from './components/Profile';
 import { CampusConnectorScreen } from './components/CampusConnectorScreen';
 import { RecreationFacilitiesScreen } from './components/RecreationFacilitiesScreen';
@@ -41,7 +37,6 @@ import { ForYouScreen } from './components/ForYouScreen';
 import { CampusFeedScreen } from './components/CampusFeedScreen';
 import { ReelsScreen } from './components/ReelsScreen';
 
-import { CampusScreen } from './components/CampusScreen';
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
 import { LeaderboardScreen } from './components/LeaderboardScreen';

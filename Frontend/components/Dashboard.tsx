@@ -22,15 +22,7 @@ import {
   X,
 } from 'lucide-react-native';
 import { Card, useTheme } from './SharedUI';
-import { PageModuleEditor } from './PageModuleEditor';
 import { useCampusHubStore } from '../store/campusHubStore';
-import {
-  HomeSectionId,
-  UIDensity,
-  getOrderedItems,
-  getOrderedVisibleItems,
-  useAppShellStore,
-} from '../store/appShellStore';
 import { BUILDINGS, TAMU_CENTER } from '../data/campus';
 import { haversineDistanceMeters } from './places/utils';
 import { fetchDiningFullMenuCached, getCurrentMealPeriod } from '../services/diningMenuCache';
@@ -44,21 +36,15 @@ const WEEK_DAYS = [
 ];
 
 const HOME_DINING_HALLS = ['Sbisa Dining Hall', 'The Commons Dining Hall', 'Duncan Dining Hall'];
+const HOME_SECTIONS = [{ id: 'schedule', order: 0 }, { id: 'alerts', order: 1 }] as const;
+const NOTIFICATION_LIMIT = 3;
+const COURSE_LIMIT = 3;
 
 function getDefaultDay() {
   return ['U', 'M', 'T', 'W', 'R', 'F', 'S'][new Date().getDay()];
 }
 
-function getDensityLimit(
-  density: UIDensity,
-  values: { minimal: number; standard: number; full: number },
-) {
-  if (density === 'minimal') return values.minimal;
-  if (density === 'full') return values.full;
-  return values.standard;
-}
-
-function getContextBoost(sectionId: HomeSectionId) {
+function getContextBoost(sectionId: 'schedule' | 'alerts') {
   const now = new Date();
   const minutes = now.getHours() * 60 + now.getMinutes();
 
@@ -81,15 +67,10 @@ export function Dashboard() {
   const isFocused = useIsFocused();
   const { user } = useUser();
   const { snapshot, loading, hydrate } = useCampusHubStore();
-  const homeSections = useAppShellStore((state) => state.homeSections);
-  const moveHomeSection = useAppShellStore((state) => state.moveHomeSection);
-  const toggleHomeSection = useAppShellStore((state) => state.toggleHomeSection);
-  const density = useAppShellStore((state) => state.density);
 
-  const orderedHomeSections = useMemo(() => getOrderedItems(homeSections), [homeSections]);
   const visibleHomeSections = useMemo(
-    () => getOrderedVisibleItems(homeSections).filter((item) => item.id === 'schedule' || item.id === 'alerts'),
-    [homeSections],
+    () => HOME_SECTIONS,
+    [],
   );
   const rankedHomeSections = useMemo(
     () =>
@@ -102,7 +83,6 @@ export function Dashboard() {
   );
 
   const [selectedDay, setSelectedDay] = useState(getDefaultDay());
-  const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [isNotificationDrawerOpen, setIsNotificationDrawerOpen] = useState(false);
   const [isScheduleMenuOpen, setIsScheduleMenuOpen] = useState(false);
   const [userCoord, setUserCoord] = useState<{ latitude: number; longitude: number } | null>(null);
@@ -155,9 +135,7 @@ export function Dashboard() {
     [academic?.courses, selectedDay],
   );
   const currentCourse = academic?.nextCourse || visibleCourses[0] || null;
-  const notificationLimit = getDensityLimit(density, { minimal: 2, standard: 3, full: 5 });
-  const courseLimit = getDensityLimit(density, { minimal: 2, standard: 3, full: 5 });
-  const priorityNotifications = notifications.slice(0, notificationLimit);
+  const priorityNotifications = notifications.slice(0, NOTIFICATION_LIMIT);
   const spotlightEvents = useMemo(() => (snapshot?.events || []).slice(0, 6), [snapshot?.events]);
   const campusServices = useMemo(() => (snapshot?.services || []).slice(0, 4), [snapshot?.services]);
   const todayLabel = useMemo(
@@ -259,7 +237,7 @@ export function Dashboard() {
     Linking.openURL(url).catch(() => {});
   };
 
-  const renderSectionCard = (sectionId: HomeSectionId) => {
+  const renderSectionCard = (sectionId: 'schedule' | 'alerts') => {
     if (sectionId === 'schedule') {
       return (
         <View key={sectionId} style={styles.scheduleSection}>
@@ -340,11 +318,11 @@ export function Dashboard() {
 
           <View style={styles.listBlock}>
             {visibleCourses.length > 0 ? (
-              visibleCourses.slice(0, courseLimit).map((course, index) => (
+              visibleCourses.slice(0, COURSE_LIMIT).map((course, index) => (
                 <View key={course.id} style={styles.scheduleRow}>
                   <View style={styles.scheduleTimeRail}>
                     <Text style={styles.scheduleTime}>{course.time}</Text>
-                    {index !== Math.min(visibleCourses.length, courseLimit) - 1 ? (
+                    {index !== Math.min(visibleCourses.length, COURSE_LIMIT) - 1 ? (
                       <View style={styles.scheduleLine} />
                     ) : null}
                   </View>
@@ -555,15 +533,6 @@ export function Dashboard() {
           </View>
         </View>
       </Modal>
-
-      <PageModuleEditor
-        visible={isEditorVisible}
-        onClose={() => setIsEditorVisible(false)}
-        title="Home"
-        items={orderedHomeSections}
-        onToggle={toggleHomeSection}
-        onMove={moveHomeSection}
-      />
     </View>
   );
 }
