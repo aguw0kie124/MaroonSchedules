@@ -70,9 +70,7 @@ import { useCampusHubStore } from "../store/campusHubStore";
 import { BUILDINGS, AMENITIES } from "../data/campus";
 import {
   ParkingPermit,
-  PlacesViewMode,
   getOrderedItems,
-  isNavItemVisible,
   useAppShellStore,
 } from "../store/appShellStore";
 import {
@@ -800,28 +798,22 @@ export function PlacesMapScreen() {
   const styles = getStyles(COLORS, theme === "dark");
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const navItems = useAppShellStore((state) => state.navItems);
   const placesPills = useAppShellStore((state) => state.placesPills);
   const movePlacesPill = useAppShellStore((state) => state.movePlacesPill);
   const parkingPermit = useAppShellStore((state) => state.parkingPermit);
-  const placesViewMode = useAppShellStore((state) => state.placesViewMode);
-  const setPlacesViewMode = useAppShellStore(
-    (state) => state.setPlacesViewMode,
-  );
+  const [placesViewMode, setPlacesViewMode] = useState<"map" | "list">("map");
   const togglePlacesPill = useAppShellStore((state) => state.togglePlacesPill);
   const isStandaloneTransitScreen = route.name === "BusRoutes";
-  const isStandaloneBusVisible = isNavItemVisible(navItems, "BusRoutes");
   const orderedPlacesPills = useMemo(
     () =>
       getOrderedItems(placesPills).filter(
         (item) =>
           !(
             item.id === "Bus" &&
-            !isStandaloneTransitScreen &&
-            isStandaloneBusVisible
+            !isStandaloneTransitScreen
           ),
       ),
-    [isStandaloneBusVisible, isStandaloneTransitScreen, placesPills],
+    [isStandaloneTransitScreen, placesPills],
   );
   const visiblePlacesPills = useMemo(
     () => orderedPlacesPills.filter((item) => item.visible),
