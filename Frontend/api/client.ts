@@ -176,28 +176,3 @@ export const requestCampusConnection = async (payload: { requester_id: string; r
         body: JSON.stringify(payload),
     });
 };
-
-export const fetchCampusConnectors = async (clerkId: string) => {
-    return requestJson(`/campus/connectors?clerk_id=${encodeURIComponent(clerkId)}`);
-};
-
-export const captureCampusConnector = async (payload: {
-    clerk_id: string;
-    system_id: string;
-    source_url: string;
-    page_title?: string | null;
-    page_html?: string | null;
-    page_text?: string | null;
-    cookie_names?: string[] | null;
-}) => {
-    return requestJson('/campus/connectors/capture', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-    });
-};
-
-export const deleteCampusConnector = async (clerkId: string, systemId: string) => {
-    return requestJson(`/campus/connectors/${encodeURIComponent(systemId)}?clerk_id=${encodeURIComponent(clerkId)}`, {
-        method: 'DELETE',
-    });
-};

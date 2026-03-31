@@ -11,7 +11,6 @@ WebBrowser.maybeCompleteAuthSession();
 import { Onboarding } from './components/Onboarding';
 import { Dashboard } from './components/Dashboard';
 import { Profile } from './components/Profile';
-import { CampusConnectorScreen } from './components/CampusConnectorScreen';
 import { RecreationFacilitiesScreen } from './components/RecreationFacilitiesScreen';
 import { CourseDetail } from './components/CourseDetail';
 import { AuthLanding } from './components/AuthLanding';
@@ -24,8 +23,6 @@ import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
 import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
 import { ScheduleListScreen } from './components/ScheduleListScreen';
 import { ScheduleDetailScreen } from './components/ScheduleDetailScreen';
-import { CampusMapScreen } from './components/CampusMapScreen';
-import { LocationSearchScreen } from './components/LocationSearchScreen';
 // import { ExtrasSidebar } from './components/ExtrasSidebar';
 import { CampusNavigationScreen } from './components/CampusNavigationScreen';
 import BusTimetableScreen from './components/BusTimetableScreen';
@@ -33,7 +30,6 @@ import { TransitTripPlannerScreen } from './components/TransitTripPlannerScreen'
 import { TransitTripResultsScreen } from './components/TransitTripResultsScreen';
 import { PlacesMapScreen } from './components/PlacesMapScreen';
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
-import { ForYouScreen } from './components/ForYouScreen';
 import { CampusFeedScreen } from './components/CampusFeedScreen';
 import { ReelsScreen } from './components/ReelsScreen';
 
@@ -43,10 +39,6 @@ import { LeaderboardScreen } from './components/LeaderboardScreen';
 import { ShareOverlay } from './components/ShareOverlay';
 
 import FullMenuScreen from './components/dining/FullMenuScreen';
-import { CanvasDashboardScreen } from './components/canvas/CanvasDashboardScreen';
-import { CanvasCoursesScreen } from './components/canvas/CanvasCoursesScreen';
-import { CanvasAssignmentsScreen } from './components/canvas/CanvasAssignmentsScreen';
-import { CanvasGradesScreen } from './components/canvas/CanvasGradesScreen';
 
 import { Home, Map, Trophy, Users, User } from 'lucide-react-native';
 import { useTheme, useThemeStore } from './components/SharedUI';
@@ -264,7 +256,6 @@ function RootNavigator() {
           <Stack.Screen name="NewCourseDetail" component={NewCourseDetailScreen} options={{ headerShown: true, title: 'Course Details' }} />
           <Stack.Screen name="ScheduleList" component={ScheduleListScreen} options={{ headerShown: true, title: 'My Schedules' }} />
           <Stack.Screen name="ScheduleDetail" component={ScheduleDetailScreen} options={{ headerShown: true, title: 'Schedule Details' }} />
-          <Stack.Screen name="LocationSearch" component={LocationSearchScreen} options={{ headerShown: true, title: 'Location Traffic Search' }} />
           <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
           <Stack.Screen
             name="BusTimetable"
@@ -273,13 +264,10 @@ function RootNavigator() {
           />
           <Stack.Screen name="TransitTripPlanner" component={TransitTripPlannerScreen} options={{ headerShown: false }} />
           <Stack.Screen name="TransitTripResults" component={TransitTripResultsScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="CampusMap" component={CampusMapScreen} options={{ headerShown: false }} />
           <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: false }} />
 
           <Stack.Screen name="Reels" component={ReelsScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="CampusConnector" component={CampusConnectorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CampusFeed" component={CampusFeedScreen} options={{ headerShown: false }} />
 
@@ -288,11 +276,6 @@ function RootNavigator() {
             component={FullMenuScreen}
             options={{ headerShown: false, presentation: 'modal' }}
           />
-
-          <Stack.Screen name="CanvasDashboard" component={CanvasDashboardScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="CanvasCourses" component={CanvasCoursesScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="CanvasAssignments" component={CanvasAssignmentsScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="CanvasGrades" component={CanvasGradesScreen} options={{ headerShown: false }} />
           <Stack.Screen name="GradesScreen" component={GradesScreen} options={{ headerShown: true, title: 'Grade Distributions' }} />
         </>
       ) : (
