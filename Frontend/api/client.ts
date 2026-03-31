@@ -145,10 +145,11 @@ export const fetchCampusOverview = async (clerkId: string) => {
     return requestJson(`/campus/overview?clerk_id=${encodeURIComponent(clerkId)}`);
 };
 
-export const fetchCampusEvents = async (clerkId?: string, limit = 8) => {
+export const fetchCampusEvents = async (clerkId?: string, limit = 8, category?: string) => {
     const params = new URLSearchParams();
     params.set('limit', String(limit));
     if (clerkId) params.set('clerk_id', clerkId);
+    if (category) params.set('category', category);
     return requestJson(`/campus/events?${params.toString()}`);
 };
 

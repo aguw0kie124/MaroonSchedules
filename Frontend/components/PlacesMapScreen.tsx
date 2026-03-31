@@ -24,6 +24,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Animated,
+  Modal,
 } from "react-native";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
@@ -126,9 +127,16 @@ export function PlacesMapScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [isEditorVisible, setIsEditorVisible] = useState(false);
+  const [isPlacesListVisible, setIsPlacesListVisible] = useState(false);
   const [userCoord, setUserCoord] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isMapTilted, setIsMapTilted] = useState(false);
   const [pendingInitialLocation, setPendingInitialLocation] = useState<string | null>(null);
+  const [pendingEventFocus, setPendingEventFocus] = useState<{
+    title: string;
+    location: string | null;
+    latitude: number;
+    longitude: number;
+  } | null>(null);
 
   // ── Location data ─────────────────────────────────────────
   const fullCampusIndex = useMemo(() => buildCampusDirectory(), []);
@@ -668,7 +676,8 @@ export function PlacesMapScreen() {
     const nextLayer = route.params?.initialLayer;
     const token = route.params?.focusToken;
     const nextLocation = route.params?.initialLocation;
-    if (!nextLayer && !token && !nextLocation) return;
+    const nextEventFocus = route.params?.eventFocus;
+    if (!nextLayer && !token && !nextLocation && !nextEventFocus) return;
     if (nextLayer) setActiveLayer(nextLayer);
     setSelectedId(null);
     setSelectedStop(null);
@@ -678,7 +687,21 @@ export function PlacesMapScreen() {
     setSearchQuery("");
     setShowSearchResults(false);
     setPendingInitialLocation(typeof nextLocation === "string" ? nextLocation : null);
-  }, [route.params?.focusToken, route.params?.initialLayer, route.params?.initialLocation]);
+    if (
+      nextEventFocus &&
+      typeof nextEventFocus.latitude === "number" &&
+      typeof nextEventFocus.longitude === "number"
+    ) {
+      setPendingEventFocus({
+        title: nextEventFocus.title || "Campus Event",
+        location: nextEventFocus.location || null,
+        latitude: nextEventFocus.latitude,
+        longitude: nextEventFocus.longitude,
+      });
+    } else {
+      setPendingEventFocus(null);
+    }
+  }, [route.params?.focusToken, route.params?.initialLayer, route.params?.initialLocation, route.params?.eventFocus]);
 
   useEffect(() => {
     if (!pendingInitialLocation) return;
@@ -699,6 +722,33 @@ export function PlacesMapScreen() {
     }
     setPendingInitialLocation(null);
   }, [allMapLocations, pendingInitialLocation]);
+
+  useEffect(() => {
+    if (!pendingEventFocus) return;
+    const matchingLocation = pendingEventFocus.location
+      ? allMapLocations.find(
+          (loc) => getCanonicalLocationName(loc.location) === getCanonicalLocationName(pendingEventFocus.location || ""),
+        )
+      : null;
+
+    if (matchingLocation) {
+      setSelectedId(matchingLocation.location);
+    }
+
+    if (mapRef.current) {
+      mapRef.current.animateToRegion(
+        {
+          latitude: pendingEventFocus.latitude - 0.0012,
+          longitude: pendingEventFocus.longitude,
+          latitudeDelta: 0.008,
+          longitudeDelta: 0.008,
+        },
+        550,
+      );
+    }
+
+    setPendingEventFocus(null);
+  }, [allMapLocations, pendingEventFocus]);
 
   // Hydrate hub when tab needs it
   useEffect(() => {
@@ -926,6 +976,8 @@ export function PlacesMapScreen() {
           setSearchQuery={setSearchQuery}
           setShowSearchResults={setShowSearchResults}
           onOpenSettings={() => setIsEditorVisible(true)}
+          onOpenList={() => setIsPlacesListVisible(true)}
+          showListButton={activeLayer !== "Bus" && activeLayer !== "Heatmap" && (activeLayer === "Schedule" || sortedFilteredLocations.length > 0)}
         />
 
         <SearchOverlay
@@ -1010,26 +1062,37 @@ export function PlacesMapScreen() {
         selectedRoute={selectedRoute}
       />
 
-      {/* List view */}
-      <PlacesList
-        styles={styles}
-        COLORS={COLORS}
-        activeLayer={activeLayer}
-        selectedId={selectedId}
-        sortedFilteredLocations={sortedFilteredLocations}
-        scheduleOptions={scheduleOptions}
-        activeScheduleOption={activeScheduleOption}
-        scheduleSummaryLabel={scheduleSummaryLabel}
-        isLoadingSchedules={isLoadingSchedules}
-        setActiveScheduleId={setActiveScheduleId}
-        setSelectedId={setSelectedId}
-        openScheduleList={openScheduleList}
-        openNewCourseSearch={openNewCourseSearch}
-        userCoord={userCoord}
-        parkingPermit={parkingPermit}
-        recreationFacilityMap={recreationFacilityMap}
-        handleSelectLocation={handleSelectLocation}
-      />
+      <Modal
+        visible={isPlacesListVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsPlacesListVisible(false)}
+      >
+        <PlacesList
+          styles={styles}
+          COLORS={COLORS}
+          visible={isPlacesListVisible}
+          onClose={() => setIsPlacesListVisible(false)}
+          activeLayer={activeLayer}
+          selectedId={selectedId}
+          sortedFilteredLocations={sortedFilteredLocations}
+          scheduleOptions={scheduleOptions}
+          activeScheduleOption={activeScheduleOption}
+          scheduleSummaryLabel={scheduleSummaryLabel}
+          isLoadingSchedules={isLoadingSchedules}
+          setActiveScheduleId={setActiveScheduleId}
+          setSelectedId={setSelectedId}
+          openScheduleList={openScheduleList}
+          openNewCourseSearch={openNewCourseSearch}
+          userCoord={userCoord}
+          parkingPermit={parkingPermit}
+          recreationFacilityMap={recreationFacilityMap}
+          handleSelectLocation={(loc) => {
+            handleSelectLocation(loc);
+            setIsPlacesListVisible(false);
+          }}
+        />
+      </Modal>
 
       {/* Location bottom sheet */}
       <LocationBottomSheet

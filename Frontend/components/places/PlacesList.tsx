@@ -1,16 +1,14 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   ScrollView,
-  Animated,
-  PanResponder,
+  Pressable,
 } from "react-native";
-import { ChevronRight, Calendar, Plus, Menu } from "lucide-react-native";
+import { ChevronRight, Calendar, Plus, Menu, X } from "lucide-react-native";
 import { Card } from "../SharedUI";
 import type { CampusLocation } from "./types";
-import { SCREEN_HEIGHT } from "./types";
 import type { ScheduleMapOption } from "./types";
 import {
   getCategoryIcon,
@@ -23,6 +21,8 @@ import { getCanonicalLocationName } from "./campusData";
 interface PlacesListProps {
   styles: any;
   COLORS: any;
+  visible: boolean;
+  onClose: () => void;
   activeLayer: string;
   selectedId: string | null;
   sortedFilteredLocations: CampusLocation[];
@@ -43,6 +43,8 @@ interface PlacesListProps {
 export function PlacesList({
   styles,
   COLORS,
+  visible,
+  onClose,
   activeLayer,
   selectedId,
   sortedFilteredLocations,
@@ -59,68 +61,8 @@ export function PlacesList({
   recreationFacilityMap,
   handleSelectLocation,
 }: PlacesListProps) {
-  const shouldShowSheet =
+  const shouldShowList =
     !selectedId && activeLayer !== "Bus" && activeLayer !== "Heatmap" && (activeLayer === "Schedule" || sortedFilteredLocations.length > 0);
-
-  // Keep the sheet docked lower so the map remains the main workspace.
-  const sheetHeight = Math.min(Math.round(SCREEN_HEIGHT * 0.52), 470);
-  const collapsedHeight = activeLayer === "Schedule" ? 164 : 110;
-  const collapsedTranslateY = Math.max(sheetHeight - collapsedHeight, 0);
-  const translateY = useRef(new Animated.Value(collapsedTranslateY)).current;
-  const sheetSnap = useRef(collapsedTranslateY);
-  const panStartY = useRef(collapsedTranslateY);
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  const animateSheet = useCallback(
-    (toValue: number) => {
-      sheetSnap.current = toValue;
-      setIsExpanded(toValue === 0);
-      Animated.spring(translateY, {
-        toValue,
-        useNativeDriver: true,
-        damping: 30,
-        stiffness: 260,
-        mass: 0.9,
-      }).start();
-    },
-    [translateY],
-  );
-
-  useEffect(() => {
-    if (!shouldShowSheet) {
-      return;
-    }
-    setIsExpanded(false);
-    animateSheet(collapsedTranslateY);
-  }, [activeLayer, animateSheet, collapsedTranslateY, shouldShowSheet]);
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dy) > 6,
-        onPanResponderGrant: () => {
-          panStartY.current = sheetSnap.current;
-          translateY.stopAnimation();
-        },
-        onPanResponderMove: (_, { dy }) => {
-          const next = Math.max(0, Math.min(collapsedTranslateY, panStartY.current + dy));
-          translateY.setValue(next);
-        },
-        onPanResponderRelease: (_, { dy, vy }) => {
-          const liveY = panStartY.current + dy;
-
-          if (vy < -0.7 || liveY < collapsedTranslateY * 0.55) {
-            animateSheet(0);
-            return;
-          }
-
-          if (vy > 0.7 || liveY >= collapsedTranslateY * 0.55) {
-            animateSheet(collapsedTranslateY);
-          }
-        },
-      }),
-    [animateSheet, collapsedTranslateY, translateY],
-  );
 
   const getSheetTitle = () => {
     if (activeLayer === "Schedule") return "Class Locations";
@@ -344,67 +286,40 @@ export function PlacesList({
     );
   };
 
-  if (!shouldShowSheet) {
+  if (!visible || !shouldShowList) {
     return null;
   }
 
   return (
-    <Animated.View
-      style={[
-        styles.placesSheet,
-        { height: sheetHeight, transform: [{ translateY }] },
-      ]}
-    >
-      <View style={styles.placesSheetHandleZone} {...panResponder.panHandlers}>
-        <View style={styles.placesSheetHandle} />
-        <View style={styles.placesSheetHeader}>
-          <View style={styles.placesSheetTitleRow}>
+    <View style={styles.placesListOverlay}>
+      <Pressable style={styles.placesListBackdrop} onPress={onClose} />
+      <Card style={styles.placesListCard}>
+        <View style={styles.placesListHeader}>
+          <View style={styles.placesListHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.placesListTitle}>{getSheetTitle()}</Text>
+              <Text style={styles.placesListSubtitle}>{getSheetSubtitle()}</Text>
+            </View>
             <TouchableOpacity
               activeOpacity={0.9}
-              style={{ flex: 1 }}
-              onPress={() => animateSheet(isExpanded ? collapsedTranslateY : 0)}
+              style={styles.placesListExitButton}
+              onPress={onClose}
             >
-              <Text style={styles.placesSheetTitle}>{getSheetTitle()}</Text>
-              <Text style={styles.placesSheetSubtitle}>{getSheetSubtitle()}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              activeOpacity={0.9}
-              style={styles.placesSheetCloseButton}
-              onPress={() => animateSheet(collapsedTranslateY)}
-            >
-              <Text style={styles.placesSheetCloseText}>×</Text>
+              <X size={16} color={COLORS.textPrimary} />
+              <Text style={styles.placesListExitText}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
-      </View>
 
-      <View style={styles.placesSheetBody}>
         <ScrollView
-          style={styles.placesSheetScroll}
+          style={styles.placesListContent}
           contentContainerStyle={styles.placesSheetListContent}
           showsVerticalScrollIndicator={false}
         >
           {renderScheduleCard()}
-          {isExpanded ? (
-            sortedFilteredLocations.map((loc) => renderPlaceCard(loc))
-          ) : (
-            <View style={styles.placesSheetCollapsedBody}>
-              <View style={styles.placesSheetCollapsedSummary}>
-                <Text style={styles.placesSheetCollapsedSummaryTitle}>
-                  {activeLayer === "Schedule"
-                    ? activeScheduleOption?.label || "No schedule selected"
-                    : sortedFilteredLocations[0]?.location || "Browse nearby places"}
-                </Text>
-                <Text style={styles.placesSheetCollapsedSummaryMeta}>
-                  {activeLayer === "Schedule"
-                    ? scheduleSummaryLabel
-                    : `${sortedFilteredLocations.length} result${sortedFilteredLocations.length === 1 ? "" : "s"}`}
-                </Text>
-              </View>
-            </View>
-          )}
+          {sortedFilteredLocations.map((loc) => renderPlaceCard(loc))}
         </ScrollView>
-      </View>
-    </Animated.View>
+      </Card>
+    </View>
   );
 }

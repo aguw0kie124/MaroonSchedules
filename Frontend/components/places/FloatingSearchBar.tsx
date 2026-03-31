@@ -9,6 +9,7 @@ import {
   Search,
   X,
   SlidersHorizontal,
+  List,
 } from "lucide-react-native";
 
 interface FloatingSearchBarProps {
@@ -20,6 +21,8 @@ interface FloatingSearchBarProps {
   setSearchQuery: (value: string) => void;
   setShowSearchResults: (value: boolean) => void;
   onOpenSettings: () => void;
+  onOpenList: () => void;
+  showListButton: boolean;
 }
 
 export function FloatingSearchBar({
@@ -31,6 +34,8 @@ export function FloatingSearchBar({
   setSearchQuery,
   setShowSearchResults,
   onOpenSettings,
+  onOpenList,
+  showListButton,
 }: FloatingSearchBarProps) {
   return (
     <View style={styles.floatingSearchStack}>
@@ -84,24 +89,35 @@ export function FloatingSearchBar({
           </TouchableOpacity>
         ) : null}
 
-        <TouchableOpacity
-          style={styles.searchTrailingButton}
-          onPress={() => {
-            if (isSearchExpanded) {
+        {isSearchExpanded ? (
+          <TouchableOpacity
+            style={styles.searchTrailingButton}
+            onPress={() => {
               setIsSearchExpanded(false);
               setSearchQuery("");
               setShowSearchResults(false);
-              return;
-            }
-            onOpenSettings();
-          }}
-        >
-          {isSearchExpanded ? (
+            }}
+          >
             <Text style={styles.searchCancelText}>Cancel</Text>
-          ) : (
-            <SlidersHorizontal size={18} color={COLORS.textPrimary} />
-          )}
-        </TouchableOpacity>
+          </TouchableOpacity>
+        ) : (
+          <>
+            {showListButton ? (
+              <TouchableOpacity
+                style={styles.searchTrailingButton}
+                onPress={onOpenList}
+              >
+                <List size={18} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              style={styles.searchTrailingButton}
+              onPress={onOpenSettings}
+            >
+              <SlidersHorizontal size={18} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+          </>
+        )}
       </View>
     </View>
   );

@@ -40,6 +40,7 @@ import { ReelsScreen } from './components/ReelsScreen';
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
 import { LeaderboardScreen } from './components/LeaderboardScreen';
+import { ShareOverlay } from './components/ShareOverlay';
 
 import FullMenuScreen from './components/dining/FullMenuScreen';
 import { CanvasDashboardScreen } from './components/canvas/CanvasDashboardScreen';
@@ -47,7 +48,7 @@ import { CanvasCoursesScreen } from './components/canvas/CanvasCoursesScreen';
 import { CanvasAssignmentsScreen } from './components/canvas/CanvasAssignmentsScreen';
 import { CanvasGradesScreen } from './components/canvas/CanvasGradesScreen';
 
-import { Trophy, Home, Map, Users, User } from 'lucide-react-native';
+import { Home, Map, Trophy, Users, User } from 'lucide-react-native';
 import { useTheme, useThemeStore } from './components/SharedUI';
 
 import { syncUser } from './api/client';
@@ -274,6 +275,7 @@ function RootNavigator() {
           <Stack.Screen name="TransitTripResults" component={TransitTripResultsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CampusMap" component={CampusMapScreen} options={{ headerShown: false }} />
           <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: false }} />
 
           <Stack.Screen name="Reels" component={ReelsScreen} options={{ headerShown: false }} />
@@ -330,6 +332,7 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <NavigationContainer theme={theme === 'dark' ? DarkTheme : DefaultTheme}>
             <RootNavigator />
+            <ShareOverlay />
           </NavigationContainer>
         </QueryClientProvider>
       </ClerkLoaded>
