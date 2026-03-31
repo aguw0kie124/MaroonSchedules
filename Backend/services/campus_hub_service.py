@@ -14,6 +14,7 @@ import psycopg
 from db_config import CONNECTION_PARAMS
 from repositories import course_repository, user_repository
 from routers.traffic import tracker
+from services import campus_events_service
 
 HOWDY_URL = "https://howdy.tamu.edu/main/home/card-view"
 DINING_URL = "https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx"
@@ -986,9 +987,12 @@ def create_connection_request(requester_id: str, recipient_id: str) -> Dict[str,
         return {"status": "error", "message": str(exc)}
 
 
-def get_events_snapshot(clerk_id: str | None = None, limit: int = 8) -> List[Dict[str, Any]]:
+def get_events_snapshot(
+    clerk_id: str | None = None,
+    limit: int = 8,
+    category: str | None = None,
+) -> List[Dict[str, Any]]:
     _ensure_social_tables()
-    raw_events = tracker.fetch_event_data(limit=limit)
     rsvp_lookup: Dict[str, str] = {}
     if clerk_id:
         rows = _safe_db_fetchall(
@@ -997,6 +1001,24 @@ def get_events_snapshot(clerk_id: str | None = None, limit: int = 8) -> List[Dic
         )
         rsvp_lookup = {row.get("event_id"): row.get("response", "interested") for row in rows}
 
+    crawler_events = campus_events_service.load_campus_events()
+    if crawler_events:
+        if category:
+            crawler_events = [
+                event
+                for event in crawler_events
+                if event.get("categories", {}).get(category.lower()) == 1
+            ]
+        limited = crawler_events[:limit] if limit else crawler_events
+        return [
+            {
+                **event,
+                "rsvp_status": rsvp_lookup.get(event.get("event_id"), "none"),
+            }
+            for event in limited
+        ]
+
+    raw_events = tracker.fetch_event_data(limit=limit)
     events = []
     for event in raw_events:
         event_id = _event_id_for(event)
@@ -1008,7 +1030,20 @@ def get_events_snapshot(clerk_id: str | None = None, limit: int = 8) -> List[Dic
                 "start_time": event.get("start_time"),
                 "end_time": event.get("end_time"),
                 "summary": event.get("summary", ""),
+                "description": event.get("summary", ""),
                 "link": event.get("link"),
+                "source_url": event.get("link"),
+                "host_name": None,
+                "source_name": "legacy_tracker",
+                "tags": [],
+                "has_food": False,
+                "food_confidence": 0.0,
+                "food_type": "unknown",
+                "food_reasons": [],
+                "location_lat": None,
+                "location_lng": None,
+                "map_available": False,
+                "categories": {},
                 "rsvp_status": rsvp_lookup.get(event_id, "none"),
             }
         )

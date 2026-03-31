@@ -82,11 +82,6 @@ export function TransitTripPlannerScreen() {
   const { COLORS, theme, useWallpaper, wallpaperUri, accentColor } = useTheme();
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark);
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : isDark
-      ? require('../assets/black_marble.jpg')
-      : require('../assets/white_marble.jpg');
 
   const [origin, setOrigin] = useState<PlannerLocation | null>(null);
   const [destination, setDestination] = useState<PlannerLocation | null>(null);
@@ -167,8 +162,8 @@ export function TransitTripPlannerScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      {useWallpaper ? (
-        <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
+      {useWallpaper && wallpaperUri ? (
+        <ImageBackground source={{ uri: wallpaperUri }} style={StyleSheet.absoluteFill} resizeMode="cover">
           <View
             style={[
               StyleSheet.absoluteFill,
@@ -358,8 +353,8 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       alignItems: 'center',
       gap: 8,
       borderRadius: 999,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
       backgroundColor: isDark ? 'rgba(12,12,14,0.82)' : 'rgba(255,255,255,0.96)',
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
@@ -370,12 +365,12 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       fontWeight: '700',
     },
     heroCard: {
-      borderRadius: 28,
-      padding: 18,
+      borderRadius: 18,
+      padding: 16,
       backgroundColor: isDark ? 'rgba(12,12,14,0.88)' : 'rgba(255,255,255,0.96)',
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
-      gap: 16,
+      gap: 14,
     },
     heroTitleRow: {
       flexDirection: 'row',
@@ -423,8 +418,8 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       alignItems: 'center',
       gap: 8,
       borderRadius: 999,
-      paddingHorizontal: 14,
-      paddingVertical: 11,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
       backgroundColor: COLORS.primary,
     },
     currentLocationPillActive: {
@@ -442,8 +437,8 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       alignItems: 'center',
       gap: 8,
       borderRadius: 999,
-      paddingHorizontal: 12,
-      paddingVertical: 11,
+      paddingHorizontal: 11,
+      paddingVertical: 10,
       backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F4F5F7',
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
@@ -455,9 +450,9 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       fontWeight: '700',
     },
     panelCard: {
-      borderRadius: 26,
-      padding: 18,
-      gap: 14,
+      borderRadius: 18,
+      padding: 16,
+      gap: 12,
       backgroundColor: isDark ? 'rgba(12,12,14,0.88)' : 'rgba(255,255,255,0.96)',
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
@@ -501,9 +496,9 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      borderRadius: 18,
-      paddingHorizontal: 14,
-      paddingVertical: 14,
+      borderRadius: 14,
+      paddingHorizontal: 13,
+      paddingVertical: 12,
       backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F4F5F7',
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
@@ -515,7 +510,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     pickerWrap: {
       overflow: 'hidden',
-      borderRadius: 20,
+      borderRadius: 16,
       backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8F9FB',
     },
     doneButton: {
@@ -539,9 +534,9 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
-      paddingHorizontal: 14,
-      paddingVertical: 14,
-      borderRadius: 18,
+      paddingHorizontal: 13,
+      paddingVertical: 12,
+      borderRadius: 14,
       backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F4F5F7',
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',

@@ -38,8 +38,7 @@ CREATE TABLE IF NOT EXISTS weight_log (
 CREATE TABLE IF NOT EXISTS food_items (
     id               SERIAL PRIMARY KEY,
     name             TEXT NOT NULL,
-    source           TEXT DEFAULT 'manual',   -- 'manual','usda','dining','restaurant'
-    usda_fdc_id      INTEGER,
+    source           TEXT DEFAULT 'manual',   -- 'manual','dining','restaurant'
     location         TEXT,                    -- dining hall or restaurant name
     location_type    TEXT DEFAULT 'dining',   -- 'dining' | 'restaurant'
     meal_period      TEXT DEFAULT 'all',      -- 'breakfast','lunch','dinner','all'

@@ -1,4 +1,5 @@
 node_modules
+.DS_Store
 __pycache__/
 *.py[cod]
 *$py.class
@@ -11,3 +12,6 @@ __pycache__/
 tsc_errors.log
 tsc_output.txt
 tsc_final.log
+
+# plans for future implementations
+data_architecture_plan.md

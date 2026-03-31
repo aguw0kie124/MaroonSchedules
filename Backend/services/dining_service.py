@@ -1,16 +1,19 @@
 import math
 import re
 import requests
+import urllib3
 import psycopg
 import psycopg.rows
 from typing import Optional, Dict, List, Any
 from pulp import LpMaximize, LpProblem, LpVariable, lpSum, value as pulp_value, PULP_CBC_CMD
 from datetime import datetime
 from db_config import get_db_connection
-from services import usda_service
 
 def get_db_conn():
     return psycopg.connect(get_db_connection())
+
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def init_db():
     conn = get_db_conn()
@@ -26,7 +29,6 @@ def init_db():
                     protein FLOAT DEFAULT 0,
                     fat FLOAT DEFAULT 0,
                     carbs FLOAT DEFAULT 0,
-                    usda_calories FLOAT,
                     cost FLOAT DEFAULT 0,
                     meal_period TEXT NOT NULL,
                     date DATE NOT NULL,
@@ -84,6 +86,12 @@ DINING_LOCATIONS = {
     "Vet Med Cafe": "591c65b8ee596f0ff3feea1f"
 }
 
+DINING_HALL_LOCATION_NAMES = {
+    "Sbisa Dining Hall (North Campus)",
+    "The Commons Dining Hall (South Campus)",
+    "Duncan Dining Hall (South Campus/Quad)",
+}
+
 # Bundling map for retail restaurants
 RESTAURANT_GROUPS = {
     "Chick-fil-A": ["Chick-Fil-A - Sbisa Underground Food Court", "Chick-Fil-A - MSC Food Court", "Chick-fil-A - West Campus Food Hall"],
@@ -132,34 +140,6 @@ HEURISTICS = [
     {'kw': ['dressing', 'mayo', 'aioli', 'alfredo', 'sauce', 'gravy', 'syrup', 'oil', 'vinegar', 'seasoning'], 'p': 0.00, 'f': 0.12, 'c': 0.04},
 ]
 
-USDA_CACHE: Dict[str, float] = {}
-
-def get_usda_calories(name: str) -> Optional[float]:
-    """Get USDA-verified calories for a food item. Checks cache, then DB, then live API."""
-    if name in USDA_CACHE:
-        return USDA_CACHE[name]
-    # Check DB cache first
-    try:
-        with get_db_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT usda_calories FROM food_items WHERE name = %s AND usda_calories IS NOT NULL LIMIT 1", (name,))
-                row = cur.fetchone()
-                if row:
-                    USDA_CACHE[name] = row[0]
-                    return row[0]
-    except:
-        pass
-    # Live USDA lookup
-    try:
-        res = usda_service.search_usda(name, page_size=3)
-        if res:
-            cals = res[0]['nutrients'].get('calories', 0)
-            USDA_CACHE[name] = cals
-            return cals
-    except:
-        pass
-    return None
-
 # ============ NAME CLEANING ============
 # FIX: Previous regex was destroying names. Now we only do safe HTML entity decoding.
 def clean_name(raw: str) -> str:
@@ -189,7 +169,7 @@ def apply_heuristic(name: str, cal: float) -> Dict[str, float]:
     }
 
 def enrich_items(raw_items: List[Dict]) -> List[Dict]:
-    """Clean up, deduplicate, verify calories, and add cost heuristics."""
+    """Clean up, deduplicate, and add cost heuristics."""
     seen = set()
     result = []
     for it in raw_items:
@@ -201,20 +181,6 @@ def enrich_items(raw_items: List[Dict]) -> List[Dict]:
         if dedup_key in seen:
             continue
         seen.add(dedup_key)
-
-        # USDA double-verification
-        usda_cal = get_usda_calories(it['name'])
-        if usda_cal is not None:
-            it['usda_calories'] = usda_cal
-            current = float(it.get('calories', 0) or 0)
-            # If DineOnCampus reports 0 or wildly different, use USDA
-            if current < 10 and usda_cal > 0:
-                it['calories'] = usda_cal
-                it['source'] = 'usda_corrected'
-            elif current > 0 and usda_cal > 0 and abs(current - usda_cal) > current * 0.5:
-                # Large discrepancy - average them for safety
-                it['calories'] = round((current + usda_cal) / 2)
-                it['source'] = 'usda_blended'
 
         # Fill missing macros with heuristics
         if not it.get('protein') and not it.get('carbs'):
@@ -487,6 +453,34 @@ def resolve_location_name(location_name: str) -> Optional[str]:
     return None
 
 
+def get_dining_db_location_candidates(resolved_name: str) -> List[str]:
+    """Return candidate location labels used by local seed data."""
+    candidates: List[str] = [resolved_name]
+    normalized = (resolved_name or '').lower()
+
+    if 'sbisa' in normalized:
+        candidates.extend(['Sbisa Dining Hall', 'Sbisa'])
+    if 'commons' in normalized:
+        candidates.extend(['The Commons Dining Hall', 'Commons'])
+    if 'duncan' in normalized:
+        candidates.extend(['Duncan Dining Hall', 'Duncan'])
+
+    # Also include the canonical name without parenthetical suffix.
+    if '(' in resolved_name:
+        candidates.append(resolved_name.split('(')[0].strip())
+
+    # Deduplicate while preserving order.
+    seen = set()
+    ordered: List[str] = []
+    for value in candidates:
+        key = value.strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        ordered.append(value.strip())
+    return ordered
+
+
 def infer_menu_category(item: Dict[str, Any], meal_period: Optional[str] = None) -> str:
     explicit = (item.get('category') or '').strip()
     if explicit:
@@ -535,7 +529,7 @@ def group_menu_items(items: List[Dict[str, Any]], meal_period: Optional[str] = N
 def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str = None) -> Dict[str, Any]:
     period = (meal_period or 'lunch').lower()
     resolved_name = resolve_location_name(location_name) or location_name
-    is_dining_hall = 'hall' in resolved_name.lower()
+    is_dining_hall = resolved_name in DINING_HALL_LOCATION_NAMES
     items: List[Dict[str, Any]] = []
     source = 'database'
     resolved_locations = [resolved_name]
@@ -546,22 +540,17 @@ def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str 
             items = live_result['items']
             source = 'live'
         else:
-            aliases = PERIOD_ALIASES.get(period, [period, 'every-day', 'everyday', 'all-day'])
-            try:
-                with get_db_conn() as conn:
-                    with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
-                        placeholders = ','.join(['%s'] * len(aliases))
-                        cur.execute(f"""
-                            SELECT * FROM food_items
-                            WHERE (location = %s OR location ILIKE %s)
-                            AND location_type = 'dining_hall'
-                            AND meal_period IN ({placeholders})
-                            AND active = TRUE
-                        """, [resolved_name, f"%{resolved_name}%"] + aliases)
-                        items = [dict(row) for row in cur.fetchall()]
-            except Exception:
-                items = []
-            source = 'database'
+            return {
+                "success": False,
+                "location": location_name,
+                "resolvedLocation": resolved_name,
+                "locations": resolved_locations,
+                "mealPeriod": period,
+                "source": "live",
+                "count": 0,
+                "categories": [],
+                "message": live_result.get("error") or "No live dining hall menu available right now.",
+            }
     else:
         aliases = PERIOD_ALIASES.get(period, [period, 'every-day', 'everyday', 'all-day'])
         resolved_locations = RESTAURANT_GROUPS.get(location_name, [resolved_name])
@@ -595,11 +584,11 @@ def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str 
 
 def optimize_combo(location_name: str, target_cal: float) -> Dict[str, Any]:
     """Optimize a retail swipe meal at a specific location.
-    Prefers DB data (already synced and USDA-verified) for speed.
+    Prefers DB data for speed.
     Falls back to live API only if DB is empty."""
     foods = []
 
-    # DB FIRST — items were synced with USDA verification already
+    # DB FIRST — items were synced already
     try:
         with get_db_conn() as conn:
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
@@ -614,8 +603,7 @@ def optimize_combo(location_name: str, target_cal: float) -> Dict[str, Any]:
         pass
 
     # For retail combos, we ONLY use the curated DB items.
-    # Do not fallback to the live DineOnCampus API because it triggers
-    # slow USDA searches that hit rate limits and returns messy a-la-carte ingredients.
+    # Do not fallback to the live DineOnCampus API because it returns messy a-la-carte ingredients.
 
     if not foods:
         return {"success": False, "error": f"No items found for {location_name}", "items": [], "totals": {}}
@@ -642,15 +630,37 @@ def generate_variants(foods: List[Dict], target_cal: float, macros: Dict) -> Lis
     return variants
 
 
-# ============ DineOnCampus API v4 ============
+# ============ DineOnCampus API ============
 
-API_BASE = "https://apiv4.dineoncampus.com"
+DINE_API_BASE = "https://apiv4.dineoncampus.com"
+DINE_API_HOST = "apiv4.dineoncampus.com"
+DINE_API_IP_FALLBACK = "206.82.192.172"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
     "Origin": "https://dineoncampus.com",
     "Referer": "https://dineoncampus.com/"
 }
+
+
+def _dine_api_get(path: str, *, timeout: int = 10, params: Optional[Dict[str, Any]] = None):
+    """Fetch a DineOnCampus endpoint, falling back to the origin IP when DNS fails."""
+    attempts = [
+        (f"{DINE_API_BASE}{path}", dict(HEADERS), True),
+        (f"https://{DINE_API_IP_FALLBACK}{path}", {**HEADERS, "Host": DINE_API_HOST}, False),
+    ]
+    last_error = None
+
+    for url, headers, verify in attempts:
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=timeout, verify=verify)
+            if resp.status_code == 200:
+                return resp, url
+            last_error = f"{url} returned HTTP {resp.status_code}"
+        except requests.RequestException as exc:
+            last_error = str(exc)
+
+    raise requests.RequestException(last_error or "Unable to reach DineOnCampus")
 
 
 def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_period: str = None) -> Dict[str, Any]:
@@ -664,15 +674,14 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
     if not location_id:
         return {"success": False, "error": f"Unknown location: {location_name}", "items": []}
 
+    requested_period = canonicalize_meal_period(meal_period) or normalize_period_value(meal_period) or 'lunch'
+    last_error: Optional[str] = None
+
     try:
-        # Fetch available periods
-        periods_url = f"{API_BASE}/locations/{location_id}/periods/?date={date_str}"
-        resp = requests.get(periods_url, headers=HEADERS, timeout=10)
-        periods = resp.json().get('periods', []) if resp.status_code == 200 else []
+        periods_resp, periods_url = _dine_api_get(f"/locations/{location_id}/periods/", timeout=10, params={"date": date_str})
+        periods = periods_resp.json().get('periods', [])
 
-        requested_period = canonicalize_meal_period(meal_period) or normalize_period_value(meal_period) or 'lunch'
         selected_period = select_requested_period(periods, meal_period)
-
         if not selected_period or not selected_period.get('id'):
             return {"success": False, "error": f"No periods for {location_name}", "items": []}
 
@@ -680,9 +689,12 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
         matched_slug = selected_period.get('slug') or normalize_period_value(selected_period.get('name'))
         resolved_period = canonicalize_meal_period(matched_slug) or requested_period
 
-        # Fetch menu for this period
-        menu_url = f"{API_BASE}/locations/{location_id}/menu?date={date_str}&period={period_id}"
-        menu_resp = requests.get(menu_url, headers=HEADERS, timeout=15)
+        menu_resp, menu_url = _dine_api_get(
+            f"/locations/{location_id}/menu",
+            timeout=15,
+            params={"date": date_str, "period": period_id},
+        )
+
         data = menu_resp.json()
         items = []
 
@@ -719,7 +731,7 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
                     "vitamin_c": parse_val(nutrients.get('vitamin c (mg)', 0)),
                     "vitamin_d": parse_val(nutrients.get('vitamin d (mcg)' ,0)),
                     "magnesium": parse_val(nutrients.get('magnesium (mg)', 0)),
-                    "source": "dineoncampus_v4"
+                    "source": f"dineoncampus:{DINE_API_HOST if '206.82.192.172' not in menu_url else DINE_API_IP_FALLBACK}",
                 })
 
         items = enrich_items(items)
@@ -730,9 +742,12 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
             "date": date_str,
             "period": matched_slug,
             "resolvedPeriod": resolved_period,
+            "apiBase": menu_url.rsplit('/locations/', 1)[0],
         }
     except Exception as e:
-        return {"success": False, "error": str(e), "items": []}
+        last_error = str(e)
+
+    return {"success": False, "error": last_error or "Unable to reach DineOnCampus", "items": []}
 
 
 def sync_all_locations(date_str: str = None):
@@ -743,13 +758,13 @@ def sync_all_locations(date_str: str = None):
         with conn.cursor() as cur:
             for name, loc_id in DINING_LOCATIONS.items():
                 print(f"Syncing {name}...")
+                periods = []
                 try:
-                    p_url = f"{API_BASE}/locations/{loc_id}/periods/?date={date_str}"
-                    p_resp = requests.get(p_url, headers=HEADERS, timeout=10)
-                    periods = p_resp.json().get('periods', []) if p_resp.status_code == 200 else []
+                    p_resp, _ = _dine_api_get(f"/locations/{loc_id}/periods/", timeout=10, params={"date": date_str})
+                    periods = p_resp.json().get('periods', [])
                     if not periods:
                         periods = [{'id': None, 'name': 'Every Day', 'slug': 'every-day'}]
-                except:
+                except Exception:
                     periods = [{'id': None, 'name': 'Every Day', 'slug': 'every-day'}]
 
                 for p in periods:
@@ -757,24 +772,23 @@ def sync_all_locations(date_str: str = None):
                     if res.get('success') and res.get('items'):
                         for it in res['items']:
                             cur.execute("""
-                                INSERT INTO food_items (name, location, location_type, calories, protein, fat, carbs, fiber, sodium, potassium, calcium, iron, vitamin_c, vitamin_d, magnesium, usda_calories, cost, meal_period, date, active)
-                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
-                                ON CONFLICT (name, location, meal_period, date) DO UPDATE SET
-                                    calories = EXCLUDED.calories, protein = EXCLUDED.protein, fat = EXCLUDED.fat, carbs = EXCLUDED.carbs,
-                                    fiber = EXCLUDED.fiber, sodium = EXCLUDED.sodium, potassium = EXCLUDED.potassium,
-                                    calcium = EXCLUDED.calcium, iron = EXCLUDED.iron, vitamin_c = EXCLUDED.vitamin_c,
-                                    vitamin_d = EXCLUDED.vitamin_d, magnesium = EXCLUDED.magnesium,
-                                    usda_calories = EXCLUDED.usda_calories, cost = EXCLUDED.cost, active = TRUE
-                            """, (
-                                it['name'], name,
-                                'dining_hall' if 'Hall' in name else 'restaurant',
-                                it.get('calories', 0), it.get('protein', 0), it.get('fat', 0), it.get('carbs', 0),
-                                it.get('fiber', 0), it.get('sodium', 0), it.get('potassium', 0),
-                                it.get('calcium', 0), it.get('iron', 0), it.get('vitamin_c', 0),
-                                it.get('vitamin_d', 0), it.get('magnesium', 0),
-                                it.get('usda_calories'), it.get('cost', 0),
-                                p['slug'], date_str
-                            ))
+                            INSERT INTO food_items (name, location, location_type, calories, protein, fat, carbs, fiber, sodium, potassium, calcium, iron, vitamin_c, vitamin_d, magnesium, cost, meal_period, date, active)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE)
+                            ON CONFLICT (name, location, meal_period, date) DO UPDATE SET
+                                calories = EXCLUDED.calories, protein = EXCLUDED.protein, fat = EXCLUDED.fat, carbs = EXCLUDED.carbs,
+                                fiber = EXCLUDED.fiber, sodium = EXCLUDED.sodium, potassium = EXCLUDED.potassium,
+                                calcium = EXCLUDED.calcium, iron = EXCLUDED.iron, vitamin_c = EXCLUDED.vitamin_c,
+                                vitamin_d = EXCLUDED.vitamin_d, magnesium = EXCLUDED.magnesium,
+                                cost = EXCLUDED.cost, active = TRUE
+                    """, (
+                        it['name'], name,
+                        'dining_hall' if 'Hall' in name else 'restaurant',
+                        it.get('calories', 0), it.get('protein', 0), it.get('fat', 0), it.get('carbs', 0),
+                        it.get('fiber', 0), it.get('sodium', 0), it.get('potassium', 0),
+                        it.get('calcium', 0), it.get('iron', 0), it.get('vitamin_c', 0),
+                        it.get('vitamin_d', 0), it.get('magnesium', 0), it.get('cost', 0),
+                        p['slug'], date_str
+                    ))
                 conn.commit()
                 print(f"  ✓ Synced {name} ({len(periods)} periods)")
 

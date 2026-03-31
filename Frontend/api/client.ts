@@ -145,10 +145,11 @@ export const fetchCampusOverview = async (clerkId: string) => {
     return requestJson(`/campus/overview?clerk_id=${encodeURIComponent(clerkId)}`);
 };
 
-export const fetchCampusEvents = async (clerkId?: string, limit = 8) => {
+export const fetchCampusEvents = async (clerkId?: string, limit = 8, category?: string) => {
     const params = new URLSearchParams();
     params.set('limit', String(limit));
     if (clerkId) params.set('clerk_id', clerkId);
+    if (category) params.set('category', category);
     return requestJson(`/campus/events?${params.toString()}`);
 };
 
@@ -173,30 +174,5 @@ export const requestCampusConnection = async (payload: { requester_id: string; r
     return requestJson('/campus/network/request', {
         method: 'POST',
         body: JSON.stringify(payload),
-    });
-};
-
-export const fetchCampusConnectors = async (clerkId: string) => {
-    return requestJson(`/campus/connectors?clerk_id=${encodeURIComponent(clerkId)}`);
-};
-
-export const captureCampusConnector = async (payload: {
-    clerk_id: string;
-    system_id: string;
-    source_url: string;
-    page_title?: string | null;
-    page_html?: string | null;
-    page_text?: string | null;
-    cookie_names?: string[] | null;
-}) => {
-    return requestJson('/campus/connectors/capture', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-    });
-};
-
-export const deleteCampusConnector = async (clerkId: string, systemId: string) => {
-    return requestJson(`/campus/connectors/${encodeURIComponent(systemId)}?clerk_id=${encodeURIComponent(clerkId)}`, {
-        method: 'DELETE',
     });
 };

@@ -139,13 +139,13 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       borderRadius: 999,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
-      padding: 6,
+      padding: 4,
       overflow: 'hidden',
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.14,
-      shadowRadius: 18,
-      elevation: 10,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+      elevation: 4,
     },
     trackFloating: {
       backgroundColor: isDark ? 'rgba(8,8,10,0.9)' : 'rgba(255,255,255,0.9)',
@@ -169,7 +169,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     tab: {
       flex: 1,
       minWidth: 0,
-      minHeight: 52,
+      minHeight: 46,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
@@ -178,7 +178,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       paddingHorizontal: 8,
     },
     tabCompact: {
-      minHeight: 38,
+      minHeight: 34,
       gap: 4,
     },
     tabStacked: {
@@ -190,7 +190,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       gap: 2,
     },
     label: {
-      fontSize: 10,
+      fontSize: 11,
       fontWeight: '700',
       flexShrink: 1,
       textAlign: 'center',

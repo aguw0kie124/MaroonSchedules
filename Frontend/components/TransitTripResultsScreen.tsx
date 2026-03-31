@@ -63,12 +63,6 @@ export function TransitTripResultsScreen() {
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark);
 
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : isDark
-      ? require('../assets/black_marble.jpg')
-      : require('../assets/white_marble.jpg');
-
   const origin = route.params?.origin as PlannerLocation | undefined;
   const destination = route.params?.destination as PlannerLocation | undefined;
   const preference = (route.params?.preference || 'best') as TransitTripPreference;
@@ -145,8 +139,8 @@ export function TransitTripResultsScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      {useWallpaper ? (
-        <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
+      {useWallpaper && wallpaperUri ? (
+        <ImageBackground source={{ uri: wallpaperUri }} style={StyleSheet.absoluteFill} resizeMode="cover">
           <View
             style={[
               StyleSheet.absoluteFill,
@@ -292,8 +286,8 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       alignItems: 'center',
       gap: 8,
       borderRadius: 999,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 9,
       backgroundColor: isDark ? 'rgba(12,12,14,0.82)' : 'rgba(255,255,255,0.96)',
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
@@ -304,9 +298,9 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       fontWeight: '700',
     },
     heroCard: {
-      borderRadius: 28,
-      padding: 18,
-      gap: 14,
+      borderRadius: 18,
+      padding: 16,
+      gap: 12,
       backgroundColor: isDark ? 'rgba(12,12,14,0.88)' : 'rgba(255,255,255,0.96)',
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
@@ -353,8 +347,8 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       fontWeight: '700',
     },
     stateCard: {
-      borderRadius: 24,
-      padding: 22,
+      borderRadius: 18,
+      padding: 18,
       gap: 12,
       alignItems: 'center',
       justifyContent: 'center',
@@ -372,17 +366,17 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       gap: 14,
     },
     optionCard: {
-      borderRadius: 24,
-      padding: 18,
-      gap: 14,
+      borderRadius: 18,
+      padding: 16,
+      gap: 12,
       backgroundColor: isDark ? 'rgba(12,12,14,0.90)' : '#FFFFFF',
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.12,
-      shadowRadius: 16,
-      elevation: 8,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+      elevation: 4,
     },
     optionHeader: {
       flexDirection: 'row',
@@ -392,7 +386,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     routeBadge: {
       width: 44,
       height: 44,
-      borderRadius: 16,
+      borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
     },
