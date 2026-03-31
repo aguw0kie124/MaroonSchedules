@@ -36,10 +36,42 @@ import {
   ThumbsDown,
   Settings,
   Map,
-  List,
   Search,
   MapPin as MapPinIcon,
+  Share2,
+  Pizza,
+  Coffee,
+  Dumbbell,
+  GraduationCap,
+  Users,
+  Ticket,
+  HeartPulse,
+  Megaphone,
+  Trophy,
+  Music,
+  HelpCircle,
+  CircleDot,
+  UserPlus,
+  ShieldCheck,
+  FileText,
+  Clock,
+  Bus,
+  Zap,
+  Crosshair,
+  Award,
+  Terminal,
+  Code,
+  Camera,
+  Circle,
 } from 'lucide-react-native';
+import { 
+  SoccerBallIcon, 
+  BaseballIcon, 
+  TennisRacketIcon, 
+  FootballIcon, 
+  BasketballIcon 
+} from './common/CustomIcons';
+import { useShareStore } from '../store/shareStore';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
@@ -121,6 +153,53 @@ function classifyCategory(event: TAMUEvent): ExploreCategory {
   return 'Miscellaneous'; // Fallback
 }
 
+function getEventIcon(event: TAMUEvent) {
+  const b = getSearchBlob(event).toLowerCase();
+  const size = 20;
+  const color = '#FFFFFF';
+
+  // Sport Specific (Custom High-Fidelity SVGs)
+  if (/\bsoccer\b|\bfutbol\b/i.test(b)) return <SoccerBallIcon size={size} color={color} />;
+  if (/\bbaseball\b|\bsoftball\b/i.test(b)) return <BaseballIcon size={size} color={color} />;
+  if (/\bfootball\b|\baggie football\b/i.test(b)) return <FootballIcon size={size} color={color} />;
+  if (/\btennis\b/i.test(b)) return <TennisRacketIcon size={size} color={color} />;
+  if (/\bbasketball\b/i.test(b)) return <BasketballIcon size={size} color={color} />;
+  if (/\bvolleyball\b/i.test(b)) return <CircleDot size={size} color={color} />;
+  
+  // Professional & Career
+  if (/\bhiring\b|\bjob\b|\bcareer\b|\brecruit\b/i.test(b)) return <UserPlus size={size} color={color} />;
+  if (/\bwork\s*shop\b|\bprofessional\b|\bnetworking\b/i.test(b)) return <Award size={size} color={color} />;
+  
+  // Training & Safety
+  if (/\btraining\b|\bcpr\b|\bcsa\b|\bsafety\b|\bfirst aid\b/i.test(b)) return <ShieldCheck size={size} color={color} />;
+  
+  // Academic Actions
+  if (/\bgrades\b|\bregistration\b|\bdeadline\b|\badd\b|\bdrop\b|\badvising\b/i.test(b)) return <FileText size={size} color={color} />;
+  if (/\blecture\b|\bclass\b|\bseminar\b|\bacadem/i.test(b)) return <GraduationCap size={size} color={color} />;
+  
+  // Lifestyle & Utility
+  if (/\bbus\b|\bshuttle\b|\btransport\b/i.test(b)) return <Bus size={size} color={color} />;
+  if (/\bhours\b|\badjusted\b|\bclosed\b/i.test(b)) return <Clock size={size} color={color} />;
+  if (/\bpizza\b|\bdinner\b|\blunch\b|\bfood\b/i.test(b)) return <Pizza size={size} color={color} />;
+  if (/\bcoffee\b|\bbreakfast\b|\btea\b|\bmorning\b/i.test(b)) return <Coffee size={size} color={color} />;
+  
+  // Tech & Innovation
+  if (/\bcoding\b|\bcompeti\b|\bai\b|\bhackathon\b|\btechno\b|\bsoftware\b/i.test(b)) return <Code size={size} color={color} />;
+
+  // General fallback
+  const cat = classifyCategory(event);
+  switch (cat) {
+    case 'Food': return <Pizza size={size} color={color} />;
+    case 'Sports': return <Dumbbell size={size} color={color} />;
+    case 'Academic': return <GraduationCap size={size} color={color} />;
+    case 'Social': return <Users size={size} color={color} />;
+    case 'Entertainment': return <Ticket size={size} color={color} />;
+    case 'Health & Wellness': return <HeartPulse size={size} color={color} />;
+    case 'Advocacy': return <Megaphone size={size} color={color} />;
+    default: return <HelpCircle size={size} color={color} />;
+  }
+}
+
 function handleGoogleCalendar(event: TAMUEvent) {
   const formatGCalDate = (ts: number) => {
     return new Date(ts * 1000).toISOString().replace(/-|:|\.\d\d\d/g, '');
@@ -193,16 +272,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set());
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [flashcardIndex, setFlashcardIndex] = useState(0);
-  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
-  const [shareModalVisible, setShareModalVisible] = useState(false);
-  const [shareEvent, setShareEvent] = useState<TAMUEvent | null>(null);
-  const [friendsList, setFriendsList] = useState<Array<{ id: string; name: string; email: string; profile_image_url?: string }>>([]);
-  const [friendsLoading, setFriendsLoading] = useState(false);
-  const [friendSearch, setFriendSearch] = useState('');
-  const [selectedFriends, setSelectedFriends] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
-  const [isListView, setIsListView] = useState(false);
+  const [isListView, setIsListView] = useState(true);
   const [detailEvent, setDetailEvent] = useState<TAMUEvent | null>(null);
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
 
   const {
     isMajorSpecific, selectedMajor, setMajorSpecific, setSelectedMajor,
@@ -357,70 +430,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     opacity.setValue(1);
   }, [dislikeEvent, pan, opacity]);
 
-  const loadFriends = useCallback(async () => {
-    setFriendsLoading(true);
-    try {
-      const res = await fetch(`${API_URL}/chat/users`);
-      if (res.ok) { setFriendsList(await res.json()); }
-    } catch {} finally { setFriendsLoading(false); }
-  }, []);
-
   const handleShare = useCallback((event: TAMUEvent) => {
-    setShareEvent(event);
-    setFriendSearch('');
-    setSelectedFriends(new Set());
-    loadFriends();
-    setShareModalVisible(true);
-  }, [loadFriends]);
-
-  const toggleFriendSelection = useCallback((id: string) => {
-    setSelectedFriends((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
+    useShareStore.getState().openShare({
+      title: event.title,
+      message: `Check out this event: ${event.title} at ${event.location || 'TAMU'}!`,
+      url: event.url || 'https://maroonschedules.tamu.edu'
     });
   }, []);
 
-  const filteredFriends = useMemo(() => {
-    if (!friendSearch.trim()) return friendsList;
-    const q = friendSearch.toLowerCase();
-    return friendsList.filter((f) => f.name.toLowerCase().includes(q) || f.email.toLowerCase().includes(q));
-  }, [friendsList, friendSearch]);
-
-  const sendToSelectedFriends = useCallback(() => {
-    if (!shareEvent || selectedFriends.size === 0) return;
-    setShareModalVisible(false);
-    const eventPayload = {
-      event_id: String(shareEvent.id),
-      title: shareEvent.title,
-      location: shareEvent.location || shareEvent.location_title || null,
-      description: shareEvent.description || null,
-      date_ts: shareEvent.date_ts,
-      date_iso: shareEvent.date_iso,
-      location_lat: shareEvent.location_lat ?? null,
-      location_lng: shareEvent.location_lng ?? null,
-      category: classifyCategory(shareEvent),
-    };
-    const ids = Array.from(selectedFriends);
-    if (ids.length === 1) {
-      const friend = friendsList.find((f) => f.id === ids[0]);
-      if (friend) {
-        navigation.navigate('ChatScreen', {
-          otherUserClerkId: friend.id,
-          otherUserName: friend.name,
-          otherUserImageUrl: friend.profile_image_url,
-          prefillEvent: eventPayload,
-        });
-      }
-    } else {
-      navigation.navigate('ChatScreen', {
-        memberIds: ids,
-        groupName: `Event: ${shareEvent.title.slice(0, 30)}`,
-        isGroup: true,
-        prefillEvent: eventPayload,
-      });
-    }
-  }, [shareEvent, selectedFriends, friendsList, navigation]);
 
   const handleMapOpen = useCallback((event: TAMUEvent) => {
     if (event.location_lat != null && event.location_lng != null) {
@@ -476,55 +493,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const s = getStyles(COLORS, isDark, embedded);
 
   /* ── Share Modal (rendered in all views) ── */
-  const renderShareModal = () => (
-    <Modal visible={shareModalVisible} transparent animationType="slide" onRequestClose={() => setShareModalVisible(false)}>
-      <Pressable style={s.modalOverlay} onPress={() => setShareModalVisible(false)}>
-        <Pressable style={s.shareSheet} onPress={() => {}}>
-          <Text style={s.modalSheetTitle}>Send to Friend</Text>
-          <View style={s.searchBar}>
-            <TextInput
-              style={s.searchInput}
-              placeholder="Search by name or email..."
-              placeholderTextColor={COLORS.textTertiary}
-              value={friendSearch}
-              onChangeText={setFriendSearch}
-              autoCorrect={false}
-            />
-          </View>
-          {friendsLoading ? (
-            <View style={{ padding: 40, alignItems: 'center' }}><ActivityIndicator color={COLORS.primary} /></View>
-          ) : filteredFriends.length === 0 ? (
-            <Text style={{ color: COLORS.textSecondary, textAlign: 'center', padding: 32 }}>No friends found.</Text>
-          ) : (
-            <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
-              {filteredFriends.map((f) => {
-                const isSelected = selectedFriends.has(f.id);
-                return (
-                  <Pressable key={f.id} style={[s.friendRow, isSelected && s.friendRowSelected]} onPress={() => toggleFriendSelection(f.id)}>
-                    <View style={[s.friendAvatar, isSelected && { backgroundColor: '#30D158' }]}>
-                      {isSelected ? <Check size={16} color="#FFF" /> : <Text style={s.friendAvatarText}>{f.name?.slice(0, 2).toUpperCase()}</Text>}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.friendName}>{f.name}</Text>
-                      <Text style={s.friendEmail}>{f.email}</Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          )}
-          {selectedFriends.size > 0 && (
-            <Pressable style={s.sendFab} onPress={sendToSelectedFriends}>
-              <Send size={18} color="#FFF" />
-              <Text style={s.sendFabText}>
-                {selectedFriends.size === 1 ? 'Send Message' : `Send to ${selectedFriends.size} as Group`}
-              </Text>
-            </Pressable>
-          )}
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
 
   /* ══════ VIEW: GRID ══════ */
   if (view === 'grid') {
@@ -632,7 +600,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           </Pressable>
         </Modal>
 
-        {renderShareModal()}
       </View>
     );
   }
@@ -701,15 +668,48 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           </View>
         ) : isListView ? (
           <ScrollView contentContainerStyle={s.listScroll} showsVerticalScrollIndicator={false}>
-            {flashcardStack.map((e) => (
-              <Pressable key={String(e.id)} style={s.listRow} onPress={() => setDetailEvent(e)}>
-                <View style={[s.listDot, { backgroundColor: CATEGORY_META[classifyCategory(e)]?.color || COLORS.primary }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.listRowName} numberOfLines={1}>{e.title}</Text>
-                  <Text style={s.listRowSub}>{formatDate(e.date_ts)} · {formatTime(e.date_ts)}</Text>
-                </View>
-              </Pressable>
-            ))}
+            {flashcardStack.map((e) => {
+              const isSched = scheduledEvents.some((se) => String(se.id) === String(e.id));
+              const category = classifyCategory(e);
+              const cardColor = CATEGORY_META[category]?.color || COLORS.primary;
+              
+              return (
+                <Pressable key={String(e.id)} style={s.listRow} onPress={() => setDetailEvent(e)}>
+                  <View style={[s.listIconContainer, { backgroundColor: cardColor }]}>
+                    {getEventIcon(e)}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.listRowName} numberOfLines={1}>{e.title}</Text>
+                    <Text style={s.listRowSub}>{formatDate(e.date_ts)} · {formatTime(e.date_ts)}</Text>
+                  </View>
+                  <View style={s.listActions}>
+                    <Pressable 
+                      style={[s.listIconBtn, { backgroundColor: 'rgba(255,69,58,0.1)' }]} 
+                      onPress={() => {
+                        dislikeEvent(String(e.id));
+                      }}
+                    >
+                      <XIcon size={16} color="#FF453A" />
+                    </Pressable>
+                    <Pressable 
+                      style={[
+                        s.listIconBtn, 
+                        { backgroundColor: isSched ? 'rgba(48,209,88,1.0)' : 'rgba(48,209,88,0.1)' }
+                      ]} 
+                      onPress={() => handleSchedule(e)}
+                    >
+                      <Check 
+                        size={16} 
+                        color={isSched ? "#FFFFFF" : "#30D158"} 
+                      />
+                    </Pressable>
+                    <Pressable style={s.listIconBtn} onPress={() => handleShare(e)}>
+                      <Share2 size={16} color={COLORS.textSecondary} />
+                    </Pressable>
+                  </View>
+                </Pressable>
+              );
+            })}
             <View style={{ height: 100 }} />
           </ScrollView>
         ) : (
@@ -727,9 +727,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             onSchedule={() => handleSchedule(currentEvent)}
             onShare={() => handleShare(currentEvent)}
             onMap={() => handleMapOpen(currentEvent)}
+            onSkip={() => { handleSwipeLeft(currentEvent); setFlashcardIndex((i) => i + 1); }}
+            onAdd={() => { handleSwipeRight(currentEvent); setFlashcardIndex((i) => i + 1); }}
           />
         )}
-      {renderShareModal()}
       {detailEvent && (
         <Modal visible={!!detailEvent} transparent animationType="fade">
             <Pressable style={s.modalOverlay} onPress={() => setDetailEvent(null)}>
@@ -758,8 +759,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                             <Text style={s.detailBtnText}>Add to Calendar</Text>
                         </Pressable>
                         <View style={s.detailRow}>
-                            <Pressable style={s.detailSubBtn} onPress={() => handleShare(detailEvent)}>
-                                <Send size={18} color={COLORS.textPrimary} />
+                            <Pressable style={s.detailSubBtn} onPress={() => { setDetailEvent(null); handleShare(detailEvent); }}>
+                                <Share2 size={18} color={COLORS.textPrimary} />
                                 <Text style={s.detailSubText}>Share</Text>
                             </Pressable>
                             <Pressable style={s.detailSubBtn} onPress={() => handleMapNav(detailEvent)}>
@@ -831,7 +832,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         )}
         <View style={{ height: 100 }} />
       </ScrollView>
-      {renderShareModal()}
     </View>
   );
 }
@@ -842,11 +842,13 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 function FlashcardView({
   event, COLORS, isDark, isSaved, isScheduled,
   pan, opacity, onSwipeRight, onSwipeLeft, onSchedule, onShare, onMap,
+  onSkip, onAdd,
 }: {
   event: TAMUEvent; COLORS: any; isDark: boolean; isSaved: boolean; isScheduled: boolean;
   pan: Animated.ValueXY; opacity: Animated.Value;
   onSwipeRight: () => void; onSwipeLeft: () => void;
   onSchedule: () => void; onShare: () => void; onMap: () => void;
+  onSkip: () => void; onAdd: () => void;
 }) {
 
   const panResponder = useRef(
@@ -918,11 +920,17 @@ function FlashcardView({
 
       {/* Action buttons below card */}
       <View style={s.actions}>
+        <Pressable style={[s.actionBtn, { backgroundColor: '#FF453A' }]} onPress={onSkip}>
+          <XIcon size={22} color="#FFF" />
+        </Pressable>
         <Pressable style={[s.actionBtn, { backgroundColor: isScheduled ? '#30D158' : '#007AFF' }]} onPress={onSchedule}>
           <CalendarIcon size={20} color="#FFF" />
         </Pressable>
+        <Pressable style={[s.actionBtn, { backgroundColor: '#30D158' }]} onPress={onAdd}>
+          <Check size={22} color="#FFF" />
+        </Pressable>
         <Pressable style={[s.actionBtn, { backgroundColor: '#FF9500' }]} onPress={onShare}>
-          <Send size={20} color="#FFF" />
+          <Share2 size={20} color="#FFF" />
         </Pressable>
       </View>
     </View>
@@ -1025,7 +1033,6 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     friendAvatarText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
     friendName: { fontSize: 15, fontWeight: '700', color: COLORS.textPrimary },
     friendEmail: { fontSize: 12, color: COLORS.textSecondary, marginTop: 1 },
-    friendRowSelected: { backgroundColor: isDark ? 'rgba(48,209,88,0.08)' : 'rgba(48,209,88,0.06)' },
     /* Search */
     searchBar: { marginHorizontal: 18, marginBottom: 8, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.04)' },
     searchInput: { paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: COLORS.textPrimary },
@@ -1034,10 +1041,10 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     sendFabText: { fontSize: 15, fontWeight: '900', color: isDark ? '#121214' : '#FFFFFF' },
     /* List View */
     listScroll: { paddingHorizontal: 16, paddingTop: 10 },
-    listRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 18, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
-    listDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
-    listRowName: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 2 },
-    listRowSub: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '600' },
+    listRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)', borderRadius: 22, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border },
+    listIconContainer: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+    listRowName: { fontSize: 16, fontWeight: '800', color: COLORS.textPrimary, marginBottom: 4 },
+    listRowSub: { fontSize: 14, color: COLORS.textSecondary, letterSpacing: 0.3, marginTop: 2, fontWeight: '600' },
     listActions: { flexDirection: 'row', gap: 8, marginLeft: 10 },
     listIconBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)', alignItems: 'center', justifyContent: 'center' },
     /* Detail Sheet */

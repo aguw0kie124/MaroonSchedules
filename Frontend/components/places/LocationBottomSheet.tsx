@@ -23,7 +23,9 @@ import {
   Layers,
   Star,
   Navigation,
+  Share2,
 } from "lucide-react-native";
+import { useShareStore } from "../../store/shareStore";
 import * as Linking from "expo-linking";
 import * as Haptics from "expo-haptics";
 import type { CampusLocation } from "./types";
@@ -231,7 +233,7 @@ export function LocationBottomSheet({
                   ) : selectedLoc.classMeetings?.length ? (
                     <View style={styles.aiBadgeSlim}>
                       <Text style={styles.dotSeparator}>•</Text>
-                      <Text style={styles.aiTextSlim}>Your schedule</Text>
+                      <Text style={styles.aiTextSlim}>Your events</Text>
                     </View>
                   ) : (
                     <View style={styles.aiBadgeSlim}>
@@ -249,6 +251,19 @@ export function LocationBottomSheet({
                   style={styles.dismissBtn}
                 >
                   <X size={18} color="#888" />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.circularActionBtn}
+                  onPress={() =>
+                    useShareStore.getState().openShare({
+                      title: selectedLoc.location,
+                      message: `Check out ${selectedLoc.location} on MaroonSchedules!`,
+                      url: `https://maroonschedules.tamu.edu/places/${selectedLoc.location.replace(/\s+/g, '-')}`
+                    })
+                  }
+                >
+                  <Share2 size={20} color="#FFF" />
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -341,7 +356,7 @@ export function LocationBottomSheet({
                         onPress={openScheduleList}
                       >
                         <Calendar size={14} color="#F3F1ED" />
-                        <Text style={styles.quickActionText}>Schedules</Text>
+                        <Text style={styles.quickActionText}>Today</Text>
                       </TouchableOpacity>
                     ) : null}
 
@@ -766,9 +781,9 @@ export function LocationBottomSheet({
                   {selectedLoc.classMeetings?.length ? (
                     <View style={styles.infoBlock}>
                       <View style={styles.reviewsHeader}>
-                        <Text style={styles.sectionTitle}>Classes Here</Text>
+                        <Text style={styles.sectionTitle}>Today's Schedule</Text>
                         <TouchableOpacity onPress={openScheduleList}>
-                          <Text style={styles.seeAllText}>My schedules</Text>
+                          <Text style={styles.seeAllText}>My Today</Text>
                         </TouchableOpacity>
                       </View>
 

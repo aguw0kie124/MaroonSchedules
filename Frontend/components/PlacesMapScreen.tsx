@@ -20,13 +20,30 @@ import React, {
 } from "react";
 import {
   View,
+  Text,
   StyleSheet,
   ActivityIndicator,
   TouchableOpacity,
   Animated,
+  Platform,
 } from "react-native";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
+import { 
+  Menu,
+  ChevronRight,
+  ChevronLeft,
+  Navigation,
+  Compass,
+  Calendar,
+  LocateFixed,
+  Orbit,
+  Plus,
+  Locate,
+  Maximize2,
+  Minimize2
+} from "lucide-react-native";
+import { createRoute, WalkingRoute } from "../services/campusDirections";
 import { useTheme } from "./SharedUI";
 import { PageModuleEditor } from "./PageModuleEditor";
 import MapView, {
@@ -46,6 +63,7 @@ import {
   isNavItemVisible,
   useAppShellStore,
 } from "../store/appShellStore";
+import { useShareStore } from "../store/shareStore";
 import {
   DiningMealPeriod,
   fetchDiningFullMenuCached,
@@ -67,6 +85,7 @@ import {
 } from "./places/BusLayerUI";
 import { LocationBottomSheet } from "./places/LocationBottomSheet";
 import { PlacesList } from "./places/PlacesList";
+import { useScheduleMap } from "./places/useScheduleMap";
 
 // ── Shared data / utilities ───────────────────────────────────
 import {
@@ -91,7 +110,6 @@ import {
   getCategoryIcon,
 } from "./places/utils";
 import { getStyles } from "./places/placesStyles";
-import { LocateFixed, Orbit } from "lucide-react-native";
 
 // ── Transitional: still uses inline hooks from original file
 //    (replace with useLocationData / useScheduleMap / useBusTransit
@@ -136,7 +154,7 @@ export function PlacesMapScreen() {
   const lastPlacesFitKey = useRef<string | null>(null);
 
   // ── UI state ──────────────────────────────────────────────
-  const [activeLayer, setActiveLayer] = useState<string>("Schedule");
+  const [activeLayer, setActiveLayer] = useState<string>("Today");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -145,6 +163,9 @@ export function PlacesMapScreen() {
   const [userCoord, setUserCoord] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isMapTilted, setIsMapTilted] = useState(false);
   const [pendingInitialLocation, setPendingInitialLocation] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [activeWalkingRoute, setActiveWalkingRoute] = useState<WalkingRoute | null>(null);
+  const [isTodayExpanded, setIsTodayExpanded] = useState(false);
 
   // ── Location data ─────────────────────────────────────────
   const fullCampusIndex = useMemo(() => buildCampusDirectory(), []);
@@ -187,12 +208,22 @@ export function PlacesMapScreen() {
     }
   }, [fullCampusIndex]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   // ── Schedule state ────────────────────────────────────────
-  const [savedSchedules, setSavedSchedules] = useState<any[]>([]);
-  const [isLoadingSchedules, setIsLoadingSchedules] = useState(false);
   const [activeScheduleId, setActiveScheduleId] = useState<string | null>(null);
+
+  // ── Unified Schedule Hook ──────────────────────────────────
+  const {
+    scheduleOptions,
+    activeScheduleOption,
+    scheduleLocations,
+    scheduleSummaryLabel,
+    isLoadingSchedules,
+    nextEntry
+  } = useScheduleMap(locations, selectedDate);
 
   // ── Bus state ─────────────────────────────────────────────
   const [busRoutes, setBusRoutes] = useState<any[]>([]);
@@ -256,63 +287,16 @@ export function PlacesMapScreen() {
   }, [activeLayer, visiblePlacesPills]);
 
   // ── Derived map locations ─────────────────────────────────
-  const scheduleOptions = useMemo(() => {
-    // (same logic as original — pulls from campusHubSnapshot + savedSchedules)
-    const options: any[] = [];
-    const uploadedCourses = campusHubSnapshot?.academic?.courses || [];
-    if (uploadedCourses.length > 0) {
-      const label = campusHubSnapshot?.academic?.scheduleName?.trim() || "Uploaded Schedule";
-      const entries = uploadedCourses.map((course: any) => {
-        const locationLabel = (course.location || "").trim();
-        const [building, ...roomParts] = locationLabel.split(/\s+/);
-        return { id: `uploaded:${course.id || course.code}`, code: course.code || "Class", name: course.name || "Untitled Class", building, room: roomParts.join(" ").trim(), days: Array.isArray(course.days) ? course.days : [], timeLabel: course.time || "Time TBA", locationLabel, scheduleLabel: label };
-      });
-      if (entries.length > 0) options.push({ id: "uploaded", label, source: "uploaded", entries });
-    }
-    savedSchedules.forEach((schedule: any) => {
-      const scheduleLabel = schedule.name || "Saved Schedule";
-      const entries = (schedule.sections || []).map((section: any) => {
-        const meeting = (section.meetings || [])[0] || {};
-        const building = (meeting.building || "").trim();
-        const room = (meeting.room || "").trim();
-        const locationLabel = `${building} ${room}`.trim();
-        return { id: `saved:${schedule.schedule_id}:${section.section_id || section.id}`, code: `${section.dept || ""} ${section.courseNumber || ""}`.trim() || `Section ${section.sectionNumber || "TBA"}`, name: section.courseTitle || "Untitled Class", building, room, days: Array.isArray(meeting.daysOfWeek) ? meeting.daysOfWeek : [], timeLabel: meeting.beginTime && meeting.endTime ? `${meeting.beginTime}-${meeting.endTime}` : "Time TBA", locationLabel, scheduleLabel };
-      });
-      if (entries.length > 0) options.push({ id: `saved:${schedule.schedule_id}`, label: scheduleLabel, source: "saved", entries });
-    });
-    return options;
-  }, [campusHubSnapshot?.academic?.courses, campusHubSnapshot?.academic?.scheduleName, savedSchedules]);
-
-  const activeScheduleOption = useMemo(() => scheduleOptions.find((o) => o.id === activeScheduleId) || scheduleOptions[0] || null, [activeScheduleId, scheduleOptions]);
-
-  const scheduleLocations = useMemo<CampusLocation[]>(() => {
-    if (!activeScheduleOption) return [];
-    const grouped = new Map<string, { building: any; classMeetings: any[] }>();
-    activeScheduleOption.entries.forEach((entry: any) => {
-      const { BUILDING_LOOKUP, normalizeBuildingKey } = require("./places/campusData");
-      const building = BUILDING_LOOKUP.get(normalizeBuildingKey(entry.building)) || BUILDING_LOOKUP.get(normalizeBuildingKey(entry.locationLabel));
-      if (!building) return;
-      const canonicalName = getCanonicalLocationName(building.name);
-      const existing = grouped.get(canonicalName);
-      if (existing) { existing.classMeetings.push(entry); return; }
-      grouped.set(canonicalName, { building, classMeetings: [entry] });
-    });
-    return Array.from(grouped.entries()).map(([locationName, group]) => {
-      const existing = fullCampusIndex.find((l) => l.location === locationName);
-      return { ...(existing || { location: locationName, percent_full: 0, type: "Academic" as LocationType, is_live: false, available_seats: null, coord: { lat: group.building.latitude, lng: group.building.longitude } }), location: locationName, shortName: group.building.shortName, percent_full: 0, type: "Academic" as LocationType, is_live: false, available_seats: null, coord: { lat: group.building.latitude, lng: group.building.longitude }, source: "schedule" as const, scheduleLabel: activeScheduleOption.label, description: `${group.classMeetings.length} class location${group.classMeetings.length === 1 ? "" : "s"} from ${activeScheduleOption.label}.`, classMeetings: group.classMeetings };
-    });
-  }, [activeScheduleOption, fullCampusIndex]);
-
   const allMapLocations = useMemo(() => {
     const merged = new Map<string, CampusLocation>();
     locations.forEach((l) => merged.set(l.location, l));
-    scheduleLocations.forEach((l) => merged.set(l.location, { ...(merged.get(l.location) || {}), ...l }));
+    scheduleLocations.forEach((l: any) => merged.set(l.location, { ...(merged.get(l.location) || {}), ...l }));
     return Array.from(merged.values());
   }, [locations, scheduleLocations]);
 
   const filteredLocations = useMemo(() => {
     if (activeLayer === "Heatmap") return [];
-    if (activeLayer === "Schedule") return scheduleLocations;
+    if (activeLayer === "Today") return scheduleLocations;
     if (activeLayer === "Dining") return allMapLocations.filter((l) => l.type === "Dining" || l.type === "Hub");
     if (activeLayer === "Academic") return allMapLocations.filter((l) => l.type === "Academic" || l.type === "Landmark");
     if (activeLayer === "Study") return allMapLocations.filter((l) => l.type === "Study" || l.type === "Library");
@@ -376,12 +360,6 @@ export function PlacesMapScreen() {
   );
   const busRouteOptions = useMemo(() => [{ Key: ALL_BUS_ROUTES_KEY, ShortName: "ALL", Name: "All Routes", Color: "#1E1E1E" }, ...busRoutes], [busRoutes]);
   const filteredBusRoutes = busRouteOptions;
-
-  const scheduleSummaryLabel = useMemo(() => {
-    if (isLoadingSchedules) return "Loading your class map...";
-    if (!activeScheduleOption) return "No schedule mapped yet";
-    return `${activeScheduleOption.entries.length} class${activeScheduleOption.entries.length === 1 ? "" : "es"} across ${scheduleLocations.length} building${scheduleLocations.length === 1 ? "" : "s"}`;
-  }, [activeScheduleOption, isLoadingSchedules, scheduleLocations.length]);
 
   const selectedRecreationFacility = useMemo(() => {
     if (!selectedLoc) return null;
@@ -541,10 +519,31 @@ export function PlacesMapScreen() {
     setIsSearchExpanded(false);
     setSearchQuery("");
     setShowSearchResults(false);
-    if (mapRef.current) {
-      mapRef.current.animateToRegion({ latitude: loc.coord.lat - 0.001, longitude: loc.coord.lng, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 500);
+
+    if (mapRef.current && loc.coord) {
+      if (activeLayer === "Today" && activeWalkingRoute && userCoord) {
+        // Fit map to show both user and destination if we have a route
+        mapRef.current.fitToCoordinates(
+          [
+            { latitude: userCoord.latitude, longitude: userCoord.longitude },
+            { latitude: loc.coord.lat, longitude: loc.coord.lng }
+          ],
+          {
+            edgePadding: { top: 180, right: 50, bottom: 120, left: 50 },
+            animated: true
+          }
+        );
+      } else {
+        // Just animate to the specific location
+        mapRef.current.animateToRegion({
+          latitude: loc.coord.lat - 0.001,
+          longitude: loc.coord.lng,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01
+        }, 500);
+      }
     }
-  }, []);
+  }, [activeLayer, activeWalkingRoute, userCoord]);
 
   const centerOnUserLocation = useCallback(async () => {
     try {
@@ -599,11 +598,34 @@ export function PlacesMapScreen() {
     const nextPatterns = patternEntries.reduce((acc, [k, p]) => { acc[k] = p; return acc; }, {} as any);
     setAllRoutePatternsById(nextPatterns);
     const vehicles = await transitService.getVehicles();
-    setBusVehicles(vehicles);
-    setBusStops([]); setRoutePatterns([]);
-    const allPoints = patternEntries.flatMap(([, p]: any) => p.points || []);
-    if (mapRef.current && allPoints.length > 0) mapRef.current.fitToCoordinates(allPoints, { edgePadding: { top: 220, right: 60, bottom: 110, left: 60 }, animated: true });
+    setBusVehicles(vehicles || []);
   }, []);
+
+  // ── Intelligent Auto-Zoom ─────────────────────────────────
+  useEffect(() => {
+    if (!mapRef.current || filteredLocations.length === 0) return;
+
+    const coords = filteredLocations
+      .filter(loc => loc.coord)
+      .map(loc => ({ latitude: loc.coord.lat, longitude: loc.coord.lng }));
+
+    if (activeLayer === "Today" && userCoord) {
+      coords.push(userCoord);
+    }
+
+    if (coords.length > 0) {
+      // Determine padding based on UI:
+      // Today: 20px below "date box" (~160px from top) and 20px above tab bar (~100px from bottom)
+      // Others: 20px below category bar (~110px from top) and 20px above tab bar (~100px from bottom)
+      const topPadding = activeLayer === "Today" ? 170 : 110;
+      const bottomPadding = 100;
+
+      mapRef.current.fitToCoordinates(coords, {
+        edgePadding: { top: topPadding, right: 20, bottom: bottomPadding, left: 20 },
+        animated: true,
+      });
+    }
+  }, [filteredLocations, activeLayer, userCoord]);
 
   const handleSelectBusRoute = useCallback(async (routeId: string, availableRoutes: any[] = busRoutes) => {
     setSelectedBusRouteId(routeId); setSelectedStop(null); setSelectedBus(null);
@@ -733,15 +755,7 @@ export function PlacesMapScreen() {
     }
   }, [activeLayer, busPulseAnim]);
 
-  // Fetch saved schedules
-  useEffect(() => {
-    let cancelled = false;
-    if (!user?.id) { setSavedSchedules([]); setIsLoadingSchedules(false); return; }
-    setIsLoadingSchedules(true);
-    const { fetchSchedules } = require("../api/client");
-    fetchSchedules(user.id).then((data: any) => { if (!cancelled) setSavedSchedules(Array.isArray(data) ? data : []); }).catch(() => { if (!cancelled) setSavedSchedules([]); }).finally(() => { if (!cancelled) setIsLoadingSchedules(false); });
-    return () => { cancelled = true; };
-  }, [user?.id]);
+  // Saved schedules state is now managed within useScheduleMap
 
   // Sync active schedule
   useEffect(() => {
@@ -779,6 +793,24 @@ export function PlacesMapScreen() {
     } else { if (busPollInterval.current) clearInterval(busPollInterval.current); }
     return () => { if (busPollInterval.current) clearInterval(busPollInterval.current); };
   }, [activeLayer, isAllBusRoutesSelected, selectedBusRouteId]);
+
+  // Walking directions routing for Today tab
+  useEffect(() => {
+    if (activeLayer === "Today" && nextEntry && userCoord) {
+      const dest = { latitude: nextEntry.lat, longitude: nextEntry.lng };
+      if (dest.latitude && dest.longitude) {
+        const route = createRoute(
+          { latitude: userCoord.latitude, longitude: userCoord.longitude },
+          dest
+        );
+        setActiveWalkingRoute(route);
+      } else {
+        setActiveWalkingRoute(null);
+      }
+    } else {
+      setActiveWalkingRoute(null);
+    }
+  }, [activeLayer, nextEntry, userCoord]);
 
   // Update nearest bus when vehicles change
   useEffect(() => {
@@ -909,10 +941,23 @@ export function PlacesMapScreen() {
           </Marker>
         ))}
 
+        {/* Walking Route Polyline */}
+        {activeLayer === "Today" && activeWalkingRoute && (
+          <Polyline
+            coordinates={activeWalkingRoute.polyline}
+            strokeColor="#500000"
+            strokeWidth={4}
+            lineDashPattern={[5, 10]}
+          />
+        )}
+
         {/* Campus location markers */}
         {activeLayer !== "Bus" && markerLocations.map((loc) => {
           const isSelected = loc.location === selectedId;
-          const statusColor = getStatusColor(loc.percent_full);
+          const isTodayLayer = activeLayer === "Today";
+          const pinColor = isTodayLayer ? (loc.classMeetings?.[0]?.type === "event" ? "#FF9500" : "#500000") : getStatusColor(loc.percent_full);
+          const pinText = isTodayLayer && loc.sequenceIndex ? loc.sequenceIndex.toString() : null;
+
           return (
             <Marker
               key={`loc-${loc.location}`}
@@ -920,19 +965,28 @@ export function PlacesMapScreen() {
               onPress={() => handleSelectLocation(loc)}
               anchor={{ x: 0.5, y: 1 }}
             >
-              <View style={{ alignItems: "center", transform: [{ scale: isSelected ? 1.2 : 1.0 }] }}>
-                <View style={[styles.markerPin, { backgroundColor: isSelected ? statusColor : COLORS.primary }]}>
-                   {getCategoryIcon(loc.type, "#FFFFFF", isSelected ? 18 : 16)}
+              {isTodayLayer ? (
+                <View style={[(styles as any).numberedPinContainer, { transform: [{ scale: isSelected ? 1.2 : 1.0 }] }]}>
+                  <View style={[(styles as any).numberedPinHead, { backgroundColor: pinColor }]}>
+                    <Text style={(styles as any).numberedPinNumber}>{pinText || "•"}</Text>
+                  </View>
+                  <View style={[(styles as any).numberedPinTail, { borderTopColor: pinColor }]} />
                 </View>
-                <View style={[styles.markerPinLeg, { borderTopColor: isSelected ? statusColor : COLORS.primary }]} />
-              </View>
+              ) : (
+                <View style={{ alignItems: "center", transform: [{ scale: isSelected ? 1.2 : 1.0 }] }}>
+                  <View style={[styles.markerPin, { backgroundColor: pinColor }]}>
+                    {getCategoryIcon(loc.type, "#FFFFFF", isSelected ? 18 : 16)}
+                  </View>
+                  <View style={[styles.markerPinLeg, { borderTopColor: pinColor }]} />
+                </View>
+              )}
             </Marker>
           );
         })}
       </MapView>
 
       {/* Top UI Floating Elements */}
-      <View style={[styles.topContainer, { top: Math.max(insets.top + 10, 54) }]}>
+      <View style={[styles.topContainer, { top: 54, alignItems: "center" }]}>
         <FloatingSearchBar
           styles={styles}
           COLORS={COLORS}
@@ -942,33 +996,34 @@ export function PlacesMapScreen() {
           setSearchQuery={setSearchQuery}
           setShowSearchResults={setShowSearchResults}
           onOpenSettings={() => setIsEditorVisible(true)}
+          onShare={() => useShareStore.getState().openShare({
+            title: "Campus Map",
+            message: "Check out the live campus map on MaroonSchedules!",
+            url: "https://maroonschedules.tamu.edu/places"
+          })}
         />
 
-        <SearchOverlay
-          styles={styles}
-          COLORS={COLORS}
-          searchResults={searchResults}
-          busRouteResults={busRouteSearchResults}
-          isSearchExpanded={isSearchExpanded}
-          showSearchResults={showSearchResults}
-          onSelectLocation={handleSelectLocation}
-          onSelectBusRoute={handleSelectBusRouteFromSearch}
-        />
+        {!isSearchExpanded && (
+          <View style={{ marginTop: 14, width: "100%" }}>
+            <LayerPillScroller
+              styles={styles}
+              COLORS={COLORS}
+              activeLayer={activeLayer}
+              layers={visibleCategories}
+              onSelectLayer={(layer) => {
+                setActiveLayer(layer);
+                setSelectedId(null);
+                setSelectedStop(null);
+                setSelectedBus(null);
+                setIsRouteDropdownOpen(false);
+              }}
+              onOpenSettings={() => setIsEditorVisible(true)}
+            />
+          </View>
+        )}
+      </View>
 
-        <LayerPillScroller
-          styles={styles}
-          COLORS={COLORS}
-          activeLayer={activeLayer}
-          layers={visibleCategories}
-          onSelectLayer={(layer) => {
-            setActiveLayer(layer);
-            setSelectedId(null);
-            setSelectedStop(null);
-            setSelectedBus(null);
-            setIsRouteDropdownOpen(false);
-          }}
-          onOpenSettings={() => setIsEditorVisible(true)}
-        />
+      {/* Global Search Results Overlay moved to bottom for z-index priority */}
 
       {/* Bus layer UI */}
       {activeLayer === "Bus" && (
@@ -992,7 +1047,6 @@ export function PlacesMapScreen() {
           handleStopPress={handleStopPress}
         />
       )}
-      </View>
 
       <View style={styles.mapFabStack} pointerEvents="box-none">
         <TouchableOpacity
@@ -1026,26 +1080,60 @@ export function PlacesMapScreen() {
         selectedRoute={selectedRoute}
       />
 
-      {/* List view */}
-      <PlacesList
-        styles={styles}
-        COLORS={COLORS}
-        activeLayer={activeLayer}
-        selectedId={selectedId}
-        sortedFilteredLocations={sortedFilteredLocations}
-        scheduleOptions={scheduleOptions}
-        activeScheduleOption={activeScheduleOption}
-        scheduleSummaryLabel={scheduleSummaryLabel}
-        isLoadingSchedules={isLoadingSchedules}
-        setActiveScheduleId={setActiveScheduleId}
-        setSelectedId={setSelectedId}
-        openScheduleList={openScheduleList}
-        openNewCourseSearch={openNewCourseSearch}
-        userCoord={userCoord}
-        parkingPermit={parkingPermit}
-        recreationFacilityMap={recreationFacilityMap}
-        handleSelectLocation={handleSelectLocation}
-      />
+      {/* List view / Top Schedule Overlay */}
+      {activeLayer === "Today" && !isSearchExpanded ? (
+        <View style={[(styles as any).todayTopOverlay, { top: 162, zIndex: 10 }]}>
+          <PlacesList
+            styles={styles}
+            COLORS={COLORS}
+            activeLayer={activeLayer}
+            selectedId={selectedId}
+            sortedFilteredLocations={sortedFilteredLocations}
+            scheduleOptions={scheduleOptions}
+            activeScheduleOption={activeScheduleOption}
+            scheduleSummaryLabel={scheduleSummaryLabel}
+            isLoadingSchedules={isLoadingSchedules}
+            setActiveScheduleId={setActiveScheduleId}
+            setSelectedId={setSelectedId}
+            openScheduleList={openScheduleList}
+            openNewCourseSearch={openNewCourseSearch}
+            userCoord={userCoord}
+            parkingPermit={parkingPermit}
+            recreationFacilityMap={recreationFacilityMap}
+            handleSelectLocation={handleSelectLocation}
+            selectedDate={selectedDate}
+            setSelectedDate={setSelectedDate}
+            nextEntry={nextEntry}
+            activeWalkingRoute={activeWalkingRoute}
+            isTodayExpanded={isTodayExpanded}
+            setIsTodayExpanded={setIsTodayExpanded}
+            onShare={useShareStore.getState().openShare}
+          />
+        </View>
+      ) : (
+        <PlacesList
+          styles={styles}
+          COLORS={COLORS}
+          activeLayer={activeLayer}
+          selectedId={selectedId}
+          sortedFilteredLocations={sortedFilteredLocations}
+          scheduleOptions={scheduleOptions}
+          activeScheduleOption={activeScheduleOption}
+          scheduleSummaryLabel={scheduleSummaryLabel}
+          isLoadingSchedules={isLoadingSchedules}
+          setActiveScheduleId={setActiveScheduleId}
+          setSelectedId={setSelectedId}
+          openScheduleList={openScheduleList}
+          openNewCourseSearch={openNewCourseSearch}
+          userCoord={userCoord}
+          parkingPermit={parkingPermit}
+          recreationFacilityMap={recreationFacilityMap}
+          handleSelectLocation={handleSelectLocation}
+          selectedDate={selectedDate}
+          setSelectedDate={setSelectedDate}
+          nextEntry={nextEntry}
+        />
+      )}
 
       {/* Location bottom sheet */}
       <LocationBottomSheet
@@ -1099,6 +1187,32 @@ export function PlacesMapScreen() {
           onMove={movePlacesPill}
         />
       )}
+      {/* Global Search Results Overlay rendered at the end for top-level z-index */}
+      <SearchOverlay
+        styles={styles}
+        COLORS={COLORS}
+        searchResults={fullCampusIndex.filter(loc => 
+          loc.location.toLowerCase().includes(searchQuery.toLowerCase()) || 
+          loc.shortName?.toLowerCase().includes(searchQuery.toLowerCase())
+        )}
+        busRouteResults={busRoutes.filter(route => 
+          route.Name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+          route.ShortName?.toLowerCase().includes(searchQuery.toLowerCase())
+        )}
+        isSearchExpanded={isSearchExpanded}
+        showSearchResults={showSearchResults}
+        onSelectLocation={(loc) => {
+          handleSelectLocation(loc);
+          setIsSearchExpanded(false);
+          setShowSearchResults(false);
+        }}
+        onSelectBusRoute={(route) => {
+          setActiveLayer("Bus");
+          handleSelectBusRoute(route.Key);
+          setIsSearchExpanded(false);
+          setShowSearchResults(false);
+        }}
+      />
     </View>
   );
 }

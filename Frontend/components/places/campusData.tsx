@@ -330,7 +330,7 @@ export function buildCampusDirectory(): CampusLocation[] {
 
 // ── Category definitions ──────────────────────────────────────
 export const CATEGORIES = [
-  { id: "Schedule", label: "Classes", icon: <Calendar size={18} /> },
+  { id: "Today", label: "Today", icon: <Calendar size={18} /> },
   { id: "Bus", label: "Buses", icon: <Bus size={18} /> },
   { id: "Dining", label: "Dining", icon: <Utensils size={18} /> },
   { id: "Parking", label: "Parking", icon: <TrafficCone size={18} /> },

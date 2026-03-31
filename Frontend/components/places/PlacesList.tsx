@@ -7,7 +7,8 @@ import {
   Animated,
   PanResponder,
 } from "react-native";
-import { ChevronRight, Calendar, Plus, Menu } from "lucide-react-native";
+import { ChevronRight, Calendar, Plus, Menu, ChevronLeft, Navigation, Maximize2, Minimize2, Share2 } from "lucide-react-native";
+import { ShareContent } from "../../store/shareStore";
 import { Card } from "../SharedUI";
 import type { CampusLocation } from "./types";
 import { SCREEN_HEIGHT } from "./types";
@@ -19,6 +20,7 @@ import {
   haversineDistanceMeters,
 } from "./utils";
 import { getCanonicalLocationName } from "./campusData";
+import { TodayTimeline } from "./TodayTimeline";
 
 interface PlacesListProps {
   styles: any;
@@ -38,6 +40,13 @@ interface PlacesListProps {
   parkingPermit: any;
   recreationFacilityMap: Map<string, any>;
   handleSelectLocation: (loc: CampusLocation) => void;
+  selectedDate: Date;
+  setSelectedDate: (date: Date) => void;
+  nextEntry: any;
+  activeWalkingRoute?: any;
+  isTodayExpanded?: boolean;
+  setIsTodayExpanded?: (expanded: boolean) => void;
+  onShare?: (content: ShareContent) => void;
 }
 
 export function PlacesList({
@@ -58,13 +67,21 @@ export function PlacesList({
   parkingPermit,
   recreationFacilityMap,
   handleSelectLocation,
+  selectedDate,
+  setSelectedDate,
+  nextEntry,
+  activeWalkingRoute,
+  isTodayExpanded,
+  setIsTodayExpanded,
+  onShare,
 }: PlacesListProps) {
+  const isTodayLayer = activeLayer === "Today";
   const shouldShowSheet =
-    !selectedId && activeLayer !== "Bus" && activeLayer !== "Heatmap" && (activeLayer === "Schedule" || sortedFilteredLocations.length > 0);
+    !selectedId && activeLayer !== "Bus" && activeLayer !== "Heatmap" && (isTodayLayer || sortedFilteredLocations.length > 0);
 
   // Keep the sheet docked lower so the map remains the main workspace.
   const sheetHeight = Math.min(Math.round(SCREEN_HEIGHT * 0.52), 470);
-  const collapsedHeight = activeLayer === "Schedule" ? 164 : 110;
+  const collapsedHeight = activeLayer === "Today" ? 230 : 110;
   const collapsedTranslateY = Math.max(sheetHeight - collapsedHeight, 0);
   const translateY = useRef(new Animated.Value(collapsedTranslateY)).current;
   const sheetSnap = useRef(collapsedTranslateY);
@@ -93,6 +110,23 @@ export function PlacesList({
     setIsExpanded(false);
     animateSheet(collapsedTranslateY);
   }, [activeLayer, animateSheet, collapsedTranslateY, shouldShowSheet]);
+
+  const handlePrevDay = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() - 1);
+    setSelectedDate(d);
+  };
+
+  const handleNextDay = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + 1);
+    setSelectedDate(d);
+  };
+
+  const formatDate = (date: Date) => {
+    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    return `${months[date.getMonth()]} ${date.getDate()}`;
+  };
 
   const panResponder = useMemo(
     () =>
@@ -123,7 +157,7 @@ export function PlacesList({
   );
 
   const getSheetTitle = () => {
-    if (activeLayer === "Schedule") return "Class Locations";
+    if (activeLayer === "Today") return "Today's Schedule";
     if (activeLayer === "Dining") return "Dining Places";
     if (activeLayer === "Academic") return "Academic Places";
     if (activeLayer === "Study") return "Study Spots";
@@ -134,103 +168,117 @@ export function PlacesList({
   };
 
   const getSheetSubtitle = () => {
-    if (activeLayer === "Schedule") {
-      return activeScheduleOption
-        ? `${activeScheduleOption.label} on the map.`
-        : isLoadingSchedules
-          ? "Loading class map."
-          : "Map your classes to view them here.";
-    }
+    if (activeLayer === "Today") return null;
     return `${sortedFilteredLocations.length} place${sortedFilteredLocations.length === 1 ? "" : "s"} in this view.`;
   };
 
-  const renderScheduleCard = () => {
-    if (activeLayer !== "Schedule") return null;
-
-    const hasSchedules = scheduleOptions.length > 0;
+  const renderTodayHeader = () => {
+    if (activeLayer !== "Today") return null;
     return (
-      <View style={styles.placesSheetScheduleCard}>
-        <View style={styles.placesSheetScheduleTopRow}>
-          <View style={styles.placesSheetScheduleIcon}>
-            <Calendar size={18} color="#FFF" />
-          </View>
-          <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={styles.placesSheetScheduleEyebrow}>Class map</Text>
-            <Text style={styles.placesSheetScheduleTitle} numberOfLines={1}>
-              {activeScheduleOption ? activeScheduleOption.label : "No schedule selected"}
-            </Text>
-            <Text style={styles.placesSheetScheduleBody} numberOfLines={1}>
-              {scheduleSummaryLabel}
-            </Text>
-          </View>
-          <TouchableOpacity
-            activeOpacity={0.9}
-            style={styles.placesSheetScheduleMenuButton}
-            onPress={openScheduleList}
-          >
-            <Menu size={18} color={COLORS.textPrimary} />
-          </TouchableOpacity>
+      <View style={styles.dateNavHeader}>
+        <TouchableOpacity style={styles.dateNavArrow} onPress={handlePrevDay}>
+          <ChevronLeft size={20} color={COLORS.textPrimary} />
+        </TouchableOpacity>
+        <View style={styles.dateNavTitleContainer}>
+          <Text style={styles.dateNavTitle}>{formatDate(selectedDate)}</Text>
         </View>
-
-        <View style={styles.placesSheetScheduleActionRow}>
-          <TouchableOpacity
-            style={[styles.placesSheetScheduleAction, styles.placesSheetScheduleActionPrimary]}
-            onPress={openScheduleList}
+        <TouchableOpacity style={styles.dateNavArrow} onPress={handleNextDay}>
+          <ChevronRight size={20} color={COLORS.textPrimary} />
+        </TouchableOpacity>
+        {setIsTodayExpanded && (
+          <TouchableOpacity 
+            style={[styles.dateNavArrow, { marginLeft: 8 }]} 
+            onPress={() => setIsTodayExpanded(!isTodayExpanded)}
           >
-            <Text style={styles.placesSheetScheduleActionPrimaryText}>Schedules</Text>
+            {isTodayExpanded ? (
+              <Minimize2 size={20} color={COLORS.textPrimary} />
+            ) : (
+              <Maximize2 size={20} color={COLORS.textPrimary} />
+            )}
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.placesSheetScheduleAction}
-            onPress={openNewCourseSearch}
-          >
-            <Plus size={14} color={COLORS.textPrimary} />
-            <Text style={styles.placesSheetScheduleActionText}>Add class</Text>
-          </TouchableOpacity>
-        </View>
-
-        {hasSchedules ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.placesSheetScheduleChipScroller}
-          >
-            {scheduleOptions.map((option) => {
-              const isActive = activeScheduleOption?.id === option.id;
-              return (
-                <TouchableOpacity
-                  key={option.id}
-                  style={[
-                    styles.placesSheetScheduleChip,
-                    isActive && styles.placesSheetScheduleChipActive,
-                  ]}
-                  onPress={() => {
-                    setActiveScheduleId(option.id);
-                    setSelectedId(null);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.placesSheetScheduleChipLabel,
-                      isActive && styles.placesSheetScheduleChipLabelActive,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {option.label}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.placesSheetScheduleChipMeta,
-                      isActive && styles.placesSheetScheduleChipMetaActive,
-                    ]}
-                  >
-                    {option.source === "uploaded" ? "Uploaded" : `${option.entries.length} classes`}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        ) : null}
+        )}
       </View>
+    );
+  };
+
+  const renderScheduleCard = () => {
+    if (activeLayer !== "Today") return null;
+
+    if (!isTodayExpanded && nextEntry) {
+      const travelLabel = activeWalkingRoute 
+        ? `Get Directions (${activeWalkingRoute.estimatedTimeMinutes} min)`
+        : "Get Directions";
+
+      return (
+        <View style={styles.nextUpCard}>
+          <View style={styles.nextUpMainRow}>
+            <View style={styles.nextUpTimeBox}>
+              <Text style={styles.nextUpTimeText}>{nextEntry.timeLabel}</Text>
+            </View>
+            <View style={styles.nextUpContent}>
+              <Text style={styles.nextUpTitle} numberOfLines={1}>{nextEntry.name}</Text>
+              <Text style={styles.nextUpLocation} numberOfLines={1}>{nextEntry.locationLabel}</Text>
+            </View>
+            <TouchableOpacity 
+              style={{ padding: 8 }}
+              onPress={() => onShare?.({
+                title: nextEntry.name,
+                message: `Heading to ${nextEntry.name} at ${nextEntry.locationLabel}!`,
+                url: "https://maroonschedules.tamu.edu"
+              })}
+            >
+              <Share2 size={18} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          
+          <TouchableOpacity 
+            style={styles.nextUpHintBox} 
+            onPress={() => {
+              if (handleSelectLocation && nextEntry) {
+                // Find the campus location that matches this building
+                let loc = sortedFilteredLocations.find((l: any) => 
+                  l.location === nextEntry.building || 
+                  l.shortName === nextEntry.building ||
+                  l.location.includes(nextEntry.building)
+                );
+                
+                // If not found in current list, try the entry's own attached coord
+                if (loc && loc.coord) {
+                  handleSelectLocation(loc);
+                } else if ((nextEntry as any).lat && (nextEntry as any).lng) {
+                  handleSelectLocation({
+                    location: nextEntry.building,
+                    coord: { lat: (nextEntry as any).lat, lng: (nextEntry as any).lng }
+                  } as any);
+                }
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Navigation size={14} color={COLORS.primary} />
+            <Text style={styles.nextUpHintText}>{travelLabel}</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (!isTodayExpanded && !nextEntry) {
+       return (
+         <View style={styles.placesSheetCollapsedBody}>
+            <View style={styles.placesSheetCollapsedSummary}>
+              <Text style={styles.placesSheetCollapsedSummaryTitle}>All done for today!</Text>
+              <Text style={styles.placesSheetCollapsedSummaryMeta}>Nothing else in your schedule</Text>
+            </View>
+         </View>
+       );
+    }
+
+    return (
+      <TodayTimeline
+        styles={styles}
+        COLORS={COLORS}
+        activeScheduleOption={activeScheduleOption}
+      />
     );
   };
 
@@ -264,7 +312,7 @@ export function PlacesList({
     const statusChips: string[] = [];
 
     if (loc.classMeetings?.length) {
-      statusChips.push("Classes here");
+      statusChips.push("Today's events");
     }
     if (loc.hours) {
       statusChips.push("Open");
@@ -348,6 +396,23 @@ export function PlacesList({
     return null;
   }
 
+  if (isTodayLayer) {
+    return (
+      <View style={styles.todayTopContainer}>
+        <View style={styles.placesSheetHeader}>
+          {renderTodayHeader()}
+        </View>
+        <ScrollView
+          style={styles.placesSheetScroll}
+          contentContainerStyle={styles.placesSheetListContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {renderScheduleCard()}
+        </ScrollView>
+      </View>
+    );
+  }
+
   return (
     <Animated.View
       style={[
@@ -364,8 +429,16 @@ export function PlacesList({
               style={{ flex: 1 }}
               onPress={() => animateSheet(isExpanded ? collapsedTranslateY : 0)}
             >
-              <Text style={styles.placesSheetTitle}>{getSheetTitle()}</Text>
-              <Text style={styles.placesSheetSubtitle}>{getSheetSubtitle()}</Text>
+              {activeLayer === "Today" ? (
+                renderTodayHeader()
+              ) : (
+                <>
+                  <Text style={styles.placesSheetTitle}>{getSheetTitle()}</Text>
+                  {getSheetSubtitle() && (
+                    <Text style={styles.placesSheetSubtitle}>{getSheetSubtitle()}</Text>
+                  )}
+                </>
+              )}
             </TouchableOpacity>
             <TouchableOpacity
               activeOpacity={0.9}
@@ -385,24 +458,24 @@ export function PlacesList({
           showsVerticalScrollIndicator={false}
         >
           {renderScheduleCard()}
-          {isExpanded ? (
+          {isExpanded && activeLayer !== "Today" ? (
             sortedFilteredLocations.map((loc) => renderPlaceCard(loc))
-          ) : (
+          ) : !isExpanded && activeLayer !== "Today" ? (
             <View style={styles.placesSheetCollapsedBody}>
               <View style={styles.placesSheetCollapsedSummary}>
                 <Text style={styles.placesSheetCollapsedSummaryTitle}>
-                  {activeLayer === "Schedule"
-                    ? activeScheduleOption?.label || "No schedule selected"
+                  {activeLayer === "Today"
+                    ? activeScheduleOption?.label || "No events selected"
                     : sortedFilteredLocations[0]?.location || "Browse nearby places"}
                 </Text>
                 <Text style={styles.placesSheetCollapsedSummaryMeta}>
-                  {activeLayer === "Schedule"
+                  {activeLayer === "Today"
                     ? scheduleSummaryLabel
                     : `${sortedFilteredLocations.length} result${sortedFilteredLocations.length === 1 ? "" : "s"}`}
                 </Text>
               </View>
             </View>
-          )}
+          ) : null}
         </ScrollView>
       </View>
     </Animated.View>

@@ -47,6 +47,7 @@ import { CampusScreen } from './components/CampusScreen';
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
 import { TimerScreen } from './components/TimerScreen';
+import { ShareOverlay } from './components/ShareOverlay';
 
 import DiningDashboard from './components/dining/DiningDashboard';
 import MealOptimizerScreen from './components/dining/MealOptimizerScreen';
@@ -340,7 +341,12 @@ function RootNavigator() {
   );
 
   // Wrap with UserSync only when signed in so the DB row is created/updated
-  return isSignedIn ? <UserSync>{navigator}</UserSync> : navigator;
+  return (
+    <View style={{ flex: 1 }}>
+      {isSignedIn ? <UserSync>{navigator}</UserSync> : navigator}
+      <ShareOverlay />
+    </View>
+  );
 }
 
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';

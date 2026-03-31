@@ -8,8 +8,9 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
-import { CalendarDays, Dumbbell, GraduationCap, Library, MapPin, Star, UtensilsCrossed } from 'lucide-react-native';
+import { CalendarDays, Dumbbell, GraduationCap, Library, MapPin, Star, UtensilsCrossed, Share2 } from 'lucide-react-native';
 import { useTheme, Card } from './SharedUI';
+import { useShareStore } from '../store/shareStore';
 
 import { API_URL } from '../config';
 
@@ -58,6 +59,7 @@ function getTimeRecommendation(): string {
 export function ForYouScreen() {
     const { COLORS } = useTheme();
     const styles = getStyles(COLORS);
+    const openShare = useShareStore(state => state.openShare);
   const [locations, setLocations] = useState<ForYouItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -185,7 +187,17 @@ export function ForYouScreen() {
                   <View style={[styles.topBadge, { backgroundColor: getCapacityColor(item.percentFull) }]}>
                     <Text style={styles.topBadgeText}>{item.percentFull}%</Text>
                   </View>
-                  <Text style={styles.topReason} numberOfLines={2}>{item.reason}</Text>
+                   <Text style={styles.topReason} numberOfLines={2}>{item.reason}</Text>
+                   <Pressable 
+                     style={styles.cardShareBtn}
+                     onPress={() => openShare({
+                       title: item.name,
+                       message: `Check out ${item.name} on MaroonSchedules! ${item.reason}`,
+                       url: 'https://maroonschedules.tamu.edu'
+                     })}
+                   >
+                     <Share2 size={16} color={COLORS.textSecondary} />
+                   </Pressable>
                     </Card>
                   );
                 })()
@@ -213,8 +225,18 @@ export function ForYouScreen() {
                     <Text style={[styles.itemPct, { color: getCapacityColor(item.percentFull) }]}>
                       {item.percentFull}%
                     </Text>
-                    <Text style={styles.itemAvail}>{item.available} avail</Text>
-                  </View>
+                     <Text style={styles.itemAvail}>{item.available} avail</Text>
+                     <Pressable 
+                       style={styles.rowShareBtn}
+                       onPress={() => openShare({
+                         title: item.name,
+                         message: `Check out ${item.name} on MaroonSchedules! ${item.reason}`,
+                         url: 'https://maroonschedules.tamu.edu'
+                       })}
+                     >
+                       <Share2 size={16} color={COLORS.textSecondary} />
+                     </Pressable>
+                   </View>
                 </View>
                 <View style={styles.miniBar}>
                   <View style={[styles.miniBarFill, { width: `${Math.min(item.percentFull, 100)}%`, backgroundColor: getCapacityColor(item.percentFull) }]} />
@@ -269,4 +291,14 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   itemAvail: { fontSize: 11, color: COLORS.textSecondary },
   miniBar: { height: 3, backgroundColor: '#1E1E1E', borderRadius: 2, marginTop: 10, overflow: 'hidden' },
   miniBarFill: { height: '100%', borderRadius: 2 },
+  cardShareBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    padding: 6,
+  },
+  rowShareBtn: {
+    marginTop: 8,
+    padding: 4,
+  },
 });
