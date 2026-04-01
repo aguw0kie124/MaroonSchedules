@@ -2447,7 +2447,7 @@ export function PlacesMapScreen() {
                 bus.DirectionName === selectedDirection;
               return (
                 <Marker
-                  key={`bus-${bus.Key}-${isActiveDir}-${bus.Heading || 0}`}
+                  key={`bus-${bus.Key}`}
                   coordinate={{
                     latitude: bus.Latitude,
                     longitude: bus.Longitude,
@@ -2521,7 +2521,7 @@ export function PlacesMapScreen() {
           !isNaN(selectedBus.Latitude) &&
           !isNaN(selectedBus.Longitude) && (
             <Marker
-              key={`tracked-bus-highlight-${selectedBus.Key}-${selectedBus.Heading || 0}`}
+              key={`tracked-bus-highlight-${selectedBus.Key}`}
               coordinate={{
                 latitude: selectedBus.Latitude,
                 longitude: selectedBus.Longitude,
