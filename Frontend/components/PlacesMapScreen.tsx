@@ -2467,7 +2467,7 @@ export function PlacesMapScreen() {
                 bus.DirectionName === selectedDirection;
               return (
                 <Marker
-                  key={`bus-${bus.Key}`}
+                  key={`bus-${bus.Key}-${isActiveDir ? "active" : "inactive"}`}
                   coordinate={{
                     latitude: bus.Latitude,
                     longitude: bus.Longitude,
