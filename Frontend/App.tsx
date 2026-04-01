@@ -37,8 +37,16 @@ import { GradesScreen } from './components/GradesScreen';
 import { LeaderboardScreen } from './components/LeaderboardScreen';
 import { ShareOverlay } from './components/ShareOverlay';
 
+import DiningDashboard from './components/dining/DiningDashboard';
 import FullMenuScreen from './components/dining/FullMenuScreen';
 import DiningSettingsScreen from './components/dining/DiningSettingsScreen';
+import MealOptimizerScreen from './components/dining/MealOptimizerScreen';
+import MealTrackerScreen from './components/dining/MealTrackerScreen';
+import RetailSwipesScreen from './components/dining/RetailSwipesScreen';
+import FoodDatabaseScreen from './components/dining/FoodDatabaseScreen';
+import WeightTrackerScreen from './components/dining/WeightTrackerScreen';
+import TrackerHubScreen from './components/dining/TrackerHubScreen';
+import StreakHubScreen from './components/dining/StreakHubScreen';
 
 import { Home, Map, Trophy, Users, User } from 'lucide-react-native';
 import { useTheme } from './components/SharedUI';
@@ -255,7 +263,15 @@ function RootNavigator() {
             component={FullMenuScreen}
             options={{ headerShown: false, presentation: 'modal' }}
           />
+          <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: false }} />
           <Stack.Screen name="DiningSettings" component={DiningSettingsScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="MealOptimizer" component={MealOptimizerScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="MealTracker" component={MealTrackerScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="RetailSwipes" component={RetailSwipesScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="FoodDatabase" component={FoodDatabaseScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="WeightTracker" component={WeightTrackerScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="TrackerHub" component={TrackerHubScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="StreakHub" component={StreakHubScreen} options={{ headerShown: false }} />
           <Stack.Screen name="GradesScreen" component={GradesScreen} options={{ headerShown: true, title: 'Grade Distributions' }} />
         </>
       ) : (

@@ -442,6 +442,22 @@ export function Profile() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Advanced</Text>
         <Pressable
+          style={styles.toolRow}
+          onPress={() => navigation.navigate('DiningDashboard')}
+        >
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(80,0,0,0.15)' }]}>
+            <Flame size={20} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Nutrition Dashboard</Text>
+            <Text style={styles.toolSubtitle}>
+              Old calorie tracker, meal tools, streaks, and database hub.
+            </Text>
+          </View>
+          <ChevronRight size={18} color={COLORS.textTertiary} />
+        </Pressable>
+
+        <Pressable
           style={[styles.toolRow, styles.toolRowLast]}
           onPress={() => navigation.navigate('DiningSettings')}
         >
