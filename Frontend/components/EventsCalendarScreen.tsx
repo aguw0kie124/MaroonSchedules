@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  FlatList,
   Linking,
   Modal,
   PanResponder,
@@ -91,6 +92,9 @@ interface TAMUEvent {
   food_confidence?: number;
   food_type?: string | null;
   categories?: Record<string, number>;
+  _searchBlob?: string;
+  _category?: ExploreCategory;
+  _socialMode?: SocialMode;
 }
 
 type ExploreCategory =
@@ -250,7 +254,7 @@ function classifyCategory(event: TAMUEvent): ExploreCategory {
 }
 
 function getSocialMode(event: TAMUEvent): SocialMode {
-  const blob = getSearchBlob(event);
+  const blob = event._searchBlob || getSearchBlob(event);
   if (/\bcareer\b|\bnetworking\b|\bprofessional\b|\bresume\b|\binterview\b|\bcompany\b|\brecruit\b|\bworkshop\b|\bpanel\b/.test(blob)) {
     return 'professional';
   }
@@ -258,7 +262,7 @@ function getSocialMode(event: TAMUEvent): SocialMode {
 }
 
 function matchesMajor(event: TAMUEvent, major: MajorOption) {
-  const blob = getSearchBlob(event);
+  const blob = event._searchBlob || getSearchBlob(event);
   const aliases: Record<MajorOption, string[]> = {
     Engineering: ['engineering', 'engr', 'mechanical', 'electrical', 'csce', 'computer science'],
     Business: ['business', 'mays', 'finance', 'accounting', 'marketing'],
@@ -346,6 +350,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [swipeIndex, setSwipeIndex] = useState(0);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const {
     isMajorSpecific,
@@ -403,6 +408,15 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               categories: event.categories || undefined,
             };
           })
+          .map((event) => {
+            const searchBlob = getSearchBlob(event);
+            return {
+              ...event,
+              _searchBlob: searchBlob,
+              _category: classifyCategory(event),
+              _socialMode: getSocialMode({ ...event, _searchBlob: searchBlob }),
+            };
+          })
           .sort((a, b) => a.date_ts - b.date_ts);
         setEvents(parsed);
       } catch (error) {
@@ -430,7 +444,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     events.forEach((event) => {
       if (event.date_ts < nowTs) return;
       if (isMajorSpecific && !matchesMajor(event, selectedMajor)) return;
-      const category = classifyCategory(event);
+      const category = event._category || classifyCategory(event);
       counts[category] += 1;
     });
 
@@ -440,9 +454,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const filteredUpcomingEvents = useMemo(() => {
     let next = events.filter((event) => event.date_ts >= nowTs);
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      next = next.filter((event) => getSearchBlob(event).includes(q));
+    if (deferredSearchQuery.trim()) {
+      const q = deferredSearchQuery.toLowerCase();
+      next = next.filter((event) => (event._searchBlob || getSearchBlob(event)).includes(q));
     }
 
     if (isMajorSpecific) {
@@ -450,13 +464,13 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     }
 
     if (selectedCategories.size > 0) {
-      next = next.filter((event) => selectedCategories.has(classifyCategory(event)));
+      next = next.filter((event) => selectedCategories.has(event._category || classifyCategory(event)));
     }
 
     if (selectedCategories.has('Social')) {
       next = next.filter((event) => {
-        const category = classifyCategory(event);
-        return category !== 'Social' || getSocialMode(event) === socialMode;
+        const category = event._category || classifyCategory(event);
+        return category !== 'Social' || (event._socialMode || getSocialMode(event)) === socialMode;
       });
     }
 
@@ -467,7 +481,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     events,
     isMajorSpecific,
     nowTs,
-    searchQuery,
+    deferredSearchQuery,
     selectedCategories,
     selectedMajor,
     socialMode,
@@ -478,14 +492,20 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const swipeDeck = useMemo(() => {
     if (selectedCategories.size === 0) return filteredUpcomingEvents;
-    return filteredUpcomingEvents.filter((event) => selectedCategories.has(classifyCategory(event)));
+    return filteredUpcomingEvents.filter((event) => selectedCategories.has(event._category || classifyCategory(event)));
   }, [filteredUpcomingEvents, selectedCategories]);
 
   const activeSwipeEvent = swipeDeck[swipeIndex] ?? null;
 
   useEffect(() => {
     setSwipeIndex(0);
-  }, [selectedCategories, socialMode, searchQuery, isMajorSpecific, selectedMajor]);
+  }, [selectedCategories, socialMode, deferredSearchQuery, isMajorSpecific, selectedMajor]);
+
+  const changeView = useCallback((nextView: EventsView) => {
+    startTransition(() => {
+      setView(nextView);
+    });
+  }, []);
 
   const toggleCategory = useCallback((category: ExploreCategory) => {
     setSelectedCategories((prev) => {
@@ -636,7 +656,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         </Pressable>
       </View>
 
-      <View style={s.modeTabs}>
+        <View style={s.modeTabs}>
         {([
           { id: 'discover', label: 'Discover' },
           { id: 'list', label: 'List' },
@@ -647,7 +667,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             <Pressable
               key={tab.id}
               style={[s.modeTab, active && s.modeTabActive]}
-              onPress={() => setView(tab.id)}
+              onPress={() => changeView(tab.id)}
             >
               <Text style={[s.modeTabText, active && s.modeTabTextActive]}>{tab.label}</Text>
             </Pressable>
@@ -782,7 +802,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 style={s.swipeCta}
                 onPress={() => {
                   setSwipeIndex(0);
-                  setView('swipe');
+                  changeView('swipe');
                 }}
               >
                 <ArrowRight size={18} color={COLORS.textPrimary} />
@@ -819,28 +839,35 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               <Text style={s.loadingText}>Loading campus events...</Text>
             </View>
           ) : (
-            <ScrollView contentContainerStyle={s.listScroll} showsVerticalScrollIndicator={false}>
-              {filteredUpcomingEvents.map((event) => (
+            <FlatList
+              data={filteredUpcomingEvents}
+              keyExtractor={(event) => String(event.id)}
+              contentContainerStyle={s.listScroll}
+              showsVerticalScrollIndicator={false}
+              initialNumToRender={10}
+              maxToRenderPerBatch={12}
+              windowSize={7}
+              removeClippedSubviews
+              renderItem={({ item }) => (
                 <ListEventRow
-                  key={String(event.id)}
-                  event={event}
-                  saved={savedEventIds.includes(String(event.id))}
-                  scheduled={scheduledEvents.some((item) => String(item.id) === String(event.id))}
-                  onPress={() => setDetailEvent(event)}
-                  onSave={() => handleSaveToggle(event)}
-                  onShare={() => handleShare(event)}
-                  onSchedule={() => handleSchedule(event)}
+                  event={item}
+                  saved={savedEventIds.includes(String(item.id))}
+                  scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(item.id))}
+                  onPress={() => setDetailEvent(item)}
+                  onSave={() => handleSaveToggle(item)}
+                  onShare={() => handleShare(item)}
+                  onSchedule={() => handleSchedule(item)}
                 />
-              ))}
-              {!filteredUpcomingEvents.length ? (
+              )}
+              ListEmptyComponent={
                 <View style={s.emptyState}>
                   <Text style={s.emptyTitle}>Nothing matches right now</Text>
                   <Text style={s.emptySubtitle}>
                     Try another category, turn off major-specific filtering, or clear hidden events.
                   </Text>
                 </View>
-              ) : null}
-            </ScrollView>
+              }
+            />
           )}
         </>
       )}
@@ -848,7 +875,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       {view === 'swipe' && (
         <>
           <View style={s.swipeHeader}>
-            <Pressable style={s.headerIconButton} onPress={() => setView('discover')}>
+            <Pressable style={s.headerIconButton} onPress={() => changeView('discover')}>
               <ChevronLeft size={18} color={COLORS.textPrimary} />
             </Pressable>
             <Text style={s.swipeProgress}>
@@ -894,7 +921,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 style={s.finishedButton}
                 onPress={() => {
                   setSwipeIndex(0);
-                  setView('discover');
+                  changeView('discover');
                 }}
               >
                 <Text style={s.finishedButtonText}>Back to discover</Text>
@@ -930,7 +957,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       {view === 'inbox' && (
         <>
           <View style={s.swipeHeader}>
-            <Pressable style={s.headerIconButton} onPress={() => setView('discover')}>
+            <Pressable style={s.headerIconButton} onPress={() => changeView('discover')}>
               <ChevronLeft size={18} color={COLORS.textPrimary} />
             </Pressable>
             <Text style={s.swipeProgress}>Event inbox</Text>
