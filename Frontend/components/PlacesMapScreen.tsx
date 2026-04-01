@@ -119,6 +119,12 @@ import {
 } from "./places/utils";
 import { getStyles } from "./places/placesStyles";
 
+const LOCATION_FOCUS_REGION = {
+  latitudeOffset: 0.0006,
+  latitudeDelta: 0.016,
+  longitudeDelta: 0.016,
+};
+
 // ── Transitional: still uses inline hooks from original file
 //    (replace with useLocationData / useScheduleMap / useBusTransit
 //     in the follow-on cleanup pass)
@@ -579,10 +585,10 @@ export function PlacesMapScreen() {
       } else {
         // Just animate to the specific location
         mapRef.current.animateToRegion({
-          latitude: loc.coord.lat - 0.001,
+          latitude: loc.coord.lat - LOCATION_FOCUS_REGION.latitudeOffset,
           longitude: loc.coord.lng,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01
+          latitudeDelta: LOCATION_FOCUS_REGION.latitudeDelta,
+          longitudeDelta: LOCATION_FOCUS_REGION.longitudeDelta
         }, 500);
       }
     }
@@ -821,10 +827,10 @@ export function PlacesMapScreen() {
     if (mapRef.current) {
       mapRef.current.animateToRegion(
         {
-          latitude: match.coord.lat - 0.001,
+          latitude: match.coord.lat - LOCATION_FOCUS_REGION.latitudeOffset,
           longitude: match.coord.lng,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
+          latitudeDelta: LOCATION_FOCUS_REGION.latitudeDelta,
+          longitudeDelta: LOCATION_FOCUS_REGION.longitudeDelta,
         },
         500,
       );
