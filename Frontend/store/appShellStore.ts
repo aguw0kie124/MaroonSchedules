@@ -441,12 +441,17 @@ export const useAppShellStore = create<AppShellState>()(
     }),
     {
       name: 'app-shell-store',
-      version: 12,
+      version: 14,
       storage: createJSONStorage(() => AsyncStorage),
       migrate: (persistedState: any, version: number) => {
         if (!persistedState) return persistedState;
         
         let newState = { ...persistedState };
+        if (version < 14) {
+          if (newState.tabBarMode === 'parin') {
+            newState.tabBarMode = 'solid';
+          }
+        }
 
         if (version < 11) {
           // Force "Today" to be the very first pill in the Map layer scroller

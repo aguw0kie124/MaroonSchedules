@@ -131,12 +131,14 @@ function MainTabs() {
   const { COLORS } = useTheme();
   const navItems = useAppShellStore((state) => state.navItems);
   const defaultLandingTab = useAppShellStore((state) => state.defaultLandingTab);
+  const tabBarMode = useAppShellStore((state) => state.tabBarMode);
+
   const visibleNavItems = React.useMemo(
     () => getOrderedVisibleItems(navItems),
     [navItems],
   );
 
-  const tabScreens = [
+  let tabScreens = [
     ...visibleNavItems.map((item) => {
       if (item.id === 'Dashboard') {
         return {
@@ -218,11 +220,100 @@ function MainTabs() {
     },
   ];
 
+  // Map centering logic for Solid mode (formerly Parin)
+  if (tabBarMode === 'solid') {
+    const placesIndex = tabScreens.findIndex((s) => s.name === 'Places');
+    if (placesIndex !== -1) {
+      const placesItem = tabScreens[placesIndex];
+      const otherItems = tabScreens.filter((s) => s.name !== 'Places');
+      const centerIndex = Math.floor(tabScreens.length / 2);
+      otherItems.splice(centerIndex, 0, placesItem);
+      tabScreens = otherItems;
+    }
+  }
+
   const availableRouteNames = tabScreens.map((screen) => screen.name);
   const initialRouteName = availableRouteNames.includes(defaultLandingTab)
     ? defaultLandingTab
     : availableRouteNames[0];
-  const shellKey = `${initialRouteName}:${availableRouteNames.join('|')}`;
+  const shellKey = `${initialRouteName}:${availableRouteNames.join('|')}:${tabBarMode}`;
+
+  if (tabBarMode === 'solid') {
+    return (
+      <Tab.Navigator
+        key={shellKey}
+        id="MainTabs"
+        initialRouteName={initialRouteName}
+        screenOptions={{
+          headerShown: false,
+          tabBarShowLabel: false,
+          tabBarHideOnKeyboard: true,
+          tabBarStyle: {
+            height: 70,
+            borderTopWidth: 1,
+            borderTopColor: COLORS.border,
+            backgroundColor: COLORS.surface,
+            shadowColor: '#000000',
+            shadowOpacity: 0.06,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: -3 },
+            elevation: 8,
+          },
+          tabBarActiveTintColor: '#500000',
+          tabBarInactiveTintColor: COLORS.textTertiary,
+        }}
+      >
+        {tabScreens.map((screen) => (
+          <Tab.Screen
+            key={screen.name}
+            name={screen.name}
+            component={screen.component}
+            initialParams={screen.initialParams}
+            options={{
+              title: screen.title,
+              tabBarIcon: ({ focused, color }) => {
+                const isMap = screen.name === 'Places';
+
+                if (isMap) {
+                  return (
+                    <View
+                      style={{
+                        width: 58,
+                        height: 58,
+                        borderRadius: 29,
+                        backgroundColor: focused ? '#500000' : 'rgba(80, 0, 0, 0.7)',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginTop: -10,
+                        shadowColor: '#500000',
+                        shadowOffset: { width: 0, height: focused ? 8 : 4 },
+                        shadowOpacity: focused ? 0.6 : 0.3,
+                        shadowRadius: focused ? 12 : 8,
+                        elevation: focused ? 14 : 8,
+                        borderWidth: 4,
+                        borderColor: COLORS.surface,
+                      }}
+                    >
+                      <screen.icon color="#FFFFFF" size={26} strokeWidth={2.5} />
+                    </View>
+                  );
+                }
+
+                const isEnlarged = screen.name === 'Social' || screen.name === 'Settings';
+                const size = isEnlarged ? 28 : 24;
+
+                return (
+                  <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                    <screen.icon color={color} size={size} strokeWidth={focused ? 2.5 : 2} />
+                  </View>
+                );
+              },
+            }}
+          />
+        ))}
+      </Tab.Navigator>
+    );
+  }
 
   return (
     <Tab.Navigator

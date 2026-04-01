@@ -28,17 +28,12 @@ export function GlassPillTabBar({
   const insets = useSafeAreaInsets();
   
   const [collapsedRouteKey, setCollapsedRouteKey] = React.useState<string | null>(
-    tabBarMode === 'solid' ? null : state.routes[state.index].key
+    state.routes[state.index].key
   );
 
-  React.useEffect(() => {
-    if (tabBarMode === 'solid') {
-      setCollapsedRouteKey(null);
-    }
-  }, [tabBarMode]);
   
   const isDark = theme === 'dark';
-  const styles = getStyles(COLORS, isDark, tabBarMode, insets);
+  const styles = getStyles(COLORS, isDark, insets);
 
   if (isBottomBarHidden) {
     return null;
@@ -131,13 +126,13 @@ export function GlassPillTabBar({
   );
 }
 
-const getStyles = (COLORS: any, isDark: boolean, tabBarMode: 'floating' | 'solid', insets: any) =>
+const getStyles = (COLORS: any, isDark: boolean, insets: any) =>
   StyleSheet.create({
     outer: {
       position: 'absolute',
-      left: tabBarMode === 'solid' ? 0 : 16,
-      right: tabBarMode === 'solid' ? 0 : 16,
-      bottom: tabBarMode === 'solid' ? 0 : 18,
+      left: 16,
+      right: 16,
+      bottom: 18,
       alignItems: 'center',
     },
     shell: {
@@ -146,14 +141,14 @@ const getStyles = (COLORS: any, isDark: boolean, tabBarMode: 'floating' | 'solid
       justifyContent: 'space-evenly',
       width: '100%',
       paddingVertical: 8,
-      paddingBottom: tabBarMode === 'solid' ? Math.max(insets.bottom, 12) : 8,
-      borderRadius: tabBarMode === 'solid' ? 0 : 999,
+      paddingBottom: 8,
+      borderRadius: 999,
       backgroundColor: isDark
-        ? tabBarMode === 'solid' ? 'rgba(10,10,12,0.98)' : 'rgba(16,16,18,0.88)'
-        : tabBarMode === 'solid' ? 'rgba(255,255,255,1)' : 'rgba(255,255,255,0.88)',
-      borderTopWidth: tabBarMode === 'solid' ? 1 : 0,
+        ? 'rgba(16,16,18,0.88)'
+        : 'rgba(255,255,255,0.88)',
+      borderTopWidth: 0,
       borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
-      elevation: tabBarMode === 'solid' ? 0 : 4,
+      elevation: 4,
     },
     shellCollapsed: {
       width: 'auto',
