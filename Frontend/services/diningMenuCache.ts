@@ -192,6 +192,14 @@ function getCacheKey(location: string, mealPeriod: string, dateKey: string) {
   return `${CACHE_PREFIX}:${location.toLowerCase()}:${mealPeriod.toLowerCase()}:${dateKey}`;
 }
 
+function getMenuItemCount(data: any) {
+  if (!Array.isArray(data?.categories)) return 0;
+  return data.categories.reduce(
+    (sum: number, category: any) => sum + (Array.isArray(category?.items) ? category.items.length : 0),
+    0,
+  );
+}
+
 async function pruneStaleMenus(dateKey: string) {
   const lastPruned = await AsyncStorage.getItem(LAST_PRUNE_KEY);
   if (lastPruned === dateKey) {
@@ -227,22 +235,36 @@ export async function fetchDiningFullMenuCached({
     return null;
   }
 
+  const diningHallMenu = isDiningHallMenuLocation(resolvedLocation);
+  if (diningHallMenu) {
+    forceRefresh = true;
+  }
+
   const dateKey = getLocalDateString();
   const cacheKey = getCacheKey(resolvedLocation, mealPeriod, dateKey);
   await pruneStaleMenus(dateKey);
 
-  if (!forceRefresh) {
+  if (!forceRefresh && !diningHallMenu) {
     const cached = await AsyncStorage.getItem(cacheKey);
     if (cached) {
       const parsed: CachedMenuPayload = JSON.parse(cached);
-      if (parsed?.data?.success && Array.isArray(parsed.data.categories) && parsed.data.categories.length > 0) {
+      const cachedItemCount = getMenuItemCount(parsed?.data);
+      const staleDiningHallPayload =
+        isDiningHallMenuLocation(resolvedLocation) && cachedItemCount > 0 && cachedItemCount <= 2;
+      if (
+        !parsed?.data?.success ||
+        !Array.isArray(parsed?.data?.categories) ||
+        parsed.data.categories.length === 0 ||
+        staleDiningHallPayload
+      ) {
+        await AsyncStorage.removeItem(cacheKey);
+      } else {
         return {
           ...parsed.data,
           fromCache: true,
           resolvedLocation,
         };
       }
-      await AsyncStorage.removeItem(cacheKey);
     }
   }
 
@@ -252,20 +274,21 @@ export async function fetchDiningFullMenuCached({
     date: dateKey,
   });
   const response = await fetch(`${API_URL}/dining/full-menu?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Dining menu request failed (${response.status})`);
+  }
   const data = await response.json();
 
-  const payload: CachedMenuPayload = {
-    dateKey,
-    fetchedAt: new Date().toISOString(),
-    location,
-    resolvedLocation,
-    mealPeriod,
-    data,
-  };
-  if (data?.success && Array.isArray(data.categories) && data.categories.length > 0) {
+  if (!diningHallMenu && data?.success && Array.isArray(data?.categories) && data.categories.length > 0) {
+    const payload: CachedMenuPayload = {
+      dateKey,
+      fetchedAt: new Date().toISOString(),
+      location,
+      resolvedLocation,
+      mealPeriod,
+      data,
+    };
     await AsyncStorage.setItem(cacheKey, JSON.stringify(payload));
-  } else {
-    await AsyncStorage.removeItem(cacheKey);
   }
 
   return {

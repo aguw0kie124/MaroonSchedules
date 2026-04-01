@@ -599,15 +599,37 @@ def generate_variants(foods: List[Dict], target_cal: float, macros: Dict) -> Lis
     return variants
 
 
-# ============ DineOnCampus API v4 ============
+# ============ DineOnCampus API ============
 
 API_BASE = "https://apiv4.dineoncampus.com"
+DINE_API_HOST = "apiv4.dineoncampus.com"
+DINE_API_IP_FALLBACK = "206.82.192.172"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
     "Origin": "https://dineoncampus.com",
     "Referer": "https://dineoncampus.com/"
 }
+
+
+def _dine_api_get(path: str, *, timeout: int = 10, params: Optional[Dict[str, Any]] = None):
+    """Fetch a DineOnCampus endpoint, falling back to the origin IP when hostname access fails."""
+    attempts = [
+        (f"{API_BASE}{path}", dict(HEADERS), True),
+        (f"https://{DINE_API_IP_FALLBACK}{path}", {**HEADERS, "Host": DINE_API_HOST}, False),
+    ]
+    last_error = None
+
+    for url, headers, verify in attempts:
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=timeout, verify=verify)
+            if resp.status_code == 200:
+                return resp, url
+            last_error = f"{url} returned HTTP {resp.status_code}"
+        except requests.RequestException as exc:
+            last_error = str(exc)
+
+    raise requests.RequestException(last_error or "Unable to reach DineOnCampus")
 
 
 def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_period: str = None) -> Dict[str, Any]:
@@ -621,13 +643,16 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
     if not location_id:
         return {"success": False, "error": f"Unknown location: {location_name}", "items": []}
 
-    try:
-        # Fetch available periods
-        periods_url = f"{API_BASE}/locations/{location_id}/periods/?date={date_str}"
-        resp = requests.get(periods_url, headers=HEADERS, timeout=10)
-        periods = resp.json().get('periods', []) if resp.status_code == 200 else []
+    requested_period = canonicalize_meal_period(meal_period) or normalize_period_value(meal_period) or 'lunch'
+    last_error: Optional[str] = None
 
-        requested_period = canonicalize_meal_period(meal_period) or normalize_period_value(meal_period) or 'lunch'
+    try:
+        periods_resp, _periods_url = _dine_api_get(
+            f"/locations/{location_id}/periods/",
+            timeout=10,
+            params={"date": date_str},
+        )
+        periods = periods_resp.json().get('periods', [])
         selected_period = select_requested_period(periods, meal_period)
 
         if not selected_period or not selected_period.get('id'):
@@ -637,9 +662,11 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
         matched_slug = selected_period.get('slug') or normalize_period_value(selected_period.get('name'))
         resolved_period = canonicalize_meal_period(matched_slug) or requested_period
 
-        # Fetch menu for this period
-        menu_url = f"{API_BASE}/locations/{location_id}/menu?date={date_str}&period={period_id}"
-        menu_resp = requests.get(menu_url, headers=HEADERS, timeout=15)
+        menu_resp, menu_url = _dine_api_get(
+            f"/locations/{location_id}/menu",
+            timeout=15,
+            params={"date": date_str, "period": period_id},
+        )
         data = menu_resp.json()
         items = []
 
@@ -676,7 +703,7 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
                     "vitamin_c": parse_val(nutrients.get('vitamin c (mg)', 0)),
                     "vitamin_d": parse_val(nutrients.get('vitamin d (mcg)' ,0)),
                     "magnesium": parse_val(nutrients.get('magnesium (mg)', 0)),
-                    "source": "dineoncampus_v4"
+                    "source": f"dineoncampus:{DINE_API_HOST if DINE_API_IP_FALLBACK not in menu_url else DINE_API_IP_FALLBACK}"
                 })
 
         items = enrich_items(items)
@@ -687,9 +714,12 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
             "date": date_str,
             "period": matched_slug,
             "resolvedPeriod": resolved_period,
+            "apiBase": menu_url.rsplit('/locations/', 1)[0],
         }
     except Exception as e:
-        return {"success": False, "error": str(e), "items": []}
+        last_error = str(e)
+
+    return {"success": False, "error": last_error or "Unable to reach DineOnCampus", "items": []}
 
 
 def sync_all_locations(date_str: str = None):
