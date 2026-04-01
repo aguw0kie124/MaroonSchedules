@@ -1564,8 +1564,13 @@ export function PlacesMapScreen() {
     if (!fromTimetable) {
       setShowBusTimetableSheet(false);
     }
-    
-    if (fromTimetable && mapRef.current && stop.Latitude != null && stop.Longitude != null) {
+
+    if (
+      fromTimetable &&
+      mapRef.current &&
+      stop.Latitude != null &&
+      stop.Longitude != null
+    ) {
       mapRef.current.animateToRegion(
         {
           latitude: stop.Latitude - 0.0022,
@@ -1573,7 +1578,7 @@ export function PlacesMapScreen() {
           latitudeDelta: 0.0085,
           longitudeDelta: 0.0085,
         },
-        500
+        500,
       );
     }
 
@@ -1708,7 +1713,7 @@ export function PlacesMapScreen() {
       setSelectedDirection("All");
       setSelectedBus(null);
       setSelectedStop(null);
-      
+
       fetchBusData();
     }
   }, [activeLayer]);
