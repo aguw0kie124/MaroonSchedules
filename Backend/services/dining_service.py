@@ -7,7 +7,6 @@ from typing import Optional, Dict, List, Any
 from pulp import LpMaximize, LpProblem, LpVariable, lpSum, value as pulp_value, PULP_CBC_CMD
 from datetime import datetime
 from db_config import get_db_connection
-from services import usda_service
 
 def get_db_conn():
     return psycopg.connect(get_db_connection())
@@ -132,34 +131,6 @@ HEURISTICS = [
     {'kw': ['dressing', 'mayo', 'aioli', 'alfredo', 'sauce', 'gravy', 'syrup', 'oil', 'vinegar', 'seasoning'], 'p': 0.00, 'f': 0.12, 'c': 0.04},
 ]
 
-USDA_CACHE: Dict[str, float] = {}
-
-def get_usda_calories(name: str) -> Optional[float]:
-    """Get USDA-verified calories for a food item. Checks cache, then DB, then live API."""
-    if name in USDA_CACHE:
-        return USDA_CACHE[name]
-    # Check DB cache first
-    try:
-        with get_db_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT usda_calories FROM food_items WHERE name = %s AND usda_calories IS NOT NULL LIMIT 1", (name,))
-                row = cur.fetchone()
-                if row:
-                    USDA_CACHE[name] = row[0]
-                    return row[0]
-    except:
-        pass
-    # Live USDA lookup
-    try:
-        res = usda_service.search_usda(name, page_size=3)
-        if res:
-            cals = res[0]['nutrients'].get('calories', 0)
-            USDA_CACHE[name] = cals
-            return cals
-    except:
-        pass
-    return None
-
 # ============ NAME CLEANING ============
 # FIX: Previous regex was destroying names. Now we only do safe HTML entity decoding.
 def clean_name(raw: str) -> str:
@@ -189,7 +160,7 @@ def apply_heuristic(name: str, cal: float) -> Dict[str, float]:
     }
 
 def enrich_items(raw_items: List[Dict]) -> List[Dict]:
-    """Clean up, deduplicate, verify calories, and add cost heuristics."""
+    """Clean up, deduplicate, and add light heuristics without external nutrition verification."""
     seen = set()
     result = []
     for it in raw_items:
@@ -201,20 +172,6 @@ def enrich_items(raw_items: List[Dict]) -> List[Dict]:
         if dedup_key in seen:
             continue
         seen.add(dedup_key)
-
-        # USDA double-verification
-        usda_cal = get_usda_calories(it['name'])
-        if usda_cal is not None:
-            it['usda_calories'] = usda_cal
-            current = float(it.get('calories', 0) or 0)
-            # If DineOnCampus reports 0 or wildly different, use USDA
-            if current < 10 and usda_cal > 0:
-                it['calories'] = usda_cal
-                it['source'] = 'usda_corrected'
-            elif current > 0 and usda_cal > 0 and abs(current - usda_cal) > current * 0.5:
-                # Large discrepancy - average them for safety
-                it['calories'] = round((current + usda_cal) / 2)
-                it['source'] = 'usda_blended'
 
         # Fill missing macros with heuristics
         if not it.get('protein') and not it.get('carbs'):

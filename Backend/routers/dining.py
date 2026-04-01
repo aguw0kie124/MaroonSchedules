@@ -3,7 +3,7 @@ from typing import List, Optional, Dict
 from pydantic import BaseModel
 import psycopg
 from db_config import get_db_connection
-from services import dining_service, usda_service
+from services import dining_service
 import json
 from datetime import datetime, timedelta
 
@@ -372,21 +372,6 @@ def search_foods(q: str = Query(""), source: str = Query("all")):
                 LIMIT 20
             """, (f"%{q}%", f"%{q}%"))
             results.extend(cur.fetchall())
-
-    # 2. USDA search if source is all or usda
-    if source in ["all", "usda"] and len(q) > 2:
-        usda_results = usda_service.search_usda(q)
-        for u in usda_results:
-            results.append({
-                "id": f"usda-{u['fdcId']}",
-                "name": u['name'],
-                "location": u.get('brand') or u.get('dataType') or 'USDA',
-                "calories": u['nutrients'].get('calories', 0),
-                "protein": u['nutrients'].get('protein', 0),
-                "carbs": u['nutrients'].get('carbs', 0),
-                "fat": u['nutrients'].get('fat', 0),
-                "source": "usda"
-            })
 
     return results
 
