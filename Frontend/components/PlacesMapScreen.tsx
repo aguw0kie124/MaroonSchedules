@@ -920,7 +920,30 @@ export function PlacesMapScreen() {
     }
   }, [routeDirectionsAvailable]);
 
-  const filteredBusStopsForMap = useMemo(() => {
+  
+  const groupedRoutePatterns = useMemo(() => {
+    const groups = [];
+    let currentGroup = null;
+    let currentPoints = [];
+    for (const pt of routePatterns) {
+      const d = pt.DirectionName || 'Unknown';
+      if (d !== currentGroup) {
+        if (currentPoints.length > 0) {
+          groups.push({ direction: currentGroup || 'Unknown', points: currentPoints });
+        }
+        currentGroup = d;
+        currentPoints = [pt];
+      } else {
+        currentPoints.push(pt);
+      }
+    }
+    if (currentPoints.length > 0) {
+      groups.push({ direction: currentGroup || 'Unknown', points: currentPoints });
+    }
+    return groups;
+  }, [routePatterns]);
+
+const filteredBusStopsForMap = useMemo(() => {
     if (selectedDirection === "All") return busStops;
     return busStops.filter((s: any) => s.DirectionName === selectedDirection);
   }, [busStops, selectedDirection]);
@@ -2316,51 +2339,23 @@ export function PlacesMapScreen() {
                   />
                 );
               })
-            : routePatterns.length > 0 && (
+            : groupedRoutePatterns.length > 0 && (
                 <>
-                  <Polyline
-                    key={`base-path-${selectedBusRouteId}`}
-                    coordinates={routePatterns}
-                    strokeColor={
-                      (selectedRoute?.Color ||
-                        transitService.getRouteColor(
-                          selectedBusRouteId || "",
-                        )) + "50"
-                    }
-                    strokeWidth={4}
-                    lineDashPattern={[0]}
-                    zIndex={10}
-                  />
-                  {selectedDirection !== "All" && (
-                    <Polyline
-                      key={`active-path-${selectedBusRouteId}-${selectedDirection}`}
-                      coordinates={routePatterns.filter(
-                        (p: any) =>
-                          "DirectionName" in p &&
-                          p.DirectionName === selectedDirection,
-                      )}
-                      strokeColor={
-                        selectedRoute?.Color ||
-                        transitService.getRouteColor(selectedBusRouteId || "")
-                      }
-                      strokeWidth={4}
-                      lineDashPattern={[0]}
-                      zIndex={20}
-                    />
-                  )}
-                  {selectedDirection === "All" && (
-                    <Polyline
-                      key={`all-path-${selectedBusRouteId}`}
-                      coordinates={routePatterns}
-                      strokeColor={
-                        selectedRoute?.Color ||
-                        transitService.getRouteColor(selectedBusRouteId || "")
-                      }
-                      strokeWidth={4}
-                      lineDashPattern={[0]}
-                      zIndex={20}
-                    />
-                  )}
+                  {groupedRoutePatterns.map((group, index) => {
+                    const isActive = selectedDirection === "All" || group.direction === selectedDirection;
+                    const routeColor = selectedRoute?.Color || transitService.getRouteColor(selectedBusRouteId || "");
+                    
+                    return (
+                      <Polyline
+                        key={`path-${selectedBusRouteId}-${group.direction}-${index}`}
+                        coordinates={group.points}
+                        strokeColor={isActive ? routeColor : routeColor + "50"}
+                        strokeWidth={isActive ? 4 : 4}
+                        lineDashPattern={[0]}
+                        zIndex={isActive ? 20 : 10}
+                      />
+                    );
+                  })}
                 </>
               )
           : null}

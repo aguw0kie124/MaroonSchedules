@@ -319,6 +319,7 @@ class AggieSpiritProxy:
         self._route_cache: List[Dict[str, Any]] = []
         self._active_cache: List[str] = []
         self._pattern_cache: Dict[str, Dict[str, Any]] = {}
+        self._direction_cache: Dict[str, str] = {}
         self._form_token = None
 
     def _build_auth_headers(self, force_refresh: bool = False) -> Dict[str, str]:
@@ -381,6 +382,13 @@ class AggieSpiritProxy:
     def get_routes(self) -> List[Dict[str, Any]]:
         try:
             data = self._post("/RouteMap/GetBaseData/", "")
+            
+            for routeObj in data.get("routes", []):
+                for directionObj in routeObj.get("directionList", []):
+                    dObj = directionObj.get("direction", {})
+                    if dObj.get("key") and dObj.get("name"):
+                        self._direction_cache[dObj["key"]] = dObj["name"]
+
             routes = [{
                 "Key": route.get("key") or route.get("Key"),
                 "Name": route.get("name") or route.get("Name"),
@@ -399,17 +407,23 @@ class AggieSpiritProxy:
 
     def get_pattern(self, route_key: str) -> Dict[str, Any]:
         try:
+            if not self._direction_cache:
+                self.get_routes()
             payload = f"routeKeys%5B%5D={quote(route_key)}"
             data = self._post("/RouteMap/GetPatternPaths/", payload)
-            points: List[Dict[str, float]] = []
+            points: List[Dict[str, Any]] = []
             stops: List[Dict[str, Any]] = []
             seen_stops = set()
             if data:
                 for item in data[0].get("patternPaths", []):
+                    dir_key = item.get("directionKey", "")
+                    dir_name = self._direction_cache.get(dir_key, "")
                     for point in item.get("patternPoints", []):
                         points.append({
                             "latitude": point.get("latitude"),
                             "longitude": point.get("longitude"),
+                            "DirectionCode": dir_key,
+                            "DirectionName": dir_name,
                         })
                         stop = point.get("stop")
                         if stop and stop.get("stopCode") not in seen_stops:
@@ -419,6 +433,8 @@ class AggieSpiritProxy:
                                 "Latitude": point.get("latitude"),
                                 "Longitude": point.get("longitude"),
                                 "StopCode": stop.get("stopCode"),
+                                "DirectionCode": dir_key,
+                                "DirectionName": dir_name,
                             })
             snapshot = {"points": points, "stops": stops}
             if points or stops:
