@@ -169,7 +169,6 @@ export function PlacesMapScreen() {
   const [activeLayer, setActiveLayer] = useState<string>("Pulse");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
-  const [isPulseHeroVisible, setIsPulseHeroVisible] = useState(true);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -1501,99 +1500,6 @@ export function PlacesMapScreen() {
                   nearestBusInfo={nearestBusInfo}
                   handleStopPress={handleStopPress}
                 />
-              </View>
-            )}
-
-            {activeLayer === "Pulse" && (
-              <View style={{ marginTop: 12, width: "100%" }}>
-                {isPulseHeroVisible ? (
-                <View style={styles.pulseHeroCard}>
-                  <View style={styles.pulseHeroTopRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.pulseHeroEyebrow}>Campus Pulse</Text>
-                      <Text style={styles.pulseHeroTitle}>
-                        {hottestHotspot
-                          ? `${pulseTotals.hotspots} live hotspot${pulseTotals.hotspots === 1 ? "" : "s"}`
-                          : "Waiting for the next wave"}
-                      </Text>
-                      <Text style={styles.pulseHeroBody}>
-                        {isLoadingPulse
-                          ? "Refreshing student pings, place activity, and featured events."
-                          : hottestHotspot
-                            ? `${hottestHotspot.locationName} is the hottest part of campus right now. Tap a hotspot to see what is driving it or jump straight into the place.`
-                            : "As students post pings and high-signal events come online, this view will light up with the busiest pockets of campus."}
-                      </Text>
-                    </View>
-
-                    <View style={styles.pulseHeroBadge}>
-                      <Text style={styles.pulseHeroBadgeValue}>
-                        {hottestHotspot?.score || 0}
-                      </Text>
-                      <Text style={styles.pulseHeroBadgeLabel}>Top Pulse</Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.pulseHeroCloseButton}
-                      onPress={() => setIsPulseHeroVisible(false)}
-                    >
-                      <X size={16} color={COLORS.textPrimary} />
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.pulseHeroStatsRow}>
-                    <View style={styles.pulseHeroStat}>
-                      <Text style={styles.pulseHeroStatValue}>{pulseTotals.pings}</Text>
-                      <Text style={styles.pulseHeroStatLabel}>Live pings</Text>
-                    </View>
-                    <View style={styles.pulseHeroStat}>
-                      <Text style={styles.pulseHeroStatValue}>{pulseTotals.events}</Text>
-                      <Text style={styles.pulseHeroStatLabel}>Featured events</Text>
-                    </View>
-                    <View style={styles.pulseHeroStat}>
-                      <Text style={styles.pulseHeroStatValue}>
-                        {hottestHotspot?.pulseLabel || "Calm"}
-                      </Text>
-                      <Text style={styles.pulseHeroStatLabel}>Campus mood</Text>
-                    </View>
-                  </View>
-
-                  <View style={{ gap: 8, marginTop: 14 }}>
-                    {pulseHotspots.slice(0, 3).map((hotspot) => (
-                      <TouchableOpacity
-                        key={`hero-${hotspot.id}`}
-                        style={styles.pulseSheetItemCard}
-                        activeOpacity={0.82}
-                        onPress={() => handleSelectHotspot(hotspot)}
-                      >
-                        <View style={styles.pulseListItemTop}>
-                          <View
-                            style={[
-                              styles.pulseListItemBadge,
-                              { backgroundColor: `${hotspot.pulseColor}22` },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.pulseListItemBadgeText,
-                                { color: hotspot.pulseColor },
-                              ]}
-                            >
-                              {hotspot.pulseLabel}
-                            </Text>
-                          </View>
-                          <Text style={styles.pulseListItemTime}>
-                            {hotspot.items[0]?.timeLabel || hotspot.previewLabel}
-                          </Text>
-                        </View>
-                        <Text style={styles.pulseSheetItemTitle}>{hotspot.locationName}</Text>
-                        <Text style={styles.pulseSheetItemMeta}>
-                          {hotspot.previewLabel}
-                          {hotspot.percentFull != null ? ` · ${hotspot.percentFull}% full` : ""}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-                ) : null}
               </View>
             )}
 

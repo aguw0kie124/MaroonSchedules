@@ -772,31 +772,22 @@ export function CampusPingsScreen() {
         {item.title.trim() ? <Text style={styles.pingTitle}>{item.title}</Text> : null}
         <Text style={styles.pingBody}>{item.body}</Text>
 
-        <View style={styles.pingCardDivider} />
-
-        <View style={styles.pingFooterRow}>
+        <View style={styles.pingMetaRow}>
           <View style={styles.locationPill}>
             <MapPin size={14} color={COLORS.textPrimary} />
             <Text style={styles.locationPillText} numberOfLines={1}>
               {item.locationTag}
             </Text>
           </View>
-          <View style={styles.pingSignalsRow}>
-            <View style={styles.signalPill}>
-              <Heart size={14} color={COLORS.textSecondary} />
-              <Text style={styles.signalPillText}>{item.likeCount} boosts</Text>
-            </View>
-            <View style={styles.signalPill}>
-              <MessageCircle size={14} color={COLORS.textSecondary} />
-              <Text style={styles.signalPillText}>{item.commentCount} replies</Text>
-            </View>
-          </View>
+          <Pressable style={styles.mapLinkButton} onPress={() => openPingOnMap(item)}>
+            <Text style={styles.mapLinkLabel}>View map</Text>
+          </Pressable>
         </View>
 
         <View style={styles.actionRow}>
           <Pressable style={styles.actionButton} onPress={() => openComments(item)}>
             <MessageCircle size={16} color={COLORS.textPrimary} />
-            <Text style={styles.actionLabel}>Reply</Text>
+            <Text style={styles.actionLabel}>{item.commentCount}</Text>
           </Pressable>
 
           <Pressable
@@ -808,20 +799,14 @@ export function CampusPingsScreen() {
               color={item.boostedByCurrentUser ? '#FF647F' : COLORS.textPrimary}
               fill={item.boostedByCurrentUser ? '#FF647F' : 'none'}
             />
-            <Text style={styles.actionLabel}>Boost</Text>
+            <Text style={styles.actionLabel}>{item.likeCount}</Text>
           </Pressable>
-
-          <View style={{ flex: 1 }} />
 
           <Pressable style={styles.actionButton} onPress={() => savePingToPlans(item)}>
             <CalendarDays size={16} color={COLORS.textPrimary} />
-            <Text style={styles.actionLabel}>Save</Text>
           </Pressable>
 
-          <Pressable style={styles.primaryActionButton} onPress={() => openPingOnMap(item)}>
-            <MapPin size={16} color="#FFFFFF" />
-            <Text style={styles.primaryActionLabel}>Map</Text>
-          </Pressable>
+          <View style={{ flex: 1 }} />
 
           {canDelete ? (
             <Pressable style={styles.actionButton} onPress={() => handleDeletePing(item)}>
@@ -1607,72 +1592,52 @@ const getStyles = (COLORS: any) =>
       lineHeight: 28,
       letterSpacing: -0.2,
     },
-    pingCardDivider: {
-      height: 1,
-      backgroundColor: COLORS.border,
-      marginVertical: 18,
-    },
-    pingFooterRow: {
+    pingMetaRow: {
+      marginTop: 14,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      gap: 12,
+      gap: 10,
     },
     locationPill: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
-      paddingHorizontal: 14,
-      paddingVertical: 11,
+      gap: 6,
+      flex: 1,
+      minWidth: 0,
+    },
+    locationPillText: {
+      color: COLORS.textPrimary,
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    mapLinkButton: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
       borderRadius: 999,
       backgroundColor: COLORS.background,
       borderWidth: 1,
       borderColor: COLORS.border,
     },
-    locationPillText: {
-      color: COLORS.textPrimary,
-      fontSize: 14,
-      fontWeight: '600',
-    },
-    pingSignalsRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      flexWrap: 'wrap',
-      justifyContent: 'flex-end',
-      flex: 1,
-    },
-    signalPill: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-    },
-    signalPillText: {
+    mapLinkLabel: {
       color: COLORS.textSecondary,
-      fontSize: 13,
-      fontWeight: '600',
+      fontSize: 11,
+      fontWeight: '700',
     },
     actionRow: {
-      marginTop: 18,
+      marginTop: 10,
       flexDirection: 'row',
       alignItems: 'center',
-      flexWrap: 'wrap',
-      gap: 10,
+      gap: 12,
     },
     actionButton: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      borderRadius: 16,
-      backgroundColor: COLORS.background,
-      borderWidth: 1,
-      borderColor: COLORS.border,
+      gap: 5,
+      paddingVertical: 4,
     },
     actionButtonActive: {
-      backgroundColor: 'rgba(255,100,127,0.12)',
-      borderColor: 'rgba(255,100,127,0.22)',
+      opacity: 0.95,
     },
     actionLabel: {
       color: COLORS.textPrimary,
