@@ -36,11 +36,16 @@ export const LIGHT_COLORS = {
   warning: '#FF9500',
 };
 
-export const DEFAULT_LIGHT_ACCENT = '#8E8E93';
-export const DEFAULT_DARK_ACCENT = '#8E8E93';
+export const DEFAULT_LIGHT_ACCENT = '#500000';
+export const DEFAULT_DARK_ACCENT = '#500000';
+const LEGACY_DEFAULT_ACCENT = '#8E8E93';
 
 export function getDefaultAccentColor(theme: 'light' | 'dark') {
   return theme === 'dark' ? DEFAULT_DARK_ACCENT : DEFAULT_LIGHT_ACCENT;
+}
+
+function isLegacyDefaultAccent(accentColor: string | null | undefined) {
+  return (accentColor || '').toUpperCase() === LEGACY_DEFAULT_ACCENT;
 }
 
 // Zustand Theme Store
@@ -54,7 +59,10 @@ export const useThemeStore = create<any>((set, get) => ({
     const currentTheme = get().theme as 'light' | 'dark';
     const currentAccent = get().accentColor;
     const nextState: Record<string, string> = { theme: newTheme };
-    if (currentAccent === getDefaultAccentColor(currentTheme)) {
+    if (
+      currentAccent === getDefaultAccentColor(currentTheme) ||
+      isLegacyDefaultAccent(currentAccent)
+    ) {
       nextState.accentColor = getDefaultAccentColor(newTheme as 'light' | 'dark');
       AsyncStorage.setItem('accent_color', nextState.accentColor).catch(() => {});
     }
@@ -107,7 +115,10 @@ export const useThemeStore = create<any>((set, get) => ({
       nextState.theme = storedTheme;
     }
 
-    nextState.accentColor = accentColor || getDefaultAccentColor(nextTheme);
+    nextState.accentColor =
+      !accentColor || isLegacyDefaultAccent(accentColor)
+        ? getDefaultAccentColor(nextTheme)
+        : accentColor;
 
     if (accentTextEnabled !== null) {
       nextState.applyAccentToText = accentTextEnabled === 'true';

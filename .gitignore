@@ -11,3 +11,6 @@ __pycache__/
 tsc_errors.log
 tsc_output.txt
 tsc_final.log
+
+
+data_architecture_plan.md
