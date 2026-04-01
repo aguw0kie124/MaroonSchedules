@@ -23,10 +23,7 @@ import {
   Layers,
   Star,
   Navigation,
-  Share2,
-  Users,
 } from "lucide-react-native";
-import { useShareStore } from "../../store/shareStore";
 import * as Linking from "expo-linking";
 import * as Haptics from "expo-haptics";
 import type { CampusLocation } from "./types";
@@ -130,21 +127,6 @@ export function LocationBottomSheet({
   selectedBus,
   openNavigationToLocation,
 }: LocationBottomSheetProps) {
-  const conciseDescription = useMemo(() => {
-    const raw = selectedLoc?.description?.trim();
-    if (!raw) return null;
-
-    const cleaned = raw.replace(/\s+/g, " ");
-    const firstSentence = cleaned.match(/^.*?[.!?](?:\s|$)/)?.[0]?.trim() || cleaned;
-    const base = firstSentence.length <= 150 ? firstSentence : `${firstSentence.slice(0, 147).trimEnd()}...`;
-
-    if (base.length <= 170) {
-      return base;
-    }
-
-    return `${base.slice(0, 167).trimEnd()}...`;
-  }, [selectedLoc?.description]);
-
   // ── Bottom sheet animation ──────────────────────────────────
   const sheetY = useRef(new Animated.Value(SNAP_HIDDEN)).current;
   const sheetSnap = useRef<number>(SNAP_HIDDEN);
@@ -270,73 +252,26 @@ export function LocationBottomSheet({
                 >
                   <X size={18} color="#888" />
                 </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.circularActionBtn}
-                  onPress={() =>
-                    useShareStore.getState().openShare({
-                      title: selectedLoc.location,
-                      message: `Check out ${selectedLoc.location} on MaroonSchedules!`,
-                      url: `https://maroonschedules.tamu.edu/places/${selectedLoc.location.replace(/\s+/g, '-')}`
-                    })
-                  }
-                >
-                  <Share2 size={20} color="#FFF" />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.circularActionBtn}
-                  onPress={() =>
-                    navigation.navigate("CampusNavigation", {
-                      initialDestination: {
-                        id: selectedLoc.location,
-                        name: selectedLoc.location,
-                        shortName: selectedLoc.shortName || selectedLoc.location,
-                        latitude: selectedLoc.coord.lat,
-                        longitude: selectedLoc.coord.lng,
-                        type:
-                          selectedLoc.type === "Academic"
-                            ? "academic"
-                            : selectedLoc.type === "Library"
-                              ? "library"
-                              : selectedLoc.type === "Dining"
-                                ? "dining"
-                                : selectedLoc.type === "Rec"
-                                  ? "recreation"
-                                  : selectedLoc.type === "Housing"
-                                    ? "housing"
-                                    : selectedLoc.type === "Athletics"
-                                      ? "athletics"
-                                      : "landmark",
-                      },
-                    })
-                  }
-                >
-                  <Navigation size={20} fill="#FFF" color="#FFF" />
-                </TouchableOpacity>
               </View>
             </View>
 
-            {conciseDescription ? (
-              <Text style={styles.descriptionText}>
-                {conciseDescription}
-              </Text>
-            ) : null}
-
             {selectedLoc.features && selectedLoc.features.length > 0 && (
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false}
-                style={{ marginTop: 12, paddingHorizontal: 16 }}
-                contentContainerStyle={{ gap: 8, paddingRight: 32 }}
-              >
-                {selectedLoc.features.map((feature, idx) => (
+              <View style={styles.featureWrap}>
+                {selectedLoc.features.slice(0, 4).map((feature, idx) => (
                   <View key={idx} style={styles.featurePill}>
-                    <Users size={12} color={COLORS.primary} style={{ marginRight: 6 }} />
-                    <Text style={styles.featurePillText}>{feature}</Text>
+                    <Text style={styles.featurePillText} numberOfLines={1}>
+                      {feature}
+                    </Text>
                   </View>
                 ))}
-              </ScrollView>
+                {selectedLoc.features.length > 4 ? (
+                  <View style={styles.featureCountPill}>
+                    <Text style={styles.featureCountText}>
+                      +{selectedLoc.features.length - 4}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
             )}
 
             {/* Quick actions + context cards */}
@@ -413,6 +348,38 @@ export function LocationBottomSheet({
                         </Text>
                       </TouchableOpacity>
                     ) : null}
+
+                    <TouchableOpacity
+                      style={[styles.quickActionPill, styles.quickActionSecondary]}
+                      onPress={() =>
+                        navigation.navigate("CampusNavigation", {
+                          initialDestination: {
+                            id: selectedLoc.location,
+                            name: selectedLoc.location,
+                            shortName: selectedLoc.shortName || selectedLoc.location,
+                            latitude: selectedLoc.coord.lat,
+                            longitude: selectedLoc.coord.lng,
+                            type:
+                              selectedLoc.type === "Academic"
+                                ? "academic"
+                                : selectedLoc.type === "Library"
+                                  ? "library"
+                                  : selectedLoc.type === "Dining"
+                                    ? "dining"
+                                    : selectedLoc.type === "Rec"
+                                      ? "recreation"
+                                      : selectedLoc.type === "Housing"
+                                        ? "housing"
+                                        : selectedLoc.type === "Athletics"
+                                          ? "athletics"
+                                          : "landmark",
+                          },
+                        })
+                      }
+                    >
+                      <Navigation size={14} color={COLORS.textPrimary} />
+                      <Text style={styles.quickActionText}>Navigate</Text>
+                    </TouchableOpacity>
                   </View>
 
                   {parkingRecommendation ? (

@@ -844,7 +844,7 @@ export function CampusPingsScreen() {
 
       <Pressable style={styles.quickPostBar} onPress={() => setComposerVisible(true)}>
         <View style={styles.quickPostIconWrap}>
-          <Megaphone size={16} color="#FF6A3D" />
+          <Megaphone size={16} color={COLORS.primary} />
         </View>
         <Text style={styles.quickPostText}>What's happening at...</Text>
       </Pressable>

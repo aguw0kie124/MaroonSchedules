@@ -324,9 +324,9 @@ export function PlacesList({
       recreationFacilityMap.get(getCanonicalLocationName(loc.location)) || null;
     const primaryMeta = loc.classMeetings?.length
       ? `${loc.classMeetings.length} class${loc.classMeetings.length === 1 ? "" : "es"}`
-      : loc.type === "Rec"
-        ? recreationFacility?.today_hours || recreationFacility?.hours_hint || loc.hours || "Hours available"
-        : loc.hours || loc.description || loc.type;
+      : loc.type === "Rec" || loc.type === "Library"
+        ? `${loc.percent_full != null ? `${loc.percent_full}% full` : loc.hours || recreationFacility?.today_hours || recreationFacility?.hours_hint || "Hours available"}`
+        : loc.hours || loc.type;
     const secondaryMeta =
       loc.type === "Parking"
         ? parkingRecommendation?.badge || null
