@@ -42,11 +42,7 @@ export function TimerScreen() {
     return () => clearInterval(interval);
   }, [isRunning, secondsLeft, selectedMinutes]);
 
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : isDark
-      ? require('../assets/black_marble.jpg')
-      : require('../assets/white_marble.jpg');
+  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const minutes = Math.floor(secondsLeft / 60);
   const seconds = secondsLeft % 60;

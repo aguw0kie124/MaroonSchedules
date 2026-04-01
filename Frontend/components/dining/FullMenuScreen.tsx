@@ -29,11 +29,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
   const { theme, wallpaperUri } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : darkMode
-      ? require('../../assets/black_marble.jpg')
-      : require('../../assets/white_marble.jpg');
+  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const { location, mealPeriod, title, locations, sourceHint } = route.params || {};
   const availableMealPeriods = getDiningMealOptionsForLocation(location);
@@ -95,9 +91,13 @@ export default function FullMenuScreen({ navigation, route }: any) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
       <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
-      <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.58)' : 'rgba(255,255,255,0.72)' }]} />
-      </ImageBackground>
+      {wallpaperSource ? (
+        <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.58)' : 'rgba(255,255,255,0.72)' }]} />
+        </ImageBackground>
+      ) : (
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: T.bg }]} />
+      )}
 
       <ScrollView style={s.container} contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
         <View style={s.header}>

@@ -65,7 +65,6 @@ import { API_URL } from "../config";
 import { useCampusHubStore } from "../store/campusHubStore";
 import {
   getOrderedItems,
-  isNavItemVisible,
   useAppShellStore,
 } from "../store/appShellStore";
 import { useShareStore } from "../store/shareStore";
@@ -135,21 +134,14 @@ export function PlacesMapScreen() {
   const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
   // ── App-shell store ───────────────────────────────────────
-  const navItems = useAppShellStore((s) => s.navItems);
   const placesPills = useAppShellStore((s) => s.placesPills);
   const parkingPermit = useAppShellStore((s) => s.parkingPermit);
   const togglePlacesPill = useAppShellStore((s) => s.togglePlacesPill);
   const movePlacesPill = useAppShellStore((s) => s.movePlacesPill);
-  const isStandaloneTransitScreen = route.name === "BusRoutes";
-  const isStandaloneBusVisible = isNavItemVisible(navItems, "BusRoutes");
 
   const orderedPlacesPills = useMemo(
-    () =>
-      getOrderedItems(placesPills).filter(
-        (item) =>
-          !(item.id === "Bus" && !isStandaloneTransitScreen && isStandaloneBusVisible),
-      ),
-    [isStandaloneBusVisible, isStandaloneTransitScreen, placesPills],
+    () => getOrderedItems(placesPills),
+    [placesPills],
   );
   const visiblePlacesPills = useMemo(
     () => orderedPlacesPills.filter((item) => item.visible),

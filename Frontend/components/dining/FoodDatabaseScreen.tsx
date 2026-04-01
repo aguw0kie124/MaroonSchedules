@@ -43,11 +43,7 @@ export default function FoodDatabaseScreen({ navigation, embedded = false }: any
     setNewFood({ name: '', location: '', calories: '', protein: '', carbs: '', fat: '' });
   };
 
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : darkMode
-      ? require('../../assets/black_marble.jpg')
-      : require('../../assets/white_marble.jpg');
+  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const content = (
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={s.container}>

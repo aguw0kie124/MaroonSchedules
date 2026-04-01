@@ -47,11 +47,7 @@ export default function StreakHubScreen({ navigation, embedded = false }: any) {
     return acc;
   }, {} as Record<string, any>);
 
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : darkMode
-      ? require('../../assets/black_marble.jpg')
-      : require('../../assets/white_marble.jpg');
+  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const content = (
       <ScrollView contentContainerStyle={{ padding: embedded ? 0 : 24 }}>
