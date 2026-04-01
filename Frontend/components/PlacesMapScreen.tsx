@@ -1564,6 +1564,19 @@ export function PlacesMapScreen() {
     if (!fromTimetable) {
       setShowBusTimetableSheet(false);
     }
+    
+    if (fromTimetable && mapRef.current && stop.Latitude != null && stop.Longitude != null) {
+      mapRef.current.animateToRegion(
+        {
+          latitude: stop.Latitude - 0.0022,
+          longitude: stop.Longitude,
+          latitudeDelta: 0.0085,
+          longitudeDelta: 0.0085,
+        },
+        500
+      );
+    }
+
     setNearestBusInfo("Finding closest bus...");
     // Run intensive closest-bus calculation asynchronously to not block the UI selection frame
     requestAnimationFrame(() => {
