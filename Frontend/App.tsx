@@ -48,7 +48,7 @@ import WeightTrackerScreen from './components/dining/WeightTrackerScreen';
 import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 
-import { Home, Map, Trophy, Users, User } from 'lucide-react-native';
+import { Home, Map, Users, User } from 'lucide-react-native';
 import { useTheme, useThemeStore } from './components/SharedUI';
 
 import { syncUser } from './api/client';
@@ -106,15 +106,8 @@ function MainTabs() {
     {
       name: 'Dashboard',
       component: Dashboard,
-      title: 'Home',
+      title: 'Events',
       icon: Home,
-      initialParams: undefined,
-    },
-    {
-      name: 'Leaderboard',
-      component: LeaderboardScreen,
-      title: 'Rankings',
-      icon: Trophy,
       initialParams: undefined,
     },
     {
@@ -172,41 +165,11 @@ function MainTabs() {
           options={{
             title: screen.title,
             tabBarIcon: ({ color, focused }) => {
-              const isMap = screen.name === 'Places';
-
-              if (isMap) {
-                return (
-                  <View
-                    style={{
-                      width: 58,
-                      height: 58,
-                      borderRadius: 29,
-                      backgroundColor: focused ? COLORS.primary : `${COLORS.primary}B3`,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginTop: -10,
-                      shadowColor: COLORS.primary,
-                      shadowOffset: { width: 0, height: focused ? 8 : 4 },
-                      shadowOpacity: focused ? 0.6 : 0.3,
-                      shadowRadius: focused ? 12 : 8,
-                      elevation: focused ? 14 : 8,
-                      borderWidth: 4,
-                      borderColor: COLORS.surface,
-                    }}
-                  >
-                    <screen.icon color="#FFFFFF" size={26} strokeWidth={2.5} />
-                  </View>
-                );
-              }
-
-              const isEnlarged = screen.name === 'Social' || screen.name === 'Settings';
-              const size = isEnlarged ? 28 : 24;
-
               return (
                 <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                   <screen.icon
                     color={focused ? COLORS.primary : color}
-                    size={size}
+                    size={24}
                     strokeWidth={focused ? 2.5 : 2}
                   />
                 </View>
