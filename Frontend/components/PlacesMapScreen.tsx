@@ -48,7 +48,7 @@ import {
   ChevronDown,
   Share2,
 } from "lucide-react-native";
-import { createRoute, WalkingRoute } from "../services/campusDirections";
+import type { WalkingRoute } from "../services/campusDirections";
 import { useTheme } from "./SharedUI";
 import { PageModuleEditor } from "./PageModuleEditor";
 import MapView, {
@@ -118,12 +118,6 @@ import {
   getCategoryIcon,
 } from "./places/utils";
 import { getStyles } from "./places/placesStyles";
-
-const LOCATION_FOCUS_REGION = {
-  latitudeOffset: 0.0006,
-  latitudeDelta: 0.016,
-  longitudeDelta: 0.016,
-};
 
 // ── Transitional: still uses inline hooks from original file
 //    (replace with useLocationData / useScheduleMap / useBusTransit
@@ -568,31 +562,7 @@ export function PlacesMapScreen() {
     setIsSearchExpanded(false);
     setSearchQuery("");
     setShowSearchResults(false);
-
-    if (mapRef.current && loc.coord) {
-      if (activeLayer === "Today" && activeWalkingRoute && userCoord) {
-        // Fit map to show both user and destination if we have a route
-        mapRef.current.fitToCoordinates(
-          [
-            { latitude: userCoord.latitude, longitude: userCoord.longitude },
-            { latitude: loc.coord.lat, longitude: loc.coord.lng }
-          ],
-          {
-            edgePadding: { top: 180, right: 50, bottom: 120, left: 50 },
-            animated: true
-          }
-        );
-      } else {
-        // Just animate to the specific location
-        mapRef.current.animateToRegion({
-          latitude: loc.coord.lat - LOCATION_FOCUS_REGION.latitudeOffset,
-          longitude: loc.coord.lng,
-          latitudeDelta: LOCATION_FOCUS_REGION.latitudeDelta,
-          longitudeDelta: LOCATION_FOCUS_REGION.longitudeDelta
-        }, 500);
-      }
-    }
-  }, [activeLayer, activeWalkingRoute, userCoord]);
+  }, []);
 
   const centerOnUserLocation = useCallback(async () => {
     try {
@@ -669,11 +639,10 @@ export function PlacesMapScreen() {
         coords = routePatterns;
       }
     } else if (activeLayer === "Today") {
-      // Fit to all scheduled destination coordinates + user position
+      // Only fit when there are multiple scheduled locations to show.
       coords = sortedFilteredLocations
         .filter(loc => loc.coord)
         .map(loc => ({ latitude: loc.coord.lat, longitude: loc.coord.lng }));
-      if (userCoord) coords.push(userCoord);
     } else {
       // General map fit for other layers (Dining, Parking, Places)
       if (selectedLoc) {
@@ -689,7 +658,10 @@ export function PlacesMapScreen() {
     if (coords.length > 0) {
       const { width, height } = Dimensions.get('window');
       const isToday = activeLayer === "Today";
-      const isBus = activeLayer === "Bus";
+
+      if (isToday && coords.length < 2) {
+        return;
+      }
 
       // Dynamic padding to ensure data is centered in the visible ~65% of the viewport
       // Dynamic padding to ensure data is centered in the visible area below the Today box
@@ -824,17 +796,6 @@ export function PlacesMapScreen() {
     const match = allMapLocations.find((loc) => getCanonicalLocationName(loc.location) === targetName);
     if (!match) return;
     setSelectedId(match.location);
-    if (mapRef.current) {
-      mapRef.current.animateToRegion(
-        {
-          latitude: match.coord.lat - LOCATION_FOCUS_REGION.latitudeOffset,
-          longitude: match.coord.lng,
-          latitudeDelta: LOCATION_FOCUS_REGION.latitudeDelta,
-          longitudeDelta: LOCATION_FOCUS_REGION.longitudeDelta,
-        },
-        500,
-      );
-    }
     setPendingInitialLocation(null);
   }, [allMapLocations, pendingInitialLocation]);
 
@@ -894,23 +855,10 @@ export function PlacesMapScreen() {
     return () => { if (busPollInterval.current) clearInterval(busPollInterval.current); };
   }, [activeLayer, isAllBusRoutesSelected, selectedBusRouteId]);
 
-  // Walking directions routing for Today tab
+  // Today selection should not auto-generate directions.
   useEffect(() => {
-    if (activeLayer === "Today" && nextEntry && userCoord) {
-      const dest = { latitude: nextEntry.lat, longitude: nextEntry.lng };
-      if (dest.latitude && dest.longitude) {
-        const route = createRoute(
-          { latitude: userCoord.latitude, longitude: userCoord.longitude },
-          dest
-        );
-        setActiveWalkingRoute(route);
-      } else {
-        setActiveWalkingRoute(null);
-      }
-    } else {
-      setActiveWalkingRoute(null);
-    }
-  }, [activeLayer, nextEntry, userCoord]);
+    setActiveWalkingRoute(null);
+  }, [activeLayer, nextEntry, userCoord, selectedDate]);
 
   // Update nearest bus when vehicles change
   useEffect(() => {
@@ -919,7 +867,7 @@ export function PlacesMapScreen() {
 
   // Auto-fit map to filtered locations
   useEffect(() => {
-    if (!mapRef.current || activeLayer === "Bus" || activeLayer === "Heatmap" || selectedId || sortedFilteredLocations.length === 0) return;
+    if (!mapRef.current || activeLayer === "Bus" || activeLayer === "Heatmap" || activeLayer === "Today" || selectedId || sortedFilteredLocations.length === 0) return;
     const fitKey = `${activeLayer}:${sortedFilteredLocations.length}:${sortedFilteredLocations[0]?.location || ""}`;
     if (lastPlacesFitKey.current === fitKey) return;
     lastPlacesFitKey.current = fitKey;
