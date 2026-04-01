@@ -307,6 +307,7 @@ interface AppShellState {
   placesViewMode: PlacesViewMode;
   settingsTab: SettingsTabId;
   isBottomBarHidden: boolean;
+  tabBarMode: 'floating' | 'solid';
   selectedScheduleId: string | null;
   schedules: any[];
   toggleNavItem: (id: NavItemId) => void;
@@ -328,6 +329,7 @@ interface AppShellState {
   setPlacesViewMode: (mode: PlacesViewMode) => void;
   setSettingsTab: (tab: SettingsTabId) => void;
   setBottomBarHidden: (hidden: boolean) => void;
+  setTabBarMode: (mode: 'floating' | 'solid') => void;
   setSelectedScheduleId: (id: string | null) => void;
   setSchedules: (schedules: any[]) => void;
   applyPreset: (preset: ShellPresetId) => void;
@@ -361,6 +363,7 @@ export const useAppShellStore = create<AppShellState>()(
       placesViewMode: defaultPresetState.placesViewMode,
       settingsTab: 'layout',
       isBottomBarHidden: false,
+      tabBarMode: 'floating',
       selectedScheduleId: null,
       schedules: [],
       toggleNavItem: (id) =>
@@ -418,6 +421,7 @@ export const useAppShellStore = create<AppShellState>()(
       setPlacesViewMode: (placesViewMode) => set({ placesViewMode }),
       setSettingsTab: (settingsTab) => set({ settingsTab }),
       setBottomBarHidden: (isBottomBarHidden) => set({ isBottomBarHidden }),
+      setTabBarMode: (tabBarMode) => set({ tabBarMode }),
       setSelectedScheduleId: (selectedScheduleId) => set({ selectedScheduleId }),
       setSchedules: (schedules) => set({ schedules }),
       applyPreset: (shellPreset) => {
@@ -437,7 +441,7 @@ export const useAppShellStore = create<AppShellState>()(
     }),
     {
       name: 'app-shell-store',
-      version: 11,
+      version: 12,
       storage: createJSONStorage(() => AsyncStorage),
       migrate: (persistedState: any, version: number) => {
         if (!persistedState) return persistedState;
@@ -500,6 +504,7 @@ export const useAppShellStore = create<AppShellState>()(
         parkingPermit: state.parkingPermit,
         placesViewMode: state.placesViewMode,
         settingsTab: state.settingsTab,
+        tabBarMode: state.tabBarMode,
       }),
       merge: (persistedState, currentState) => {
         const persisted = (persistedState || {}) as Partial<AppShellState>;
@@ -524,6 +529,10 @@ export const useAppShellStore = create<AppShellState>()(
           placesViewMode: isPlacesViewMode(persisted.placesViewMode)
             ? persisted.placesViewMode
             : currentState.placesViewMode,
+          tabBarMode:
+            persisted.tabBarMode === 'floating' || persisted.tabBarMode === 'solid'
+              ? persisted.tabBarMode
+              : currentState.tabBarMode,
           settingsTab:
             persisted.settingsTab === 'personal' ||
             persisted.settingsTab === 'layout' ||

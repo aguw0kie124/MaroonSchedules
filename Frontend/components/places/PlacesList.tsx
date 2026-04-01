@@ -79,7 +79,7 @@ export function PlacesList({
 }: PlacesListProps) {
   const isTodayLayer = activeLayer === "Today";
   const shouldShowSheet =
-    !selectedId && activeLayer !== "Bus" && activeLayer !== "Heatmap" && (isTodayLayer || sortedFilteredLocations.length > 0);
+    !selectedId && (isTodayLayer || activeLayer === "Bus" || activeLayer === "Heatmap" || sortedFilteredLocations.length > 0);
 
   // Keep the sheet docked lower so the map remains the main workspace.
   const sheetHeight = Math.min(Math.round(SCREEN_HEIGHT * 0.52), 470);
@@ -188,8 +188,8 @@ export function PlacesList({
           <ChevronRight size={20} color={COLORS.textPrimary} />
         </TouchableOpacity>
         {setIsTodayExpanded && (
-          <TouchableOpacity 
-            style={[styles.dateNavArrow, { marginLeft: 8 }]} 
+          <TouchableOpacity
+            style={[styles.dateNavArrow, { marginLeft: 8 }]}
             onPress={() => setIsTodayExpanded(!isTodayExpanded)}
           >
             {isTodayExpanded ? (
@@ -207,7 +207,7 @@ export function PlacesList({
     if (activeLayer !== "Today") return null;
 
     if (!isTodayExpanded && nextEntry) {
-      const travelLabel = activeWalkingRoute 
+      const travelLabel = activeWalkingRoute
         ? `Get Directions (${activeWalkingRoute.estimatedTimeMinutes} min)`
         : "Get Directions";
 
@@ -222,16 +222,16 @@ export function PlacesList({
               <Text style={styles.nextUpLocation} numberOfLines={1}>{nextEntry.locationLabel}</Text>
             </View>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <TouchableOpacity 
-                style={styles.nextUpDirectionsPill} 
+              <TouchableOpacity
+                style={styles.nextUpDirectionsPill}
                 onPress={() => {
                   if (openNavigationToLocation && nextEntry) {
-                    const loc = sortedFilteredLocations.find((l: any) => 
-                      l.location === nextEntry.building || 
+                    const loc = sortedFilteredLocations.find((l: any) =>
+                      l.location === nextEntry.building ||
                       l.shortName === nextEntry.building ||
                       l.location.includes(nextEntry.building)
                     );
-                    
+
                     if (loc) {
                       openNavigationToLocation(loc);
                     } else {
@@ -248,7 +248,7 @@ export function PlacesList({
                 <Text style={styles.nextUpDirectionsPillText}>Directions</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.nextUpShareIcon}
                 onPress={() => onShare?.({
                   title: nextEntry.name,
@@ -265,26 +265,26 @@ export function PlacesList({
     }
 
     if (!isTodayExpanded && !nextEntry) {
-       return (
-         <View style={styles.placesSheetCollapsedBody}>
-            <View style={styles.placesSheetCollapsedSummary}>
-              <Text style={styles.placesSheetCollapsedSummaryTitle}>All done for today!</Text>
-              <Text style={styles.placesSheetCollapsedSummaryMeta}>Nothing else in your schedule</Text>
-            </View>
-         </View>
-       );
+      return (
+        <View style={styles.placesSheetCollapsedBody}>
+          <View style={styles.placesSheetCollapsedSummary}>
+            <Text style={styles.placesSheetCollapsedSummaryTitle}>All done for today!</Text>
+            <Text style={styles.placesSheetCollapsedSummaryMeta}>Nothing else in your schedule</Text>
+          </View>
+        </View>
+      );
     }
 
     const handleTimelineGetDirections = (building: string) => {
       if (!openNavigationToLocation) return;
-      
+
       // Try to find full location data
-      const loc = sortedFilteredLocations.find(l => 
-        l.location === building || 
-        l.shortName === building || 
+      const loc = sortedFilteredLocations.find(l =>
+        l.location === building ||
+        l.shortName === building ||
         l.location.includes(building)
       );
-      
+
       if (loc) {
         openNavigationToLocation(loc);
       } else {
@@ -310,11 +310,11 @@ export function PlacesList({
   const renderPlaceCard = (loc: CampusLocation, compact = false) => {
     const distanceMeters = userCoord
       ? haversineDistanceMeters(
-          userCoord.latitude,
-          userCoord.longitude,
-          loc.coord.lat,
-          loc.coord.lng,
-        )
+        userCoord.latitude,
+        userCoord.longitude,
+        loc.coord.lat,
+        loc.coord.lng,
+      )
       : null;
     const parkingRecommendation =
       loc.type === "Parking"
@@ -331,7 +331,7 @@ export function PlacesList({
       loc.type === "Parking"
         ? parkingRecommendation?.badge || null
         : loc.percent_full != null &&
-            (loc.type === "Library" || loc.type === "Rec")
+          (loc.type === "Library" || loc.type === "Rec")
           ? `${loc.percent_full}% full`
           : loc.type;
     const statusChips: string[] = [];
@@ -421,23 +421,6 @@ export function PlacesList({
     return null;
   }
 
-  if (isTodayLayer) {
-    return (
-      <View style={styles.todayTopContainer}>
-        <View style={styles.placesSheetHeader}>
-          {renderTodayHeader()}
-        </View>
-        <ScrollView
-          style={styles.placesSheetScroll}
-          contentContainerStyle={styles.placesSheetListContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {renderScheduleCard()}
-        </ScrollView>
-      </View>
-    );
-  }
-
   return (
     <Animated.View
       style={[
@@ -482,7 +465,7 @@ export function PlacesList({
           contentContainerStyle={styles.placesSheetListContent}
           showsVerticalScrollIndicator={false}
         >
-          {renderScheduleCard()}
+          {activeLayer !== "Today" && renderScheduleCard()}
           {isExpanded && activeLayer !== "Today" ? (
             sortedFilteredLocations.map((loc) => renderPlaceCard(loc))
           ) : !isExpanded && activeLayer !== "Today" ? (
@@ -490,12 +473,12 @@ export function PlacesList({
               <View style={styles.placesSheetCollapsedSummary}>
                 <Text style={styles.placesSheetCollapsedSummaryTitle}>
                   {activeLayer === "Today"
-                    ? activeScheduleOption?.label || "No events selected"
+                    ? "Schedule Details"
                     : sortedFilteredLocations[0]?.location || "Browse nearby places"}
                 </Text>
                 <Text style={styles.placesSheetCollapsedSummaryMeta}>
                   {activeLayer === "Today"
-                    ? scheduleSummaryLabel
+                    ? "See floating card above"
                     : `${sortedFilteredLocations.length} result${sortedFilteredLocations.length === 1 ? "" : "s"}`}
                 </Text>
               </View>

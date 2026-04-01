@@ -80,6 +80,7 @@ export interface CampusLocation {
   menu_snippet?: string[] | null;
   shortName?: string;
   description?: string;
+  features?: string[];
   source?: "traffic" | "directory" | "schedule";
   classMeetings?: ScheduleMeetingEntry[];
   scheduleLabel?: string;

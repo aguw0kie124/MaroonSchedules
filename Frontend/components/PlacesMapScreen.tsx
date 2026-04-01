@@ -27,10 +27,11 @@ import {
   Animated,
   Platform,
   Dimensions,
+  ScrollView,
 } from "react-native";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
-import { 
+import {
   Menu,
   ChevronRight,
   ChevronLeft,
@@ -44,6 +45,8 @@ import {
   Maximize2,
   Minimize2,
   Bus,
+  ChevronDown,
+  Share2,
 } from "lucide-react-native";
 import { createRoute, WalkingRoute } from "../services/campusDirections";
 import { useTheme } from "./SharedUI";
@@ -86,7 +89,9 @@ import {
   BusVehicleInfoCard,
 } from "./places/BusLayerUI";
 import { LocationBottomSheet } from "./places/LocationBottomSheet";
+import { ScheduleHeader } from "./places/ScheduleHeader";
 import { PlacesList } from "./places/PlacesList";
+import { TodayTimeline } from "./places/TodayTimeline";
 import { useScheduleMap } from "./places/useScheduleMap";
 
 // ── Shared data / utilities ───────────────────────────────────
@@ -127,6 +132,7 @@ export function PlacesMapScreen() {
   const navigation = useNavigation<any>();
   const { user } = useUser();
   const insets = useSafeAreaInsets();
+  const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
   // ── App-shell store ───────────────────────────────────────
   const navItems = useAppShellStore((s) => s.navItems);
@@ -156,6 +162,7 @@ export function PlacesMapScreen() {
   // ── Map ref ───────────────────────────────────────────────
   const mapRef = useRef<any>(null);
   const lastPlacesFitKey = useRef<string | null>(null);
+  const [isListDroppedDown, setIsListDroppedDown] = useState(false);
 
   // ── UI state ──────────────────────────────────────────────
   const [activeLayer, setActiveLayer] = useState<string>("Today");
@@ -184,6 +191,9 @@ export function PlacesMapScreen() {
         { location: "Memorial Student Center", type: "Hub", coord: getCanonicalCoords("Memorial Student Center", { lat: 30.6123, lng: -96.3415 }), percent_full: 45, is_live: false, hours: "7:00 AM – 10:00 PM" },
         { location: "Polo Road Garage Dining", type: "Hub", coord: getCanonicalCoords("Polo Road Garage Dining", { lat: 30.6235, lng: -96.3388 }), percent_full: 30, is_live: false, hours: "7:00 AM – 9:00 PM" },
         { location: "Sbisa Dining Hall", type: "Dining", coord: getCanonicalCoords("Sbisa Dining Hall", { lat: 30.617135, lng: -96.343777 }), percent_full: 60, is_live: false, hours: "10:00 AM – 8:00 PM" },
+        { location: "Student Recreation Center", type: "Rec", coord: getCanonicalCoords("Student Recreation Center", { lat: 30.6071, lng: -96.3454 }), percent_full: 55, is_live: false, hours: "6:00 AM – 11:45 PM" },
+        { location: "Southside Recreation Center", type: "Rec", coord: getCanonicalCoords("Southside Recreation Center", { lat: 30.6151, lng: -96.3344 }), percent_full: 40, is_live: false, hours: "5:30 AM – 11:59 PM" },
+        { location: "Polo Road Recreation Center", type: "Rec", coord: getCanonicalCoords("Polo Road Recreation Center", { lat: 30.6229, lng: -96.3409 }), percent_full: 35, is_live: false, hours: "6:00 AM – 10:00 PM" },
       ];
       const combined = [...fetched];
       hubs.forEach((h) => {
@@ -191,17 +201,31 @@ export function PlacesMapScreen() {
       });
       const trafficLocations = combined.map((loc: any) => {
         const canonicalName = getCanonicalLocationName(loc.location);
+        // Filter out unknown or non-campus locations that result in blank pins
+        if (!canonicalName || canonicalName === "Unknown" || canonicalName.match(/^\d+$/)) return null;
+
         const zone = CAMPUS_ZONES.find((z) => z.name === canonicalName);
         const resolvedCoord = getCanonicalCoords(canonicalName, loc.coord);
         return { ...loc, location: canonicalName, coord: resolvedCoord, ...(zone?.hours ? { hours: zone.hours } : {}), source: "traffic" as const };
-      });
+      }).filter(Boolean) as CampusLocation[];
       const mergedMap = new Map<string, CampusLocation>();
       fullCampusIndex.forEach((l) => mergedMap.set(l.location, l));
       trafficLocations.forEach((loc: CampusLocation) => {
         const canonicalName = getCanonicalLocationName(loc.location);
         const existing = mergedMap.get(canonicalName) || mergedMap.get(loc.location);
         if (loc.location !== canonicalName && mergedMap.has(loc.location)) mergedMap.delete(loc.location);
-        mergedMap.set(canonicalName, { ...existing, ...loc, location: canonicalName, coord: getCanonicalCoords(canonicalName, loc.coord), type: existing?.type || loc.type || "General", shortName: existing?.shortName || loc.shortName, description: existing?.description || loc.description });
+        mergedMap.set(canonicalName, { 
+          ...existing, 
+          ...loc, 
+          location: canonicalName, 
+          coord: getCanonicalCoords(canonicalName, loc.coord), 
+          // Prioritize specific types from directory (Rec/Dining/Hub) if API returns generic Building/Landmark
+          type: (loc.type && !["Building", "Landmark", "General", "Athletics"].includes(loc.type)) 
+            ? loc.type 
+            : (existing?.type || loc.type || "General"), 
+          shortName: existing?.shortName || loc.shortName, 
+          description: existing?.description || loc.description 
+        });
       });
       setLocations(Array.from(mergedMap.values()));
     } catch (err) {
@@ -242,6 +266,11 @@ export function PlacesMapScreen() {
   const [selectedBus, setSelectedBus] = useState<any | null>(null);
   const [nearestBusInfo, setNearestBusInfo] = useState<string | null>(null);
   const busPollInterval = useRef<any>(null);
+
+  useEffect(() => {
+    setIsListDroppedDown(false);
+  }, [activeLayer]);
+
   const isFetchingRef = useRef(false);
   const isAllBusRoutesSelected = !selectedBusRouteId || selectedBusRouteId === ALL_BUS_ROUTES_KEY;
 
@@ -265,6 +294,23 @@ export function PlacesMapScreen() {
     const facilities = campusHubSnapshot?.recreation.facilities || [];
     return new Map(facilities.map((f: any) => [getCanonicalLocationName(f.name), f]));
   }, [campusHubSnapshot?.recreation.facilities]);
+
+  const formatDate = (date: Date) => {
+    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    return `${months[date.getMonth()]} ${date.getDate()}`;
+  };
+
+  const handlePrevDay = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() - 1);
+    setSelectedDate(d);
+  };
+
+  const handleNextDay = () => {
+    const d = new Date(selectedDate);
+    d.setDate(d.getDate() + 1);
+    setSelectedDate(d);
+  };
 
   // ── Category / pill bar ───────────────────────────────────
   const visibleCategories = useMemo(() => {
@@ -304,6 +350,7 @@ export function PlacesMapScreen() {
     if (activeLayer === "Dining") return allMapLocations.filter((l) => l.type === "Dining" || l.type === "Hub");
     if (activeLayer === "Academic") return allMapLocations.filter((l) => l.type === "Academic" || l.type === "Landmark");
     if (activeLayer === "Study") return allMapLocations.filter((l) => l.type === "Study" || l.type === "Library");
+    if (activeLayer === "Rec") return allMapLocations.filter((l) => l.type === "Rec" || l.type === "Hub" && l.location.includes("Rec"));
     return allMapLocations.filter((l) => l.type === activeLayer);
   }, [activeLayer, allMapLocations, scheduleLocations]);
 
@@ -645,12 +692,12 @@ export function PlacesMapScreen() {
       const { width, height } = Dimensions.get('window');
       const isToday = activeLayer === "Today";
       const isBus = activeLayer === "Bus";
-      
+
       // Dynamic padding to ensure data is centered in the visible ~65% of the viewport
       // Dynamic padding to ensure data is centered in the visible area below the Today box
       // Today: Scale with screen height (roughly 58% on pro phones, less on smaller)
       // pins have height (40px) and we want 20px margin.
-      const topPadding = isToday ? Math.min(height * 0.58, 540) : 120;
+      const topPadding = isToday ? Math.max(80, Math.min(height * 0.58, 540) - 200) : 120;
       const bottomPadding = 120;
       const sidePadding = isToday ? 20 : width * 0.15;
 
@@ -661,11 +708,11 @@ export function PlacesMapScreen() {
       }
 
       mapRef.current.fitToCoordinates(coords, {
-        edgePadding: { 
-          top: topPadding, 
-          right: sidePadding, 
-          bottom: bottomPadding, 
-          left: sidePadding 
+        edgePadding: {
+          top: topPadding,
+          right: sidePadding,
+          bottom: bottomPadding,
+          left: sidePadding
         },
         animated: true,
       });
@@ -796,7 +843,7 @@ export function PlacesMapScreen() {
   // Hydrate hub when tab needs it
   useEffect(() => {
     if (user?.id && (activeLayer === "Rec" || activeLayer === "Library" || activeLayer === "Schedule")) {
-      hydrateCampusHub(user.id).catch(() => {});
+      hydrateCampusHub(user.id).catch(() => { });
     }
   }, [activeLayer, hydrateCampusHub, user?.id]);
 
@@ -909,7 +956,7 @@ export function PlacesMapScreen() {
 
   // Connect Stream feeds user
   useEffect(() => {
-    if (user?.id) connectFeedsUser(user.id).catch(() => {});
+    if (user?.id) connectFeedsUser(user.id).catch(() => { });
   }, [user]);
 
   // ── Render ────────────────────────────────────────────────
@@ -943,13 +990,13 @@ export function PlacesMapScreen() {
                 radius={zone.radius}
                 fillColor={
                   density >= 70 ? "rgba(255,59,48,0.22)" :
-                  density >= 40 ? "rgba(255,149,0,0.18)" :
-                  "rgba(50,215,75,0.14)"
+                    density >= 40 ? "rgba(255,149,0,0.18)" :
+                      "rgba(50,215,75,0.14)"
                 }
                 strokeColor={
                   density >= 70 ? "rgba(255,59,48,0.5)" :
-                  density >= 40 ? "rgba(255,149,0,0.45)" :
-                  "rgba(50,215,75,0.4)"
+                    density >= 40 ? "rgba(255,149,0,0.45)" :
+                      "rgba(50,215,75,0.4)"
                 }
                 strokeWidth={1.5}
               />
@@ -987,7 +1034,7 @@ export function PlacesMapScreen() {
           const isTrackedBus = selectedBus?.Name === bus.Name;
           const routeShortName = bus.routeShortName || bus.RouteShortName || selectedRoute?.ShortName || "";
           const routeColor = bus.routeColor || bus.RouteColor || selectedRoute?.Color || "#007AFF";
-          
+
           return (
             <Marker
               key={`bus-${bus.Id || bus.Name || i}`}
@@ -997,13 +1044,13 @@ export function PlacesMapScreen() {
               zIndex={isTrackedBus ? 1000 : 500}
             >
               <View style={[
-                styles.busMarker, 
-                { 
+                styles.busMarker,
+                {
                   backgroundColor: routeColor,
                   transform: [
-                    { rotate: `${bus.heading || bus.Heading || 0}deg` }, 
+                    { rotate: `${bus.heading || bus.Heading || 0}deg` },
                     { scale: isTrackedBus ? 1.15 : 1 }
-                  ] 
+                  ]
                 }
               ]}>
                 <View style={{ transform: [{ rotate: `-${bus.heading || bus.Heading || 0}deg` }] }}>
@@ -1028,7 +1075,7 @@ export function PlacesMapScreen() {
         {activeLayer !== "Bus" && markerLocations.map((loc) => {
           const isSelected = loc.location === selectedId;
           const isTodayLayer = activeLayer === "Today";
-          const pinColor = isTodayLayer 
+          const pinColor = isTodayLayer
             ? getCategoryColor(loc.classMeetings?.[0]?.category)
             : getStatusColor(loc.percent_full);
           const pinText = isTodayLayer && loc.sequenceIndex ? loc.sequenceIndex.toString() : null;
@@ -1079,82 +1126,208 @@ export function PlacesMapScreen() {
         />
 
         {!isSearchExpanded && (
-          <View style={{ marginTop: 14, width: "100%" }}>
-            <LayerPillScroller
-              styles={styles}
-              COLORS={COLORS}
-              activeLayer={activeLayer}
-              layers={visibleCategories}
-              onSelectLayer={(layer) => {
-                setActiveLayer(layer);
-                setSelectedId(null);
-                setSelectedStop(null);
-                setSelectedBus(null);
-                setIsRouteDropdownOpen(false);
-              }}
-              onOpenSettings={() => setIsEditorVisible(true)}
-            />
-            <View style={styles.mapControls}>
-              <TouchableOpacity
-                style={styles.mapButton}
-                onPress={() => {
-                  const coords = activeLayer === "Today" 
-                    ? markerLocations.map(l => ({ latitude: l.coord.lat, longitude: l.coord.lng }))
-                    : [];
-                  if (coords.length > 0 && mapRef.current) {
-                    const { width, height } = Dimensions.get('window');
-                    const topPadding = activeLayer === "Today" ? Math.min(height * 0.58, 540) : 120;
-                    mapRef.current.fitToCoordinates(coords, {
-                      edgePadding: { top: topPadding, right: 20, bottom: 120, left: 20 },
-                      animated: true
-                    });
-                  }
+          <>
+            {/* Row 2: Category Pills */}
+            <View style={{ marginTop: 12, width: "100%" }}>
+              <LayerPillScroller
+                styles={styles}
+                COLORS={COLORS}
+                activeLayer={activeLayer}
+                layers={visibleCategories}
+                onSelectLayer={(layer) => {
+                  setActiveLayer(layer);
+                  setSelectedId(null);
+                  setSelectedStop(null);
+                  setSelectedBus(null);
+                  setIsRouteDropdownOpen(false);
                 }}
-              >
-                <Maximize2 size={20} color={COLORS.textPrimary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.mapButton}
-                onPress={toggleMapPitch}
-              >
-                <Compass size={22} color={COLORS.textPrimary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.mapButton}
-                onPress={centerOnUserLocation}
-              >
-                <LocateFixed size={22} color={COLORS.textPrimary} />
-              </TouchableOpacity>
+                onOpenSettings={() => setIsEditorVisible(true)}
+              />
             </View>
-          </View>
-        )}
 
-        {/* Bus layer UI integrated into top stack flow */}
-        {activeLayer === "Bus" && (
-          <BusRouteSelector
-            styles={styles}
-            COLORS={COLORS}
-            busRoutes={busRoutes}
-            selectedBusRouteId={selectedBusRouteId}
-            selectedRoute={selectedRoute}
-            isAllBusRoutesSelected={isAllBusRoutesSelected}
-            isRouteDropdownOpen={isRouteDropdownOpen}
-            setIsRouteDropdownOpen={setIsRouteDropdownOpen}
-            filteredBusRoutes={filteredBusRoutes}
-            handleSelectBusRoute={handleSelectBusRoute}
-            openBusTimetable={() => navigation.navigate("BusTimetable")}
-            openTransitTripPlanner={() => navigation.navigate("TransitTripPlanner")}
-            selectedStop={selectedStop}
-            setSelectedStop={setSelectedStop}
-            selectedBus={selectedBus}
-            setSelectedBus={setSelectedBus}
-            nearestBusInfo={nearestBusInfo}
-            handleStopPress={handleStopPress}
-          />
+            {/* Row 3: Overlays (Today / Bus / List) */}
+            {/* Row 3: Overlays (Today / Bus / List) */}
+            {activeLayer === "Today" && (
+              <View style={{ marginTop: 12, width: "100%" }}>
+                <View style={styles.nextUpCard}>
+                  {/* Card Header: Date Nav */}
+                  <View style={styles.nextUpCardHeader}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                      <TouchableOpacity onPress={handlePrevDay}>
+                        <ChevronLeft size={18} color={COLORS.textPrimary} />
+                      </TouchableOpacity>
+                      <Text style={styles.dateNavTitle}>{formatDate(selectedDate)}</Text>
+                      <TouchableOpacity onPress={handleNextDay}>
+                        <ChevronRight size={18} color={COLORS.textPrimary} />
+                      </TouchableOpacity>
+                    </View>
+                    
+                    <TouchableOpacity 
+                      onPress={() => setIsTodayExpanded(!isTodayExpanded)}
+                      style={{ padding: 4 }}
+                    >
+                      {isTodayExpanded ? (
+                        <Minimize2 size={18} color={COLORS.textPrimary} />
+                      ) : (
+                        <Maximize2 size={18} color={COLORS.textPrimary} />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.nextUpCardDivider} />
+
+                  {/* Card Body: Summary or Timeline */}
+                  <ScrollView 
+                    style={{ maxHeight: isTodayExpanded ? 400 : 200 }} 
+                    showsVerticalScrollIndicator={false}
+                  >
+                    <View style={styles.nextUpCardBody}>
+                      {isTodayExpanded ? (
+                        <TodayTimeline
+                          styles={styles}
+                          COLORS={COLORS}
+                          activeScheduleOption={activeScheduleOption}
+                          onGetDirections={(building) => {
+                            const loc = allMapLocations.find((l: any) =>
+                              l.location === building ||
+                              l.shortName === building ||
+                              l.location.includes(building)
+                            );
+                            if (loc) openNavigationToLocation(loc);
+                          }}
+                        />
+                      ) : nextEntry ? (
+                        <View style={styles.nextUpMainRow}>
+                          <View style={styles.nextUpTimeBox}>
+                            <Text style={styles.nextUpTimeText}>{nextEntry.timeLabel}</Text>
+                          </View>
+                          <View style={styles.nextUpContent}>
+                            <Text style={styles.nextUpTitle} numberOfLines={1}>{nextEntry.name}</Text>
+                            <Text style={styles.nextUpLocation} numberOfLines={1}>{nextEntry.locationLabel}</Text>
+                          </View>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                            <TouchableOpacity
+                              style={styles.nextUpDirectionsPill}
+                              onPress={() => {
+                                const loc = allMapLocations.find((l: any) =>
+                                  l.location === nextEntry.building ||
+                                  l.shortName === nextEntry.building ||
+                                  l.location.includes(nextEntry.building)
+                                );
+                                if (loc) {
+                                  openNavigationToLocation(loc);
+                                } else {
+                                  openNavigationToLocation({
+                                    location: nextEntry.building,
+                                    type: "Building",
+                                    coord: (nextEntry as any).lat ? { lat: (nextEntry as any).lat, lng: (nextEntry as any).lng } : { lat: 30.6181, lng: -96.3365 }
+                                  } as any);
+                                }
+                              }}
+                            >
+                              <Navigation size={14} color="#FFFFFF" />
+                              <Text style={styles.nextUpDirectionsPillText}>Directions</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={styles.nextUpShareIcon}
+                              onPress={() => useShareStore.getState().openShare({
+                                title: nextEntry.name,
+                                message: `Heading to ${nextEntry.name} at ${nextEntry.locationLabel}!`,
+                                url: "https://maroonschedules.tamu.edu"
+                              })}
+                            >
+                              <Share2 size={16} color={COLORS.textSecondary} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      ) : (
+                        <View style={{ alignItems: "center", paddingVertical: 12 }}>
+                          <Text style={[styles.nextUpTitle, { marginBottom: 2 }]}>All done for today!</Text>
+                          <Text style={styles.nextUpLocation}>Nothing else in your schedule</Text>
+                        </View>
+                      )}
+                    </View>
+                  </ScrollView>
+                </View>
+              </View>
+            )}
+
+            {activeLayer === "Bus" && (
+              <View style={{ marginTop: 12, width: "100%" }}>
+                <BusRouteSelector
+                  styles={styles}
+                  COLORS={COLORS}
+                  busRoutes={busRoutes}
+                  selectedBusRouteId={selectedBusRouteId}
+                  selectedRoute={selectedRoute}
+                  isAllBusRoutesSelected={isAllBusRoutesSelected}
+                  isRouteDropdownOpen={isRouteDropdownOpen}
+                  setIsRouteDropdownOpen={setIsRouteDropdownOpen}
+                  filteredBusRoutes={filteredBusRoutes}
+                  handleSelectBusRoute={handleSelectBusRoute}
+                  openBusTimetable={() => navigation.navigate("BusTimetable")}
+                  openTransitTripPlanner={() => navigation.navigate("TransitTripPlanner")}
+                  selectedStop={selectedStop}
+                  setSelectedStop={setSelectedStop}
+                  selectedBus={selectedBus}
+                  setSelectedBus={setSelectedBus}
+                  nearestBusInfo={nearestBusInfo}
+                  handleStopPress={handleStopPress}
+                />
+              </View>
+            )}
+
+            {activeLayer !== "Today" && activeLayer !== "Bus" && (
+              <View style={{ marginTop: 12, width: "100%", alignItems: "flex-start" }}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={[(styles as any).listDropdownHeader, isListDroppedDown && (styles as any).listDropdownHeaderOpen]}
+                  onPress={() => setIsListDroppedDown(!isListDroppedDown)}
+                >
+                  <Text style={(styles as any).listDropdownLabel}>List View</Text>
+                  <ChevronDown 
+                    size={18} 
+                    color={COLORS.textPrimary} 
+                    style={{ marginLeft: 8, transform: [{ rotate: isListDroppedDown ? "180deg" : "0deg" }] }}
+                  />
+                </TouchableOpacity>
+
+                {isListDroppedDown && (
+                  <View style={[(styles as any).listDropdownContent, { width: SCREEN_WIDTH - 32 }]}>
+                    <ScrollView 
+                      style={{ maxHeight: 320 }}
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {sortedFilteredLocations.map((loc) => (
+                        <TouchableOpacity
+                          key={loc.location}
+                          style={(styles as any).listDropdownItem}
+                          onPress={() => {
+                            handleSelectLocation(loc);
+                            setIsListDroppedDown(false);
+                          }}
+                        >
+                          <View style={{ flex: 1 }}>
+                            <Text style={(styles as any).listDropdownItemTitle} numberOfLines={1}>{loc.location}</Text>
+                            <Text style={(styles as any).listDropdownItemSub} numberOfLines={1}>
+                              {loc.percent_full != null ? `${loc.percent_full}% full · ` : ""}{loc.type}
+                            </Text>
+                          </View>
+                          <ChevronRight size={16} color={COLORS.textTertiary} />
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+            )}
+          </>
         )}
       </View>
+
+      {/* Map control buttons removed per user request for all screens */}
+
 
       {/* Global Search Results Overlay moved to bottom for z-index priority */}
 
@@ -1190,61 +1363,8 @@ export function PlacesMapScreen() {
         selectedRoute={selectedRoute}
       />
 
-      {/* List view / Top Schedule Overlay */}
-      {activeLayer === "Today" && !isSearchExpanded ? (
-        <View style={[(styles as any).todayTopOverlay, { top: 162, zIndex: 10 }]}>
-          <PlacesList
-            styles={styles}
-            COLORS={COLORS}
-            activeLayer={activeLayer}
-            selectedId={selectedId}
-            sortedFilteredLocations={sortedFilteredLocations}
-            scheduleOptions={scheduleOptions}
-            activeScheduleOption={activeScheduleOption}
-            scheduleSummaryLabel={scheduleSummaryLabel}
-            isLoadingSchedules={isLoadingSchedules}
-            setActiveScheduleId={setActiveScheduleId}
-            setSelectedId={setSelectedId}
-            openScheduleList={openScheduleList}
-            openNewCourseSearch={openNewCourseSearch}
-            userCoord={userCoord}
-            parkingPermit={parkingPermit}
-            recreationFacilityMap={recreationFacilityMap}
-            handleSelectLocation={handleSelectLocation}
-            selectedDate={selectedDate}
-            setSelectedDate={setSelectedDate}
-            nextEntry={nextEntry}
-            activeWalkingRoute={activeWalkingRoute}
-            isTodayExpanded={isTodayExpanded}
-            setIsTodayExpanded={setIsTodayExpanded}
-            onShare={useShareStore.getState().openShare}
-            openNavigationToLocation={openNavigationToLocation}
-          />
-        </View>
-      ) : (
-        <PlacesList
-          styles={styles}
-          COLORS={COLORS}
-          activeLayer={activeLayer}
-          selectedId={selectedId}
-          sortedFilteredLocations={sortedFilteredLocations}
-          scheduleOptions={scheduleOptions}
-          activeScheduleOption={activeScheduleOption}
-          scheduleSummaryLabel={scheduleSummaryLabel}
-          isLoadingSchedules={isLoadingSchedules}
-          setActiveScheduleId={setActiveScheduleId}
-          setSelectedId={setSelectedId}
-          openScheduleList={openScheduleList}
-          openNewCourseSearch={openNewCourseSearch}
-          userCoord={userCoord}
-          parkingPermit={parkingPermit}
-          recreationFacilityMap={recreationFacilityMap}
-          handleSelectLocation={handleSelectLocation}
-          selectedDate={selectedDate}
-          setSelectedDate={setSelectedDate}
-          nextEntry={nextEntry}
-        />
-      )}
+
+      {/* Slidable lists / Dropdowns removed per user request - handled by Top Dropdown */}
 
       {/* Location bottom sheet */}
       <LocationBottomSheet
@@ -1303,12 +1423,12 @@ export function PlacesMapScreen() {
       <SearchOverlay
         styles={styles}
         COLORS={COLORS}
-        searchResults={fullCampusIndex.filter(loc => 
-          loc.location.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        searchResults={fullCampusIndex.filter(loc =>
+          loc.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
           loc.shortName?.toLowerCase().includes(searchQuery.toLowerCase())
         )}
-        busRouteResults={busRoutes.filter(route => 
-          route.Name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        busRouteResults={busRoutes.filter(route =>
+          route.Name.toLowerCase().includes(searchQuery.toLowerCase()) ||
           route.ShortName?.toLowerCase().includes(searchQuery.toLowerCase())
         )}
         isSearchExpanded={isSearchExpanded}

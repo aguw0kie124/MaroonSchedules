@@ -168,6 +168,8 @@ export function Profile() {
   const setActiveTab = useAppShellStore((state) => state.setSettingsTab);
   const selectedScheduleId = useAppShellStore((state) => state.selectedScheduleId);
   const setSelectedScheduleId = useAppShellStore((state) => state.setSelectedScheduleId);
+  const tabBarMode = useAppShellStore((state) => state.tabBarMode);
+  const setTabBarMode = useAppShellStore((state) => state.setTabBarMode);
   const schedules = useAppShellStore((state) => state.schedules);
 
   const orderedNavItems = useMemo(() => getOrderedItems(navItems), [navItems]);
@@ -556,6 +558,30 @@ export function Profile() {
                 onPress={() => setParkingPermit(option.id)}
               >
                 <Text style={[styles.preferenceRowTitle, selected && styles.preferenceRowTitleActive]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Tab Bar Style</Text>
+        <Text style={styles.sectionSubtitle}>Choose your navigation look.</Text>
+        <View style={styles.segmentedRow}>
+          {[
+            { id: 'floating', label: 'Floating' },
+            { id: 'solid', label: 'Solid' },
+          ].map((option) => {
+            const selected = tabBarMode === option.id;
+            return (
+              <Pressable
+                key={option.id}
+                style={[styles.segmentButton, styles.segmentButtonStretch, selected && styles.segmentButtonActive]}
+                onPress={() => setTabBarMode(option.id as 'floating' | 'solid')}
+              >
+                <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
                   {option.label}
                 </Text>
               </Pressable>

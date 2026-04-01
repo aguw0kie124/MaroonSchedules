@@ -35,7 +35,7 @@ export function ScheduleHeader({
   openScheduleList,
   openNewCourseSearch,
 }: ScheduleHeaderProps) {
-  if (activeLayer !== "Schedule") return null;
+  if (activeLayer !== "Today" && activeLayer !== "Schedule") return null;
 
   return (
     <View style={styles.scheduleHeaderCard}>

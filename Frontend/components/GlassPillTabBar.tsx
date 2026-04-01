@@ -11,6 +11,7 @@ import {
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useTheme } from './SharedUI';
 import { useAppShellStore } from '../store/appShellStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -23,8 +24,21 @@ export function GlassPillTabBar({
 }: BottomTabBarProps) {
   const { COLORS, theme } = useTheme();
   const isBottomBarHidden = useAppShellStore((state) => state.isBottomBarHidden);
-  const [collapsedRouteKey, setCollapsedRouteKey] = React.useState<string | null>(state.routes[state.index].key);
-  const styles = getStyles(COLORS, theme === 'dark');
+  const tabBarMode = useAppShellStore((state) => state.tabBarMode);
+  const insets = useSafeAreaInsets();
+  
+  const [collapsedRouteKey, setCollapsedRouteKey] = React.useState<string | null>(
+    tabBarMode === 'solid' ? null : state.routes[state.index].key
+  );
+
+  React.useEffect(() => {
+    if (tabBarMode === 'solid') {
+      setCollapsedRouteKey(null);
+    }
+  }, [tabBarMode]);
+  
+  const isDark = theme === 'dark';
+  const styles = getStyles(COLORS, isDark, tabBarMode, insets);
 
   if (isBottomBarHidden) {
     return null;
@@ -54,18 +68,20 @@ export function GlassPillTabBar({
               canPreventDefault: true,
             });
 
-            if (collapsedRouteKey && isFocused && isCollapsedItem) {
+            if (tabBarMode === 'floating' && collapsedRouteKey && isFocused && isCollapsedItem) {
               setCollapsedRouteKey(null);
               return;
             }
 
             if (!isFocused && !event.defaultPrevented) {
               navigation.navigate(route.name);
-              setCollapsedRouteKey(route.key);
+              if (tabBarMode === 'floating') {
+                setCollapsedRouteKey(route.key);
+              }
               return;
             }
 
-            if (isFocused && !collapsedRouteKey) {
+            if (tabBarMode === 'floating' && isFocused && !collapsedRouteKey) {
               setCollapsedRouteKey(route.key);
             }
           };
@@ -115,13 +131,13 @@ export function GlassPillTabBar({
   );
 }
 
-const getStyles = (COLORS: any, isDark: boolean) =>
+const getStyles = (COLORS: any, isDark: boolean, tabBarMode: 'floating' | 'solid', insets: any) =>
   StyleSheet.create({
     outer: {
       position: 'absolute',
-      left: 16,
-      right: 16,
-      bottom: 18,
+      left: tabBarMode === 'solid' ? 0 : 16,
+      right: tabBarMode === 'solid' ? 0 : 16,
+      bottom: tabBarMode === 'solid' ? 0 : 18,
       alignItems: 'center',
     },
     shell: {
@@ -130,17 +146,14 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       justifyContent: 'space-evenly',
       width: '100%',
       paddingVertical: 8,
-      borderRadius: 999,
+      paddingBottom: tabBarMode === 'solid' ? Math.max(insets.bottom, 12) : 8,
+      borderRadius: tabBarMode === 'solid' ? 0 : 999,
       backgroundColor: isDark
-        ? 'rgba(16,16,18,0.88)'
-        : 'rgba(255,255,255,0.88)',
-      borderWidth: 0,
-      borderColor: "transparent",
-      shadowColor: 'transparent',
-      shadowOpacity: 0,
-      shadowRadius: 0,
-      shadowOffset: { width: 0, height: 0 },
-      elevation: 0,
+        ? tabBarMode === 'solid' ? 'rgba(10,10,12,0.98)' : 'rgba(16,16,18,0.88)'
+        : tabBarMode === 'solid' ? 'rgba(255,255,255,1)' : 'rgba(255,255,255,0.88)',
+      borderTopWidth: tabBarMode === 'solid' ? 1 : 0,
+      borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+      elevation: tabBarMode === 'solid' ? 0 : 4,
     },
     shellCollapsed: {
       width: 'auto',

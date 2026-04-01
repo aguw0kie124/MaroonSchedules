@@ -24,6 +24,7 @@ import {
   Star,
   Navigation,
   Share2,
+  Users,
 } from "lucide-react-native";
 import { useShareStore } from "../../store/shareStore";
 import * as Linking from "expo-linking";
@@ -302,10 +303,26 @@ export function LocationBottomSheet({
             </View>
 
             {selectedLoc.description ? (
-              <Text style={styles.descriptionText} numberOfLines={1}>
+              <Text style={styles.descriptionText}>
                 {selectedLoc.description}
               </Text>
             ) : null}
+
+            {selectedLoc.features && selectedLoc.features.length > 0 && (
+              <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                style={{ marginTop: 12, paddingHorizontal: 16 }}
+                contentContainerStyle={{ gap: 8, paddingRight: 32 }}
+              >
+                {selectedLoc.features.map((feature, idx) => (
+                  <View key={idx} style={styles.featurePill}>
+                    <Users size={12} color={COLORS.primary} style={{ marginRight: 6 }} />
+                    <Text style={styles.featurePillText}>{feature}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            )}
 
             {/* Quick actions + context cards */}
             {(() => {

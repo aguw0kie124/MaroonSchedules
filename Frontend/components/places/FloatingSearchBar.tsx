@@ -87,24 +87,18 @@ export function FloatingSearchBar({
           </TouchableOpacity>
         ) : null}
 
-        <TouchableOpacity
-          style={styles.searchTrailingButton}
-          onPress={() => {
-            if (isSearchExpanded) {
+        {isSearchExpanded && (
+          <TouchableOpacity
+            style={styles.searchTrailingButton}
+            onPress={() => {
               setIsSearchExpanded(false);
               setSearchQuery("");
               setShowSearchResults(false);
-              return;
-            }
-            onOpenSettings();
-          }}
-        >
-          {isSearchExpanded ? (
+            }}
+          >
             <Text style={styles.searchCancelText}>Cancel</Text>
-          ) : (
-            <SlidersHorizontal size={18} color={COLORS.textPrimary} />
-          )}
-        </TouchableOpacity>
+          </TouchableOpacity>
+        )}
 
         {!isSearchExpanded && (
           <TouchableOpacity
