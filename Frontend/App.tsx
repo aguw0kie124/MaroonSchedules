@@ -259,7 +259,7 @@ function MainTabs() {
             shadowOffset: { width: 0, height: -3 },
             elevation: 8,
           },
-          tabBarActiveTintColor: '#500000',
+          tabBarActiveTintColor: COLORS.primary,
           tabBarInactiveTintColor: COLORS.textTertiary,
         }}
       >
@@ -281,11 +281,11 @@ function MainTabs() {
                         width: 58,
                         height: 58,
                         borderRadius: 29,
-                        backgroundColor: focused ? '#500000' : 'rgba(80, 0, 0, 0.7)',
+                        backgroundColor: focused ? COLORS.primary : `${COLORS.primary}B3`,
                         alignItems: 'center',
                         justifyContent: 'center',
                         marginTop: -10,
-                        shadowColor: '#500000',
+                        shadowColor: COLORS.primary,
                         shadowOffset: { width: 0, height: focused ? 8 : 4 },
                         shadowOpacity: focused ? 0.6 : 0.3,
                         shadowRadius: focused ? 12 : 8,
