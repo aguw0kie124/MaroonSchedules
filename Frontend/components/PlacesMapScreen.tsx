@@ -97,7 +97,7 @@ const SNAP_PEEK = SCREEN_HEIGHT * 0.45; // ~55% of screen visible
 const SNAP_FULL = SCREEN_HEIGHT * 0.08; // ~92% of screen visible
 const SNAP_HIDDEN = SCREEN_HEIGHT; // off-screen
 const SHEET_BOTTOM_OFFSET = 0;
-const FLOATING_CARD_BOTTOM_OFFSET = 95;
+const FLOATING_CARD_BOTTOM_OFFSET = 60;
 const ALL_BUS_ROUTES_KEY = "__all__";
 const ROOM_RESERVATION_URL = "https://tamu.libcal.com/reserve";
 const PARKING_INFO_URL = "https://transport.tamu.edu/Parking";
@@ -4896,7 +4896,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       top: 178,
       left: 16,
       right: 16,
-      bottom: FLOATING_CARD_BOTTOM_OFFSET + 12,
+      bottom: FLOATING_CARD_BOTTOM_OFFSET,
       zIndex: 3400,
     },
     placesListCard: {
@@ -5231,7 +5231,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     busStopInfoCard: {
       position: "absolute",
-      bottom: FLOATING_CARD_BOTTOM_OFFSET + 12,
+      bottom: FLOATING_CARD_BOTTOM_OFFSET,
       left: 20,
       right: 20,
       backgroundColor: "rgba(12, 12, 12, 0.98)",
@@ -5265,7 +5265,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     busVehicleInfoCard: {
       position: "absolute",
-      bottom: 60,
+      bottom: FLOATING_CARD_BOTTOM_OFFSET,
       left: 20,
       right: 20,
       backgroundColor: isDark
