@@ -471,6 +471,8 @@ class AggieSpiritProxy:
                 if normalized_route_id and normalized_route_id not in identifiers:
                     continue
                 for direction in route.get("vehiclesByDirections", []) or []:
+                    direction_key = direction.get("directionKey", "")
+                    direction_name = self._direction_cache.get(direction_key, "")
                     for vehicle in direction.get("vehicles", []) or []:
                         location = vehicle.get("location") or {}
                         vehicles.append({
@@ -479,12 +481,15 @@ class AggieSpiritProxy:
                             "Latitude": location.get("latitude"),
                             "Longitude": location.get("longitude"),
                             "Heading": location.get("heading"),
+                            "Speed": location.get("speed"),
                             "PassengersOnboard": vehicle.get("passengersOnboard"),
                             "Capacity": vehicle.get("passengerCapacity"),
                             "RouteKey": route.get("routeKey"),
                             "RouteShortName": route.get("shortName") or (route_meta.get("ShortName") if route_meta else None),
                             "RouteName": route.get("name") or (route_meta.get("Name") if route_meta else None),
                             "RouteColor": (route_meta.get("Color") if route_meta else None) or self._route_color(route.get("routeKey") or route.get("shortName") or route.get("name") or ""),
+                            "DirectionCode": direction_key,
+                            "DirectionName": direction_name,
                         })
 
             cache_key = normalized_route_id or "__all__"
