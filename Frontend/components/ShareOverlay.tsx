@@ -5,36 +5,27 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  TextInput,
   Animated,
   Dimensions,
   Share,
   Clipboard,
-  Platform,
   Linking,
-  Image,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
 import { 
-  Search, 
-  X, 
-  Send, 
+  X,
   Link as LinkIcon, 
   MoreHorizontal, 
-  MessageCircle, 
   Instagram, 
   Phone,
-  CheckCircle2
 } from 'lucide-react-native';
 import { useTheme } from './SharedUI';
 import { useShareStore } from '../store/shareStore';
-import { useChatClient } from '../hooks/useChatClient';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const SOCIAL_APPS = [
-  { id: 'imessage', name: 'Messages', color: '#34C759', Icon: MessageCircle, scheme: 'sms:' },
   { id: 'whatsapp', name: 'WhatsApp', color: '#25D366', Icon: Phone, scheme: 'whatsapp://send' },
   { id: 'instagram', name: 'Instagram', color: '#E1306C', Icon: Instagram, scheme: 'instagram://' },
   { id: 'copy', name: 'Copy Link', color: '#8E8E93', Icon: LinkIcon },
@@ -45,12 +36,6 @@ export function ShareOverlay() {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
   const { isVisible, content, closeShare } = useShareStore();
-  const { client, userId, isReady } = useChatClient();
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
-  const [recentChats, setRecentChats] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
 
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -69,10 +54,6 @@ export function ShareOverlay() {
           useNativeDriver: true,
         }),
       ]).start();
-      
-      if (isReady && client) {
-        fetchRecentChats();
-      }
     } else {
       Animated.parallel([
         Animated.timing(slideAnim, {
@@ -87,31 +68,7 @@ export function ShareOverlay() {
         }),
       ]).start();
     }
-  }, [isVisible, isReady, client]);
-
-  const fetchRecentChats = async () => {
-    if (!client || !userId) return;
-    try {
-      const filter = { members: { $in: [userId] } };
-      const sort = { last_message_at: -1 } as any;
-      const channels = await client.queryChannels(filter, sort, { limit: 12 });
-      
-      const chats = channels.map(channel => {
-        const otherMember = Object.values(channel.state?.members ?? {})
-          .find((m: any) => m.user?.id !== userId);
-        return {
-          id: channel.id,
-          name: (otherMember as any)?.user?.name || 'Group Chat',
-          image: (otherMember as any)?.user?.image,
-          userId: (otherMember as any)?.user?.id,
-          type: channel.type,
-        };
-      });
-      setRecentChats(chats);
-    } catch (err) {
-      console.error('Error fetching chats for share:', err);
-    }
-  };
+  }, [isVisible]);
 
   const handleAppShare = async (app: typeof SOCIAL_APPS[0]) => {
     if (!content) return;
@@ -137,9 +94,7 @@ export function ShareOverlay() {
     }
 
     if (app.scheme) {
-      const url = app.id === 'imessage' 
-        ? `sms:&body=${encodeURIComponent(shareText)}`
-        : app.id === 'whatsapp'
+      const url = app.id === 'whatsapp'
         ? `whatsapp://send?text=${encodeURIComponent(shareText)}`
         : app.scheme; // Instagram doesn't support direct text pre-fill easily without complex API
 
@@ -150,48 +105,6 @@ export function ShareOverlay() {
         // Fallback to system share
         await Share.share({ message: shareText });
       }
-    }
-  };
-
-  const toggleFriendSelection = (id: string) => {
-    setSelectedFriends(prev => 
-      prev.includes(id) ? prev.filter(fid => fid !== id) : [...prev, id]
-    );
-  };
-  
-  const handleImmediateSend = async (chatId: string) => {
-    if (!content || !client) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    setLoading(true);
-    try {
-      const shareText = `${content.title ? content.title + '\n' : ''}${content.message || ''}\n${content.url || ''}`;
-      const channel = client.channel('messaging', chatId);
-      await channel.sendMessage({ text: shareText });
-      closeShare();
-    } catch (err) {
-      console.error('Failed to send immediately', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleInternalSend = async () => {
-    if (!content || !client || selectedFriends.length === 0) return;
-    setLoading(true);
-    try {
-      const shareText = `[Shared Content]\n${content.title ? content.title + '\n' : ''}${content.message || ''}\n${content.url || ''}`;
-      
-      for (const channelId of selectedFriends) {
-        const channel = client.channel('messaging', channelId);
-        await channel.sendMessage({ text: shareText });
-      }
-      
-      closeShare();
-      setSelectedFriends([]);
-    } catch (err) {
-      console.error('Failed to send internally', err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -219,49 +132,7 @@ export function ShareOverlay() {
           <Text style={[styles.title, { color: COLORS.textPrimary }]}>Share</Text>
         </View>
 
-        <View style={[styles.searchBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)' }]}>
-          <Search size={18} color={COLORS.textSecondary} />
-          <TextInput
-            placeholder="Search"
-            placeholderTextColor={COLORS.textSecondary}
-            style={[styles.searchInput, { color: COLORS.textPrimary }]}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-
         <ScrollView showsVerticalScrollIndicator={false}>
-          {/* Recent Avatars Row */}
-          <Text style={styles.sectionTitle}>Suggestions</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsRow}>
-            {recentChats.map((chat) => (
-              <TouchableOpacity 
-                key={chat.id} 
-                style={styles.suggestionItem}
-                onPress={() => handleImmediateSend(chat.id)}
-              >
-                <View style={styles.avatarWrap}>
-                  {chat.image ? (
-                    <Image source={{ uri: chat.image }} style={styles.avatar} />
-                  ) : (
-                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                      <Text style={styles.avatarInitial}>{chat.name[0]}</Text>
-                    </View>
-                  )}
-                  {selectedFriends.includes(chat.id) && (
-                    <View style={styles.checkmarkWrap}>
-                      <CheckCircle2 size={16} color={COLORS.primary} fill="#FFFFFF" />
-                    </View>
-                  )}
-                </View>
-                <Text style={[styles.suggestionName, { color: COLORS.textPrimary }]} numberOfLines={1}>
-                  {chat.name.split(' ')[0]}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          {/* Social Apps Grid */}
           <Text style={styles.sectionTitle}>Share to</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.appsRow}>
             {SOCIAL_APPS.map((app) => (
@@ -277,65 +148,8 @@ export function ShareOverlay() {
               </TouchableOpacity>
             ))}
           </ScrollView>
-
-          {/* Bottom Friend List */}
-          <View style={styles.friendList}>
-            {recentChats
-              .filter(chat => chat.name.toLowerCase().includes(searchQuery.toLowerCase()))
-              .map(chat => (
-                <TouchableOpacity 
-                  key={chat.id} 
-                  style={styles.friendRow}
-                  onPress={() => toggleFriendSelection(chat.id)}
-                >
-                  <View style={styles.avatarWrap}>
-                    {chat.image ? (
-                      <Image source={{ uri: chat.image }} style={styles.rowAvatar} />
-                    ) : (
-                      <View style={[styles.rowAvatar, styles.avatarPlaceholder]}>
-                        <Text style={styles.avatarInitial}>{chat.name[0]}</Text>
-                      </View>
-                    )}
-                  </View>
-                  <View style={styles.rowInfo}>
-                    <Text style={[styles.rowName, { color: COLORS.textPrimary }]}>{chat.name}</Text>
-                    <Text style={styles.rowHandle}>Aggie Friend</Text>
-                  </View>
-                  <View style={[
-                    styles.radio, 
-                    selectedFriends.includes(chat.id) && { backgroundColor: COLORS.primary, borderColor: COLORS.primary }
-                  ]}>
-                    {selectedFriends.includes(chat.id) && <X size={12} color="#FFF" />}
-                  </View>
-                  
-                  <TouchableOpacity 
-                    style={[styles.rowSendBtn, { backgroundColor: COLORS.surface }]}
-                    onPress={() => handleImmediateSend(chat.id)}
-                  >
-                    <Send size={14} color={COLORS.primary} />
-                    <Text style={[styles.rowSendText, { color: COLORS.primary }]}>Send</Text>
-                  </TouchableOpacity>
-                </TouchableOpacity>
-              ))
-            }
-          </View>
-          
-          <View style={{ height: 100 }} />
+          <View style={{ height: 48 }} />
         </ScrollView>
-
-        {selectedFriends.length > 0 && (
-          <Animated.View style={styles.sendButtonWrap}>
-            <TouchableOpacity 
-              style={[styles.sendButton, { backgroundColor: COLORS.primary }]}
-              onPress={handleInternalSend}
-              disabled={loading}
-            >
-              <Text style={styles.sendButtonText}>
-                {loading ? 'Sending...' : `Send to ${selectedFriends.length} friend${selectedFriends.length > 1 ? 's' : ''}`}
-              </Text>
-            </TouchableOpacity>
-          </Animated.View>
-        )}
       </Animated.View>
     </Animated.View>
   );
@@ -372,20 +186,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 16,
-    marginVertical: 10,
-    paddingHorizontal: 12,
-    height: 40,
-    borderRadius: 10,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 10,
-    fontSize: 16,
-  },
   sectionTitle: {
     fontSize: 14,
     fontWeight: '700',
@@ -394,48 +194,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 12,
     textTransform: 'uppercase',
-  },
-  suggestionsRow: {
-    paddingLeft: 16,
-    marginBottom: 10,
-  },
-  suggestionItem: {
-    alignItems: 'center',
-    marginRight: 20,
-    width: 64,
-  },
-  avatarWrap: {
-    position: 'relative',
-    marginBottom: 6,
-  },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  avatarPlaceholder: {
-    backgroundColor: '#3D0000',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarInitial: {
-    color: '#FFF',
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  checkmarkWrap: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: '#FFF',
-    borderRadius: 10,
-    padding: 1,
-  },
-  suggestionName: {
-    fontSize: 12,
-    textAlign: 'center',
   },
   appsRow: {
     paddingLeft: 16,
@@ -456,76 +214,5 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: 11,
     textAlign: 'center',
-  },
-  friendList: {
-    paddingHorizontal: 16,
-    marginTop: 10,
-  },
-  friendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  rowAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    marginRight: 12,
-  },
-  rowInfo: {
-    flex: 1,
-  },
-  rowName: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  rowHandle: {
-    fontSize: 13,
-    color: '#8E8E93',
-    marginTop: 2,
-  },
-  radio: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: 'rgba(150,150,150,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sendButtonWrap: {
-    position: 'absolute',
-    bottom: 34,
-    left: 20,
-    right: 20,
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-  sendButton: {
-    height: 50,
-    borderRadius: 25,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sendButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  rowSendBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    gap: 4,
-    marginLeft: 10,
-  },
-  rowSendText: {
-    fontSize: 12,
-    fontWeight: '700',
   },
 });

@@ -48,6 +48,7 @@ import {
   Bus,
   ChevronDown,
   Share2,
+  X,
 } from "lucide-react-native";
 import type { WalkingRoute } from "../services/campusDirections";
 import { useTheme } from "./SharedUI";
@@ -168,6 +169,7 @@ export function PlacesMapScreen() {
   const [activeLayer, setActiveLayer] = useState<string>("Pulse");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
+  const [isPulseHeroVisible, setIsPulseHeroVisible] = useState(true);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -1504,6 +1506,7 @@ export function PlacesMapScreen() {
 
             {activeLayer === "Pulse" && (
               <View style={{ marginTop: 12, width: "100%" }}>
+                {isPulseHeroVisible ? (
                 <View style={styles.pulseHeroCard}>
                   <View style={styles.pulseHeroTopRow}>
                     <View style={{ flex: 1 }}>
@@ -1528,6 +1531,12 @@ export function PlacesMapScreen() {
                       </Text>
                       <Text style={styles.pulseHeroBadgeLabel}>Top Pulse</Text>
                     </View>
+                    <TouchableOpacity
+                      style={styles.pulseHeroCloseButton}
+                      onPress={() => setIsPulseHeroVisible(false)}
+                    >
+                      <X size={16} color={COLORS.textPrimary} />
+                    </TouchableOpacity>
                   </View>
 
                   <View style={styles.pulseHeroStatsRow}>
@@ -1584,6 +1593,7 @@ export function PlacesMapScreen() {
                     ))}
                   </View>
                 </View>
+                ) : null}
               </View>
             )}
 

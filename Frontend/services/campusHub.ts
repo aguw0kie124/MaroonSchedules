@@ -75,7 +75,6 @@ export interface NetworkSuggestion {
 
 export interface NetworkSnapshot {
   status: CampusDataStatus;
-  chatStatus: string;
   summary: string;
   pendingRequests: number;
   suggestions: NetworkSuggestion[];
@@ -202,7 +201,6 @@ function buildFallbackSnapshot(userId: string): CampusHubSnapshot {
     },
     network: {
       status: 'preview',
-      chatStatus: 'stream_messaging_available',
       summary: 'Networking suggestions are temporarily unavailable.',
       pendingRequests: 0,
       suggestions: [],

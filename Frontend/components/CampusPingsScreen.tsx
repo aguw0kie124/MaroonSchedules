@@ -37,7 +37,6 @@ import {
 
 import { API_URL } from '../config';
 import { useTheme } from './SharedUI';
-import { useShareStore } from '../store/shareStore';
 import { useEventStore } from '../store/eventStore';
 import {
   addComment,
@@ -61,6 +60,7 @@ type PingCategory =
   | 'Heads Up';
 
 type TimePreset = 'now' | 'soon' | 'tonight' | 'tomorrow';
+type FeedWindow = 'Today' | 'Upcoming' | 'Past';
 
 interface FeaturedEvent {
   id: string;
@@ -114,8 +114,6 @@ const TIME_PRESETS: Array<{ id: TimePreset; label: string }> = [
   { id: 'tonight', label: 'Tonight' },
   { id: 'tomorrow', label: 'Tomorrow' },
 ];
-
-const FEATURED_EVENT_LIMIT = 6;
 
 function categoryMeta(category: string) {
   return (
@@ -171,6 +169,31 @@ function formatStartLabel(startAt: string) {
   return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${time}`;
 }
 
+function isSameDay(left: Date, right: Date) {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+  );
+}
+
+function matchesFeedWindow(startAt: string, window: FeedWindow) {
+  const start = new Date(startAt);
+  if (!Number.isFinite(start.getTime())) return false;
+
+  const now = new Date();
+
+  if (window === 'Past') {
+    return start.getTime() < now.getTime();
+  }
+
+  if (window === 'Upcoming') {
+    return start.getTime() >= now.getTime() && !isSameDay(start, now);
+  }
+
+  return isSameDay(start, now) || Math.abs(start.getTime() - now.getTime()) < 45 * 60 * 1000;
+}
+
 function mapOfficialEventCategory(event: FeaturedEvent): PingCategory {
   if (event.categories?.food) return 'Free Food';
   if (event.categories?.sports) return 'Sports';
@@ -205,34 +228,11 @@ function mapActivityToPing(activity: any): PingCard {
   };
 }
 
-function mapFeaturedEventToPing(event: FeaturedEvent): PingCard {
-  return {
-    id: `official-${event.id}`,
-    source: 'official',
-    title: event.title,
-    body: event.description,
-    category: mapOfficialEventCategory(event),
-    locationTag: event.location || 'Campus',
-    startAt: event.startTime,
-    endAt: event.endTime || null,
-    createdAt: event.startTime,
-    userName: 'Texas A&M Events',
-    userImage: null,
-    likeCount: 0,
-    commentCount: 0,
-    boostedByCurrentUser: false,
-    sourceUrl: event.link || null,
-    locationLat: event.locationLat ?? null,
-    locationLng: event.locationLng ?? null,
-  };
-}
-
 export function CampusPingsScreen() {
   const { COLORS } = useTheme();
   const styles = useMemo(() => getStyles(COLORS), [COLORS]);
   const navigation = useNavigation<any>();
   const { user } = useUser();
-  const openShare = useShareStore((state) => state.openShare);
   const scheduleEvent = useEventStore((state) => state.scheduleEvent);
   const saveEvent = useEventStore((state) => state.saveEvent);
 
@@ -248,7 +248,7 @@ export function CampusPingsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [feedConnected, setFeedConnected] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
-  const [categoryFilter, setCategoryFilter] = useState<string>('All');
+  const [feedWindow, setFeedWindow] = useState<FeedWindow>('Today');
 
   const [composerVisible, setComposerVisible] = useState(false);
   const [composerTitle, setComposerTitle] = useState('');
@@ -265,6 +265,7 @@ export function CampusPingsScreen() {
   const [commentText, setCommentText] = useState('');
   const [loadingComments, setLoadingComments] = useState(false);
   const [sendingComment, setSendingComment] = useState(false);
+  const [activeFeaturedEvent, setActiveFeaturedEvent] = useState<FeaturedEvent | null>(null);
 
   const locationSuggestions = useMemo(() => {
     const query = locationQuery.trim().toLowerCase();
@@ -278,19 +279,21 @@ export function CampusPingsScreen() {
       .slice(0, 8);
   }, [directory, locationQuery]);
 
-  const featuredPings = useMemo(
-    () =>
-      featuredEvents.map((event) => {
-        const mapped = mapFeaturedEventToPing(event);
-        const location = locationLookup.get(getCanonicalLocationName(mapped.locationTag));
+  const featuredCards = useMemo(() => {
+    return featuredEvents
+      .filter((event) => matchesFeedWindow(event.startTime, feedWindow))
+      .map((event) => {
+        const canonicalLocation = getCanonicalLocationName(event.location);
+        const location = locationLookup.get(canonicalLocation);
         return {
-          ...mapped,
-          locationLat: mapped.locationLat ?? location?.coord.lat ?? null,
-          locationLng: mapped.locationLng ?? location?.coord.lng ?? null,
+          ...event,
+          category: mapOfficialEventCategory(event),
+          location: canonicalLocation,
+          locationLat: event.locationLat ?? location?.coord.lat ?? null,
+          locationLng: event.locationLng ?? location?.coord.lng ?? null,
         };
-      }),
-    [featuredEvents, locationLookup],
-  );
+      });
+  }, [featuredEvents, feedWindow, locationLookup]);
 
   const feedPings = useMemo(
     () =>
@@ -308,13 +311,12 @@ export function CampusPingsScreen() {
   );
 
   const filteredFeed = useMemo(() => {
-    if (categoryFilter === 'All') return feedPings;
-    return feedPings.filter((ping) => ping.category === categoryFilter);
-  }, [categoryFilter, feedPings]);
+    return feedPings.filter((ping) => matchesFeedWindow(ping.startAt, feedWindow));
+  }, [feedPings, feedWindow]);
 
   const loadFeaturedEvents = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/campus/events?limit=${FEATURED_EVENT_LIMIT}`);
+      const res = await fetch(`${API_URL}/campus/events?limit=12`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const nextEvents = (data || []).map((event: any) => ({
@@ -351,7 +353,6 @@ export function CampusPingsScreen() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     await loadFeaturedEvents();
-
     if (!user) {
       setFeedConnected(false);
       setLoading(false);
@@ -555,7 +556,7 @@ export function CampusPingsScreen() {
       navigation.navigate('Main', {
         screen: 'Places',
         params: {
-          initialLayer: 'Today',
+          initialLayer: 'Pulse',
           initialLocation: ping.locationTag,
           focusToken: `ping:${ping.id}:${ping.startAt}`,
         },
@@ -586,54 +587,73 @@ export function CampusPingsScreen() {
     [locationLookup, saveEvent, scheduleEvent],
   );
 
-  const sharePing = useCallback(
-    (ping: PingCard) => {
-      openShare({
-        title: ping.title,
-        message: `${ping.title} at ${ping.locationTag}. ${ping.body}`,
-        url: ping.sourceUrl || 'https://maroonschedules.tamu.edu',
+  const openFeaturedEventOnMap = useCallback(
+    (event: FeaturedEvent) => {
+      navigation.navigate('Main', {
+        screen: 'Places',
+        params: {
+          initialLayer: 'Pulse',
+          initialLocation: event.location,
+          focusToken: `featured:${event.id}:${event.startTime}`,
+        },
       });
     },
-    [openShare],
+    [navigation],
   );
 
-  const renderFeaturedEvent = ({ item }: { item: PingCard }) => {
-    const meta = categoryMeta(item.category);
+  const saveFeaturedEventToPlans = useCallback(
+    (event: FeaturedEvent) => {
+      const canonicalLocation = getCanonicalLocationName(event.location);
+      const location = locationLookup.get(canonicalLocation);
+      scheduleEvent({
+        id: `featured-${event.id}`,
+        title: event.title,
+        location: canonicalLocation,
+        description: event.description,
+        date_ts: Math.floor(new Date(event.startTime).getTime() / 1000),
+        date_iso: event.startTime,
+        endDate_ts: event.endTime ? Math.floor(new Date(event.endTime).getTime() / 1000) : undefined,
+        location_lat: event.locationLat ?? location?.coord.lat ?? null,
+        location_lng: event.locationLng ?? location?.coord.lng ?? null,
+        category: mapOfficialEventCategory(event),
+      });
+      saveEvent(`featured-${event.id}`);
+      Alert.alert('Saved to plans', `${event.title} is now in your plans.`);
+    },
+    [locationLookup, saveEvent, scheduleEvent],
+  );
+
+  const openFeaturedEventLink = useCallback(async (event: FeaturedEvent) => {
+    if (!event.link) return;
+    try {
+      await Linking.openURL(event.link);
+    } catch (error) {
+      console.warn('[Pings] Failed to open featured event link', error);
+    }
+  }, []);
+
+  const renderFeaturedEvent = ({ item }: { item: FeaturedEvent }) => {
+    const meta = categoryMeta(mapOfficialEventCategory(item));
     return (
-      <View style={[styles.featuredCard, { borderColor: `${meta.accent}44` }]}>
-        <View style={[styles.featuredBadge, { backgroundColor: `${meta.accent}22` }]}>
-          <Text style={[styles.featuredBadgeText, { color: meta.accent }]}>Featured</Text>
+      <Pressable
+        style={[styles.featuredCard, { borderColor: `${meta.accent}30` }]}
+        onPress={() => setActiveFeaturedEvent(item)}
+      >
+        <View style={styles.featuredCardTopRow}>
+          <View style={[styles.featuredBadge, { backgroundColor: `${meta.accent}16` }]}>
+            <Text style={[styles.featuredBadgeText, { color: meta.accent }]}>
+              {mapOfficialEventCategory(item)}
+            </Text>
+          </View>
+          <Text style={styles.featuredTime}>{formatStartLabel(item.startTime)}</Text>
         </View>
         <Text style={styles.featuredTitle} numberOfLines={2}>
           {item.title}
         </Text>
-        <Text style={styles.featuredMeta}>{formatStartLabel(item.startAt)}</Text>
         <Text style={styles.featuredMeta} numberOfLines={1}>
-          {item.locationTag}
+          {getCanonicalLocationName(item.location)}
         </Text>
-        <Text style={styles.featuredBody} numberOfLines={3}>
-          {item.body || 'High-energy campus event'}
-        </Text>
-        <View style={styles.featuredActions}>
-          <Pressable style={styles.secondaryChipButton} onPress={() => openPingOnMap(item)}>
-            <MapPin size={14} color={COLORS.textPrimary} />
-            <Text style={styles.secondaryChipLabel}>Map</Text>
-          </Pressable>
-          <Pressable style={styles.secondaryChipButton} onPress={() => savePingToPlans(item)}>
-            <CalendarDays size={14} color={COLORS.textPrimary} />
-            <Text style={styles.secondaryChipLabel}>Save</Text>
-          </Pressable>
-          {item.sourceUrl ? (
-            <Pressable
-              style={styles.secondaryChipButton}
-              onPress={() => Linking.openURL(item.sourceUrl!).catch(() => sharePing(item))}
-            >
-              <ExternalLink size={14} color={COLORS.textPrimary} />
-              <Text style={styles.secondaryChipLabel}>Details</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      </View>
+      </Pressable>
     );
   };
 
@@ -705,62 +725,55 @@ export function CampusPingsScreen() {
 
   const header = (
     <View style={styles.headerWrap}>
-      <View style={styles.heroCard}>
-        <View style={styles.heroTopRow}>
-          <View>
-            <Text style={styles.heroEyebrow}>Campus Pulse</Text>
-            <Text style={styles.heroTitle}>Pings</Text>
-          </View>
-          <Pressable style={styles.composeButton} onPress={() => setComposerVisible(true)}>
-            <Plus size={18} color="#FFFFFF" />
-            <Text style={styles.composeButtonLabel}>New ping</Text>
-          </Pressable>
+      <View style={styles.heroTopRow}>
+        <View>
+          <Text style={styles.heroEyebrow}>Campus Pulse</Text>
+          <Text style={styles.heroTitle}>Pings.</Text>
+          <Text style={styles.heroBody}>What's happening around you</Text>
         </View>
-        <Text style={styles.heroBody}>
-          Fast, location-tagged campus updates for popups, free food, meetups, shows, and anything people should know before they head somewhere.
-        </Text>
+        <Pressable style={styles.composeFab} onPress={() => setComposerVisible(true)}>
+          <Plus size={22} color="#FF6A3D" />
+        </Pressable>
       </View>
 
       {streamError ? (
-        <View style={styles.noticeCard}>
-          <Text style={styles.noticeTitle}>Live feed notice</Text>
-          <Text style={styles.noticeText}>{streamError}</Text>
+        <View style={styles.noticePill}>
+          <Text style={styles.noticeText} numberOfLines={1}>{streamError}</Text>
         </View>
       ) : null}
 
-      <View style={styles.sectionRow}>
-        <Text style={styles.sectionTitle}>Featured campus events</Text>
-        <Text style={styles.sectionMeta}>Official events with map-ready context</Text>
-      </View>
-
-      <FlatList
-        horizontal
-        data={featuredPings}
-        keyExtractor={(item) => item.id}
-        renderItem={renderFeaturedEvent}
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.featuredList}
-      />
-
-      <View style={styles.sectionRow}>
-        <Text style={styles.sectionTitle}>Live pings</Text>
-        <Text style={styles.sectionMeta}>Student-posted activity around campus</Text>
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-        {['All', ...PING_CATEGORIES.map((entry) => entry.id)].map((category) => {
-          const active = categoryFilter === category;
+      <View style={styles.segmentedRow}>
+        {(['Today', 'Upcoming', 'Past'] as FeedWindow[]).map((option) => {
+          const active = feedWindow === option;
           return (
             <Pressable
-              key={category}
-              style={[styles.filterChip, active && styles.filterChipActive]}
-              onPress={() => setCategoryFilter(category)}
+              key={option}
+              style={[styles.segmentedChip, active && styles.segmentedChipActive]}
+              onPress={() => setFeedWindow(option)}
             >
-              <Text style={[styles.filterChipLabel, active && styles.filterChipLabelActive]}>{category}</Text>
+              <Text style={[styles.segmentedChipLabel, active && styles.segmentedChipLabelActive]}>
+                {option}
+              </Text>
             </Pressable>
           );
         })}
-      </ScrollView>
+      </View>
+
+      {featuredCards.length ? (
+        <View style={styles.featuredSection}>
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionTitle}>Featured</Text>
+          </View>
+          <FlatList
+            horizontal
+            data={featuredCards}
+            keyExtractor={(item) => item.id}
+            renderItem={renderFeaturedEvent}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.featuredList}
+          />
+        </View>
+      ) : null}
     </View>
   );
 
@@ -782,10 +795,28 @@ export function CampusPingsScreen() {
         ListHeaderComponent={header}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Text style={styles.emptyTitle}>No live pings yet</Text>
-            <Text style={styles.emptyBody}>
-              Start the layer by posting the first popup, meetup, or free-food alert.
+            <View style={styles.emptyIconRow}>
+              <Pizza size={20} color="#FF7A3E" />
+              <Flame size={20} color="#A462F4" />
+              <Megaphone size={20} color="#FF8B52" />
+            </View>
+            <Text style={styles.emptyTitle}>
+              {feedWindow === 'Past'
+                ? 'Nothing recent... yet'
+                : feedWindow === 'Upcoming'
+                  ? 'Nothing upcoming... yet'
+                  : 'Nothing today... yet'}
             </Text>
+            <Text style={styles.emptyQuote}>
+              {feedWindow === 'Past'
+                ? 'Quiet timeline.'
+                : feedWindow === 'Upcoming'
+                  ? 'No one has posted what is next.'
+                  : 'Looks calm right now.'}
+            </Text>
+            <Pressable style={styles.emptyRefreshButton} onPress={handleRefresh}>
+              <Text style={styles.emptyRefreshLabel}>Refresh</Text>
+            </Pressable>
           </View>
         }
         contentContainerStyle={styles.listContent}
@@ -921,6 +952,65 @@ export function CampusPingsScreen() {
         </TouchableWithoutFeedback>
       </Modal>
 
+      <Modal visible={!!activeFeaturedEvent} animationType="fade" transparent>
+        <TouchableWithoutFeedback onPress={() => setActiveFeaturedEvent(null)}>
+          <View style={styles.modalBackdrop}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.modalKeyboardWrap}
+            >
+              <TouchableWithoutFeedback>
+                <View style={styles.featuredModalCard}>
+                  <View style={styles.modalHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.modalTitle}>{activeFeaturedEvent?.title}</Text>
+                      <Text style={styles.commentModalSubtitle}>
+                        {activeFeaturedEvent
+                          ? `${formatStartLabel(activeFeaturedEvent.startTime)} · ${getCanonicalLocationName(activeFeaturedEvent.location)}`
+                          : ''}
+                      </Text>
+                    </View>
+                    <Pressable onPress={() => setActiveFeaturedEvent(null)}>
+                      <X size={20} color={COLORS.textPrimary} />
+                    </Pressable>
+                  </View>
+
+                  <Text style={styles.featuredModalBody}>
+                    {activeFeaturedEvent?.description || 'No extra details yet.'}
+                  </Text>
+
+                  <View style={styles.featuredModalActions}>
+                    <Pressable
+                      style={styles.primaryActionButton}
+                      onPress={() => activeFeaturedEvent && openFeaturedEventOnMap(activeFeaturedEvent)}
+                    >
+                      <MapPin size={16} color="#FFFFFF" />
+                      <Text style={styles.primaryActionLabel}>Open on map</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.actionButton}
+                      onPress={() => activeFeaturedEvent && saveFeaturedEventToPlans(activeFeaturedEvent)}
+                    >
+                      <CalendarDays size={16} color={COLORS.textPrimary} />
+                      <Text style={styles.actionLabel}>Save</Text>
+                    </Pressable>
+                    {activeFeaturedEvent?.link ? (
+                      <Pressable
+                        style={styles.actionButton}
+                        onPress={() => activeFeaturedEvent && openFeaturedEventLink(activeFeaturedEvent)}
+                      >
+                        <ExternalLink size={16} color={COLORS.textPrimary} />
+                        <Text style={styles.actionLabel}>Details</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
       <Modal visible={commentModalVisible} animationType="fade" transparent>
         <TouchableWithoutFeedback
           onPress={() => {
@@ -1009,13 +1099,13 @@ const getStyles = (COLORS: any) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: COLORS.background,
+      backgroundColor: '#FFFFFF',
     },
     loadingWrap: {
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: COLORS.background,
+      backgroundColor: '#FFFFFF',
     },
     loadingText: {
       marginTop: 12,
@@ -1026,19 +1116,12 @@ const getStyles = (COLORS: any) =>
       paddingBottom: 120,
     },
     headerWrap: {
-      paddingTop: 56,
-      paddingHorizontal: 16,
-    },
-    heroCard: {
-      padding: 20,
-      borderRadius: 28,
-      backgroundColor: COLORS.surface,
-      borderWidth: 1,
-      borderColor: COLORS.border,
+      paddingTop: 60,
+      paddingHorizontal: 20,
     },
     heroTopRow: {
       flexDirection: 'row',
-      alignItems: 'flex-start',
+      alignItems: 'center',
       justifyContent: 'space-between',
       gap: 16,
     },
@@ -1051,157 +1134,151 @@ const getStyles = (COLORS: any) =>
       marginBottom: 6,
     },
     heroTitle: {
-      fontSize: 30,
+      fontSize: 34,
       fontWeight: '900',
-      color: COLORS.textPrimary,
-      letterSpacing: -0.8,
+      color: '#050505',
+      letterSpacing: -1.4,
     },
     heroBody: {
-      marginTop: 12,
-      color: COLORS.textSecondary,
-      fontSize: 14,
-      lineHeight: 21,
+      marginTop: 8,
+      color: '#6B6B73',
+      fontSize: 17,
+      fontWeight: '600',
     },
-    composeButton: {
-      flexDirection: 'row',
+    composeFab: {
+      width: 58,
+      height: 58,
+      borderRadius: 29,
+      backgroundColor: '#FFF4EE',
       alignItems: 'center',
-      gap: 8,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-      borderRadius: 16,
-      backgroundColor: COLORS.primary,
+      justifyContent: 'center',
+      shadowColor: '#FF7B42',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.12,
+      shadowRadius: 14,
+      elevation: 6,
     },
-    composeButtonLabel: {
-      color: '#FFFFFF',
-      fontSize: 14,
-      fontWeight: '800',
-    },
-    noticeCard: {
+    noticePill: {
       marginTop: 14,
-      padding: 14,
-      borderRadius: 18,
-      backgroundColor: COLORS.surface,
+      alignSelf: 'flex-start',
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 999,
+      backgroundColor: '#FFF4EE',
       borderWidth: 1,
-      borderColor: COLORS.border,
-    },
-    noticeTitle: {
-      color: COLORS.textPrimary,
-      fontWeight: '800',
-      marginBottom: 4,
+      borderColor: '#FFD7C7',
     },
     noticeText: {
-      color: COLORS.textSecondary,
-      lineHeight: 19,
+      color: '#C25C32',
+      fontSize: 12,
+      fontWeight: '700',
     },
     sectionRow: {
-      marginTop: 24,
-      marginBottom: 10,
+      marginTop: 26,
+      marginBottom: 14,
     },
     sectionTitle: {
-      color: COLORS.textPrimary,
-      fontSize: 18,
+      color: '#050505',
+      fontSize: 16,
       fontWeight: '800',
+      letterSpacing: -0.3,
     },
-    sectionMeta: {
-      marginTop: 4,
-      color: COLORS.textSecondary,
-      fontSize: 13,
+    featuredSection: {
+      marginTop: 6,
     },
     featuredList: {
-      paddingRight: 16,
+      paddingRight: 20,
       gap: 12,
     },
     featuredCard: {
-      width: 250,
+      width: 214,
       padding: 16,
       borderRadius: 22,
-      backgroundColor: COLORS.surface,
+      backgroundColor: '#FFF8F4',
       borderWidth: 1,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.04,
+      shadowRadius: 14,
+      elevation: 3,
+    },
+    featuredCardTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      marginBottom: 12,
     },
     featuredBadge: {
-      alignSelf: 'flex-start',
       paddingHorizontal: 10,
-      paddingVertical: 5,
+      paddingVertical: 6,
       borderRadius: 999,
-      marginBottom: 12,
     },
     featuredBadgeText: {
       fontSize: 11,
       fontWeight: '800',
       textTransform: 'uppercase',
-      letterSpacing: 0.6,
+      letterSpacing: 0.5,
+    },
+    featuredTime: {
+      color: '#8C8C93',
+      fontSize: 11,
+      fontWeight: '700',
+      flexShrink: 1,
+      textAlign: 'right',
     },
     featuredTitle: {
-      color: COLORS.textPrimary,
-      fontWeight: '800',
+      color: '#111111',
       fontSize: 18,
+      fontWeight: '800',
       lineHeight: 22,
     },
     featuredMeta: {
-      marginTop: 6,
-      color: COLORS.textSecondary,
-      fontSize: 13,
-    },
-    featuredBody: {
       marginTop: 10,
-      color: COLORS.textSecondary,
+      color: '#6B6B73',
       fontSize: 13,
-      lineHeight: 19,
-      minHeight: 54,
+      fontWeight: '600',
     },
-    featuredActions: {
+    segmentedRow: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
-      marginTop: 14,
+      gap: 12,
+      marginTop: 26,
     },
-    secondaryChipButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 10,
-      paddingVertical: 8,
-      borderRadius: 14,
-      backgroundColor: COLORS.surfaceElevated,
-    },
-    secondaryChipLabel: {
-      color: COLORS.textPrimary,
-      fontSize: 12,
-      fontWeight: '700',
-    },
-    filterRow: {
-      paddingVertical: 6,
-      paddingRight: 16,
-      gap: 10,
-    },
-    filterChip: {
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      borderRadius: 999,
-      backgroundColor: COLORS.surface,
+    segmentedChip: {
+      flex: 1,
+      minHeight: 52,
+      borderRadius: 26,
+      backgroundColor: '#FFFFFF',
       borderWidth: 1,
-      borderColor: COLORS.border,
+      borderColor: '#E5E5EA',
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    filterChipActive: {
-      backgroundColor: COLORS.primary,
-      borderColor: COLORS.primary,
+    segmentedChipActive: {
+      backgroundColor: '#050505',
+      borderColor: '#050505',
     },
-    filterChipLabel: {
-      color: COLORS.textPrimary,
-      fontSize: 13,
+    segmentedChipLabel: {
+      color: '#7A7A81',
+      fontSize: 15,
       fontWeight: '700',
     },
-    filterChipLabelActive: {
+    segmentedChipLabelActive: {
       color: '#FFFFFF',
     },
     pingCard: {
-      marginTop: 14,
-      marginHorizontal: 16,
-      padding: 16,
-      borderRadius: 24,
-      backgroundColor: COLORS.surface,
+      marginTop: 16,
+      marginHorizontal: 20,
+      padding: 18,
+      borderRadius: 28,
+      backgroundColor: '#FFFFFF',
       borderWidth: 1,
-      borderColor: COLORS.border,
+      borderColor: '#EFEFF4',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.05,
+      shadowRadius: 18,
+      elevation: 4,
     },
     pingCardTopRow: {
       flexDirection: 'row',
@@ -1222,20 +1299,20 @@ const getStyles = (COLORS: any) =>
       fontWeight: '800',
     },
     pingTimeLabel: {
-      color: COLORS.textSecondary,
+      color: '#8C8C93',
       fontSize: 12,
       fontWeight: '700',
     },
     pingTitle: {
       marginTop: 14,
-      color: COLORS.textPrimary,
-      fontSize: 20,
+      color: '#111111',
+      fontSize: 21,
       fontWeight: '800',
       lineHeight: 24,
     },
     pingBody: {
       marginTop: 8,
-      color: COLORS.textSecondary,
+      color: '#666670',
       fontSize: 14,
       lineHeight: 21,
     },
@@ -1251,7 +1328,7 @@ const getStyles = (COLORS: any) =>
       gap: 6,
     },
     pingMetaText: {
-      color: COLORS.textSecondary,
+      color: '#7A7A81',
       fontSize: 13,
       fontWeight: '600',
     },
@@ -1269,13 +1346,13 @@ const getStyles = (COLORS: any) =>
       paddingHorizontal: 12,
       paddingVertical: 10,
       borderRadius: 14,
-      backgroundColor: COLORS.surfaceElevated,
+      backgroundColor: '#F5F5F7',
     },
     actionButtonActive: {
       backgroundColor: 'rgba(255,100,127,0.12)',
     },
     actionLabel: {
-      color: COLORS.textPrimary,
+      color: '#111111',
       fontSize: 13,
       fontWeight: '700',
     },
@@ -1286,7 +1363,7 @@ const getStyles = (COLORS: any) =>
       paddingHorizontal: 14,
       paddingVertical: 11,
       borderRadius: 14,
-      backgroundColor: COLORS.primary,
+      backgroundColor: '#FF6A3D',
     },
     primaryActionLabel: {
       color: '#FFFFFF',
@@ -1295,24 +1372,51 @@ const getStyles = (COLORS: any) =>
     },
     emptyState: {
       marginTop: 18,
-      marginHorizontal: 16,
-      padding: 24,
-      borderRadius: 24,
-      backgroundColor: COLORS.surface,
-      borderWidth: 1,
-      borderColor: COLORS.border,
+      marginHorizontal: 20,
+      paddingHorizontal: 24,
+      paddingVertical: 30,
+      borderRadius: 34,
+      backgroundColor: '#F7C6E7',
       alignItems: 'center',
+      overflow: 'hidden',
+    },
+    emptyIconRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      marginBottom: 18,
     },
     emptyTitle: {
-      color: COLORS.textPrimary,
-      fontSize: 18,
+      color: '#2D2433',
+      fontSize: 22,
       fontWeight: '800',
-    },
-    emptyBody: {
-      marginTop: 8,
-      color: COLORS.textSecondary,
       textAlign: 'center',
-      lineHeight: 20,
+    },
+    emptyQuote: {
+      marginTop: 16,
+      color: '#4C4354',
+      fontSize: 15,
+      lineHeight: 24,
+      textAlign: 'center',
+      backgroundColor: 'rgba(255,255,255,0.72)',
+      borderRadius: 22,
+      paddingHorizontal: 20,
+      paddingVertical: 18,
+    },
+    emptyRefreshButton: {
+      marginTop: 20,
+      height: 50,
+      minWidth: 148,
+      paddingHorizontal: 24,
+      borderRadius: 25,
+      backgroundColor: '#FF6A3D',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    emptyRefreshLabel: {
+      color: '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '800',
     },
     modalBackdrop: {
       flex: 1,
@@ -1331,6 +1435,15 @@ const getStyles = (COLORS: any) =>
       paddingTop: 18,
       paddingBottom: 28,
       maxHeight: '88%',
+    },
+    featuredModalCard: {
+      backgroundColor: COLORS.background,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      paddingHorizontal: 18,
+      paddingTop: 18,
+      paddingBottom: 28,
+      minHeight: '38%',
     },
     commentModalCard: {
       backgroundColor: COLORS.background,
@@ -1353,6 +1466,18 @@ const getStyles = (COLORS: any) =>
       color: COLORS.textPrimary,
       fontSize: 20,
       fontWeight: '800',
+    },
+    featuredModalBody: {
+      color: COLORS.textSecondary,
+      fontSize: 15,
+      lineHeight: 23,
+      marginTop: 6,
+    },
+    featuredModalActions: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginTop: 18,
     },
     modalLabel: {
       color: COLORS.textPrimary,
