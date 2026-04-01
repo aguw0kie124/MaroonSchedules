@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 export type PlacesPillId =
+  | 'Pulse'
   | 'Today'
   | 'Bus'
   | 'Library'
@@ -31,15 +32,16 @@ export const PARKING_PERMIT_OPTIONS: Array<{ id: ParkingPermit; label: string; d
 ];
 
 export const DEFAULT_PLACES_PILLS: ToggleLayoutItem<PlacesPillId>[] = [
-  { id: 'Today', label: 'Today', visible: true, order: 0 },
-  { id: 'Bus', label: 'Buses', visible: true, order: 1 },
-  { id: 'Dining', label: 'Dining', visible: true, order: 2 },
-  { id: 'Heatmap', label: 'Traffic', visible: false, order: 3 },
-  { id: 'Parking', label: 'Parking', visible: false, order: 4 },
-  { id: 'Library', label: 'Libraries', visible: false, order: 5 },
-  { id: 'Academic', label: 'Academic', visible: false, order: 6 },
-  { id: 'Rec', label: 'Gyms', visible: false, order: 7 },
-  { id: 'Study', label: 'Study', visible: false, order: 8 },
+  { id: 'Pulse', label: 'Pulse', visible: true, order: 0 },
+  { id: 'Today', label: 'Today', visible: true, order: 1 },
+  { id: 'Bus', label: 'Buses', visible: true, order: 2 },
+  { id: 'Dining', label: 'Dining', visible: true, order: 3 },
+  { id: 'Heatmap', label: 'Traffic', visible: false, order: 4 },
+  { id: 'Parking', label: 'Parking', visible: false, order: 5 },
+  { id: 'Library', label: 'Libraries', visible: false, order: 6 },
+  { id: 'Academic', label: 'Academic', visible: false, order: 7 },
+  { id: 'Rec', label: 'Gyms', visible: false, order: 8 },
+  { id: 'Study', label: 'Study', visible: false, order: 9 },
 ];
 
 function sortItems<T extends string>(items: ToggleLayoutItem<T>[]) {

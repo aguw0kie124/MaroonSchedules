@@ -11,6 +11,7 @@ import {
   Layers,
   Bus,
   GraduationCap,
+  Flame,
 } from "lucide-react-native";
 import { BUILDINGS, AMENITIES } from "../../data/campus";
 import type { CampusLocation, LocationType } from "./types";
@@ -365,6 +366,7 @@ export function buildCampusDirectory(): CampusLocation[] {
 
 // ── Category definitions ──────────────────────────────────────
 export const CATEGORIES = [
+  { id: "Pulse", label: "Pulse", icon: <Flame size={18} /> },
   { id: "Today", label: "Today", icon: <Calendar size={18} /> },
   { id: "Bus", label: "Buses", icon: <Bus size={18} /> },
   { id: "Dining", label: "Dining", icon: <Utensils size={18} /> },

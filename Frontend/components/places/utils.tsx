@@ -1,6 +1,7 @@
 import React from "react";
 import {
   Info,
+  Flame,
   Utensils,
   Star,
   TrafficCone,
@@ -67,6 +68,8 @@ export const getCategoryColor = (type: string | undefined): string => {
 
 export function getCategoryPillIcon(id: string) {
   switch (id) {
+    case "Pulse":
+      return Flame;
     case "Schedule":
       return Calendar;
     case "Bus":

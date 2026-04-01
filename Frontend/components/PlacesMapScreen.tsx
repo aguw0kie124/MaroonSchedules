@@ -38,6 +38,7 @@ import {
   Navigation,
   Compass,
   Calendar,
+  Flame,
   LocateFixed,
   Orbit,
   Plus,
@@ -60,7 +61,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { connectFeedsUser } from "../services/streamFeeds";
+import { connectFeedsUser, getPingFeed } from "../services/streamFeeds";
 import { API_URL } from "../config";
 import { useCampusHubStore } from "../store/campusHubStore";
 import {
@@ -87,6 +88,7 @@ import {
   BusStopInfoCard,
   BusVehicleInfoCard,
 } from "./places/BusLayerUI";
+import { PulseHotspotSheet } from "./places/PulseHotspotSheet";
 import { LocationBottomSheet } from "./places/LocationBottomSheet";
 import { ScheduleHeader } from "./places/ScheduleHeader";
 import { PlacesList } from "./places/PlacesList";
@@ -118,6 +120,12 @@ import {
   getCategoryIcon,
 } from "./places/utils";
 import { getStyles } from "./places/placesStyles";
+import {
+  buildCampusHotspots,
+  mapActivityToPulsePing,
+  type CampusHotspot,
+  type PulseEvent,
+} from "../services/campusPulse";
 
 // ── Transitional: still uses inline hooks from original file
 //    (replace with useLocationData / useScheduleMap / useBusTransit
@@ -157,8 +165,9 @@ export function PlacesMapScreen() {
   const [isListDroppedDown, setIsListDroppedDown] = useState(false);
 
   // ── UI state ──────────────────────────────────────────────
-  const [activeLayer, setActiveLayer] = useState<string>("Today");
+  const [activeLayer, setActiveLayer] = useState<string>("Pulse");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
@@ -174,6 +183,8 @@ export function PlacesMapScreen() {
   const fullCampusIndex = useMemo(() => buildCampusDirectory(), []);
   const [locations, setLocations] = useState<CampusLocation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pulseHotspots, setPulseHotspots] = useState<CampusHotspot[]>([]);
+  const [isLoadingPulse, setIsLoadingPulse] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -336,7 +347,15 @@ export function PlacesMapScreen() {
     return Array.from(merged.values());
   }, [locations, scheduleLocations]);
 
+  const pulsePlaces = useMemo(() => {
+    const merged = new Map<string, CampusLocation>();
+    fullCampusIndex.forEach((location) => merged.set(location.location, location));
+    locations.forEach((location) => merged.set(location.location, location));
+    return Array.from(merged.values());
+  }, [fullCampusIndex, locations]);
+
   const filteredLocations = useMemo(() => {
+    if (activeLayer === "Pulse") return [];
     if (activeLayer === "Heatmap") return [];
     if (activeLayer === "Today") return scheduleLocations;
     if (activeLayer === "Dining") return allMapLocations.filter((l) => l.type === "Dining" || l.type === "Hub");
@@ -389,6 +408,21 @@ export function PlacesMapScreen() {
   const busPulseAnim = useRef(new Animated.Value(1)).current;
 
   const selectedLoc = useMemo(() => allMapLocations.find((l) => l.location === selectedId), [allMapLocations, selectedId]);
+  const selectedHotspot = useMemo(
+    () => pulseHotspots.find((hotspot) => hotspot.id === selectedHotspotId) || null,
+    [pulseHotspots, selectedHotspotId],
+  );
+  const pulseTotals = useMemo(() => {
+    return pulseHotspots.reduce(
+      (totals, hotspot) => ({
+        hotspots: totals.hotspots + 1,
+        pings: totals.pings + hotspot.pingCount,
+        events: totals.events + hotspot.eventCount,
+      }),
+      { hotspots: 0, pings: 0, events: 0 },
+    );
+  }, [pulseHotspots]);
+  const hottestHotspot = pulseHotspots[0] || null;
   const markerLocations = useMemo(() => {
     if (activeLayer === "Heatmap" || activeLayer === "Bus") return selectedLoc ? [selectedLoc] : [];
     const merged = new Map<string, CampusLocation>();
@@ -558,11 +592,159 @@ export function PlacesMapScreen() {
   }, []);
 
   const handleSelectLocation = useCallback((loc: CampusLocation) => {
+    setSelectedHotspotId(null);
     setSelectedId(loc.location);
+    setSelectedStop(null);
+    setSelectedBus(null);
     setIsSearchExpanded(false);
     setSearchQuery("");
     setShowSearchResults(false);
   }, []);
+
+  const getLayerForPlace = useCallback((loc: CampusLocation) => {
+    if (loc.type === "Dining" || loc.type === "Hub") return "Dining";
+    if (loc.type === "Rec") return "Rec";
+    if (loc.type === "Library") return "Library";
+    if (loc.type === "Study") return "Study";
+    if (loc.type === "Parking") return "Parking";
+    if (
+      loc.type === "Academic" ||
+      loc.type === "Landmark" ||
+      loc.type === "Athletics" ||
+      loc.type === "Housing" ||
+      loc.type === "General"
+    ) {
+      return "Academic";
+    }
+    return "Academic";
+  }, []);
+
+  const handleSelectHotspot = useCallback((hotspot: CampusHotspot) => {
+    setSelectedHotspotId(hotspot.id);
+    setSelectedId(null);
+    setSelectedStop(null);
+    setSelectedBus(null);
+    setNearestBusInfo(null);
+    setIsRouteDropdownOpen(false);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (!mapRef.current) return;
+    mapRef.current.animateCamera(
+      {
+        center: {
+          latitude: hotspot.coord.lat,
+          longitude: hotspot.coord.lng,
+        },
+        zoom: 16.2,
+        pitch: isMapTilted ? 55 : 0,
+        heading: 0,
+      },
+      { duration: 700 },
+    );
+  }, [isMapTilted]);
+
+  const openHotspotPlace = useCallback((hotspot: CampusHotspot) => {
+    if (!hotspot.place) {
+      if (mapRef.current) {
+        mapRef.current.animateCamera(
+          {
+            center: {
+              latitude: hotspot.coord.lat,
+              longitude: hotspot.coord.lng,
+            },
+            zoom: 16.4,
+            pitch: isMapTilted ? 55 : 0,
+            heading: 0,
+          },
+          { duration: 650 },
+        );
+      }
+      return;
+    }
+
+    setActiveLayer(getLayerForPlace(hotspot.place));
+    handleSelectLocation(hotspot.place);
+  }, [getLayerForPlace, handleSelectLocation, isMapTilted]);
+
+  const openHotspotItem = useCallback(async (
+    hotspot: CampusHotspot,
+    item: CampusHotspot["items"][number],
+  ) => {
+    if (item.source === "event" && item.link) {
+      try {
+        await Linking.openURL(item.link);
+        return;
+      } catch (error) {
+        console.warn("Failed to open event link", error);
+      }
+    }
+
+    openHotspotPlace(hotspot);
+  }, [openHotspotPlace]);
+
+  const fetchPulseHotspots = useCallback(async () => {
+    if (!pulsePlaces.length) return;
+
+    setIsLoadingPulse(true);
+    try {
+      const [activities, featuredEventsResponse] = await Promise.all([
+        getPingFeed(80),
+        fetch(`${API_URL}/campus/events?limit=80`),
+      ]);
+
+      const rawEvents = featuredEventsResponse.ok
+        ? await featuredEventsResponse.json()
+        : [];
+      const now = Date.now();
+      const featuredEvents: PulseEvent[] = (Array.isArray(rawEvents) ? rawEvents : [])
+        .filter((event: any) => event?.event_id && event?.title && event?.start_time && event?.location)
+        .map((event: any) => ({
+          id: String(event.event_id),
+          title: event.title || "Campus Event",
+          summary: event.summary || event.description || "",
+          location: event.location,
+          startTime: event.start_time,
+          endTime: event.end_time,
+          link: event.link || event.source_url || null,
+          locationLat: event.location_lat ?? null,
+          locationLng: event.location_lng ?? null,
+          categories: event.categories || undefined,
+          interestScore: event.campus_interest_score ?? 40,
+        }))
+        .filter((event) => {
+          const startTimeMs = new Date(event.startTime).getTime();
+          if (!Number.isFinite(startTimeMs)) return false;
+
+          const hasHighSignal =
+            (event.interestScore || 0) >= 48 ||
+            !!event.categories?.sports ||
+            !!event.categories?.food ||
+            !!event.categories?.entertainment ||
+            !!event.categories?.social;
+
+          return (
+            hasHighSignal &&
+            startTimeMs >= now - 1000 * 60 * 60 * 8 &&
+            startTimeMs <= now + 1000 * 60 * 60 * 48
+          );
+        });
+
+      const hotspots = buildCampusHotspots({
+        pings: (activities || []).map(mapActivityToPulsePing),
+        events: featuredEvents,
+        places: pulsePlaces,
+      });
+
+      setPulseHotspots(hotspots);
+      if (selectedHotspotId && !hotspots.some((hotspot) => hotspot.id === selectedHotspotId)) {
+        setSelectedHotspotId(null);
+      }
+    } catch (error) {
+      console.warn("Failed to build pulse hotspots", error);
+      if (!selectedHotspotId) setPulseHotspots([]);
+    } finally {
+      setIsLoadingPulse(false);
+    }
+  }, [pulsePlaces, selectedHotspotId]);
 
   const centerOnUserLocation = useCallback(async () => {
     try {
@@ -623,7 +805,7 @@ export function PlacesMapScreen() {
   // ── Auto-zoom and fitting logic ───────────────────────────
   useEffect(() => {
     if (!mapRef.current) return;
-    if (selectedId) return;
+    if (selectedId || (activeLayer === "Pulse" && selectedHotspotId)) return;
 
     let coords: { latitude: number; longitude: number }[] = [];
 
@@ -639,6 +821,11 @@ export function PlacesMapScreen() {
       } else if (routePatterns.length > 0) {
         coords = routePatterns;
       }
+    } else if (activeLayer === "Pulse") {
+      coords = pulseHotspots.map((hotspot) => ({
+        latitude: hotspot.coord.lat,
+        longitude: hotspot.coord.lng,
+      }));
     } else if (activeLayer === "Today") {
       // Only fit when there are multiple scheduled locations to show.
       coords = sortedFilteredLocations
@@ -657,6 +844,7 @@ export function PlacesMapScreen() {
     if (coords.length > 0) {
       const { width, height } = Dimensions.get('window');
       const isToday = activeLayer === "Today";
+      const isPulse = activeLayer === "Pulse";
 
       if (isToday && coords.length < 2) {
         return;
@@ -666,8 +854,12 @@ export function PlacesMapScreen() {
       // Dynamic padding to ensure data is centered in the visible area below the Today box
       // Today: Scale with screen height (roughly 58% on pro phones, less on smaller)
       // pins have height (40px) and we want 20px margin.
-      const topPadding = isToday ? Math.max(80, Math.min(height * 0.58, 540) - 200) : 120;
-      const bottomPadding = 120;
+      const topPadding = isToday
+        ? Math.max(80, Math.min(height * 0.58, 540) - 200)
+        : isPulse
+          ? 250
+          : 120;
+      const bottomPadding = isPulse ? 220 : 120;
       const sidePadding = isToday ? 20 : width * 0.15;
 
       // Force 2D view (0 pitch) for Today to ensure padding logic is pixel-accurate
@@ -693,9 +885,11 @@ export function PlacesMapScreen() {
     busVehicles,
     routePatterns,
     selectedId,
+    selectedHotspotId,
     userCoord,
     isAllBusRoutesSelected,
-    selectedRoute
+    selectedRoute,
+    pulseHotspots,
   ]);
 
   const handleSelectBusRoute = useCallback(async (routeId: string, availableRoutes: any[] = busRoutes) => {
@@ -769,7 +963,9 @@ export function PlacesMapScreen() {
 
   // Keep active layer valid
   useEffect(() => {
-    if (!visibleCategories.some((c) => c.id === activeLayer)) setActiveLayer(visibleCategories[0]?.id || "Bus");
+    if (!visibleCategories.some((c) => c.id === activeLayer)) {
+      setActiveLayer(visibleCategories[0]?.id || "Pulse");
+    }
   }, [activeLayer, visibleCategories]);
 
   // Route param: initialLayer focus
@@ -780,6 +976,7 @@ export function PlacesMapScreen() {
     if (!nextLayer && !token && !nextLocation) return;
     if (nextLayer) setActiveLayer(nextLayer);
     setSelectedId(null);
+    setSelectedHotspotId(null);
     setSelectedStop(null);
     setSelectedBus(null);
     setNearestBusInfo(null);
@@ -798,12 +995,31 @@ export function PlacesMapScreen() {
     setPendingInitialLocation(null);
   }, [allMapLocations, pendingInitialLocation]);
 
+  useEffect(() => {
+    if (activeLayer !== "Pulse" && selectedHotspotId) {
+      setSelectedHotspotId(null);
+    }
+  }, [activeLayer, selectedHotspotId]);
+
   // Hydrate hub when tab needs it
   useEffect(() => {
     if (user?.id && (activeLayer === "Rec" || activeLayer === "Library" || activeLayer === "Schedule")) {
       hydrateCampusHub(user.id).catch(() => { });
     }
   }, [activeLayer, hydrateCampusHub, user?.id]);
+
+  useEffect(() => {
+    if (!pulsePlaces.length) return;
+    fetchPulseHotspots();
+  }, [fetchPulseHotspots, pulsePlaces.length]);
+
+  useEffect(() => {
+    if (activeLayer !== "Pulse") return;
+    const interval = setInterval(() => {
+      fetchPulseHotspots();
+    }, 25000);
+    return () => clearInterval(interval);
+  }, [activeLayer, fetchPulseHotspots]);
 
   // Pulse animation for Bus layer
   useEffect(() => {
@@ -866,7 +1082,7 @@ export function PlacesMapScreen() {
 
   // Auto-fit map to filtered locations
   useEffect(() => {
-    if (!mapRef.current || activeLayer === "Bus" || activeLayer === "Heatmap" || activeLayer === "Today" || selectedId || sortedFilteredLocations.length === 0) return;
+    if (!mapRef.current || activeLayer === "Bus" || activeLayer === "Heatmap" || activeLayer === "Today" || activeLayer === "Pulse" || selectedId || sortedFilteredLocations.length === 0) return;
     const fitKey = `${activeLayer}:${sortedFilteredLocations.length}:${sortedFilteredLocations[0]?.location || ""}`;
     if (lastPlacesFitKey.current === fitKey) return;
     lastPlacesFitKey.current = fitKey;
@@ -948,6 +1164,21 @@ export function PlacesMapScreen() {
             );
           })}
 
+        {activeLayer === "Pulse" &&
+          pulseHotspots.map((hotspot) => (
+            <Circle
+              key={`pulse-radius-${hotspot.id}`}
+              center={{
+                latitude: hotspot.coord.lat,
+                longitude: hotspot.coord.lng,
+              }}
+              radius={hotspot.radius}
+              fillColor={`${hotspot.pulseColor}22`}
+              strokeColor={`${hotspot.pulseColor}66`}
+              strokeWidth={1.5}
+            />
+          ))}
+
         {/* Bus route polylines */}
         {activeLayer === "Bus" && !isAllBusRoutesSelected && routePatterns.length > 0 && (
           <Polyline coordinates={routePatterns} strokeColor={selectedRoute?.Color || "#007AFF"} strokeWidth={6} />
@@ -1015,6 +1246,54 @@ export function PlacesMapScreen() {
             lineDashPattern={[5, 10]}
           />
         )}
+
+        {activeLayer === "Pulse" &&
+          pulseHotspots.map((hotspot) => {
+            const isSelected = hotspot.id === selectedHotspotId;
+            return (
+              <Marker
+                key={hotspot.id}
+                coordinate={{
+                  latitude: hotspot.coord.lat,
+                  longitude: hotspot.coord.lng,
+                }}
+                onPress={() => handleSelectHotspot(hotspot)}
+                anchor={{ x: 0.5, y: 0.66 }}
+                zIndex={isSelected ? 1100 : 900}
+              >
+                <View
+                  style={[
+                    styles.pulseMarkerWrap,
+                    { transform: [{ scale: isSelected ? 1.08 : 1 }] },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.pulseMarkerRing,
+                      {
+                        backgroundColor: `${hotspot.pulseColor}22`,
+                        borderColor: `${hotspot.pulseColor}66`,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.pulseMarkerCore,
+                        { backgroundColor: hotspot.pulseColor },
+                      ]}
+                    >
+                      <Flame size={14} color="#FFFFFF" />
+                    </View>
+                  </View>
+                  <View style={styles.pulseMarkerCount}>
+                    <Text style={styles.pulseMarkerCountText}>
+                      {hotspot.pingCount + hotspot.eventCount} LIVE
+                    </Text>
+                  </View>
+                </View>
+              </Marker>
+            );
+          })}
 
         {/* Campus location markers */}
         {activeLayer !== "Bus" && markerLocations.map((loc) => {
@@ -1223,7 +1502,92 @@ export function PlacesMapScreen() {
               </View>
             )}
 
-            {activeLayer !== "Today" && activeLayer !== "Bus" && (
+            {activeLayer === "Pulse" && (
+              <View style={{ marginTop: 12, width: "100%" }}>
+                <View style={styles.pulseHeroCard}>
+                  <View style={styles.pulseHeroTopRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.pulseHeroEyebrow}>Campus Pulse</Text>
+                      <Text style={styles.pulseHeroTitle}>
+                        {hottestHotspot
+                          ? `${pulseTotals.hotspots} live hotspot${pulseTotals.hotspots === 1 ? "" : "s"}`
+                          : "Waiting for the next wave"}
+                      </Text>
+                      <Text style={styles.pulseHeroBody}>
+                        {isLoadingPulse
+                          ? "Refreshing student pings, place activity, and featured events."
+                          : hottestHotspot
+                            ? `${hottestHotspot.locationName} is the hottest part of campus right now. Tap a hotspot to see what is driving it or jump straight into the place.`
+                            : "As students post pings and high-signal events come online, this view will light up with the busiest pockets of campus."}
+                      </Text>
+                    </View>
+
+                    <View style={styles.pulseHeroBadge}>
+                      <Text style={styles.pulseHeroBadgeValue}>
+                        {hottestHotspot?.score || 0}
+                      </Text>
+                      <Text style={styles.pulseHeroBadgeLabel}>Top Pulse</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.pulseHeroStatsRow}>
+                    <View style={styles.pulseHeroStat}>
+                      <Text style={styles.pulseHeroStatValue}>{pulseTotals.pings}</Text>
+                      <Text style={styles.pulseHeroStatLabel}>Live pings</Text>
+                    </View>
+                    <View style={styles.pulseHeroStat}>
+                      <Text style={styles.pulseHeroStatValue}>{pulseTotals.events}</Text>
+                      <Text style={styles.pulseHeroStatLabel}>Featured events</Text>
+                    </View>
+                    <View style={styles.pulseHeroStat}>
+                      <Text style={styles.pulseHeroStatValue}>
+                        {hottestHotspot?.pulseLabel || "Calm"}
+                      </Text>
+                      <Text style={styles.pulseHeroStatLabel}>Campus mood</Text>
+                    </View>
+                  </View>
+
+                  <View style={{ gap: 8, marginTop: 14 }}>
+                    {pulseHotspots.slice(0, 3).map((hotspot) => (
+                      <TouchableOpacity
+                        key={`hero-${hotspot.id}`}
+                        style={styles.pulseSheetItemCard}
+                        activeOpacity={0.82}
+                        onPress={() => handleSelectHotspot(hotspot)}
+                      >
+                        <View style={styles.pulseListItemTop}>
+                          <View
+                            style={[
+                              styles.pulseListItemBadge,
+                              { backgroundColor: `${hotspot.pulseColor}22` },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.pulseListItemBadgeText,
+                                { color: hotspot.pulseColor },
+                              ]}
+                            >
+                              {hotspot.pulseLabel}
+                            </Text>
+                          </View>
+                          <Text style={styles.pulseListItemTime}>
+                            {hotspot.items[0]?.timeLabel || hotspot.previewLabel}
+                          </Text>
+                        </View>
+                        <Text style={styles.pulseSheetItemTitle}>{hotspot.locationName}</Text>
+                        <Text style={styles.pulseSheetItemMeta}>
+                          {hotspot.previewLabel}
+                          {hotspot.percentFull != null ? ` · ${hotspot.percentFull}% full` : ""}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {activeLayer !== "Today" && activeLayer !== "Bus" && activeLayer !== "Pulse" && (
               <View style={{ marginTop: 12, width: "100%", alignItems: "flex-start" }}>
                 <TouchableOpacity
                   activeOpacity={0.8}
@@ -1306,6 +1670,15 @@ export function PlacesMapScreen() {
         selectedBus={selectedBus && !selectedStop ? selectedBus : null}
         setSelectedBus={setSelectedBus}
         selectedRoute={selectedRoute}
+      />
+
+      <PulseHotspotSheet
+        styles={styles}
+        COLORS={COLORS}
+        hotspot={activeLayer === "Pulse" ? selectedHotspot : null}
+        onClose={() => setSelectedHotspotId(null)}
+        onOpenPlace={openHotspotPlace}
+        onOpenItem={openHotspotItem}
       />
 
 
