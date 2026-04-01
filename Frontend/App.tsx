@@ -49,7 +49,7 @@ import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 
 import { Home, Map, Trophy, Users, User } from 'lucide-react-native';
-import { useTheme } from './components/SharedUI';
+import { useTheme, useThemeStore } from './components/SharedUI';
 
 import { syncUser } from './api/client';
 
@@ -159,7 +159,7 @@ function MainTabs() {
           shadowOffset: { width: 0, height: -3 },
           elevation: 8,
         },
-        tabBarActiveTintColor: '#500000',
+        tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textTertiary,
       }}
     >
@@ -181,11 +181,11 @@ function MainTabs() {
                       width: 58,
                       height: 58,
                       borderRadius: 29,
-                      backgroundColor: focused ? '#500000' : 'rgba(80, 0, 0, 0.7)',
+                      backgroundColor: focused ? COLORS.primary : `${COLORS.primary}B3`,
                       alignItems: 'center',
                       justifyContent: 'center',
                       marginTop: -10,
-                      shadowColor: '#500000',
+                      shadowColor: COLORS.primary,
                       shadowOffset: { width: 0, height: focused ? 8 : 4 },
                       shadowOpacity: focused ? 0.6 : 0.3,
                       shadowRadius: focused ? 12 : 8,
@@ -205,7 +205,7 @@ function MainTabs() {
               return (
                 <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                   <screen.icon
-                    color={focused ? '#500000' : color}
+                    color={focused ? COLORS.primary : color}
                     size={size}
                     strokeWidth={focused ? 2.5 : 2}
                   />
@@ -302,13 +302,35 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 const queryClient = new QueryClient();
 
 function App() {
-  const { theme } = useTheme();
+  const { theme, COLORS } = useTheme();
+
+  React.useEffect(() => {
+    useThemeStore.getState().loadWallpaperPref().catch((error: unknown) => {
+      console.warn('Failed to load theme preferences', error);
+    });
+  }, []);
+
+  const navigationTheme = React.useMemo(() => {
+    const baseTheme = theme === 'dark' ? DarkTheme : DefaultTheme;
+    return {
+      ...baseTheme,
+      colors: {
+        ...baseTheme.colors,
+        primary: COLORS.primary,
+        background: COLORS.background,
+        card: COLORS.surface,
+        text: COLORS.textPrimary,
+        border: COLORS.border,
+        notification: COLORS.primary,
+      },
+    };
+  }, [COLORS.background, COLORS.border, COLORS.primary, COLORS.surface, COLORS.textPrimary, theme]);
 
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <ClerkLoaded>
         <QueryClientProvider client={queryClient}>
-          <NavigationContainer theme={theme === 'dark' ? DarkTheme : DefaultTheme}>
+          <NavigationContainer theme={navigationTheme}>
             <RootNavigator />
             <ShareOverlay />
           </NavigationContainer>

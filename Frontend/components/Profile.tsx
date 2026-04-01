@@ -20,8 +20,10 @@ import {
   GraduationCap,
   LibraryBig,
   LogOut,
+  Moon,
   Palette,
   Search,
+  Sun,
   UserRound,
   Wallet,
 } from 'lucide-react-native';
@@ -112,6 +114,7 @@ export function Profile() {
     COLORS,
     theme,
     accentColor,
+    setTheme,
     setAccentColor,
   } = useTheme();
   const isDark = theme === 'dark';
@@ -274,6 +277,37 @@ export function Profile() {
                   <Text style={[styles.preferenceRowTitle, selected && styles.preferenceRowTitleActive]}>
                     {option.label}
                   </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.preferenceBlock}>
+          <Text style={styles.preferenceLabel}>Theme</Text>
+          <View style={styles.themeChoiceRow}>
+            {[
+              { id: 'light', label: 'Light', Icon: Sun },
+              { id: 'dark', label: 'Dark', Icon: Moon },
+            ].map(({ id, label, Icon }) => {
+              const selected = theme === id;
+              return (
+                <Pressable
+                  key={id}
+                  style={[styles.themeChoiceCard, selected && styles.themeChoiceCardActive]}
+                  onPress={() => setTheme(id)}
+                >
+                  <View style={[styles.themeChoiceIcon, selected && styles.themeChoiceIconActive]}>
+                    <Icon size={18} color={selected ? '#FFFFFF' : COLORS.textSecondary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.themeChoiceTitle, selected && styles.themeChoiceTitleActive]}>
+                      {label}
+                    </Text>
+                    <Text style={styles.themeChoiceSubtitle}>
+                      {id === 'light' ? 'Bright, airy surfaces' : 'Low-glare dark surfaces'}
+                    </Text>
+                  </View>
                 </Pressable>
               );
             })}
@@ -639,6 +673,48 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     preferenceColumn: {
       gap: 10,
+    },
+    themeChoiceRow: {
+      gap: 10,
+    },
+    themeChoiceCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      borderRadius: 20,
+      paddingHorizontal: 16,
+      paddingVertical: 15,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(80,0,0,0.03)',
+    },
+    themeChoiceCardActive: {
+      borderColor: COLORS.primary,
+      backgroundColor: isDark ? 'rgba(80,0,0,0.22)' : 'rgba(80,0,0,0.08)',
+    },
+    themeChoiceIcon: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(80,0,0,0.06)',
+    },
+    themeChoiceIconActive: {
+      backgroundColor: COLORS.primary,
+    },
+    themeChoiceTitle: {
+      color: COLORS.textPrimary,
+      fontSize: 15,
+      fontWeight: '800',
+      marginBottom: 2,
+    },
+    themeChoiceTitleActive: {
+      color: COLORS.primary,
+    },
+    themeChoiceSubtitle: {
+      color: COLORS.textSecondary,
+      fontSize: 12,
     },
     preferenceRow: {
       borderRadius: 18,
