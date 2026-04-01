@@ -4,6 +4,8 @@ from stream_chat import StreamChat
 import os
 from dotenv import load_dotenv
 
+from services import ping_service
+
 # Force reload from the exact .env file, overriding any shell-level sticky env vars
 env_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(dotenv_path=env_path, override=True)
@@ -153,6 +155,11 @@ async def proxy_get_feed(feed_group: str, feed_id: str, limit: int = 25):
     feed = server_client.feed(feed_group, feed_id)
     try:
         response = feed.get(limit=limit, enrich=True, reactions={"recent": True, "counts": True})
+        if feed_group == "flat" and feed_id == "campus_pings":
+            response["results"] = [
+                ping_service.enrich_ping_activity(activity)
+                for activity in response.get("results", [])
+            ]
         return response
     except Exception as e:
         print(f"Stream Feeds Proxy Error: {e}")
@@ -166,7 +173,10 @@ async def proxy_add_activity(feed_group: str, feed_id: str, body: FeedActivity):
     server_client = stream.connect(api_key, api_secret)
     feed = server_client.feed(feed_group, feed_id)
     try:
-        response = feed.add_activity(body.activity)
+        activity = body.activity
+        if feed_group == "flat" and feed_id == "campus_pings":
+            activity = ping_service.normalize_ping_activity_payload(activity)
+        response = feed.add_activity(activity)
         return response
     except Exception as e:
         print(f"Stream Proxy Add Error: {e}")
@@ -237,4 +247,3 @@ async def proxy_get_reactions(activity_id: str, kind: str):
     except Exception as e:
         print(f"Stream Proxy GetReactions Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-

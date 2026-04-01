@@ -62,7 +62,7 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { connectFeedsUser, getPingFeed } from "../services/streamFeeds";
+import { connectFeedsUser } from "../services/streamFeeds";
 import { API_URL } from "../config";
 import { useCampusHubStore } from "../store/campusHubStore";
 import {
@@ -122,10 +122,8 @@ import {
 } from "./places/utils";
 import { getStyles } from "./places/placesStyles";
 import {
-  buildCampusHotspots,
-  mapActivityToPulsePing,
+  fetchCampusPulseMap,
   type CampusHotspot,
-  type PulseEvent,
 } from "../services/campusPulse";
 
 // ── Transitional: still uses inline hooks from original file
@@ -683,57 +681,23 @@ export function PlacesMapScreen() {
   }, [openHotspotPlace]);
 
   const fetchPulseHotspots = useCallback(async () => {
-    if (!pulsePlaces.length) return;
-
     setIsLoadingPulse(true);
     try {
-      const [activities, featuredEventsResponse] = await Promise.all([
-        getPingFeed(80),
-        fetch(`${API_URL}/campus/events?limit=80`),
-      ]);
-
-      const rawEvents = featuredEventsResponse.ok
-        ? await featuredEventsResponse.json()
-        : [];
-      const now = Date.now();
-      const featuredEvents: PulseEvent[] = (Array.isArray(rawEvents) ? rawEvents : [])
-        .filter((event: any) => event?.event_id && event?.title && event?.start_time && event?.location)
-        .map((event: any) => ({
-          id: String(event.event_id),
-          title: event.title || "Campus Event",
-          summary: event.summary || event.description || "",
-          location: event.location,
-          startTime: event.start_time,
-          endTime: event.end_time,
-          link: event.link || event.source_url || null,
-          locationLat: event.location_lat ?? null,
-          locationLng: event.location_lng ?? null,
-          categories: event.categories || undefined,
-          interestScore: event.campus_interest_score ?? 40,
-        }))
-        .filter((event) => {
-          const startTimeMs = new Date(event.startTime).getTime();
-          if (!Number.isFinite(startTimeMs)) return false;
-
-          const hasHighSignal =
-            (event.interestScore || 0) >= 48 ||
-            !!event.categories?.sports ||
-            !!event.categories?.food ||
-            !!event.categories?.entertainment ||
-            !!event.categories?.social;
-
-          return (
-            hasHighSignal &&
-            startTimeMs >= now - 1000 * 60 * 60 * 8 &&
-            startTimeMs <= now + 1000 * 60 * 60 * 48
-          );
-        });
-
-      const hotspots = buildCampusHotspots({
-        pings: (activities || []).map(mapActivityToPulsePing),
-        events: featuredEvents,
-        places: pulsePlaces,
-      });
+      const rawHotspots = await fetchCampusPulseMap(12);
+      const placeLookup = new Map(
+        pulsePlaces.flatMap((place) => {
+          const keys = [place.location];
+          if (place.placeId) keys.push(place.placeId);
+          return keys.map((key) => [key, place] as const);
+        }),
+      );
+      const hotspots = rawHotspots.map((hotspot) => ({
+        ...hotspot,
+        place:
+          (hotspot.placeId ? placeLookup.get(hotspot.placeId) : null) ||
+          placeLookup.get(hotspot.locationName) ||
+          null,
+      }));
 
       setPulseHotspots(hotspots);
       if (selectedHotspotId && !hotspots.some((hotspot) => hotspot.id === selectedHotspotId)) {

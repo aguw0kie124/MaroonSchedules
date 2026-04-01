@@ -14,7 +14,7 @@ import psycopg
 from db_config import CONNECTION_PARAMS
 from repositories import course_repository, user_repository
 from routers.traffic import tracker
-from services import campus_events_service
+from services import campus_events_service, place_registry_service
 
 HOWDY_URL = "https://howdy.tamu.edu/main/home/card-view"
 DINING_URL = "https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx"
@@ -1027,11 +1027,17 @@ def get_events_snapshot(
     events = []
     for event in raw_events:
         event_id = _event_id_for(event)
+        resolved_place = place_registry_service.resolve_place(
+            event.get("location"),
+            event.get("latitude"),
+            event.get("longitude"),
+        )
         events.append(
             {
                 "event_id": event_id,
                 "title": event.get("title", "Campus Event"),
-                "location": event.get("location", "TBA"),
+                "location": resolved_place["name"] if resolved_place else event.get("location", "TBA"),
+                "place_id": resolved_place["place_id"] if resolved_place else None,
                 "start_time": event.get("start_time"),
                 "end_time": event.get("end_time"),
                 "summary": event.get("summary", ""),
@@ -1045,13 +1051,14 @@ def get_events_snapshot(
                 "food_confidence": 0.0,
                 "food_type": "unknown",
                 "food_reasons": [],
-                "location_lat": None,
-                "location_lng": None,
-                "map_available": False,
+                "location_lat": resolved_place["lat"] if resolved_place else None,
+                "location_lng": resolved_place["lng"] if resolved_place else None,
+                "map_available": bool(resolved_place),
                 "campus_interest_score": 40,
                 "campus_interest_label": "medium",
                 "campus_interest_reasons": ["legacy_tracker_fallback"],
                 "rsvp_status": rsvp_lookup.get(event_id, "none"),
+                "place": place_registry_service.serialize_place(resolved_place),
             }
         )
     return events

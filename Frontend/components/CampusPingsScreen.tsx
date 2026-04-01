@@ -68,6 +68,7 @@ type TimePreset = 'now' | 'soon' | 'tonight' | 'tomorrow';
 
 interface FeaturedEvent {
   id: string;
+  placeId?: string | null;
   title: string;
   description: string;
   location: string;
@@ -82,6 +83,7 @@ interface FeaturedEvent {
 interface PingCard {
   id: string;
   source: 'user' | 'official';
+  placeId?: string | null;
   title: string;
   body: string;
   category: string;
@@ -220,6 +222,7 @@ function mapActivityToPing(activity: any): PingCard {
     title: custom.ping_title || 'Campus Ping',
     body: activity.text || '',
     category: custom.ping_category || 'Popup',
+    placeId: custom.place_id || activity.place?.place_id || null,
     locationTag: custom.location_tag || 'Campus',
     startAt: custom.start_at || activity.time || new Date().toISOString(),
     endAt: custom.end_at || null,
@@ -336,6 +339,7 @@ export function CampusPingsScreen() {
       const data = await res.json();
       const nextEvents = (data || []).map((event: any) => ({
         id: String(event.event_id),
+        placeId: event.place_id ?? event.place?.place_id ?? null,
         title: event.title || 'Campus Event',
         description: event.summary || event.description || '',
         location: event.location || 'Campus',
@@ -481,6 +485,8 @@ export function CampusPingsScreen() {
         body: composerBody.trim(),
         category: composerCategory,
         locationTag: selectedLocation,
+        placeId:
+          locationLookup.get(getCanonicalLocationName(selectedLocation))?.placeId || undefined,
         startAt,
         endAt,
         mediaUrl: uploadedImageUrl,

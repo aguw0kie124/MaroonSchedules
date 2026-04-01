@@ -66,6 +66,7 @@ export interface ScheduleMapOption {
 }
 
 export interface CampusLocation {
+  placeId?: string;
   location: string;
   percent_full: number;
   type: LocationType;

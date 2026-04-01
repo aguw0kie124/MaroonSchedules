@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+from services import place_registry_service
+
 
 CRAWLER_OUTPUT = (
     Path(__file__).resolve().parents[2]
@@ -189,14 +191,18 @@ def _normalize_event_row(raw: Dict[str, Any]) -> Dict[str, Any] | None:
     except (TypeError, ValueError):
         lat, lng = None, None
 
-    location = _clean_location_label(raw.get("location"), lat, lng)
+    raw_location = _clean_location_label(raw.get("location"), lat, lng)
+    resolved_place = place_registry_service.resolve_place(raw_location, lat, lng)
+    location = resolved_place["name"] if resolved_place else raw_location
 
     normalized = {
         "event_id": raw.get("id"),
         "title": raw.get("title") or "Campus Event",
         "summary": raw.get("description") or "",
         "description": raw.get("description") or "",
+        "raw_location": raw_location,
         "location": location,
+        "place_id": resolved_place["place_id"] if resolved_place else None,
         "location_lat": lat,
         "location_lng": lng,
         "start_time": start_dt.isoformat(),
@@ -234,6 +240,11 @@ def _normalize_event_row(raw: Dict[str, Any]) -> Dict[str, Any] | None:
         },
         "map_available": lat is not None and lng is not None,
     }
+
+    if resolved_place:
+        normalized["location_lat"] = resolved_place["lat"]
+        normalized["location_lng"] = resolved_place["lng"]
+        normalized["place"] = place_registry_service.serialize_place(resolved_place)
 
     score, label, reasons = _score_student_relevance(normalized)
     normalized["campus_interest_score"] = score

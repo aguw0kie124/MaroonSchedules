@@ -152,6 +152,14 @@ export const fetchCampusEvents = async (clerkId?: string, limit = 8) => {
     return requestJson(`/campus/events?${params.toString()}`);
 };
 
+export const fetchCampusPlacesRegistry = async () => {
+    return requestJson('/campus/places/registry');
+};
+
+export const fetchCampusPulseMap = async (limit = 12) => {
+    return requestJson(`/campus/pulse/map?limit=${limit}`);
+};
+
 export const saveCampusEventRsvp = async (payload: { clerk_id: string; event_id: string; response: string }) => {
     return requestJson('/campus/events/rsvp', {
         method: 'POST',

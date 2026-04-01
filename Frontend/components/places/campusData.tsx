@@ -335,6 +335,7 @@ export function getBuildingCategory(buildingName?: string | null): string {
 // ── Build the full campus directory ───────────────────────────
 export function buildCampusDirectory(): CampusLocation[] {
   const buildingLocations = BUILDINGS.map((building) => ({
+    placeId: building.id,
     location: building.name,
     shortName: building.shortName,
     percent_full: 0,
@@ -347,6 +348,7 @@ export function buildCampusDirectory(): CampusLocation[] {
   }));
 
   const amenityLocations = AMENITIES.map((amenity) => ({
+    placeId: amenity.id,
     location: amenity.name,
     shortName: amenity.name,
     percent_full: 0,

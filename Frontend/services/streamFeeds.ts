@@ -121,6 +121,7 @@ export async function addPing(params: {
   body: string;
   category: string;
   locationTag: string;
+  placeId?: string;
   startAt: string;
   endAt?: string;
   mediaUrl?: string;
@@ -146,6 +147,7 @@ export async function addPing(params: {
       ping_title: params.title,
       ping_category: params.category,
       location_tag: params.locationTag,
+      place_id: params.placeId || '',
       start_at: params.startAt,
       end_at: params.endAt || '',
       content_type: 'ping',
