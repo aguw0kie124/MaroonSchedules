@@ -156,6 +156,10 @@ export const fetchCampusPlacesRegistry = async () => {
     return requestJson('/campus/places/registry');
 };
 
+export const fetchCampusPlacesMap = async () => {
+    return requestJson('/campus/places/map');
+};
+
 export const fetchCampusPulseMap = async (limit = 12) => {
     return requestJson(`/campus/pulse/map?limit=${limit}`);
 };

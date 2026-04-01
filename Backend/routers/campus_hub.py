@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Body, Query
 from pydantic import BaseModel
 
-from services import campus_hub_service, place_registry_service, pulse_service
+from services import campus_hub_service, campus_places_service, place_registry_service, pulse_service
 
 router = APIRouter(prefix="/campus", tags=["Campus Hub"])
 
@@ -95,6 +95,11 @@ def get_events(
 @router.get("/places/registry")
 def get_places_registry():
     return place_registry_service.get_all_places()
+
+
+@router.get("/places/map")
+def get_places_map():
+    return campus_places_service.get_places_map_snapshot()
 
 
 @router.get("/pulse/map")

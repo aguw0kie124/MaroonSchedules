@@ -70,6 +70,7 @@ import {
   useAppShellStore,
 } from "../store/appShellStore";
 import { useShareStore } from "../store/shareStore";
+import { fetchCampusPlacesMap } from "../api/client";
 import {
   DiningMealPeriod,
   fetchDiningFullMenuCached,
@@ -78,7 +79,6 @@ import {
   isDiningHallMenuLocation,
   getDiningMenuCandidates,
 } from "../services/diningMenuCache";
-import axios from "axios";
 
 // ── Sub-components ────────────────────────────────────────────
 import { FloatingSearchBar } from "./places/FloatingSearchBar";
@@ -109,7 +109,6 @@ import {
   CATEGORIES,
   buildCampusDirectory,
   getCanonicalLocationName,
-  getCanonicalCoords,
   getZoneDensity,
 } from "./places/campusData";
 import {
@@ -187,51 +186,13 @@ export function PlacesMapScreen() {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_URL}/traffic/retrieve`);
-      let fetched = res.data.filter((d: any) => d.coord);
-      const hubs = [
-        { location: "Memorial Student Center", type: "Hub", coord: getCanonicalCoords("Memorial Student Center", { lat: 30.6123, lng: -96.3415 }), percent_full: 45, is_live: false, hours: "7:00 AM – 10:00 PM" },
-        { location: "Polo Road Garage Dining", type: "Hub", coord: getCanonicalCoords("Polo Road Garage Dining", { lat: 30.6235, lng: -96.3388 }), percent_full: 30, is_live: false, hours: "7:00 AM – 9:00 PM" },
-        { location: "Sbisa Dining Hall", type: "Dining", coord: getCanonicalCoords("Sbisa Dining Hall", { lat: 30.617135, lng: -96.343777 }), percent_full: 60, is_live: false, hours: "10:00 AM – 8:00 PM" },
-        { location: "Student Recreation Center", type: "Rec", coord: getCanonicalCoords("Student Recreation Center", { lat: 30.6071, lng: -96.3454 }), percent_full: 55, is_live: false, hours: "6:00 AM – 11:45 PM" },
-        { location: "Southside Recreation Center", type: "Rec", coord: getCanonicalCoords("Southside Recreation Center", { lat: 30.6151, lng: -96.3344 }), percent_full: 40, is_live: false, hours: "5:30 AM – 11:59 PM" },
-        { location: "Polo Road Recreation Center", type: "Rec", coord: getCanonicalCoords("Polo Road Recreation Center", { lat: 30.6229, lng: -96.3409 }), percent_full: 35, is_live: false, hours: "6:00 AM – 10:00 PM" },
-      ];
-      const combined = [...fetched];
-      hubs.forEach((h) => {
-        if (!combined.find((c: any) => c.location.includes(h.location) || h.location.includes(c.location))) combined.push(h);
-      });
-      const trafficLocations = combined.map((loc: any) => {
-        const canonicalName = getCanonicalLocationName(loc.location);
-        // Filter out unknown or non-campus locations that result in blank pins
-        if (!canonicalName || canonicalName === "Unknown" || canonicalName.match(/^\d+$/)) return null;
-
-        const zone = CAMPUS_ZONES.find((z) => z.name === canonicalName);
-        const resolvedCoord = getCanonicalCoords(canonicalName, loc.coord);
-        return { ...loc, location: canonicalName, coord: resolvedCoord, ...(zone?.hours ? { hours: zone.hours } : {}), source: "traffic" as const };
-      }).filter(Boolean) as CampusLocation[];
-      const mergedMap = new Map<string, CampusLocation>();
-      fullCampusIndex.forEach((l) => mergedMap.set(l.location, l));
-      trafficLocations.forEach((loc: CampusLocation) => {
-        const canonicalName = getCanonicalLocationName(loc.location);
-        const existing = mergedMap.get(canonicalName) || mergedMap.get(loc.location);
-        if (loc.location !== canonicalName && mergedMap.has(loc.location)) mergedMap.delete(loc.location);
-        mergedMap.set(canonicalName, { 
-          ...existing, 
-          ...loc, 
-          location: canonicalName, 
-          coord: getCanonicalCoords(canonicalName, loc.coord), 
-          // Prioritize specific types from directory (Rec/Dining/Hub) if API returns generic Building/Landmark
-          type: (loc.type && !["Building", "Landmark", "General", "Athletics"].includes(loc.type)) 
-            ? loc.type 
-            : (existing?.type || loc.type || "General"), 
-          shortName: existing?.shortName || loc.shortName, 
-          description: existing?.description || loc.description 
-        });
-      });
-      setLocations(Array.from(mergedMap.values()));
+      const payload = await fetchCampusPlacesMap();
+      const nextLocations = Array.isArray(payload?.locations)
+        ? (payload.locations as CampusLocation[])
+        : [];
+      setLocations(nextLocations.length ? nextLocations : fullCampusIndex);
     } catch (err) {
-      console.warn("Failed to fetch traffic data", err);
+      console.warn("Failed to fetch places map snapshot", err);
       setLocations(fullCampusIndex);
     } finally {
       setLoading(false);

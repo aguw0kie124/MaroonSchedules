@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, ScrollView, ActivityIndicator, Pressable } from 'react-native';
-import axios from 'axios';
 import { useTheme, Card } from './SharedUI';
-
-import { API_URL } from '../config';
+import { fetchCampusPlacesMap } from '../api/client';
 
 export function LocationSearchScreen() {
     const { COLORS } = useTheme();
@@ -14,15 +12,15 @@ export function LocationSearchScreen() {
     const [expandedLocation, setExpandedLocation] = useState<string | null>(null);
 
     useEffect(() => {
-        fetchTraffic();
+        fetchLocations();
     }, []);
 
-    const fetchTraffic = async () => {
+    const fetchLocations = async () => {
         try {
-            const res = await axios.get(`${API_URL}/traffic/retrieve`);
-            setLocations(res.data);
+            const snapshot = await fetchCampusPlacesMap();
+            setLocations(Array.isArray(snapshot?.locations) ? snapshot.locations : []);
         } catch (err) {
-            console.warn("Failed to fetch traffic data", err);
+            console.warn("Failed to fetch places map snapshot", err);
         } finally {
             setLoading(false);
         }

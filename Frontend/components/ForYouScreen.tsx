@@ -11,8 +11,7 @@ import {
 import { CalendarDays, Dumbbell, GraduationCap, Library, MapPin, Star, UtensilsCrossed, Share2 } from 'lucide-react-native';
 import { useTheme, Card } from './SharedUI';
 import { useShareStore } from '../store/shareStore';
-
-import { API_URL } from '../config';
+import { fetchCampusPlacesMap } from '../api/client';
 
 interface ForYouItem {
   id: string;
@@ -67,9 +66,10 @@ export function ForYouScreen() {
 
   const fetchData = async () => {
     try {
-      const res = await fetch(`${API_URL}/traffic/retrieve`);
-      if (!res.ok) throw new Error('Failed to fetch');
-      const data: { location: string; percent_full: number }[] = await res.json();
+      const snapshot = await fetchCampusPlacesMap();
+      const data: { location: string; percent_full: number }[] = Array.isArray(snapshot?.locations)
+        ? snapshot.locations
+        : [];
 
       const items: ForYouItem[] = data.map((d, i) => {
         const cat = classifyLocation(d.location);

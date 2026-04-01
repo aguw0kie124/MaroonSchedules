@@ -82,7 +82,7 @@ export interface CampusLocation {
   shortName?: string;
   description?: string;
   features?: string[];
-  source?: "traffic" | "directory" | "schedule";
+  source?: "traffic" | "directory" | "schedule" | "snapshot";
   classMeetings?: ScheduleMeetingEntry[];
   scheduleLabel?: string;
   sequenceIndex?: number;
