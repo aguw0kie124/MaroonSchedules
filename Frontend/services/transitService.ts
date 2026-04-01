@@ -167,8 +167,8 @@ export const transitService = {
 
             (data.points || []).forEach((pt: any) => {
                 points.push({
-                    latitude: pt.latitude,
-                    longitude: pt.longitude,
+                    latitude: Number(pt.latitude),
+                    longitude: Number(pt.longitude),
                     DirectionCode: pt.DirectionCode || '',
                     DirectionName: pt.DirectionName || '',
                 });
@@ -176,7 +176,7 @@ export const transitService = {
             (data.stops || []).forEach((stop: any) => {
                 if (!seenStops.has(stop.StopCode)) {
                     seenStops.add(stop.StopCode);
-                    stops.push(stop);
+                    stops.push({ ...stop, Latitude: Number(stop.Latitude), Longitude: Number(stop.Longitude) });
                 }
             });
             const pattern = { points, stops };
@@ -221,13 +221,19 @@ export const transitService = {
      */
     async getVehicles(routeId?: string): Promise<any[]> {
         try {
-            const query = routeId ? `?route_id=${encodeURIComponent(routeId)}` : '';
-            const response = await fetch(`${API_URL}/traffic/transit/vehicles${query}`);
+            const ts = Date.now();
+            const query = routeId ? `?route_id=${encodeURIComponent(routeId)}&_t=${ts}` : `?_t=${ts}`;
+            const response = await fetch(`${API_URL}/traffic/transit/vehicles${query}`, { headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } });
             if (!response.ok) {
                 return this.getCachedVehicles(routeId);
             }
             const payload = await response.json();
-            const vehicles = payload.vehicles || [];
+            const vehicles = (payload.vehicles || []).map((v: any) => ({
+                ...v,
+                Latitude: Number(v.Latitude),
+                Longitude: Number(v.Longitude),
+                Heading: Number(v.Heading || 0)
+            }));
 
             if (vehicles.length > 0) {
                 this.lastVehiclesSnapshot = vehicles;

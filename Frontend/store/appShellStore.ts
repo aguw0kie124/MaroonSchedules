@@ -128,6 +128,9 @@ export const useAppShellStore = create<AppShellState>()(
     {
       name: 'app-shell-store',
       version: 2,
+        migrate: (persistedState: any, version: number) => {
+          return persistedState;
+        },
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         parkingPermit: state.parkingPermit,

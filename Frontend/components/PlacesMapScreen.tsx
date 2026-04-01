@@ -1147,30 +1147,6 @@ export function PlacesMapScreen() {
   }, [activeLayer, visibleCategories]);
 
   useEffect(() => {
-    const activeIndex = Math.max(
-      0,
-      visibleCategories.findIndex((category) => category.id === activeLayer),
-    );
-    Animated.spring(indicatorAnim, {
-      toValue: activeIndex,
-      useNativeDriver: true,
-      tension: 260,
-      friction: 28,
-    }).start();
-
-    // If we switch away from the Bus tab, reset the bus route selection
-    if (activeLayer !== "Bus" && selectedBusRouteId !== ALL_BUS_ROUTES_KEY) {
-      handleSelectBusRoute(ALL_BUS_ROUTES_KEY);
-    }
-  }, [
-    activeLayer,
-    indicatorAnim,
-    visibleCategories,
-    selectedBusRouteId,
-    handleSelectBusRoute,
-  ]);
-
-  useEffect(() => {
     const nextLayer = route.params?.initialLayer;
     const focusToken = route.params?.focusToken;
     if (!nextLayer || !focusToken) return;
@@ -2775,7 +2751,7 @@ export function PlacesMapScreen() {
         {activeLayer !== "Bus" && activeLayer !== "Heatmap" && (
           <View style={styles.viewModeBar}>
             <View style={styles.viewModeToggle}>
-              {(["map", "list"] as PlacesViewMode[]).map((mode) => {
+              {(["map", "list"] as string[]).map((mode) => {
                 const selected = placesViewMode === mode;
                 return (
                   <TouchableOpacity
@@ -2784,7 +2760,7 @@ export function PlacesMapScreen() {
                       styles.viewModeButton,
                       selected && styles.viewModeButtonActive,
                     ]}
-                    onPress={() => setPlacesViewMode(mode)}
+                    onPress={() => setPlacesViewMode(mode as "map" | "list")}
                   >
                     <Text
                       style={[
