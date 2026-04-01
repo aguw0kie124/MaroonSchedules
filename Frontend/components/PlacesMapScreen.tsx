@@ -1702,6 +1702,13 @@ export function PlacesMapScreen() {
 
   useEffect(() => {
     if (activeLayer === "Bus") {
+      // Synchronously clear the route selection immediately so we don't see a flash
+      // of the previously selected route while metadata fetches.
+      setSelectedBusRouteId(ALL_BUS_ROUTES_KEY);
+      setSelectedDirection("All");
+      setSelectedBus(null);
+      setSelectedStop(null);
+      
       fetchBusData();
     }
   }, [activeLayer]);
