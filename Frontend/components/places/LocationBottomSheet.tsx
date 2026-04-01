@@ -130,6 +130,21 @@ export function LocationBottomSheet({
   selectedBus,
   openNavigationToLocation,
 }: LocationBottomSheetProps) {
+  const conciseDescription = useMemo(() => {
+    const raw = selectedLoc?.description?.trim();
+    if (!raw) return null;
+
+    const cleaned = raw.replace(/\s+/g, " ");
+    const firstSentence = cleaned.match(/^.*?[.!?](?:\s|$)/)?.[0]?.trim() || cleaned;
+    const base = firstSentence.length <= 150 ? firstSentence : `${firstSentence.slice(0, 147).trimEnd()}...`;
+
+    if (base.length <= 170) {
+      return base;
+    }
+
+    return `${base.slice(0, 167).trimEnd()}...`;
+  }, [selectedLoc?.description]);
+
   // ── Bottom sheet animation ──────────────────────────────────
   const sheetY = useRef(new Animated.Value(SNAP_HIDDEN)).current;
   const sheetSnap = useRef<number>(SNAP_HIDDEN);
@@ -302,9 +317,9 @@ export function LocationBottomSheet({
               </View>
             </View>
 
-            {selectedLoc.description ? (
+            {conciseDescription ? (
               <Text style={styles.descriptionText}>
-                {selectedLoc.description}
+                {conciseDescription}
               </Text>
             ) : null}
 

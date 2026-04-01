@@ -63,11 +63,7 @@ export function TransitTripResultsScreen() {
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark);
 
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : isDark
-      ? require('../assets/black_marble.jpg')
-      : require('../assets/white_marble.jpg');
+  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const origin = route.params?.origin as PlannerLocation | undefined;
   const destination = route.params?.destination as PlannerLocation | undefined;

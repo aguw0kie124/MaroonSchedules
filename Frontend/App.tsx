@@ -10,19 +10,11 @@ WebBrowser.maybeCompleteAuthSession();
 
 import { Onboarding } from './components/Onboarding';
 import { Dashboard } from './components/Dashboard';
-import { Search } from './components/Search';
-import { Builder } from './components/Builder';
-
-import { Saved } from './components/Saved';
 import { Profile } from './components/Profile';
-import { CampusConnectorScreen } from './components/CampusConnectorScreen';
 import { RecreationFacilitiesScreen } from './components/RecreationFacilitiesScreen';
 import { CourseDetail } from './components/CourseDetail';
 import { AuthLanding } from './components/AuthLanding';
 import { LoginScreen } from './components/LoginScreen';
-import { AnnexHubScreen } from './components/AnnexHubScreen';
-import { AnnexLibraryDetailScreen } from './components/AnnexLibraryDetailScreen';
-import { AnnexRentalDetailScreen } from './components/AnnexRentalDetailScreen';
 import { ChatScreen } from './components/ChatScreen';
 import { UsersScreen } from './components/UsersScreen';
 import { ChannelListScreen } from './components/ChannelListScreen';
@@ -31,60 +23,41 @@ import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
 import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
 import { ScheduleListScreen } from './components/ScheduleListScreen';
 import { ScheduleDetailScreen } from './components/ScheduleDetailScreen';
-import { CampusMapScreen } from './components/CampusMapScreen';
-import { LocationSearchScreen } from './components/LocationSearchScreen';
-// import { ExtrasSidebar } from './components/ExtrasSidebar';
 import { CampusNavigationScreen } from './components/CampusNavigationScreen';
 import BusTimetableScreen from './components/BusTimetableScreen';
+import TransitTripPlannerScreen from './components/TransitTripPlannerScreen';
+import { TransitTripResultsScreen } from './components/TransitTripResultsScreen';
 import { PlacesMapScreen } from './components/PlacesMapScreen';
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
-import { ForYouScreen } from './components/ForYouScreen';
 import { CampusFeedScreen } from './components/CampusFeedScreen';
 import { ReelsScreen } from './components/ReelsScreen';
-import { GPACalculatorScreen } from './components/GPACalculatorScreen';
-import { CampusScreen } from './components/CampusScreen';
+
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
-import { TimerScreen } from './components/TimerScreen';
-import { ShareOverlay } from './components/ShareOverlay';
 import { LeaderboardScreen } from './components/LeaderboardScreen';
-import TransitTripPlannerScreen from "./components/places/TransitTripPlannerScreen";
-import { TransitTripResultsScreen } from "./components/places/TransitTripResultsScreen";
+import { ShareOverlay } from './components/ShareOverlay';
 
 import DiningDashboard from './components/dining/DiningDashboard';
-import MealOptimizerScreen from './components/dining/MealOptimizerScreen';
 import FullMenuScreen from './components/dining/FullMenuScreen';
-import MealTrackerScreen from './components/dining/MealTrackerScreen';
-import FoodDatabaseScreen from './components/dining/FoodDatabaseScreen';
-import RetailSwipesScreen from './components/dining/RetailSwipesScreen';
 import DiningSettingsScreen from './components/dining/DiningSettingsScreen';
+import MealOptimizerScreen from './components/dining/MealOptimizerScreen';
+import MealTrackerScreen from './components/dining/MealTrackerScreen';
+import RetailSwipesScreen from './components/dining/RetailSwipesScreen';
+import FoodDatabaseScreen from './components/dining/FoodDatabaseScreen';
 import WeightTrackerScreen from './components/dining/WeightTrackerScreen';
 import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
-import { CanvasDashboardScreen } from './components/canvas/CanvasDashboardScreen';
-import { CanvasCoursesScreen } from './components/canvas/CanvasCoursesScreen';
-import { CanvasAssignmentsScreen } from './components/canvas/CanvasAssignmentsScreen';
-import { CanvasGradesScreen } from './components/canvas/CanvasGradesScreen';
 
-import { Bus, Calendar, CalendarDays, Clock3, Compass, MessageCircle, Cog, UtensilsCrossed } from 'lucide-react-native';
-import { useTheme, useThemeStore } from './components/SharedUI';
-import { GlassPillTabBar } from './components/GlassPillTabBar';
-import { getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
+import { Home, Map, Trophy, Users, User } from 'lucide-react-native';
+import { useTheme } from './components/SharedUI';
 
 import { syncUser } from './api/client';
 
-/**
- * Invisible component that syncs the signed-in Clerk user to the PostgreSQL
- * users table on every app load.  Renders its children unchanged.
- */
 function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
   const lastSyncedUserId = React.useRef<string | null>(null);
 
   React.useEffect(() => {
-    // Load wallpaper preference from storage
-    useThemeStore.getState().loadWallpaperPref?.();
-
     if (user?.id && lastSyncedUserId.current !== user.id) {
       lastSyncedUserId.current = user.id;
       syncUser(
@@ -129,201 +102,65 @@ const Tab = createBottomTabNavigator();
 
 function MainTabs() {
   const { COLORS } = useTheme();
-  const navItems = useAppShellStore((state) => state.navItems);
-  const defaultLandingTab = useAppShellStore((state) => state.defaultLandingTab);
-  const tabBarMode = useAppShellStore((state) => state.tabBarMode);
-
-  const visibleNavItems = React.useMemo(
-    () => getOrderedVisibleItems(navItems),
-    [navItems],
-  );
-
-  let tabScreens = [
-    ...visibleNavItems.map((item) => {
-      if (item.id === 'Dashboard') {
-        return {
-          name: 'Dashboard',
-          component: Dashboard,
-          title: 'Home',
-          icon: Calendar,
-          initialParams: undefined,
-        };
-      }
-      if (item.id === 'Places') {
-        return {
-          name: 'Places',
-          component: PlacesMapScreen,
-          title: 'Places',
-          icon: Compass,
-          initialParams: undefined,
-        };
-      }
-      if (item.id === 'Social') {
-        return {
-          name: 'Social',
-          component: SocialHubScreen,
-          title: 'Social',
-          icon: MessageCircle,
-          initialParams: undefined,
-        };
-      }
-      if (item.id === 'Timer') {
-        return {
-          name: 'Timer',
-          component: TimerScreen,
-          title: 'Timer',
-          icon: Clock3,
-          initialParams: undefined,
-        };
-      }
-      if (item.id === 'Dining') {
-        return {
-          name: 'Dining',
-          component: DiningDashboard,
-          title: 'Dining',
-          icon: UtensilsCrossed,
-          initialParams: undefined,
-        };
-      }
-      if (item.id === 'Events') {
-        return {
-          name: 'Events',
-          component: EventsCalendarScreen,
-          title: 'Events',
-          icon: CalendarDays,
-          initialParams: undefined,
-        };
-      }
-      if (item.id === 'Menus') {
-        return {
-          name: 'Menus',
-          component: MealOptimizerScreen,
-          title: 'Menus',
-          icon: UtensilsCrossed,
-          initialParams: undefined,
-        };
-      }
-      return {
-        name: 'BusRoutes',
-        component: PlacesMapScreen,
-        title: 'Bus',
-        icon: Bus,
-        initialParams: { initialLayer: 'Bus', focusToken: 1 },
-      };
-    }),
+  const tabScreens = [
+    {
+      name: 'Dashboard',
+      component: Dashboard,
+      title: 'Home',
+      icon: Home,
+      initialParams: undefined,
+    },
+    {
+      name: 'Leaderboard',
+      component: LeaderboardScreen,
+      title: 'Rankings',
+      icon: Trophy,
+      initialParams: undefined,
+    },
+    {
+      name: 'Places',
+      component: PlacesMapScreen,
+      title: 'Places',
+      icon: Map,
+      initialParams: undefined,
+    },
+    {
+      name: 'Social',
+      component: SocialHubScreen,
+      title: 'Social',
+      icon: Users,
+      initialParams: undefined,
+    },
     {
       name: 'Settings',
       component: Profile,
       title: 'Settings',
-      icon: Cog,
+      icon: User,
       initialParams: undefined,
     },
   ];
 
-  // Map centering logic for Solid mode (formerly Parin)
-  if (tabBarMode === 'solid') {
-    const placesIndex = tabScreens.findIndex((s) => s.name === 'Places');
-    if (placesIndex !== -1) {
-      const placesItem = tabScreens[placesIndex];
-      const otherItems = tabScreens.filter((s) => s.name !== 'Places');
-      const centerIndex = Math.floor(tabScreens.length / 2);
-      otherItems.splice(centerIndex, 0, placesItem);
-      tabScreens = otherItems;
-    }
-  }
-
-  const availableRouteNames = tabScreens.map((screen) => screen.name);
-  const initialRouteName = availableRouteNames.includes(defaultLandingTab)
-    ? defaultLandingTab
-    : availableRouteNames[0];
-  const shellKey = `${initialRouteName}:${availableRouteNames.join('|')}:${tabBarMode}`;
-
-  if (tabBarMode === 'solid') {
-    return (
-      <Tab.Navigator
-        key={shellKey}
-        id="MainTabs"
-        initialRouteName={initialRouteName}
-        screenOptions={{
-          headerShown: false,
-          tabBarShowLabel: false,
-          tabBarHideOnKeyboard: true,
-          tabBarStyle: {
-            height: 70,
-            borderTopWidth: 1,
-            borderTopColor: COLORS.border,
-            backgroundColor: COLORS.surface,
-            shadowColor: '#000000',
-            shadowOpacity: 0.06,
-            shadowRadius: 8,
-            shadowOffset: { width: 0, height: -3 },
-            elevation: 8,
-          },
-          tabBarActiveTintColor: COLORS.primary,
-          tabBarInactiveTintColor: COLORS.textTertiary,
-        }}
-      >
-        {tabScreens.map((screen) => (
-          <Tab.Screen
-            key={screen.name}
-            name={screen.name}
-            component={screen.component}
-            initialParams={screen.initialParams}
-            options={{
-              title: screen.title,
-              tabBarIcon: ({ focused, color }) => {
-                const isMap = screen.name === 'Places';
-
-                if (isMap) {
-                  return (
-                    <View
-                      style={{
-                        width: 58,
-                        height: 58,
-                        borderRadius: 29,
-                        backgroundColor: focused ? COLORS.primary : `${COLORS.primary}B3`,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginTop: -10,
-                        shadowColor: COLORS.primary,
-                        shadowOffset: { width: 0, height: focused ? 8 : 4 },
-                        shadowOpacity: focused ? 0.6 : 0.3,
-                        shadowRadius: focused ? 12 : 8,
-                        elevation: focused ? 14 : 8,
-                        borderWidth: 4,
-                        borderColor: COLORS.surface,
-                      }}
-                    >
-                      <screen.icon color="#FFFFFF" size={26} strokeWidth={2.5} />
-                    </View>
-                  );
-                }
-
-                const isEnlarged = screen.name === 'Social' || screen.name === 'Settings';
-                const size = isEnlarged ? 28 : 24;
-
-                return (
-                  <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-                    <screen.icon color={color} size={size} strokeWidth={focused ? 2.5 : 2} />
-                  </View>
-                );
-              },
-            }}
-          />
-        ))}
-      </Tab.Navigator>
-    );
-  }
-
   return (
     <Tab.Navigator
-      key={shellKey}
       id="MainTabs"
-      initialRouteName={initialRouteName}
-      tabBar={(props) => <GlassPillTabBar {...props} />}
+      initialRouteName="Places"
       screenOptions={{
         headerShown: false,
+        tabBarShowLabel: false,
         tabBarHideOnKeyboard: true,
+        tabBarStyle: {
+          height: 70,
+          borderTopWidth: 1,
+          borderTopColor: COLORS.border,
+          backgroundColor: COLORS.surface,
+          shadowColor: '#000000',
+          shadowOpacity: 0.06,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: -3 },
+          elevation: 8,
+        },
+        tabBarActiveTintColor: '#500000',
+        tabBarInactiveTintColor: COLORS.textTertiary,
       }}
     >
       {tabScreens.map((screen) => (
@@ -334,9 +171,47 @@ function MainTabs() {
           initialParams={screen.initialParams}
           options={{
             title: screen.title,
-            tabBarIcon: ({ color, size }) => (
-              <screen.icon color={color} size={size} />
-            ),
+            tabBarIcon: ({ color, focused }) => {
+              const isMap = screen.name === 'Places';
+
+              if (isMap) {
+                return (
+                  <View
+                    style={{
+                      width: 58,
+                      height: 58,
+                      borderRadius: 29,
+                      backgroundColor: focused ? '#500000' : 'rgba(80, 0, 0, 0.7)',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginTop: -10,
+                      shadowColor: '#500000',
+                      shadowOffset: { width: 0, height: focused ? 8 : 4 },
+                      shadowOpacity: focused ? 0.6 : 0.3,
+                      shadowRadius: focused ? 12 : 8,
+                      elevation: focused ? 14 : 8,
+                      borderWidth: 4,
+                      borderColor: COLORS.surface,
+                    }}
+                  >
+                    <screen.icon color="#FFFFFF" size={26} strokeWidth={2.5} />
+                  </View>
+                );
+              }
+
+              const isEnlarged = screen.name === 'Social' || screen.name === 'Settings';
+              const size = isEnlarged ? 28 : 24;
+
+              return (
+                <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                  <screen.icon
+                    color={focused ? '#500000' : color}
+                    size={size}
+                    strokeWidth={focused ? 2.5 : 2}
+                  />
+                </View>
+              );
+            },
           }}
         />
       ))}
@@ -362,67 +237,41 @@ function RootNavigator() {
         <>
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="CourseDetail" component={CourseDetail} options={{ headerShown: true }} />
-          <Stack.Screen
-            name="ChatScreen"
-            component={ChatScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="ChannelListScreen"
-            component={ChannelListScreen}
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="UsersScreen"
-            component={UsersScreen}
-            options={{ headerShown: false }}
-          />
+          <Stack.Screen name="ChatScreen" component={ChatScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="ChannelListScreen" component={ChannelListScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="UsersScreen" component={UsersScreen} options={{ headerShown: false }} />
 
           <Stack.Screen name="NewCourseSearch" component={NewCourseSearchScreen} options={{ headerShown: true, title: 'Course Search' }} />
           <Stack.Screen name="NewCourseDetail" component={NewCourseDetailScreen} options={{ headerShown: true, title: 'Course Details' }} />
           <Stack.Screen name="ScheduleList" component={ScheduleListScreen} options={{ headerShown: true, title: 'My Schedules' }} />
           <Stack.Screen name="ScheduleDetail" component={ScheduleDetailScreen} options={{ headerShown: true, title: 'Schedule Details' }} />
-          <Stack.Screen name="LocationSearch" component={LocationSearchScreen} options={{ headerShown: true, title: 'Location Traffic Search' }} />
-          <Stack.Screen name="AnnexHub" component={AnnexHubScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="AnnexLibraryDetail" component={AnnexLibraryDetailScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="AnnexRentalDetail" component={AnnexRentalDetailScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="BusTimetable" component={BusTimetableScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="CampusMap" component={CampusMapScreen} options={{ headerShown: false }} />
+          <Stack.Screen
+            name="BusTimetable"
+            component={BusTimetableScreen}
+            options={{ headerShown: false, presentation: 'modal' }}
+          />
+          <Stack.Screen name="TransitTripPlanner" component={TransitTripPlannerScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="TransitTripResults" component={TransitTripResultsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="ForYou" component={ForYouScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Reels" component={ReelsScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="CampusConnector" component={CampusConnectorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
           <Stack.Screen name="CampusFeed" component={CampusFeedScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
-          <Stack.Screen 
-            name="TransitTripPlanner" 
-            component={TransitTripPlannerScreen} 
-            options={{ headerShown: false, animation: 'slide_from_bottom' }} 
+          <Stack.Screen
+            name="FullMenu"
+            component={FullMenuScreen}
+            options={{ headerShown: false, presentation: 'modal' }}
           />
-          <Stack.Screen 
-            name="TransitTripResults" 
-            component={TransitTripResultsScreen} 
-            options={{ headerShown: false, animation: 'slide_from_right' }} 
-          />
-
           <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: false }} />
+          <Stack.Screen name="DiningSettings" component={DiningSettingsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="MealOptimizer" component={MealOptimizerScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="FullMenu" component={FullMenuScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="MealTracker" component={MealTrackerScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="RetailSwipes" component={RetailSwipesScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="FoodDatabase" component={FoodDatabaseScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="WeightTracker" component={WeightTrackerScreen} options={{ headerShown: false }} />
           <Stack.Screen name="TrackerHub" component={TrackerHubScreen} options={{ headerShown: false }} />
           <Stack.Screen name="StreakHub" component={StreakHubScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="MealTracker" component={MealTrackerScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="FoodDatabase" component={FoodDatabaseScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="RetailSwipes" component={RetailSwipesScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="DiningSettings" component={DiningSettingsScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="WeightTracker" component={WeightTrackerScreen} options={{ headerShown: false }} />
-
-          <Stack.Screen name="CanvasDashboard" component={CanvasDashboardScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="CanvasCourses" component={CanvasCoursesScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="CanvasAssignments" component={CanvasAssignmentsScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="CanvasGrades" component={CanvasGradesScreen} options={{ headerShown: false }} />
           <Stack.Screen name="GradesScreen" component={GradesScreen} options={{ headerShown: true, title: 'Grade Distributions' }} />
         </>
       ) : (
@@ -443,13 +292,7 @@ function RootNavigator() {
     </Stack.Navigator>
   );
 
-  // Wrap with UserSync only when signed in so the DB row is created/updated
-  return (
-    <View style={{ flex: 1 }}>
-      {isSignedIn ? <UserSync>{navigator}</UserSync> : navigator}
-      <ShareOverlay />
-    </View>
-  );
+  return isSignedIn ? <UserSync>{navigator}</UserSync> : navigator;
 }
 
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
@@ -467,6 +310,7 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <NavigationContainer theme={theme === 'dark' ? DarkTheme : DefaultTheme}>
             <RootNavigator />
+            <ShareOverlay />
           </NavigationContainer>
         </QueryClientProvider>
       </ClerkLoaded>

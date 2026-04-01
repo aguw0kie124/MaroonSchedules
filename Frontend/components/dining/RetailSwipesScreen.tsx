@@ -132,11 +132,7 @@ export default function RetailSwipesScreen({ navigation, embedded = false }: any
     });
   };
 
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : darkMode
-      ? require('../../assets/black_marble.jpg')
-      : require('../../assets/white_marble.jpg');
+  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const content = (
       <ScrollView style={s.container} contentContainerStyle={{ padding: embedded ? 0 : 20, paddingBottom: 60 }}>

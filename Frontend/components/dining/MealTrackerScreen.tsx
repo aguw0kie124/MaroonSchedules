@@ -70,11 +70,7 @@ export default function MealTrackerScreen({ navigation, embedded = false }: any)
   const calPct = Math.min(1, (totals.calories || 0) / target);
   const isToday = date === getLocalDateString();
 
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : darkMode
-      ? require('../../assets/black_marble.jpg')
-      : require('../../assets/white_marble.jpg');
+  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const contentBody = (
       <>

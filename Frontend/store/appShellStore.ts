@@ -33,7 +33,6 @@ export const DEFAULT_PLACES_PILLS: ToggleLayoutItem<PlacesPillId>[] = [
   { id: 'Study', label: 'Study', visible: false, order: 7 },
   { id: 'Heatmap', label: 'Traffic', visible: false, order: 8 },
 ];
-
 export const PARKING_PERMIT_OPTIONS: Array<{ id: ParkingPermit; label: string; description: string }> = [
   { id: 'visitor', label: 'Visitor', description: 'Highlights garages and visitor-friendly options.' },
   { id: 'garage', label: 'Garage', description: 'Prioritizes campus garages first.' },
@@ -66,9 +65,7 @@ function moveItem<T extends string>(items: ToggleLayoutItem<T>[], id: T, directi
 }
 
 function toggleItem<T extends string>(items: ToggleLayoutItem<T>[], id: T) {
-  return items.map((item) =>
-    item.id === id ? { ...item, visible: !item.visible } : item,
-  );
+  return items.map((item) => (item.id === id ? { ...item, visible: !item.visible } : item));
 }
 
 function normalizeItems<T extends string>(
@@ -102,13 +99,17 @@ function normalizeItems<T extends string>(
   });
 }
 
-interface AppShellState {
+function isPermit(value: unknown): value is ParkingPermit {
+  return PARKING_PERMIT_OPTIONS.some((option) => option.id === value);
+}
+
+type AppShellState = {
   parkingPermit: ParkingPermit;
   placesPills: ToggleLayoutItem<PlacesPillId>[];
   setParkingPermit: (permit: ParkingPermit) => void;
   togglePlacesPill: (id: PlacesPillId) => void;
   movePlacesPill: (id: PlacesPillId, direction: -1 | 1) => void;
-}
+};
 
 export const useAppShellStore = create<AppShellState>()(
   persist(
@@ -128,20 +129,20 @@ export const useAppShellStore = create<AppShellState>()(
     {
       name: 'app-shell-store',
       version: 2,
-        migrate: (persistedState: any, version: number) => {
-          return persistedState;
-        },
+      migrate: (persistedState: any, version: number) => {
+        return persistedState;
+      },
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         parkingPermit: state.parkingPermit,
         placesPills: state.placesPills,
       }),
       merge: (persistedState, currentState) => {
-        const persisted = (persistedState || {}) as Partial<AppShellState>;
+        const persisted = (persistedState as Partial<AppShellState>) || {};
         return {
           ...currentState,
-          parkingPermit: PARKING_PERMIT_OPTIONS.some((option) => option.id === persisted.parkingPermit)
-            ? (persisted.parkingPermit as ParkingPermit)
+          parkingPermit: isPermit(persisted.parkingPermit)
+            ? persisted.parkingPermit
             : currentState.parkingPermit,
           placesPills: normalizeItems(persisted.placesPills, currentState.placesPills),
         };

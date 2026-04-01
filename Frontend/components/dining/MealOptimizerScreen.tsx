@@ -85,11 +85,7 @@ export default function MealOptimizerScreen({ navigation, embedded = false }: an
     } catch { setMsg({ ok: false, text: 'Could not log meal.' }); }
   };
 
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : darkMode
-      ? require('../../assets/black_marble.jpg')
-      : require('../../assets/white_marble.jpg');
+  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const mealPlan = plan?.plan || {};
   const openFullMenu = (mealPeriod: string) => {

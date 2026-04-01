@@ -29,11 +29,7 @@ export default function TrackerHubScreen({ navigation, embedded = false }: any) 
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
 
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : darkMode
-      ? require('../../assets/black_marble.jpg')
-      : require('../../assets/white_marble.jpg');
+  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const content = (
     <View style={{ flex: 1, padding: embedded ? 0 : 24 }}>
