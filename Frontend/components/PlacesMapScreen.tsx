@@ -2358,7 +2358,7 @@ export function PlacesMapScreen() {
                     strokeColor={
                       route.Color || transitService.getRouteColor(route.Key)
                     }
-                    strokeWidth={2}
+                    strokeWidth={1.5}
                     lineDashPattern={[0]}
                   />
                 );
@@ -2378,7 +2378,7 @@ export function PlacesMapScreen() {
                         key={`path-${selectedBusRouteId}-${group.direction}-${index}`}
                         coordinates={group.points}
                         strokeColor={isActive ? routeColor : routeColor + "50"}
-                        strokeWidth={isActive ? 4 : 4}
+                        strokeWidth={isActive ? 2.5 : 2}
                         lineDashPattern={[0]}
                         zIndex={isActive ? 20 : 10}
                       />
