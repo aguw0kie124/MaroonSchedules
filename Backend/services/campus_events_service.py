@@ -16,6 +16,7 @@ CRAWLER_OUTPUT = (
     / "normalized"
     / "events.jsonl"
 )
+EVENTS_SNAPSHOT_TTL_SECONDS = 300
 _EVENT_CACHE: List[Dict[str, Any]] | None = None
 _EVENT_CACHE_MTIME_NS: int | None = None
 TAMU_CENTER_LAT = 30.6153
@@ -321,15 +322,25 @@ def _score_student_relevance(event: Dict[str, Any]) -> Tuple[int, str, List[str]
     return score, label, reasons
 
 
-def load_campus_events(force_refresh: bool = False) -> List[Dict[str, Any]]:
+def load_campus_events(force_refresh: bool = False) -> Dict[str, Any]:
     global _EVENT_CACHE, _EVENT_CACHE_MTIME_NS
 
     if not CRAWLER_OUTPUT.exists():
-        return []
+        return {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "stale_after": EVENTS_SNAPSHOT_TTL_SECONDS,
+            "source_status": "missing",
+            "events": [],
+        }
 
     mtime_ns = CRAWLER_OUTPUT.stat().st_mtime_ns
     if not force_refresh and _EVENT_CACHE is not None and _EVENT_CACHE_MTIME_NS == mtime_ns:
-        return _EVENT_CACHE
+        return {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "stale_after": EVENTS_SNAPSHOT_TTL_SECONDS,
+            "source_status": "live",
+            "events": _EVENT_CACHE,
+        }
 
     events: List[Dict[str, Any]] = []
     with CRAWLER_OUTPUT.open("r", encoding="utf-8") as handle:
@@ -362,4 +373,9 @@ def load_campus_events(force_refresh: bool = False) -> List[Dict[str, Any]]:
 
     _EVENT_CACHE = events
     _EVENT_CACHE_MTIME_NS = mtime_ns
-    return events
+    return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": EVENTS_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live",
+        "events": events,
+    }

@@ -10,6 +10,7 @@ from services import campus_events_service, ping_service, place_registry_service
 HOT_COLOR = "#FF6B57"
 ACTIVE_COLOR = "#FFB347"
 BUBBLING_COLOR = "#5ACD7C"
+PULSE_SNAPSHOT_TTL_SECONDS = 20
 
 
 def _parse_iso(iso_value: str | None) -> datetime | None:
@@ -169,7 +170,7 @@ def _eligible_events(limit: int) -> List[Dict[str, Any]]:
     return filtered[:limit]
 
 
-def get_pulse_map(limit: int = 12) -> List[Dict[str, Any]]:
+def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
     pings = ping_service.get_campus_ping_activities(limit=80)
     events = _eligible_events(limit=80)
     occupancy_by_place = _load_occupancy_by_place()
@@ -301,4 +302,10 @@ def get_pulse_map(limit: int = 12) -> List[Dict[str, Any]]:
         )
 
     hotspots.sort(key=lambda hotspot: hotspot["score"], reverse=True)
-    return hotspots[:limit]
+    ordered_hotspots = hotspots[:limit]
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "stale_after": PULSE_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live" if ordered_hotspots else "preview",
+        "hotspots": ordered_hotspots,
+    }

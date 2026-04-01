@@ -38,6 +38,12 @@ CONNECTOR_SYSTEMS = {
         "data_scope": "career",
     },
 }
+ACADEMIC_SNAPSHOT_TTL_SECONDS = 120
+DINING_SNAPSHOT_TTL_SECONDS = 120
+CAREER_SNAPSHOT_TTL_SECONDS = 300
+RECREATION_SNAPSHOT_TTL_SECONDS = 120
+TRANSIT_SNAPSHOT_TTL_SECONDS = 30
+SERVICES_SNAPSHOT_TTL_SECONDS = 86400
 
 REC_FACILITIES = [
     {
@@ -841,6 +847,9 @@ def get_academic_snapshot(clerk_id: str) -> Dict[str, Any]:
     derived_courses = howdy_snapshot.get("course_codes") if isinstance(howdy_snapshot.get("course_codes"), list) else []
 
     return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": ACADEMIC_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live" if courses or howdy_snapshot else "preview",
         "status": "live" if courses or howdy_snapshot else "preview",
         "sourceLabel": "Primary schedule loaded from MaroonSchedules storage" if courses else ("Captured from connected Howdy session" if howdy_snapshot else "Connect Howdy to load registrar details directly"),
         "scheduleName": primary_schedule.get("name", "Schedule unavailable"),
@@ -865,6 +874,9 @@ def get_dining_snapshot(clerk_id: str) -> Dict[str, Any]:
 
     if transact_snapshot:
         return {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "stale_after": DINING_SNAPSHOT_TTL_SECONDS,
+            "source_status": "live",
             "status": "live",
             "planName": transact_snapshot.get("plan_name") or "Captured from Transact eAccounts",
             "balanceLabel": transact_snapshot.get("balance") or "Balance not detected on the captured page yet",
@@ -881,6 +893,9 @@ def get_dining_snapshot(clerk_id: str) -> Dict[str, Any]:
 
     if profile:
         return {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "stale_after": DINING_SNAPSHOT_TTL_SECONDS,
+            "source_status": "preview",
             "status": "preview",
             "planName": "Dining profile loaded",
             "balanceLabel": "Live meal-plan balances still require Transact eAccounts connection",
@@ -896,6 +911,9 @@ def get_dining_snapshot(clerk_id: str) -> Dict[str, Any]:
         }
 
     return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": DINING_SNAPSHOT_TTL_SECONDS,
+        "source_status": "link",
         "status": "link",
         "planName": "Dining account ready to connect",
         "balanceLabel": "Open Transact eAccounts to view live balances",
@@ -953,6 +971,9 @@ def discover_network(clerk_id: str, query: str | None = None, major: str | None 
     )
 
     return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": 300,
+        "source_status": "live" if suggestions else "preview",
         "status": "live" if suggestions else "preview",
         "chatStatus": "stream_messaging_available",
         "summary": "Discover peers and alumni from the shared campus profile layer.",
@@ -992,7 +1013,7 @@ def get_events_snapshot(
     limit: int = 8,
     category: str | None = None,
     student_relevant_only: bool = True,
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     _ensure_social_tables()
     rsvp_lookup: Dict[str, str] = {}
     if clerk_id:
@@ -1003,25 +1024,32 @@ def get_events_snapshot(
         rsvp_lookup = {row.get("event_id"): row.get("response", "interested") for row in rows}
 
     crawler_events = campus_events_service.load_campus_events()
-    if crawler_events:
+    events = crawler_events.get("events") if isinstance(crawler_events, dict) else crawler_events
+    source_status = crawler_events.get("source_status") if isinstance(crawler_events, dict) else "live"
+    if events:
         if student_relevant_only:
-            crawler_events = [
-                e for e in crawler_events
+            events = [
+                e for e in events
                 if e.get("campus_interest_label") != "low"
             ]
         if category:
-            crawler_events = [
-                e for e in crawler_events
+            events = [
+                e for e in events
                 if e.get("categories", {}).get(category.lower()) == 1
             ]
-        limited = crawler_events[:limit] if limit else crawler_events
-        return [
-            {
-                **event,
-                "rsvp_status": rsvp_lookup.get(event.get("event_id"), "none"),
-            }
-            for event in limited
-        ]
+        limited = events[:limit] if limit else events
+        return {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "stale_after": 300,
+            "source_status": source_status,
+            "events": [
+                {
+                    **event,
+                    "rsvp_status": rsvp_lookup.get(event.get("event_id"), "none"),
+                }
+                for event in limited
+            ],
+        }
 
     raw_events = tracker.fetch_event_data(limit=limit)
     events = []
@@ -1061,7 +1089,12 @@ def get_events_snapshot(
                 "place": place_registry_service.serialize_place(resolved_place),
             }
         )
-    return events
+    return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": 300,
+        "source_status": "preview",
+        "events": events,
+    }
 
 
 def save_event_rsvp(clerk_id: str, event_id: str, response: str) -> Dict[str, Any]:
@@ -1129,6 +1162,9 @@ def get_recreation_snapshot() -> Dict[str, Any]:
         )
 
     return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": RECREATION_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live" if occupancy_rows else "preview",
         "status": "live" if occupancy_rows else "preview",
         "facilities": facilities,
         "summary": "Recreation merges live counts with details gathered from the official Rec Sports facility pages.",
@@ -1137,6 +1173,9 @@ def get_recreation_snapshot() -> Dict[str, Any]:
 
 def get_transit_snapshot() -> Dict[str, Any]:
     return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": TRANSIT_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live",
         "status": "live",
         "summary": "AggieSpirit route mapping and nearest-bus tracking are available in the map experience.",
         "resources": [
@@ -1145,8 +1184,12 @@ def get_transit_snapshot() -> Dict[str, Any]:
     }
 
 
-def get_services_snapshot() -> List[Dict[str, Any]]:
-    return [
+def get_services_snapshot() -> Dict[str, Any]:
+    return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": SERVICES_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live",
+        "services": [
         {
             "id": "howdy",
             "title": "Howdy Portal",
@@ -1171,7 +1214,8 @@ def get_services_snapshot() -> List[Dict[str, Any]]:
             "summary": "Library and study support surfaced alongside the campus map and academic context.",
             "url": "https://www.library.tamu.edu/",
         },
-    ]
+        ],
+    }
 
 
 def get_career_snapshot(clerk_id: str) -> Dict[str, Any]:
@@ -1179,6 +1223,9 @@ def get_career_snapshot(clerk_id: str) -> Dict[str, Any]:
     alumni_count = len([suggestion for suggestion in network.get("suggestions", []) if suggestion.get("relationship") == "alumni"])
     symplicity_snapshot = parse_connector_snapshot(clerk_id, "symplicity")
     return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": CAREER_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live" if symplicity_snapshot else "preview",
         "status": "live" if symplicity_snapshot else "link",
         "summary": (
             f"Captured jobs: {', '.join(symplicity_snapshot.get('job_titles', [])[:3])}"
@@ -1197,7 +1244,8 @@ def get_career_snapshot(clerk_id: str) -> Dict[str, Any]:
 def get_notification_hub(clerk_id: str) -> List[Dict[str, Any]]:
     academic = get_academic_snapshot(clerk_id)
     dining = get_dining_snapshot(clerk_id)
-    events = get_events_snapshot(clerk_id, limit=3)
+    events_payload = get_events_snapshot(clerk_id, limit=3)
+    events = events_payload.get("events", []) if isinstance(events_payload, dict) else []
     network = discover_network(clerk_id, limit=3)
 
     notifications: List[Dict[str, Any]] = []
@@ -1327,7 +1375,12 @@ def get_overview(clerk_id: str) -> Dict[str, Any]:
         "events": safe_snapshot(
             "events",
             lambda: get_events_snapshot(clerk_id, limit=6),
-            [],
+            {
+                "generated_at": datetime.utcnow().isoformat() + "Z",
+                "stale_after": 300,
+                "source_status": "preview",
+                "events": [],
+            },
         ),
         "transit": safe_snapshot(
             "transit",
@@ -1350,7 +1403,12 @@ def get_overview(clerk_id: str) -> Dict[str, Any]:
         "services": safe_snapshot(
             "services",
             get_services_snapshot,
-            [],
+            {
+                "generated_at": datetime.utcnow().isoformat() + "Z",
+                "stale_after": SERVICES_SNAPSHOT_TTL_SECONDS,
+                "source_status": "preview",
+                "services": [],
+            },
         ),
         "connectors": safe_snapshot(
             "connectors",
@@ -1358,4 +1416,7 @@ def get_overview(clerk_id: str) -> Dict[str, Any]:
             [],
         ),
         "generatedAt": datetime.utcnow().isoformat() + "Z",
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": 120,
+        "source_status": "live",
     }

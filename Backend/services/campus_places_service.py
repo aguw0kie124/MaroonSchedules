@@ -6,6 +6,8 @@ from typing import Any, Dict, List
 from routers.traffic import tracker
 from services import place_registry_service
 
+PLACE_SNAPSHOT_TTL_SECONDS = 60
+
 
 STATIC_PLACE_META: Dict[str, Dict[str, Any]] = {
     "libr": {
@@ -160,5 +162,7 @@ def get_places_map_snapshot() -> Dict[str, Any]:
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "stale_after": PLACE_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live" if any(location["is_live"] for location in ordered_locations) else "preview",
         "locations": ordered_locations,
     }
