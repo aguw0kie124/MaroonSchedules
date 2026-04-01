@@ -27,51 +27,43 @@ import axios from "axios";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
 import {
-  Menu,
-  ChevronRight,
-  ChevronLeft,
-  Navigation,
-  Compass,
+  Bus,
   Calendar,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Clock,
+  Cog,
+  Compass,
+  Dumbbell,
+  ExternalLink,
+  Flame,
+  GraduationCap,
+  Info,
+  Layers,
+  Library,
+  Locate,
   LocateFixed,
+  MapPin,
+  Maximize2,
+  Menu,
+  MessageSquare,
+  MessageSquarePlus,
+  Minimize2,
+  Navigation,
   Orbit,
   Plus,
-  Locate,
-  Maximize2,
-  Minimize2,
-  Bus,
-  ChevronDown,
+  Search,
   Share2,
+  Star,
+  TrafficCone,
+  Utensils,
+  X,
 } from "lucide-react-native";
 import type { WalkingRoute } from "../services/campusDirections";
 import { useTheme } from "./SharedUI";
 import { Card } from "./SharedUI";import { PageModuleEditor } from "./PageModuleEditor";
-import {
-  MapPin,
-  Navigation,
-  Info,
-  Utensils,
-  Star,
-  X,
-  ChevronRight,
-  TrafficCone,
-  Library,
-  Dumbbell,
-  Clock,
-  MessageSquare,
-  Plus,
-  ChevronDown,
-  ChevronUp,
-  ExternalLink,
-  Calendar,
-  Flame,
-  Layers,
-  Search,
-  MessageSquarePlus,
-  Bus,
-  GraduationCap,
-  Cog,
-} from "lucide-react-native";
 import MapView, {
   Marker,
   Circle,
@@ -816,8 +808,6 @@ export function PlacesMapScreen() {
   const styles = getStyles(COLORS, theme === "dark");
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { user } = useUser();
-  const insets = useSafeAreaInsets();
   const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
   // ── App-shell store ───────────────────────────────────────
@@ -2230,377 +2220,8 @@ export function PlacesMapScreen() {
     }
   };
 
-  const fetchDiningData = useCallback(async (loc: CampusLocation) => {
-    setIsFetchingDining(true);
-    try {
-      if (!isDiningHallMenuLocation(loc.location)) {
-        setHubRestaurants([]);
-        setDiningMenuOptions([]);
-        setActiveDiningMenu(null);
-        setActiveDiningMealPeriod("lunch");
-        setDiningMenuPreview(null);
-        return;
-      }
-
-      const menuCandidates = getDiningMenuCandidates(loc.location, []);
-      setHubRestaurants([]);
-      setDiningMenuOptions(menuCandidates);
-      const nextMenu = loc.location;
-      setActiveDiningMenu(nextMenu);
-      setActiveDiningMealPeriod(getDiningMealPeriodForLocation(nextMenu) as DiningMealPeriod);
-      setDiningMenuPreview(null);
-    } catch (e) { console.warn("Failed to fetch dining data", e); }
-    finally { setIsFetchingDining(false); }
-  }, []);
-
-  const handleSelectLocation = useCallback((loc: CampusLocation) => {
-    setSelectedId(loc.location);
-    setIsSearchExpanded(false);
-    setSearchQuery("");
-    setShowSearchResults(false);
-  }, []);
-
-  const centerOnUserLocation = useCallback(async () => {
-    try {
-      let nextCoord = userCoord;
-      if (!nextCoord) {
-        const current = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        nextCoord = {
-          latitude: current.coords.latitude,
-          longitude: current.coords.longitude,
-        };
-        setUserCoord(nextCoord);
-      }
-      if (!nextCoord || !mapRef.current) return;
-      mapRef.current.animateCamera(
-        {
-          center: nextCoord,
-          zoom: 16.4,
-          pitch: isMapTilted ? 55 : 0,
-          heading: 0,
-        },
-        { duration: 700 },
-      );
-    } catch (error) {
-      console.warn("Unable to center on user location", error);
-    }
-  }, [isMapTilted, userCoord]);
-
-  const toggleMapPitch = useCallback(() => {
-    const nextTilted = !isMapTilted;
-    setIsMapTilted(nextTilted);
-    if (!mapRef.current) return;
-    const center = userCoord || TAMU_CENTER;
-    mapRef.current.animateCamera(
-      {
-        center,
-        pitch: nextTilted ? 55 : 0,
-        zoom: userCoord ? 16.4 : 15.2,
-        heading: 0,
-      },
-      { duration: 500 },
-    );
-  }, [isMapTilted, userCoord]);
-
-  // ── Transit handlers ──────────────────────────────────────
-  const { transitService } = require("../services/transitService");
-
-  const loadAllBusRoutes = useCallback(async (routesToLoad: any[]) => {
-    if (!routesToLoad.length) { setAllRoutePatternsById({}); setBusVehicles([]); return; }
-    const patternEntries = await Promise.all(routesToLoad.map(async (r) => [r.Key, await transitService.getRoutePattern(r.Key)] as const));
-    const nextPatterns = patternEntries.reduce((acc, [k, p]) => { acc[k] = p; return acc; }, {} as any);
-    setAllRoutePatternsById(nextPatterns);
-    const vehicles = await transitService.getVehicles();
-    setBusVehicles(vehicles || []);
-  }, []);
-
-  // ── Auto-zoom and fitting logic ───────────────────────────
-  useEffect(() => {
-    if (!mapRef.current) return;
-    if (selectedId) return;
-
-    let coords: { latitude: number; longitude: number }[] = [];
-
-    if (activeLayer === "Bus") {
-      // Fit to all active vehicles OR the selected route pattern
-      if (isAllBusRoutesSelected) {
-        if (busVehicles.length > 0) {
-          coords = busVehicles.map((bv: any) => ({
-            latitude: bv.Latitude || bv.lat,
-            longitude: bv.Longitude || bv.lng,
-          }));
-        }
-      } else if (routePatterns.length > 0) {
-        coords = routePatterns;
-      }
-    } else if (activeLayer === "Today") {
-      // Only fit when there are multiple scheduled locations to show.
-      coords = sortedFilteredLocations
-        .filter(loc => loc.coord)
-        .map(loc => ({ latitude: loc.coord.lat, longitude: loc.coord.lng }));
-    } else {
-      // General map fit for other layers (Dining, Parking, Places)
-      if (filteredLocations.length > 0 && filteredLocations.length < 50) {
-        // Only fit to filtered list if it's manageable.
-        coords = filteredLocations
-          .filter(loc => loc.coord)
-          .map(loc => ({ latitude: loc.coord.lat, longitude: loc.coord.lng }));
-      }
-    }
-
-    if (coords.length > 0) {
-      const { width, height } = Dimensions.get('window');
-      const isToday = activeLayer === "Today";
-
-      if (isToday && coords.length < 2) {
-        return;
-      }
-
-      // Dynamic padding to ensure data is centered in the visible ~65% of the viewport
-      // Dynamic padding to ensure data is centered in the visible area below the Today box
-      // Today: Scale with screen height (roughly 58% on pro phones, less on smaller)
-      // pins have height (40px) and we want 20px margin.
-      const topPadding = isToday ? Math.max(80, Math.min(height * 0.58, 540) - 200) : 120;
-      const bottomPadding = 120;
-      const sidePadding = isToday ? 20 : width * 0.15;
-
-      // Force 2D view (0 pitch) for Today to ensure padding logic is pixel-accurate
-      if (isToday && isMapTilted) {
-        setIsMapTilted(false);
-        mapRef.current.animateCamera({ pitch: 0, heading: 0 }, { duration: 400 });
-      }
-
-      mapRef.current.fitToCoordinates(coords, {
-        edgePadding: {
-          top: topPadding,
-          right: sidePadding,
-          bottom: bottomPadding,
-          left: sidePadding
-        },
-        animated: true,
-      });
-    }
-  }, [
-    activeLayer,
-    filteredLocations,
-    isMapTilted,
-    busVehicles,
-    routePatterns,
-    selectedId,
-    userCoord,
-    isAllBusRoutesSelected,
-    selectedRoute
-  ]);
-
-  const handleSelectBusRoute = useCallback(async (routeId: string, availableRoutes: any[] = busRoutes) => {
-    setSelectedBusRouteId(routeId); setSelectedStop(null); setSelectedBus(null);
-    if (routeId === ALL_BUS_ROUTES_KEY) { await loadAllBusRoutes(availableRoutes); return; }
-    try {
-      const { points, stops } = await transitService.getRoutePattern(routeId);
-      setRoutePatterns(points?.length ? points : []);
-      setBusStops(stops?.length ? stops : []);
-      if (mapRef.current && points?.length) mapRef.current.fitToCoordinates(points, { edgePadding: { top: 220, right: 60, bottom: 80, left: 60 }, animated: true });
-      setBusVehicles(await transitService.getVehicles(routeId));
-    } catch (e) { console.warn("Failed to select bus route", e); }
-  }, [busRoutes, loadAllBusRoutes]);
-
-  const handleSelectBusRouteFromSearch = useCallback(async (route: any) => {
-    setActiveLayer("Bus");
-    setIsSearchExpanded(false);
-    setSearchQuery("");
-    setShowSearchResults(false);
-    setSelectedId(null);
-    setSelectedStop(null);
-    setSelectedBus(null);
-    setIsRouteDropdownOpen(false);
-    await handleSelectBusRoute(route.Key);
-  }, [handleSelectBusRoute]);
-
-  const { getClosestProgressMeters, haversineDistanceMeters: hav, formatBusDistance } = require("./places/utils");
-  const resolveNearestBusForStop = useCallback((stop: any, vehicles: any[]) => {
-    if (!stop || vehicles.length === 0) { setNearestBusInfo(selectedRoute ? "Route loaded" : "Transit route loaded"); return; }
-    const stopProgress = getClosestProgressMeters(routePatterns, { latitude: stop.Latitude, longitude: stop.Longitude });
-    const ranked = vehicles.map((bus) => {
-      const direct = hav(bus.Latitude, bus.Longitude, stop.Latitude, stop.Longitude);
-      if (!stopProgress) return { bus, distanceMeters: direct };
-      const busProgress = getClosestProgressMeters(routePatterns, { latitude: bus.Latitude, longitude: bus.Longitude });
-      if (!busProgress) return { bus, distanceMeters: direct };
-      const delta = Math.abs(stopProgress.progressMeters - busProgress.progressMeters);
-      const wrapped = stopProgress.totalRouteMeters > 0 ? Math.min(delta, stopProgress.totalRouteMeters - delta) : delta;
-      return { bus, distanceMeters: Math.min(direct, wrapped + stopProgress.offsetMeters + busProgress.offsetMeters) };
-    }).sort((a, b) => a.distanceMeters - b.distanceMeters);
-    const nearest = ranked[0];
-    if (!nearest) { setNearestBusInfo(selectedRoute ? "Route loaded" : "Transit route loaded"); return; }
-    setSelectedBus(nearest.bus);
-    const eta = Math.max(1, Math.round(nearest.distanceMeters / 220));
-    const label = nearest.bus.RouteShortName ? `Route ${nearest.bus.RouteShortName}` : nearest.bus.Name ? `Bus ${nearest.bus.Name}` : undefined;
-    setNearestBusInfo(formatBusDistance(nearest.distanceMeters, eta, label));
-  }, [routePatterns, selectedRoute]);
-
-  const handleStopPress = useCallback((stop: any) => {
-    setSelectedStop(stop); setSelectedBus(null); setNearestBusInfo("Finding closest bus...");
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    resolveNearestBusForStop(stop, busVehicles);
-  }, [busVehicles, resolveNearestBusForStop]);
-
-  // ── Effects ───────────────────────────────────────────────
-  // Location permissions + GPS watch
-  useEffect(() => {
-    let mounted = true, watcher: Location.LocationSubscription | null = null;
-    (async () => {
-      try {
-        const perm = await Location.requestForegroundPermissionsAsync();
-        if (!mounted || perm.status !== "granted") return;
-        const cur = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        setUserCoord({ latitude: cur.coords.latitude, longitude: cur.coords.longitude });
-        if (!mounted || !mapRef.current) return;
-        mapRef.current.animateToRegion({ latitude: cur.coords.latitude, longitude: cur.coords.longitude, latitudeDelta: 0.018, longitudeDelta: 0.018 }, 700);
-        watcher = await Location.watchPositionAsync({ accuracy: Location.Accuracy.Balanced, distanceInterval: 25, timeInterval: 15000 }, (pos) => { if (mounted) setUserCoord({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }); });
-      } catch (e) { console.warn("Unable to center on current location", e); }
-    })();
-    return () => { mounted = false; watcher?.remove(); };
-  }, []);
-
-  // Keep active layer valid
-  useEffect(() => {
-    if (!visibleCategories.some((c) => c.id === activeLayer)) setActiveLayer(visibleCategories[0]?.id || "Bus");
-  }, [activeLayer, visibleCategories]);
-
-  // Route param: initialLayer focus
-  useEffect(() => {
-    const nextLayer = route.params?.initialLayer;
-    const token = route.params?.focusToken;
-    const nextLocation = route.params?.initialLocation;
-    if (!nextLayer && !token && !nextLocation) return;
-    if (nextLayer) setActiveLayer(nextLayer);
-    setSelectedId(null);
-    setSelectedStop(null);
-    setSelectedBus(null);
-    setNearestBusInfo(null);
-    setIsSearchExpanded(false);
-    setSearchQuery("");
-    setShowSearchResults(false);
-    setPendingInitialLocation(typeof nextLocation === "string" ? nextLocation : null);
-  }, [route.params?.focusToken, route.params?.initialLayer, route.params?.initialLocation]);
-
-  useEffect(() => {
-    if (!pendingInitialLocation) return;
-    const targetName = getCanonicalLocationName(pendingInitialLocation);
-    const match = allMapLocations.find((loc) => getCanonicalLocationName(loc.location) === targetName);
-    if (!match) return;
-    setSelectedId(match.location);
-    setPendingInitialLocation(null);
-  }, [allMapLocations, pendingInitialLocation]);
-
-  // Hydrate hub when tab needs it
-  useEffect(() => {
-    if (user?.id && (activeLayer === "Rec" || activeLayer === "Library" || activeLayer === "Schedule")) {
-      hydrateCampusHub(user.id).catch(() => { });
-    }
-  }, [activeLayer, hydrateCampusHub, user?.id]);
-
-  // Pulse animation for Bus layer
-  useEffect(() => {
-    if (activeLayer === "Bus") {
-      Animated.loop(Animated.sequence([
-        Animated.timing(busPulseAnim, { toValue: 1.2, duration: 1000, useNativeDriver: true }),
-        Animated.timing(busPulseAnim, { toValue: 1.0, duration: 1000, useNativeDriver: true }),
-      ])).start();
-    }
-  }, [activeLayer, busPulseAnim]);
-
-  // Saved schedules state is now managed within useScheduleMap
-
-  // Sync active schedule
-  useEffect(() => {
-    if (scheduleOptions.length === 0) { if (activeScheduleId !== null) setActiveScheduleId(null); return; }
-    if (!activeScheduleId || !scheduleOptions.some((o: any) => o.id === activeScheduleId)) setActiveScheduleId(scheduleOptions[0].id);
-  }, [activeScheduleId, scheduleOptions]);
-
-  // Bus fetch on layer switch
-  useEffect(() => {
-    if (activeLayer === "Bus") {
-      (async () => {
-        if (isFetchingRef.current) return;
-        isFetchingRef.current = true; setIsFetchingBus(true);
-        try {
-          const metadata = await transitService.getRoutesMetadata();
-          const activeIds = await transitService.getActiveRoutes();
-          const active = metadata.filter((m: any) => activeIds.includes(m.ShortName) || activeIds.includes(m.Key) || activeIds.includes(m.Name));
-          const final = active.length ? active : metadata;
-          setBusRoutes(final);
-          const valid = final.some((r: any) => r.Key === selectedBusRouteId);
-          if (final.length && (isAllBusRoutesSelected || !selectedBusRouteId || !valid)) handleSelectBusRoute(ALL_BUS_ROUTES_KEY, final);
-        } catch (e) { console.warn("Failed to fetch bus routes", e); }
-        finally { setIsFetchingBus(false); isFetchingRef.current = false; }
-      })();
-    }
-  }, [activeLayer]);
-
-  // Bus polling
-  useEffect(() => {
-    if (activeLayer === "Bus" && selectedBusRouteId) {
-      busPollInterval.current = setInterval(async () => {
-        const updated = isAllBusRoutesSelected ? await transitService.getVehicles() : await transitService.getVehicles(selectedBusRouteId);
-        setBusVehicles(updated);
-      }, 5000);
-    } else { if (busPollInterval.current) clearInterval(busPollInterval.current); }
-    return () => { if (busPollInterval.current) clearInterval(busPollInterval.current); };
-  }, [activeLayer, isAllBusRoutesSelected, selectedBusRouteId]);
-
-  // Today selection should not auto-generate directions.
-  useEffect(() => {
-    setActiveWalkingRoute(null);
-  }, [activeLayer, nextEntry, userCoord, selectedDate]);
-
-  // Update nearest bus when vehicles change
-  useEffect(() => {
-    if (activeLayer === "Bus" && selectedStop) resolveNearestBusForStop(selectedStop, busVehicles);
-  }, [activeLayer, busVehicles, routePatterns, selectedStop, resolveNearestBusForStop]);
-
-  // Auto-fit map to filtered locations
-  useEffect(() => {
-    if (!mapRef.current || activeLayer === "Bus" || activeLayer === "Heatmap" || activeLayer === "Today" || selectedId || sortedFilteredLocations.length === 0) return;
-    const fitKey = `${activeLayer}:${sortedFilteredLocations.length}:${sortedFilteredLocations[0]?.location || ""}`;
-    if (lastPlacesFitKey.current === fitKey) return;
-    lastPlacesFitKey.current = fitKey;
-    const points = sortedFilteredLocations.slice(0, 18).map((l) => ({ latitude: l.coord.lat, longitude: l.coord.lng }));
-    if (points.length === 1) { mapRef.current.animateToRegion({ latitude: points[0].latitude - 0.0018, longitude: points[0].longitude, latitudeDelta: 0.008, longitudeDelta: 0.008 }, 650); return; }
-    mapRef.current.fitToCoordinates(points, { edgePadding: { top: 210, right: 48, bottom: 250, left: 48 }, animated: true });
-  }, [activeLayer, selectedId, sortedFilteredLocations]);
-
-  // Sheet selection - fetch reviews + dining on select
-  useEffect(() => {
-    if (selectedId) {
-      fetchReviews(selectedId);
-    } else {
-      setStreamReviews([]); setHubRestaurants([]); setDiningMenuOptions([]); setActiveDiningMenu(null); setActiveDiningMealPeriod("lunch"); setDiningMenuPreview(null);
-    }
-  }, [selectedId, fetchReviews]);
-
-  useEffect(() => {
-    if (!selectedLoc || !isDiningHallMenuLocation(selectedLoc.location)) { setHubRestaurants([]); setDiningMenuOptions([]); setActiveDiningMenu(null); setDiningMenuPreview(null); return; }
-    fetchDiningData(selectedLoc);
-  }, [selectedLoc, fetchDiningData]);
-
-  useEffect(() => {
-    if (!activeDiningMenu) return;
-    let cancelled = false;
-    setIsFetchingDining(true);
-    loadBestDiningPreview(activeDiningMenu, activeDiningMealPeriod).then(({ preview, meal }) => {
-      if (!cancelled) { if (meal !== activeDiningMealPeriod) setActiveDiningMealPeriod(meal); setDiningMenuPreview(preview); }
-    }).catch((e) => console.warn("Failed to load dining menu preview", e)).finally(() => { if (!cancelled) setIsFetchingDining(false); });
-    return () => { cancelled = true; };
-  }, [activeDiningMealPeriod, activeDiningMenu, loadBestDiningPreview]);
-
-  // Connect Stream feeds user
-  useEffect(() => {
-    if (user?.id) connectFeedsUser(user.id).catch(() => { });
-  }, [user]);
-
-  // ── Render ────────────────────────────────────────────────  if (loading) {
+  // ── Render ────────────────────────────────────────────────
+  if (loading) {
     return (
       <View style={styles.loader}>
         <ActivityIndicator size="large" color={COLORS.primary} />
