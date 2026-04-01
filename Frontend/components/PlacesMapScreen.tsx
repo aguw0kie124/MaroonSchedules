@@ -2875,13 +2875,15 @@ export function PlacesMapScreen() {
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.busTimetableButton}
-              onPress={openBusTimetable}
-              activeOpacity={0.85}
-            >
-              <Clock size={16} color={COLORS.textPrimary} />
-            </TouchableOpacity>
+            {!isAllBusRoutesSelected && (
+              <TouchableOpacity
+                style={styles.busTimetableButton}
+                onPress={openBusTimetable}
+                activeOpacity={0.85}
+              >
+                <Clock size={16} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            )}
           </View>
 
           {!isAllBusRoutesSelected && routeDirectionsAvailable.length > 1 && (
