@@ -63,7 +63,8 @@ import {
 } from "lucide-react-native";
 import type { WalkingRoute } from "../services/campusDirections";
 import { useTheme } from "./SharedUI";
-import { Card } from "./SharedUI";import { PageModuleEditor } from "./PageModuleEditor";
+import { Card } from "./SharedUI";
+import { PageModuleEditor } from "./PageModuleEditor";
 import MapView, {
   Marker,
   Circle,
@@ -817,7 +818,8 @@ export function PlacesMapScreen() {
   const movePlacesPill = useAppShellStore((s) => s.movePlacesPill);
 
   const [placesViewMode, setPlacesViewMode] = useState<"map" | "list">("map");
-  const isStandaloneTransitScreen = route.name === "BusRoutes";  const orderedPlacesPills = useMemo(
+  const isStandaloneTransitScreen = route.name === "BusRoutes";
+  const orderedPlacesPills = useMemo(
     () => getOrderedItems(placesPills),
     [placesPills],
   );
@@ -920,16 +922,18 @@ export function PlacesMapScreen() {
     }
   }, [routeDirectionsAvailable]);
 
-  
   const groupedRoutePatterns = useMemo(() => {
     const groups = [];
     let currentGroup = null;
     let currentPoints = [];
     for (const pt of routePatterns) {
-      const d = pt.DirectionName || 'Unknown';
+      const d = pt.DirectionName || "Unknown";
       if (d !== currentGroup) {
         if (currentPoints.length > 0) {
-          groups.push({ direction: currentGroup || 'Unknown', points: currentPoints });
+          groups.push({
+            direction: currentGroup || "Unknown",
+            points: currentPoints,
+          });
         }
         currentGroup = d;
         currentPoints = [pt];
@@ -938,12 +942,15 @@ export function PlacesMapScreen() {
       }
     }
     if (currentPoints.length > 0) {
-      groups.push({ direction: currentGroup || 'Unknown', points: currentPoints });
+      groups.push({
+        direction: currentGroup || "Unknown",
+        points: currentPoints,
+      });
     }
     return groups;
   }, [routePatterns]);
 
-const filteredBusStopsForMap = useMemo(() => {
+  const filteredBusStopsForMap = useMemo(() => {
     if (selectedDirection === "All") return busStops;
     return busStops.filter((s: any) => s.DirectionName === selectedDirection);
   }, [busStops, selectedDirection]);
@@ -1443,14 +1450,11 @@ const filteredBusStopsForMap = useMemo(() => {
       console.log("[Transit] Final Active Routes count:", finalRoutes.length);
       setBusRoutes(finalRoutes);
 
-      // Check if current selection is invalid or missing
-      const isSelectionActive = finalRoutes.some(
-        (r) => r.Key === selectedBusRouteId,
-      );
-      if (
-        finalRoutes.length > 0 &&
-        (isAllBusRoutesSelected || !selectedBusRouteId || !isSelectionActive)
-      ) {
+      // Enforce default selection to "All routes" when switching to the tab
+      if (finalRoutes.length > 0) {
+        setSelectedDirection("All");
+        setSelectedBus(null);
+        setSelectedStop(null);
         handleSelectBusRoute(ALL_BUS_ROUTES_KEY, finalRoutes);
       }
     } catch (e) {
@@ -2342,9 +2346,13 @@ const filteredBusStopsForMap = useMemo(() => {
             : groupedRoutePatterns.length > 0 && (
                 <>
                   {groupedRoutePatterns.map((group, index) => {
-                    const isActive = selectedDirection === "All" || group.direction === selectedDirection;
-                    const routeColor = selectedRoute?.Color || transitService.getRouteColor(selectedBusRouteId || "");
-                    
+                    const isActive =
+                      selectedDirection === "All" ||
+                      group.direction === selectedDirection;
+                    const routeColor =
+                      selectedRoute?.Color ||
+                      transitService.getRouteColor(selectedBusRouteId || "");
+
                     return (
                       <Polyline
                         key={`path-${selectedBusRouteId}-${group.direction}-${index}`}

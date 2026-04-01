@@ -166,17 +166,21 @@ export const transitService = {
             const seenStops = new Set();
 
             (data.points || []).forEach((pt: any) => {
-                points.push({
-                    latitude: Number(pt.latitude),
-                    longitude: Number(pt.longitude),
-                    DirectionCode: pt.DirectionCode || '',
-                    DirectionName: pt.DirectionName || '',
-                });
+                if (pt.latitude != null && pt.longitude != null && !isNaN(Number(pt.latitude)) && !isNaN(Number(pt.longitude))) {
+                    points.push({
+                        latitude: Number(pt.latitude),
+                        longitude: Number(pt.longitude),
+                        DirectionCode: pt.DirectionCode || '',
+                        DirectionName: pt.DirectionName || '',
+                    });
+                }
             });
             (data.stops || []).forEach((stop: any) => {
-                if (!seenStops.has(stop.StopCode)) {
-                    seenStops.add(stop.StopCode);
-                    stops.push({ ...stop, Latitude: Number(stop.Latitude), Longitude: Number(stop.Longitude) });
+                if (stop.Latitude != null && stop.Longitude != null && !isNaN(Number(stop.Latitude)) && !isNaN(Number(stop.Longitude))) {
+                    if (!seenStops.has(stop.StopCode)) {
+                        seenStops.add(stop.StopCode);
+                        stops.push({ ...stop, Latitude: Number(stop.Latitude), Longitude: Number(stop.Longitude) });
+                    }
                 }
             });
             const pattern = { points, stops };
@@ -228,12 +232,19 @@ export const transitService = {
                 return this.getCachedVehicles(routeId);
             }
             const payload = await response.json();
-            const vehicles = (payload.vehicles || []).map((v: any) => ({
-                ...v,
-                Latitude: Number(v.Latitude),
-                Longitude: Number(v.Longitude),
-                Heading: Number(v.Heading || 0)
-            }));
+            const vehicles = (payload.vehicles || [])
+                .map((v: any) => ({
+                    ...v,
+                    Latitude: v.Latitude != null ? Number(v.Latitude) : undefined,
+                    Longitude: v.Longitude != null ? Number(v.Longitude) : undefined,
+                    Heading: Number(v.Heading || 0)
+                }))
+                .filter((v: any) => 
+                    v.Latitude !== undefined && 
+                    v.Longitude !== undefined && 
+                    !isNaN(v.Latitude) && 
+                    !isNaN(v.Longitude)
+                );
 
             if (vehicles.length > 0) {
                 this.lastVehiclesSnapshot = vehicles;
