@@ -235,11 +235,14 @@ export async function fetchDiningFullMenuCached({
     const cached = await AsyncStorage.getItem(cacheKey);
     if (cached) {
       const parsed: CachedMenuPayload = JSON.parse(cached);
-      return {
-        ...parsed.data,
-        fromCache: true,
-        resolvedLocation,
-      };
+      if (parsed?.data?.success && Array.isArray(parsed.data.categories) && parsed.data.categories.length > 0) {
+        return {
+          ...parsed.data,
+          fromCache: true,
+          resolvedLocation,
+        };
+      }
+      await AsyncStorage.removeItem(cacheKey);
     }
   }
 
@@ -259,7 +262,11 @@ export async function fetchDiningFullMenuCached({
     mealPeriod,
     data,
   };
-  await AsyncStorage.setItem(cacheKey, JSON.stringify(payload));
+  if (data?.success && Array.isArray(data.categories) && data.categories.length > 0) {
+    await AsyncStorage.setItem(cacheKey, JSON.stringify(payload));
+  } else {
+    await AsyncStorage.removeItem(cacheKey);
+  }
 
   return {
     ...data,

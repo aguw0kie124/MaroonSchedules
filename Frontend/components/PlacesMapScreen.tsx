@@ -623,6 +623,7 @@ export function PlacesMapScreen() {
   // ── Auto-zoom and fitting logic ───────────────────────────
   useEffect(() => {
     if (!mapRef.current) return;
+    if (selectedId) return;
 
     let coords: { latitude: number; longitude: number }[] = [];
 
@@ -645,10 +646,8 @@ export function PlacesMapScreen() {
         .map(loc => ({ latitude: loc.coord.lat, longitude: loc.coord.lng }));
     } else {
       // General map fit for other layers (Dining, Parking, Places)
-      if (selectedLoc) {
-        coords = [{ latitude: selectedLoc.coord.lat, longitude: selectedLoc.coord.lng }];
-      } else if (filteredLocations.length > 0 && filteredLocations.length < 50) {
-        // Only fit to filtered list if it's manageable and no specific location is focused
+      if (filteredLocations.length > 0 && filteredLocations.length < 50) {
+        // Only fit to filtered list if it's manageable.
         coords = filteredLocations
           .filter(loc => loc.coord)
           .map(loc => ({ latitude: loc.coord.lat, longitude: loc.coord.lng }));
@@ -693,7 +692,7 @@ export function PlacesMapScreen() {
     isMapTilted,
     busVehicles,
     routePatterns,
-    selectedLoc,
+    selectedId,
     userCoord,
     isAllBusRoutesSelected,
     selectedRoute
