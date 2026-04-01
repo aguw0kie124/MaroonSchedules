@@ -991,6 +991,7 @@ def get_events_snapshot(
     clerk_id: str | None = None,
     limit: int = 8,
     category: str | None = None,
+    student_relevant_only: bool = True,
 ) -> List[Dict[str, Any]]:
     _ensure_social_tables()
     rsvp_lookup: Dict[str, str] = {}
@@ -1003,6 +1004,11 @@ def get_events_snapshot(
 
     crawler_events = campus_events_service.load_campus_events()
     if crawler_events:
+        if student_relevant_only:
+            crawler_events = [
+                e for e in crawler_events
+                if e.get("campus_interest_label") != "low"
+            ]
         if category:
             crawler_events = [
                 e for e in crawler_events
@@ -1042,6 +1048,9 @@ def get_events_snapshot(
                 "location_lat": None,
                 "location_lng": None,
                 "map_available": False,
+                "campus_interest_score": 40,
+                "campus_interest_label": "medium",
+                "campus_interest_reasons": ["legacy_tracker_fallback"],
                 "rsvp_status": rsvp_lookup.get(event_id, "none"),
             }
         )

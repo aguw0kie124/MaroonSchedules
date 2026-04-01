@@ -31,6 +31,73 @@ NON_CS_PATTERNS = (
     "corpus christi",
 )
 
+HIGH_SIGNAL_TERMS = (
+    "concert",
+    "festival",
+    "showcase",
+    "game",
+    "match",
+    "tournament",
+    "tailgate",
+    "mixer",
+    "social",
+    "night",
+    "movie",
+    "comedy",
+    "party",
+    "speaker",
+    "lecture",
+    "panel",
+    "workshop",
+    "hackathon",
+    "show",
+    "performance",
+    "market",
+    "celebration",
+    "free food",
+    "pizza",
+    "lunch",
+    "dinner",
+)
+
+LOW_SIGNAL_TERMS = (
+    "tsi",
+    "class",
+    "section",
+    "course",
+    "office hour",
+    "office hours",
+    "advising",
+    "training",
+    "required",
+    "compliance",
+    "module",
+    "orientation module",
+    "faculty senate",
+    "staff meeting",
+    "employee",
+    "workday",
+    "canvas",
+    "registration deadline",
+    "deadline reminder",
+    "final exam",
+    "midterm",
+    "quiz",
+    "syllabus",
+)
+
+STUDENT_ORG_SIGNALS = (
+    "student",
+    "organization",
+    "club",
+    "association",
+    "society",
+    "aggie",
+    "msc",
+    "reslife",
+    "student affairs",
+)
+
 
 def _parse_coordinate_fallback(value: str | None) -> Tuple[float | None, float | None]:
     if not value:
@@ -124,7 +191,7 @@ def _normalize_event_row(raw: Dict[str, Any]) -> Dict[str, Any] | None:
 
     location = _clean_location_label(raw.get("location"), lat, lng)
 
-    return {
+    normalized = {
         "event_id": raw.get("id"),
         "title": raw.get("title") or "Campus Event",
         "summary": raw.get("description") or "",
@@ -148,7 +215,7 @@ def _normalize_event_row(raw: Dict[str, Any]) -> Dict[str, Any] | None:
             "sports": int(raw.get("sports", 0)),
             "academic": int(raw.get("academic", 0)),
             "food": int(raw.get("food", 0)),
-            "advocacy": int(raw.get("advocacy", 1) if raw.get("advocacy") else 0), # Fallback for advocacy boolean
+            "advocacy": int(raw.get("advocacy", 1) if raw.get("advocacy") else 0),
             "entertainment": int(raw.get("entertainment", 0)),
             "health_wellness": int(raw.get("health_wellness", 0)),
             "miscellaneous": int(raw.get("miscellaneous", 0) or raw.get("religion", 0) or (
@@ -167,6 +234,80 @@ def _normalize_event_row(raw: Dict[str, Any]) -> Dict[str, Any] | None:
         },
         "map_available": lat is not None and lng is not None,
     }
+
+    score, label, reasons = _score_student_relevance(normalized)
+    normalized["campus_interest_score"] = score
+    normalized["campus_interest_label"] = label
+    normalized["campus_interest_reasons"] = reasons
+    return normalized
+
+
+def _score_student_relevance(event: Dict[str, Any]) -> Tuple[int, str, List[str]]:
+    text_parts = [
+        str(event.get("title") or ""),
+        str(event.get("summary") or ""),
+        str(event.get("description") or ""),
+        str(event.get("location") or ""),
+        str(event.get("host_name") or ""),
+        str(event.get("source_name") or ""),
+        " ".join(str(tag) for tag in event.get("tags") or []),
+    ]
+    text = " ".join(text_parts).lower()
+    categories = event.get("categories") or {}
+    score = 35
+    reasons: List[str] = []
+
+    category_weights = {
+        "food": 18,
+        "sports": 22,
+        "entertainment": 22,
+        "social": 16,
+        "health_wellness": 12,
+        "advocacy": 10,
+        "academic": 8,
+    }
+    for category, weight in category_weights.items():
+        if categories.get(category):
+            score += weight
+            reasons.append(f"{category}_category")
+
+    if event.get("has_food"):
+        score += 12
+        reasons.append("food_signal")
+
+    if any(term in text for term in HIGH_SIGNAL_TERMS):
+        score += 14
+        reasons.append("high_signal_keywords")
+
+    if any(term in text for term in STUDENT_ORG_SIGNALS):
+        score += 10
+        reasons.append("student_org_signal")
+
+    if event.get("map_available"):
+        score += 4
+        reasons.append("mapped_location")
+
+    if any(term in text for term in LOW_SIGNAL_TERMS):
+        score -= 38
+        reasons.append("low_signal_keywords")
+
+    title = str(event.get("title") or "").lower()
+    if re.search(r"\b(class|section|module|training|tsi)\b", title):
+        score -= 18
+        reasons.append("title_looks_like_admin_or_class")
+
+    if not event.get("host_name") and not event.get("tags") and not categories.get("social") and not categories.get("entertainment"):
+        score -= 6
+        reasons.append("low_context")
+
+    score = max(0, min(100, score))
+    if score >= 70:
+        label = "high"
+    elif score >= 45:
+        label = "medium"
+    else:
+        label = "low"
+    return score, label, reasons
 
 
 def load_campus_events(force_refresh: bool = False) -> List[Dict[str, Any]]:
@@ -201,7 +342,12 @@ def load_campus_events(force_refresh: bool = False) -> List[Dict[str, Any]]:
             and _is_college_station_event(event)
         )
     ]
-    events.sort(key=lambda event: event["start_time"])
+    events.sort(
+        key=lambda event: (
+            -int(event.get("campus_interest_score", 0)),
+            event["start_time"],
+        )
+    )
 
     _EVENT_CACHE = events
     _EVENT_CACHE_MTIME_NS = mtime_ns

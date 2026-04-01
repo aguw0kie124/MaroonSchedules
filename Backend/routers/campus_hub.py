@@ -82,8 +82,14 @@ def get_events(
     clerk_id: str | None = Query(None),
     limit: int = Query(250, ge=1, le=1000),
     category: str | None = Query(None),
+    student_relevant_only: bool = Query(True),
 ):
-    return campus_hub_service.get_events_snapshot(clerk_id, limit=limit, category=category)
+    return campus_hub_service.get_events_snapshot(
+        clerk_id,
+        limit=limit,
+        category=category,
+        student_relevant_only=student_relevant_only,
+    )
 
 
 @router.post("/events/rsvp")
