@@ -5,15 +5,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
 export const DARK_COLORS = {
-  background: '#121212',      // Slightly grayish dark
+  background: '#000000',      // Pure Black
   primary: '#500000',         // Aggie Maroon
   primaryLight: '#3D0000',
   accent: '#FF8A8A',
   textSecondary: '#A0A0A5',
   textTertiary: '#636366',
   textPrimary: '#FFFFFF',
-  surface: '#1E1E1E',         // Elevated grayish tone
-  surfaceElevated: '#2A2A2A', // Higher elevation
+  surface: '#000000',
+  surfaceElevated: '#111111',
   border: '#2C2C2E',
   danger: '#FF453A',
   success: '#30D158',
@@ -36,8 +36,8 @@ export const LIGHT_COLORS = {
   warning: '#FF9500',
 };
 
-export const DEFAULT_LIGHT_ACCENT = '#500000';
-export const DEFAULT_DARK_ACCENT = '#500000';
+export const DEFAULT_LIGHT_ACCENT = '#8E8E93';
+export const DEFAULT_DARK_ACCENT = '#8E8E93';
 
 export function getDefaultAccentColor(theme: 'light' | 'dark') {
   return theme === 'dark' ? DEFAULT_DARK_ACCENT : DEFAULT_LIGHT_ACCENT;
@@ -293,21 +293,21 @@ export const SectionRow = ({ section, onAdd, onRemove, isAdded }: any) => {
 const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   card: {
     backgroundColor: isDark ? 'rgba(12,12,14,0.84)' : 'rgba(255,255,255,0.88)',
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 24,
     borderWidth: 1,
     borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: isDark ? 0.12 : 0.05,
-    shadowRadius: 10,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: isDark ? 0.18 : 0.08,
+    shadowRadius: 18,
+    elevation: 8,
   },
   button: {
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 8, // Sharper, more modern corners
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -325,27 +325,27 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   },
   sectionTitle: {
       fontWeight: '800', // Heavy Apple SF Pro Display
-      fontSize: 17,
+      fontSize: 18,
       marginBottom: 2,
       letterSpacing: -0.5,
       color: COLORS.textPrimary
   },
   sectionInfo: {
-      fontSize: 14,
+      fontSize: 15,
       color: COLORS.textSecondary,
-      marginBottom: 3,
+      marginBottom: 4,
   },
   bookmarkBtn: {
-      padding: 7,
+      padding: 8,
       marginLeft: 8,
       backgroundColor: '#1E1E1E',
-      borderRadius: 14,
+      borderRadius: 20,
       borderWidth: 1,
       borderColor: COLORS.border,
   },
   actionBtn: {
       paddingVertical: 8, 
-      paddingHorizontal: 14, 
+      paddingHorizontal: 16, 
       borderRadius: 12
   }
 });

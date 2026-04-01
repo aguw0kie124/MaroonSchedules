@@ -151,7 +151,7 @@ export function ChannelListScreen({ embedded = false }: { embedded?: boolean } =
       {/* ── Floating Action Button for New Chat ── */}
       {embedded && (
         <Pressable 
-          style={styles.fab} 
+          style={[styles.fab, styles.embeddedFab]} 
           onPress={() => {
             navigation.navigate('UsersScreen');
           }}
@@ -194,8 +194,8 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    bottom: 24,
-    left: 20,
+    bottom: 88,
+    right: 20,
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -208,5 +208,9 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     shadowRadius: 6,
     elevation: 8,
     zIndex: 1000,
+  },
+  embeddedFab: {
+    bottom: 18,
+    right: 18,
   },
 });

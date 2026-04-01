@@ -24,9 +24,11 @@ import {
   Attachment,
 } from 'stream-chat-react-native';
 import { useUser } from '@clerk/clerk-expo';
-import { Calendar, LogOut, UserPlus, ChevronLeft, Check, X } from 'lucide-react-native';
+import { Calendar, LogOut, UserPlus, ChevronLeft, Check, X, MapPin } from 'lucide-react-native';
 import { API_URL } from '../config';
 import { fetchSchedules } from '../api/client';
+import { useEventStore } from '../store/eventStore';
+import type { ScheduledEvent } from '../store/eventStore';
 
 // ─── Design Tokens ────────────────────────────────────────────────────────────
 const C = {
@@ -145,6 +147,18 @@ type Props = {
       groupName?: string;
       isGroup?: boolean;
       channelId?: string;
+      prefillMessage?: string;
+      prefillEvent?: {
+        event_id: string;
+        title: string;
+        location?: string | null;
+        description?: string | null;
+        date_ts: number;
+        date_iso: string;
+        location_lat?: number | null;
+        location_lng?: number | null;
+        category: string;
+      };
     };
   };
   navigation: any;
@@ -159,12 +173,15 @@ export function ChatScreen({ route, navigation }: Props) {
     memberIds,
     groupName,
     isGroup = false,
-    channelId
+    channelId,
+    prefillMessage,
+    prefillEvent,
   } = route.params;
   
   const displayName = isGroup ? (groupName || 'Group Chat') : otherUserName;
   const { user, isLoaded } = useUser();
   const initials = getInitials(displayName);
+  const scheduleEvent = useEventStore((state) => state.scheduleEvent);
 
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -245,6 +262,35 @@ export function ChatScreen({ route, navigation }: Props) {
         );
         await Promise.race([c.watch(), timeout]);
         setChannel(c);
+
+        // Auto-send prefilled event card or plain message
+        if (prefillEvent) {
+          try {
+            await c.sendMessage({
+              text: `Shared an event: ${prefillEvent.title}`,
+              attachments: [{
+                type: 'event',
+                event_id: prefillEvent.event_id,
+                title: prefillEvent.title,
+                location: prefillEvent.location || null,
+                description: prefillEvent.description || null,
+                date_ts: prefillEvent.date_ts,
+                date_iso: prefillEvent.date_iso,
+                location_lat: prefillEvent.location_lat ?? null,
+                location_lng: prefillEvent.location_lng ?? null,
+                category: prefillEvent.category,
+              }] as any,
+            });
+          } catch (sendErr) {
+            console.warn('[Chat] Failed to send event card:', sendErr);
+          }
+        } else if (prefillMessage) {
+          try {
+            await c.sendMessage({ text: prefillMessage });
+          } catch (sendErr) {
+            console.warn('[Chat] Failed to send prefill message:', sendErr);
+          }
+        }
       } catch (err: any) {
         setErrorStatus(err.message);
       }
@@ -375,6 +421,73 @@ export function ChatScreen({ route, navigation }: Props) {
              <Text style={{color: C.maroon, fontWeight: 'bold'}}>View Schedule</Text>
           </View>
         </Pressable>
+      );
+    }
+    if (attachment.type === 'event') {
+      const evtDate = attachment.date_ts ? new Date(attachment.date_ts * 1000) : null;
+      const timeStr = evtDate ? evtDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+      const dateStr = evtDate ? evtDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+      const hasCoords = attachment.location_lat != null && attachment.location_lng != null;
+      return (
+        <View style={{ backgroundColor: '#500000', borderRadius: 16, margin: 4, width: 270, overflow: 'hidden' }}>
+          <View style={{ padding: 16, gap: 6 }}>
+            <Text style={{ color: '#FFFFFF', fontWeight: '900', fontSize: 17, letterSpacing: -0.3 }}>{attachment.title}</Text>
+            {attachment.location && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <MapPin size={13} color="rgba(255,255,255,0.7)" />
+                <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13 }}>{attachment.location}</Text>
+              </View>
+            )}
+            {evtDate && <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 12 }}>{dateStr} at {timeStr}</Text>}
+            {attachment.category && <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 2 }}>{attachment.category}</Text>}
+          </View>
+          <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.15)' }}>
+            <Pressable
+              style={{ flex: 1, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.15)' }}
+              onPress={() => {
+                const se: ScheduledEvent = {
+                  id: attachment.event_id, title: attachment.title,
+                  location: attachment.location, description: attachment.description,
+                  date_ts: attachment.date_ts, date_iso: attachment.date_iso,
+                  location_lat: attachment.location_lat, location_lng: attachment.location_lng,
+                  category: attachment.category || 'Social',
+                };
+                scheduleEvent(se);
+                Alert.alert('Added!', `"${attachment.title}" has been added to your schedule.`);
+              }}
+            >
+              <Check size={20} color="#30D158" />
+              <Text style={{ color: '#30D158', fontSize: 10, fontWeight: '800', marginTop: 3 }}>Accept</Text>
+            </Pressable>
+            <Pressable
+              style={{ flex: 1, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', borderRightWidth: hasCoords ? 1 : 0, borderRightColor: 'rgba(255,255,255,0.15)' }}
+              onPress={() => Alert.alert('Dismissed', 'Event has been dismissed.')}
+            >
+              <X size={20} color="#FF453A" />
+              <Text style={{ color: '#FF453A', fontSize: 10, fontWeight: '800', marginTop: 3 }}>Dismiss</Text>
+            </Pressable>
+            {hasCoords && (
+              <Pressable
+                style={{ flex: 1, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }}
+                onPress={() => navigation.navigate('Main', {
+                  screen: 'Places',
+                  params: {
+                    initialLayer: 'Academic',
+                    eventFocus: {
+                      eventId: attachment.event_id, title: attachment.title,
+                      location: attachment.location || null, latitude: attachment.location_lat,
+                      longitude: attachment.location_lng, startTime: attachment.date_iso,
+                      link: null, hasFood: false,
+                    },
+                  }
+                })}
+              >
+                <MapPin size={20} color="#007AFF" />
+                <Text style={{ color: '#007AFF', fontSize: 10, fontWeight: '800', marginTop: 3 }}>Map</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
       );
     }
     return <Attachment {...props} />;

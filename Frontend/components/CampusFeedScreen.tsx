@@ -499,7 +499,11 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
                 />
             )}
 
-            <Pressable style={styles.fab} onPress={() => setModalVisible(true)} disabled={!feedConnected || !!streamError}>
+            <Pressable
+                style={[styles.fab, embedded && styles.embeddedFab]}
+                onPress={() => setModalVisible(true)}
+                disabled={!feedConnected || !!streamError}
+            >
                 <Plus color="#FFF" size={28} strokeWidth={2.5} />
             </Pressable>
 
@@ -684,7 +688,8 @@ const getStyles = (COLORS: any, T: any) => StyleSheet.create({
     emptyTitle: { fontSize: 20, fontWeight: '700', color: T.text, marginTop: 16, marginBottom: 8 },
     emptySubtitle: { fontSize: 15, color: T.text2, textAlign: 'center', lineHeight: 22 },
     
-    fab: { position: 'absolute', bottom: 24, left: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: T.tamuMaroon, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.4, shadowOffset: { width: 0, height: 4 }, shadowRadius: 12, elevation: 8, borderWidth: 1, borderColor: T.roseGoldDark },
+    fab: { position: 'absolute', bottom: 120, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: T.tamuMaroon, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.4, shadowOffset: { width: 0, height: 4 }, shadowRadius: 12, elevation: 8, borderWidth: 1, borderColor: T.roseGoldDark },
+    embeddedFab: { bottom: 22, right: 18 },
     
     modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
     modalContent: { backgroundColor: T.bg, borderTopLeftRadius: 32, borderTopRightRadius: 32, minHeight: '80%', padding: 20 },

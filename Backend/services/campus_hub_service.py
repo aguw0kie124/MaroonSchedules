@@ -1005,9 +1005,8 @@ def get_events_snapshot(
     if crawler_events:
         if category:
             crawler_events = [
-                event
-                for event in crawler_events
-                if event.get("categories", {}).get(category.lower()) == 1
+                e for e in crawler_events
+                if e.get("categories", {}).get(category.lower()) == 1
             ]
         limited = crawler_events[:limit] if limit else crawler_events
         return [
@@ -1043,7 +1042,6 @@ def get_events_snapshot(
                 "location_lat": None,
                 "location_lng": None,
                 "map_available": False,
-                "categories": {},
                 "rsvp_status": rsvp_lookup.get(event_id, "none"),
             }
         )

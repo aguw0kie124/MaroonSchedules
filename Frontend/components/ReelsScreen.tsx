@@ -10,6 +10,7 @@ import { Heart, MessageCircle, Share2, Plus, ChevronLeft, X, Music } from 'lucid
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from './SharedUI';
+import { useShareStore } from '../store/shareStore';
 import {
     connectFeedsUser,
     getReelsFeed,
@@ -98,6 +99,7 @@ const ReelItem = ({
     styles,
     mediaActive,
     embedded = false,
+    openShare,
 }: any) => {
     const isLiked = user ? item.liked_by.includes(user.id) : false;
     const isActive = index === currentIndex && mediaActive;
@@ -163,7 +165,14 @@ const ReelItem = ({
                         <Text style={styles.rightActionText}>{item.reply_count}</Text>
                     </Pressable>
 
-                    <Pressable style={styles.rightActionItem}>
+                    <Pressable 
+                        style={styles.rightActionItem} 
+                        onPress={() => openShare({
+                            title: `Reel by @${item.user_name}`,
+                            message: item.caption,
+                            url: item.video_url
+                        })}
+                    >
                         <Share2 color="#FFF" size={26} />
                         <Text style={styles.rightActionText}>Share</Text>
                     </Pressable>
@@ -199,6 +208,7 @@ export function ReelsScreen({ mediaActive = true, embedded = false, immersive = 
     const styles = getStyles(COLORS);
     const { user } = useUser();
     const navigation = useNavigation<any>();
+    const openShare = useShareStore(state => state.openShare);
 
     const [reels, setReels] = useState<Reel[]>([]);
     const [loading, setLoading] = useState(true);
@@ -419,6 +429,7 @@ export function ReelsScreen({ mediaActive = true, embedded = false, immersive = 
             styles={styles}
             mediaActive={mediaActive && !commentModalVisible && !uploadModalVisible}
             embedded={embedded}
+            openShare={openShare}
         />
     );
 

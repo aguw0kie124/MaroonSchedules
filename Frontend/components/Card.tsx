@@ -17,12 +17,12 @@ export const Card = ({ children, style }: CardProps) => {
 const styles = StyleSheet.create({
     card: {
         backgroundColor: '#fff',
-        borderRadius: 14,
-        padding: 14,
+        borderRadius: 16,
+        padding: 16,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.04,
-        shadowRadius: 6,
+        shadowOpacity: 0.05,
+        shadowRadius: 8,
         elevation: 2, // Android shadow
     },
 });

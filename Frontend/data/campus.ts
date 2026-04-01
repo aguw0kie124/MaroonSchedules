@@ -45,8 +45,10 @@ export const TAMU_BBOX = {
   east: -96.320,
 };
 
+import ALL_BUILDINGS from './all_buildings.json';
+
 // ─── Buildings ──────────────────────────────────────────────
-export const BUILDINGS: CampusBuilding[] = [
+const HARDCODED_BUILDINGS: CampusBuilding[] = [
   // Academic
   { id: 'zach', name: 'Zachry Engineering Education Complex', shortName: 'ZACH', latitude: 30.621252, longitude: -96.340241, type: 'academic' },
   { id: 'bloc', name: 'Blocker Building', shortName: 'BLOC', latitude: 30.619539, longitude: -96.342120, type: 'academic' },
@@ -70,7 +72,7 @@ export const BUILDINGS: CampusBuilding[] = [
   { id: 'chem', name: 'Chemistry Building', shortName: 'CHEM', latitude: 30.617993, longitude: -96.339923, type: 'academic' },
   { id: 'butler', name: 'Butler Hall', shortName: 'BLHR', latitude: 30.614837, longitude: -96.338930, type: 'academic' },
   { id: 'scc', name: 'Student Computing Center', shortName: 'SCC', latitude: 30.615940, longitude: -96.338020, type: 'academic' },
-  { id: 'ilcb', name: 'Interdisciplinary Life Sciences Building', shortName: 'ILSB', latitude: 30.614294, longitude: -96.343648, type: 'academic' },
+  { id: 'ilsb', name: 'Interdisciplinary Life Sciences Building', shortName: 'ILSB', latitude: 30.614294, longitude: -96.343648, type: 'academic' },
   { id: 'lassb', name: 'Liberal Arts and Social Sciences Building', shortName: 'LASB', latitude: 30.617678, longitude: -96.337963, type: 'academic' },
   { id: 'john-koldus', name: 'John J. Koldus Building', shortName: 'KOLDUS', latitude: 30.612192, longitude: -96.339285, type: 'academic' },
 
@@ -109,6 +111,21 @@ export const BUILDINGS: CampusBuilding[] = [
   { id: 'aston', name: 'Aston Hall', shortName: 'ASTON', latitude: 30.614675, longitude: -96.336307, type: 'housing' },
   { id: 'krueger', name: 'Krueger Hall', shortName: 'KRUEGER', latitude: 30.615948, longitude: -96.335541, type: 'housing' },
   { id: 'davis-gary', name: 'Davis-Gary Hall', shortName: 'DAVIS-GARY', latitude: 30.615533, longitude: -96.346435, type: 'housing' },
+];
+
+const hardcodedShortNames = new Set(HARDCODED_BUILDINGS.map(b => b.shortName.toLowerCase()));
+const hardcodedIds = new Set(HARDCODED_BUILDINGS.map(b => b.id.toLowerCase()));
+
+export const BUILDINGS: CampusBuilding[] = [
+  ...HARDCODED_BUILDINGS,
+  ...ALL_BUILDINGS.filter(b => !hardcodedShortNames.has(b.shortName.toLowerCase()) && !hardcodedIds.has(b.id.toLowerCase())).map(b => ({
+    id: b.id,
+    name: b.name,
+    shortName: b.shortName,
+    latitude: b.latitude,
+    longitude: b.longitude,
+    type: b.type as any
+  }))
 ];
 
 // ─── Amenities ──────────────────────────────────────────────

@@ -35,8 +35,8 @@ export function CampusDirectionsPanel({
   onToggleVoice,
   onEnd,
 }: CampusDirectionsPanelProps) {
-    const { COLORS } = useTheme();
-    const styles = getStyles(COLORS);
+    const { COLORS, theme } = useTheme();
+    const styles = getStyles(COLORS, theme === 'dark');
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -126,17 +126,17 @@ export function CampusDirectionsPanel({
   );
 }
 
-const getStyles = (COLORS: any) => StyleSheet.create({
+const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'rgba(8,8,8,0.96)',
+    backgroundColor: isDark ? 'rgba(8,8,8,0.96)' : 'rgba(255,255,255,0.98)',
     borderRadius: 30,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.28,
+    shadowOpacity: isDark ? 0.28 : 0.10,
     shadowRadius: 24,
     elevation: 14,
   },
@@ -147,7 +147,7 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     alignSelf: 'center',
     marginTop: 10,
     marginBottom: 2,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.18)' : 'rgba(12,12,14,0.14)',
   },
   header: {
     paddingHorizontal: 20,
@@ -176,7 +176,7 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.08)',
+    borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
   },
   metaLeft: {
     flex: 1,
@@ -189,10 +189,10 @@ const getStyles = (COLORS: any) => StyleSheet.create({
   },
   modeBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(0,0,0,0.42)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.42)' : 'rgba(12,12,14,0.05)',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(12,12,14,0.08)',
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
@@ -210,10 +210,10 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(0,0,0,0.42)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.42)' : 'rgba(12,12,14,0.05)',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(12,12,14,0.08)',
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -221,7 +221,7 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     opacity: 0.8,
   },
   voiceBtnText: {
-    color: '#F3F1ED',
+    color: COLORS.textPrimary,
     fontWeight: '700',
     fontSize: 12,
   },

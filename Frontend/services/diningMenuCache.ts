@@ -2,8 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../config';
 import { getLocalDateString } from './dateUtils';
 
-const CACHE_PREFIX = 'dining-menu-cache-v3';
-const LEGACY_CACHE_PREFIXES = ['dining-menu-cache-v2'];
+const CACHE_PREFIX = 'dining-menu-cache-v2';
 const LAST_PRUNE_KEY = `${CACHE_PREFIX}:last-pruned`;
 
 const DINING_LOCATION_ALIASES: Record<string, string> = {
@@ -193,41 +192,6 @@ function getCacheKey(location: string, mealPeriod: string, dateKey: string) {
   return `${CACHE_PREFIX}:${location.toLowerCase()}:${mealPeriod.toLowerCase()}:${dateKey}`;
 }
 
-function getAllCachePrefixes() {
-  return [CACHE_PREFIX, ...LEGACY_CACHE_PREFIXES];
-}
-
-function getCacheKeyPrefixes() {
-  return getAllCachePrefixes().map((prefix) => `${prefix}:`);
-}
-
-function getMenuItemCount(data: any) {
-  if (!data?.success || !Array.isArray(data?.categories)) {
-    return 0;
-  }
-  return data.categories.reduce((total: number, category: any) => {
-    if (!Array.isArray(category?.items)) return total;
-    return total + category.items.length;
-  }, 0);
-}
-
-async function clearCacheEntries(keys: string[]) {
-  if (!keys.length) return;
-  await AsyncStorage.multiRemove(keys);
-}
-
-export async function clearDiningMenuCache() {
-  const keys = await AsyncStorage.getAllKeys();
-  const prefixes = getCacheKeyPrefixes();
-  const staleKeys = keys.filter(
-    (key) =>
-      prefixes.some((prefix) => key.startsWith(prefix)) ||
-      key === LAST_PRUNE_KEY ||
-      LEGACY_CACHE_PREFIXES.some((prefix) => key.startsWith(`${prefix}:last-pruned`)),
-  );
-  await clearCacheEntries(staleKeys);
-}
-
 async function pruneStaleMenus(dateKey: string) {
   const lastPruned = await AsyncStorage.getItem(LAST_PRUNE_KEY);
   if (lastPruned === dateKey) {
@@ -235,15 +199,16 @@ async function pruneStaleMenus(dateKey: string) {
   }
 
   const keys = await AsyncStorage.getAllKeys();
-  const prefixes = getCacheKeyPrefixes();
   const staleKeys = keys.filter(
     (key) =>
-      prefixes.some((prefix) => key.startsWith(prefix)) &&
+      key.startsWith(`${CACHE_PREFIX}:`) &&
       key !== LAST_PRUNE_KEY &&
       !key.endsWith(`:${dateKey}`),
   );
 
-  await clearCacheEntries(staleKeys);
+  if (staleKeys.length > 0) {
+    await AsyncStorage.multiRemove(staleKeys);
+  }
 
   await AsyncStorage.setItem(LAST_PRUNE_KEY, dateKey);
 }
@@ -262,36 +227,19 @@ export async function fetchDiningFullMenuCached({
     return null;
   }
 
-  const diningHallMenu = isDiningHallMenuLocation(resolvedLocation);
-  if (diningHallMenu) {
-    forceRefresh = true;
-  }
-
   const dateKey = getLocalDateString();
   const cacheKey = getCacheKey(resolvedLocation, mealPeriod, dateKey);
   await pruneStaleMenus(dateKey);
 
-  if (!forceRefresh && !diningHallMenu) {
+  if (!forceRefresh) {
     const cached = await AsyncStorage.getItem(cacheKey);
     if (cached) {
       const parsed: CachedMenuPayload = JSON.parse(cached);
-      const cachedItemCount = getMenuItemCount(parsed?.data);
-      const staleDiningHallPayload =
-        isDiningHallMenuLocation(resolvedLocation) && cachedItemCount > 0 && cachedItemCount <= 2;
-      if (
-        !parsed?.data?.success ||
-        !Array.isArray(parsed?.data?.categories) ||
-        parsed.data.categories.length === 0 ||
-        staleDiningHallPayload
-      ) {
-        await AsyncStorage.removeItem(cacheKey);
-      } else {
-        return {
-          ...parsed.data,
-          fromCache: true,
-          resolvedLocation,
-        };
-      }
+      return {
+        ...parsed.data,
+        fromCache: true,
+        resolvedLocation,
+      };
     }
   }
 
@@ -301,22 +249,17 @@ export async function fetchDiningFullMenuCached({
     date: dateKey,
   });
   const response = await fetch(`${API_URL}/dining/full-menu?${params.toString()}`);
-  if (!response.ok) {
-    throw new Error(`Dining menu request failed (${response.status})`);
-  }
   const data = await response.json();
 
-  if (!diningHallMenu && data?.success && Array.isArray(data?.categories) && data.categories.length > 0) {
-    const payload: CachedMenuPayload = {
-      dateKey,
-      fetchedAt: new Date().toISOString(),
-      location,
-      resolvedLocation,
-      mealPeriod,
-      data,
-    };
-    await AsyncStorage.setItem(cacheKey, JSON.stringify(payload));
-  }
+  const payload: CachedMenuPayload = {
+    dateKey,
+    fetchedAt: new Date().toISOString(),
+    location,
+    resolvedLocation,
+    mealPeriod,
+    data,
+  };
+  await AsyncStorage.setItem(cacheKey, JSON.stringify(payload));
 
   return {
     ...data,

@@ -1,11 +1,16 @@
-"""Food Detector 2.0 — Precision-tuned free-food detection for TAMU events.
+"""Food Detector v3 — Two-stage precision-tuned free-food detection.
 
-Key improvements over v1:
-- Academic pattern recognition (colloquia, candidate talks → 90%+ have food)
-- Coffee/tea precision: only scores when combined with food context
-- Student org meeting boost (70% of org meetings have food)
-- Food-type classifier (lunch|dinner|snacks|beverage|unknown)
-- Expanded anti-patterns to cut false positives by 30%
+Stage A: Candidate generation (high recall)
+    - Broad keyword matching with word boundaries
+    - Tiered keyword scoring
+    - Source/org prior boosts
+    - Food-type inference
+
+Stage B: Precision filtering (reduce false positives)
+    - Require ≥2 independent cues for medium-confidence terms
+    - Word-boundary safe matching (tea ≠ team/teaching/Texas)
+    - Negative-context suppression
+    - Virtual/online → automatic 0 (unless explicit food)
 """
 
 from __future__ import annotations
@@ -62,6 +67,7 @@ FOOD_KEYWORDS: Dict[str, List[str]] = {
         "free ice cream",
         "free cookies",
         "free boba",
+        "free drinks",
     ],
     # Tier 1: High-confidence food words → 0.9
     "high": [
@@ -110,8 +116,9 @@ FOOD_KEYWORDS: Dict[str, List[str]] = {
         "hotdogs",
         "munchies",
         "appetizers",
+        "refreshments",
     ],
-    # Tier 2: Academic event patterns (almost always have food) → 0.85
+    # Tier 2: Academic event patterns (almost always have food) → 0.80
     "academic": [
         "colloquium",
         "colloquia",
@@ -127,15 +134,13 @@ FOOD_KEYWORDS: Dict[str, List[str]] = {
         "visiting scholar",
         "endowed lecture",
     ],
-    # Tier 3: Medium-confidence context words → 0.6
+    # Tier 3: Medium-confidence context words → 0.55
     "medium": [
-        "refreshments",
         "reception",
         "networking event",
         "info session",
         "information session",
         "speaker event",
-        "seminar",
         "general meeting",
         "body meeting",
         "interest meeting",
@@ -156,10 +161,8 @@ FOOD_KEYWORDS: Dict[str, List[str]] = {
         "luncheon",
         "brunch",
         "coffee chat",
-        "drinks",
-        "beverages",
     ],
-    # Tier 4: Low-confidence context words → 0.3
+    # Tier 4: Low-confidence context words → 0.3 (need ≥2 cues)
     "low": [
         "social",
         "welcome",
@@ -175,21 +178,23 @@ FOOD_KEYWORDS: Dict[str, List[str]] = {
         "meet & greet",
         "hangout",
         "hang out",
+        "gathering",
+        "fellowship",
+        "community",
     ],
 }
 
 # Coffee/tea variants — scored ONLY with food context
 COFFEE_TEA_KEYWORDS: List[str] = [
     "coffee",
-    "tea",
-    "koffee",
-    "kopi",
-    "joe",
     "espresso",
     "latte",
     "cappuccino",
     "chai",
 ]
+
+# "tea" gets special handling to avoid matching "team", "teaching", "Texas"
+TEA_KEYWORD = "tea"
 
 # Context words that make coffee/tea count as food signal
 COFFEE_TEA_CONTEXT: List[str] = [
@@ -200,7 +205,7 @@ COFFEE_TEA_CONTEXT: List[str] = [
     "and tea",
     "and coffee",
     "coffee and",
-    "tea and",
+    "tea and ",
     "cookies",
     "donuts",
     "pastries",
@@ -208,6 +213,7 @@ COFFEE_TEA_CONTEXT: List[str] = [
     "complimentary",
     "free",
     "grab",
+    "light bites",
 ]
 
 # Phrases that strongly suggest food (additive boost +0.15)
@@ -226,7 +232,6 @@ FOOD_PATTERNS: List[str] = [
     "free for all",
     "grab a bite",
     "come eat",
-    "feed",
     "provided",
     "served",
 ]
@@ -268,6 +273,25 @@ FOOD_ORGS: List[str] = [
     "camac",
 ]
 
+# Source-level food priors (source_name → baseline boost)
+SOURCE_FOOD_PRIORS: Dict[str, float] = {
+    "mcferrin_events": 0.15,
+    "mcferrin_programs": 0.10,
+    "mays_undergrad_events": 0.10,
+    "mays_career_center": 0.10,
+    "career_center": 0.15,
+    "career_center_events": 0.15,
+    "career_fairs": 0.15,
+    "msc": 0.10,
+    "student_activities": 0.10,
+    "student_interest": 0.10,
+    "student_orgs": 0.10,
+    "getinvolved_events": 0.08,
+    "getinvolved_student_life": 0.08,
+    "diversity": 0.08,
+    "international": 0.08,
+}
+
 # Negative patterns (reduce false positives)
 ANTI_FOOD_PATTERNS: List[str] = [
     "food science",
@@ -284,12 +308,27 @@ ANTI_FOOD_PATTERNS: List[str] = [
     "department of food",
     "food studies",
     "food court",
-    "tea ceremony",  # cultural event, not food signal
+    "tea ceremony",
     "long island iced tea",
     "boston tea party",
-    "virtual",  # virtual events don't have food
-    "online",  # online events don't have food
-    "webinar",  # webinars don't have food
+]
+
+# Virtual/online indicators (no food unless explicit)
+VIRTUAL_PATTERNS: List[str] = ["virtual", "online", "webinar", "zoom", "remote", "microsoft teams"]
+
+# Explicit food bypass for virtual check
+EXPLICIT_FOOD_BYPASS: List[str] = [
+    "pizza", "lunch", "dinner", "food", "breakfast",
+    "snack", "refreshment", "catered", "bbq", "taco",
+    "chick-fil-a", "cookie", "donut", "boba",
+]
+
+# Words that "tea" falsely matches inside
+TEA_FALSE_POSITIVES: List[str] = [
+    "team", "teams", "teaching", "teacher", "teachers",
+    "texas", "teaming", "teamwork", "teammate", "teammates",
+    "teal", "tear", "tears", "stealth", "steak", "steady",
+    "instead", "theater", "theatre", "steam",
 ]
 
 # ---------------------------------------------------------------------------
@@ -297,12 +336,8 @@ ANTI_FOOD_PATTERNS: List[str] = [
 # ---------------------------------------------------------------------------
 
 FOOD_TYPE_MAP: Dict[str, List[str]] = {
-    "lunch": [
-        "lunch", "luncheon", "noon meal", "midday",
-    ],
-    "dinner": [
-        "dinner", "supper", "evening meal", "banquet", "gala",
-    ],
+    "lunch": ["lunch", "luncheon", "noon meal", "midday"],
+    "dinner": ["dinner", "supper", "evening meal", "banquet", "gala"],
     "breakfast": [
         "breakfast", "brunch", "morning", "kolaches", "pancakes",
         "waffles", "donuts", "doughnuts",
@@ -316,30 +351,11 @@ FOOD_TYPE_MAP: Dict[str, List[str]] = {
     ],
     "beverage": [
         "coffee", "tea", "drinks", "beverages", "boba",
-        "latte", "espresso", "cappuccino", "chai", "koffee", "kopi",
+        "latte", "espresso", "cappuccino", "chai",
     ],
-}
-
-# TAMU venue abbreviation normalization (used for location matching)
-VENUE_ALIASES: Dict[str, str] = {
-    "msc": "Memorial Student Center",
-    "hrbb": "Halbouty",
-    "hrbb": "Harvey R. Bright Building",
-    "bloc": "Blocker",
-    "zach": "Zachry Engineering Education Complex",
-    "etb": "Engineering Technology Building",
-    "eabc": "Emerging Technologies Building",
-    "ilcb": "Interdisciplinary Life Sciences Building",
-    "hecc": "Haynes Engineering Building",
-    "petr": "Peterson Building",
-    "rich": "Richardson Building",
-    "held": "Held Hall",
-    "sbisa": "Sbisa Dining Hall",
-    "commons": "The Commons",
-    "rudder": "Rudder Tower",
-    "reed arena": "Reed Arena",
-    "kyle field": "Kyle Field",
-    "12th man": "12th Man Hall",
+    "reception": [
+        "reception", "networking reception", "welcome reception",
+    ],
 }
 
 
@@ -349,11 +365,29 @@ def _word_match(keyword: str, text: str) -> bool:
     return bool(re.search(pattern, text))
 
 
+def _safe_tea_match(text: str) -> bool:
+    """Check if 'tea' appears as a standalone word, not inside team/teaching/Texas/etc."""
+    # Find all positions of 'tea' with word boundaries
+    for m in re.finditer(r"\btea\b", text):
+        start, end = m.start(), m.end()
+        # Get surrounding context (10 chars each side)
+        context = text[max(0, start - 10):min(len(text), end + 10)]
+        # Check if any false positive word contains this 'tea'
+        is_false = False
+        for fp in TEA_FALSE_POSITIVES:
+            if fp in context:
+                is_false = True
+                break
+        if not is_false:
+            return True
+    return False
+
+
 def _classify_food_type(text: str) -> str:
     """Determine the most specific food type from text."""
     text_lower = text.lower()
-    # Check in priority order: specific meals > snacks > beverage
-    for food_type in ("lunch", "dinner", "breakfast", "snacks", "beverage"):
+    # Check in priority order: specific meals > reception > snacks > beverage
+    for food_type in ("lunch", "dinner", "breakfast", "reception", "snacks", "beverage"):
         for kw in FOOD_TYPE_MAP[food_type]:
             if _word_match(kw, text_lower):
                 return food_type
@@ -367,8 +401,12 @@ def detect_food(
     tags: List[str] | None = None,
     host_type: str | None = None,
     duration_minutes: int | None = None,
+    source_name: str | None = None,
 ) -> Tuple[bool, float, List[str], str]:
-    """Detect if an event likely has free food.
+    """Detect if an event likely has free food — two-stage system.
+
+    Stage A: Candidate generation (high recall, keyword matching)
+    Stage B: Precision filtering (suppress false positives)
 
     Returns:
         (has_food, confidence, reasons, food_type)
@@ -376,145 +414,167 @@ def detect_food(
     text = f"{title} {description or ''} {' '.join(tags or [])}".lower()
     host_lower = (host_name or "").lower()
     title_lower = title.lower()
+    source_lower = (source_name or "").lower()
     reasons: List[str] = []
     score = 0.0
+    cue_count = 0  # Track independent cues for Stage B
 
-    # ------------------------------------------------------------------
-    # Early exit: virtual/online events don't have food
-    # (unless they explicitly mention food in the title)
-    # ------------------------------------------------------------------
-    virtual_patterns = ["virtual", "online", "webinar", "zoom", "remote"]
-    explicit_food_patterns = [
-        "pizza", "lunch", "dinner", "food", "breakfast",
-        "snack", "refreshment", "catered", "bbq", "taco",
-        "chick-fil-a", "pizza", "cookie", "donut"
-    ]
-    is_virtual = any(vp in text for vp in virtual_patterns)
-    # Use simple substring match for explicit food bypass in virtual check
-    # to catch things like "luncheon" or "refreshments"
-    has_explicit_food = any(fp in text for fp in explicit_food_patterns)
+    # ==================================================================
+    # STAGE B PRE-CHECK: Virtual/online events → no food
+    # ==================================================================
+    is_virtual = any(vp in text for vp in VIRTUAL_PATTERNS)
+    has_explicit_food = any(fp in text for fp in EXPLICIT_FOOD_BYPASS)
     if is_virtual and not has_explicit_food:
         return False, 0.0, [], "unknown"
 
-    # ------------------------------------------------------------------
-    # Strip anti-patterns to avoid false positives
-    # ------------------------------------------------------------------
+    # ==================================================================
+    # STAGE B PRE-CHECK: Strip anti-patterns
+    # ==================================================================
+    cleaned_text = text
     for anti in ANTI_FOOD_PATTERNS:
-        if anti in text:
-            text = text.replace(anti, "")
+        if anti in cleaned_text:
+            cleaned_text = cleaned_text.replace(anti, "")
 
-    # ------------------------------------------------------------------
-    # Tier 0: Explicit food-provided phrases (0.95)
-    # ------------------------------------------------------------------
+    # ==================================================================
+    # STAGE A: Candidate Generation
+    # ==================================================================
+
+    # --- Tier 0: Explicit food-provided phrases (0.95) ---
     for keyword in FOOD_KEYWORDS["explicit"]:
-        if _word_match(keyword, text):
-            boost = 0.95
-            if boost > score:
-                score = boost
+        if _word_match(keyword, cleaned_text):
+            if 0.95 > score:
+                score = 0.95
+            cue_count += 1
             reasons.append(f"explicit:{keyword}")
 
-    # ------------------------------------------------------------------
-    # Tier 1: High-confidence food keywords (0.9)
-    # ------------------------------------------------------------------
+    # --- Tier 1: High-confidence food keywords (0.9) ---
     for keyword in FOOD_KEYWORDS["high"]:
-        if _word_match(keyword, text):
-            boost = 0.9
-            if boost > score:
-                score = boost
+        if _word_match(keyword, cleaned_text):
+            if 0.9 > score:
+                score = 0.9
+            cue_count += 1
             reasons.append(f"high_keyword:{keyword}")
 
-    # ------------------------------------------------------------------
-    # Tier 2: Academic patterns (0.85) — colloquia etc. almost always food
-    # ------------------------------------------------------------------
+    # --- Tier 2: Academic patterns (0.80) ---
+    academic_match = False
     for keyword in FOOD_KEYWORDS["academic"]:
-        if _word_match(keyword, text):
-            base = 0.85
+        if _word_match(keyword, cleaned_text):
+            academic_match = True
+            # Only boost to 0.80 base if no stronger signal
+            base = 0.80
             # Extra boost if combined with food signal
-            if any(_word_match(p, text) for p in ["provided", "served", "refreshments"]):
+            if any(_word_match(p, cleaned_text) for p in ["provided", "served", "refreshments"]):
                 base = 0.92
+                cue_count += 1
             if base > score:
                 score = base
+            cue_count += 1
             reasons.append(f"academic:{keyword}")
 
-    # ------------------------------------------------------------------
-    # Tier 3: Medium-confidence keywords (0.6)
-    # ------------------------------------------------------------------
+    # --- Tier 3: Medium-confidence keywords (0.55) ---
+    medium_matches: List[str] = []
     for keyword in FOOD_KEYWORDS["medium"]:
-        if _word_match(keyword, text):
-            base = 0.6
-            # Context boost: combined with food signals
-            if any(_word_match(p, text) for p in ["provided", "served", "free", "complimentary"]):
-                base = 0.75
-            if base > score:
-                score = base
+        if _word_match(keyword, cleaned_text):
+            medium_matches.append(keyword)
+            cue_count += 1
             reasons.append(f"medium_keyword:{keyword}")
 
-    # ------------------------------------------------------------------
-    # Tier 4: Low-confidence keywords (0.3)
-    # ------------------------------------------------------------------
+    # STAGE B: Medium keywords alone → only score if ≥2 independent cues
+    if medium_matches and score < 0.55:
+        has_food_pattern = any(p in cleaned_text for p in FOOD_PATTERNS)
+        has_food_org = any(_word_match(org, host_lower) or _word_match(org, cleaned_text)
+                          for org in FOOD_ORGS)
+        if len(medium_matches) >= 2 or has_food_pattern or has_food_org:
+            score = max(score, 0.60)
+        else:
+            # Single medium keyword alone → lower score
+            score = max(score, 0.45)
+
+    # --- Tier 4: Low-confidence keywords (0.3) ---
+    low_matches: List[str] = []
     for keyword in FOOD_KEYWORDS["low"]:
-        if _word_match(keyword, text):
-            base = 0.3
-            if any(p in text for p in FOOD_PATTERNS):
-                base = 0.5
-            if base > score and score < 0.6:
-                score = max(score, base)
+        if _word_match(keyword, cleaned_text):
+            low_matches.append(keyword)
             reasons.append(f"low_keyword:{keyword}")
 
-    # ------------------------------------------------------------------
-    # Coffee/Tea precision logic — only count with food context
-    # ------------------------------------------------------------------
+    # STAGE B: Low keywords need ≥2 independent cues (including patterns/orgs)
+    if low_matches and score < 0.3:
+        has_food_pattern = any(p in cleaned_text for p in FOOD_PATTERNS)
+        if has_food_pattern:
+            score = max(score, 0.40)
+            cue_count += 1
+        elif cue_count >= 2:
+            score = max(score, 0.35)
+        # else: single low keyword → no score
+
+    # --- Coffee/tea precision logic ---
+    coffee_matched = False
     for kw in COFFEE_TEA_KEYWORDS:
-        if _word_match(kw, text):
-            has_context = any(ctx in text for ctx in COFFEE_TEA_CONTEXT)
-            is_short_event = duration_minutes is not None and duration_minutes <= 90
+        if _word_match(kw, cleaned_text):
+            coffee_matched = True
+            has_context = any(ctx in cleaned_text for ctx in COFFEE_TEA_CONTEXT)
+            is_short = duration_minutes is not None and duration_minutes <= 90
 
             if has_context:
-                boost = 0.7
+                boost = 0.65
                 if boost > score:
                     score = boost
-                reasons.append(f"coffee_tea_with_context:{kw}")
-            elif is_short_event:
-                # Short event + coffee/tea = likely social with refreshments
-                boost = 0.5
+                cue_count += 1
+                reasons.append(f"coffee_with_context:{kw}")
+            elif is_short:
+                boost = 0.45
                 if boost > score:
                     score = boost
-                reasons.append(f"coffee_tea_short_event:{kw}")
-            # else: standalone coffee/tea in lecture title → NO score
-            break  # only count once
+                reasons.append(f"coffee_short_event:{kw}")
+            break
 
-    # ------------------------------------------------------------------
-    # Student org meeting boost (+0.4)
-    # ------------------------------------------------------------------
+    # "tea" special handling — avoid team/teaching/Texas
+    if not coffee_matched and _safe_tea_match(cleaned_text):
+        has_context = any(ctx in cleaned_text for ctx in COFFEE_TEA_CONTEXT)
+        if has_context:
+            boost = 0.65
+            if boost > score:
+                score = boost
+            cue_count += 1
+            reasons.append("tea_with_context")
+
+    # --- Student org meeting boost (+0.35) ---
     if host_type == "student_org":
         meeting_keywords = ["meeting", "social", "mixer", "gbm",
                             "general body", "interest meeting"]
         for mk in meeting_keywords:
-            if _word_match(mk, text):
-                score = min(1.0, score + 0.4)
+            if _word_match(mk, cleaned_text):
+                score = min(1.0, score + 0.35)
+                cue_count += 1
                 reasons.append(f"student_org_meeting:{mk}")
                 break
 
-    # ------------------------------------------------------------------
-    # Pattern matches (additive boost +0.15)
-    # ------------------------------------------------------------------
+    # --- Pattern matches (additive boost +0.12) ---
+    pattern_count = 0
     for pattern in FOOD_PATTERNS:
-        if pattern in text:
-            score = min(1.0, score + 0.15)
+        if pattern in cleaned_text:
+            score = min(1.0, score + 0.12)
+            pattern_count += 1
+            cue_count += 1
             reasons.append(f"pattern:{pattern}")
+            if pattern_count >= 3:
+                break  # cap pattern boosts
 
-    # ------------------------------------------------------------------
-    # Known food orgs (additive boost +0.1)
-    # ------------------------------------------------------------------
+    # --- Known food orgs (additive boost +0.10) ---
     for org in FOOD_ORGS:
-        if _word_match(org, host_lower) or _word_match(org, text):
-            score = min(1.0, score + 0.1)
+        if _word_match(org, host_lower) or _word_match(org, cleaned_text):
+            score = min(1.0, score + 0.10)
+            cue_count += 1
             reasons.append(f"food_org:{org}")
-            break  # count only once
+            break
 
-    # ------------------------------------------------------------------
-    # Title-specific boost (food in title is stronger signal +0.05)
-    # ------------------------------------------------------------------
+    # --- Source prior boost ---
+    if source_lower in SOURCE_FOOD_PRIORS:
+        prior = SOURCE_FOOD_PRIORS[source_lower]
+        score = min(1.0, score + prior)
+        reasons.append(f"source_prior:{source_lower}:{prior}")
+
+    # --- Title-specific boost (+0.05) ---
     for keyword in FOOD_KEYWORDS["high"]:
         if _word_match(keyword, title_lower):
             score = min(1.0, score + 0.05)
@@ -524,9 +584,30 @@ def detect_food(
             score = min(1.0, score + 0.05)
             break
 
+    # ==================================================================
+    # STAGE B: Final precision filtering
+    # ==================================================================
+
+    # Suppress "seminar" alone as food signal (unless another cue exists)
+    if (score > 0 and score < 0.6
+            and cue_count <= 1
+            and any(r.startswith("academic:seminar") for r in reasons)):
+        # Seminar alone without food cue → suppress
+        if not any(r.startswith(("explicit:", "high_keyword:", "pattern:")) for r in reasons):
+            score = 0.0
+            reasons.append("suppressed:seminar_alone")
+
+    # Suppress "social" alone (low keyword) without supporting context
+    if (score > 0 and score <= 0.35
+            and cue_count <= 1
+            and any("low_keyword:social" in r for r in reasons)):
+        if host_type != "student_org":
+            score = 0.0
+            reasons.append("suppressed:social_alone_no_org")
+
     # Clamp
     score = round(min(1.0, max(0.0, score)), 2)
-    has_food = score >= 0.3
+    has_food = score >= 0.30
 
     # Deduplicate reasons
     reasons = list(dict.fromkeys(reasons))
@@ -536,9 +617,10 @@ def detect_food(
 
     if has_food:
         logger.debug(
-            "Food detected (%.2f, %s): %s — %s",
+            "Food detected (%.2f, %s, %d cues): %s — %s",
             score,
             food_type,
+            cue_count,
             title[:60],
             ", ".join(reasons[:5]),
         )

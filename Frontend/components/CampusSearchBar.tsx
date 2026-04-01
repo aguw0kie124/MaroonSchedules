@@ -191,12 +191,17 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: isDark ? '#050505' : '#FFFFFF',
+    backgroundColor: isDark ? 'rgba(8,8,10,0.92)' : 'rgba(255,255,255,0.96)',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(12,12,14,0.08)',
+    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(12,12,14,0.10)',
     paddingHorizontal: 18,
     height: 56,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: isDark ? 0.18 : 0.08,
+    shadowRadius: 12,
+    elevation: 8,
   },
   searchIcon: {
     marginRight: 10,
@@ -249,7 +254,7 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     paddingVertical: 12,
   },
   resultRowPressed: {
-    backgroundColor: isDark ? '#1E1E1E' : '#F4F5F7',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(12,12,14,0.05)',
   },
   resultIconWrap: {
     width: 30,

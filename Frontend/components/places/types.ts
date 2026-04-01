@@ -50,12 +50,18 @@ export interface ScheduleMeetingEntry {
   timeLabel: string;
   locationLabel: string;
   scheduleLabel: string;
+  sequenceIndex?: number;
+  date_ts?: number;
+  type?: "class" | "event";
+  category?: string;
+  lat?: number;
+  lng?: number;
 }
 
 export interface ScheduleMapOption {
   id: string;
   label: string;
-  source: "uploaded" | "saved";
+  source: "uploaded" | "saved" | "personal";
   entries: ScheduleMeetingEntry[];
 }
 
@@ -74,7 +80,9 @@ export interface CampusLocation {
   menu_snippet?: string[] | null;
   shortName?: string;
   description?: string;
+  features?: string[];
   source?: "traffic" | "directory" | "schedule";
   classMeetings?: ScheduleMeetingEntry[];
   scheduleLabel?: string;
+  sequenceIndex?: number;
 }

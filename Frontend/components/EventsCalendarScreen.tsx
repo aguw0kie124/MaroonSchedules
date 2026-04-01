@@ -9,6 +9,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -20,7 +21,6 @@ import { useTheme } from './SharedUI';
 import { useEventStore } from '../store/eventStore';
 import type { ScheduledEvent, MajorOption } from '../store/eventStore';
 import { API_URL } from '../config';
-import { useShareStore } from '../store/shareStore';
 import {
   CalendarDays,
   ChevronDown,
@@ -71,6 +71,7 @@ import {
   FootballIcon, 
   BasketballIcon 
 } from './common/CustomIcons';
+import { useShareStore } from '../store/shareStore';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;

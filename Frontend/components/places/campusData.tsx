@@ -18,6 +18,10 @@ import type { CampusLocation, LocationType } from "./types";
 // ── Canonical naming ──────────────────────────────────────────
 export const CANONICAL_LOCATION_ALIASES: Record<string, string> = {
   "Student Rec Center": "Student Recreation Center",
+  "Main Rec Center": "Student Recreation Center",
+  "Rec Center": "Student Recreation Center",
+  "The Rec": "Student Recreation Center",
+  "Rec": "Student Recreation Center",
   "Southside Rec Center": "Southside Recreation Center",
   "Polo Road Rec Center": "Polo Road Recreation Center",
   "Evans Library": "Sterling C. Evans Library",
@@ -210,16 +214,22 @@ export const STATIC_LOCATION_META: Record<string, Partial<CampusLocation>> = {
     description: "Business and west campus study hub.",
   },
   "Student Recreation Center": {
-    hours: "6:00 AM – 11:59 PM",
-    description: "Main rec center with fitness, courts, and aquatic areas.",
+    hours: "6:00 AM – 11:45 PM",
+    description: "The Student Recreation Center, known as 'The Rec,' is the flagship facility of Rec Sports at Texas A&M University and one of the top recreational sports centers in the nation. It features 540,000 square feet of recreation space, including a 32,000-square-foot strength and conditioning room, an indoor walking and jogging track, five pools, and a 44-foot-tall indoor climbing wall.",
+    features: ["Court Space", "Heavy Bag Room", "Indoor Climbing Facilities", "Indoor Walking & Running Track"],
+    type: "Rec"
   },
   "Southside Recreation Center": {
     hours: "5:30 AM – 11:59 PM",
-    description: "Southside fitness and recreation facility.",
+    description: "Opened in 2022, the Southside Recreation Center is located across from the Commons and features 63,500 square feet of indoor and outdoor recreation space, including two sand volleyball courts.",
+    features: ["Strength & Conditioning", "Cardio Equipment", "Locker Rooms", "Sand Volleyball Courts"],
+    type: "Rec"
   },
   "Polo Road Recreation Center": {
-    hours: "6:00 AM – 9:00 PM weekdays",
-    description: "North campus rec and fitness destination.",
+    hours: "6:00 AM – 10:00 PM",
+    description: "Located on North Campus, the Polo Road Recreation Center offers 28,000 square feet of fitness space, specializing in cardio and strength training for the north campus community.",
+    features: ["Strength & Conditioning", "Cardio Equipment", "Indoor Walking Track", "Adjacent to Polo Rd Garage"],
+    type: "Rec"
   },
   "Sbisa Dining Hall": {
     hours: "Breakfast, lunch, and dinner service",
@@ -296,6 +306,31 @@ export function resolveScheduleBuilding(
   return null;
 }
 
+// ── Building categorization ──────────────────────────────────
+export function getBuildingCategory(buildingName?: string | null): string {
+  const norm = normalizeBuildingKey(buildingName);
+  
+  // Engineering & Tech
+  if (["AERO", "RDMC", "ETB", "CHEN", "CVLB", "ZACH", "WERC", "PETR", "HRBB"].includes(norm)) return "engineering";
+  
+  // Science & Math
+  if (["HELD", "BSBE", "CHEM", "PHYS", "CYCL", "MITC", "BLOC"].includes(norm)) return "science";
+  
+  // Business & Admin
+  if (["WCBA", "GSC", "JBW", "ADMN"].includes(norm)) return "business";
+  
+  // Social & Humanities
+  if (["LAAH", "PSYC", "BUSH", "ALLN", "MSY"].includes(norm)) return "social";
+
+  // Check lookup type
+  const building = BUILDING_LOOKUP.get(norm);
+  if (building?.type === "recreation") return "rec";
+  if (building?.type === "library") return "library";
+  if (building?.type === "dining") return "dining";
+  
+  return "academic";
+}
+
 // ── Build the full campus directory ───────────────────────────
 export function buildCampusDirectory(): CampusLocation[] {
   const buildingLocations = BUILDINGS.map((building) => ({
@@ -330,7 +365,7 @@ export function buildCampusDirectory(): CampusLocation[] {
 
 // ── Category definitions ──────────────────────────────────────
 export const CATEGORIES = [
-  { id: "Schedule", label: "Classes", icon: <Calendar size={18} /> },
+  { id: "Today", label: "Today", icon: <Calendar size={18} /> },
   { id: "Bus", label: "Buses", icon: <Bus size={18} /> },
   { id: "Dining", label: "Dining", icon: <Utensils size={18} /> },
   { id: "Parking", label: "Parking", icon: <TrafficCone size={18} /> },

@@ -61,7 +61,7 @@ import {
   processVoiceCommand,
   VoiceIntent,
 } from '../services/campusVoice';
-import { buildTransitPlan, CampusTransitPlan, TransitTripPreference } from '../services/campusTransitRouting';
+import { buildTransitPlan, CampusTransitPlan } from '../services/campusTransitRouting';
 
 type NavMode = 'idle' | 'selected' | 'navigating';
 type TravelMode = 'walk' | 'bus';
@@ -79,8 +79,6 @@ export function CampusNavigationScreen() {
     const styles = getStyles(COLORS, theme === 'dark');
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const preferredRouteKey = route.params?.preferredRouteKey as string | undefined;
-  const tripPreference = route.params?.tripPreference as TransitTripPreference | undefined;
   // ─── State ──────────────────────────────────────────────────
   const [navMode, setNavMode] = useState<NavMode>('idle');
   const [destination, setDestination] = useState<{
@@ -93,7 +91,7 @@ export function CampusNavigationScreen() {
   const [activeRoute, setActiveRoute] = useState<WalkingRoute | null>(null);
   const [transitPlan, setTransitPlan] = useState<CampusTransitPlan | null>(null);
   const [steps, setSteps] = useState<DirectionStep[]>([]);
-  const [travelMode, setTravelMode] = useState<TravelMode>(route.params?.initialTravelMode || 'walk');
+  const [travelMode, setTravelMode] = useState<TravelMode>('walk');
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeNotice, setRouteNotice] = useState<string | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -352,10 +350,7 @@ export function CampusNavigationScreen() {
 
     (async () => {
       try {
-        const plan = await buildTransitPlan(routeStartCoord, destCoord, routeStartName, destination.name, {
-          preferredRouteKey,
-          preference: tripPreference,
-        });
+        const plan = await buildTransitPlan(routeStartCoord, destCoord, routeStartName, destination.name);
         if (cancelled || generationId !== routeGenerationRef.current) return;
 
         if (plan) {
@@ -390,16 +385,7 @@ export function CampusNavigationScreen() {
     return () => {
       cancelled = true;
     };
-  }, [
-    destination,
-    destinationCoord,
-    preferredRouteKey,
-    routeStartCoord.latitude,
-    routeStartCoord.longitude,
-    routeStartName,
-    travelMode,
-    tripPreference,
-  ]);
+  }, [destination, destinationCoord, routeStartCoord.latitude, routeStartCoord.longitude, routeStartName, travelMode]);
 
   useEffect(() => {
     if (seededDestinationRef.current) return;
@@ -422,27 +408,6 @@ export function CampusNavigationScreen() {
       },
     });
   }, [route.params?.initialDestination]);
-
-  useEffect(() => {
-    const initialOrigin = route.params?.initialOrigin;
-    if (!initialOrigin?.name || !initialOrigin?.coordinate) {
-      return;
-    }
-
-    setManualOrigin({
-      name: initialOrigin.name,
-      coordinate: {
-        latitude: initialOrigin.coordinate.latitude,
-        longitude: initialOrigin.coordinate.longitude,
-      },
-    });
-  }, [route.params?.initialOrigin]);
-
-  useEffect(() => {
-    if (route.params?.initialTravelMode === 'walk' || route.params?.initialTravelMode === 'bus') {
-      setTravelMode(route.params.initialTravelMode);
-    }
-  }, [route.params?.initialTravelMode]);
 
   // ─── Handlers ───────────────────────────────────────────────
   const handleSearchSelect = (result: CampusSearchResult) => {
@@ -816,7 +781,7 @@ export function CampusNavigationScreen() {
                   if (navigation.canGoBack()) {
                     navigation.goBack();
                   } else {
-                    navigation.navigate('Places');
+                    navigation.navigate('Main', { screen: 'Places' });
                   }
                 }}
               >
@@ -997,9 +962,9 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 999,
-    backgroundColor: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(255,255,255,0.96)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(255,255,255,0.94)',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(12,12,14,0.08)',
+    borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(12,12,14,0.10)',
   },
   backButtonIcon: {
     color: COLORS.textPrimary,
@@ -1040,10 +1005,10 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   modeSwitch: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(255,255,255,0.96)',
+    backgroundColor: isDark ? 'rgba(0,0,0,0.72)' : 'rgba(255,255,255,0.94)',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(12,12,14,0.08)',
+    borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(12,12,14,0.10)',
     padding: 4,
     gap: 4,
   },
@@ -1083,7 +1048,7 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   voiceBannerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: isDark ? 'rgba(8,8,8,0.92)' : 'rgba(255,255,255,0.98)',
+    backgroundColor: isDark ? 'rgba(8,8,8,0.92)' : 'rgba(255,255,255,0.96)',
     marginHorizontal: 14,
     marginTop: 10,
     paddingHorizontal: 14,

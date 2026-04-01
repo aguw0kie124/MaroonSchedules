@@ -90,7 +90,6 @@ export function PageModuleEditor<T extends string>({
                 <View key={item.id} style={styles.row}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.rowTitle}>{item.label}</Text>
-                    <Text style={styles.rowMeta}>{item.visible ? 'Visible on this page' : 'Hidden from this page'}</Text>
                   </View>
                   <Switch
                     value={item.visible}
@@ -208,10 +207,6 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       fontWeight: '800',
       color: COLORS.textPrimary,
       marginBottom: 4,
-    },
-    rowMeta: {
-      fontSize: 12,
-      color: COLORS.textSecondary,
     },
     moveGroup: {
       gap: 8,

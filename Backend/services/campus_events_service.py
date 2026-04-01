@@ -76,7 +76,7 @@ def _is_college_station_event(event: Dict[str, Any]) -> bool:
     lat = event.get("location_lat")
     lng = event.get("location_lng")
     if lat is not None and lng is not None:
-        return abs(float(lat) - TAMU_CENTER_LAT) <= 0.25 and abs(float(lng) - TAMU_CENTER_LNG) <= 0.35
+      return abs(float(lat) - TAMU_CENTER_LAT) <= 0.25 and abs(float(lng) - TAMU_CENTER_LNG) <= 0.35
 
     combined = " ".join(
         str(part or "").lower()
@@ -148,26 +148,20 @@ def _normalize_event_row(raw: Dict[str, Any]) -> Dict[str, Any] | None:
             "sports": int(raw.get("sports", 0)),
             "academic": int(raw.get("academic", 0)),
             "food": int(raw.get("food", 0)),
-            "advocacy": int(raw.get("advocacy", 1) if raw.get("advocacy") else 0),
+            "advocacy": int(raw.get("advocacy", 1) if raw.get("advocacy") else 0), # Fallback for advocacy boolean
             "entertainment": int(raw.get("entertainment", 0)),
             "health_wellness": int(raw.get("health_wellness", 0)),
-            "miscellaneous": int(
-                raw.get("miscellaneous", 0)
-                or raw.get("religion", 0)
-                or (
-                    not any(
-                        [
-                            int(raw.get("social", 0)),
-                            int(raw.get("sports", 0)),
-                            int(raw.get("academic", 0)),
-                            int(raw.get("food", 0)),
-                            int(raw.get("advocacy", 0)),
-                            int(raw.get("entertainment", 0)),
-                            int(raw.get("health_wellness", 0)),
-                        ]
-                    )
-                )
-            ),
+            "miscellaneous": int(raw.get("miscellaneous", 0) or raw.get("religion", 0) or (
+                not any([
+                    int(raw.get("social", 0)),
+                    int(raw.get("sports", 0)),
+                    int(raw.get("academic", 0)),
+                    int(raw.get("food", 0)),
+                    int(raw.get("advocacy", 0)),
+                    int(raw.get("entertainment", 0)),
+                    int(raw.get("health_wellness", 0)),
+                ])
+            )),
             "casual": int(raw.get("casual", 0)),
             "professional": int(raw.get("professional", 0)),
         },

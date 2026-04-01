@@ -12,6 +12,7 @@ import {
   Clock,
   MapPin,
   Bus,
+  Route,
 } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { getStopLabel } from "./utils";
@@ -35,6 +36,7 @@ interface BusLayerUIProps {
   setSelectedBus: (v: any) => void;
   nearestBusInfo: string | null;
   handleStopPress: (stop: any) => void;
+  openTransitTripPlanner?: () => void;
 }
 
 export function BusRouteSelector({
@@ -49,6 +51,7 @@ export function BusRouteSelector({
   filteredBusRoutes,
   handleSelectBusRoute,
   openBusTimetable,
+  openTransitTripPlanner,
 }: BusLayerUIProps) {
   if (busRoutes.length === 0) return null;
 
@@ -112,6 +115,14 @@ export function BusRouteSelector({
           activeOpacity={0.85}
         >
           <Clock size={16} color={COLORS.textPrimary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.busTimetableButton, { backgroundColor: COLORS.primary }]}
+          onPress={openTransitTripPlanner}
+          activeOpacity={0.85}
+        >
+          <Route size={16} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 

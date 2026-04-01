@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+            <!-- Global site tag (gtag.js) - Google Analytics -->
+        <script async src="https://www.googletagmanager.com/gtag/js?id=UA-4534993-36"></script>
+        <script>
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+
+            gtag('config', 'UA-4534993-36');
+        </script>
+    
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <!-- CSRF Token -->
+    <meta name="csrf-token" content="6sxFbROmqnFPoETQ5s7k7SzokBeohuGwAcD3RVkN">
+
+    <title>
+                    Events | Student Engineers&#039; Council | Get Involved
+            </title>
+
+    <!-- Favicon -->
+    <link rel="icon" href="https://getinvolved.tamu.edu/images/favicon.ico">
+
+    <!-- Fonts -->
+    <link href="//fonts.googleapis.com/css?family=Open+Sans:400,400i,600,600i,700,700i|Oswald:300,400" rel="stylesheet">
+
+    <!-- Tailwind CSS -->
+    <link rel="stylesheet" href="https://getinvolved.tamu.edu/css/admin.css?ver=17005">
+
+    
+    <style type="text/css">
+        p, li {font-size: 0.875rem; }
+    </style>
+
+    
+
+    
+
+    <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
+    <!-- WARNING: Respond.js doesn't work if you view the page via file:// -->
+    <!--[if lt IE 9]>
+    <script src="https://oss.maxcdn.com/html5shiv/3.7.3/html5shiv.min.js"></script>
+    <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
+    <![endif]-->
+
+    <!-- Livewire Styles --><style >[wire\:loading][wire\:loading], [wire\:loading\.delay][wire\:loading\.delay], [wire\:loading\.inline-block][wire\:loading\.inline-block], [wire\:loading\.inline][wire\:loading\.inline], [wire\:loading\.block][wire\:loading\.block], [wire\:loading\.flex][wire\:loading\.flex], [wire\:loading\.table][wire\:loading\.table], [wire\:loading\.grid][wire\:loading\.grid], [wire\:loading\.inline-flex][wire\:loading\.inline-flex] {display: none;}[wire\:loading\.delay\.none][wire\:loading\.delay\.none], [wire\:loading\.delay\.shortest][wire\:loading\.delay\.shortest], [wire\:loading\.delay\.shorter][wire\:loading\.delay\.shorter], [wire\:loading\.delay\.short][wire\:loading\.delay\.short], [wire\:loading\.delay\.default][wire\:loading\.delay\.default], [wire\:loading\.delay\.long][wire\:loading\.delay\.long], [wire\:loading\.delay\.longer][wire\:loading\.delay\.longer], [wire\:loading\.delay\.longest][wire\:loading\.delay\.longest] {display: none;}[wire\:offline][wire\:offline] {display: none;}[wire\:dirty]:not(textarea):not(input):not(select) {display: none;}:root {--livewire-progress-bar-color: #2299dd;}[x-cloak] {display: none !important;}[wire\:cloak] {display: none !important;}dialog#livewire-error::backdrop {background-color: rgba(0, 0, 0, .6);}</style>
+
+    <script>var app_env = 'production';</script>
+
+    
+</head>
+<body id="content" class="flex flex-col min-h-screen">
+    
+    <div>
+        <ul class="sr-only">
+            <li><a href="#content" class="screen-reader-shortcut"> Skip to content</a></li>
+            <li><a href="#site-footer-3" class="screen-reader-shortcut"> Skip to footer</a></li>
+        </ul>
+    </div>
+
+
+
+    <div class="border-b py-1.5 text-sm2">
+    <div class="mx-auto flex max-w-7xl justify-end divide-x divide-gray-400">
+                    <span class="px-2">
+              <a href="https://getinvolved.tamu.edu/login" style="margin: 0;" role="button">
+                  <i class="far fa-user"></i> &nbsp;&nbsp;Login
+              </a>
+          </span>
+                <span class="px-2">
+    <a href="https://help.dsasites.tamu.edu/getinvolved/overview/" target="_blank" title="Open Help Link">
+        <i class="fa-regular fa-circle-question text-base2 align-middle" aria-hidden="true"></i>
+        <span class="sr-only">Open / help link in a new tab/window.</span>
+    </a>
+</span>
+    </div>
+</div>
+
+    
+            <header x-data="{ sidebarOpen: false }" @keydown.window.escape="sidebarOpen = false" class="border-b">
+    <nav class="mx-auto flex flex-wrap max-w-7xl items-center justify-between p-6 gap-x-2" aria-label="Global">
+        <a href="https://getinvolved.tamu.edu" class="flex flex-shrink items-center text-neutral-950">
+            <img src="https://getinvolved.tamu.edu/images/tamu-logo-block-mobile.png" class="w-13 h-auto hover:no-underline"
+                 alt="Texas A&amp;M University">
+            <span class="text-[1.75rem] px-4">Get Involved</span>
+        </a>
+
+                    <div class="flex lg:hidden">
+                <button type="button" @click="sidebarOpen = true" class="-m-2.5 inline-flex items-center justify-center rounded-md p-2.5 text-gray-700">
+                    <span class="sr-only">Open main menu</span>
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+                         aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                              d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/>
+                    </svg>
+                </button>
+            </div>
+        
+                    <div class="hidden lg:flex lg:gap-x-12">
+                                    <a href="https://getinvolved.tamu.edu/org/sec" class="text-sm font-semibold leading-6 text-gray-900">Organization</a>
+                                    <a href="https://getinvolved.tamu.edu/org/sec/positions" class="text-sm font-semibold leading-6 text-gray-900">Positions</a>
+                                    <a href="https://getinvolved.tamu.edu/org/sec/events" class="text-sm font-semibold leading-6 text-gray-900">Events</a>
+                                    <a href="https://getinvolved.tamu.edu/org/sec/forms" class="text-sm font-semibold leading-6 text-gray-900">Forms</a>
+                            </div>
+                <form action="https://getinvolved.tamu.edu/search" method="GET" class="w-full max-w-xs flex-shrink">
+            <div class="flex gap-x-2 items-center">
+                <div class="flex-grow">
+                    <div class="mt-1">
+                        <input type="text"
+                               id="q"
+                               name="q"
+                               placeholder="Search Get Involved"
+                               value=""
+                               class="block w-full rounded-md bg-gray-50 border-2 border-gray-400 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm placeholder-gray-600"
+                               maxlength="255" />
+                    </div>
+                </div>
+                <div class="flex-shrink mt-1">
+                    <button type="submit"
+    class="button2 button-md2 action "
+                                
+    
+    
+    
+    
+    
+    
+    >
+    
+    
+
+            <span>Search</span>
+        
+    
+    </button>
+                </div>
+            </div>
+        </form>
+    </nav>
+    <!-- Mobile menu, show/hide based on menu open state. -->
+    <div x-show="sidebarOpen" role="dialog" aria-modal="true" x-cloak>
+        <div class="fixed inset-0 z-10"></div>
+        <div class="fixed inset-y-0 right-0 z-10 w-full overflow-y-auto bg-white px-6 py-6 sm:max-w-sm sm:ring-1 sm:ring-gray-900/10">
+            <div class="flex items-center justify-between">
+                <a href="https://getinvolved.tamu.edu" class="flex items-center text-neutral-950">
+                    <img src="https://getinvolved.tamu.edu/images/tamu-logo-block-mobile.png" class="w-13 h-auto hover:no-underline"
+                         alt="Texas A&amp;M University">
+                    <span class="text-[1.75rem] px-4">Get Involved</span>
+                </a>
+                <button type="button" @click="sidebarOpen = false" class="-m-2.5 rounded-md p-2.5 text-gray-700">
+                    <span class="sr-only">Close menu</span>
+                    <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+                         aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+                            <div class="mt-6 flow-root">
+                    <div class="-my-6 divide-y divide-gray-500/10">
+                        <div class="space-y-2 py-6">
+                                                             <a href="https://getinvolved.tamu.edu/org/sec"
+                                   class="-mx-3 block rounded-lg px-3 py-2 text-base font-semibold leading-7 text-gray-900 hover:bg-gray-50">Organization</a>
+                                                            <a href="https://getinvolved.tamu.edu/org/sec/positions"
+                                   class="-mx-3 block rounded-lg px-3 py-2 text-base font-semibold leading-7 text-gray-900 hover:bg-gray-50">Positions</a>
+                                                            <a href="https://getinvolved.tamu.edu/org/sec/events"
+                                   class="-mx-3 block rounded-lg px-3 py-2 text-base font-semibold leading-7 text-gray-900 hover:bg-gray-50">Events</a>
+                                                            <a href="https://getinvolved.tamu.edu/org/sec/forms"
+                                   class="-mx-3 block rounded-lg px-3 py-2 text-base font-semibold leading-7 text-gray-900 hover:bg-gray-50">Forms</a>
+                                                    </div>
+                    </div>
+                </div>
+                    </div>
+    </div>
+</header>
+    
+    <main class="flex-grow">
+        
+                    <section>
+                            <div class="mx-auto py-8" style="background-color: #500000">
+                    <div class="text-center">
+                        <div class="flex justify-center px-6 text-white">
+                                                                <h1 class="!text-6xl2 font-semibold !mb-0">Student Engineers&#039; Council</h1>
+                                            </div>
+                </div>
+            </div>
+        </section>
+        
+        
+        
+        
+        
+        
+        <section class="contain mt-4">
+        <div class="lg:flex lg:items-center lg:justify-between">
+            <div class="min-w-0 flex-1">
+                <h1 class="h1-2 md:!mb-8">Upcoming Events</h1>
+            </div>
+
+            <div class="mb-5 flex md:ml-4 md:mb-0 space-x-3">
+                                                        <a href="https://getinvolved.tamu.edu/org/sec/events/past"
+    class="button2 button-md2 text-white "
+                                    style="background-color: #500000"
+        
+    
+    
+    
+    
+    
+    
+    >
+    
+    
+
+            <span>Past Events</span>
+        
+    
+    </a>
+                            </div>
+        </div>
+
+                    <p>
+                                    There are no upcoming events for Student Engineers&#039; Council.
+                                                    You may need to <a href="https://getinvolved.tamu.edu/login">sign in</a> to see applicable events.
+                            </p>
+                            <p class="mt-10 text-sm2">
+                Add to <a href="https://getinvolved.tamu.edu/ics/event/upcoming/892">iCal/Outlook</a>
+            </p>
+            </section>
+
+    </main>
+
+    
+            <footer class="hide-for-print">
+    <section class="mt-14 lg:mt-16 px-4 py-12 text-white" style="background-color: #500000">
+                    <div class="relative mb-12">
+                                <div class="absolute inset-0 flex items-center" aria-hidden="true">
+                    <div class="w-full border-t border-gray-300"></div>
+                </div>
+                <div class="relative flex justify-center">
+                    <div class="lg:px-8" style="background-color: #500000">
+                        <div class="flex justify-center space-x-6 md:order-2">
+                                                                                                                                                <a href="https://www.instagram.com/tamusec/" class="!text-4xl2 hover:text-gray-300 text-white">
+                                    <span class="sr-only">Instagram</span>
+                                    <i class="fa-brands fa-instagram" aria-hidden="true"></i>
+                                </a>
+                                                                                    <a href="https://www.linkedin.com/company/tamusec/" class="!text-4xl2 hover:text-gray-300 text-white">
+                                <span class="sr-only">LinkedIn</span>
+                                <i class="fa-brands fa-linkedin" aria-hidden="true"></i>
+                            </a>
+                                                                                                                                                                                                                            </div>
+                    </div>
+                </div>
+            </div>
+                <div class="mx-auto grid max-w-7xl grid-cols-1 lg:grid-cols-2">
+                            <div>
+                    <h2 class="!text-3xl2 font-semibold !mb-4">Get in touch</h2>
+                    <dl class="space-y-4 text-base2 leading-7">
+                                                    <div class="flex gap-x-4">
+                                <dt class="flex-none">
+                                    <span class="sr-only">Address</span>
+                                    <i class="fa-fw fa-regular fa-map" aria-hidden="true"></i>
+                                </dt>
+                                <dd>3127 Texas A&amp;M University, College Station TX 77843</dd>
+                            </div>
+                        
+                                                    <div class="flex gap-x-4">
+                                <dt class="flex-none">
+                                    <span class="sr-only">Telephone</span>
+                                    <i class="fa-fw fa-solid fa-phone"></i>
+                                </dt>
+                                <dd>
+                                    <a href="tel:(979)847-8567" class="text-white">
+                                        (979)847-8567
+                                    </a>
+                                </dd>
+                            </div>
+                                                                            <div class="flex gap-x-4">
+                                <dt class="flex-none">
+                                    <span class="sr-only">Email</span>
+                                    <i class="fa-fw fa-regular fa-envelope" aria-hidden="true"></i>
+                                </dt>
+                                <dd>
+                                    <a href="mailto:president@sec.tamu.edu" class="text-white">
+                                        president@sec.tamu.edu
+                                    </a>
+                                </dd>
+                            </div>
+                                                                            <div class="flex gap-x-4">
+                                <dt class="flex-none !mb-0">
+                                    <span class="sr-only">Website</span>
+                                    <i class="fa-fw fa-solid fa-globe" aria-hidden="true"></i>
+                                </dt>
+                                <dd>
+                                    <a href="http://home.sec.tamu.edu" class="text-white">
+                                                                                home.sec.tamu.edu
+                                    </a>
+                                </dd>
+                            </div>
+                                            </dl>
+                </div>
+                        <div class="mt-6 lg:mt-0">
+                <div wire:snapshot="{&quot;data&quot;:{&quot;organization&quot;:[[],{&quot;key&quot;:892,&quot;class&quot;:&quot;App\\Models\\OrgManagement\\Organization&quot;,&quot;relations&quot;:[&quot;header_file&quot;,&quot;organization_attribute_values&quot;,&quot;logo_file&quot;,&quot;organization_attributes&quot;,&quot;links&quot;],&quot;s&quot;:&quot;elmdl&quot;}],&quot;organizationAttributes&quot;:[{&quot;account_number&quot;:&quot;942700&quot;,&quot;affiliation_academic&quot;:&quot;Engineering&quot;,&quot;affiliation_council&quot;:&quot;Student Engineers Council&quot;,&quot;affiliation_council_other&quot;:null,&quot;affiliation_non_academic&quot;:null,&quot;affiliation_non_academic_other&quot;:null,&quot;affiliation_third_party&quot;:null,&quot;banking_method&quot;:&quot;SOFC&quot;,&quot;community_service&quot;:&quot;Yes&quot;,&quot;community_service_hours&quot;:&quot;200&quot;,&quot;constitution_exempt&quot;:&quot;0&quot;,&quot;constitution_filename&quot;:&quot;organization\/140_202304051017_constitution_1.pdf&quot;,&quot;date_last_notified&quot;:&quot;1677589208&quot;,&quot;date_recognized&quot;:&quot;1326294000&quot;,&quot;date_status_changed&quot;:&quot;1705442406&quot;,&quot;date_status_changed_official&quot;:&quot;1705442406&quot;,&quot;default_event_image&quot;:&quot;428&quot;,&quot;designated_philanthropy&quot;:&quot;Yes&quot;,&quot;designated_philanthropy_desc&quot;:&quot;REACH Project&quot;,&quot;enhanced_annual&quot;:&quot;0&quot;,&quot;enhanced_expectations&quot;:&quot;0&quot;,&quot;flag_advisors&quot;:&quot;5&quot;,&quot;flag_advisors_present&quot;:&quot;5&quot;,&quot;flag_constitution&quot;:&quot;5&quot;,&quot;flag_constitution_timestamp&quot;:&quot;1680810725&quot;,&quot;flag_gpr&quot;:&quot;5&quot;,&quot;flag_leadership&quot;:&quot;5&quot;,&quot;flag_misc&quot;:&quot;5&quot;,&quot;flag_renewal&quot;:&quot;5&quot;,&quot;flag_sigcard&quot;:&quot;5&quot;,&quot;flag_sigcard_approved_positions&quot;:&quot;a:9:{i:101;s:3:\&quot;826\&quot;;i:151;s:6:\&quot;126617\&quot;;i:152;s:6:\&quot;121824\&quot;;i:201;s:6:\&quot;126738\&quot;;i:202;s:6:\&quot;118797\&quot;;i:203;s:6:\&quot;126739\&quot;;i:204;s:6:\&quot;115988\&quot;;i:205;s:6:\&quot;126740\&quot;;i:206;s:6:\&quot;126741\&quot;;}&quot;,&quot;flag_sigcard_timestamp&quot;:&quot;1712181834&quot;,&quot;flag_updates&quot;:&quot;5&quot;,&quot;flag_updates_notification&quot;:&quot;1621303229&quot;,&quot;flag_workshops&quot;:&quot;5&quot;,&quot;fundraising_activities&quot;:&quot;No&quot;,&quot;fundraising_activities_funds_external&quot;:null,&quot;fundraising_activities_funds_internal&quot;:null,&quot;fundraising_activities_funds_total&quot;:null,&quot;info_allow_follow_up&quot;:&quot;1&quot;,&quot;info_banking_usage&quot;:&quot;sofc_only&quot;,&quot;info_meeting_frequency&quot;:&quot;Weekly&quot;,&quot;info_meeting_location&quot;:&quot;ZACH 297-299&quot;,&quot;info_meeting_locations&quot;:&quot;On- and Off-campus&quot;,&quot;info_membership&quot;:&quot;76-150&quot;,&quot;info_membership_commitment&quot;:&quot;5-10&quot;,&quot;info_membership_criteria&quot;:null,&quot;info_membership_dues&quot;:&quot;Less than $25 per year&quot;,&quot;info_membership_eligibility&quot;:&quot;Undergraduate Students,Professional Students,Graduate Students,Part-Time Students&quot;,&quot;info_membership_intake&quot;:&quot;Application\/Interview&quot;,&quot;info_membership_intake_timeframe&quot;:&quot;Limited intake - Fall &amp; Spring semester only&quot;,&quot;info_members_selected&quot;:&quot;Sept. and Feb.&quot;,&quot;info_off_campus_location&quot;:&quot;Yes&quot;,&quot;info_off_campus_location_name&quot;:&quot;Legends Event Center&quot;,&quot;info_on_campus_location&quot;:&quot;Yes&quot;,&quot;info_on_campus_location_name&quot;:&quot;Zachry Engineering Building&quot;,&quot;info_willing_to_volunteer&quot;:&quot;1&quot;,&quot;info_year_founded&quot;:&quot;1939&quot;,&quot;open_house_event&quot;:&quot;15197&quot;,&quot;open_house_payment&quot;:&quot;#202601071922101853380388&quot;,&quot;open_house_type&quot;:&quot;Service&quot;,&quot;open_house_unpaid&quot;:null,&quot;org_about&quot;:null,&quot;org_advising_department&quot;:&quot;Other&quot;,&quot;org_afs_id&quot;:&quot;0&quot;,&quot;org_category&quot;:&quot;Sponsored&quot;,&quot;org_classification&quot;:&quot;Academic - Engineering&quot;,&quot;org_cycle&quot;:&quot;3&quot;,&quot;org_cycle_override&quot;:&quot;0&quot;,&quot;org_site&quot;:&quot;College Station&quot;,&quot;org_status_desc&quot;:&quot;Recognized by StuAct Online; all requirements for recognition met.&quot;,&quot;primary_color&quot;:&quot;#500000&quot;,&quot;profile_contact_email&quot;:&quot;savannahgiron1@tamu.edu&quot;,&quot;profile_contact_name&quot;:&quot;Savannah Giron&quot;,&quot;profile_contact_person_id&quot;:&quot;50056&quot;,&quot;profile_contact_phone&quot;:&quot;(225)229-8080&quot;,&quot;profile_email&quot;:&quot;president@sec.tamu.edu&quot;,&quot;profile_mailing_address&quot;:&quot;3127 Texas A&amp;M University&quot;,&quot;profile_mailing_city&quot;:&quot;College Station&quot;,&quot;profile_mailing_state&quot;:&quot;TX&quot;,&quot;profile_mailing_zip&quot;:&quot;77843&quot;,&quot;profile_mail_stop&quot;:&quot;46&quot;,&quot;profile_phone&quot;:&quot;(979)847-8567&quot;,&quot;profile_purpose&quot;:&quot;To serve as a representative voice for the students, societies, and administration within the Dwight Look College of Engineering, to increase engineering awareness, and to provide for professional advancement of Texas A&amp;M engineering students.&quot;,&quot;profile_web&quot;:&quot;http:\/\/home.sec.tamu.edu&quot;,&quot;risk_approved&quot;:&quot;0&quot;,&quot;sact_comments&quot;:&quot;rec 03-04; 04-05; 05-06; 06-07; 07-08 4\/20\/06-restr. paperwork 5\/1\/06- restr. const. revisions 5\/2\/06- restr.s removed 02\/08\/07-J. Chris Elgin ineligible; 2\/14\/13- submitted 2 late contracts less than a week before the events, they have been advised of contract procedures and made aware that in the future late contracts will not be tolerated\r\n\r\n11\/15\/11: Organization did not complete approval for a camp. Org was issued a warning. ALD&quot;,&quot;share_event_participants&quot;:&quot;1&quot;,&quot;social_discord&quot;:null,&quot;social_facebook&quot;:null,&quot;social_groupme&quot;:null,&quot;social_instagram&quot;:&quot;https:\/\/www.instagram.com\/tamusec\/&quot;,&quot;social_linkedin&quot;:&quot;https:\/\/www.linkedin.com\/company\/tamusec\/&quot;,&quot;social_slack&quot;:null,&quot;social_twitter&quot;:null,&quot;social_youtube&quot;:null,&quot;sofc_audit&quot;:&quot;0&quot;,&quot;sofc_exempt&quot;:&quot;0&quot;,&quot;sofc_send_email&quot;:&quot;1&quot;},{&quot;class&quot;:&quot;Illuminate\\Support\\Collection&quot;,&quot;s&quot;:&quot;clctn&quot;}],&quot;person&quot;:null,&quot;destination&quot;:&quot;president@sec.tamu.edu&quot;,&quot;messageText&quot;:null,&quot;sent&quot;:false},&quot;memo&quot;:{&quot;id&quot;:&quot;bacw7NRRGQzjN3BeFfcv&quot;,&quot;name&quot;:&quot;organizations.send-message&quot;,&quot;path&quot;:&quot;org\/sec\/events&quot;,&quot;method&quot;:&quot;GET&quot;,&quot;release&quot;:&quot;a-a-a&quot;,&quot;children&quot;:[],&quot;scripts&quot;:[],&quot;assets&quot;:[],&quot;errors&quot;:[],&quot;locale&quot;:&quot;en&quot;},&quot;checksum&quot;:&quot;41740a66b215f8a099d28d1cde39f7947f92e7c42be7c9afe777ed0add28e857&quot;}" wire:effects="[]" wire:id="bacw7NRRGQzjN3BeFfcv">
+    <!--[if BLOCK]><![endif]-->        <h2 class="block leading-6 !mb-4 !text-3xl2 font-semibold !mb-4 text-white">Message this organization</h2>
+        <div class="grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">
+            <!--[if BLOCK]><![endif]-->                <p class="block text-base2 font-semibold leading-6 sm:col-span-2 text-white">
+                    <i class="fa-fw fa-regular fa-envelope mr-3" aria-hidden="true"></i>
+                    <a href="https://getinvolved.tamu.edu/login" class="underline text-white">Login</a> to send this organization a message
+                </p>
+            <!--[if ENDBLOCK]><![endif]-->        </div>
+    <!--[if ENDBLOCK]><![endif]--></div>            </div>
+        </div>
+    </section>
+</footer>
+    
+    <section>
+        <div class="text-center">
+            <div class="py-6 text-white bg-neutral-950">
+                                <ul class="list-none md:flex justify-center md:space-x-6">
+                    <li><a class="text-white text-sm2" href="http://itaccessibility.tamu.edu/"><span>Accessibility</span></a></li>
+                    <li><a class="text-white text-sm2" href="https://studentaffairs.tamu.edu/privacy"><span>Privacy &amp; Security Policy</span></a></li>
+                    <li><a class="text-white text-sm2" href="http://www.texas.gov/"><span>State of Texas</span></a></li>
+                    <li><a class="text-white text-sm2" href="https://www.tsl.texas.gov/trail/index.html"><span>Statewide Search</span></a></li>
+                    <li><a class="text-white text-sm2" href="https://secure.ethicspoint.com/domain/en/report_custom.asp?clientid=19681"><span>Risk, Fraud &amp; Misconduct Hotline</span></a></li>
+                </ul>
+                <p class="!text-sm2 pt-2">Copyright 2026 • Texas A&amp;M University • All Rights Reserved. • Hosted by <a href="https://IT.tamu.edu/studentaffairs" class="text-white hover:text-gray-200">Technology Services - Student Affairs</a> </p>
+            </div>
+        </div>
+    </section>
+
+
+
+
+
+<script src="//cdnjs.cloudflare.com/ajax/libs/what-input/4.3.1/what-input.min.js"></script>
+
+<!-- IE10 viewport hack for Surface/desktop Windows 8 bug -->
+<script src="//maxcdn.bootstrapcdn.com/js/ie10-viewport-bug-workaround.js"></script>
+
+<!-- Compressed JavaScript -->
+<script src="https://getinvolved.tamu.edu/js/app.js"></script>
+
+
+
+    <script src="https://getinvolved.tamu.edu/vendor/livewire/livewire.min.js?id=0f6341c0"   data-csrf="6sxFbROmqnFPoETQ5s7k7SzokBeohuGwAcD3RVkN" data-update-uri="/livewire/update" data-navigate-once="true"></script>
+</body>
+</html>

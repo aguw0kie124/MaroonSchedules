@@ -1,22 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import {
-  ChevronDown,
-  ChevronLeft,
-  Clock3,
-  MapPin,
-  UtensilsCrossed,
-} from 'lucide-react-native';
-import { Card } from './DiningUI';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, ImageBackground, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ChevronLeft } from 'lucide-react-native';
+import { Card, SectionLabel, Badge } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
 import { PillTabs } from '../PillTabs';
@@ -36,301 +21,157 @@ function formatMealLabel(meal: string) {
 
 function formatMenuTitle(location?: string, title?: string) {
   const rawValue = (title || location || 'Menu').trim();
-  const stripped = rawValue
-    .replace(/\s+(Breakfast|Lunch|Dinner)$/i, '')
-    .replace(/\s+Menu$/i, '');
-  return stripped || 'Dining Hall';
-}
-
-function buildItemMeta(item: any, showLocation: boolean) {
-  const parts: string[] = [];
-  if (item.calories) parts.push(`${Math.round(item.calories)} kcal`);
-  if (item.protein) parts.push(`${Math.round(item.protein)}g protein`);
-  if (item.location && showLocation) parts.push(item.location);
-  return parts.join(' · ');
+  const stripped = rawValue.replace(/\s+(Breakfast|Lunch|Dinner)$/i, '').replace(/\s+Menu$/i, '');
+  return `${stripped || 'Menu'} Menu`;
 }
 
 export default function FullMenuScreen({ navigation, route }: any) {
-  const { theme } = useTheme();
-  const T = useDiningTheme(theme === 'dark');
+  const { theme, wallpaperUri } = useTheme();
+  const darkMode = theme === 'dark';
+  const T = useDiningTheme(darkMode);
+  const wallpaperSource = wallpaperUri
+    ? { uri: wallpaperUri }
+    : darkMode
+      ? require('../../assets/black_marble.jpg')
+      : require('../../assets/white_marble.jpg');
 
   const { location, mealPeriod, title, locations, sourceHint } = route.params || {};
+  const availableMealPeriods = getDiningMealOptionsForLocation(location);
   const isDiningHall = isDiningHallMenuLocation(location);
-  const availableMealPeriods = isDiningHall ? getDiningMealOptionsForLocation(location) : [];
   const [activeMealPeriod, setActiveMealPeriod] = useState<DiningMealPeriod>(
     (mealPeriod as DiningMealPeriod) || getDiningMealPeriodForLocation(location),
   );
   const [menusByPeriod, setMenusByPeriod] = useState<Record<string, any>>({});
+  const menu = menusByPeriod[activeMealPeriod] || null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
-  const menu = menusByPeriod[activeMealPeriod] || null;
-  const categoryCount = menu?.categories?.length || 0;
-  const resolvedLocations = menu?.locations || locations || [];
-  const showLocationForItems = resolvedLocations.length > 1;
-  const menuSummary = useMemo(
-    () => [
-      { icon: UtensilsCrossed, label: 'Items', value: String(menu?.count ?? 0) },
-      { icon: Clock3, label: 'Meal', value: formatMealLabel(activeMealPeriod) },
-      { icon: MapPin, label: 'Sections', value: String(categoryCount) },
-    ],
-    [activeMealPeriod, categoryCount, menu?.count],
-  );
+  const load = useCallback(async (nextMealPeriod: DiningMealPeriod) => {
+    if (!location) {
+      setError('Menu details are unavailable.');
+      setLoading(false);
+      return;
+    }
 
-  const load = useCallback(
-    async (nextMealPeriod: DiningMealPeriod) => {
-      if (!location) {
-        setError('Menu details are unavailable.');
-        setLoading(false);
-        return;
-      }
-
-      if (!isDiningHall) {
-        setError('Menus are only available for Sbisa, Commons, and Duncan.');
-        setLoading(false);
-        return;
-      }
-
-      if (menusByPeriod[nextMealPeriod]) {
-        setLoading(false);
-        setError('');
-        return;
-      }
-
-      setLoading(true);
+    if (menusByPeriod[nextMealPeriod]) {
+      setLoading(false);
       setError('');
-      try {
-        const result = await fetchDiningFullMenuCached({
-          location,
-          mealPeriod: nextMealPeriod,
-        });
-        if (result.success) {
-          setMenusByPeriod((current) => ({
-            ...current,
-            [nextMealPeriod]: result,
-          }));
-        } else {
-          setError(result.message || 'No menu items available right now.');
-        }
-      } catch (fetchError) {
-        setError('Could not load the menu.');
-      } finally {
-        setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      const result = await fetchDiningFullMenuCached({
+        location,
+        mealPeriod: nextMealPeriod,
+      });
+      if (result.success) {
+        setMenusByPeriod((current) => ({
+          ...current,
+          [nextMealPeriod]: result,
+        }));
+      } else {
+        setError(result.message || 'No menu items available right now.');
       }
-    },
-    [isDiningHall, location, menusByPeriod],
-  );
+    } catch (fetchError) {
+      setError('Could not load the menu.');
+    } finally {
+      setLoading(false);
+    }
+  }, [location, menusByPeriod]);
 
   useEffect(() => {
     load(activeMealPeriod);
   }, [activeMealPeriod, load]);
 
   useEffect(() => {
-    const next: Record<string, boolean> = {};
-    (menu?.categories || []).forEach((category: any, index: number) => {
-      next[category.name] = index === 0;
-    });
-    setExpandedCategories(next);
-  }, [menu]);
-
-  useEffect(() => {
-    if (!location || !isDiningHall) return;
+    if (!location) return;
     prefetchDiningMenus([location], availableMealPeriods).catch(() => {});
-  }, [availableMealPeriods, isDiningHall, location]);
+  }, [availableMealPeriods, location]);
+
+  const categoryCount = menu?.categories?.length || 0;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
       <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
-      <ScrollView
-        style={s.container}
-        contentContainerStyle={s.content}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={s.topBar}>
-          <TouchableOpacity
-            style={[
-              s.backBtn,
-              { backgroundColor: T.btnBg, borderColor: T.cardBorder },
-            ]}
-            onPress={() => navigation.goBack()}
-          >
-            <ChevronLeft size={20} color={T.text} />
+      <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.58)' : 'rgba(255,255,255,0.72)' }]} />
+      </ImageBackground>
+
+      <ScrollView style={s.container} contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
+        <View style={s.header}>
+          <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
+            <ChevronLeft size={24} color={T.text} />
           </TouchableOpacity>
-          <View style={s.titleWrap}>
-            <Text style={[s.kicker, { color: T.text3 }]}>Dining hall menu</Text>
+          <View style={{ flex: 1 }}>
             <Text style={[s.title, { color: T.text }]} numberOfLines={1}>
               {formatMenuTitle(location, title)}
+            </Text>
+            <Text style={[s.subtitle, { color: T.text3 }]}>
+              {formatMealLabel(activeMealPeriod)}
+              {isDiningHall ? ' service' : ' menu'}
             </Text>
           </View>
         </View>
 
-        <Card style={s.heroCard}>
-          <Text style={[s.heroTitle, { color: T.text }]}>
-            {formatMealLabel(activeMealPeriod)}
-          </Text>
-          <Text style={[s.heroSubtitle, { color: T.text3 }]}>
-            {isDiningHall
-              ? 'Live menu from DineOnCampus.'
-              : 'Menus are only shown for the main dining halls.'}
-          </Text>
+        <View style={s.mealTabsWrap}>
+          <PillTabs
+            items={availableMealPeriods.map((period) => ({
+              key: period,
+              label: formatMealLabel(period),
+            }))}
+            activeKey={activeMealPeriod}
+            onChange={(key) => setActiveMealPeriod(key as DiningMealPeriod)}
+            floating
+            compact
+          />
+        </View>
 
-          <View style={s.summaryGrid}>
-            {menuSummary.map((entry) => {
-              const Icon = entry.icon;
-              return (
-                <View
-                  key={entry.label}
-                  style={[
-                    s.summaryCard,
-                    {
-                      backgroundColor: T.bg3,
-                      borderColor: T.border,
-                    },
-                  ]}
-                >
-                  <View style={s.summaryHeader}>
-                    <Icon size={14} color={T.text3} />
-                    <Text style={[s.summaryLabel, { color: T.text3 }]}>
-                      {entry.label}
-                    </Text>
-                  </View>
-                  <Text style={[s.summaryValue, { color: T.text }]}>
-                    {entry.value}
-                  </Text>
-                </View>
-              );
-            })}
+        <View style={s.metaRow}>
+          <Badge label={`${menu?.count ?? 0} items`} color={T.amber} />
+          <Badge label={`${categoryCount} categories`} color={T.sky} />
+          <Badge label={(menu?.source || sourceHint || 'menu').toUpperCase()} color={T.sage} />
+        </View>
+
+        {loading ? (
+          <View style={{ paddingTop: 40 }}>
+            <ActivityIndicator color={T.tamuGold} size="large" />
           </View>
-
-          {sourceHint || menu?.source ? (
-            <Text style={[s.sourceText, { color: T.text4 }]}>
-              Source: {String(menu?.source || sourceHint || 'live').toUpperCase()}
-            </Text>
-          ) : null}
-        </Card>
-
-        {isDiningHall ? (
-          <View style={s.mealTabsWrap}>
-            <PillTabs
-              items={availableMealPeriods.map((period) => ({
-                key: period,
-                label: formatMealLabel(period),
-              }))}
-              activeKey={activeMealPeriod}
-              onChange={(key) => setActiveMealPeriod(key as DiningMealPeriod)}
-              floating
-              compact
-            />
-          </View>
-        ) : null}
-
-        {!isDiningHall ? (
-          <Card style={s.messageCard}>
-            <Text style={[s.messageText, { color: T.text3 }]}>
-              Menus are only shown for Sbisa, Commons, and Duncan.
-            </Text>
-          </Card>
-        ) : loading ? (
-          <Card style={s.messageCard}>
-            <ActivityIndicator color={T.tamuMaroon} size="small" />
-            <Text style={[s.messageText, { color: T.text3 }]}>Loading live menu…</Text>
-          </Card>
         ) : error ? (
-          <Card style={s.messageCard}>
-            <Text style={[s.messageText, { color: T.text3 }]}>{error}</Text>
+          <Card>
+            <Text style={[s.emptyText, { color: T.text3 }]}>{error}</Text>
           </Card>
         ) : (
           <>
-            {resolvedLocations.length > 1 ? (
-              <Card style={s.locationsCard}>
-                <Text style={[s.sectionEyebrow, { color: T.text3 }]}>Serving at</Text>
+            {menu?.locations?.length > 1 && (
+              <Card>
+                <SectionLabel>Locations</SectionLabel>
                 <View style={s.locationWrap}>
-                  {resolvedLocations.map((entry: string) => (
-                    <View
-                      key={entry}
-                      style={[
-                        s.locationPill,
-                        { backgroundColor: T.bg3, borderColor: T.border },
-                      ]}
-                    >
+                  {(menu.locations || locations || []).map((entry: string) => (
+                    <View key={entry} style={[s.locationPill, { backgroundColor: T.bg3, borderColor: T.border }]}>
                       <Text style={[s.locationText, { color: T.text2 }]}>{entry}</Text>
                     </View>
                   ))}
                 </View>
               </Card>
-            ) : null}
+            )}
 
             {(menu?.categories || []).map((category: any) => (
-              <Card key={category.name} style={s.categoryCard}>
-                <TouchableOpacity
-                  activeOpacity={0.88}
-                  style={s.categoryHeaderPressable}
-                  onPress={() =>
-                    setExpandedCategories((current) => ({
-                      ...current,
-                      [category.name]: !current[category.name],
-                    }))
-                  }
-                >
-                  <View style={s.categoryHeader}>
+              <Card key={category.name}>
+                <SectionLabel>{category.name}</SectionLabel>
+                {category.items.map((item: any) => (
+                  <View key={`${category.name}-${item.location || 'menu'}-${item.name}`} style={[s.itemRow, { borderBottomColor: T.border }]}>
                     <View style={{ flex: 1, paddingRight: 12 }}>
-                      <Text style={[s.categoryTitle, { color: T.text }]}>
-                        {category.name}
-                      </Text>
-                      <Text style={[s.categorySubtitle, { color: T.text3 }]}>
-                        {category.items.length} items
+                      <Text style={[s.itemName, { color: T.text }]}>{item.name}</Text>
+                      <Text style={[s.itemMeta, { color: T.text3 }]}>
+                        {Math.round(item.calories || 0)} kcal
+                        {!!item.protein && ` • ${Math.round(item.protein)}g protein`}
+                        {!!item.location && menu.locations?.length > 1 && ` • ${item.location}`}
                       </Text>
                     </View>
-                    <View
-                      style={[
-                        s.categoryToggle,
-                        { backgroundColor: T.bg3, borderColor: T.border },
-                      ]}
-                    >
-                      <ChevronDown
-                        size={16}
-                        color={T.text3}
-                        style={{
-                          transform: [
-                            { rotate: expandedCategories[category.name] ? '180deg' : '0deg' },
-                          ],
-                        }}
-                      />
-                    </View>
                   </View>
-                </TouchableOpacity>
-
-                {expandedCategories[category.name] ? (
-                  <View style={s.categoryList}>
-                    {category.items.map((item: any, index: number) => {
-                      const meta = buildItemMeta(item, showLocationForItems);
-                      return (
-                        <View
-                          key={`${category.name}-${item.location || 'menu'}-${item.name}`}
-                          style={[
-                            s.itemRow,
-                            { borderTopColor: T.border },
-                            index === 0 && s.itemRowFirst,
-                          ]}
-                        >
-                          <Text style={[s.itemName, { color: T.text }]}>{item.name}</Text>
-                          {meta ? (
-                            <Text style={[s.itemMeta, { color: T.text3 }]} numberOfLines={1}>
-                              {meta}
-                            </Text>
-                          ) : null}
-                        </View>
-                      );
-                    })}
-                  </View>
-                ) : (
-                  <View style={s.categoryPreviewRow}>
-                    <Text style={[s.categoryPreviewText, { color: T.text3 }]} numberOfLines={1}>
-                      {category.items.slice(0, 2).map((item: any) => item.name).join(' · ')}
-                    </Text>
-                  </View>
-                )}
+                ))}
               </Card>
             ))}
           </>
@@ -342,189 +183,17 @@ export default function FullMenuScreen({ navigation, route }: any) {
 
 const s = StyleSheet.create({
   container: { flex: 1 },
-  content: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 28 },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 12,
-  },
-  backBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  titleWrap: {
-    flex: 1,
-  },
-  kicker: {
-    fontSize: 11,
-    fontWeight: '700',
-    marginBottom: 2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    letterSpacing: -0.4,
-  },
-  heroCard: {
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 20,
-  },
-  heroTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: 4,
-    letterSpacing: -0.4,
-  },
-  heroSubtitle: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  summaryGrid: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 14,
-  },
-  summaryCard: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minHeight: 72,
-  },
-  summaryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
-  },
-  summaryLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  summaryValue: {
-    fontSize: 18,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-  sourceText: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 10,
-  },
-  mealTabsWrap: {
-    marginBottom: 12,
-  },
-  messageCard: {
-    borderRadius: 18,
-    paddingVertical: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-  },
-  messageText: {
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  locationsCard: {
-    borderRadius: 18,
-    padding: 14,
-    marginBottom: 12,
-  },
-  sectionEyebrow: {
-    fontSize: 11,
-    fontWeight: '700',
-    marginBottom: 10,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  locationWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  locationPill: {
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  locationText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  categoryCard: {
-    borderRadius: 18,
-    padding: 14,
-    marginBottom: 10,
-  },
-  categoryHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 2,
-  },
-  categoryHeaderPressable: {
-    marginBottom: 2,
-  },
-  categoryTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-  },
-  categorySubtitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 3,
-  },
-  categoryToggle: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  categoryList: {
-    marginTop: 6,
-  },
-  categoryPreviewRow: {
-    marginTop: 8,
-    paddingTop: 10,
-    borderTopWidth: 1,
-  },
-  categoryPreviewText: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '500',
-  },
-  itemRow: {
-    paddingVertical: 11,
-    borderTopWidth: 1,
-  },
-  itemRowFirst: {
-    borderTopWidth: 0,
-  },
-  itemName: {
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 19,
-  },
-  itemMeta: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '500',
-    marginTop: 3,
-  },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 },
+  backBtn: { width: 44, height: 44, justifyContent: 'center' },
+  title: { fontSize: 30, fontWeight: '900', letterSpacing: -0.5 },
+  subtitle: { fontSize: 12, marginTop: 2, fontWeight: '600' },
+  mealTabsWrap: { marginBottom: 14 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  emptyText: { fontSize: 14, textAlign: 'center', lineHeight: 21 },
+  locationWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  locationPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
+  locationText: { fontSize: 12, fontWeight: '700' },
+  itemRow: { paddingVertical: 12, borderBottomWidth: 1 },
+  itemName: { fontSize: 15, fontWeight: '800' },
+  itemMeta: { fontSize: 12, marginTop: 4, fontWeight: '500' },
 });

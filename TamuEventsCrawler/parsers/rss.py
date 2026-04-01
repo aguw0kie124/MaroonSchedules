@@ -43,6 +43,51 @@ def _parse_feed_date(entry: Dict[str, Any]) -> Optional[datetime]:
     return None
 
 
+def _parse_geo_point(value: Any) -> tuple[Optional[float], Optional[float]]:
+    """Extract latitude/longitude from common RSS/GeoRSS point shapes."""
+    if value is None:
+        return None, None
+
+    if isinstance(value, dict):
+        coordinates = value.get("coordinates")
+        if isinstance(coordinates, (list, tuple)) and len(coordinates) >= 2:
+            try:
+                # GeoJSON order is [lng, lat]
+                lng = float(coordinates[0])
+                lat = float(coordinates[1])
+                return lat, lng
+            except (TypeError, ValueError):
+                return None, None
+
+    text = str(value).strip()
+    if not text:
+        return None, None
+
+    # GeoRSS point commonly uses "lat lon"
+    match = re.match(r"^\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*$", text)
+    if match:
+        try:
+            return float(match.group(1)), float(match.group(2))
+        except (TypeError, ValueError):
+            return None, None
+
+    # Some feeds expose a dict-like string such as:
+    # {'type': 'Point', 'coordinates': (-96.337971, 30.617684)}
+    match = re.search(
+        r"coordinates['\"]?\s*:\s*\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)",
+        text,
+    )
+    if match:
+        try:
+            lng = float(match.group(1))
+            lat = float(match.group(2))
+            return lat, lng
+        except (TypeError, ValueError):
+            return None, None
+
+    return None, None
+
+
 def _parse_feed_entry(
     entry: Any,
     source_name: str,
@@ -60,13 +105,6 @@ def _parse_feed_entry(
     description = _clean_html(getattr(entry, "summary", "") or getattr(entry, "description", ""))
     link = getattr(entry, "link", "") or ""
 
-    # Try to extract location from content or custom fields
-    location = None
-    if hasattr(entry, "where"):
-        location = _clean_html(str(entry.where))
-    elif hasattr(entry, "georss_point"):
-        location = str(entry.georss_point)
-
     # Extract geo coordinates
     lat, lng = None, None
     if hasattr(entry, "geo_lat") and hasattr(entry, "geo_long"):
@@ -75,6 +113,21 @@ def _parse_feed_entry(
             lng = float(entry.geo_long)
         except (ValueError, TypeError):
             pass
+
+    # Try to extract location from content or custom fields
+    location = None
+    if hasattr(entry, "where"):
+        where_value = getattr(entry, "where")
+        if lat is None or lng is None:
+            lat, lng = _parse_geo_point(where_value)
+        if not isinstance(where_value, dict):
+            location = _clean_html(str(where_value))
+    elif hasattr(entry, "georss_point"):
+        georss_value = getattr(entry, "georss_point")
+        if lat is None or lng is None:
+            lat, lng = _parse_geo_point(georss_value)
+        if lat is None or lng is None:
+          location = str(georss_value)
 
     # Generate a stable ID
     entry_id = getattr(entry, "id", "") or link or title

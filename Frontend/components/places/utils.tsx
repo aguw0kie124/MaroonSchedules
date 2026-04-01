@@ -38,6 +38,33 @@ export const getCategoryIcon = (type: LocationType, color = "#FFFFFF", size = 24
   }
 };
 
+export const getCategoryColor = (type: string | undefined): string => {
+  if (!type) return "#500000";
+  const t = type.toLowerCase();
+  
+  if (t.includes("engineering")) return "#007AFF"; // Blue
+  if (t.includes("business")) return "#FF9500";    // Orange
+  if (t.includes("science")) return "#32D74B";      // Green
+  if (t.includes("social")) return "#FF2D55";       // Pink
+  if (t.includes("dining")) return "#FF3B30";       // Red
+  if (t.includes("library")) return "#5856D6";      // Purple
+  if (t.includes("rec")) return "#00C7BE";          // Teal
+  if (t.includes("study")) return "#AF52DE";        // Indigo
+  if (t.includes("parking")) return "#8E8E93";      // Grey
+  if (t.includes("bus")) return "#007AFF";          // Blue
+  
+  switch (type) {
+    case "Academic": return "#500000"; // Maroon
+    case "Dining": return "#FF3B30";   // Red
+    case "Library": return "#5856D6";  // Purple
+    case "Rec": return "#32D74B";      // Green
+    case "Study": return "#FF9500";    // Orange
+    case "Parking": return "#8E8E93";  // Grey
+    case "Bus": return "#007AFF";      // Blue
+    default: return "#500000";
+  }
+};
+
 export function getCategoryPillIcon(id: string) {
   switch (id) {
     case "Schedule":
@@ -288,4 +315,25 @@ export function isVehicleOnRoute(bus: any, route: any) {
       (value: string) =>
         value === routeKey || value === routeShortName || value === routeName,
     );
+}
+
+// ── Time helper ───────────────────────────────────────────────
+export function parseTimeToMinutes(timeStr: string | null | undefined): number {
+  if (!timeStr) return 0;
+  
+  // Handle formats like "8:30 AM", "10:20 PM", "08:30"
+  const clean = timeStr.trim().toUpperCase();
+  const parts = clean.split(/[:\s]+/);
+  if (parts.length < 2) return 0;
+
+  let hours = parseInt(parts[0], 10);
+  const minutes = parseInt(parts[1], 10);
+  
+  const isPM = clean.includes("PM");
+  const isAM = clean.includes("AM");
+
+  if (isPM && hours < 12) hours += 12;
+  if (isAM && hours === 12) hours = 0;
+
+  return hours * 60 + minutes;
 }

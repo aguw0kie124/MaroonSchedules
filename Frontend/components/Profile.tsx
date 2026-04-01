@@ -27,11 +27,13 @@ import {
   Eye,
   EyeOff,
   GraduationCap,
+  LayoutGrid,
   LibraryBig,
   LogOut,
   Palette,
   Search,
   Settings2,
+  Trophy,
   UserRound,
   Wallet,
 } from 'lucide-react-native';
@@ -39,14 +41,24 @@ import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
 
+import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme } from './SharedUI';
 import { fetchCampusOverview } from '../api/client';
 import {
   PARKING_PERMIT_OPTIONS,
+  getOrderedItems,
   useAppShellStore,
 } from '../store/appShellStore';
 
 const PROFILE_VISIBILITY_KEY = 'settings_profile_visibility';
+
+const SETTINGS_TABS = [
+  { key: 'personal', label: 'Personal', icon: UserRound },
+  { key: 'layout', label: 'Layout', icon: LayoutGrid },
+  { key: 'resources', label: 'Resources', icon: LibraryBig },
+] as const;
+
+type SettingsTabKey = typeof SETTINGS_TABS[number]['key'];
 type ProfileVisibility = 'public' | 'friends' | 'private';
 
 function channelToHex(channel: number) {
@@ -144,10 +156,28 @@ export function Profile() {
   const [academicStatus, setAcademicStatus] = useState<any | null>(null);
   const [loadingAcademicStatus, setLoadingAcademicStatus] = useState(true);
   const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
+  const [isBarExpanded, setIsBarExpanded] = useState(false);
   const [accentSliderWidth, setAccentSliderWidth] = useState(0);
 
+  const navItems = useAppShellStore((state) => state.navItems);
+  const moveNavItem = useAppShellStore((state) => state.moveNavItem);
+  const toggleNavItem = useAppShellStore((state) => state.toggleNavItem);
   const parkingPermit = useAppShellStore((state) => state.parkingPermit);
   const setParkingPermit = useAppShellStore((state) => state.setParkingPermit);
+  const activeTab = useAppShellStore((state) => state.settingsTab) as SettingsTabKey;
+  const setActiveTab = useAppShellStore((state) => state.setSettingsTab);
+  const selectedScheduleId = useAppShellStore((state) => state.selectedScheduleId);
+  const setSelectedScheduleId = useAppShellStore((state) => state.setSelectedScheduleId);
+  const tabBarMode = useAppShellStore((state) => state.tabBarMode);
+  const setTabBarMode = useAppShellStore((state) => state.setTabBarMode);
+  const schedules = useAppShellStore((state) => state.schedules);
+
+  const orderedNavItems = useMemo(() => getOrderedItems(navItems), [navItems]);
+  const wallpaperSource = wallpaperUri
+    ? { uri: wallpaperUri }
+    : isDark
+      ? require('../assets/black_marble.jpg')
+      : require('../assets/white_marble.jpg');
   const accentRatio = useMemo(() => getRatioFromColor(accentColor), [accentColor]);
   const accentPreviewColor = useMemo(() => getSpectrumColorFromRatio(accentRatio), [accentRatio]);
 
@@ -351,6 +381,65 @@ export function Profile() {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Community Rank</Text>
+        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('Leaderboard')}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(212,175,55,0.15)' }]}>
+            <Trophy size={20} color="#D4AF37" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Campus Rankings & Podium</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Academic Schedule</Text>
+
+        <Pressable
+          style={styles.toolRow}
+          onPress={() => {
+            if (schedules.length === 0) {
+              Alert.alert("No Schedules", "You haven't created any schedules yet.");
+              return;
+            }
+            Alert.alert(
+              "Select Active Schedule",
+              "Choose which schedule to display in the Today view.",
+              [
+                ...schedules.map(s => ({
+                  text: s.name + (s.id === selectedScheduleId ? " (Active)" : ""),
+                  onPress: () => setSelectedScheduleId(s.id)
+                })),
+                { text: "Cancel", style: "cancel" }
+              ] as any
+            );
+          }}
+        >
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
+            <CalendarIcon size={20} color="#F3F1ED" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Active: {schedules.find(s => s.id === selectedScheduleId)?.name || "None"}</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
+
+        <Pressable
+          style={[styles.toolRow, styles.toolRowLast]}
+          onPress={() => navigation.navigate('ScheduleList')}
+        >
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
+            <Settings2 size={20} color="#F3F1ED" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Manage Academic Schedules</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Academic Identity</Text>
 
         <Pressable style={styles.toolRow} onPress={() => navigation.navigate('NewCourseSearch')}>
@@ -373,16 +462,6 @@ export function Profile() {
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
 
-        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('ScheduleList')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-            <CalendarIcon size={20} color="#F3F1ED" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>My Saved Schedules</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
-
         <Pressable style={styles.toolRow} onPress={openRegistrationReadiness}>
           <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
             <GraduationCap size={20} color="#F3F1ED" />
@@ -397,7 +476,15 @@ export function Profile() {
           )}
         </Pressable>
 
-
+        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('GPACalculator')}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
+            <GraduationCap size={20} color="#F3F1ED" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>GPA Calculator</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
       </View>
 
       <Pressable style={styles.logoutButton} onPress={handleLogout}>
@@ -407,10 +494,60 @@ export function Profile() {
     </>
   );
 
-  const renderPreferencesSection = () => (
+  const renderLayoutTab = () => (
     <>
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Campus Preferences</Text>
+        <Text style={styles.sectionTitle}>The Bar</Text>
+        <Text style={styles.sectionSubtitle}>Choose your main tabs.</Text>
+
+        <Pressable style={styles.barDropdownHeader} onPress={() => setIsBarExpanded((current) => !current)}>
+          <View style={{ flex: 1 }} />
+          {isBarExpanded ? (
+            <ChevronUp size={20} color={COLORS.textPrimary} />
+          ) : (
+            <ChevronDown size={20} color={COLORS.textPrimary} />
+          )}
+        </Pressable>
+
+        {isBarExpanded ? (
+          <View style={styles.barDropdownBody}>
+            {orderedNavItems.map((item, index) => (
+              <View key={item.id} style={[styles.navCard, index === orderedNavItems.length - 1 && styles.navCardLast]}>
+                <View style={styles.navRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.navTitle}>{item.label}</Text>
+                  </View>
+                  <Switch
+                    value={item.visible}
+                    onValueChange={() => toggleNavItem(item.id)}
+                    trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                    thumbColor="#FFFFFF"
+                  />
+                  <View style={styles.navMoveGroup}>
+                    <Pressable
+                      onPress={() => moveNavItem(item.id, -1)}
+                      disabled={index === 0}
+                      style={[styles.navMoveButton, index === 0 && styles.layoutMoveButtonDisabled]}
+                    >
+                      <ChevronUp size={16} color={index === 0 ? COLORS.textTertiary : COLORS.textPrimary} />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => moveNavItem(item.id, 1)}
+                      disabled={index === orderedNavItems.length - 1}
+                      style={[styles.navMoveButton, index === orderedNavItems.length - 1 && styles.layoutMoveButtonDisabled]}
+                    >
+                      <ChevronDown size={16} color={index === orderedNavItems.length - 1 ? COLORS.textTertiary : COLORS.textPrimary} />
+                    </Pressable>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Parking Permit</Text>
         <View style={styles.preferenceColumn}>
           {PARKING_PERMIT_OPTIONS.map((option) => {
             const selected = parkingPermit === option.id;
@@ -421,6 +558,30 @@ export function Profile() {
                 onPress={() => setParkingPermit(option.id)}
               >
                 <Text style={[styles.preferenceRowTitle, selected && styles.preferenceRowTitleActive]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Tab Bar Style</Text>
+        <Text style={styles.sectionSubtitle}>Choose your navigation look.</Text>
+        <View style={styles.segmentedRow}>
+          {[
+            { id: 'floating', label: 'Floating' },
+            { id: 'solid', label: 'Solid' },
+          ].map((option) => {
+            const selected = tabBarMode === option.id;
+            return (
+              <Pressable
+                key={option.id}
+                style={[styles.segmentButton, styles.segmentButtonStretch, selected && styles.segmentButtonActive]}
+                onPress={() => setTabBarMode(option.id as 'floating' | 'solid')}
+              >
+                <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
                   {option.label}
                 </Text>
               </Pressable>
@@ -585,7 +746,8 @@ export function Profile() {
           key: 'annex',
           title: 'The Annex',
           icon: Building2,
-          action: () => openExternal('https://www.library.tamu.edu/'),
+          action: () => navigation.navigate('AnnexHub'),
+          internal: true,
         },
         {
           key: 'transact',
@@ -613,7 +775,11 @@ export function Profile() {
             <View style={{ flex: 1 }}>
               <Text style={styles.toolTitle}>{resource.title}</Text>
             </View>
-            <ExternalLink size={18} color={COLORS.textTertiary} />
+            {resource.internal ? (
+              <ChevronRight size={18} color={COLORS.textTertiary} />
+            ) : (
+              <ExternalLink size={18} color={COLORS.textTertiary} />
+            )}
           </Pressable>
         );
       })}
@@ -622,8 +788,8 @@ export function Profile() {
 
   return (
     <View style={[styles.container, useWallpaper && styles.transparentContainer]}>
-      {useWallpaper && wallpaperUri ? (
-        <ImageBackground source={{ uri: wallpaperUri }} style={StyleSheet.absoluteFill} resizeMode="cover">
+      {useWallpaper ? (
+        <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
           <View
             style={[
               StyleSheet.absoluteFill,
@@ -638,9 +804,21 @@ export function Profile() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        {renderPersonalTab()}
-        {renderPreferencesSection()}
-        {renderResourcesTab()}
+        <View style={styles.tabShell}>
+          <PillTabs
+            items={SETTINGS_TABS.map((tab) => ({ key: tab.key, label: tab.label, icon: tab.icon }))}
+            activeKey={activeTab}
+            onChange={(key) => setActiveTab(key as SettingsTabKey)}
+            floating={false}
+            compact={false}
+            activeTextMode="always"
+            layout="stacked"
+          />
+        </View>
+
+        {activeTab === 'personal' ? renderPersonalTab() : null}
+        {activeTab === 'layout' ? renderLayoutTab() : null}
+        {activeTab === 'resources' ? renderResourcesTab() : null}
 
         <View style={{ height: 120 }} />
       </ScrollView>

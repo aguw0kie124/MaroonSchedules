@@ -1,6 +1,5 @@
-import React, { useState, useMemo } from "react";
+import React from 'react';
 import {
-  ImageBackground,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -8,35 +7,31 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from "react-native";
-import { Bus, ChevronLeft, Clock3, MapPin } from "lucide-react-native";
-import { useTheme } from "./SharedUI";
+} from 'react-native';
+import { Bus, ChevronLeft, Clock3, MapPin } from 'lucide-react-native';
+import { useTheme } from './SharedUI';
 
 function RouteBadge({
   shortName,
   color,
+  styles,
 }: {
   shortName?: string;
   color?: string;
+  styles: ReturnType<typeof getStyles>;
 }) {
   return (
-    <View style={[styles.routeBadge, { backgroundColor: color || "#500000" }]}>
-      <Text style={styles.routeBadgeText}>{shortName || "??"}</Text>
+    <View style={[styles.routeBadge, { backgroundColor: color || '#500000' }]}>
+      <Text style={styles.routeBadgeText}>{shortName || '??'}</Text>
     </View>
   );
 }
 
 function getStopLabel(stop: any) {
-  return (
-    stop?.Name ||
-    stop?.StopName ||
-    stop?.Description ||
-    stop?.StopCode ||
-    "Transit Stop"
-  );
+  return stop?.Name || stop?.StopName || stop?.Description || stop?.StopCode || 'Transit Stop';
 }
 
-function TimetableRow({ entry }: { entry: any }) {
+function TimetableRow({ entry, styles }: { entry: any; styles: ReturnType<typeof getStyles> }) {
   return (
     <View style={styles.row}>
       <View style={styles.sequence}>
@@ -54,204 +49,85 @@ function TimetableRow({ entry }: { entry: any }) {
 }
 
 export default function BusTimetableScreen({ navigation, route }: any) {
-  const { theme, wallpaperUri } = useTheme();
-  const darkMode = theme === "dark";
-  const mode = route.params?.mode || "single";
+  const { theme, COLORS } = useTheme();
+  const darkMode = theme === 'dark';
+  const styles = getStyles(COLORS, darkMode);
+  const mode = route.params?.mode || 'single';
   const routeInfo = route.params?.route;
   const entries = route.params?.entries || [];
   const boards = route.params?.boards || [];
   const liveBusCount = route.params?.liveBusCount || 0;
   const nearbyTransitInsight = route.params?.nearbyTransitInsight;
 
-  const [directionFilter, setDirectionFilter] = useState<string>("");
-
-  const directionsAvailable = useMemo(() => {
-    const dirs = new Set<string>();
-    entries.forEach((e: any) => {
-      if (e.stop?.DirectionName) dirs.add(e.stop.DirectionName);
-    });
-    return Array.from(dirs).filter(Boolean);
-  }, [entries]);
-
-  // Auto-select first direction
-  React.useEffect(() => {
-    if (directionsAvailable.length > 0 && !directionsAvailable.includes(directionFilter)) {
-      setDirectionFilter(directionsAvailable[0]);
-    }
-  }, [directionsAvailable]);
-
-  const filteredEntries = useMemo(() => {
-    if (directionFilter === "All") return entries;
-    return entries.filter(
-      (e: any) => e.stop?.DirectionName === directionFilter,
-    );
-  }, [entries, directionFilter]);
-
-  const wallpaperSource = wallpaperUri
-    ? { uri: wallpaperUri }
-    : darkMode
-      ? require("../assets/black_marble.jpg")
-      : require("../assets/white_marble.jpg");
-
   return (
-    <SafeAreaView
-      style={[
-        styles.safe,
-        { backgroundColor: darkMode ? "#060607" : "#F5F2EC" },
-      ]}
-    >
-      <StatusBar
-        barStyle={darkMode ? "light-content" : "dark-content"}
-        backgroundColor="transparent"
-        translucent
-      />
-      <ImageBackground
-        source={wallpaperSource}
-        style={StyleSheet.absoluteFill}
-        resizeMode="cover"
-      >
-        <View
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              backgroundColor: darkMode
-                ? "rgba(0,0,0,0.60)"
-                : "rgba(255,255,255,0.70)",
-            },
-          ]}
-        />
-      </ImageBackground>
-
+    <SafeAreaView style={[styles.safe, { backgroundColor: COLORS.background }]}>
+      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => navigation.goBack()}
-          >
-            <ChevronLeft size={22} color="#F3F1ED" />
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+            <ChevronLeft size={22} color={COLORS.textPrimary} />
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.title}>
-              {mode === "all"
-                ? "All Route Timetables"
-                : `${routeInfo?.Name || "Bus Route"} Timetable`}
+              {mode === 'all' ? 'All Route Timetables' : `${routeInfo?.Name || 'Bus Route'} Timetable`}
             </Text>
             <Text style={styles.subtitle}>
-              {liveBusCount > 0
-                ? `${liveBusCount} buses live`
-                : "Route map loaded"}
+              {liveBusCount > 0 ? `${liveBusCount} buses live` : 'Route map loaded'}
             </Text>
           </View>
         </View>
 
-        {mode === "single" ? (
+        {mode === 'single' ? (
           <>
             <View style={styles.heroCard}>
               <View style={styles.heroHeader}>
-                <RouteBadge
-                  shortName={routeInfo?.ShortName}
-                  color={routeInfo?.Color}
-                />
+                <RouteBadge shortName={routeInfo?.ShortName} color={routeInfo?.Color} styles={styles} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.heroTitle}>
-                    {routeInfo?.Name || "Transit route"}
-                  </Text>
-                  <Text style={styles.heroSub}>
-                    Tap any stop on the map to track the nearest bus.
-                  </Text>
+                  <Text style={styles.heroTitle}>{routeInfo?.Name || 'Transit route'}</Text>
+                  <Text style={styles.heroSub}>Tap any stop on the map to track the nearest bus.</Text>
                 </View>
               </View>
 
               {nearbyTransitInsight ? (
                 <View style={styles.insightCard}>
                   <View style={styles.insightRow}>
-                    <MapPin size={14} color="#F3F1ED" />
+                    <MapPin size={14} color={COLORS.primary} />
                     <Text style={styles.insightText}>
                       {nearbyTransitInsight.nearestStop
                         ? `${nearbyTransitInsight.nearestStop.stop.Name} is ${Math.round(
-                          nearbyTransitInsight.nearestStop.distanceMeters,
-                        )} m away.`
-                        : "No nearby stop detected yet."}
+                            nearbyTransitInsight.nearestStop.distanceMeters,
+                          )} m away.`
+                        : 'No nearby stop detected yet.'}
                     </Text>
                   </View>
                   {nearbyTransitInsight.nearestVehicle ? (
                     <View style={styles.insightRow}>
-                      <Bus size={14} color="#F3F1ED" />
+                      <Bus size={14} color={COLORS.primary} />
                       <Text style={styles.insightText}>
-                        Closest bus is about{" "}
-                        {Math.round(
-                          nearbyTransitInsight.nearestVehicle.distanceMeters,
-                        )}{" "}
-                        m away.
+                        Closest bus is about {Math.round(nearbyTransitInsight.nearestVehicle.distanceMeters)} m away.
                       </Text>
                     </View>
                   ) : null}
                 </View>
               ) : null}
             </View>
-            {directionsAvailable.length > 1 && (
-              <View
-                style={{
-                  flexDirection: "row",
-                  paddingHorizontal: 16,
-                  marginBottom: 12,
-                  gap: 8,
-                  flexWrap: "wrap",
-                }}
-              >
-                {directionsAvailable.map((d) => (
-                  <TouchableOpacity
-                    key={d}
-                    onPress={() => setDirectionFilter(d)}
-                    style={{
-                      paddingVertical: 8,
-                      paddingHorizontal: 16,
-                      borderRadius: 20,
-                      backgroundColor:
-                        directionFilter === d
-                          ? darkMode
-                            ? "#500000"
-                            : "#500000"
-                          : darkMode
-                            ? "#2C2C2E"
-                            : "#E5E5EA",
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color:
-                          directionFilter === d
-                            ? "#FFF"
-                            : darkMode
-                              ? "#EBEBF5"
-                              : "#3A3A3D",
-                        fontWeight: "600",
-                        fontSize: 14,
-                      }}
-                    >
-                      {d}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
+
             <View style={styles.sectionHeader}>
-              <Clock3 size={15} color="#F3F1ED" />
+              <Clock3 size={15} color={COLORS.primary} />
               <Text style={styles.sectionTitle}>Stop Board</Text>
             </View>
 
             <View style={styles.boardCard}>
-              {filteredEntries.length > 0 ? (
-                filteredEntries.map((entry: any) => (
+              {entries.length > 0 ? (
+                entries.map((entry: any) => (
                   <TimetableRow
-                    key={`${routeInfo?.Key || "route"}-${entry.stop?.StopCode || entry.sequence}`}
+                    key={`${routeInfo?.Key || 'route'}-${entry.stop?.StopCode || entry.sequence}`}
                     entry={entry}
+                    styles={styles}
                   />
                 ))
               ) : (
-                <Text style={styles.emptyText}>
-                  No timetable entries are available for this direction.
-                </Text>
+                <Text style={styles.emptyText}>No timetable entries are available for this route yet.</Text>
               )}
             </View>
           </>
@@ -259,45 +135,32 @@ export default function BusTimetableScreen({ navigation, route }: any) {
           <>
             {boards.length > 0 ? (
               boards.map((board: any) => (
-                <View
-                  key={board.route?.Key || board.route?.Name}
-                  style={styles.boardCard}
-                >
+                <View key={board.route?.Key || board.route?.Name} style={styles.boardCard}>
                   <View style={styles.heroHeader}>
-                    <RouteBadge
-                      shortName={board.route?.ShortName}
-                      color={board.route?.Color}
-                    />
+                    <RouteBadge shortName={board.route?.ShortName} color={board.route?.Color} styles={styles} />
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.heroTitle}>
-                        {board.route?.Name || "Route"}
-                      </Text>
+                      <Text style={styles.heroTitle}>{board.route?.Name || 'Route'}</Text>
                       <Text style={styles.heroSub}>
-                        {board.liveCount > 0
-                          ? `${board.liveCount} buses live`
-                          : "Route loaded"}
+                        {board.liveCount > 0 ? `${board.liveCount} buses live` : 'Route loaded'}
                       </Text>
                     </View>
                   </View>
                   {board.entries.length > 0 ? (
-                    board.filteredEntries.map((entry: any) => (
+                    board.entries.map((entry: any) => (
                       <TimetableRow
                         key={`${board.route?.Key || board.route?.Name}-${entry.stop?.StopCode || entry.sequence}`}
                         entry={entry}
+                        styles={styles}
                       />
                     ))
                   ) : (
-                    <Text style={styles.emptyText}>
-                      Stop timetable unavailable for this route.
-                    </Text>
+                    <Text style={styles.emptyText}>Stop timetable unavailable for this route.</Text>
                   )}
                 </View>
               ))
             ) : (
               <View style={styles.boardCard}>
-                <Text style={styles.emptyText}>
-                  Route timetables are still loading.
-                </Text>
+                <Text style={styles.emptyText}>Route timetables are still loading.</Text>
               </View>
             )}
           </>
@@ -307,100 +170,88 @@ export default function BusTimetableScreen({ navigation, route }: any) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   safe: { flex: 1 },
   content: { padding: 18, paddingBottom: 40 },
-  header: { flexDirection: "row", alignItems: "center", marginBottom: 18 },
+  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 },
   backBtn: {
     width: 42,
     height: 42,
     borderRadius: 21,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(8,8,10,0.78)",
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? 'rgba(8,8,10,0.74)' : 'rgba(255,255,255,0.78)',
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.52)',
     marginRight: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: isDark ? 0.24 : 0.08,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  title: {
-    color: "#F3F1ED",
-    fontSize: 28,
-    fontWeight: "900",
-    letterSpacing: -0.8,
-  },
-  subtitle: { color: "#C8C8CF", fontSize: 12, fontWeight: "600", marginTop: 3 },
+  title: { color: COLORS.textPrimary, fontSize: 28, fontWeight: '900', letterSpacing: -0.8 },
+  subtitle: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', marginTop: 3 },
   heroCard: {
-    backgroundColor: "rgba(12,12,14,0.86)",
+    backgroundColor: isDark ? 'rgba(12,12,14,0.86)' : 'rgba(255,255,255,0.98)',
     borderRadius: 28,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
     padding: 18,
     marginBottom: 18,
   },
-  heroHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
-  heroTitle: { color: "#F3F1ED", fontSize: 18, fontWeight: "800" },
-  heroSub: { color: "#A7A7AE", fontSize: 12, marginTop: 3 },
+  heroHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  heroTitle: { color: COLORS.textPrimary, fontSize: 18, fontWeight: '800' },
+  heroSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 3 },
   routeBadge: {
     width: 46,
     height: 46,
     borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  routeBadgeText: { color: "#FFF", fontSize: 14, fontWeight: "900" },
+  routeBadgeText: { color: '#FFF', fontSize: 14, fontWeight: '900' },
   insightCard: {
     marginTop: 16,
     gap: 10,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.04)',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
+    borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(12,12,14,0.06)',
     padding: 14,
   },
-  insightRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  insightText: { color: "#E0E0E6", fontSize: 12, lineHeight: 18, flex: 1 },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 10,
-    paddingHorizontal: 4,
-  },
-  sectionTitle: {
-    color: "#F3F1ED",
-    fontSize: 13,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
+  insightRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  insightText: { color: COLORS.textSecondary, fontSize: 12, lineHeight: 18, flex: 1 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, paddingHorizontal: 4 },
+  sectionTitle: { color: COLORS.textPrimary, fontSize: 13, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.8 },
   boardCard: {
-    backgroundColor: "rgba(12,12,14,0.86)",
+    backgroundColor: isDark ? 'rgba(12,12,14,0.86)' : 'rgba(255,255,255,0.98)',
     borderRadius: 26,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
     padding: 16,
     marginBottom: 14,
     gap: 10,
   },
   row: {
-    flexDirection: "row",
-    alignItems: "center",
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
     paddingVertical: 10,
     borderTopWidth: 1,
-    borderTopColor: "rgba(255,255,255,0.06)",
+    borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(12,12,14,0.06)',
   },
   sequence: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.08)",
-    alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  sequenceText: { color: "#F3F1ED", fontSize: 11, fontWeight: "800" },
-  stopName: { color: "#F3F1ED", fontSize: 14, fontWeight: "700" },
-  stopMeta: { color: "#A7A7AE", fontSize: 11, marginTop: 3 },
-  eta: { color: "#F3F1ED", fontSize: 13, fontWeight: "800" },
-  emptyText: { color: "#A7A7AE", fontSize: 13, lineHeight: 20 },
+  sequenceText: { color: COLORS.textPrimary, fontSize: 11, fontWeight: '800' },
+  stopName: { color: COLORS.textPrimary, fontSize: 14, fontWeight: '700' },
+  stopMeta: { color: COLORS.textSecondary, fontSize: 11, marginTop: 3 },
+  eta: { color: COLORS.textPrimary, fontSize: 13, fontWeight: '800' },
+  emptyText: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 20 },
 });
