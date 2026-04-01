@@ -1677,7 +1677,7 @@ export function PlacesMapScreen() {
         } catch (e) {
           // Silently ignore poll failures to keep existing markers visible
         }
-      }, 5000);
+      }, 1500); // 1.5 seconds for highly responsive real-time bus locations
     } else {
       if (busPollInterval.current) clearInterval(busPollInterval.current);
     }
