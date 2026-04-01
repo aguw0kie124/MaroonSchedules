@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import * as ImagePicker from 'expo-image-picker';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -16,6 +18,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import {
@@ -33,6 +36,7 @@ import {
   Trash2,
   Users,
   X,
+  Image as ImageIcon,
 } from 'lucide-react-native';
 
 import { API_URL } from '../config';
@@ -46,6 +50,7 @@ import {
   getComments,
   getPingFeed,
   toggleLike,
+  uploadStreamImage,
 } from '../services/streamFeeds';
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
 
@@ -60,7 +65,6 @@ type PingCategory =
   | 'Heads Up';
 
 type TimePreset = 'now' | 'soon' | 'tonight' | 'tomorrow';
-type FeedWindow = 'Today' | 'Upcoming' | 'Past';
 
 interface FeaturedEvent {
   id: string;
@@ -95,6 +99,7 @@ interface PingCard {
   sourceUrl?: string | null;
   locationLat?: number | null;
   locationLng?: number | null;
+  imageUrl?: string | null;
 }
 
 const PING_CATEGORIES: Array<{ id: PingCategory; accent: string; Icon: any }> = [
@@ -169,29 +174,29 @@ function formatStartLabel(startAt: string) {
   return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${time}`;
 }
 
-function isSameDay(left: Date, right: Date) {
-  return (
-    left.getFullYear() === right.getFullYear() &&
-    left.getMonth() === right.getMonth() &&
-    left.getDate() === right.getDate()
-  );
+function formatRelativeAge(isoValue: string) {
+  const value = new Date(isoValue);
+  if (!Number.isFinite(value.getTime())) return 'Just now';
+  const diffMs = Date.now() - value.getTime();
+  const diffMin = Math.max(1, Math.round(diffMs / (1000 * 60)));
+  if (diffMin < 60) return `${diffMin} min${diffMin === 1 ? '' : 's'} ago`;
+  const diffHours = Math.round(diffMin / 60);
+  if (diffHours < 24) return `${diffHours} hr${diffHours === 1 ? '' : 's'} ago`;
+  const diffDays = Math.round(diffHours / 24);
+  return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
 }
 
-function matchesFeedWindow(startAt: string, window: FeedWindow) {
-  const start = new Date(startAt);
-  if (!Number.isFinite(start.getTime())) return false;
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/).slice(0, 2);
+  if (!parts.length) return 'A';
+  return parts.map((part) => part[0]?.toUpperCase() || '').join('');
+}
 
-  const now = new Date();
-
-  if (window === 'Past') {
-    return start.getTime() < now.getTime();
-  }
-
-  if (window === 'Upcoming') {
-    return start.getTime() >= now.getTime() && !isSameDay(start, now);
-  }
-
-  return isSameDay(start, now) || Math.abs(start.getTime() - now.getTime()) < 45 * 60 * 1000;
+function isPingActiveNow(startAt: string, endAt?: string | null) {
+  const start = new Date(startAt).getTime();
+  const end = endAt ? new Date(endAt).getTime() : start + 2 * 60 * 60 * 1000;
+  const now = Date.now();
+  return Number.isFinite(start) && now >= start - 30 * 60 * 1000 && now <= end;
 }
 
 function mapOfficialEventCategory(event: FeaturedEvent): PingCategory {
@@ -206,6 +211,8 @@ function mapOfficialEventCategory(event: FeaturedEvent): PingCategory {
 function mapActivityToPing(activity: any): PingCard {
   const custom = activity.custom || {};
   const actor = activity.actor || {};
+  const attachments = activity.attachments || [];
+  const media = attachments[0] || {};
 
   return {
     id: activity.id || `${Date.now()}`,
@@ -225,6 +232,7 @@ function mapActivityToPing(activity: any): PingCard {
     boostedByCurrentUser: (activity.own_reactions?.like || []).length > 0,
     activityId: activity.id,
     sourceUrl: null,
+    imageUrl: media.image_url || media.asset_url || null,
   };
 }
 
@@ -248,7 +256,7 @@ export function CampusPingsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [feedConnected, setFeedConnected] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
-  const [feedWindow, setFeedWindow] = useState<FeedWindow>('Today');
+  const [categoryFilter, setCategoryFilter] = useState<'All' | PingCategory>('All');
 
   const [composerVisible, setComposerVisible] = useState(false);
   const [composerTitle, setComposerTitle] = useState('');
@@ -257,6 +265,7 @@ export function CampusPingsScreen() {
   const [composerTimePreset, setComposerTimePreset] = useState<TimePreset>('now');
   const [locationQuery, setLocationQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+  const [composerImageUri, setComposerImageUri] = useState<string | null>(null);
   const [isPosting, setIsPosting] = useState(false);
 
   const [commentModalVisible, setCommentModalVisible] = useState(false);
@@ -281,7 +290,7 @@ export function CampusPingsScreen() {
 
   const featuredCards = useMemo(() => {
     return featuredEvents
-      .filter((event) => matchesFeedWindow(event.startTime, feedWindow))
+      .filter((event) => categoryFilter === 'All' || mapOfficialEventCategory(event) === categoryFilter)
       .map((event) => {
         const canonicalLocation = getCanonicalLocationName(event.location);
         const location = locationLookup.get(canonicalLocation);
@@ -292,8 +301,9 @@ export function CampusPingsScreen() {
           locationLat: event.locationLat ?? location?.coord.lat ?? null,
           locationLng: event.locationLng ?? location?.coord.lng ?? null,
         };
-      });
-  }, [featuredEvents, feedWindow, locationLookup]);
+      })
+      .sort((left, right) => new Date(left.startTime).getTime() - new Date(right.startTime).getTime());
+  }, [categoryFilter, featuredEvents, locationLookup]);
 
   const feedPings = useMemo(
     () =>
@@ -306,13 +316,18 @@ export function CampusPingsScreen() {
             locationLng: location?.coord.lng ?? null,
           };
         })
-        .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime()),
+        .sort((left, right) => {
+          const leftActive = isPingActiveNow(left.startAt, left.endAt) ? 1 : 0;
+          const rightActive = isPingActiveNow(right.startAt, right.endAt) ? 1 : 0;
+          if (leftActive !== rightActive) return rightActive - leftActive;
+          return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+        }),
     [locationLookup, userPings],
   );
 
   const filteredFeed = useMemo(() => {
-    return feedPings.filter((ping) => matchesFeedWindow(ping.startAt, feedWindow));
-  }, [feedPings, feedWindow]);
+    return feedPings.filter((ping) => categoryFilter === 'All' || ping.category === categoryFilter);
+  }, [categoryFilter, feedPings]);
 
   const loadFeaturedEvents = useCallback(async () => {
     try {
@@ -399,6 +414,7 @@ export function CampusPingsScreen() {
     setComposerTimePreset('now');
     setLocationQuery('');
     setSelectedLocation(null);
+    setComposerImageUri(null);
   }, []);
 
   const handleRefresh = useCallback(() => {
@@ -409,6 +425,25 @@ export function CampusPingsScreen() {
   const handleSelectLocation = useCallback((locationName: string) => {
     setSelectedLocation(locationName);
     setLocationQuery(locationName);
+  }, []);
+
+  const handlePickPingImage = useCallback(async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Photos unavailable', 'Allow photo access to attach an image to your ping.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.82,
+      aspect: [4, 3],
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setComposerImageUri(result.assets[0].uri);
+    }
   }, []);
 
   const handleCreatePing = useCallback(async () => {
@@ -433,6 +468,11 @@ export function CampusPingsScreen() {
     const { startAt, endAt } = buildPresetWindow(composerTimePreset);
     setIsPosting(true);
     try {
+      let uploadedImageUrl: string | undefined;
+      if (composerImageUri) {
+        uploadedImageUrl = await uploadStreamImage(composerImageUri);
+      }
+
       await addPing({
         userId: user.id,
         userName: displayName,
@@ -443,6 +483,7 @@ export function CampusPingsScreen() {
         locationTag: selectedLocation,
         startAt,
         endAt,
+        mediaUrl: uploadedImageUrl,
       });
 
       setComposerVisible(false);
@@ -457,6 +498,7 @@ export function CampusPingsScreen() {
   }, [
     composerBody,
     composerCategory,
+    composerImageUri,
     composerTimePreset,
     composerTitle,
     feedConnected,
@@ -634,25 +676,35 @@ export function CampusPingsScreen() {
 
   const renderFeaturedEvent = ({ item }: { item: FeaturedEvent }) => {
     const meta = categoryMeta(mapOfficialEventCategory(item));
+    const FeaturedIcon = meta.Icon;
     return (
       <Pressable
         style={[styles.featuredCard, { borderColor: `${meta.accent}30` }]}
         onPress={() => setActiveFeaturedEvent(item)}
       >
-        <View style={styles.featuredCardTopRow}>
-          <View style={[styles.featuredBadge, { backgroundColor: `${meta.accent}16` }]}>
-            <Text style={[styles.featuredBadgeText, { color: meta.accent }]}>
-              {mapOfficialEventCategory(item)}
-            </Text>
+        <LinearGradient
+          colors={[`${meta.accent}F2`, `${meta.accent}99`]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.featuredVisual}
+        >
+          <View style={styles.featuredCardTopRow}>
+            <View style={styles.featuredVisualChip}>
+              <Text style={styles.featuredVisualChipText}>{mapOfficialEventCategory(item)}</Text>
+            </View>
+            <FeaturedIcon size={20} color="#FFFFFF" />
           </View>
-          <Text style={styles.featuredTime}>{formatStartLabel(item.startTime)}</Text>
+        </LinearGradient>
+
+        <View style={styles.featuredContent}>
+          <Text style={styles.featuredTitle} numberOfLines={2}>
+            {item.title}
+          </Text>
+          <Text style={styles.featuredMeta}>{formatStartLabel(item.startTime)}</Text>
+          <Text style={styles.featuredMeta} numberOfLines={1}>
+            {getCanonicalLocationName(item.location)}
+          </Text>
         </View>
-        <Text style={styles.featuredTitle} numberOfLines={2}>
-          {item.title}
-        </Text>
-        <Text style={styles.featuredMeta} numberOfLines={1}>
-          {getCanonicalLocationName(item.location)}
-        </Text>
       </Pressable>
     );
   };
@@ -660,32 +712,93 @@ export function CampusPingsScreen() {
   const renderPingCard = ({ item }: { item: PingCard }) => {
     const meta = categoryMeta(item.category);
     const canDelete = item.source === 'user' && user?.id && item.userId === user.id;
+    const showCover =
+      !item.imageUrl && (item.category === 'Study' || item.category === 'Show' || item.category === 'Sports');
+    const isActive = isPingActiveNow(item.startAt, item.endAt);
+    const initials = getInitials(item.userName);
+    const AccentIcon = meta.Icon;
 
     return (
       <View style={styles.pingCard}>
-        <View style={styles.pingCardTopRow}>
-          <View style={[styles.categoryBadge, { backgroundColor: `${meta.accent}20` }]}>
-            <meta.Icon size={14} color={meta.accent} />
-            <Text style={[styles.categoryBadgeText, { color: meta.accent }]}>{item.category}</Text>
+        {item.imageUrl ? (
+          <View style={styles.pingImageWrap}>
+            <Image source={{ uri: item.imageUrl }} style={styles.pingImage} />
+            <View style={styles.pingImageBadge}>
+              <Text style={styles.pingImageBadgeText}>{item.category}</Text>
+            </View>
           </View>
-          <Text style={styles.pingTimeLabel}>{formatStartLabel(item.startAt)}</Text>
+        ) : null}
+
+        {showCover ? (
+          <LinearGradient
+            colors={[`${meta.accent}D9`, `${meta.accent}66`]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.pingCardCover}
+          >
+            <View style={styles.pingCardCoverBadge}>
+              <Text style={styles.pingCardCoverBadgeText}>{item.category}</Text>
+            </View>
+            <View style={styles.pingCardCoverArt}>
+              <AccentIcon size={38} color="#FFFFFF" />
+            </View>
+          </LinearGradient>
+        ) : null}
+
+        <View style={styles.pingAuthorRow}>
+          <View style={styles.pingAuthorLeft}>
+            {item.userImage ? (
+              <Image source={{ uri: item.userImage }} style={styles.avatarImage} />
+            ) : (
+              <View style={[styles.avatarFallback, { backgroundColor: `${meta.accent}22` }]}>
+                <Text style={[styles.avatarFallbackText, { color: meta.accent }]}>{initials}</Text>
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.authorName}>{item.userName}</Text>
+              <Text style={styles.authorMeta}>{formatRelativeAge(item.createdAt)}</Text>
+            </View>
+          </View>
+
+          {isActive ? (
+            <View style={styles.liveNowPill}>
+              <Text style={styles.liveNowText}>ACTIVE NOW</Text>
+            </View>
+          ) : (
+            <Text style={styles.pingTimeLabel}>{formatStartLabel(item.startAt)}</Text>
+          )}
         </View>
 
-        <Text style={styles.pingTitle}>{item.title}</Text>
+        {item.title.trim() ? <Text style={styles.pingTitle}>{item.title}</Text> : null}
         <Text style={styles.pingBody}>{item.body}</Text>
 
-        <View style={styles.pingMetaRow}>
-          <View style={styles.metaRowItem}>
-            <MapPin size={14} color={COLORS.textSecondary} />
-            <Text style={styles.pingMetaText}>{item.locationTag}</Text>
+        <View style={styles.pingCardDivider} />
+
+        <View style={styles.pingFooterRow}>
+          <View style={styles.locationPill}>
+            <MapPin size={14} color={COLORS.textPrimary} />
+            <Text style={styles.locationPillText} numberOfLines={1}>
+              {item.locationTag}
+            </Text>
           </View>
-          <View style={styles.metaRowItem}>
-            <Users size={14} color={COLORS.textSecondary} />
-            <Text style={styles.pingMetaText}>{item.userName}</Text>
+          <View style={styles.pingSignalsRow}>
+            <View style={styles.signalPill}>
+              <Heart size={14} color={COLORS.textSecondary} />
+              <Text style={styles.signalPillText}>{item.likeCount} boosts</Text>
+            </View>
+            <View style={styles.signalPill}>
+              <MessageCircle size={14} color={COLORS.textSecondary} />
+              <Text style={styles.signalPillText}>{item.commentCount} replies</Text>
+            </View>
           </View>
         </View>
 
         <View style={styles.actionRow}>
+          <Pressable style={styles.actionButton} onPress={() => openComments(item)}>
+            <MessageCircle size={16} color={COLORS.textPrimary} />
+            <Text style={styles.actionLabel}>Reply</Text>
+          </Pressable>
+
           <Pressable
             style={[styles.actionButton, item.boostedByCurrentUser && styles.actionButtonActive]}
             onPress={() => handleBoostPing(item)}
@@ -695,22 +808,19 @@ export function CampusPingsScreen() {
               color={item.boostedByCurrentUser ? '#FF647F' : COLORS.textPrimary}
               fill={item.boostedByCurrentUser ? '#FF647F' : 'none'}
             />
-            <Text style={styles.actionLabel}>{item.likeCount}</Text>
+            <Text style={styles.actionLabel}>Boost</Text>
           </Pressable>
 
-          <Pressable style={styles.actionButton} onPress={() => openComments(item)}>
-            <MessageCircle size={16} color={COLORS.textPrimary} />
-            <Text style={styles.actionLabel}>{item.commentCount}</Text>
-          </Pressable>
-
-          <Pressable style={styles.primaryActionButton} onPress={() => openPingOnMap(item)}>
-            <MapPin size={16} color="#FFFFFF" />
-            <Text style={styles.primaryActionLabel}>Open on map</Text>
-          </Pressable>
+          <View style={{ flex: 1 }} />
 
           <Pressable style={styles.actionButton} onPress={() => savePingToPlans(item)}>
             <CalendarDays size={16} color={COLORS.textPrimary} />
             <Text style={styles.actionLabel}>Save</Text>
+          </Pressable>
+
+          <Pressable style={styles.primaryActionButton} onPress={() => openPingOnMap(item)}>
+            <MapPin size={16} color="#FFFFFF" />
+            <Text style={styles.primaryActionLabel}>Map</Text>
           </Pressable>
 
           {canDelete ? (
@@ -727,14 +837,17 @@ export function CampusPingsScreen() {
     <View style={styles.headerWrap}>
       <View style={styles.heroTopRow}>
         <View>
-          <Text style={styles.heroEyebrow}>Campus Pulse</Text>
-          <Text style={styles.heroTitle}>Pings.</Text>
+          <Text style={styles.heroTitle}>CrowdPings</Text>
           <Text style={styles.heroBody}>What's happening around you</Text>
         </View>
-        <Pressable style={styles.composeFab} onPress={() => setComposerVisible(true)}>
-          <Plus size={22} color="#FF6A3D" />
-        </Pressable>
       </View>
+
+      <Pressable style={styles.quickPostBar} onPress={() => setComposerVisible(true)}>
+        <View style={styles.quickPostIconWrap}>
+          <Megaphone size={16} color="#FF6A3D" />
+        </View>
+        <Text style={styles.quickPostText}>What's happening at...</Text>
+      </Pressable>
 
       {streamError ? (
         <View style={styles.noticePill}>
@@ -742,22 +855,26 @@ export function CampusPingsScreen() {
         </View>
       ) : null}
 
-      <View style={styles.segmentedRow}>
-        {(['Today', 'Upcoming', 'Past'] as FeedWindow[]).map((option) => {
-          const active = feedWindow === option;
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.categoryRow}
+      >
+        {(['All', ...PING_CATEGORIES.map((entry) => entry.id)] as Array<'All' | PingCategory>).map((option) => {
+          const active = categoryFilter === option;
           return (
             <Pressable
               key={option}
-              style={[styles.segmentedChip, active && styles.segmentedChipActive]}
-              onPress={() => setFeedWindow(option)}
+              style={[styles.categoryChip, active && styles.categoryChipActive]}
+              onPress={() => setCategoryFilter(option)}
             >
-              <Text style={[styles.segmentedChipLabel, active && styles.segmentedChipLabelActive]}>
+              <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>
                 {option}
               </Text>
             </Pressable>
           );
         })}
-      </View>
+      </ScrollView>
 
       {featuredCards.length ? (
         <View style={styles.featuredSection}>
@@ -800,23 +917,8 @@ export function CampusPingsScreen() {
               <Flame size={20} color="#A462F4" />
               <Megaphone size={20} color="#FF8B52" />
             </View>
-            <Text style={styles.emptyTitle}>
-              {feedWindow === 'Past'
-                ? 'Nothing recent... yet'
-                : feedWindow === 'Upcoming'
-                  ? 'Nothing upcoming... yet'
-                  : 'Nothing today... yet'}
-            </Text>
-            <Text style={styles.emptyQuote}>
-              {feedWindow === 'Past'
-                ? 'Quiet timeline.'
-                : feedWindow === 'Upcoming'
-                  ? 'No one has posted what is next.'
-                  : 'Looks calm right now.'}
-            </Text>
-            <Pressable style={styles.emptyRefreshButton} onPress={handleRefresh}>
-              <Text style={styles.emptyRefreshLabel}>Refresh</Text>
-            </Pressable>
+            <Text style={styles.emptyTitle}>No crowd pings yet</Text>
+            <Text style={styles.emptyQuote}>Be the first to post what is happening.</Text>
           </View>
         }
         contentContainerStyle={styles.listContent}
@@ -850,101 +952,132 @@ export function CampusPingsScreen() {
                     </Pressable>
                   </View>
 
-                  <Text style={styles.modalLabel}>Category</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
-                    {PING_CATEGORIES.map((entry) => {
-                      const active = composerCategory === entry.id;
-                      return (
-                        <Pressable
-                          key={entry.id}
-                          style={[styles.modalChip, active && styles.modalChipActive]}
-                          onPress={() => setComposerCategory(entry.id)}
-                        >
-                          <Text style={[styles.modalChipLabel, active && styles.modalChipLabelActive]}>{entry.id}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
+                  <ScrollView
+                    style={styles.modalScroll}
+                    contentContainerStyle={styles.modalScrollContent}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    <Text style={styles.modalLabel}>Category</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
+                      {PING_CATEGORIES.map((entry) => {
+                        const active = composerCategory === entry.id;
+                        return (
+                          <Pressable
+                            key={entry.id}
+                            style={[styles.modalChip, active && styles.modalChipActive]}
+                            onPress={() => setComposerCategory(entry.id)}
+                          >
+                            <Text style={[styles.modalChipLabel, active && styles.modalChipLabelActive]}>{entry.id}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
 
-                  <Text style={styles.modalLabel}>Title</Text>
-                  <TextInput
-                    value={composerTitle}
-                    onChangeText={setComposerTitle}
-                    placeholder="Free boba, pop-up market, pickup game..."
-                    placeholderTextColor={COLORS.textTertiary}
-                    style={styles.input}
-                  />
-
-                  <Text style={styles.modalLabel}>Details</Text>
-                  <TextInput
-                    value={composerBody}
-                    onChangeText={setComposerBody}
-                    placeholder="Give people the quick context they need before they head over."
-                    placeholderTextColor={COLORS.textTertiary}
-                    style={[styles.input, styles.inputMultiline]}
-                    multiline
-                  />
-
-                  <Text style={styles.modalLabel}>When</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
-                    {TIME_PRESETS.map((entry) => {
-                      const active = composerTimePreset === entry.id;
-                      return (
-                        <Pressable
-                          key={entry.id}
-                          style={[styles.modalChip, active && styles.modalChipActive]}
-                          onPress={() => setComposerTimePreset(entry.id)}
-                        >
-                          <Text style={[styles.modalChipLabel, active && styles.modalChipLabelActive]}>{entry.label}</Text>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-
-                  <Text style={styles.modalLabel}>Location</Text>
-                  <View style={styles.searchInputWrap}>
-                    <Search size={16} color={COLORS.textSecondary} />
+                    <Text style={styles.modalLabel}>Title</Text>
                     <TextInput
-                      value={locationQuery}
-                      onChangeText={(text) => {
-                        setLocationQuery(text);
-                        setSelectedLocation(null);
-                      }}
-                      placeholder="Search for a campus location"
+                      value={composerTitle}
+                      onChangeText={setComposerTitle}
+                      placeholder="Free boba, pop-up market, pickup game..."
                       placeholderTextColor={COLORS.textTertiary}
-                      style={styles.searchInput}
+                      style={styles.input}
                     />
-                  </View>
 
-                  <ScrollView style={styles.locationResults} keyboardShouldPersistTaps="handled">
-                    {locationSuggestions.map((location) => {
-                      const active = selectedLocation === location.location;
-                      return (
-                        <Pressable
-                          key={location.location}
-                          style={[styles.locationSuggestion, active && styles.locationSuggestionActive]}
-                          onPress={() => handleSelectLocation(location.location)}
-                        >
-                          <Text style={styles.locationSuggestionTitle}>{location.location}</Text>
-                          <Text style={styles.locationSuggestionMeta}>
-                            {location.type}
-                            {location.shortName ? ` · ${location.shortName}` : ''}
-                          </Text>
+                    <Text style={styles.modalLabel}>Details</Text>
+                    <TextInput
+                      value={composerBody}
+                      onChangeText={setComposerBody}
+                      placeholder="Give people the quick context they need before they head over."
+                      placeholderTextColor={COLORS.textTertiary}
+                      style={[styles.input, styles.inputMultiline]}
+                      multiline
+                    />
+
+                    <Text style={styles.modalLabel}>Photo</Text>
+                    <View style={styles.imageComposerRow}>
+                      <Pressable style={styles.imagePickerButton} onPress={handlePickPingImage}>
+                        <ImageIcon size={16} color={COLORS.textPrimary} />
+                        <Text style={styles.imagePickerButtonText}>
+                          {composerImageUri ? 'Change photo' : 'Add photo'}
+                        </Text>
+                      </Pressable>
+                      {composerImageUri ? (
+                        <Pressable style={styles.imagePreviewWrap} onPress={handlePickPingImage}>
+                          <Image source={{ uri: composerImageUri }} style={styles.imagePreview} />
+                          <View style={styles.imagePreviewRemoveHint}>
+                            <Text style={styles.imagePreviewRemoveHintText}>Tap to edit</Text>
+                          </View>
                         </Pressable>
-                      );
-                    })}
+                      ) : (
+                        <View style={styles.imageEmptyState}>
+                          <Text style={styles.imageEmptyStateText}>Optional</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <Text style={styles.modalLabel}>When</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
+                      {TIME_PRESETS.map((entry) => {
+                        const active = composerTimePreset === entry.id;
+                        return (
+                          <Pressable
+                            key={entry.id}
+                            style={[styles.modalChip, active && styles.modalChipActive]}
+                            onPress={() => setComposerTimePreset(entry.id)}
+                          >
+                            <Text style={[styles.modalChipLabel, active && styles.modalChipLabelActive]}>{entry.label}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+
+                    <Text style={styles.modalLabel}>Location</Text>
+                    <View style={styles.searchInputWrap}>
+                      <Search size={16} color={COLORS.textSecondary} />
+                      <TextInput
+                        value={locationQuery}
+                        onChangeText={(text) => {
+                          setLocationQuery(text);
+                          setSelectedLocation(null);
+                        }}
+                        placeholder="Search for a campus location"
+                        placeholderTextColor={COLORS.textTertiary}
+                        style={styles.searchInput}
+                      />
+                    </View>
+
+                    <ScrollView style={styles.locationResults} keyboardShouldPersistTaps="handled">
+                      {locationSuggestions.map((location) => {
+                        const active = selectedLocation === location.location;
+                        return (
+                          <Pressable
+                            key={location.location}
+                            style={[styles.locationSuggestion, active && styles.locationSuggestionActive]}
+                            onPress={() => handleSelectLocation(location.location)}
+                          >
+                            <Text style={styles.locationSuggestionTitle}>{location.location}</Text>
+                            <Text style={styles.locationSuggestionMeta}>
+                              {location.type}
+                              {location.shortName ? ` · ${location.shortName}` : ''}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
                   </ScrollView>
 
-                  <Pressable style={styles.submitButton} onPress={handleCreatePing} disabled={isPosting}>
-                    {isPosting ? (
-                      <ActivityIndicator color="#FFFFFF" />
-                    ) : (
-                      <>
-                        <Plus size={18} color="#FFFFFF" />
-                        <Text style={styles.submitButtonLabel}>Post ping</Text>
-                      </>
-                    )}
-                  </Pressable>
+                  <View style={styles.modalFooter}>
+                    <Pressable style={styles.submitButton} onPress={handleCreatePing} disabled={isPosting}>
+                      {isPosting ? (
+                        <ActivityIndicator color="#FFFFFF" />
+                      ) : (
+                        <>
+                          <Plus size={18} color="#FFFFFF" />
+                          <Text style={styles.submitButtonLabel}>Post ping</Text>
+                        </>
+                      )}
+                    </Pressable>
+                  </View>
                 </View>
               </TouchableWithoutFeedback>
             </KeyboardAvoidingView>
@@ -1099,13 +1232,13 @@ const getStyles = (COLORS: any) =>
   StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: '#FFFFFF',
+      backgroundColor: COLORS.background,
     },
     loadingWrap: {
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: '#FFFFFF',
+      backgroundColor: COLORS.background,
     },
     loadingText: {
       marginTop: 12,
@@ -1116,14 +1249,12 @@ const getStyles = (COLORS: any) =>
       paddingBottom: 120,
     },
     headerWrap: {
-      paddingTop: 60,
-      paddingHorizontal: 20,
+      paddingTop: 48,
+      paddingHorizontal: 18,
+      paddingBottom: 8,
     },
     heroTopRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 16,
+      marginBottom: 14,
     },
     heroEyebrow: {
       fontSize: 12,
@@ -1134,15 +1265,15 @@ const getStyles = (COLORS: any) =>
       marginBottom: 6,
     },
     heroTitle: {
-      fontSize: 34,
+      fontSize: 30,
       fontWeight: '900',
-      color: '#050505',
-      letterSpacing: -1.4,
+      color: COLORS.textPrimary,
+      letterSpacing: -1,
     },
     heroBody: {
-      marginTop: 8,
-      color: '#6B6B73',
-      fontSize: 17,
+      marginTop: 6,
+      color: COLORS.textSecondary,
+      fontSize: 15,
       fontWeight: '600',
     },
     composeFab: {
@@ -1157,6 +1288,35 @@ const getStyles = (COLORS: any) =>
       shadowOpacity: 0.12,
       shadowRadius: 14,
       elevation: 6,
+    },
+    quickPostBar: {
+      height: 72,
+      borderRadius: 26,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 18,
+      gap: 14,
+      backgroundColor: COLORS.surface,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.04,
+      shadowRadius: 16,
+      elevation: 3,
+    },
+    quickPostIconWrap: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: `${COLORS.primary}14`,
+    },
+    quickPostText: {
+      color: COLORS.textTertiary,
+      fontSize: 17,
+      fontWeight: '600',
     },
     noticePill: {
       marginTop: 14,
@@ -1174,40 +1334,84 @@ const getStyles = (COLORS: any) =>
       fontWeight: '700',
     },
     sectionRow: {
-      marginTop: 26,
-      marginBottom: 14,
+      marginTop: 18,
+      marginBottom: 10,
     },
     sectionTitle: {
-      color: '#050505',
-      fontSize: 16,
+      color: COLORS.textPrimary,
+      fontSize: 15,
       fontWeight: '800',
       letterSpacing: -0.3,
     },
+    categoryRow: {
+      gap: 8,
+      paddingRight: 18,
+      paddingTop: 10,
+      paddingBottom: 2,
+    },
+    categoryChip: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: COLORS.surface,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    categoryChipActive: {
+      backgroundColor: COLORS.textPrimary,
+      borderColor: COLORS.textPrimary,
+    },
+    categoryChipText: {
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    categoryChipTextActive: {
+      color: COLORS.background,
+    },
     featuredSection: {
-      marginTop: 6,
+      marginTop: 8,
     },
     featuredList: {
-      paddingRight: 20,
-      gap: 12,
+      paddingRight: 18,
+      gap: 10,
     },
     featuredCard: {
-      width: 214,
-      padding: 16,
+      width: 188,
       borderRadius: 22,
-      backgroundColor: '#FFF8F4',
+      backgroundColor: COLORS.surface,
       borderWidth: 1,
+      overflow: 'hidden',
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 6 },
       shadowOpacity: 0.04,
       shadowRadius: 14,
       elevation: 3,
     },
+    featuredVisual: {
+      height: 92,
+      padding: 12,
+      justifyContent: 'space-between',
+    },
     featuredCardTopRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       gap: 12,
-      marginBottom: 12,
+    },
+    featuredVisualChip: {
+      alignSelf: 'flex-start',
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: 'rgba(255,255,255,0.88)',
+    },
+    featuredVisualChipText: {
+      color: '#2F2F34',
+      fontSize: 11,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
     },
     featuredBadge: {
       paddingHorizontal: 10,
@@ -1221,70 +1425,144 @@ const getStyles = (COLORS: any) =>
       letterSpacing: 0.5,
     },
     featuredTime: {
-      color: '#8C8C93',
+      color: COLORS.textSecondary,
       fontSize: 11,
       fontWeight: '700',
       flexShrink: 1,
       textAlign: 'right',
     },
+    featuredContent: {
+      paddingHorizontal: 12,
+      paddingVertical: 12,
+    },
     featuredTitle: {
-      color: '#111111',
-      fontSize: 18,
+      color: COLORS.textPrimary,
+      fontSize: 15,
       fontWeight: '800',
-      lineHeight: 22,
+      lineHeight: 19,
     },
     featuredMeta: {
-      marginTop: 10,
-      color: '#6B6B73',
-      fontSize: 13,
+      marginTop: 6,
+      color: COLORS.textSecondary,
+      fontSize: 11,
       fontWeight: '600',
-    },
-    segmentedRow: {
-      flexDirection: 'row',
-      gap: 12,
-      marginTop: 26,
-    },
-    segmentedChip: {
-      flex: 1,
-      minHeight: 52,
-      borderRadius: 26,
-      backgroundColor: '#FFFFFF',
-      borderWidth: 1,
-      borderColor: '#E5E5EA',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    segmentedChipActive: {
-      backgroundColor: '#050505',
-      borderColor: '#050505',
-    },
-    segmentedChipLabel: {
-      color: '#7A7A81',
-      fontSize: 15,
-      fontWeight: '700',
-    },
-    segmentedChipLabelActive: {
-      color: '#FFFFFF',
     },
     pingCard: {
       marginTop: 16,
-      marginHorizontal: 20,
+      marginHorizontal: 18,
       padding: 18,
       borderRadius: 28,
-      backgroundColor: '#FFFFFF',
+      backgroundColor: COLORS.surface,
       borderWidth: 1,
-      borderColor: '#EFEFF4',
+      borderColor: COLORS.border,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 8 },
       shadowOpacity: 0.05,
       shadowRadius: 18,
       elevation: 4,
     },
-    pingCardTopRow: {
+    pingCardCover: {
+      height: 188,
+      marginHorizontal: -18,
+      marginTop: -18,
+      marginBottom: 16,
+      padding: 18,
+      justifyContent: 'space-between',
+    },
+    pingImageWrap: {
+      height: 208,
+      marginHorizontal: -18,
+      marginTop: -18,
+      marginBottom: 16,
+      position: 'relative',
+      overflow: 'hidden',
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+    },
+    pingImage: {
+      width: '100%',
+      height: '100%',
+    },
+    pingImageBadge: {
+      position: 'absolute',
+      top: 16,
+      right: 16,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: 'rgba(255,255,255,0.92)',
+    },
+    pingImageBadgeText: {
+      color: '#202026',
+      fontSize: 11,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+    },
+    pingCardCoverBadge: {
+      alignSelf: 'flex-end',
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: 'rgba(255,255,255,0.9)',
+    },
+    pingCardCoverBadgeText: {
+      color: '#202026',
+      fontSize: 11,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+    },
+    pingCardCoverArt: {
+      width: 86,
+      height: 86,
+      borderRadius: 24,
+      backgroundColor: 'rgba(255,255,255,0.18)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      alignSelf: 'center',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.28)',
+    },
+    pingAuthorRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      gap: 10,
+      gap: 12,
+      marginBottom: 14,
+    },
+    pingAuthorLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      flex: 1,
+    },
+    avatarImage: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+    },
+    avatarFallback: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    avatarFallbackText: {
+      fontSize: 15,
+      fontWeight: '800',
+    },
+    authorName: {
+      color: COLORS.textPrimary,
+      fontSize: 18,
+      fontWeight: '800',
+    },
+    authorMeta: {
+      marginTop: 2,
+      color: COLORS.textSecondary,
+      fontSize: 13,
+      fontWeight: '600',
     },
     categoryBadge: {
       flexDirection: 'row',
@@ -1299,41 +1577,83 @@ const getStyles = (COLORS: any) =>
       fontWeight: '800',
     },
     pingTimeLabel: {
-      color: '#8C8C93',
+      color: COLORS.textSecondary,
       fontSize: 12,
       fontWeight: '700',
     },
-    pingTitle: {
-      marginTop: 14,
-      color: '#111111',
-      fontSize: 21,
+    liveNowPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: '#EEF9EF',
+    },
+    liveNowText: {
+      color: '#198754',
+      fontSize: 11,
       fontWeight: '800',
-      lineHeight: 24,
+      letterSpacing: 0.4,
+      textTransform: 'uppercase',
+    },
+    pingTitle: {
+      color: COLORS.textPrimary,
+      fontSize: 16,
+      fontWeight: '800',
+      lineHeight: 22,
     },
     pingBody: {
-      marginTop: 8,
-      color: '#666670',
-      fontSize: 14,
-      lineHeight: 21,
+      marginTop: 10,
+      color: COLORS.textPrimary,
+      fontSize: 17,
+      lineHeight: 28,
+      letterSpacing: -0.2,
     },
-    pingMetaRow: {
+    pingCardDivider: {
+      height: 1,
+      backgroundColor: COLORS.border,
+      marginVertical: 18,
+    },
+    pingFooterRow: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
+      alignItems: 'center',
+      justifyContent: 'space-between',
       gap: 12,
-      marginTop: 14,
     },
-    metaRowItem: {
+    locationPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      borderRadius: 999,
+      backgroundColor: COLORS.background,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    locationPillText: {
+      color: COLORS.textPrimary,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    pingSignalsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flexWrap: 'wrap',
+      justifyContent: 'flex-end',
+      flex: 1,
+    },
+    signalPill: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
     },
-    pingMetaText: {
-      color: '#7A7A81',
+    signalPillText: {
+      color: COLORS.textSecondary,
       fontSize: 13,
       fontWeight: '600',
     },
     actionRow: {
-      marginTop: 16,
+      marginTop: 18,
       flexDirection: 'row',
       alignItems: 'center',
       flexWrap: 'wrap',
@@ -1345,38 +1665,43 @@ const getStyles = (COLORS: any) =>
       gap: 6,
       paddingHorizontal: 12,
       paddingVertical: 10,
-      borderRadius: 14,
-      backgroundColor: '#F5F5F7',
+      borderRadius: 16,
+      backgroundColor: COLORS.background,
+      borderWidth: 1,
+      borderColor: COLORS.border,
     },
     actionButtonActive: {
       backgroundColor: 'rgba(255,100,127,0.12)',
+      borderColor: 'rgba(255,100,127,0.22)',
     },
     actionLabel: {
-      color: '#111111',
-      fontSize: 13,
+      color: COLORS.textPrimary,
+      fontSize: 12,
       fontWeight: '700',
     },
     primaryActionButton: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      paddingHorizontal: 14,
+      paddingHorizontal: 16,
       paddingVertical: 11,
-      borderRadius: 14,
-      backgroundColor: '#FF6A3D',
+      borderRadius: 16,
+      backgroundColor: COLORS.primary,
     },
     primaryActionLabel: {
       color: '#FFFFFF',
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: '800',
     },
     emptyState: {
       marginTop: 18,
-      marginHorizontal: 20,
+      marginHorizontal: 18,
       paddingHorizontal: 24,
-      paddingVertical: 30,
-      borderRadius: 34,
-      backgroundColor: '#F7C6E7',
+      paddingVertical: 26,
+      borderRadius: 28,
+      backgroundColor: COLORS.surface,
+      borderWidth: 1,
+      borderColor: COLORS.border,
       alignItems: 'center',
       overflow: 'hidden',
     },
@@ -1387,36 +1712,18 @@ const getStyles = (COLORS: any) =>
       marginBottom: 18,
     },
     emptyTitle: {
-      color: '#2D2433',
-      fontSize: 22,
+      color: COLORS.textPrimary,
+      fontSize: 18,
       fontWeight: '800',
       textAlign: 'center',
     },
     emptyQuote: {
-      marginTop: 16,
-      color: '#4C4354',
-      fontSize: 15,
-      lineHeight: 24,
+      marginTop: 10,
+      color: COLORS.textSecondary,
+      fontSize: 14,
+      lineHeight: 21,
       textAlign: 'center',
-      backgroundColor: 'rgba(255,255,255,0.72)',
-      borderRadius: 22,
-      paddingHorizontal: 20,
-      paddingVertical: 18,
-    },
-    emptyRefreshButton: {
-      marginTop: 20,
-      height: 50,
-      minWidth: 148,
-      paddingHorizontal: 24,
-      borderRadius: 25,
-      backgroundColor: '#FF6A3D',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    emptyRefreshLabel: {
-      color: '#FFFFFF',
-      fontSize: 16,
-      fontWeight: '800',
+      maxWidth: 260,
     },
     modalBackdrop: {
       flex: 1,
@@ -1433,8 +1740,14 @@ const getStyles = (COLORS: any) =>
       borderTopRightRadius: 28,
       paddingHorizontal: 18,
       paddingTop: 18,
-      paddingBottom: 28,
+      paddingBottom: 16,
       maxHeight: '88%',
+    },
+    modalScroll: {
+      flexGrow: 0,
+    },
+    modalScrollContent: {
+      paddingBottom: 12,
     },
     featuredModalCard: {
       backgroundColor: COLORS.background,
@@ -1543,7 +1856,7 @@ const getStyles = (COLORS: any) =>
       fontSize: 15,
     },
     locationResults: {
-      maxHeight: 220,
+      maxHeight: 210,
       marginTop: 10,
       borderRadius: 16,
       backgroundColor: COLORS.surface,
@@ -1569,9 +1882,81 @@ const getStyles = (COLORS: any) =>
       color: COLORS.textSecondary,
       fontSize: 12,
     },
+    imageComposerRow: {
+      flexDirection: 'row',
+      alignItems: 'stretch',
+      gap: 12,
+      marginBottom: 4,
+    },
+    imagePickerButton: {
+      flex: 1,
+      minHeight: 96,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: 14,
+    },
+    imagePickerButtonText: {
+      color: COLORS.textPrimary,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    imagePreviewWrap: {
+      width: 112,
+      height: 96,
+      borderRadius: 18,
+      overflow: 'hidden',
+      position: 'relative',
+      backgroundColor: COLORS.surface,
+    },
+    imagePreview: {
+      width: '100%',
+      height: '100%',
+    },
+    imagePreviewRemoveHint: {
+      position: 'absolute',
+      left: 8,
+      right: 8,
+      bottom: 8,
+      borderRadius: 999,
+      backgroundColor: 'rgba(0,0,0,0.58)',
+      paddingVertical: 5,
+      alignItems: 'center',
+    },
+    imagePreviewRemoveHintText: {
+      color: '#FFFFFF',
+      fontSize: 11,
+      fontWeight: '700',
+    },
+    imageEmptyState: {
+      width: 112,
+      height: 96,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderStyle: 'dashed',
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 8,
+    },
+    imageEmptyStateText: {
+      color: COLORS.textTertiary,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    modalFooter: {
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: COLORS.border,
+    },
     submitButton: {
-      marginTop: 16,
-      height: 52,
+      marginTop: 8,
+      height: 54,
       borderRadius: 18,
       backgroundColor: COLORS.primary,
       alignItems: 'center',

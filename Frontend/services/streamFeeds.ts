@@ -123,12 +123,23 @@ export async function addPing(params: {
   locationTag: string;
   startAt: string;
   endAt?: string;
+  mediaUrl?: string;
 }): Promise<any> {
+  const attachments: any[] = [];
+  if (params.mediaUrl) {
+    attachments.push({
+      type: 'image',
+      image_url: params.mediaUrl,
+      custom: {},
+    });
+  }
+
   const activity = {
     actor: `SU:${params.userId}`,
     verb: 'ping',
     object: `ping:${Date.now()}`,
     text: params.body,
+    attachments,
     custom: {
       user_name: params.userName,
       user_image: params.userImage || '',
