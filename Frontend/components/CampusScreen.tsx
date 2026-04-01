@@ -27,7 +27,7 @@ export function CampusScreen() {
             title: 'CAMPUS LIFE',
             items: [
                 { id: 'EventsCalendar', label: 'Events Calendar', subtitle: 'Live TAMU events & activities', icon: <Calendar color={ICON_COLOR} size={22} /> },
-                { id: 'Social', label: 'Campus Feed', subtitle: 'Photos, videos, and updates from campus', icon: <Rss color={ICON_COLOR} size={22} />, badge: 'LIVE' },
+                { id: 'Social', label: 'Campus Pings', subtitle: 'Popups, free food, activity, and campus buzz', icon: <Rss color={ICON_COLOR} size={22} />, badge: 'LIVE' },
             ]
         },
         {

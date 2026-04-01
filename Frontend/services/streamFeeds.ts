@@ -101,6 +101,66 @@ export async function getCampusFeed(limit = 25): Promise<any[]> {
   }
 }
 
+export async function getPingFeed(limit = 40): Promise<any[]> {
+  try {
+    const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/campus_pings?limit=${limit}`);
+    if (!res.ok) throw new Error('Proxy Fetch Error');
+    const data = await res.json();
+    return data.results || [];
+  } catch (e) {
+    console.error('[StreamFeeds] getPingFeed error:', e);
+    return [];
+  }
+}
+
+export async function addPing(params: {
+  userId: string;
+  userName: string;
+  userImage?: string;
+  title: string;
+  body: string;
+  category: string;
+  locationTag: string;
+  startAt: string;
+  endAt?: string;
+}): Promise<any> {
+  const activity = {
+    actor: `SU:${params.userId}`,
+    verb: 'ping',
+    object: `ping:${Date.now()}`,
+    text: params.body,
+    custom: {
+      user_name: params.userName,
+      user_image: params.userImage || '',
+      ping_title: params.title,
+      ping_category: params.category,
+      location_tag: params.locationTag,
+      start_at: params.startAt,
+      end_at: params.endAt || '',
+      content_type: 'ping',
+    },
+  };
+
+  const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/campus_pings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ activity }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    console.error(`[StreamFeeds] addPing error: ${err}`);
+    throw new Error(`Proxy Ping Error: ${err}`);
+  }
+}
+
+export async function deletePing(activityId: string) {
+  const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/campus_pings/${activityId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Failed to delete ping.');
+}
+
 export async function addPost(params: {
   userId: string;
   userName: string;

@@ -15,9 +15,6 @@ import { RecreationFacilitiesScreen } from './components/RecreationFacilitiesScr
 import { CourseDetail } from './components/CourseDetail';
 import { AuthLanding } from './components/AuthLanding';
 import { LoginScreen } from './components/LoginScreen';
-import { ChatScreen } from './components/ChatScreen';
-import { UsersScreen } from './components/UsersScreen';
-import { ChannelListScreen } from './components/ChannelListScreen';
 
 import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
 import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
@@ -29,8 +26,6 @@ import TransitTripPlannerScreen from './components/TransitTripPlannerScreen';
 import { TransitTripResultsScreen } from './components/TransitTripResultsScreen';
 import { PlacesMapScreen } from './components/PlacesMapScreen';
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
-import { CampusFeedScreen } from './components/CampusFeedScreen';
-import { ReelsScreen } from './components/ReelsScreen';
 
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
@@ -120,7 +115,7 @@ function MainTabs() {
     {
       name: 'Social',
       component: SocialHubScreen,
-      title: 'Social',
+      title: 'Pings',
       icon: Users,
       initialParams: undefined,
     },
@@ -200,9 +195,6 @@ function RootNavigator() {
         <>
           <Stack.Screen name="Main" component={MainTabs} />
           <Stack.Screen name="CourseDetail" component={CourseDetail} options={{ headerShown: true }} />
-          <Stack.Screen name="ChatScreen" component={ChatScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="ChannelListScreen" component={ChannelListScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="UsersScreen" component={UsersScreen} options={{ headerShown: false }} />
 
           <Stack.Screen name="NewCourseSearch" component={NewCourseSearchScreen} options={{ headerShown: true, title: 'Course Search' }} />
           <Stack.Screen name="NewCourseDetail" component={NewCourseDetailScreen} options={{ headerShown: true, title: 'Course Details' }} />
@@ -218,9 +210,7 @@ function RootNavigator() {
           <Stack.Screen name="TransitTripResults" component={TransitTripResultsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="Reels" component={ReelsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="CampusFeed" component={CampusFeedScreen} options={{ headerShown: false }} />
           <Stack.Screen
             name="FullMenu"
             component={FullMenuScreen}
