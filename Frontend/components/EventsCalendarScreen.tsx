@@ -637,11 +637,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   );
 
   const renderHeader = (title: string, subtitle?: string) => (
-    <View style={s.headerBlock}>
-      <View style={s.headerTopRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.pageTitle}>{title}</Text>
-          {!!subtitle && <Text style={s.pageSubtitle}>{subtitle}</Text>}
+      <View style={s.headerBlock}>
+        <View style={s.headerTopRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={s.pageTitle}>{title}</Text>
+            {!!subtitle && <Text style={s.pageSubtitle}>{subtitle}</Text>}
         </View>
         <Pressable style={s.headerIconButton} onPress={() => setView('inbox')}>
           <Inbox size={18} color={COLORS.textPrimary} />
@@ -656,7 +656,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         </Pressable>
       </View>
 
-        <View style={s.modeTabs}>
+      <View style={s.modeTabs}>
         {([
           { id: 'discover', label: 'Discover' },
           { id: 'list', label: 'List' },
@@ -670,6 +670,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               onPress={() => changeView(tab.id)}
             >
               <Text style={[s.modeTabText, active && s.modeTabTextActive]}>{tab.label}</Text>
+              {active ? <View style={s.modeTabUnderline} /> : null}
             </Pressable>
           );
         })}
@@ -743,7 +744,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
               <View style={s.inlineControls}>
                 <Pressable
-                  style={[s.inlineControl, isMajorSpecific && s.inlineControlActive]}
+                  style={s.inlineControl}
                   onPress={() => setMajorSpecific(!isMajorSpecific)}
                 >
                   <Text
@@ -1178,7 +1179,13 @@ function ListEventRow({
   const Icon = meta.icon;
 
   return (
-    <Pressable onPress={onPress} style={[stylesStatic.listRow, { borderColor: COLORS.border, backgroundColor: COLORS.surface }]}>
+    <Pressable
+      onPress={onPress}
+      style={[
+        stylesStatic.listRow,
+        { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border },
+      ]}
+    >
       <View style={[stylesStatic.listThumb, { backgroundColor: meta.cardTint }]}>
         <Icon size={28} color="#FFFFFF" />
       </View>
@@ -1658,8 +1665,8 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     headerBlock: {
       paddingTop: embedded ? 10 : 56,
       paddingHorizontal: 20,
-      paddingBottom: 10,
-      gap: 14,
+      paddingBottom: 8,
+      gap: 10,
     },
     headerTopRow: {
       flexDirection: 'row',
@@ -1668,25 +1675,23 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     pageTitle: {
       color: COLORS.textPrimary,
-      fontSize: 38,
+      fontSize: 36,
       fontWeight: '900',
-      letterSpacing: -1.15,
+      letterSpacing: -1.05,
     },
     pageSubtitle: {
       marginTop: 2,
       color: COLORS.textSecondary,
-      fontSize: 15,
-      lineHeight: 21,
+      fontSize: 14,
+      lineHeight: 20,
     },
     headerIconButton: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
+      width: 38,
+      height: 38,
+      borderRadius: 19,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(15,23,42,0.05)',
-      borderWidth: 1,
-      borderColor: COLORS.border,
+      backgroundColor: 'transparent',
     },
     headerBadge: {
       position: 'absolute',
@@ -1707,27 +1712,30 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     modeTabs: {
       flexDirection: 'row',
-      gap: 8,
+      gap: 18,
+      paddingTop: 2,
     },
     modeTab: {
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-      borderRadius: 999,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)',
-      borderWidth: 1,
-      borderColor: COLORS.border,
+      paddingVertical: 4,
+      position: 'relative',
     },
     modeTabActive: {
-      backgroundColor: COLORS.primary,
-      borderColor: COLORS.primary,
+      backgroundColor: 'transparent',
     },
     modeTabText: {
-      color: COLORS.textPrimary,
-      fontSize: 13,
-      fontWeight: '800',
+      color: COLORS.textSecondary,
+      fontSize: 15,
+      fontWeight: '700',
     },
     modeTabTextActive: {
-      color: '#FFFFFF',
+      color: COLORS.textPrimary,
+      fontWeight: '800',
+    },
+    modeTabUnderline: {
+      marginTop: 6,
+      height: 2.5,
+      borderRadius: 999,
+      backgroundColor: COLORS.primary,
     },
     scrollContent: {
       paddingHorizontal: 20,
@@ -1763,26 +1771,25 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       gap: 8,
     },
     inlineControls: {
-      marginTop: 20,
-      gap: 14,
+      marginTop: 14,
+      gap: 10,
     },
     inlineControl: {
-      borderRadius: 20,
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.03)',
+      borderRadius: 16,
+      paddingHorizontal: 0,
+      paddingVertical: 4,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.border,
+      backgroundColor: 'transparent',
     },
     inlineControlActive: {
-      borderColor: COLORS.primary,
-      backgroundColor: isDark ? 'rgba(80,0,0,0.22)' : 'rgba(80,0,0,0.08)',
+      borderBottomColor: COLORS.primary,
     },
     inlineControlTitle: {
       color: COLORS.textPrimary,
       fontSize: 14,
-      fontWeight: '800',
-      marginBottom: 3,
+      fontWeight: '700',
+      marginBottom: 2,
     },
     inlineControlTitleActive: {
       color: COLORS.primary,
@@ -1790,7 +1797,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     inlineControlValue: {
       color: COLORS.textSecondary,
       fontSize: 12,
-      fontWeight: '700',
+      fontWeight: '600',
     },
     socialModeWrap: {
       flexDirection: 'row',
@@ -1800,45 +1807,39 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: 11,
+      paddingVertical: 9,
       borderRadius: 999,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.03)',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(15,23,42,0.04)',
     },
     socialModePillActive: {
-      backgroundColor: COLORS.primary,
-      borderColor: COLORS.primary,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
     },
     socialModeText: {
-      color: COLORS.textPrimary,
+      color: COLORS.textSecondary,
       fontSize: 13,
-      fontWeight: '800',
+      fontWeight: '700',
     },
     socialModeTextActive: {
-      color: '#FFFFFF',
+      color: COLORS.textPrimary,
     },
     heroRail: {
-      paddingTop: 26,
+      paddingTop: 18,
       paddingRight: 20,
       gap: 14,
     },
     swipeCta: {
-      marginTop: 20,
+      marginTop: 16,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 8,
-      paddingVertical: 15,
-      borderRadius: 18,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)',
-      borderWidth: 1,
-      borderColor: COLORS.border,
+      paddingVertical: 8,
+      alignSelf: 'center',
     },
     swipeCtaText: {
       color: COLORS.textPrimary,
-      fontSize: 17,
-      fontWeight: '800',
+      fontSize: 16,
+      fontWeight: '700',
       letterSpacing: -0.2,
     },
     listSearchRow: {
@@ -1849,8 +1850,8 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     searchShell: {
       flex: 1,
-      height: 48,
-      borderRadius: 16,
+      height: 46,
+      borderRadius: 14,
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: 14,
@@ -1866,19 +1867,19 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       fontWeight: '600',
     },
     filterButton: {
-      width: 48,
-      height: 48,
-      borderRadius: 16,
+      width: 46,
+      height: 46,
+      borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1,
       borderColor: COLORS.border,
-      backgroundColor: COLORS.surface,
+      backgroundColor: 'transparent',
     },
     listScroll: {
-      paddingHorizontal: 20,
+      paddingHorizontal: 18,
       paddingBottom: 126,
-      gap: 10,
+      gap: 0,
     },
     loadingWrap: {
       flex: 1,
@@ -2039,10 +2040,10 @@ const stylesStatic = StyleSheet.create({
   },
   heroCard: {
     width: SCREEN_WIDTH - 52,
-    height: 372,
+      height: 372,
     borderRadius: 34,
     overflow: 'hidden',
-    padding: 22,
+    padding: 20,
     justifyContent: 'space-between',
   },
   heroGlow: {
@@ -2052,6 +2053,7 @@ const stylesStatic = StyleSheet.create({
     width: 180,
     height: 180,
     borderRadius: 90,
+    opacity: 0.55,
   },
   heroGlowSmall: {
     position: 'absolute',
@@ -2060,27 +2062,29 @@ const stylesStatic = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 60,
+    opacity: 0.4,
   },
   heroIconHalo: {
     position: 'absolute',
     right: 18,
-    bottom: 110,
+    bottom: 118,
+    opacity: 0.55,
   },
   heroTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
   },
   heroCategoryPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.14)',
   },
   heroCategoryText: {
     color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '900',
+    fontSize: 11,
+    fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
@@ -2088,24 +2092,24 @@ const stylesStatic = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.14)',
   },
   verifiedText: {
     color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
+    fontSize: 11,
+    fontWeight: '700',
   },
   heroBottom: {
     gap: 8,
   },
   heroTitle: {
     color: '#FFFFFF',
-    fontSize: 32,
-    lineHeight: 36,
-    fontWeight: '900',
+    fontSize: 30,
+    lineHeight: 34,
+    fontWeight: '800',
     letterSpacing: -0.8,
     maxWidth: '92%',
   },
@@ -2126,9 +2130,9 @@ const stylesStatic = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    paddingHorizontal: 11,
+    paddingVertical: 8,
     borderRadius: 999,
   },
   heroMapButtonText: {
@@ -2139,14 +2143,15 @@ const stylesStatic = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: 12,
+    borderRadius: 0,
+    borderWidth: 0,
+    paddingVertical: 14,
+    paddingHorizontal: 2,
   },
   listThumb: {
-    width: 112,
-    height: 84,
-    borderRadius: 20,
+    width: 104,
+    height: 76,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2162,23 +2167,23 @@ const stylesStatic = StyleSheet.create({
   },
   listTitle: {
     flex: 1,
-    fontSize: 15,
-    lineHeight: 19,
+    fontSize: 14,
+    lineHeight: 18,
     fontWeight: '800',
   },
   listMeta: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '600',
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '500',
   },
   listActions: {
     justifyContent: 'center',
-    gap: 10,
+    gap: 8,
   },
   listActionButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2203,25 +2208,27 @@ const stylesStatic = StyleSheet.create({
     height: 220,
     borderRadius: 110,
     backgroundColor: 'rgba(255,255,255,0.16)',
+    opacity: 0.5,
   },
   swipeWatermark: {
     position: 'absolute',
     bottom: 140,
     left: 18,
+    opacity: 0.5,
   },
   swipeTopLabel: {
     marginTop: 16,
     marginLeft: 16,
     alignSelf: 'flex-start',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.16)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   swipeTopLabelText: {
     color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '900',
+    fontSize: 11,
+    fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
@@ -2232,9 +2239,9 @@ const stylesStatic = StyleSheet.create({
   },
   swipeTitle: {
     color: '#FFFFFF',
-    fontSize: 30,
-    lineHeight: 34,
-    fontWeight: '900',
+    fontSize: 28,
+    lineHeight: 32,
+    fontWeight: '800',
     letterSpacing: -0.85,
   },
   swipeMeta: {
