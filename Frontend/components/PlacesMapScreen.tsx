@@ -72,7 +72,7 @@ import {
   useAppShellStore,
 } from "../store/appShellStore";
 import { useShareStore } from "../store/shareStore";
-import { fetchCampusPlacesMap } from "../api/client";
+import { fetchCampusPlaceDetail, fetchCampusPlacesMap } from "../api/client";
 import {
   DiningMealPeriod,
   fetchDiningFullMenuCached,
@@ -326,6 +326,7 @@ export function PlacesMapScreen() {
   const [activeDiningMenu, setActiveDiningMenu] = useState<string | null>(null);
   const [activeDiningMealPeriod, setActiveDiningMealPeriod] = useState<DiningMealPeriod>("lunch");
   const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
+  const [selectedPlaceDetail, setSelectedPlaceDetail] = useState<any | null>(null);
 
   // ── Recreation facility map ───────────────────────────────
   const recreationFacilityMap = useMemo(() => {
@@ -474,8 +475,12 @@ export function PlacesMapScreen() {
 
   const selectedRecreationFacility = useMemo(() => {
     if (!selectedLoc) return null;
-    return recreationFacilityMap.get(getCanonicalLocationName(selectedLoc.location)) || null;
-  }, [recreationFacilityMap, selectedLoc]);
+    return (
+      selectedPlaceDetail?.recreation ||
+      recreationFacilityMap.get(getCanonicalLocationName(selectedLoc.location)) ||
+      null
+    );
+  }, [recreationFacilityMap, selectedLoc, selectedPlaceDetail?.recreation]);
 
   const isPrimaryDiningHallSelection = useMemo(() => {
     const ref = (activeDiningMenu || selectedLoc?.location || "").toLowerCase();
@@ -1119,9 +1124,31 @@ export function PlacesMapScreen() {
     if (selectedId) {
       fetchReviews(selectedId);
     } else {
-      setStreamReviews([]); setHubRestaurants([]); setDiningMenuOptions([]); setActiveDiningMenu(null); setActiveDiningMealPeriod("lunch"); setDiningMenuPreview(null);
+      setStreamReviews([]); setHubRestaurants([]); setDiningMenuOptions([]); setActiveDiningMenu(null); setActiveDiningMealPeriod("lunch"); setDiningMenuPreview(null); setSelectedPlaceDetail(null);
     }
   }, [selectedId, fetchReviews]);
+
+  useEffect(() => {
+    if (!selectedLoc) {
+      setSelectedPlaceDetail(null);
+      return;
+    }
+    let cancelled = false;
+    const identifier = selectedLoc.placeId || selectedLoc.location;
+    fetchCampusPlaceDetail(identifier)
+      .then((detail) => {
+        if (!cancelled) setSelectedPlaceDetail(detail);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setSelectedPlaceDetail(null);
+          console.warn("Failed to fetch place detail snapshot", error);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedLoc?.location, selectedLoc?.placeId]);
 
   useEffect(() => {
     if (!selectedLoc || !isDiningHallMenuLocation(selectedLoc.location)) { setHubRestaurants([]); setDiningMenuOptions([]); setActiveDiningMenu(null); setDiningMenuPreview(null); return; }

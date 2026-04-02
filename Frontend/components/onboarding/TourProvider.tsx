@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Dimensions, Text, TouchableOpacity } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@clerk/clerk-expo';
 import Animated, { 
   FadeIn, 
@@ -18,6 +17,8 @@ import Animated, {
 import Svg, { Defs, Rect, Mask, Circle } from 'react-native-svg';
 import { useTheme } from '../SharedUI';
 import { ArrowUp, ArrowDown } from 'lucide-react-native';
+import { useAppShellStore } from '../../store/appShellStore';
+import { completeTour } from '../../api/client';
 
 const { width, height } = Dimensions.get('window');
 
@@ -65,6 +66,9 @@ export const TOUR_SEQUENCE = [
 export function TourProvider({ children }: { children: React.ReactNode }) {
   const { isSignedIn, userId } = useAuth();
   const { COLORS } = useTheme();
+  const isTOSAccepted = useAppShellStore((state) => state.isTOSAccepted);
+  const isTourCompleted = useAppShellStore((state) => state.isTourCompleted);
+  const setTourCompleted = useAppShellStore((state) => state.setTourCompleted);
   
   const [isTourActive, setIsTourActive] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
@@ -80,14 +84,10 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const activeTargetName = isTourActive && currentStep < TOUR_SEQUENCE.length ? TOUR_SEQUENCE[currentStep].id : null;
 
   useEffect(() => {
-    if (isSignedIn && userId) {
-      AsyncStorage.getItem(`app_tour_completed_${userId}`).then(val => {
-        if (val !== 'true') {
-          startTour();
-        }
-      });
+    if (isSignedIn && userId && isTOSAccepted && !isTourCompleted) {
+      startTour();
     }
-  }, [isSignedIn, userId]);
+  }, [isSignedIn, userId, isTOSAccepted, isTourCompleted]);
 
   const updateTargetRect = async () => {
     if (!activeTargetName || !targetsRef.current[activeTargetName]) {
@@ -128,9 +128,10 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setIsIdle(false);
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     if (userId) {
-      await AsyncStorage.setItem(`app_tour_completed_${userId}`, 'true');
+      setTourCompleted(true);
+      completeTour(userId).catch(err => console.warn('Failed to persist tour completion:', err));
     }
-  }, [userId]);
+  }, [userId, setTourCompleted]);
 
   const resetIdleTimer = () => {
     setIsIdle(false);

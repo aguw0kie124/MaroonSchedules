@@ -1,22 +1,16 @@
 source_name,event_count,food_event_count,top_categories
-feeds:feed_17,187,0,"advocacy:1, health_wellness:1, academic:1"
-libraries,146,2,"academic:9, food:2, sports:1"
-feeds:feed_4,103,0,sports:102
-business,102,3,"social:11, academic:8, sports:6"
-rec_sports,85,2,"sports:85, health_wellness:85, social:27"
-feeds:feed_1,75,0,
-feeds:feed_12,29,1,"academic:5, social:4, food:1"
-feeds:feed_19,26,7,"academic:14, food:7, health_wellness:3"
+libraries,142,2,"academic:9, food:2, sports:1"
+feeds:feed_4,111,0,sports:110
+ers_tamu,102,9,"academic:22, sports:20, social:12"
+business,94,2,"social:8, academic:7, sports:6"
+feeds:feed_1,74,0,
+feeds:feed_12,28,1,"academic:5, social:4, food:1"
 transport_rss:feed_3,26,0,advocacy:20
-feeds:feed_5,19,0,academic:9
-career_center,17,0,"academic:12, health_wellness:2"
-feeds:feed_11,16,0,"academic:10, health_wellness:2"
-health,10,2,"academic:10, food:2, social:1"
-feeds:feed_15,6,0,
-graduate_studies,4,1,"food:1, entertainment:1, religion:1"
-feeds:feed_14,2,0,"academic:2, social:1"
+feeds:feed_19,24,7,"academic:14, food:7, advocacy:2"
+feeds:feed_5,17,0,academic:8
+career_center,15,0,"academic:11, health_wellness:1"
+feeds:feed_11,15,0,"academic:11, health_wellness:1"
+health,11,3,"academic:11, food:3, social:2"
+graduate_studies,4,2,"food:2, entertainment:2, religion:1"
 getinvolved_student_life,1,0,
-feeds:feed_16,1,0,
-feeds:feed_10,1,0,"social:1, academic:1"
-research,1,0,academic:1
-bush_school,1,0,"social:1, academic:1, advocacy:1"
+feeds:feed_14,1,0,"social:1, academic:1"

@@ -1,3 +1,4 @@
+import { Share } from 'react-native';
 import { create } from 'zustand';
 
 export interface ShareContent {
@@ -17,6 +18,20 @@ interface ShareStore {
 export const useShareStore = create<ShareStore>((set) => ({
   isVisible: false,
   content: null,
-  openShare: (content) => set({ isVisible: true, content }),
+  openShare: async (content) => {
+    try {
+      const shareMessage = `${content.title ? `${content.title}\n` : ''}${content.message || ''}${content.url ? `\n\n${content.url}` : ''}`;
+      await Share.share({
+        title: content.title,
+        message: shareMessage,
+        url: content.url,
+      }, {
+        dialogTitle: content.title,
+        subject: content.subject,
+      });
+    } catch (error) {
+      console.error('Native share failed', error);
+    }
+  },
   closeShare: () => set({ isVisible: false, content: null }),
 }));

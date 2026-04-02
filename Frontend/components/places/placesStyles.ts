@@ -2536,11 +2536,6 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       fontWeight: "800",
       marginBottom: 4,
     },
-    pulseSheetSummary: {
-      color: COLORS.textSecondary,
-      fontSize: 13,
-      lineHeight: 19,
-    },
     pulseSheetCloseButton: {
       width: 34,
       height: 34,
@@ -2549,50 +2544,20 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       justifyContent: "center",
       backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(12,12,14,0.05)",
     },
-    pulseSheetStatsRow: {
-      flexDirection: "row",
-      gap: 10,
-      marginTop: 14,
-    },
-    pulseSheetStatCard: {
-      flex: 1,
-      borderRadius: 16,
-      paddingVertical: 10,
-      paddingHorizontal: 12,
-      backgroundColor: isDark ? "rgba(255,255,255,0.04)" : "rgba(12,12,14,0.04)",
-      borderWidth: 1,
-      borderColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(12,12,14,0.05)",
-      alignItems: "flex-start",
-      gap: 4,
-    },
-    pulseSheetStatValue: {
-      color: COLORS.textPrimary,
-      fontSize: 15,
-      fontWeight: "800",
-    },
-    pulseSheetStatLabel: {
-      color: COLORS.textSecondary,
-      fontSize: 11,
-      fontWeight: "700",
-    },
-    pulseSheetActionsRow: {
-      marginTop: 14,
-      marginBottom: 12,
-    },
-    pulseSheetPrimaryAction: {
-      height: 42,
-      borderRadius: 16,
-      backgroundColor: "#500000",
+    pulseSheetMinimalAction: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "center",
-      gap: 8,
+      gap: 6,
+      paddingVertical: 4,
+      marginBottom: 14,
     },
-    pulseSheetPrimaryActionText: {
-      color: "#FFFFFF",
-      fontSize: 13,
-      fontWeight: "800",
+
+    pulseSheetMinimalActionText: {
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      fontWeight: "700",
     },
+
     pulseSheetSectionHeader: {
       flexDirection: "row",
       alignItems: "center",
