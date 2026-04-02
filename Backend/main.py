@@ -72,6 +72,19 @@ def sync_user(req: SyncUserRequest = Body(...)):
     """Create or update a user row when they sign in."""
     return user_service.sync_user(req.clerk_id, req.email, req.full_name, req.profile_image_url)
 
+
+@app.post("/users/{clerk_id}/tos/accept/")
+def accept_tos(clerk_id: str):
+    """Mark that the user has accepted the Terms of Service."""
+    print(f"DEBUG: accept_tos called for {clerk_id}")
+    try:
+        user_service.accept_tos(clerk_id)
+        return {"status": "success"}
+    except Exception as e:
+        print(f"DEBUG: accept_tos error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @app.get("/users/{clerk_id}")
 def get_user(clerk_id: str):
     """Return full user record (profile + schedules)."""
@@ -79,6 +92,19 @@ def get_user(clerk_id: str):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+@app.post("/users/{clerk_id}/tour/complete")
+@app.post("/users/{clerk_id}/tour/complete/")
+def complete_tour(clerk_id: str):
+    """Mark that the user has completed the interactive tour."""
+    print(f"DEBUG: complete_tour called for {clerk_id}")
+    try:
+        user_service.complete_tour(clerk_id)
+        return {"status": "success"}
+    except Exception as e:
+        print(f"DEBUG: complete_tour error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 class UpdateProfileRequest(BaseModel):
     major: Optional[str] = None
@@ -93,6 +119,11 @@ def update_profile(clerk_id: str, req: UpdateProfileRequest = Body(...)):
     """Update profile preferences for a user."""
     fields = {k: v for k, v in req.dict().items() if v is not None}
     result = user_service.update_profile(clerk_id, fields)
+    if not result:
+        raise HTTPException(status_code=404, detail="User not found")
+    return result
+
+
     if not result:
         raise HTTPException(status_code=404, detail="User not found")
     return result

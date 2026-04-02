@@ -130,6 +130,8 @@ type AppShellState = {
   tabBarMode: TabBarMode;
   isBottomBarHidden: boolean;
   selectedScheduleId: string | null;
+  isTOSAccepted: boolean;
+  isTourCompleted: boolean;
   setParkingPermit: (permit: ParkingPermit) => void;
   togglePlacesPill: (id: PlacesPillId) => void;
   movePlacesPill: (id: PlacesPillId, direction: -1 | 1) => void;
@@ -139,6 +141,8 @@ type AppShellState = {
   setTabBarMode: (mode: TabBarMode) => void;
   setBottomBarHidden: (hidden: boolean) => void;
   setSelectedScheduleId: (id: string | null) => void;
+  setTOSAccepted: (accepted: boolean) => void;
+  setTourCompleted: (completed: boolean) => void;
 };
 
 export const useAppShellStore = create<AppShellState>()(
@@ -151,6 +155,8 @@ export const useAppShellStore = create<AppShellState>()(
       tabBarMode: 'solid',
       isBottomBarHidden: false,
       selectedScheduleId: null,
+      isTOSAccepted: false,
+      isTourCompleted: false,
       setParkingPermit: (parkingPermit) => set({ parkingPermit }),
       togglePlacesPill: (id) =>
         set((state) => ({
@@ -172,6 +178,8 @@ export const useAppShellStore = create<AppShellState>()(
       setTabBarMode: (tabBarMode) => set({ tabBarMode }),
       setBottomBarHidden: (isBottomBarHidden) => set({ isBottomBarHidden }),
       setSelectedScheduleId: (selectedScheduleId) => set({ selectedScheduleId }),
+      setTOSAccepted: (isTOSAccepted) => set({ isTOSAccepted }),
+      setTourCompleted: (isTourCompleted) => set({ isTourCompleted }),
     }),
     {
       name: 'app-shell-store',
@@ -184,6 +192,8 @@ export const useAppShellStore = create<AppShellState>()(
         settingsTab: state.settingsTab,
         tabBarMode: state.tabBarMode,
         selectedScheduleId: state.selectedScheduleId,
+        isTOSAccepted: state.isTOSAccepted,
+        isTourCompleted: state.isTourCompleted,
       }),
       merge: (persistedState, currentState) => {
         const persisted = (persistedState as Partial<AppShellState>) || {};
@@ -204,6 +214,12 @@ export const useAppShellStore = create<AppShellState>()(
             typeof persisted.selectedScheduleId === 'string' || persisted.selectedScheduleId === null
               ? persisted.selectedScheduleId
               : currentState.selectedScheduleId,
+          isTOSAccepted: typeof persisted.isTOSAccepted === 'boolean'
+            ? persisted.isTOSAccepted
+            : currentState.isTOSAccepted,
+          isTourCompleted: typeof persisted.isTourCompleted === 'boolean'
+            ? persisted.isTourCompleted
+            : currentState.isTourCompleted,
         };
       },
     },

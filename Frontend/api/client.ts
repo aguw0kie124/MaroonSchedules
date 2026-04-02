@@ -7,6 +7,7 @@ async function requestJson(path: string, init: RequestInit = {}, timeoutMs = DEF
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
+        console.debug(`[API] ${init.method || 'GET'} ${path}`);
         const response = await fetch(`${API_URL}${path}`, {
             ...init,
             signal: controller.signal,
@@ -71,6 +72,18 @@ export const updateUserProfile = async (clerkId: string, fields: Record<string, 
     return requestJson(`/users/${clerkId}/profile`, {
         method: 'PUT',
         body: JSON.stringify(fields),
+    });
+};
+
+export const acceptToS = async (clerkId: string) => {
+    return requestJson(`/users/${clerkId}/tos/accept/`, {
+        method: 'POST',
+    });
+};
+
+export const completeTour = async (clerkId: string) => {
+    return requestJson(`/users/${clerkId}/tour/complete/`, {
+        method: 'POST',
     });
 };
 
