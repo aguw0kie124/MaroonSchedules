@@ -14,7 +14,7 @@ import psycopg
 from db_config import CONNECTION_PARAMS
 from repositories import course_repository, user_repository
 from routers.traffic import tracker
-from services import campus_events_service, place_registry_service
+from services import cache_service, campus_events_service, place_registry_service
 
 HOWDY_URL = "https://howdy.tamu.edu/main/home/card-view"
 DINING_URL = "https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx"
@@ -382,6 +382,11 @@ def _active_rec_hours_source() -> str:
 
 
 def _weekly_hours_for_facility(facility_id: str) -> Dict[str, Any]:
+    cache_key = f"campus:recreation:weekly-hours:v1:{facility_id}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
     season = _active_rec_hours_source()
     lookup = SUMMER_HOURS_BY_FACILITY if season == "summer" else FALL_SPRING_HOURS_BY_FACILITY
     weekly_hours = lookup.get(facility_id) or {}
@@ -392,14 +397,21 @@ def _weekly_hours_for_facility(facility_id: str) -> Dict[str, Any]:
         if season == "fall_spring"
         else "Summer operating hours based on official Texas A&M Rec Sports facility schedules."
     )
-    return {
+    payload = {
         "weekly_hours": [{"day": day, "hours": hours} for day, hours in weekly_hours.items()],
         "today_hours": today_hours,
         "hours_source": source_note,
     }
+    cache_service.set_json(cache_key, payload, 60 * 60 * 6)
+    return payload
 
 
 def _fetch_rec_facility_page_details(source_url: str) -> Dict[str, Any]:
+    cache_key = f"campus:recreation:page:v1:{source_url}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
     now = time.time()
     cached = REC_PAGE_CACHE.get(source_url)
     if cached and now - cached[0] < REC_PAGE_CACHE_TTL_SECONDS:
@@ -424,6 +436,7 @@ def _fetch_rec_facility_page_details(source_url: str) -> Dict[str, Any]:
         pass
 
     REC_PAGE_CACHE[source_url] = (now, details)
+    cache_service.set_json(cache_key, details, REC_PAGE_CACHE_TTL_SECONDS)
     return details
 
 
@@ -434,6 +447,10 @@ def _extract_notification_window(label: str) -> str:
 
 def _fetch_rec_notices() -> List[Dict[str, Any]]:
     global REC_NOTICES_CACHE
+    cache_key = "campus:recreation:notices:v1"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
     now = time.time()
     if REC_NOTICES_CACHE and now - REC_NOTICES_CACHE[0] < REC_NOTICES_CACHE_TTL_SECONDS:
         return REC_NOTICES_CACHE[1]
@@ -485,6 +502,7 @@ def _fetch_rec_notices() -> List[Dict[str, Any]]:
         notices = []
 
     REC_NOTICES_CACHE = (now, notices)
+    cache_service.set_json(cache_key, notices, REC_NOTICES_CACHE_TTL_SECONDS)
     return notices
 
 
@@ -1117,6 +1135,11 @@ def save_event_rsvp(clerk_id: str, event_id: str, response: str) -> Dict[str, An
 
 
 def get_recreation_snapshot() -> Dict[str, Any]:
+    cache_key = "campus:recreation:snapshot:v1"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
     occupancy_rows = tracker.fetch_rec_data() or []
     notices = _fetch_rec_notices()
     occupancy_by_name = {
@@ -1161,7 +1184,7 @@ def get_recreation_snapshot() -> Dict[str, Any]:
             }
         )
 
-    return {
+    payload = {
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "stale_after": RECREATION_SNAPSHOT_TTL_SECONDS,
         "source_status": "live" if occupancy_rows else "preview",
@@ -1169,6 +1192,62 @@ def get_recreation_snapshot() -> Dict[str, Any]:
         "facilities": facilities,
         "summary": "Recreation merges live counts with details gathered from the official Rec Sports facility pages.",
     }
+    cache_service.set_json(cache_key, payload, RECREATION_SNAPSHOT_TTL_SECONDS)
+    return payload
+
+
+def get_place_detail_snapshot(place_id: str) -> Dict[str, Any]:
+    cache_key = f"campus:place-detail:v1:{place_id}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
+    place = place_registry_service.get_place_by_id(place_id)
+    if not place:
+        payload = {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "stale_after": 60,
+            "source_status": "missing",
+            "place": None,
+        }
+        cache_service.set_json(cache_key, payload, 60)
+        return payload
+
+    places_snapshot = campus_places_service.get_places_map_snapshot()
+    location = next((loc for loc in places_snapshot.get("locations", []) if loc.get("placeId") == place_id), None)
+    rec_snapshot = get_recreation_snapshot() if place.get("type") == "Rec" else None
+    rec_facility = None
+    if rec_snapshot and location:
+        rec_facility = next((facility for facility in rec_snapshot.get("facilities", []) if facility.get("name") == location.get("location")), None)
+
+    payload = {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": 60,
+        "source_status": "live",
+        "place": location or place_registry_service.serialize_place(place),
+        "recreation": rec_facility,
+        "transport": get_transit_snapshot() if place.get("type") in {"Hub", "Landmark"} else None,
+    }
+    cache_service.set_json(cache_key, payload, 60)
+    return payload
+
+
+def get_place_detail_snapshot_by_identifier(place_identifier: str) -> Dict[str, Any]:
+    place = place_registry_service.get_place_by_id(place_identifier)
+    if place:
+        return get_place_detail_snapshot(place_identifier)
+
+    resolved = place_registry_service.resolve_place(place_identifier)
+    if resolved:
+        return get_place_detail_snapshot(resolved["place_id"])
+
+    payload = {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": 60,
+        "source_status": "missing",
+        "place": None,
+    }
+    return payload
 
 
 def get_transit_snapshot() -> Dict[str, Any]:

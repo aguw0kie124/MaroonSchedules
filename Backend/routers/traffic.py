@@ -11,6 +11,8 @@ import re
 from threading import Lock
 from collections import defaultdict
 
+from services import cache_service
+
 try:
     from perplexity import Perplexity
 except ImportError:
@@ -510,20 +512,41 @@ def retrieve_locations():
 
 @router.get("/transit/routes")
 def get_transit_routes():
-    return {
+    cache_key = "traffic:transit:routes:v1"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
+    payload = {
         "routes": transit_proxy.get_routes(),
         "activeRouteIds": transit_proxy.get_active_routes(),
     }
+    cache_service.set_json(cache_key, payload, 60)
+    return payload
 
 
 @router.get("/transit/route/{route_key}")
 def get_transit_route(route_key: str):
-    return transit_proxy.get_pattern(route_key)
+    cache_key = f"traffic:transit:route:v1:{route_key}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
+    payload = transit_proxy.get_pattern(route_key)
+    cache_service.set_json(cache_key, payload, 120)
+    return payload
 
 
 @router.get("/transit/vehicles")
 def get_transit_vehicles(route_id: str = Query("")):
-    return transit_proxy.get_vehicles(route_id)
+    cache_key = f"traffic:transit:vehicles:v1:{route_id or '__all__'}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
+    payload = transit_proxy.get_vehicles(route_id)
+    cache_service.set_json(cache_key, payload, 15)
+    return payload
 @router.post("/create-event")
 def create_event(event: EventRequest):
     event_dict = event.dict()

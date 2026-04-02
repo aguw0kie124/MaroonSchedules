@@ -29,7 +29,6 @@ class _MemoryEntry:
 _MEMORY_CACHE: dict[str, _MemoryEntry] = {}
 _REDIS_CLIENT: redis.Redis | None = None
 _REDIS_STATUS_LOGGED = False
-_CACHE_LOGGED_KEYS: set[str] = set()
 
 
 def _get_client() -> redis.Redis | None:
@@ -78,19 +77,13 @@ def _build_redis_url() -> str | None:
 def _memory_get(key: str) -> Any | None:
     entry = _MEMORY_CACHE.get(key)
     if not entry:
-        if key not in _CACHE_LOGGED_KEYS:
-            print(f"[cache] miss (memory): {key}")
-            _CACHE_LOGGED_KEYS.add(key)
+        print(f"[cache] miss (memory): {key}")
         return None
     if entry.expires_at is not None and time.time() > entry.expires_at:
         _MEMORY_CACHE.pop(key, None)
-        if key not in _CACHE_LOGGED_KEYS:
-            print(f"[cache] expired (memory): {key}")
-            _CACHE_LOGGED_KEYS.add(key)
+        print(f"[cache] expired (memory): {key}")
         return None
-    if key not in _CACHE_LOGGED_KEYS:
-        print(f"[cache] hit (memory): {key}")
-        _CACHE_LOGGED_KEYS.add(key)
+    print(f"[cache] hit (memory): {key}")
     return entry.value
 
 
@@ -105,13 +98,9 @@ def get_json(key: str) -> Any | None:
         try:
             payload = client.get(key)
             if payload is None:
-                if key not in _CACHE_LOGGED_KEYS:
-                    print(f"[cache] miss (redis): {key}")
-                    _CACHE_LOGGED_KEYS.add(key)
+                print(f"[cache] miss (redis): {key}")
                 return None
-            if key not in _CACHE_LOGGED_KEYS:
-                print(f"[cache] hit (redis): {key}")
-                _CACHE_LOGGED_KEYS.add(key)
+            print(f"[cache] hit (redis): {key}")
             return json.loads(payload)
         except Exception:
             pass
