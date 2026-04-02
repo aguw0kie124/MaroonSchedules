@@ -2,10 +2,11 @@ import requests
 from typing import List, Optional
 
 API_BASE = "https://api-aggiesbp.servehttp.com"
+CURRENT_TERM = "202611"  # Spring 2026 (College Station)
 
 # In-memory caches to avoid hitting the API repeatedly during the same run
 _courses_cache = None
-_sections_cache = None
+_courses_cache = None
 _professors_cache = None
 _terms_cache = None
 
@@ -30,7 +31,7 @@ def _fetch_courses() -> List[dict]:
     if _courses_cache is None:
         try:
             print("Fetching courses from API...")
-            resp = requests.get(f"{API_BASE}/courses?limit=10000", timeout=30)
+            resp = requests.get(f"{API_BASE}/courses?limit=10000&termCode={CURRENT_TERM}", timeout=30)
             resp.raise_for_status()
             _courses_cache = resp.json()
             
@@ -55,18 +56,38 @@ def _fetch_courses() -> List[dict]:
             _courses_cache = []
     return _courses_cache
 
-def _fetch_sections() -> List[dict]:
-    global _sections_cache
-    if _sections_cache is None:
-        try:
-            print("Fetching sections from API...")
-            resp = requests.get(f"{API_BASE}/sections?limit=100000", timeout=60)
-            resp.raise_for_status()
-            _sections_cache = resp.json()
-        except Exception as e:
-            print(f"Error fetching sections: {e}")
-            _sections_cache = []
-    return _sections_cache
+def _fetch_sections_for_course(course_code: str, term: str = CURRENT_TERM) -> List[dict]:
+    """
+    Fetches only the sections for a specific course (e.g. 'CSCE 121').
+    Uses the optimized path-based API endpoint to avoid loading the full catalog.
+    """
+    try:
+        # Format: CSCE 121 -> CSCE121
+        clean_code = course_code.replace(" ", "").upper()
+        print(f"Fetching sections for {clean_code} in {term}...")
+        
+        # Use the optimized course-specific endpoint discovered via research
+        url = f"{API_BASE}/sections/{term}/course/{clean_code}"
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        print(f"Error fetching sections for {course_code}: {e}")
+        return []
+
+def _fetch_sections_paginated(term: str = CURRENT_TERM, limit: int = 100) -> List[dict]:
+    """
+    Fallback to fetch a small slice of sections for a term.
+    Avoids 100k records to prevent OOM.
+    """
+    try:
+        url = f"{API_BASE}/sections/{term}?limit={limit}"
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        print(f"Error fetching sections slice: {e}")
+        return []
 
 def _fetch_professors() -> List[dict]:
     global _professors_cache
@@ -147,7 +168,11 @@ def _simplify_name(name: str) -> str:
     return parts[0] if parts else ""
 
 def get_sections_for_course(course_id: str) -> List[dict]:
-    sections = _fetch_sections()
+    """
+    Fetch sections for a specific course ID (which is course code like 'CSCE 110').
+    """
+    # The course_id in this app is typically the department + course number string
+    sections = _fetch_sections_for_course(course_id)
     professors = _fetch_professors()
     
     # Create professor lookup map for quick rating assignment based on simplified name
@@ -159,11 +184,12 @@ def get_sections_for_course(course_id: str) -> List[dict]:
     
     unique_sections = {}
     for s in sections:
-        # Reconstruct course ID as mapped earlier: dept + courseNumber
-        sec_course_id = str(s.get("dept", "")) + str(s.get("courseNumber", ""))
-        sec_course_key = str(s.get("course", ""))
-        if sec_course_id == course_id or sec_course_key == course_id:
-            # We modify in-place for simplicity. Real implementation might deepcopy.
+        # Filter logic is now redundant since we fetch by course, but kept for robustness
+        sec_course_id = (str(s.get("dept", "")) + str(s.get("courseNumber", ""))).lower().replace(" ", "")
+        target_id = course_id.lower().replace(" ", "")
+        
+        if sec_course_id == target_id or str(s.get("course", "")).lower() == target_id:
+            # We modify in-place for simplicity.
             for inst in s.get("instructors", []):
                 if inst and "name" in inst:
                     s_inst_name = _simplify_name(inst["name"])
@@ -182,9 +208,22 @@ def get_sections_for_course(course_id: str) -> List[dict]:
     return results
 
 def get_section_by_id(section_id: str) -> Optional[dict]:
-    sections = _fetch_sections()
-    professors = _fetch_professors()
+    """
+    Fetches a single section. Since there is no direct ID API, 
+    we extract context (term/course) from the ID if possible.
+    """
+    term = CURRENT_TERM
+    if "_" in section_id:
+        term = section_id.split("_")[0]
+        
+    # Attempt to find which course this section belongs to
+    # We can use the courses cache (small) to find a match if we have to,
+    # but usually we can try to fetch a slice or use CRN if the ID format is TERM_CRN
     
+    # Try fetching a small slice first if it's a cold lookup
+    sections = _fetch_sections_paginated(term, limit=500)
+    
+    professors = _fetch_professors()
     prof_map = {}
     for p in professors:
         if "name" in p and p["name"]:
@@ -213,14 +252,12 @@ def get_section_by_id(section_id: str) -> Optional[dict]:
     return None
 
 def search_sections(term: Optional[str] = None, course_code: Optional[str] = None) -> List[dict]:
-    sections = _fetch_sections()
-    results = sections
-    if term:
-        results = [s for s in results if str(s.get("termCode")) == term]
+    """
+    Search sections with memory efficiency.
+    """
+    t = term or CURRENT_TERM
     if course_code:
-        # Course code might be "CSCE 110"
-        parts = course_code.split()
-        if len(parts) >= 2:
-            d, n = parts[0], parts[1]
-            results = [s for s in results if str(s.get("dept", "")).lower() == d.lower() and str(s.get("courseNumber", "")).lower() == n.lower()]
-    return results
+        return _fetch_sections_for_course(course_code, term=t)
+    
+    # If no course code, we return a small sample relative to the term
+    return _fetch_sections_paginated(term=t, limit=50)

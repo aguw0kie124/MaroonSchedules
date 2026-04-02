@@ -195,30 +195,38 @@ REC_NOTICES_CACHE_TTL_SECONDS = 60 * 30
 REC_NOTICES_CACHE: tuple[float, List[Dict[str, Any]]] | None = None
 
 
-def _safe_db_fetchone(query: str, params: tuple = ()) -> Dict[str, Any] | None:
+def _safe_db_fetchone(query: str, params: tuple = (), conn: psycopg.Connection | None = None) -> Dict[str, Any] | None:
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        if conn:
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+                cur.execute(query, params)
+                return cur.fetchone()
+        with psycopg.connect(CONNECTION_PARAMS) as new_conn:
+            with new_conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(query, params)
                 return cur.fetchone()
     except Exception:
         return None
 
 
-def _safe_db_fetchall(query: str, params: tuple = ()) -> List[Dict[str, Any]]:
+def _safe_db_fetchall(query: str, params: tuple = (), conn: psycopg.Connection | None = None) -> List[Dict[str, Any]]:
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        if conn:
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+                cur.execute(query, params)
+                return cur.fetchall() or []
+        with psycopg.connect(CONNECTION_PARAMS) as new_conn:
+            with new_conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(query, params)
                 return cur.fetchall() or []
     except Exception:
         return []
 
 
-def _ensure_social_tables() -> None:
+def _ensure_social_tables(conn: psycopg.Connection | None = None) -> None:
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
-            with conn.cursor() as cur:
+        def run_schema(c):
+            with c.cursor() as cur:
                 cur.execute(
                     """
                     CREATE TABLE IF NOT EXISTS network_connections (
@@ -258,7 +266,13 @@ def _ensure_social_tables() -> None:
                     )
                     """
                 )
-            conn.commit()
+            c.commit()
+
+        if conn:
+            run_schema(conn)
+        else:
+            with psycopg.connect(CONNECTION_PARAMS) as new_conn:
+                run_schema(new_conn)
     except Exception:
         pass
 
@@ -406,7 +420,7 @@ def _fetch_rec_facility_page_details(source_url: str) -> Dict[str, Any]:
     }
     try:
         request = Request(source_url, headers={"User-Agent": "Mozilla/5.0 MaroonSchedules/1.0"})
-        with urlopen(request, timeout=8) as response:
+        with urlopen(request, timeout=3) as response:
             source_html = response.read().decode("utf-8", errors="ignore")
 
         details = {
@@ -435,7 +449,7 @@ def _fetch_rec_notices() -> List[Dict[str, Any]]:
     notices: List[Dict[str, Any]] = []
     try:
         request = Request("https://recsports.tamu.edu/", headers={"User-Agent": "Mozilla/5.0 MaroonSchedules/1.0"})
-        with urlopen(request, timeout=8) as response:
+        with urlopen(request, timeout=4) as response:
             source_html = response.read().decode("utf-8", errors="ignore")
 
         section = _extract_section_html(source_html, "# Notifications", ["# 100 Years of Texas A&M Rec Sports", "# Hours of Operation", "# Rec Sports Programs"])
@@ -534,8 +548,8 @@ def _connector_row_to_dict(row: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def get_connector_snapshots(clerk_id: str) -> List[Dict[str, Any]]:
-    _ensure_social_tables()
+def get_connector_snapshots(clerk_id: str, conn: psycopg.Connection | None = None) -> List[Dict[str, Any]]:
+    _ensure_social_tables(conn)
     rows = _safe_db_fetchall(
         """
         SELECT clerk_id, system_id, status, source_url, page_title, cookie_names, captured_at, updated_at
@@ -544,6 +558,7 @@ def get_connector_snapshots(clerk_id: str) -> List[Dict[str, Any]]:
         ORDER BY updated_at DESC
         """,
         (clerk_id,),
+        conn=conn,
     )
     snapshots = [_connector_row_to_dict(row) for row in rows]
     known = {snapshot["system_id"] for snapshot in snapshots}
@@ -566,8 +581,8 @@ def get_connector_snapshots(clerk_id: str) -> List[Dict[str, Any]]:
     return snapshots
 
 
-def _latest_connector_snapshot(clerk_id: str, system_id: str) -> Dict[str, Any] | None:
-    _ensure_social_tables()
+def _latest_connector_snapshot(clerk_id: str, system_id: str, conn: psycopg.Connection | None = None) -> Dict[str, Any] | None:
+    _ensure_social_tables(conn)
     row = _safe_db_fetchone(
         """
         SELECT clerk_id, system_id, status, source_url, page_title, page_html, page_text, cookie_names, captured_at, updated_at
@@ -575,6 +590,7 @@ def _latest_connector_snapshot(clerk_id: str, system_id: str) -> Dict[str, Any] 
         WHERE clerk_id = %s AND system_id = %s
         """,
         (clerk_id, system_id),
+        conn=conn,
     )
     return row
 
@@ -721,8 +737,8 @@ def _parse_symplicity_snapshot(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def parse_connector_snapshot(clerk_id: str, system_id: str) -> Dict[str, Any]:
-    snapshot = _latest_connector_snapshot(clerk_id, system_id)
+def parse_connector_snapshot(clerk_id: str, system_id: str, conn: psycopg.Connection | None = None) -> Dict[str, Any]:
+    snapshot = _latest_connector_snapshot(clerk_id, system_id, conn=conn)
     if not snapshot or snapshot.get("status") != "connected":
         return {}
     if system_id == "howdy":
@@ -805,8 +821,8 @@ def _pick_next_course(courses: List[Dict[str, Any]]) -> Dict[str, Any] | None:
     return None
 
 
-def get_auth_status(clerk_id: str) -> Dict[str, Any]:
-    connector_states = get_connector_snapshots(clerk_id)
+def get_auth_status(clerk_id: str, conn: psycopg.Connection | None = None) -> Dict[str, Any]:
+    connector_states = get_connector_snapshots(clerk_id, conn=conn)
     return {
         "status": "app_authenticated",
         "primary_auth": "Clerk",
@@ -821,7 +837,7 @@ def get_auth_status(clerk_id: str) -> Dict[str, Any]:
     }
 
 
-def get_academic_snapshot(clerk_id: str) -> Dict[str, Any]:
+def get_academic_snapshot(clerk_id: str, conn: psycopg.Connection | None = None) -> Dict[str, Any]:
     profile = user_repository.get_user(clerk_id) or {}
     schedules = user_repository.get_schedules(clerk_id) or []
     primary_schedule = schedules[0] if schedules else {"name": "Schedule unavailable", "section_ids": []}
@@ -836,7 +852,6 @@ def get_academic_snapshot(clerk_id: str) -> Dict[str, Any]:
     ]
     gpa_indicator = round(sum(avg_gpa_values) / len(avg_gpa_values), 2) if avg_gpa_values else None
     holds = profile.get("holds") if isinstance(profile.get("holds"), list) else []
-    howdy_snapshot = parse_connector_snapshot(clerk_id, "howdy")
     derived_holds = howdy_snapshot.get("holds") if isinstance(howdy_snapshot.get("holds"), list) else []
     derived_courses = howdy_snapshot.get("course_codes") if isinstance(howdy_snapshot.get("course_codes"), list) else []
 
@@ -859,9 +874,9 @@ def get_academic_snapshot(clerk_id: str) -> Dict[str, Any]:
     }
 
 
-def get_dining_snapshot(clerk_id: str) -> Dict[str, Any]:
-    profile = _safe_db_fetchone("SELECT * FROM dining_profiles WHERE clerk_id = %s", (clerk_id,))
-    transact_snapshot = parse_connector_snapshot(clerk_id, "transact")
+def get_dining_snapshot(clerk_id: str, conn: psycopg.Connection | None = None) -> Dict[str, Any]:
+    profile = _safe_db_fetchone("SELECT * FROM dining_profiles WHERE clerk_id = %s", (clerk_id,), conn=conn)
+    transact_snapshot = parse_connector_snapshot(clerk_id, "transact", conn=conn)
 
     if transact_snapshot:
         return {
@@ -906,8 +921,8 @@ def get_dining_snapshot(clerk_id: str) -> Dict[str, Any]:
     }
 
 
-def discover_network(clerk_id: str, query: str | None = None, major: str | None = None, limit: int = 8) -> Dict[str, Any]:
-    _ensure_social_tables()
+def discover_network(clerk_id: str, query: str | None = None, major: str | None = None, limit: int = 8, conn: psycopg.Connection | None = None) -> Dict[str, Any]:
+    _ensure_social_tables(conn)
     profile = user_repository.get_user(clerk_id) or {}
     query_text = f"%{(query or '').strip()}%"
     profile_major = major or profile.get("major") or ""
@@ -930,7 +945,7 @@ def discover_network(clerk_id: str, query: str | None = None, major: str | None 
         LIMIT %s
     """
     params.append(limit)
-    rows = _safe_db_fetchall(sql, tuple(params))
+    rows = _safe_db_fetchall(sql, tuple(params), conn=conn)
 
     suggestions = []
     for row in rows:
@@ -950,6 +965,7 @@ def discover_network(clerk_id: str, query: str | None = None, major: str | None 
     pending_requests = _safe_db_fetchall(
         "SELECT requester_id, recipient_id, status FROM network_connections WHERE (requester_id = %s OR recipient_id = %s) AND status = 'pending'",
         (clerk_id, clerk_id),
+        conn=conn,
     )
 
     return {
@@ -992,13 +1008,15 @@ def get_events_snapshot(
     limit: int = 8,
     category: str | None = None,
     student_relevant_only: bool = True,
+    conn: psycopg.Connection | None = None,
 ) -> List[Dict[str, Any]]:
-    _ensure_social_tables()
+    _ensure_social_tables(conn)
     rsvp_lookup: Dict[str, str] = {}
     if clerk_id:
         rows = _safe_db_fetchall(
             "SELECT event_id, response FROM campus_event_rsvps WHERE clerk_id = %s",
             (clerk_id,),
+            conn=conn,
         )
         rsvp_lookup = {row.get("event_id"): row.get("response", "interested") for row in rows}
 
@@ -1174,10 +1192,10 @@ def get_services_snapshot() -> List[Dict[str, Any]]:
     ]
 
 
-def get_career_snapshot(clerk_id: str) -> Dict[str, Any]:
-    network = discover_network(clerk_id, limit=4)
+def get_career_snapshot(clerk_id: str, conn: psycopg.Connection | None = None) -> Dict[str, Any]:
+    network = discover_network(clerk_id, limit=4, conn=conn)
     alumni_count = len([suggestion for suggestion in network.get("suggestions", []) if suggestion.get("relationship") == "alumni"])
-    symplicity_snapshot = parse_connector_snapshot(clerk_id, "symplicity")
+    symplicity_snapshot = parse_connector_snapshot(clerk_id, "symplicity", conn=conn)
     return {
         "status": "live" if symplicity_snapshot else "link",
         "summary": (
@@ -1194,11 +1212,18 @@ def get_career_snapshot(clerk_id: str) -> Dict[str, Any]:
     }
 
 
-def get_notification_hub(clerk_id: str) -> List[Dict[str, Any]]:
-    academic = get_academic_snapshot(clerk_id)
-    dining = get_dining_snapshot(clerk_id)
-    events = get_events_snapshot(clerk_id, limit=3)
-    network = discover_network(clerk_id, limit=3)
+def get_notification_hub(
+    clerk_id: str,
+    academic_data: Dict[str, Any] | None = None,
+    dining_data: Dict[str, Any] | None = None,
+    events_data: List[Dict[str, Any]] | None = None,
+    network_data: Dict[str, Any] | None = None,
+    conn: psycopg.Connection | None = None,
+) -> List[Dict[str, Any]]:
+    academic = academic_data or get_academic_snapshot(clerk_id, conn=conn)
+    dining = dining_data or get_dining_snapshot(clerk_id, conn=conn)
+    events = events_data or get_events_snapshot(clerk_id, limit=3, conn=conn)
+    network = network_data or discover_network(clerk_id, limit=3, conn=conn)
 
     notifications: List[Dict[str, Any]] = []
     if academic.get("nextCourse"):
@@ -1248,114 +1273,56 @@ def get_notification_hub(clerk_id: str) -> List[Dict[str, Any]]:
 
 
 def get_overview(clerk_id: str) -> Dict[str, Any]:
-    def safe_snapshot(label: str, loader, fallback):
+    def safe_exec(label: str, loader, fallback):
         try:
             return loader()
         except Exception as exc:
-            print(f"[campus_hub] {label} snapshot failed for {clerk_id}: {exc}")
+            print(f"[campus_hub] {label} overview step failed for {clerk_id}: {exc}")
             return fallback
 
-    return {
-        "auth": safe_snapshot(
-            "auth",
-            lambda: get_auth_status(clerk_id),
-            {
-                "status": "app_authenticated",
-                "primary_auth": "Clerk",
-                "institution_sso": {
-                    "provider": "Howdy / NetID",
-                    "status": "connector_required",
-                    "note": "Institutional auth status is temporarily unavailable.",
-                    "resource_url": HOWDY_URL,
-                },
-                "user_id": clerk_id,
-            },
-        ),
-        "academic": safe_snapshot(
-            "academic",
-            lambda: get_academic_snapshot(clerk_id),
-            {
-                "status": "preview",
-                "sourceLabel": "Campus hub fallback",
-                "scheduleName": "Schedule unavailable",
-                "courses": [],
-                "totalCredits": 0,
-                "nextCourse": None,
-                "gpa": "Connect Howdy",
-                "registrationReady": True,
-                "activeHolds": [],
-                "resources": [{"label": "Howdy Portal", "url": HOWDY_URL}],
-            },
-        ),
-        "dining": safe_snapshot(
-            "dining",
-            lambda: get_dining_snapshot(clerk_id),
-            {
-                "status": "link",
-                "planName": "Dining module ready to connect",
-                "balanceLabel": "Transact eAccounts required for live balances",
-                "recentActivityLabel": "Using fallback state.",
-                "resources": [{"label": "Transact eAccounts", "url": DINING_URL}],
-            },
-        ),
-        "notifications": safe_snapshot(
-            "notifications",
-            lambda: get_notification_hub(clerk_id),
-            [],
-        ),
-        "career": safe_snapshot(
-            "career",
-            lambda: get_career_snapshot(clerk_id),
-            {
-                "status": "link",
-                "summary": "Hire Aggies connector required for live jobs and employers.",
-                "resources": [{"label": "Hire Aggies", "url": HIRE_AGGIES_URL}],
-            },
-        ),
-        "network": safe_snapshot(
-            "network",
-            lambda: discover_network(clerk_id, limit=6),
-            {
-                "status": "preview",
-                "chatStatus": "stream_messaging_available",
-                "summary": "Networking suggestions are temporarily unavailable.",
-                "pendingRequests": 0,
-                "suggestions": [],
-                "resources": [],
-            },
-        ),
-        "events": safe_snapshot(
-            "events",
-            lambda: get_events_snapshot(clerk_id, limit=6),
-            [],
-        ),
-        "transit": safe_snapshot(
-            "transit",
-            get_transit_snapshot,
-            {
-                "status": "live",
-                "summary": "Transit map remains available.",
-                "resources": [{"label": "AggieSpirit Route Map", "url": AGGIE_SPIRIT_URL}],
-            },
-        ),
-        "recreation": safe_snapshot(
-            "recreation",
-            get_recreation_snapshot,
-            {
-                "status": "preview",
-                "summary": "Recreation data is temporarily unavailable.",
-                "facilities": [],
-            },
-        ),
-        "services": safe_snapshot(
-            "services",
-            get_services_snapshot,
-            [],
-        ),
-        "connectors": safe_snapshot(
-            "connectors",
-            lambda: get_connector_snapshots(clerk_id),
-            [],
-        ),
-        "generatedAt": datetime.utcnow().isoformat() + "Z",
-    }
+    try:
+        with psycopg.connect(CONNECTION_PARAMS) as conn:
+            # 1. Fetch connectors (needed by auth and academic/dining/career snapshots)
+            # Actually snapshots call get_connector_snapshots themselves, but with a shared connection it's efficient.
+            
+            # 2. Heavy snapshots (using shared connection)
+            auth = safe_exec("auth", lambda: get_auth_status(clerk_id, conn=conn), {"status": "preview"})
+            academic = safe_exec("academic", lambda: get_academic_snapshot(clerk_id, conn=conn), {"status": "preview", "courses": []})
+            dining = safe_exec("dining", lambda: get_dining_snapshot(clerk_id, conn=conn), {"status": "preview"})
+            career = safe_exec("career", lambda: get_career_snapshot(clerk_id, conn=conn), {"status": "preview"})
+            network = safe_exec("network", lambda: discover_network(clerk_id, limit=6, conn=conn), {"suggestions": []})
+            events = safe_exec("events", lambda: get_events_snapshot(clerk_id, limit=6, conn=conn), [])
+            
+            # 3. Notification hub (Passed pre-loaded data to avoid redundant DB calls)
+            notifications = safe_exec("notifications", lambda: get_notification_hub(
+                clerk_id,
+                academic_data=academic,
+                dining_data=dining,
+                events_data=events,
+                network_data=network,
+                conn=conn
+            ), [])
+
+            # 4. Other services (Transit/Rec/Connectors)
+            transit = safe_exec("transit", get_transit_snapshot, {"status": "live"})
+            recreation = safe_exec("recreation", get_recreation_snapshot, {"facilities": []})
+            services = safe_exec("services", get_services_snapshot, [])
+            connectors = safe_exec("connectors", lambda: get_connector_snapshots(clerk_id, conn=conn), [])
+
+            return {
+                "auth": auth,
+                "academic": academic,
+                "dining": dining,
+                "notifications": notifications,
+                "career": career,
+                "network": network,
+                "events": events,
+                "transit": transit,
+                "recreation": recreation,
+                "services": services,
+                "connectors": connectors,
+                "generatedAt": datetime.utcnow().isoformat() + "Z",
+            }
+    except Exception as exc:
+        print(f"[campus_hub] Critical overview failure for {clerk_id}: {exc}")
+        return {"status": "error", "message": "Overview temporarily unavailable"}
