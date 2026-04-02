@@ -1,99 +1,200 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
+  Modal,
+  Platform,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import { ChevronLeft, ExternalLink, MapPinned, Route, TimerReset } from 'lucide-react-native';
-import { WebView } from 'react-native-webview';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Location from 'expo-location';
+import { ChevronLeft, Clock3, MapPin, Navigation, Repeat2 } from 'lucide-react-native';
 
-import { AGGIESPIRIT_TRIP_PLANNER_URL } from '../config';
+import { DEFAULT_USER_LOCATION } from '../data/campus';
+import { CampusSearchBar } from './CampusSearchBar';
 import { useTheme } from './SharedUI';
+import { CampusSearchResult } from '../services/campusSearch';
+import { TransitTripPreference } from '../services/campusTransitRouting';
 
-const plannerCss = `
-  body { background: transparent !important; }
-  #myride-navbar,
-  .fixed-top-area,
-  footer,
-  #site-message-banner,
-  #secondary-navbar,
-  #navbar-account,
-  .navbar-brand,
-  .navbar-nav,
-  .nav-slideout-footer {
-    display: none !important;
-  }
-  #body-content {
-    margin-top: 0 !important;
-    padding-top: 0 !important;
-  }
-  .container,
-  .fill,
-  #render-body,
-  .panel {
-    max-width: none !important;
-    width: 100% !important;
-    margin: 0 !important;
-    box-shadow: none !important;
-    border: none !important;
-  }
-  .panel-heading {
-    display: none !important;
-  }
-  .panel-body {
-    padding-top: 0 !important;
-  }
-`;
+type PlannerLocation = {
+  id: string;
+  name: string;
+  subtitle?: string;
+  coordinate: {
+    latitude: number;
+    longitude: number;
+  };
+  type: string;
+};
 
-function buildInjectedScript(isDark: boolean) {
-  const background = isDark ? '#0C0C0F' : '#F6F4EF';
-  const surface = isDark ? '#131318' : '#FFFFFF';
-  const text = isDark ? '#F5F4EF' : '#101014';
-  const subtext = isDark ? '#C8C8D0' : '#5E6068';
-  const border = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)';
-  const accent = '#11789A';
+type TimingMode = 'leave_at' | 'arrive_by';
 
-  return `
-    (function() {
-      const style = document.createElement('style');
-      style.innerHTML = \`${plannerCss}
-        body, html { background: ${background} !important; color: ${text} !important; }
-        .panel { background: ${surface} !important; border-radius: 28px !important; overflow: hidden !important; }
-        .panel-body, .input-container { background: ${surface} !important; }
-        .trip-label, .option-section-heading, label, h1, h2, h3, h4, h5, p, span, div { color: ${text} !important; }
-        .help-block, .form-control-feedback, .subtitle, .text-muted, .trip-planner-subtitle { color: ${subtext} !important; }
-        .form-control, .trip-planner-box, select, .input-group-addon {
-          background: ${isDark ? '#18181D' : '#FFFFFF'} !important;
-          color: ${text} !important;
-          border: 1px solid ${border} !important;
-          border-radius: 16px !important;
-          box-shadow: none !important;
-        }
-        .btn-primary, .btn-info, .btn-default, .trip-submit, button[type="submit"] {
-          background: ${accent} !important;
-          border-color: ${accent} !important;
-          color: #FFFFFF !important;
-          border-radius: 18px !important;
-          box-shadow: none !important;
-        }
-        .radio label, .checkbox label { color: ${text} !important; }
-      \`;
-      document.head.appendChild(style);
-      true;
-    })();
-  `;
+function formatPlannerDate(value: Date) {
+  return value.toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    weekday: 'short',
+  });
+}
+
+function formatPlannerTime(value: Date) {
+  return value.toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function toPlannerLocation(result: CampusSearchResult): PlannerLocation | null {
+  if (result.building) {
+    return {
+      id: `building:${result.building.id}`,
+      name: result.building.name,
+      subtitle: result.building.shortName,
+      coordinate: {
+        latitude: result.building.latitude,
+        longitude: result.building.longitude,
+      },
+      type: 'building',
+    };
+  }
+
+  if (result.amenity) {
+    return {
+      id: `amenity:${result.amenity.id}`,
+      name: result.amenity.name,
+      subtitle: result.amenity.type,
+      coordinate: {
+        latitude: result.amenity.latitude,
+        longitude: result.amenity.longitude,
+      },
+      type: 'amenity',
+    };
+  }
+
+  return null;
 }
 
 export default function TransitTripPlannerScreen({ navigation }: any) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
   const styles = useMemo(() => getStyles(COLORS, isDark), [COLORS, isDark]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [currentLocation, setCurrentLocation] = useState<PlannerLocation>({
+    id: 'current-location',
+    name: 'Current Location',
+    subtitle: DEFAULT_USER_LOCATION.name,
+    coordinate: {
+      latitude: DEFAULT_USER_LOCATION.latitude,
+      longitude: DEFAULT_USER_LOCATION.longitude,
+    },
+    type: 'current-location',
+  });
+  const [useCurrentLocation, setUseCurrentLocation] = useState(true);
+  const [origin, setOrigin] = useState<PlannerLocation | null>(null);
+  const [destination, setDestination] = useState<PlannerLocation | null>(null);
+  const [timingMode, setTimingMode] = useState<TimingMode>('leave_at');
+  const [preference, setPreference] = useState<TransitTripPreference>('best');
+  const [plannedAt, setPlannedAt] = useState(() => {
+    const next = new Date();
+    next.setMinutes(next.getMinutes() + 5);
+    next.setSeconds(0, 0);
+    return next;
+  });
+  const [pickerMode, setPickerMode] = useState<'date' | 'time' | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+        const result = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        if (cancelled) return;
+        setCurrentLocation({
+          id: 'current-location',
+          name: 'Current Location',
+          subtitle: 'Live GPS',
+          coordinate: {
+            latitude: result.coords.latitude,
+            longitude: result.coords.longitude,
+          },
+          type: 'current-location',
+        });
+      } catch (error) {
+        console.warn('[TransitTripPlanner] Failed to resolve current location:', error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const selectedOrigin = useCurrentLocation ? currentLocation : origin;
+
+  const handleOriginSelect = (result: CampusSearchResult) => {
+    const next = toPlannerLocation(result);
+    if (!next) return;
+    setUseCurrentLocation(false);
+    setOrigin(next);
+  };
+
+  const handleDestinationSelect = (result: CampusSearchResult) => {
+    const next = toPlannerLocation(result);
+    if (!next) return;
+    setDestination(next);
+  };
+
+  const openPicker = (mode: 'date' | 'time') => {
+    setPickerMode(mode);
+  };
+
+  const closePicker = () => {
+    setPickerMode(null);
+  };
+
+  const handlePickerChange = (event: any, value?: Date) => {
+    const activeMode = pickerMode;
+    if (!activeMode) return;
+
+    if (Platform.OS !== 'ios') {
+      if (event.type === 'dismissed') {
+        closePicker();
+        return;
+      }
+      closePicker();
+    }
+    if (!value) return;
+
+    setPlannedAt((current) => {
+      const next = new Date(current);
+      if (activeMode === 'date') {
+        next.setFullYear(value.getFullYear(), value.getMonth(), value.getDate());
+      } else {
+        next.setHours(value.getHours(), value.getMinutes(), 0, 0);
+      }
+      return next;
+    });
+  };
+
+  const handlePlanTrip = () => {
+    if (!selectedOrigin || !destination) return;
+
+    navigation.navigate('TransitTripResults', {
+      origin: selectedOrigin,
+      destination,
+      preference,
+      timingMode,
+      plannedTimestamp: plannedAt.getTime(),
+    });
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -103,73 +204,189 @@ export default function TransitTripPlannerScreen({ navigation }: any) {
         translucent
       />
 
-      <View style={styles.header}>
-        <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
-          <ChevronLeft size={18} color={COLORS.textPrimary} />
-          <Text style={styles.backText}>Back</Text>
-        </Pressable>
-        <View style={styles.headerCopy}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
+            <ChevronLeft size={18} color={COLORS.textPrimary} />
+          </Pressable>
           <Text style={styles.title}>Plan a Trip</Text>
-          <Text style={styles.subtitle}>
-            Official AggieSpirit trip planning for future, off-campus, and arrival-time routing.
-          </Text>
         </View>
-      </View>
 
-      <View style={styles.tipRow}>
-        <View style={styles.tipChip}>
-          <MapPinned size={14} color={COLORS.primary} />
-          <Text style={styles.tipText}>Start + destination</Text>
-        </View>
-        <View style={styles.tipChip}>
-          <TimerReset size={14} color={COLORS.primary} />
-          <Text style={styles.tipText}>Leave at / arrive by</Text>
-        </View>
-        <View style={styles.tipChip}>
-          <Route size={14} color={COLORS.primary} />
-          <Text style={styles.tipText}>Best / fewer transfers / less walking</Text>
-        </View>
-      </View>
-
-      <View style={styles.webCard}>
-        <WebView
-          source={{ uri: AGGIESPIRIT_TRIP_PLANNER_URL }}
-          style={styles.webview}
-          sharedCookiesEnabled
-          thirdPartyCookiesEnabled
-          originWhitelist={['*']}
-          injectedJavaScript={buildInjectedScript(isDark)}
-          javaScriptEnabled
-          domStorageEnabled
-          startInLoadingState
-          onLoadStart={() => {
-            setLoading(true);
-            setLoadError(null);
-          }}
-          onLoadEnd={() => setLoading(false)}
-          onError={(event) => {
-            setLoadError(event.nativeEvent.description || 'Could not load the official trip planner.');
-            setLoading(false);
-          }}
-          renderLoading={() => (
-            <View style={styles.loadingState}>
-              <ActivityIndicator size="large" color={COLORS.primary} />
-              <Text style={styles.loadingText}>Loading AggieSpirit planner…</Text>
-            </View>
-          )}
-        />
-
-        {loadError ? (
-          <View style={styles.errorOverlay}>
-            <Text style={styles.errorTitle}>Planner unavailable</Text>
-            <Text style={styles.errorBody}>{loadError}</Text>
-            <Pressable style={styles.reloadButton} onPress={() => navigation.replace('TransitTripPlanner')}>
-              <ExternalLink size={15} color="#FFFFFF" />
-              <Text style={styles.reloadText}>Reload planner</Text>
+        <View style={styles.card}>
+          <Text style={styles.fieldLabel}>From</Text>
+          <View style={styles.originModeRow}>
+            <Pressable
+              style={[styles.modeChip, useCurrentLocation && styles.modeChipActive]}
+              onPress={() => setUseCurrentLocation(true)}
+            >
+              <Navigation size={15} color={useCurrentLocation ? '#FFFFFF' : COLORS.textPrimary} />
+              <Text style={[styles.modeChipText, useCurrentLocation && styles.modeChipTextActive]}>
+                Current
+              </Text>
+            </Pressable>
+            <Pressable
+              style={[styles.modeChip, !useCurrentLocation && styles.modeChipActive]}
+              onPress={() => setUseCurrentLocation(false)}
+            >
+              <MapPin size={15} color={!useCurrentLocation ? '#FFFFFF' : COLORS.textPrimary} />
+              <Text style={[styles.modeChipText, !useCurrentLocation && styles.modeChipTextActive]}>
+                Custom
+              </Text>
             </Pressable>
           </View>
-        ) : null}
-      </View>
+
+          {useCurrentLocation ? (
+            <View style={styles.selectionCard}>
+              <Text style={styles.selectionTitle}>{currentLocation.name}</Text>
+              <Text style={styles.selectionSubtitle}>{currentLocation.subtitle}</Text>
+            </View>
+          ) : (
+            <>
+              <CampusSearchBar
+                userCoord={currentLocation.coordinate}
+                onSelect={handleOriginSelect}
+                placeholder="Choose a starting point"
+                showPinnedItems={false}
+                displayValue={origin?.name}
+              />
+              {origin ? (
+                <View style={styles.selectionCard}>
+                  <Text style={styles.selectionTitle}>{origin.name}</Text>
+                  <Text style={styles.selectionSubtitle}>{origin.subtitle || 'Selected origin'}</Text>
+                </View>
+              ) : null}
+            </>
+          )}
+
+          <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>To</Text>
+          <CampusSearchBar
+            userCoord={selectedOrigin?.coordinate || currentLocation.coordinate}
+            onSelect={handleDestinationSelect}
+            placeholder="Choose a destination"
+            showPinnedItems={false}
+            displayValue={destination?.name}
+          />
+          {destination ? (
+            <View style={styles.selectionCard}>
+              <Text style={styles.selectionTitle}>{destination.name}</Text>
+              <Text style={styles.selectionSubtitle}>{destination.subtitle || 'Selected destination'}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.fieldLabel}>Trip Time</Text>
+          <View style={styles.segmentedRow}>
+            {[
+              { key: 'leave_at', label: 'Leave At' },
+              { key: 'arrive_by', label: 'Arrive By' },
+            ].map((option) => {
+              const active = timingMode === option.key;
+              return (
+                <Pressable
+                  key={option.key}
+                  style={[styles.segmentButton, active && styles.segmentButtonActive]}
+                  onPress={() => setTimingMode(option.key as TimingMode)}
+                >
+                  <Text style={[styles.segmentButtonText, active && styles.segmentButtonTextActive]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <View style={styles.dateTimeRow}>
+            <Pressable style={styles.dateTimeButton} onPress={() => openPicker('date')}>
+              <Text style={styles.dateTimeValue}>{formatPlannerDate(plannedAt)}</Text>
+            </Pressable>
+            <Pressable style={styles.dateTimeButton} onPress={() => openPicker('time')}>
+              <Clock3 size={16} color={COLORS.textSecondary} />
+              <Text style={styles.dateTimeValue}>{formatPlannerTime(plannedAt)}</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.fieldLabel}>Preference</Text>
+          <View style={styles.preferenceStack}>
+            {[
+              { key: 'best', label: 'Best Route', icon: MapPin },
+              { key: 'fewer_transfers', label: 'Fewer Transfers', icon: Repeat2 },
+              { key: 'less_walking', label: 'Less Walking', icon: Navigation },
+            ].map((option) => {
+              const active = preference === option.key;
+              const Icon = option.icon;
+              return (
+                <Pressable
+                  key={option.key}
+                  style={[styles.preferenceCard, active && styles.preferenceCardActive]}
+                  onPress={() => setPreference(option.key as TransitTripPreference)}
+                >
+                  <View style={[styles.preferenceIconWrap, active && styles.preferenceIconWrapActive]}>
+                    <Icon size={16} color={active ? '#FFFFFF' : COLORS.primary} />
+                  </View>
+                  <Text style={styles.preferenceText}>{option.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        <Pressable
+          style={[
+            styles.submitButton,
+            (!selectedOrigin || !destination) && styles.submitButtonDisabled,
+          ]}
+          onPress={handlePlanTrip}
+          disabled={!selectedOrigin || !destination}
+        >
+          <Text style={styles.submitButtonText}>Show Trips</Text>
+        </Pressable>
+      </ScrollView>
+
+      {pickerMode && Platform.OS === 'ios' ? (
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          onRequestClose={closePicker}
+        >
+          <View style={styles.modalScrim}>
+            <Pressable style={StyleSheet.absoluteFill} onPress={closePicker} />
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>
+                  {pickerMode === 'date' ? 'Choose Date' : 'Choose Time'}
+                </Text>
+                <Pressable style={styles.modalDoneButton} onPress={closePicker}>
+                  <Text style={styles.modalDoneText}>Done</Text>
+                </Pressable>
+              </View>
+              <DateTimePicker
+                mode={pickerMode}
+                display={pickerMode === 'date' ? 'inline' : 'spinner'}
+                value={plannedAt}
+                onChange={handlePickerChange}
+                minimumDate={pickerMode === 'date' ? new Date() : undefined}
+                themeVariant={isDark ? 'dark' : 'light'}
+                accentColor={COLORS.primary}
+              />
+            </View>
+          </View>
+        </Modal>
+      ) : null}
+
+      {pickerMode && Platform.OS !== 'ios' ? (
+        <DateTimePicker
+          mode={pickerMode}
+          display="default"
+          value={plannedAt}
+          onChange={handlePickerChange}
+          minimumDate={pickerMode === 'date' ? new Date() : undefined}
+          is24Hour={false}
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -179,128 +396,226 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     safe: {
       flex: 1,
       backgroundColor: COLORS.background,
-      paddingTop: 48,
+      paddingTop: 44,
+    },
+    content: {
+      padding: 18,
+      paddingBottom: 36,
+      gap: 16,
     },
     header: {
-      paddingHorizontal: 18,
-      marginBottom: 14,
-      gap: 14,
-    },
-    backButton: {
-      alignSelf: 'flex-start',
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(12,12,14,0.04)',
+      gap: 14,
+      marginBottom: 4,
+    },
+    backButton: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(12,12,14,0.04)',
+    },
+    title: {
+      color: COLORS.textPrimary,
+      fontSize: 30,
+      fontWeight: '900',
+      letterSpacing: -0.9,
+    },
+    card: {
+      backgroundColor: isDark ? 'rgba(18,18,20,0.84)' : 'rgba(255,255,255,0.94)',
+      borderRadius: 26,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      padding: 18,
+      gap: 12,
+    },
+    fieldLabel: {
+      color: COLORS.textPrimary,
+      fontSize: 13,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+    },
+    fieldLabelSpaced: {
+      marginTop: 8,
+    },
+    originModeRow: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    modeChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
       borderRadius: 999,
       borderWidth: 1,
       borderColor: COLORS.border,
       paddingHorizontal: 14,
       paddingVertical: 10,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.03)',
     },
-    backText: {
+    modeChipActive: {
+      backgroundColor: COLORS.primary,
+      borderColor: COLORS.primary,
+    },
+    modeChipText: {
       color: COLORS.textPrimary,
       fontSize: 13,
-      fontWeight: '800',
-    },
-    headerCopy: {
-      gap: 4,
-    },
-    title: {
-      color: COLORS.textPrimary,
-      fontSize: 28,
-      fontWeight: '900',
-      letterSpacing: -0.8,
-    },
-    subtitle: {
-      color: COLORS.textSecondary,
-      fontSize: 13,
-      lineHeight: 20,
-    },
-    tipRow: {
-      paddingHorizontal: 18,
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 10,
-      marginBottom: 14,
-    },
-    tipChip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#FFFFFF',
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-    },
-    tipText: {
-      color: COLORS.textPrimary,
-      fontSize: 12,
       fontWeight: '700',
     },
-    webCard: {
-      flex: 1,
-      marginHorizontal: 18,
-      marginBottom: 18,
-      overflow: 'hidden',
-      borderRadius: 28,
+    modeChipTextActive: {
+      color: '#FFFFFF',
+    },
+    selectionCard: {
+      borderRadius: 18,
       borderWidth: 1,
       borderColor: COLORS.border,
-      backgroundColor: isDark ? '#131318' : '#FFFFFF',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 10 },
-      shadowOpacity: isDark ? 0.26 : 0.08,
-      shadowRadius: 18,
-      elevation: 10,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.03)',
+      paddingHorizontal: 14,
+      paddingVertical: 12,
     },
-    webview: {
-      flex: 1,
-      backgroundColor: 'transparent',
+    selectionTitle: {
+      color: COLORS.textPrimary,
+      fontSize: 15,
+      fontWeight: '700',
     },
-    loadingState: {
+    selectionSubtitle: {
+      marginTop: 3,
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      lineHeight: 18,
+    },
+    segmentedRow: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    segmentButton: {
       flex: 1,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingVertical: 14,
+      alignItems: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.03)',
+    },
+    segmentButtonActive: {
+      backgroundColor: COLORS.primary,
+      borderColor: COLORS.primary,
+    },
+    segmentButtonText: {
+      color: COLORS.textPrimary,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    segmentButtonTextActive: {
+      color: '#FFFFFF',
+    },
+    dateTimeRow: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    dateTimeButton: {
+      flex: 1,
+      minHeight: 54,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.03)',
+      paddingHorizontal: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
       justifyContent: 'center',
+      gap: 8,
+    },
+    dateTimeValue: {
+      color: COLORS.textPrimary,
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    preferenceStack: {
+      gap: 10,
+    },
+    preferenceCard: {
+      flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
-      backgroundColor: isDark ? '#131318' : '#FFFFFF',
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.03)',
+      paddingHorizontal: 14,
+      paddingVertical: 14,
     },
-    loadingText: {
-      color: COLORS.textSecondary,
-      fontSize: 13,
-      fontWeight: '700',
+    preferenceCardActive: {
+      borderColor: COLORS.primary,
+      backgroundColor: isDark ? 'rgba(17,120,154,0.18)' : 'rgba(17,120,154,0.10)',
     },
-    errorOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: isDark ? 'rgba(12,12,14,0.92)' : 'rgba(255,255,255,0.94)',
+    preferenceIconWrap: {
+      width: 30,
+      height: 30,
+      borderRadius: 10,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingHorizontal: 28,
-      gap: 10,
+      backgroundColor: isDark ? 'rgba(17,120,154,0.16)' : 'rgba(17,120,154,0.10)',
     },
-    errorTitle: {
+    preferenceIconWrapActive: {
+      backgroundColor: COLORS.primary,
+    },
+    preferenceText: {
       color: COLORS.textPrimary,
-      fontSize: 18,
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    submitButton: {
+      borderRadius: 22,
+      backgroundColor: COLORS.primary,
+      paddingVertical: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    submitButtonDisabled: {
+      opacity: 0.45,
+    },
+    submitButtonText: {
+      color: '#FFFFFF',
+      fontSize: 16,
       fontWeight: '800',
     },
-    errorBody: {
-      color: COLORS.textSecondary,
-      fontSize: 13,
-      lineHeight: 20,
-      textAlign: 'center',
+    modalScrim: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.42)',
+      justifyContent: 'flex-end',
+      padding: 16,
     },
-    reloadButton: {
-      marginTop: 6,
+    modalCard: {
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surface,
+      padding: 16,
+    },
+    modalHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
-      backgroundColor: COLORS.primary,
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderRadius: 999,
+      justifyContent: 'space-between',
+      marginBottom: 10,
     },
-    reloadText: {
+    modalTitle: {
+      color: COLORS.textPrimary,
+      fontSize: 16,
+      fontWeight: '800',
+    },
+    modalDoneButton: {
+      borderRadius: 999,
+      backgroundColor: COLORS.primary,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+    },
+    modalDoneText: {
       color: '#FFFFFF',
       fontSize: 13,
       fontWeight: '800',

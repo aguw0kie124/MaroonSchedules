@@ -164,7 +164,6 @@ export function PlacesList({
     if (activeLayer === "Today") return "Today's Schedule";
     if (activeLayer === "Dining") return "Dining Places";
     if (activeLayer === "Academic") return "Academic Places";
-    if (activeLayer === "Study") return "Study Spots";
     if (activeLayer === "Library") return "Libraries";
     if (activeLayer === "Rec") return "Gyms and Rec";
     if (activeLayer === "Parking") return "Parking";
@@ -324,18 +323,18 @@ export function PlacesList({
         : null;
     const recreationFacility =
       recreationFacilityMap.get(getCanonicalLocationName(loc.location)) || null;
+    const isCapacityType = loc.type === "Rec" || loc.type === "Library";
     const primaryMeta = loc.classMeetings?.length
       ? `${loc.classMeetings.length} class${loc.classMeetings.length === 1 ? "" : "es"}`
-      : loc.type === "Rec" || loc.type === "Library"
+      : isCapacityType
         ? `${loc.percent_full != null ? `${loc.percent_full}% full` : loc.hours || recreationFacility?.today_hours || recreationFacility?.hours_hint || "Hours available"}`
         : loc.hours || loc.type;
     const secondaryMeta =
       loc.type === "Parking"
         ? parkingRecommendation?.badge || null
-        : loc.percent_full != null &&
-          (loc.type === "Library" || loc.type === "Rec")
+        : loc.percent_full != null && isCapacityType
           ? `${loc.percent_full}% full`
-          : loc.type;
+          : (loc.type !== "Dining" && loc.type !== "Hub" ? loc.type : null);
     const statusChips: string[] = [];
 
     if (loc.classMeetings?.length) {
@@ -346,7 +345,7 @@ export function PlacesList({
     }
     if (
       loc.percent_full != null &&
-      (loc.type === "Library" || loc.type === "Rec")
+      isCapacityType
     ) {
       statusChips.push(
         loc.percent_full >= 80
@@ -382,9 +381,11 @@ export function PlacesList({
               </View>
               <View style={styles.placesSheetItemBody}>
                 <View style={styles.placesSheetItemTagRow}>
-                  <View style={styles.placesSheetItemTag}>
-                    <Text style={styles.placesSheetItemTagText}>{loc.type}</Text>
-                  </View>
+                  {(loc.type !== "Dining" && loc.type !== "Hub") ? (
+                    <View style={styles.placesSheetItemTag}>
+                      <Text style={styles.placesSheetItemTagText}>{loc.type}</Text>
+                    </View>
+                  ) : null}
                   {secondaryMeta && secondaryMeta !== loc.type ? (
                     <Text style={styles.placesSheetItemTagMeta} numberOfLines={1}>
                       {secondaryMeta}
@@ -437,9 +438,11 @@ export function PlacesList({
             </View>
             <View style={styles.placesSheetItemBody}>
               <View style={styles.placesSheetItemTagRow}>
-                <View style={styles.placesSheetItemTag}>
-                  <Text style={styles.placesSheetItemTagText}>{loc.type}</Text>
-                </View>
+                {(loc.type !== "Dining" && loc.type !== "Hub") ? (
+                  <View style={styles.placesSheetItemTag}>
+                    <Text style={styles.placesSheetItemTagText}>{loc.type}</Text>
+                  </View>
+                ) : null}
                 {secondaryMeta && secondaryMeta !== loc.type ? (
                   <Text style={styles.placesSheetItemTagMeta} numberOfLines={1}>
                     {secondaryMeta}

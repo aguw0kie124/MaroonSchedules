@@ -17,9 +17,15 @@ from routers.grades import router as grades_router
 from routers.annex import router as annex_router
 
 from services import course_service, schedule_service, user_service
+from services import cache_service
 from models.search import CourseSearchRequest
 
 app = FastAPI()
+
+
+@app.on_event("startup")
+def log_redis_status():
+    cache_service.get_json("__redis_startup_probe__")
 
 app.add_middleware(
     CORSMiddleware,
@@ -191,11 +197,21 @@ def view_courses(user_id: str):
     from repositories import course_repository
     schedules = user_service.get_schedules(user_id)
 
-    # Expand section details for frontend display
+    # 1. Collect all unique section IDs from all schedules
+    all_sec_ids = set()
+    for sched in schedules:
+        for sec_id in sched.get("section_ids", []):
+            all_sec_ids.add(sec_id)
+            
+    # 2. Batch resolve all section metadata in ONE call
+    resolved_sections = course_repository.get_sections_by_ids(list(all_sec_ids))
+    sec_map = {str(s.get("id")): s for s in resolved_sections}
+
+    # 3. Map metadata back to the schedules
     for sched in schedules:
         expanded_sections = []
         for sec_id in sched.get("section_ids", []):
-            sec_metadata = course_repository.get_section_by_id(sec_id)
+            sec_metadata = sec_map.get(sec_id)
             if sec_metadata:
                 expanded_sections.append(sec_metadata)
             else:

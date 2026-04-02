@@ -2,13 +2,19 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export interface PersonalEvent {
-  id: number;
+export interface BaseEvent {
   title: string;
-  description?: string | null;
   location?: string | null;
-  date_iso: string;
+  description?: string | null;
   date_ts: number;
+  date_iso: string;
+  location_lat?: number | null;
+  location_lng?: number | null;
+  categories?: Record<string, number>;
+}
+
+export interface PersonalEvent extends BaseEvent {
+  id: number;
   time?: string;
 }
 
@@ -24,43 +30,27 @@ export type MajorOption =
   | 'Law'
   | 'Medicine';
 
-export interface ScheduledEvent {
+export interface ScheduledEvent extends BaseEvent {
   id: string;
-  title: string;
-  location?: string | null;
-  description?: string | null;
-  date_ts: number;
-  date_iso: string;
   endDate_ts?: number | null;
-  location_lat?: number | null;
-  location_lng?: number | null;
   category: string;
-  categories?: Record<string, number>;
 }
 
-export interface EventInvite {
+export interface EventInvite extends BaseEvent {
   id: string;
   eventId: string;
-  title: string;
-  location?: string | null;
-  description?: string | null;
-  date_ts: number;
-  date_iso: string;
-  location_lat?: number | null;
-  location_lng?: number | null;
   senderName: string;
   receivedAt: number;
   category: string;
-  categories?: Record<string, number>;
 }
 
 interface EventState {
-  /* Personal events (legacy) */
-  events: PersonalEvent[];
-  addEvent: (event: PersonalEvent) => void;
-  removeEvent: (id: number) => void;
+  /* Personal events (Legacy/Manual) */
+  legacyPersonalEvents: PersonalEvent[];
+  addLegacyPersonalEvent: (event: PersonalEvent) => void;
+  removeLegacyPersonalEvent: (id: number) => void;
 
-  /* Scheduled events – shown on Dashboard schedule */
+  /* Scheduled events – shown on Dashboard schedule (Campus Events) */
   scheduledEvents: ScheduledEvent[];
   scheduleEvent: (event: ScheduledEvent) => void;
   removeScheduledEvent: (id: string) => void;
@@ -93,9 +83,13 @@ export const useEventStore = create<EventState>()(
   persist(
     (set, get) => ({
       /* Personal events */
-      events: [],
-      addEvent: (event) => set((state) => ({ events: [...state.events, event] })),
-      removeEvent: (id) => set((state) => ({ events: state.events.filter((e) => e.id !== id) })),
+      legacyPersonalEvents: [],
+      addLegacyPersonalEvent: (event) =>
+        set((state) => ({ legacyPersonalEvents: [...state.legacyPersonalEvents, event] })),
+      removeLegacyPersonalEvent: (id) =>
+        set((state) => ({
+          legacyPersonalEvents: state.legacyPersonalEvents.filter((e) => e.id !== id),
+        })),
 
       /* Scheduled events */
       scheduledEvents: [],
@@ -127,7 +121,7 @@ export const useEventStore = create<EventState>()(
         })),
       removeIdsFromDisliked: (ids) =>
         set((state) => ({
-          dislikedEventIds: state.dislikedEventIds.filter(id => !ids.includes(id)),
+          dislikedEventIds: state.dislikedEventIds.filter((id) => !ids.includes(id)),
         })),
       clearDisliked: () => set({ dislikedEventIds: [] }),
 
@@ -149,6 +143,7 @@ export const useEventStore = create<EventState>()(
             location_lat: invite.location_lat,
             location_lng: invite.location_lng,
             category: invite.category,
+            categories: invite.categories,
           };
           const alreadyScheduled = state.scheduledEvents.some((e) => e.id === scheduled.id);
           return {

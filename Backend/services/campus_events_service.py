@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from services import place_registry_service
+from services import cache_service, place_registry_service
 
 
 CRAWLER_OUTPUT = (
@@ -16,6 +16,7 @@ CRAWLER_OUTPUT = (
     / "normalized"
     / "events.jsonl"
 )
+EVENTS_SNAPSHOT_TTL_SECONDS = 300
 _EVENT_CACHE: List[Dict[str, Any]] | None = None
 _EVENT_CACHE_MTIME_NS: int | None = None
 TAMU_CENTER_LAT = 30.6153
@@ -321,15 +322,35 @@ def _score_student_relevance(event: Dict[str, Any]) -> Tuple[int, str, List[str]
     return score, label, reasons
 
 
-def load_campus_events(force_refresh: bool = False) -> List[Dict[str, Any]]:
+def load_campus_events(force_refresh: bool = False) -> Dict[str, Any]:
     global _EVENT_CACHE, _EVENT_CACHE_MTIME_NS
 
+    cache_key = "campus:events:normalized:v1"
+    if not force_refresh:
+        cached = cache_service.get_json(cache_key)
+        if cached is not None:
+            return cached
+
     if not CRAWLER_OUTPUT.exists():
-        return []
+        payload = {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "stale_after": EVENTS_SNAPSHOT_TTL_SECONDS,
+            "source_status": "missing",
+            "events": [],
+        }
+        cache_service.set_json(cache_key, payload, EVENTS_SNAPSHOT_TTL_SECONDS)
+        return payload
 
     mtime_ns = CRAWLER_OUTPUT.stat().st_mtime_ns
     if not force_refresh and _EVENT_CACHE is not None and _EVENT_CACHE_MTIME_NS == mtime_ns:
-        return _EVENT_CACHE
+        payload = {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "stale_after": EVENTS_SNAPSHOT_TTL_SECONDS,
+            "source_status": "live",
+            "events": _EVENT_CACHE,
+        }
+        cache_service.set_json(cache_key, payload, EVENTS_SNAPSHOT_TTL_SECONDS)
+        return payload
 
     events: List[Dict[str, Any]] = []
     with CRAWLER_OUTPUT.open("r", encoding="utf-8") as handle:
@@ -362,4 +383,11 @@ def load_campus_events(force_refresh: bool = False) -> List[Dict[str, Any]]:
 
     _EVENT_CACHE = events
     _EVENT_CACHE_MTIME_NS = mtime_ns
-    return events
+    payload = {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": EVENTS_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live",
+        "events": events,
+    }
+    cache_service.set_json(cache_key, payload, EVENTS_SNAPSHOT_TTL_SECONDS)
+    return payload

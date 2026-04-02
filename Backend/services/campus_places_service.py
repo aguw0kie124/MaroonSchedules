@@ -4,7 +4,9 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from routers.traffic import tracker
-from services import place_registry_service
+from services import cache_service, place_registry_service
+
+PLACE_SNAPSHOT_TTL_SECONDS = 60
 
 
 STATIC_PLACE_META: Dict[str, Dict[str, Any]] = {
@@ -147,6 +149,11 @@ def _merge_operational_state(locations: Dict[str, Dict[str, Any]]) -> None:
 
 
 def get_places_map_snapshot() -> Dict[str, Any]:
+    cache_key = "campus:places:map:v1"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
     locations = _base_locations()
     _merge_operational_state(locations)
 
@@ -158,7 +165,11 @@ def get_places_map_snapshot() -> Dict[str, Any]:
         ),
     )
 
-    return {
+    payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "stale_after": PLACE_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live" if any(location["is_live"] for location in ordered_locations) else "preview",
         "locations": ordered_locations,
     }
+    cache_service.set_json(cache_key, payload, PLACE_SNAPSHOT_TTL_SECONDS)
+    return payload

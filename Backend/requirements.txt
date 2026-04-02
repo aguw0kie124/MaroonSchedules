@@ -13,3 +13,4 @@ pytz
 PuLP
 pydantic-settings
 typing-extensions
+redis

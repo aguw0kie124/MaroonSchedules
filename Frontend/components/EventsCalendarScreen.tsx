@@ -9,6 +9,7 @@ import {
   PanResponder,
   Platform,
   Pressable,
+  Image,
   ScrollView,
   StyleSheet,
   Text,
@@ -72,6 +73,7 @@ interface CampusEventResponse {
   food_confidence?: number;
   food_type?: string | null;
   categories?: Record<string, number>;
+  image_url?: string | null;
 }
 
 interface TAMUEvent {
@@ -93,6 +95,7 @@ interface TAMUEvent {
   food_confidence?: number;
   food_type?: string | null;
   categories?: Record<string, number>;
+  imageUrl?: string | null;
   _searchBlob?: string;
   _category?: ExploreCategory;
   _socialMode?: SocialMode;
@@ -229,6 +232,13 @@ function getSearchBlob(event: TAMUEvent) {
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
+}
+
+function resolveEventImageUrl(value?: string | null) {
+  if (!value) return null;
+  if (value.startsWith('http://') || value.startsWith('https://')) return value;
+  if (value.startsWith('/')) return `${API_URL}${value}`;
+  return value;
 }
 
 function classifyCategory(event: TAMUEvent): ExploreCategory {
@@ -384,7 +394,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         setLoading(true);
         const res = await fetch(TAMU_EVENTS_API);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const raw = (await res.json()) as CampusEventResponse[];
+        const payload = (await res.json()) as { events?: CampusEventResponse[] } | CampusEventResponse[];
+        const raw = Array.isArray(payload) ? payload : payload.events || [];
         const parsed: TAMUEvent[] = raw
           .filter((event) => event && event.event_id && event.title && event.start_time)
           .map((event) => {
@@ -409,6 +420,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               food_confidence: event.food_confidence ?? 0,
               food_type: event.food_type ?? null,
               categories: event.categories || undefined,
+              imageUrl: resolveEventImageUrl(event.image_url ?? null),
             };
           })
           .map((event) => {
@@ -1144,9 +1156,11 @@ function HeroEventCard({
       onPress={onPress}
       style={[stylesStatic.heroCard, { backgroundColor: meta.cardTint }]}
     >
+      {event.imageUrl ? <Image source={{ uri: event.imageUrl }} style={stylesStatic.heroImage} resizeMode="cover" /> : null}
+      {event.imageUrl ? <View style={stylesStatic.heroImageOverlay} /> : null}
       <View style={[stylesStatic.heroGlow, { backgroundColor: 'rgba(255,255,255,0.18)' }]} />
       <View style={[stylesStatic.heroGlowSmall, { backgroundColor: 'rgba(255,255,255,0.12)' }]} />
-      <View style={stylesStatic.heroIconHalo}>
+      <View style={[stylesStatic.heroIconHalo, event.imageUrl ? stylesStatic.heroIconHaloWithImage : null]}>
         <Icon size={88} color="rgba(255,255,255,0.12)" />
       </View>
 
@@ -1217,9 +1231,15 @@ function ListEventRow({
         stylesStatic.listRow,
         { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border },
       ]}
-    >
+      >
       <View style={[stylesStatic.listThumb, { backgroundColor: meta.cardTint }]}>
-        <Icon size={28} color="#FFFFFF" />
+        {event.imageUrl ? (
+          <Image source={{ uri: event.imageUrl }} style={stylesStatic.listThumbImage} resizeMode="cover" />
+        ) : (
+          <View style={stylesStatic.listThumbFallback}>
+            <Icon size={28} color="#FFFFFF" />
+          </View>
+        )}
       </View>
       <View style={stylesStatic.listContent}>
         <View style={stylesStatic.listTitleRow}>
@@ -1344,8 +1364,10 @@ function SwipeEventCard({
         ]}
       >
         <Pressable style={{ flex: 1 }} onPress={onOpen}>
+          {event.imageUrl ? <Image source={{ uri: event.imageUrl }} style={stylesStatic.swipeImage} resizeMode="cover" /> : null}
+          {event.imageUrl ? <View style={stylesStatic.swipeImageOverlay} /> : null}
           <View style={stylesStatic.swipeGlow} />
-          <View style={stylesStatic.swipeWatermark}>
+          <View style={[stylesStatic.swipeWatermark, event.imageUrl ? stylesStatic.swipeWatermarkWithImage : null]}>
             <Icon size={108} color="rgba(255,255,255,0.13)" />
           </View>
           <View style={stylesStatic.swipeTopLabel}>
@@ -1565,6 +1587,11 @@ function DetailModal({
         ]}
       >
           <ScrollView showsVerticalScrollIndicator={false}>
+            {event.imageUrl ? (
+              <View style={stylesStatic.detailImageWrap}>
+                <Image source={{ uri: event.imageUrl }} style={stylesStatic.detailImage} resizeMode="cover" />
+              </View>
+            ) : null}
             <View style={stylesStatic.detailHeader}>
               <View
                 style={[
@@ -2074,11 +2101,18 @@ const stylesStatic = StyleSheet.create({
   },
   heroCard: {
     width: SCREEN_WIDTH - 52,
-      height: 372,
+    height: 372,
     borderRadius: 34,
     overflow: 'hidden',
     padding: 20,
     justifyContent: 'space-between',
+  },
+  heroImage: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  heroImageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(16,24,40,0.28)',
   },
   heroGlow: {
     position: 'absolute',
@@ -2103,6 +2137,9 @@ const stylesStatic = StyleSheet.create({
     right: 18,
     bottom: 118,
     opacity: 0.55,
+  },
+  heroIconHaloWithImage: {
+    opacity: 0.28,
   },
   heroTopRow: {
       flexDirection: 'row',
@@ -2186,6 +2223,17 @@ const stylesStatic = StyleSheet.create({
     width: 104,
     height: 76,
     borderRadius: 18,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listThumbImage: {
+    width: '100%',
+    height: '100%',
+  },
+  listThumbFallback: {
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2234,6 +2282,13 @@ const stylesStatic = StyleSheet.create({
     borderRadius: 34,
     overflow: 'hidden',
   },
+  swipeImage: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  swipeImageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(11,18,31,0.34)',
+  },
   swipeGlow: {
     position: 'absolute',
     top: -40,
@@ -2249,6 +2304,9 @@ const stylesStatic = StyleSheet.create({
     bottom: 140,
     left: 18,
     opacity: 0.5,
+  },
+  swipeWatermarkWithImage: {
+    opacity: 0.22,
   },
   swipeTopLabel: {
     marginTop: 16,
@@ -2363,6 +2421,16 @@ const stylesStatic = StyleSheet.create({
     borderWidth: 1,
     padding: 22,
     maxHeight: '84%',
+  },
+  detailImageWrap: {
+    height: 194,
+    borderRadius: 22,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  detailImage: {
+    width: '100%',
+    height: '100%',
   },
   detailHeader: {
     flexDirection: 'row',

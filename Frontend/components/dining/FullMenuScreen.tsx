@@ -1,10 +1,25 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, ImageBackground, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  ImageBackground,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { useUser } from '@clerk/clerk-expo';
 import { ChevronLeft } from 'lucide-react-native';
 import { Card, SectionLabel, Badge } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
 import { PillTabs } from '../PillTabs';
+import { API_URL } from '../../config';
+import { getLocalDateString } from '../../services/dateUtils';
 import {
   DiningMealPeriod,
   fetchDiningFullMenuCached,
@@ -25,7 +40,28 @@ function formatMenuTitle(location?: string, title?: string) {
   return `${stripped || 'Menu'} Menu`;
 }
 
+function buildMenuItemKey(item: any) {
+  return item.name;
+}
+
+function buildFoodPayload(item: any, location: string, mealPeriod: DiningMealPeriod) {
+  return {
+    name: item.name,
+    source: 'dining_menu',
+    calories: Number(item.calories || 0),
+    protein: Number(item.protein || 0),
+    carbs: Number(item.carbs || 0),
+    fat: Number(item.fat || 0),
+    fiber: item.fiber != null ? Number(item.fiber) : undefined,
+    sodium: item.sodium != null ? Number(item.sodium) : undefined,
+    location: item.location || location,
+    meal_period: mealPeriod,
+    quantity: 1,
+  };
+}
+
 export default function FullMenuScreen({ navigation, route }: any) {
+  const { user } = useUser();
   const { theme, wallpaperUri } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
@@ -41,6 +77,8 @@ export default function FullMenuScreen({ navigation, route }: any) {
   const menu = menusByPeriod[activeMealPeriod] || null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [portionCounts, setPortionCounts] = useState<Record<string, { count: number; entryIds: number[] }>>({});
+  const [syncingItemKey, setSyncingItemKey] = useState<string | null>(null);
 
   const load = useCallback(async (nextMealPeriod: DiningMealPeriod) => {
     if (!location) {
@@ -85,6 +123,75 @@ export default function FullMenuScreen({ navigation, route }: any) {
     if (!location) return;
     prefetchDiningMenus([location], availableMealPeriods).catch(() => {});
   }, [availableMealPeriods, location]);
+
+  const refreshTrackerCounts = useCallback(async () => {
+    if (!user) return;
+    try {
+      const tracker = await fetch(`${API_URL}/dining/tracker/${user.id}?date=${getLocalDateString()}`).then((response) => response.json());
+      const entries = Array.isArray(tracker?.entries) ? tracker.entries : [];
+      const nextCounts = entries.reduce((acc: Record<string, { count: number; entryIds: number[] }>, entry: any) => {
+        if (entry.meal_period !== activeMealPeriod) return acc;
+        const key = entry.label;
+        const existing = acc[key] || { count: 0, entryIds: [] };
+        existing.count += 1;
+        existing.entryIds.push(entry.id);
+        acc[key] = existing;
+        return acc;
+      }, {});
+      setPortionCounts(nextCounts);
+    } catch (trackerError) {
+      console.error('Failed to refresh tracker counts', trackerError);
+    }
+  }, [activeMealPeriod, user]);
+
+  useEffect(() => {
+    refreshTrackerCounts();
+  }, [refreshTrackerCounts]);
+
+  const addPortion = useCallback(async (item: any) => {
+    if (!user || !location) return;
+    const itemKey = buildMenuItemKey(item);
+    setSyncingItemKey(itemKey);
+    try {
+      await fetch(`${API_URL}/dining/tracker/${user.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: getLocalDateString(),
+          meal_period: activeMealPeriod,
+          label: item.name,
+          foods: [buildFoodPayload(item, location, activeMealPeriod)],
+        }),
+      });
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      await refreshTrackerCounts();
+    } catch (trackerError) {
+      console.error('Could not add menu item to tracker', trackerError);
+      Alert.alert('Error', 'Could not add this item right now.');
+    } finally {
+      setSyncingItemKey(null);
+    }
+  }, [activeMealPeriod, location, refreshTrackerCounts, user]);
+
+  const removePortion = useCallback(async (item: any) => {
+    if (!user) return;
+    const itemKey = buildMenuItemKey(item);
+    const tracked = portionCounts[itemKey];
+    const entryId = tracked?.entryIds?.[tracked.entryIds.length - 1];
+    if (!entryId) return;
+
+    setSyncingItemKey(itemKey);
+    try {
+      await fetch(`${API_URL}/dining/tracker/${user.id}/${entryId}`, { method: 'DELETE' });
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      await refreshTrackerCounts();
+    } catch (trackerError) {
+      console.error('Could not remove menu item from tracker', trackerError);
+      Alert.alert('Error', 'Could not remove this item right now.');
+    } finally {
+      setSyncingItemKey(null);
+    }
+  }, [portionCounts, refreshTrackerCounts, user]);
 
   const categoryCount = menu?.categories?.length || 0;
 
@@ -170,6 +277,35 @@ export default function FullMenuScreen({ navigation, route }: any) {
                         {!!item.location && menu.locations?.length > 1 && ` • ${item.location}`}
                       </Text>
                     </View>
+                    <View style={s.actionWrap}>
+                      <View style={s.countSlot}>
+                        {portionCounts[buildMenuItemKey(item)]?.count > 0 ? (
+                          <Text style={[s.countText, { color: T.text3 }]}>
+                            {portionCounts[buildMenuItemKey(item)]?.count}x
+                          </Text>
+                        ) : null}
+                      </View>
+                      {portionCounts[buildMenuItemKey(item)]?.count > 0 ? (
+                        <TouchableOpacity
+                          style={[s.actionButton, { borderColor: T.clay, backgroundColor: `${T.clay}18` }]}
+                          onPress={() => removePortion(item)}
+                          disabled={syncingItemKey === buildMenuItemKey(item)}
+                        >
+                          <Text style={[s.actionSymbol, { color: T.clay }]}>-</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                      <TouchableOpacity
+                        style={[s.actionButton, { borderColor: T.sage, backgroundColor: `${T.sage}18` }]}
+                        onPress={() => addPortion(item)}
+                        disabled={syncingItemKey === buildMenuItemKey(item)}
+                      >
+                        {syncingItemKey === buildMenuItemKey(item) ? (
+                          <ActivityIndicator color={T.sage} size="small" />
+                        ) : (
+                          <Text style={[s.actionSymbol, { color: T.sage }]}>+</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ))}
               </Card>
@@ -193,7 +329,19 @@ const s = StyleSheet.create({
   locationWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   locationPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
   locationText: { fontSize: 12, fontWeight: '700' },
-  itemRow: { paddingVertical: 12, borderBottomWidth: 1 },
+  itemRow: { paddingVertical: 12, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center' },
   itemName: { fontSize: 15, fontWeight: '800' },
   itemMeta: { fontSize: 12, marginTop: 4, fontWeight: '500' },
+  actionWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  countSlot: { minWidth: 28, alignItems: 'flex-end', justifyContent: 'center' },
+  actionButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionSymbol: { fontSize: 20, fontWeight: '900', lineHeight: 22 },
+  countText: { fontSize: 12, fontWeight: '800', minWidth: 22, textAlign: 'right' },
 });

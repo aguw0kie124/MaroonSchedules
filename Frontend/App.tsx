@@ -5,12 +5,12 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
-import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withRepeat, 
-  withTiming, 
-  interpolateColor 
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  interpolateColor
 } from 'react-native-reanimated';
 import { useTheme, useThemeStore } from './components/SharedUI';
 
@@ -22,6 +22,7 @@ import { RecreationFacilitiesScreen } from './components/RecreationFacilitiesScr
 import { CourseDetail } from './components/CourseDetail';
 import { AuthLanding } from './components/AuthLanding';
 import { LoginScreen } from './components/LoginScreen';
+import { AnnexHubScreen } from './components/AnnexHubScreen';
 
 import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
 import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
@@ -33,11 +34,14 @@ import TransitTripPlannerScreen from './components/TransitTripPlannerScreen';
 import { TransitTripResultsScreen } from './components/TransitTripResultsScreen';
 import { PlacesMapScreen } from './components/PlacesMapScreen';
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
+import { GPACalculatorScreen } from './components/GPACalculatorScreen';
 import { LeaderboardScreen } from './components/LeaderboardScreen';
 import { ShareOverlay } from './components/ShareOverlay';
+import { TimerScreen } from './components/TimerScreen';
 
 import DiningDashboard from './components/dining/DiningDashboard';
 import FullMenuScreen from './components/dining/FullMenuScreen';
@@ -50,7 +54,9 @@ import WeightTrackerScreen from './components/dining/WeightTrackerScreen';
 import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 
-import { Home, Map, Users, User } from 'lucide-react-native';
+import { Home, Map, Users, User, UtensilsCrossed, Clock3 } from 'lucide-react-native';
+import { GlassPillTabBar } from './components/GlassPillTabBar';
+import { getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
 
 import { syncUser } from './api/client';
@@ -102,30 +108,62 @@ if (!publishableKey) {
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-function MainTabs() {
+function MainTabs(props: any) {
   const { COLORS } = useTheme();
+  const navItems = useAppShellStore((state) => state.navItems);
+  const tabBarMode = useAppShellStore((state) => state.tabBarMode);
+  const visibleNavItems = React.useMemo(() => getOrderedVisibleItems(navItems), [navItems]);
+
   const tabScreens = [
-    {
-      name: 'Dashboard',
-      component: Dashboard,
-      title: 'Events',
-      icon: Home,
-      initialParams: undefined,
-    },
-    {
-      name: 'Places',
-      component: PlacesMapScreen,
-      title: 'Places',
-      icon: Map,
-      initialParams: undefined,
-    },
-    {
-      name: 'Social',
-      component: SocialHubScreen,
-      title: 'Pings',
-      icon: Users,
-      initialParams: undefined,
-    },
+    ...visibleNavItems.map((item) => {
+      if (item.id === 'Dashboard') {
+        return {
+          name: 'Dashboard',
+          component: Dashboard,
+          title: 'Events',
+          icon: Home,
+          initialParams: undefined,
+        };
+      }
+      if (item.id === 'Places') {
+        return {
+          name: 'Places',
+          component: PlacesMapScreen,
+          title: 'Places',
+          icon: Map,
+          initialParams: undefined,
+        };
+      }
+      if (item.id === 'Social') {
+        return {
+          name: 'Social',
+          component: SocialHubScreen,
+          title: 'Pings',
+          icon: Users,
+          initialParams: undefined,
+        };
+      }
+      if (item.id === 'Dining') {
+        return {
+          name: 'Dining',
+          component: () => (
+            <ErrorBoundary name="Dining Dashboard">
+              <DiningDashboard />
+            </ErrorBoundary>
+          ),
+          title: 'Dining',
+          icon: UtensilsCrossed,
+          initialParams: undefined,
+        };
+      }
+      return {
+        name: 'Timer',
+        component: TimerScreen,
+        title: 'Timer',
+        icon: Clock3,
+        initialParams: undefined,
+      };
+    }),
     {
       name: 'Settings',
       component: Profile,
@@ -135,15 +173,24 @@ function MainTabs() {
     },
   ];
 
+  const availableRouteNames = tabScreens.map((screen) => screen.name);
+  const initialRouteName = availableRouteNames.includes('Dashboard')
+    ? 'Dashboard'
+    : availableRouteNames[0];
+  const shellKey = `${tabBarMode}:${availableRouteNames.join('|')}`;
+
   return (
     <Tab.Navigator
+      key={shellKey}
       id="MainTabs"
-      initialRouteName="Places"
+      initialRouteName={initialRouteName}
+      tabBar={tabBarMode === 'floating' ? (props) => <GlassPillTabBar {...props} /> : undefined}
       screenOptions={{
         headerShown: false,
-        tabBarShowLabel: false,
+        tabBarShowLabel: tabBarMode !== 'floating',
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
+          display: tabBarMode === 'floating' ? 'none' : 'flex',
           height: 70,
           borderTopWidth: 1,
           borderTopColor: COLORS.border,
@@ -167,12 +214,6 @@ function MainTabs() {
           options={{
             title: screen.title,
             tabBarButton: (props) => {
-              const { onPress, ...rest } = props as any;
-              
-              // We need useTour safely. Can we call useTour here inside the map? 
-              // Wait, tabBarButton is a component, but we are inside map.
-              // It's safer to extract it to a component, but we can't easily.
-              // Let's use a function component wrapper.
               return <TabButtonWrapper screenName={screen.name} props={props} />;
             },
             tabBarIcon: ({ color, focused }) => {
@@ -202,8 +243,8 @@ function RootNavigator() {
   }
 
   const navigator = (
-    <Stack.Navigator 
-      id="RootStack" 
+    <Stack.Navigator
+      id="RootStack"
       screenOptions={{
         headerShown: false,
         headerStyle: { backgroundColor: COLORS.background },
@@ -212,7 +253,13 @@ function RootNavigator() {
     >
       {isSignedIn ? (
         <>
-          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen name="Main">
+            {(props) => (
+              <ErrorBoundary name="Main Dashboard">
+                <MainTabs {...props} />
+              </ErrorBoundary>
+            )}
+          </Stack.Screen>
           <Stack.Screen name="CourseDetail" component={CourseDetail} options={{ headerShown: true }} />
 
           <Stack.Screen name="NewCourseSearch" component={NewCourseSearchScreen} options={{ headerShown: true, title: 'Course Search' }} />
@@ -229,6 +276,8 @@ function RootNavigator() {
           <Stack.Screen name="TransitTripResults" component={TransitTripResultsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
           <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="AnnexHub" component={AnnexHubScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
           <Stack.Screen
             name="FullMenu"
@@ -350,7 +399,9 @@ function App() {
         <QueryClientProvider client={queryClient}>
           <NavigationContainer theme={navigationTheme} ref={navigationRef}>
             <TourProvider>
-              <RootNavigator />
+              <ErrorBoundary name="Root Navigator">
+                <RootNavigator />
+              </ErrorBoundary>
               <ShareOverlay />
             </TourProvider>
           </NavigationContainer>

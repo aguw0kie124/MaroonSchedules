@@ -7,6 +7,7 @@ from typing import Optional, Dict, List, Any
 from pulp import LpMaximize, LpProblem, LpVariable, lpSum, value as pulp_value, PULP_CBC_CMD
 from datetime import datetime
 from db_config import get_db_connection
+from services import cache_service
 
 def get_db_conn():
     return psycopg.connect(get_db_connection())
@@ -490,6 +491,11 @@ def group_menu_items(items: List[Dict[str, Any]], meal_period: Optional[str] = N
 
 
 def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str = None) -> Dict[str, Any]:
+    cache_key = f"dining:full-menu:v1:{location_name.lower()}:{(meal_period or 'lunch').lower()}:{date_str or datetime.now().strftime('%Y-%m-%d')}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
     period = (meal_period or 'lunch').lower()
     resolved_name = resolve_location_name(location_name) or location_name
     is_dining_hall = 'hall' in resolved_name.lower()
@@ -538,7 +544,7 @@ def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str 
             items = []
 
     grouped_items = group_menu_items(items, period)
-    return {
+    payload = {
         "success": len(grouped_items) > 0,
         "location": location_name,
         "resolvedLocation": resolved_name,
@@ -548,6 +554,8 @@ def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str 
         "count": len(items),
         "categories": grouped_items,
     }
+    cache_service.set_json(cache_key, payload, 120)
+    return payload
 
 
 def optimize_combo(location_name: str, target_cal: float) -> Dict[str, Any]:
@@ -633,6 +641,11 @@ def _dine_api_get(path: str, *, timeout: int = 10, params: Optional[Dict[str, An
 
 
 def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_period: str = None) -> Dict[str, Any]:
+    cache_key = f"dining:live-menu:v1:{location_name.lower()}:{(meal_period or 'lunch').lower()}:{date_str or datetime.now().strftime('%Y-%m-%d')}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
     if not date_str:
         date_str = datetime.now().strftime('%Y-%m-%d')
 
@@ -707,7 +720,7 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
                 })
 
         items = enrich_items(items)
-        return {
+        payload = {
             "success": True,
             "items": items,
             "location": location_name,
@@ -716,10 +729,14 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
             "resolvedPeriod": resolved_period,
             "apiBase": menu_url.rsplit('/locations/', 1)[0],
         }
+        cache_service.set_json(cache_key, payload, 300)
+        return payload
     except Exception as e:
         last_error = str(e)
 
-    return {"success": False, "error": last_error or "Unable to reach DineOnCampus", "items": []}
+    payload = {"success": False, "error": last_error or "Unable to reach DineOnCampus", "items": []}
+    cache_service.set_json(cache_key, payload, 60)
+    return payload
 
 
 def sync_all_locations(date_str: str = None):
