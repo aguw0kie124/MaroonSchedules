@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, Modal, ScrollView, StyleSheet } from 'react-native';
 import { Calendar as CalendarIcon, MapPin, BadgeCheck, Heart, Share2, Map } from 'lucide-react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { TAMUEvent, CATEGORY_META, classifyCategory, formatDate, formatTime, stripHtml, handleGoogleCalendar, openNativeMaps } from './EventUtils';
 import { useTheme } from '../SharedUI';
 
@@ -125,7 +126,11 @@ export function EventDetailModal({
   if (!event) return null;
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+    <Animated.View 
+      entering={FadeIn.duration(200)} 
+      exiting={FadeOut.duration(200)} 
+      style={[StyleSheet.absoluteFill, { zIndex: 9900 }]}
+    >
       <Pressable style={styles.modalOverlay} onPress={onClose}>
         <Pressable
           style={[
@@ -255,6 +260,6 @@ export function EventDetailModal({
           </ScrollView>
         </Pressable>
       </Pressable>
-    </Modal>
+    </Animated.View>
   );
 }

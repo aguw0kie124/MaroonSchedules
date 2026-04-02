@@ -269,27 +269,15 @@ export function PlacesMapScreen() {
     }
   }, [activeTargetName]);
 
-  // Onboarding: Master Persistent Timer for the Schedule Preview step
+  // Onboarding: The schedule-preview step is now informational only until the user taps 'Edit'
+  // which is correctly handled by the next target 'places-settings' in LayerPillScroller.
   useEffect(() => {
-    if (activeTargetName === 'schedule-preview') {
-      const timer = setTimeout(() => {
-        advanceStep('schedule-preview');
-        setIsTodayExpanded(false);
-      }, 1500);
-      return () => clearTimeout(timer);
+    if (activeTargetName === 'places-settings' && isTodayExpanded) {
+      setIsTodayExpanded(false);
     }
-  }, [activeTargetName, advanceStep]);
+  }, [activeTargetName, isTodayExpanded]);
 
-  useEffect(() => {
-    const mapSteps = ['places-settings', 'add-gyms-toggle', 'gyms-pill', 'rec-center-item'];
-    if (mapSteps.includes(activeTargetName || '')) {
-      const timer = setTimeout(() => {
-        // If user hasn't acted in 10s, advance to keep movement
-        advanceStep(activeTargetName!);
-      }, 10000);
-      return () => clearTimeout(timer);
-    }
-  }, [activeTargetName, advanceStep]);
+  // Onboarding: Fallback idle timers removed to enforce distinct user actions.
 
   // ── Bus state ─────────────────────────────────────────────
   const [busRoutes, setBusRoutes] = useState<any[]>([]);

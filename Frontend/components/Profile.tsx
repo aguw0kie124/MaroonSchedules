@@ -308,28 +308,6 @@ export function Profile() {
         </View>
       </View>
 
-      <Pressable 
-        style={[styles.heroCard, { 
-          padding: 16, 
-          backgroundColor: isDark ? COLORS.surface : '#F8FAFC', 
-          borderColor: COLORS.primary, 
-          borderWidth: 1.5,
-          flexDirection: 'row', 
-          alignItems: 'center', 
-          gap: 12,
-          marginTop: 8
-        }]} 
-        onPress={() => startTour()}
-      >
-        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary + '15', alignItems: 'center', justifyContent: 'center' }}>
-          <Compass size={24} color={COLORS.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Restart Interactive Tour</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Replay the guided onboarding tutorial.</Text>
-        </View>
-        <ChevronRight size={20} color={COLORS.textTertiary} />
-      </Pressable>
 
       {activeTargetName === 'tour-finish' && (
         <LinearGradient
@@ -397,8 +375,8 @@ export function Profile() {
         </Pressable>
 
         <Pressable style={styles.toolRow} onPress={() => navigation.navigate('NewCourseSearch')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-            <Search size={20} color="#F3F1ED" />
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
+            <Search size={20} color="#6366F1" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.toolTitle}>Major & Course Preferences</Text>
@@ -407,8 +385,8 @@ export function Profile() {
         </Pressable>
 
         <Pressable style={styles.toolRow} onPress={() => navigation.navigate('GradesScreen')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-            <GraduationCap size={20} color="#F3F1ED" />
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(16,185,129,0.15)' }]}>
+            <GraduationCap size={20} color="#10B981" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.toolTitle}>Grades & Distributions</Text>
@@ -417,8 +395,8 @@ export function Profile() {
         </Pressable>
 
         <Pressable style={styles.toolRow} onPress={() => navigation.navigate('ScheduleList')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-            <Settings2 size={20} color="#F3F1ED" />
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(139,92,246,0.15)' }]}>
+            <Settings2 size={20} color="#8B5CF6" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.toolTitle}>Manage Academic Schedules</Text>
@@ -427,8 +405,8 @@ export function Profile() {
         </Pressable>
 
         <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('GPACalculator')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-            <GraduationCap size={20} color="#F3F1ED" />
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(244,63,94,0.15)' }]}>
+            <GraduationCap size={20} color="#F43F5E" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.toolTitle}>GPA Calculator</Text>
@@ -450,6 +428,30 @@ export function Profile() {
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
       </View>
+
+
+      <Pressable 
+        style={[styles.heroCard, { 
+          padding: 16, 
+          backgroundColor: isDark ? COLORS.surface : '#F8FAFC', 
+          borderColor: COLORS.primary, 
+          borderWidth: 1.5,
+          flexDirection: 'row', 
+          alignItems: 'center', 
+          gap: 12,
+          marginTop: 8
+        }]} 
+        onPress={() => startTour()}
+      >
+        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary + '15', alignItems: 'center', justifyContent: 'center' }}>
+          <Compass size={24} color={COLORS.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Restart Interactive Tour</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Replay the guided onboarding tutorial.</Text>
+        </View>
+        <ChevronRight size={20} color={COLORS.textTertiary} />
+      </Pressable>
 
       <Pressable style={styles.logoutButton} onPress={handleLogout}>
         <LogOut size={18} color="#F3F1ED" />

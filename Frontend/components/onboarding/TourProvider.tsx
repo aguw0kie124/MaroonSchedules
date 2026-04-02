@@ -1,22 +1,21 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Dimensions, Text, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Dimensions, Text, TouchableOpacity, Modal } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
-import Animated, { 
-  FadeIn, 
-  FadeOut, 
-  SlideInDown, 
-  SlideOutDown, 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withRepeat, 
-  withTiming, 
+import Animated, {
+  FadeIn,
+  FadeOut,
+  SlideInDown,
+  SlideOutDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
   withSequence,
   withDelay,
   Easing
 } from 'react-native-reanimated';
 import Svg, { Defs, Rect, Mask, Circle } from 'react-native-svg';
 import { useTheme } from '../SharedUI';
-import { ArrowUp, ArrowDown } from 'lucide-react-native';
 import { useAppShellStore } from '../../store/appShellStore';
 import { completeTour } from '../../api/client';
 
@@ -35,12 +34,12 @@ type TourContextType = {
 };
 
 const TourContext = createContext<TourContextType>({
-  startTour: () => {},
-  endTour: () => {},
+  startTour: () => { },
+  endTour: () => { },
   isTourActive: false,
   currentStep: 0,
-  registerTarget: () => {},
-  advanceStep: () => {},
+  registerTarget: () => { },
+  advanceStep: () => { },
   activeTargetName: null,
 });
 
@@ -49,18 +48,20 @@ export const useTour = () => useContext(TourContext);
 import { useNavigation } from '@react-navigation/native';
 
 export const TOUR_SEQUENCE = [
-  { id: 'first-event-card', title: "Let's Go! 🚀", desc: "Select an event to explore its details." },
-  { id: 'event-rsvp', title: "Save It! ✅", desc: "Tap 'Add to schedule' to sync this with your live Map." },
-  { id: 'schedule-preview', title: "You're All Set! 🗓️", desc: "Your event is now live in your 'Today' schedule." },
-  { id: 'places-settings', title: "Customize Map 🗺️", desc: "Tap 'Edit' to manage your campus layers." },
-  { id: 'add-gyms-toggle', title: "Add Gyms 🏋️", desc: "Toggle 'Rec Centers' for live occupancy tracking." },
-  { id: 'gyms-pill', title: "Filter Gyms 🏙️", desc: "Tap the 'Gyms' pill to focus on recreation spots." },
-  { id: 'rec-center-item', title: "Check Capacity 📈", desc: "Select a gym, then swipe up for live crowd data." },
-  { id: 'social-tab', title: "Stay Social ⬇️", desc: "Tap 'Social' to see what's trending on campus." },
-  { id: 'crowdping-cta', title: "CrowdPing 📢", desc: "Tap here to see how easy it is to share updates.", position: 'bottom' },
-  { id: 'crowdping-close', title: "Almost There ✖️", desc: "Tap 'X' to exit and finalize your setup.", position: 'top' },
-  { id: 'settings-tab', title: "Your Profile ⚙️", desc: "One last thing! Tap your Profile to finish.", position: 'top' },
-  { id: 'tour-finish', title: "Welcome! 🎉", desc: "Tap 'Finish Onboarding' to start your journey." }
+  { id: 'switch-to-list', title: "View Options 📋", desc: "The tour requires 'List' view. Tap the 'List' tab to see the full campus schedule and continue." },
+  { id: 'first-event-card', title: "Discover 🚀", desc: "Great! Now tap an event in the list to explore its details and see what's happening." },
+  { id: 'event-rsvp', title: "Check In ✅", desc: "Tap 'Add to schedule' to track this event on your live map." },
+  { id: 'places-tab', title: "Track on Map 🗺️", desc: "Your event is saved! Now, tap the 'Places' tab to see on-campus facilities and more!", position: 'top' },
+  { id: 'places-settings', title: "Customize View ⚙️", desc: "Let's explore layers. Tap the 'Edit' button to manage your campus layers." },
+  { id: 'add-gyms-toggle', title: "Enable Layers 🏋️", desc: "Scroll down and toggle 'Gyms' to enable live occupancy tracking across campus." },
+  { id: 'add-gyms-close', title: "Looking Good! ✨", desc: "Close the tab to see your newly added campus layers on the map." },
+  { id: 'gyms-pill', title: "Focus Filters 🏙️", desc: "Tap the 'Gyms' pill to quickly filter the map for recreation spots." },
+  { id: 'rec-center-item', title: "Live Insights 📈", desc: "Select a rec center from the list to view its current live crowd data." },
+  { id: 'social-tab', title: "Community ⬇️", desc: "Stay connected! Tap the 'Pings' tab to see trending campus updates." },
+  { id: 'crowdping-cta', title: "Spread the Word 📢", desc: "Help others by sharing live updates! Tap the search bar to start." },
+  { id: 'crowdping-close', title: "Spread the Word ✖️", desc: "You can post updates for others to see. Tap the 'X' to continue." },
+  { id: 'settings-tab', title: "Profile ⚙️", desc: "Final step! Tap 'Settings' to finish your account setup.", position: 'top' },
+  { id: 'tour-finish', title: "Welcome Home! 🎉", desc: "You're all set! Tap 'Launch MaroonLife' to start your journey." }
 ];
 
 export function TourProvider({ children }: { children: React.ReactNode }) {
@@ -69,17 +70,16 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const isTOSAccepted = useAppShellStore((state) => state.isTOSAccepted);
   const isTourCompleted = useAppShellStore((state) => state.isTourCompleted);
   const setTourCompleted = useAppShellStore((state) => state.setTourCompleted);
-  
+
   const [isTourActive, setIsTourActive] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
   const [isIdle, setIsIdle] = useState(false);
-  
+
   const targetsRef = useRef<Record<string, () => Promise<TargetRect | null>>>({});
   const idleTimerRef = useRef<any>(null);
 
   const boxTranslateX = useSharedValue(0);
-  const arrowPulse = useSharedValue(0);
 
   const activeTargetName = isTourActive && currentStep < TOUR_SEQUENCE.length ? TOUR_SEQUENCE[currentStep].id : null;
 
@@ -116,7 +116,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     // Force user to Events tab if not there
     try {
       navigation.navigate('Dashboard');
-    } catch(e) {
+    } catch (e) {
       console.warn("TourProvider couldn't navigate to Dashboard", e);
     }
   }, [navigation]);
@@ -127,11 +127,16 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setTargetRect(null);
     setIsIdle(false);
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    try {
+      navigation.navigate('Dashboard');
+    } catch (e) {
+      console.warn("TourProvider couldn't navigate to Dashboard on end", e);
+    }
     if (userId) {
       setTourCompleted(true);
       completeTour(userId).catch(err => console.warn('Failed to persist tour completion:', err));
     }
-  }, [userId, setTourCompleted]);
+  }, [userId, setTourCompleted, navigation]);
 
   const resetIdleTimer = () => {
     setIsIdle(false);
@@ -152,11 +157,6 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isTourActive) {
       resetIdleTimer();
-      arrowPulse.value = withRepeat(
-        withTiming(1, { duration: 800 }),
-        -1,
-        true
-      );
     }
     return () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
@@ -223,8 +223,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   return (
     <TourContext.Provider value={value}>
       {children}
-      
-      {isTourActive && currentDef && (
+
+      {isTourActive && !!currentDef && (
         <View style={styles.overlayWrapper} pointerEvents="box-none">
           {targetRect && (
             <Animated.View entering={FadeIn} exiting={FadeOut} style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -235,20 +235,20 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
                     <Rect x="0" y="0" width="100%" height="100%" fill="white" />
                     {/* Circle mask for small/square targets, else rounded rect */}
                     {targetRect.w < 60 && Math.abs(targetRect.w - targetRect.h) < 10 ? (
-                      <Circle 
-                        cx={targetRect.x + targetRect.w / 2} 
-                        cy={targetRect.y + targetRect.h / 2} 
-                        r={Math.max(targetRect.w, targetRect.h) / 2 + 8} 
-                        fill="black" 
+                      <Circle
+                        cx={targetRect.x + targetRect.w / 2}
+                        cy={targetRect.y + targetRect.h / 2}
+                        r={Math.max(targetRect.w, targetRect.h) / 2 + 8}
+                        fill="black"
                       />
                     ) : (
-                      <Rect 
-                        x={targetRect.x - 8} 
-                        y={targetRect.y - 8} 
-                        width={targetRect.w + 16} 
-                        height={targetRect.h + 16} 
-                        fill="black" 
-                        rx={12} 
+                      <Rect
+                        x={targetRect.x - 8}
+                        y={targetRect.y - 8}
+                        width={targetRect.w + 16}
+                        height={targetRect.h + 16}
+                        fill="black"
+                        rx={12}
                       />
                     )}
                   </Mask>
@@ -257,53 +257,41 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
               </Svg>
             </Animated.View>
           )}
-          
-          <Animated.View 
-            entering={SlideInDown.springify()} 
-            exiting={SlideOutDown} 
+
+          <Animated.View
+            entering={SlideInDown.springify()}
+            exiting={SlideOutDown}
             style={[
-              styles.tourBox, 
-              { 
-                backgroundColor: COLORS.surface, 
+              styles.tourBox,
+              {
+                backgroundColor: COLORS.surface,
                 shadowColor: COLORS.border,
                 position: 'absolute',
                 // Stable positioning logic with preference mapping
-                ...(currentDef.position === 'top' ? { top: 60 } : 
-                   currentDef.position === 'bottom' ? { bottom: 40 } :
-                   targetRect && targetRect.y > height * 0.6 ? { top: 60 } : { bottom: 40 }),
+                ...(currentDef?.position === 'top' ? { top: 60 } :
+                  currentDef?.position === 'bottom' ? { bottom: 40 } :
+                    targetRect && targetRect.y > height * 0.6 ? { top: 60 } : { bottom: 40 }),
                 transform: [{ translateX: boxTranslateX }]
               }
             ]}
             pointerEvents="box-none"
           >
-            {targetRect && targetRect.y <= height * 0.6 && (
-               <Animated.View style={[styles.arrowContainer, { top: -24, opacity: arrowPulse }]}>
-                <ArrowUp size={24} color={COLORS.primary} strokeWidth={3} />
-               </Animated.View>
-            )}
-
             <View style={styles.tourHeader}>
               <Text style={[styles.stepIndicator, { color: COLORS.primary }]}>Tutorial — Step {currentStep + 1} of {TOUR_SEQUENCE.length}</Text>
               <TouchableOpacity onPress={endTour}><Text style={[styles.skipText, { color: COLORS.textSecondary }]}>End</Text></TouchableOpacity>
             </View>
-            <Text style={[styles.tourTitle, { color: COLORS.textPrimary }]}>{currentDef.title}</Text>
+            <Text style={[styles.tourTitle, { color: COLORS.textPrimary }]}>{currentDef?.title}</Text>
             <Text style={[styles.tourDescription, { color: COLORS.textSecondary }]}>
-              {isIdle ? "🤔 Still there? " + currentDef.desc : currentDef.desc}
+              {isIdle ? "🤔 Still there? " + currentDef?.desc : currentDef?.desc}
             </Text>
 
             {isIdle && (
-              <TouchableOpacity 
-                style={[styles.idleSkipButton, { backgroundColor: COLORS.primary }]} 
+              <TouchableOpacity
+                style={[styles.idleSkipButton, { backgroundColor: COLORS.primary }]}
                 onPress={endTour}
               >
                 <Text style={styles.idleSkipButtonText}>Skip Tutorial</Text>
               </TouchableOpacity>
-            )}
-
-            {targetRect && targetRect.y > height * 0.6 && (
-               <Animated.View style={[styles.arrowContainer, { bottom: -24, opacity: arrowPulse }]}>
-                <ArrowDown size={24} color={COLORS.primary} strokeWidth={3} />
-               </Animated.View>
             )}
           </Animated.View>
         </View>
@@ -333,15 +321,15 @@ export function TourTarget({ name, children, style }: any) {
     if (isHighlighted) {
       interval = setInterval(measure, 150);
     }
-    
+
     return () => {
       if (interval) clearInterval(interval);
     };
   }, [name, isHighlighted, registerTarget]);
 
   return (
-    <View 
-      ref={ref} 
+    <View
+      ref={ref}
       style={[style, isHighlighted && { zIndex: 9999 }]}
       collapsable={false}
       pointerEvents="box-none"
@@ -356,7 +344,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'flex-end',
     alignItems: 'center',
-    zIndex: 999,
+    zIndex: 10000,
   },
   tourBox: {
     width: width - 32,

@@ -288,26 +288,12 @@ export function CampusPingsScreen() {
     }
   }, [activeTargetName, composerVisible, advanceStep]);
 
-  // Onboarding: Fallback idle timers (10 seconds)
+  // Removed onboarding idle timer that was auto-advancing the tour
   useEffect(() => {
-    if (activeTargetName === 'crowdping-cta' || activeTargetName === 'crowdping-close') {
-      const timer = setTimeout(() => {
-        if (activeTargetName === 'crowdping-close') {
-          setComposerVisible(false);
-          resetComposer();
-          advanceStep('crowdping-close');
-          navigation.navigate('Main', { screen: 'Settings' });
-        } else {
-          // If they haven't clicked 'Tell people' but are just sitting there
-          // We can't easily force open the composer without a ref, but we can advance
-          // the tour step to the next one if they are truly stuck
-          advanceStep('crowdping-cta');
-          setComposerVisible(true); // Force open for them
-        }
-      }, 10000);
-      return () => clearTimeout(timer);
+    if (activeTargetName === 'crowdping-cta' && !composerVisible) {
+      // Optional: Pulse or hint if they are just sitting there, but no forced advancement
     }
-  }, [activeTargetName, advanceStep, navigation]);
+  }, [activeTargetName, composerVisible]);
 
   const pulseStyle = useAnimatedStyle(() => {
     return {
@@ -1024,7 +1010,6 @@ export function CampusPingsScreen() {
                               resetComposer();
                               if (activeTargetName === 'crowdping-close') {
                                 advanceStep('crowdping-close');
-                                navigation.navigate('Main', { screen: 'Settings' });
                               }
                             }}
                             style={[

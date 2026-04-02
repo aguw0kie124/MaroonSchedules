@@ -49,7 +49,7 @@ export const DEFAULT_PLACES_PILLS: ToggleLayoutItem<PlacesPillId>[] = [
   { id: 'Parking', label: 'Parking', visible: false, order: 5 },
   { id: 'Library', label: 'Libraries', visible: true, order: 6 },
   { id: 'Academic', label: 'Academic', visible: false, order: 7 },
-  { id: 'Rec', label: 'Gyms', visible: true, order: 8 },
+  { id: 'Rec', label: 'Gyms', visible: false, order: 8 },
 ];
 
 function sortItems<T extends string>(items: ToggleLayoutItem<T>[]) {

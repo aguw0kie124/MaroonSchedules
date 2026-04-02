@@ -53,7 +53,7 @@ import WeightTrackerScreen from './components/dining/WeightTrackerScreen';
 import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 
-import { Home, Map, Users, User, UtensilsCrossed, Clock3 } from 'lucide-react-native';
+import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio } from 'lucide-react-native';
 import { GlassPillTabBar } from './components/GlassPillTabBar';
 import { getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
@@ -150,7 +150,7 @@ function MainTabs(props: any) {
           name: 'Social',
           component: SocialHubScreen,
           title: 'Pings',
-          icon: Users,
+          icon: Radio,
           initialParams: undefined,
         };
       }
@@ -179,7 +179,7 @@ function MainTabs(props: any) {
       name: 'Settings',
       component: Profile,
       title: 'Settings',
-      icon: User,
+      icon: Settings,
       initialParams: undefined,
     },
   ];

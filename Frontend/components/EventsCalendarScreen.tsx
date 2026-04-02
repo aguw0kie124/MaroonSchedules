@@ -560,18 +560,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             }),
           });
           
-          // Onboarding: Navigate to today list on map after RSVP
+          // Onboarding: The tour now requires the user to manually navigate to the Places tab
           if (activeTargetName === 'event-rsvp') {
             // Optimistic update for local store so it shows up in TodayTimeline instantly
             scheduleEvent(event as any);
             advanceStep('event-rsvp');
-            navigation.navigate('Main', { 
-              screen: 'Places',
-              params: { 
-                isToday: true,
-                eventDate: event.date_iso // Pass the event date so map can switch to it
-              }
-            });
           }
         } catch (error) {
           console.error('[Events] RSVP error:', error);
@@ -692,16 +685,30 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           { id: 'swipe', label: 'Swipe' },
         ] as const).map((tab) => {
           const active = view === tab.id;
-          return (
+          const tabItem = (
             <Pressable
               key={tab.id}
               style={[s.modeTab, active && s.modeTabActive]}
-              onPress={() => changeView(tab.id)}
+              onPress={() => {
+                changeView(tab.id);
+                if (tab.id === 'list' && activeTargetName === 'switch-to-list') {
+                  advanceStep('switch-to-list');
+                }
+              }}
             >
               <Text style={[s.modeTabText, active && s.modeTabTextActive]}>{tab.label}</Text>
               {active ? <View style={s.modeTabUnderline} /> : null}
             </Pressable>
           );
+
+          if (tab.id === 'list') {
+            return (
+              <TourTarget key={tab.id} name="switch-to-list">
+                {tabItem}
+              </TourTarget>
+            );
+          }
+          return tabItem;
         })}
       </View>
     </View>
