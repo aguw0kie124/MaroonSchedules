@@ -22,7 +22,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ActivityIndicator,
   TouchableOpacity,
   Animated,
   Platform,
@@ -192,12 +191,13 @@ export function PlacesMapScreen() {
 
   // ── Location data ─────────────────────────────────────────
   const fullCampusIndex = useMemo(() => buildCampusDirectory(), []);
-  const [locations, setLocations] = useState<CampusLocation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [locations, setLocations] = useState<CampusLocation[]>(fullCampusIndex);
+  const [loading, setLoading] = useState(false);
   const [pulseHotspots, setPulseHotspots] = useState<CampusHotspot[]>([]);
   const [isLoadingPulse, setIsLoadingPulse] = useState(false);
 
   const fetchData = useCallback(async () => {
+    setLoading(true);
     try {
       const payload = await fetchCampusPlacesMap();
       const nextLocations = Array.isArray(payload?.locations)
@@ -212,9 +212,6 @@ export function PlacesMapScreen() {
     }
   }, [fullCampusIndex]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
 
   // ── Schedule state ────────────────────────────────────────
   const [activeScheduleId, setActiveScheduleId] = useState<string | null>(null);
@@ -228,7 +225,7 @@ export function PlacesMapScreen() {
     isLoadingSchedules,
     nextEntry,
     refreshSchedules
-  } = useScheduleMap(locations, selectedDate);
+  } = useScheduleMap(locations, selectedDate, { skipInitialLoad: true });
 
   // Onboarding: Automatically expand Today timeline if navigated from RSVP with delay for smoothness
   useEffect(() => {
@@ -1036,10 +1033,14 @@ export function PlacesMapScreen() {
 
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
-      fetchPulseHotspots();
+      Promise.allSettled([
+        fetchData(),
+        fetchPulseHotspots(),
+        Promise.resolve(refreshSchedules()),
+      ]).catch(() => {});
     });
     return () => task.cancel();
-  }, [fetchPulseHotspots]);
+  }, [fetchData, fetchPulseHotspots, refreshSchedules]);
 
   useEffect(() => {
     if (activeLayer !== "Pulse") return;
@@ -1169,20 +1170,12 @@ export function PlacesMapScreen() {
     return () => { cancelled = true; };
   }, [activeDiningMealPeriod, activeDiningMenu, loadBestDiningPreview]);
 
-  // Connect Stream feeds user
+  // Connect native social client for compatibility across feed surfaces
   useEffect(() => {
     if (user?.id) connectFeedsUser(user);
   }, [user]);
 
   // ── Render ────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
       <MapView
@@ -1404,6 +1397,29 @@ export function PlacesMapScreen() {
 
       {/* Top UI Floating Elements */}
       <View style={[styles.topContainer, { top: 54, alignItems: "center" }]}>
+        {(loading || isLoadingPulse || isLoadingSchedules) && (
+          <View
+            style={{
+              alignSelf: "center",
+              marginBottom: 10,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 999,
+              backgroundColor: isDark ? "rgba(17,24,39,0.88)" : "rgba(255,255,255,0.96)",
+              borderWidth: 1,
+              borderColor: COLORS.border,
+            }}
+          >
+            <Text style={{ color: COLORS.textPrimary, fontSize: 12, fontWeight: "700" }}>
+              {loading
+                ? "Refreshing campus map..."
+                : isLoadingPulse
+                  ? "Refreshing pulse activity..."
+                  : "Loading your Today map..."}
+            </Text>
+          </View>
+        )}
+
         <FloatingSearchBar
           styles={styles}
           COLORS={COLORS}

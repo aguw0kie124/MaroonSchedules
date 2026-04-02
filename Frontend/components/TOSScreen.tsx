@@ -23,15 +23,24 @@ export function TOSScreen({ clerkId, onAccepted }: TOSScreenProps) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleAccept = async () => {
     setLoading(true);
+    setErrorMessage(null);
     try {
       await acceptToS(clerkId);
       onAccepted();
     } catch (error: any) {
       console.error('TOS Acceptance failed:', error);
-      Alert.alert('Error', 'Failed to save acceptance. Please try again.');
+      const rawMessage = String(error?.message || error || '');
+      const message = rawMessage.toLowerCase().includes('temporarily unavailable')
+        ? 'We could not reach the server right now. Please try again in a moment.'
+        : rawMessage.toLowerCase().includes('timeout')
+          ? 'The server took too long to respond. Please check the backend connection and try again.'
+          : 'Failed to save acceptance. Please try again.';
+      setErrorMessage(message);
+      Alert.alert('Unable to Continue', message);
     } finally {
       setLoading(false);
     }
@@ -102,6 +111,22 @@ export function TOSScreen({ clerkId, onAccepted }: TOSScreenProps) {
             . You understand that failure to comply with these standards will result in permanent account termination.
           </Text>
         </View>
+
+        {errorMessage ? (
+          <View
+            style={[
+              styles.errorCard,
+              {
+                backgroundColor: isDark ? 'rgba(127,29,29,0.32)' : '#FEF2F2',
+                borderColor: isDark ? 'rgba(248,113,113,0.32)' : '#FECACA',
+              },
+            ]}
+          >
+            <Text style={[styles.errorText, { color: isDark ? '#FECACA' : '#991B1B' }]}>
+              {errorMessage}
+            </Text>
+          </View>
+        ) : null}
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -196,6 +221,19 @@ const styles = StyleSheet.create({
   legalSection: {
     marginTop: 32,
     paddingHorizontal: 8,
+  },
+  errorCard: {
+    marginTop: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  errorText: {
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+    fontWeight: '600',
   },
   legalText: {
     fontSize: 13,
