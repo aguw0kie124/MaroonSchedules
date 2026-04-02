@@ -17,7 +17,7 @@ from routers.grades import router as grades_router
 from routers.annex import router as annex_router
 
 from services import course_service, schedule_service, user_service
-from services import cache_service
+from services import cache_service, snapshot_jobs
 from models.search import CourseSearchRequest
 
 app = FastAPI()
@@ -26,6 +26,16 @@ app = FastAPI()
 @app.on_event("startup")
 def log_redis_status():
     cache_service.get_json("__redis_startup_probe__")
+
+
+@app.on_event("startup")
+async def start_background_snapshot_jobs():
+    app.state.snapshot_job_tasks = await snapshot_jobs.start_snapshot_jobs()
+
+
+@app.on_event("shutdown")
+async def stop_background_snapshot_jobs():
+    await snapshot_jobs.stop_snapshot_jobs(getattr(app.state, "snapshot_job_tasks", []))
 
 app.add_middleware(
     CORSMiddleware,

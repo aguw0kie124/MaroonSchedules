@@ -223,9 +223,66 @@ function buildFallbackSnapshot(userId: string): CampusHubSnapshot {
   };
 }
 
+function normalizeCampusHubSnapshot(userId: string, raw: any): CampusHubSnapshot {
+  const fallback = buildFallbackSnapshot(userId);
+  if (!raw || typeof raw !== 'object' || raw.status === 'error') {
+    return fallback;
+  }
+
+  return {
+    auth: {
+      ...fallback.auth,
+      ...(raw.auth || {}),
+      institution_sso: {
+        ...fallback.auth.institution_sso,
+        ...((raw.auth || {}).institution_sso || {}),
+      },
+    },
+    academic: {
+      ...fallback.academic,
+      ...(raw.academic || {}),
+      courses: Array.isArray(raw.academic?.courses) ? raw.academic.courses : fallback.academic.courses,
+      resources: Array.isArray(raw.academic?.resources) ? raw.academic.resources : fallback.academic.resources,
+      activeHolds: Array.isArray(raw.academic?.activeHolds) ? raw.academic.activeHolds : fallback.academic.activeHolds,
+    },
+    notifications: Array.isArray(raw.notifications) ? raw.notifications : fallback.notifications,
+    dining: {
+      ...fallback.dining,
+      ...(raw.dining || {}),
+      resources: Array.isArray(raw.dining?.resources) ? raw.dining.resources : fallback.dining.resources,
+    },
+    career: {
+      ...fallback.career,
+      ...(raw.career || {}),
+      resources: Array.isArray(raw.career?.resources) ? raw.career.resources : fallback.career.resources,
+    },
+    network: {
+      ...fallback.network,
+      ...(raw.network || {}),
+      suggestions: Array.isArray(raw.network?.suggestions) ? raw.network.suggestions : fallback.network.suggestions,
+      resources: Array.isArray(raw.network?.resources) ? raw.network.resources : fallback.network.resources,
+    },
+    events: Array.isArray(raw.events) ? raw.events : fallback.events,
+    transit: {
+      ...fallback.transit,
+      ...(raw.transit || {}),
+      resources: Array.isArray(raw.transit?.resources) ? raw.transit.resources : fallback.transit.resources,
+    },
+    recreation: {
+      ...fallback.recreation,
+      ...(raw.recreation || {}),
+      facilities: Array.isArray(raw.recreation?.facilities) ? raw.recreation.facilities : fallback.recreation.facilities,
+    },
+    services: Array.isArray(raw.services) ? raw.services : fallback.services,
+    connectors: Array.isArray(raw.connectors) ? raw.connectors : fallback.connectors,
+    generatedAt: typeof raw.generatedAt === 'string' ? raw.generatedAt : fallback.generatedAt,
+  };
+}
+
 export async function buildCampusHubSnapshot(userId: string): Promise<CampusHubSnapshot> {
   try {
-    return await fetchCampusOverview(userId);
+    const snapshot = await fetchCampusOverview(userId);
+    return normalizeCampusHubSnapshot(userId, snapshot);
   } catch (error) {
     console.warn('[CampusHub] Falling back to local placeholder snapshot', error);
     return buildFallbackSnapshot(userId);
