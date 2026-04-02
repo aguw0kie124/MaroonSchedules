@@ -38,11 +38,12 @@ export async function fetchCampusPulseMap(limit = 12): Promise<CampusHotspot[]> 
   }
 
   const data = await response.json();
-  if (!Array.isArray(data)) {
+  const hotspots = Array.isArray(data) ? data : Array.isArray(data?.hotspots) ? data.hotspots : [];
+  if (!Array.isArray(hotspots)) {
     return [];
   }
 
-  return data.map((hotspot: any) => ({
+  return hotspots.map((hotspot: any) => ({
     id: hotspot.id,
     placeId: hotspot.placeId ?? hotspot.place_id ?? hotspot.place?.place_id ?? null,
     locationName: hotspot.locationName,

@@ -102,6 +102,11 @@ def get_places_map():
     return campus_places_service.get_places_map_snapshot()
 
 
+@router.get("/places/{place_id}/detail")
+def get_place_detail(place_id: str):
+    return campus_hub_service.get_place_detail_snapshot_by_identifier(place_id)
+
+
 @router.get("/pulse/map")
 def get_pulse_map(limit: int = Query(12, ge=1, le=25)):
     return pulse_service.get_pulse_map(limit=limit)

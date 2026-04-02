@@ -4,12 +4,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Tuple
 
 from routers.traffic import tracker
-from services import campus_events_service, ping_service, place_registry_service
+from services import cache_service, ping_service, place_registry_service
 
 
 HOT_COLOR = "#FF6B57"
 ACTIVE_COLOR = "#FFB347"
 BUBBLING_COLOR = "#5ACD7C"
+PULSE_SNAPSHOT_TTL_SECONDS = 20
 
 
 def _parse_iso(iso_value: str | None) -> datetime | None:
@@ -74,21 +75,6 @@ def _ping_category_boost(category: str) -> int:
     return 3
 
 
-def _event_category(event: Dict[str, Any]) -> str:
-    categories = event.get("categories") or {}
-    if categories.get("food"):
-        return "Free Food"
-    if categories.get("sports"):
-        return "Sports"
-    if categories.get("entertainment"):
-        return "Show"
-    if categories.get("social"):
-        return "Hangout"
-    if categories.get("academic"):
-        return "Study"
-    return "Event"
-
-
 def _pulse_label_for(score: int) -> str:
     if score >= 60:
         return "Hot"
@@ -141,37 +127,13 @@ def _load_occupancy_by_place() -> Dict[str, int]:
     return occupancy
 
 
-def _eligible_events(limit: int) -> List[Dict[str, Any]]:
-    now = datetime.now(timezone.utc)
-    events = campus_events_service.load_campus_events()
-    filtered: List[Dict[str, Any]] = []
-    for event in events:
-        start_time = _parse_iso(event.get("start_time"))
-        if not start_time or not event.get("place_id"):
-            continue
+def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
+    cache_key = f"campus:pulse:map:v1:{limit}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
 
-        interest_score = int(event.get("campus_interest_score") or 40)
-        categories = event.get("categories") or {}
-        has_high_signal = (
-            interest_score >= 48
-            or categories.get("sports")
-            or categories.get("food")
-            or categories.get("entertainment")
-            or categories.get("social")
-        )
-        if not has_high_signal:
-            continue
-
-        if not (now - timedelta(hours=8) <= start_time <= now + timedelta(hours=48)):
-            continue
-        filtered.append(event)
-
-    return filtered[:limit]
-
-
-def get_pulse_map(limit: int = 12) -> List[Dict[str, Any]]:
     pings = ping_service.get_campus_ping_activities(limit=80)
-    events = _eligible_events(limit=80)
     occupancy_by_place = _load_occupancy_by_place()
 
     grouped: Dict[str, Dict[str, Any]] = {}
@@ -227,33 +189,6 @@ def get_pulse_map(limit: int = 12) -> List[Dict[str, Any]]:
             }
         )
 
-    for event in events:
-        place_id = event.get("place_id")
-        place = place_registry_service.get_place_by_id(place_id)
-        if not place:
-            continue
-
-        category = _event_category(event)
-        start_at = str(event.get("start_time"))
-        weight = 18 * _recency_weight(start_at) + min(12, (int(event.get("campus_interest_score") or 40)) / 8)
-
-        group = ensure_group(place_id, place["name"], {"lat": place["lat"], "lng": place["lng"]})
-        group["score"] += weight
-        group["eventCount"] += 1
-        group["categoryWeights"][category] = group["categoryWeights"].get(category, 0) + weight
-        group["items"].append(
-            {
-                "id": str(event.get("event_id")),
-                "source": "event",
-                "title": event.get("title") or "Campus Event",
-                "subtitle": "Featured event",
-                "category": category,
-                "timeLabel": _format_time_label(start_at),
-                "startAt": start_at,
-                "link": event.get("link") or event.get("source_url"),
-            }
-        )
-
     hotspots: List[Dict[str, Any]] = []
     for place_id, group in grouped.items():
         percent_full = occupancy_by_place.get(place_id)
@@ -301,4 +236,12 @@ def get_pulse_map(limit: int = 12) -> List[Dict[str, Any]]:
         )
 
     hotspots.sort(key=lambda hotspot: hotspot["score"], reverse=True)
-    return hotspots[:limit]
+    ordered_hotspots = hotspots[:limit]
+    payload = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "stale_after": PULSE_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live" if ordered_hotspots else "preview",
+        "hotspots": ordered_hotspots,
+    }
+    cache_service.set_json(cache_key, payload, PULSE_SNAPSHOT_TTL_SECONDS)
+    return payload

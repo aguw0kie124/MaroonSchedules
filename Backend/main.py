@@ -17,9 +17,15 @@ from routers.grades import router as grades_router
 from routers.annex import router as annex_router
 
 from services import course_service, schedule_service, user_service
+from services import cache_service
 from models.search import CourseSearchRequest
 
 app = FastAPI()
+
+
+@app.on_event("startup")
+def log_redis_status():
+    cache_service.get_json("__redis_startup_probe__")
 
 app.add_middleware(
     CORSMiddleware,

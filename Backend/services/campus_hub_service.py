@@ -14,7 +14,7 @@ import psycopg
 from db_config import CONNECTION_PARAMS
 from repositories import course_repository, user_repository
 from routers.traffic import tracker
-from services import campus_events_service, place_registry_service
+from services import cache_service, campus_events_service, place_registry_service
 
 HOWDY_URL = "https://howdy.tamu.edu/main/home/card-view"
 DINING_URL = "https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx"
@@ -38,6 +38,12 @@ CONNECTOR_SYSTEMS = {
         "data_scope": "career",
     },
 }
+ACADEMIC_SNAPSHOT_TTL_SECONDS = 120
+DINING_SNAPSHOT_TTL_SECONDS = 120
+CAREER_SNAPSHOT_TTL_SECONDS = 300
+RECREATION_SNAPSHOT_TTL_SECONDS = 120
+TRANSIT_SNAPSHOT_TTL_SECONDS = 30
+SERVICES_SNAPSHOT_TTL_SECONDS = 86400
 
 REC_FACILITIES = [
     {
@@ -376,6 +382,11 @@ def _active_rec_hours_source() -> str:
 
 
 def _weekly_hours_for_facility(facility_id: str) -> Dict[str, Any]:
+    cache_key = f"campus:recreation:weekly-hours:v1:{facility_id}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
     season = _active_rec_hours_source()
     lookup = SUMMER_HOURS_BY_FACILITY if season == "summer" else FALL_SPRING_HOURS_BY_FACILITY
     weekly_hours = lookup.get(facility_id) or {}
@@ -386,14 +397,21 @@ def _weekly_hours_for_facility(facility_id: str) -> Dict[str, Any]:
         if season == "fall_spring"
         else "Summer operating hours based on official Texas A&M Rec Sports facility schedules."
     )
-    return {
+    payload = {
         "weekly_hours": [{"day": day, "hours": hours} for day, hours in weekly_hours.items()],
         "today_hours": today_hours,
         "hours_source": source_note,
     }
+    cache_service.set_json(cache_key, payload, 60 * 60 * 6)
+    return payload
 
 
 def _fetch_rec_facility_page_details(source_url: str) -> Dict[str, Any]:
+    cache_key = f"campus:recreation:page:v1:{source_url}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
     now = time.time()
     cached = REC_PAGE_CACHE.get(source_url)
     if cached and now - cached[0] < REC_PAGE_CACHE_TTL_SECONDS:
@@ -418,6 +436,7 @@ def _fetch_rec_facility_page_details(source_url: str) -> Dict[str, Any]:
         pass
 
     REC_PAGE_CACHE[source_url] = (now, details)
+    cache_service.set_json(cache_key, details, REC_PAGE_CACHE_TTL_SECONDS)
     return details
 
 
@@ -428,6 +447,10 @@ def _extract_notification_window(label: str) -> str:
 
 def _fetch_rec_notices() -> List[Dict[str, Any]]:
     global REC_NOTICES_CACHE
+    cache_key = "campus:recreation:notices:v1"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
     now = time.time()
     if REC_NOTICES_CACHE and now - REC_NOTICES_CACHE[0] < REC_NOTICES_CACHE_TTL_SECONDS:
         return REC_NOTICES_CACHE[1]
@@ -479,6 +502,7 @@ def _fetch_rec_notices() -> List[Dict[str, Any]]:
         notices = []
 
     REC_NOTICES_CACHE = (now, notices)
+    cache_service.set_json(cache_key, notices, REC_NOTICES_CACHE_TTL_SECONDS)
     return notices
 
 
@@ -841,6 +865,9 @@ def get_academic_snapshot(clerk_id: str) -> Dict[str, Any]:
     derived_courses = howdy_snapshot.get("course_codes") if isinstance(howdy_snapshot.get("course_codes"), list) else []
 
     return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": ACADEMIC_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live" if courses or howdy_snapshot else "preview",
         "status": "live" if courses or howdy_snapshot else "preview",
         "sourceLabel": "Primary schedule loaded from MaroonSchedules storage" if courses else ("Captured from connected Howdy session" if howdy_snapshot else "Connect Howdy to load registrar details directly"),
         "scheduleName": primary_schedule.get("name", "Schedule unavailable"),
@@ -865,6 +892,9 @@ def get_dining_snapshot(clerk_id: str) -> Dict[str, Any]:
 
     if transact_snapshot:
         return {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "stale_after": DINING_SNAPSHOT_TTL_SECONDS,
+            "source_status": "live",
             "status": "live",
             "planName": transact_snapshot.get("plan_name") or "Captured from Transact eAccounts",
             "balanceLabel": transact_snapshot.get("balance") or "Balance not detected on the captured page yet",
@@ -881,6 +911,9 @@ def get_dining_snapshot(clerk_id: str) -> Dict[str, Any]:
 
     if profile:
         return {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "stale_after": DINING_SNAPSHOT_TTL_SECONDS,
+            "source_status": "preview",
             "status": "preview",
             "planName": "Dining profile loaded",
             "balanceLabel": "Live meal-plan balances still require Transact eAccounts connection",
@@ -896,6 +929,9 @@ def get_dining_snapshot(clerk_id: str) -> Dict[str, Any]:
         }
 
     return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": DINING_SNAPSHOT_TTL_SECONDS,
+        "source_status": "link",
         "status": "link",
         "planName": "Dining account ready to connect",
         "balanceLabel": "Open Transact eAccounts to view live balances",
@@ -953,6 +989,9 @@ def discover_network(clerk_id: str, query: str | None = None, major: str | None 
     )
 
     return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": 300,
+        "source_status": "live" if suggestions else "preview",
         "status": "live" if suggestions else "preview",
         "chatStatus": "stream_messaging_available",
         "summary": "Discover peers and alumni from the shared campus profile layer.",
@@ -992,7 +1031,7 @@ def get_events_snapshot(
     limit: int = 8,
     category: str | None = None,
     student_relevant_only: bool = True,
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     _ensure_social_tables()
     rsvp_lookup: Dict[str, str] = {}
     if clerk_id:
@@ -1003,25 +1042,32 @@ def get_events_snapshot(
         rsvp_lookup = {row.get("event_id"): row.get("response", "interested") for row in rows}
 
     crawler_events = campus_events_service.load_campus_events()
-    if crawler_events:
+    events = crawler_events.get("events") if isinstance(crawler_events, dict) else crawler_events
+    source_status = crawler_events.get("source_status") if isinstance(crawler_events, dict) else "live"
+    if events:
         if student_relevant_only:
-            crawler_events = [
-                e for e in crawler_events
+            events = [
+                e for e in events
                 if e.get("campus_interest_label") != "low"
             ]
         if category:
-            crawler_events = [
-                e for e in crawler_events
+            events = [
+                e for e in events
                 if e.get("categories", {}).get(category.lower()) == 1
             ]
-        limited = crawler_events[:limit] if limit else crawler_events
-        return [
-            {
-                **event,
-                "rsvp_status": rsvp_lookup.get(event.get("event_id"), "none"),
-            }
-            for event in limited
-        ]
+        limited = events[:limit] if limit else events
+        return {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "stale_after": 300,
+            "source_status": source_status,
+            "events": [
+                {
+                    **event,
+                    "rsvp_status": rsvp_lookup.get(event.get("event_id"), "none"),
+                }
+                for event in limited
+            ],
+        }
 
     raw_events = tracker.fetch_event_data(limit=limit)
     events = []
@@ -1061,7 +1107,12 @@ def get_events_snapshot(
                 "place": place_registry_service.serialize_place(resolved_place),
             }
         )
-    return events
+    return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": 300,
+        "source_status": "preview",
+        "events": events,
+    }
 
 
 def save_event_rsvp(clerk_id: str, event_id: str, response: str) -> Dict[str, Any]:
@@ -1084,6 +1135,11 @@ def save_event_rsvp(clerk_id: str, event_id: str, response: str) -> Dict[str, An
 
 
 def get_recreation_snapshot() -> Dict[str, Any]:
+    cache_key = "campus:recreation:snapshot:v1"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
     occupancy_rows = tracker.fetch_rec_data() or []
     notices = _fetch_rec_notices()
     occupancy_by_name = {
@@ -1128,15 +1184,77 @@ def get_recreation_snapshot() -> Dict[str, Any]:
             }
         )
 
-    return {
+    payload = {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": RECREATION_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live" if occupancy_rows else "preview",
         "status": "live" if occupancy_rows else "preview",
         "facilities": facilities,
         "summary": "Recreation merges live counts with details gathered from the official Rec Sports facility pages.",
     }
+    cache_service.set_json(cache_key, payload, RECREATION_SNAPSHOT_TTL_SECONDS)
+    return payload
+
+
+def get_place_detail_snapshot(place_id: str) -> Dict[str, Any]:
+    cache_key = f"campus:place-detail:v1:{place_id}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
+    place = place_registry_service.get_place_by_id(place_id)
+    if not place:
+        payload = {
+            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "stale_after": 60,
+            "source_status": "missing",
+            "place": None,
+        }
+        cache_service.set_json(cache_key, payload, 60)
+        return payload
+
+    places_snapshot = campus_places_service.get_places_map_snapshot()
+    location = next((loc for loc in places_snapshot.get("locations", []) if loc.get("placeId") == place_id), None)
+    rec_snapshot = get_recreation_snapshot() if place.get("type") == "Rec" else None
+    rec_facility = None
+    if rec_snapshot and location:
+        rec_facility = next((facility for facility in rec_snapshot.get("facilities", []) if facility.get("name") == location.get("location")), None)
+
+    payload = {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": 60,
+        "source_status": "live",
+        "place": location or place_registry_service.serialize_place(place),
+        "recreation": rec_facility,
+        "transport": get_transit_snapshot() if place.get("type") in {"Hub", "Landmark"} else None,
+    }
+    cache_service.set_json(cache_key, payload, 60)
+    return payload
+
+
+def get_place_detail_snapshot_by_identifier(place_identifier: str) -> Dict[str, Any]:
+    place = place_registry_service.get_place_by_id(place_identifier)
+    if place:
+        return get_place_detail_snapshot(place_identifier)
+
+    resolved = place_registry_service.resolve_place(place_identifier)
+    if resolved:
+        return get_place_detail_snapshot(resolved["place_id"])
+
+    payload = {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": 60,
+        "source_status": "missing",
+        "place": None,
+    }
+    return payload
 
 
 def get_transit_snapshot() -> Dict[str, Any]:
     return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": TRANSIT_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live",
         "status": "live",
         "summary": "AggieSpirit route mapping and nearest-bus tracking are available in the map experience.",
         "resources": [
@@ -1145,8 +1263,12 @@ def get_transit_snapshot() -> Dict[str, Any]:
     }
 
 
-def get_services_snapshot() -> List[Dict[str, Any]]:
-    return [
+def get_services_snapshot() -> Dict[str, Any]:
+    return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": SERVICES_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live",
+        "services": [
         {
             "id": "howdy",
             "title": "Howdy Portal",
@@ -1171,7 +1293,8 @@ def get_services_snapshot() -> List[Dict[str, Any]]:
             "summary": "Library and study support surfaced alongside the campus map and academic context.",
             "url": "https://www.library.tamu.edu/",
         },
-    ]
+        ],
+    }
 
 
 def get_career_snapshot(clerk_id: str) -> Dict[str, Any]:
@@ -1179,6 +1302,9 @@ def get_career_snapshot(clerk_id: str) -> Dict[str, Any]:
     alumni_count = len([suggestion for suggestion in network.get("suggestions", []) if suggestion.get("relationship") == "alumni"])
     symplicity_snapshot = parse_connector_snapshot(clerk_id, "symplicity")
     return {
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": CAREER_SNAPSHOT_TTL_SECONDS,
+        "source_status": "live" if symplicity_snapshot else "preview",
         "status": "live" if symplicity_snapshot else "link",
         "summary": (
             f"Captured jobs: {', '.join(symplicity_snapshot.get('job_titles', [])[:3])}"
@@ -1197,7 +1323,8 @@ def get_career_snapshot(clerk_id: str) -> Dict[str, Any]:
 def get_notification_hub(clerk_id: str) -> List[Dict[str, Any]]:
     academic = get_academic_snapshot(clerk_id)
     dining = get_dining_snapshot(clerk_id)
-    events = get_events_snapshot(clerk_id, limit=3)
+    events_payload = get_events_snapshot(clerk_id, limit=3)
+    events = events_payload.get("events", []) if isinstance(events_payload, dict) else []
     network = discover_network(clerk_id, limit=3)
 
     notifications: List[Dict[str, Any]] = []
@@ -1327,7 +1454,12 @@ def get_overview(clerk_id: str) -> Dict[str, Any]:
         "events": safe_snapshot(
             "events",
             lambda: get_events_snapshot(clerk_id, limit=6),
-            [],
+            {
+                "generated_at": datetime.utcnow().isoformat() + "Z",
+                "stale_after": 300,
+                "source_status": "preview",
+                "events": [],
+            },
         ),
         "transit": safe_snapshot(
             "transit",
@@ -1350,7 +1482,12 @@ def get_overview(clerk_id: str) -> Dict[str, Any]:
         "services": safe_snapshot(
             "services",
             get_services_snapshot,
-            [],
+            {
+                "generated_at": datetime.utcnow().isoformat() + "Z",
+                "stale_after": SERVICES_SNAPSHOT_TTL_SECONDS,
+                "source_status": "preview",
+                "services": [],
+            },
         ),
         "connectors": safe_snapshot(
             "connectors",
@@ -1358,4 +1495,7 @@ def get_overview(clerk_id: str) -> Dict[str, Any]:
             [],
         ),
         "generatedAt": datetime.utcnow().isoformat() + "Z",
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "stale_after": 120,
+        "source_status": "live",
     }
