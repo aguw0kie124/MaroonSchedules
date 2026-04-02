@@ -1142,6 +1142,7 @@ export function PlacesMapScreen() {
           const routeShortName = bus.routeShortName || bus.RouteShortName || selectedRoute?.ShortName || "";
           const routeColor = bus.routeColor || bus.RouteColor || selectedRoute?.Color || "#007AFF";
 
+          const hasDash = routeShortName.includes("-");
           return (
             <Marker
               key={`bus-${bus.Id || bus.Name || i}`}
@@ -1160,8 +1161,23 @@ export function PlacesMapScreen() {
                   ]
                 }
               ]}>
-                <View style={{ transform: [{ rotate: `-${bus.heading || bus.Heading || 0}deg` }] }}>
-                  <Text style={styles.busMarkerText}>{routeShortName}</Text>
+                <View style={{ 
+                  transform: [{ rotate: `-${bus.heading || bus.Heading || 0}deg` }],
+                  width: '100%',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingHorizontal: 2
+                }}>
+                  <Text 
+                    style={[
+                      styles.busMarkerText, 
+                      hasDash && { fontSize: 11, letterSpacing: -0.5 }
+                    ]} 
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    {routeShortName}
+                  </Text>
                 </View>
               </View>
             </Marker>
