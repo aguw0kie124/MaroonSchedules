@@ -4,6 +4,11 @@ import { API_URL } from '../config';
 const BASE_URL = 'https://aggiespirit.ts.tamu.edu';
 const ROUTE_COLORS = ['#500000', '#7E0000', '#B34100', '#0B6E4F', '#165DFF', '#6B3FA0', '#007A78', '#A63D40'];
 
+// TTL Constants
+const METADATA_TTL = 1000 * 60 * 5; // 5 minutes
+const PATTERN_TTL = 1000 * 60 * 30; // 30 minutes
+const VEHICLE_TTL = 1000 * 5; // 5 seconds (internal buffer)
+
 export interface BusRoute {
     id: string;
     name: string;
@@ -29,57 +34,42 @@ export interface BusStop {
     lng: number;
 }
 
+interface CacheEntry<T> {
+    data: T;
+    timestamp: number;
+}
+
 export const transitService = {
     auth: null as any,
-    cookies: null as string | null,
-    routesCache: [] as any[],
-    activeRoutesCache: [] as string[],
-    patternCache: new Map<string, { points: any[]; stops: any[] }>(),
-    vehicleCache: new Map<string, any[]>(),
-    lastVehiclesSnapshot: [] as any[],
+    routesCache: null as CacheEntry<{ routes: any[], activeIds: string[] }> | null,
+    patternCache: new Map<string, CacheEntry<{ points: any[]; stops: any[] }>>(),
+    vehicleCache: new Map<string, CacheEntry<any[]>>(),
 
     /**
-     * Reconstructs the MaroonRides dynamic authentication flow.
-     * Fetches a base64 encoded JS snippet from their auth server and executes it.
+     * Initializes authentication for MaroonRides/AggieSpirit
      */
     async initAuth(): Promise<any> {
+        if (this.auth) return this.auth;
         try {
             console.log('[TransitService] Initializing MaroonRides dynamic auth...');
-            
-            // 1. Fetch the dynamic auth code from MaroonRides
             const authResponse = await fetch('https://auth.maroonrides.app');
             const authCodeB64 = await authResponse.text();
             let authCode = atob(authCodeB64);
-            
-            // 2. Prepare the execution context
-            // We append the function call to the dynamic script
             const executionScript = `${authCode}\ngetAuthentication()`;
-            
-            // 3. Execute the script to get current headers
-            // Note: Using eval here to perfectly match the MaroonRides implementation
-            // for compatibility with their dynamic security updates.
             const headers = await eval(executionScript);
-            
             if (headers) {
                 this.auth = headers;
-                // MaroonRides uses 'Requestverificationtoken' (lowercase v) in their header map
-                console.log('[TransitService] Dynamic auth initialized successfully.');
                 return this.auth;
             }
         } catch (error) {
-            console.error('[TransitService] MaroonRides dynamic auth failed:', error);
-            // Fallback to manual extraction if their server is down
+            console.error('[TransitService] Dynamic auth failed, falling back...');
             return this.initManualAuth();
         }
         return null;
     },
 
-    /**
-     * Fallback manual authentication if the dynamic server is unavailable.
-     */
     async initManualAuth(): Promise<any> {
         try {
-            console.log('[TransitService] Falling back to manual auth...');
             const response = await fetch(BASE_URL);
             const html = await response.text();
             const setCookie = response.headers.get('set-cookie');
@@ -92,7 +82,6 @@ export const transitService = {
             }
             const htmlTokenMatch = html.match(/name="__RequestVerificationToken" type="hidden" value="([^"]+)"/);
             const cookieTokenMatch = formattedCookies.match(/\.MyRide\.RequestVerificationToken=([^; ]+)/);
-            
             if (htmlTokenMatch && cookieTokenMatch) {
                 this.auth = {
                     'Cookie': formattedCookies,
@@ -108,152 +97,121 @@ export const transitService = {
     },
 
     /**
-     * Fetches current active bus routes from AggieSpirit.
+     * Consolidated method to fetch metadata and active status for all routes.
+     * Uses TTL caching to reduce redundant API calls.
      */
-    async getActiveRoutes(): Promise<string[]> {
-        try {
-            const response = await fetch(`${API_URL}/traffic/transit/routes`);
-            if (!response.ok) {
-                return this.activeRoutesCache;
-            }
-            const payload = await response.json();
-            const routes = payload.activeRouteIds || [];
-            if (Array.isArray(routes) && routes.length > 0) {
-                this.activeRoutesCache = routes;
-            }
-            return Array.isArray(routes) && routes.length > 0 ? routes : this.activeRoutesCache;
-        } catch (error) {
-            console.error('[TransitService] Error fetching active routes:', error);
-            return this.activeRoutesCache;
+    async getTransitRoutes(): Promise<{ routes: any[], activeIds: string[] }> {
+        const now = Date.now();
+        if (this.routesCache && (now - this.routesCache.timestamp < METADATA_TTL)) {
+            return this.routesCache.data;
         }
-    },
 
-    /**
-     * Fetches metadata for all routes (names, keys, shortNames).
-     */
-    async getRoutesMetadata(): Promise<any[]> {
         try {
             const response = await fetch(`${API_URL}/traffic/transit/routes`);
-            if (!response.ok) return this.routesCache;
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
+            
             const routes = (data.routes || []).map((r: any) => ({
                 Key: r.key || r.Key,
                 Name: r.name || r.Name,
                 ShortName: r.shortName || r.ShortName,
                 Color: r.color || r.Color || this.getRouteColor(r.key || r.Key || r.shortName || r.ShortName || r.name || r.Name),
             }));
-            if (routes.length > 0) {
-                this.routesCache = routes;
-            }
-            return routes.length > 0 ? routes : this.routesCache;
+            const activeIds = data.activeRouteIds || [];
+            
+            const result = { routes, activeIds };
+            this.routesCache = { data: result, timestamp: now };
+            return result;
         } catch (error) {
-            console.error('[TransitService] Error fetching routes metadata:', error);
-            return this.routesCache;
+            console.error('[TransitService] Error fetching routes:', error);
+            return this.routesCache?.data || { routes: [], activeIds: [] };
         }
     },
 
     /**
-     * Fetches route patterns (polylines/traces) and STOPS for the map.
+     * Legacy shim for getActiveRoutes
+     */
+    async getActiveRoutes(): Promise<string[]> {
+        const { activeIds } = await this.getTransitRoutes();
+        return activeIds;
+    },
+
+    /**
+     * Legacy shim for getRoutesMetadata
+     */
+    async getRoutesMetadata(): Promise<any[]> {
+        const { routes } = await this.getTransitRoutes();
+        return routes;
+    },
+
+    /**
+     * Fetches route patterns (polylines) and stops. Uses TTL caching.
      */
     async getRoutePattern(routeId: string): Promise<{ points: any[], stops: any[] }> {
+        const now = Date.now();
+        const cached = this.patternCache.get(routeId);
+        if (cached && (now - cached.timestamp < PATTERN_TTL)) {
+            return cached.data;
+        }
+
         try {
             const response = await fetch(`${API_URL}/traffic/transit/route/${encodeURIComponent(routeId)}`);
-            if (!response.ok) return this.patternCache.get(routeId) || { points: [], stops: [] };
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             
-            const points: any[] = [];
+            const points = (data.points || []).map((pt: any) => ({
+                latitude: pt.latitude,
+                longitude: pt.longitude
+            }));
+            
             const stops: any[] = [];
             const seenStops = new Set();
-
-            (data.points || []).forEach((pt: any) => {
-                points.push({
-                    latitude: pt.latitude,
-                    longitude: pt.longitude
-                });
-            });
             (data.stops || []).forEach((stop: any) => {
                 if (!seenStops.has(stop.StopCode)) {
                     seenStops.add(stop.StopCode);
                     stops.push(stop);
                 }
             });
-            const pattern = { points, stops };
-            if (points.length > 0 || stops.length > 0) {
-                this.patternCache.set(routeId, pattern);
-            }
-            return points.length > 0 || stops.length > 0 ? pattern : (this.patternCache.get(routeId) || pattern);
+
+            const result = { points, stops };
+            this.patternCache.set(routeId, { data: result, timestamp: now });
+            return result;
         } catch (error) {
-            console.error('[TransitService] Error fetching route patterns:', error);
-            return this.patternCache.get(routeId) || { points: [], stops: [] };
+            console.error('[TransitService] Error fetching patterns:', error);
+            return cached?.data || { points: [], stops: [] };
         }
     },
 
     /**
-     * Fetches base data (stops, pattern/polyline) for a specific route.
-     */
-    async getRouteBaseData(routeId: string): Promise<any> {
-        try {
-            if (!this.auth) await this.initAuth();
-            
-            const body = `routeId=${encodeURIComponent(routeId)}`;
-            const response = await fetch(`${BASE_URL}/RouteMap/GetBaseData/`, {
-                method: 'POST',
-                headers: {
-                    ...this.auth,
-                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
-                },
-                body: body
-            });
-
-            if (!response.ok) return null;
-            return await response.json();
-        } catch (error) {
-            console.error('[TransitService] Error fetching route base data:', error);
-            return null;
-        }
-    },
-
-    /**
-     * Fetches real-time vehicle locations.
-     * Fetches all vehicles to ensure reliability, then filters by routeId if provided.
+     * Fetches real-time vehicle locations. Internal buffer prevents slamming the API.
      */
     async getVehicles(routeId?: string): Promise<any[]> {
+        const now = Date.now();
+        const cacheKey = routeId || '__all__';
+        const cached = this.vehicleCache.get(cacheKey);
+        
+        if (cached && (now - cached.timestamp < 1000)) { // 1s deduplication
+            return cached.data;
+        }
+
         try {
             const query = routeId ? `?route_id=${encodeURIComponent(routeId)}` : '';
             const response = await fetch(`${API_URL}/traffic/transit/vehicles${query}`);
-            if (!response.ok) {
-                return this.getCachedVehicles(routeId);
-            }
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const payload = await response.json();
             const vehicles = payload.vehicles || [];
 
-            if (vehicles.length > 0) {
-                this.lastVehiclesSnapshot = vehicles;
-                const cacheKey = routeId || '__all__';
-                this.vehicleCache.set(cacheKey, vehicles);
-            }
-
-            return vehicles.length > 0 ? vehicles : this.getCachedVehicles(routeId);
+            this.vehicleCache.set(cacheKey, { data: vehicles, timestamp: now });
+            return vehicles;
         } catch (error) {
             console.error('[TransitService] Error fetching vehicles:', error);
-            return this.getCachedVehicles(routeId);
+            return cached?.data || [];
         }
     },
 
-    /**
-     * Fetches the list of stops for a specific route.
-     * Note: Integrated into getRoutePattern for efficiency.
-     */
     async getRouteStops(routeId: string): Promise<any[]> {
         const { stops } = await this.getRoutePattern(routeId);
         return stops;
-    },
-
-    getCachedVehicles(routeId?: string): any[] {
-        if (routeId) {
-            return this.vehicleCache.get(routeId) || [];
-        }
-        return this.vehicleCache.get('__all__') || this.lastVehiclesSnapshot || [];
     },
 
     getRouteColor(routeId?: string): string {

@@ -40,6 +40,8 @@ export type LocationType =
   | "Housing"
   | "Athletics";
 
+export type ParkingPermit = "visitor" | "garage" | "any_valid" | "west_campus" | "resident";
+
 export interface ScheduleMeetingEntry {
   id: string;
   code: string;
