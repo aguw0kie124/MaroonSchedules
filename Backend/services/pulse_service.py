@@ -36,13 +36,13 @@ def _format_time_label(iso_value: str) -> str:
     if -1.5 <= diff_hours <= 1:
         return "Now"
     if local_time.date() == now.astimezone().date():
-        return local_time.strftime("Today · %-I:%M %p")
+        return local_time.strftime("Today · %I:%M %p").replace("· 0", "· ")
 
     tomorrow = now.astimezone().date() + timedelta(days=1)
     if local_time.date() == tomorrow:
-        return local_time.strftime("Tomorrow · %-I:%M %p")
+        return local_time.strftime("Tomorrow · %#I:%M %p")
 
-    return local_time.strftime("%b %-d · %-I:%M %p")
+    return local_time.strftime("%b %#d · %#I:%M %p")
 
 
 def _recency_weight(iso_value: str) -> float:

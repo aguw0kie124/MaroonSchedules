@@ -7,6 +7,8 @@ import {
   Linking,
 } from "react-native";
 import { Compass, Calendar } from "lucide-react-native";
+import { TourTarget, useTour } from "../onboarding/TourProvider";
+import { useNavigation } from "@react-navigation/native";
 import type { ScheduleMeetingEntry, ScheduleMapOption } from "./types";
 
 interface TodayTimelineProps {
@@ -22,6 +24,11 @@ export function TodayTimeline({
   activeScheduleOption,
   onGetDirections,
 }: TodayTimelineProps) {
+  const { advanceStep, activeTargetName } = useTour();
+  const navigation = useNavigation<any>();
+
+  // No internal timer; relies on Parent's Master Timer in PlacesMapScreen.tsx 
+  // for synchronization of list collapse and tour step advancement.
   const sortedEntries = React.useMemo(() => {
     if (!activeScheduleOption?.entries) return [];
     
@@ -72,58 +79,60 @@ export function TodayTimeline({
   };
 
   return (
-    <View style={localStyles.container}>
-      <View style={localStyles.timelineLine} />
-      
-      {sortedEntries.map((entry, index) => {
-        const dotColor = getDotColor(entry.type);
-        const isEvent = entry.type === "event";
+    <TourTarget name="schedule-preview">
+      <View style={localStyles.container}>
+        <View style={localStyles.timelineLine} />
+        
+        {sortedEntries.map((entry, index) => {
+          const dotColor = getDotColor(entry.type);
+          const isEvent = entry.type === "event";
 
-        return (
-          <View key={`${entry.id}-${index}`} style={localStyles.timelineItem}>
-            <View style={localStyles.timeContainer}>
-              <Text style={localStyles.timeText}>
-                {entry.timeLabel.split("-")[0].trim().replace(/^0/, '')}
-              </Text>
-            </View>
+          return (
+            <View key={`${entry.id}-${index}`} style={localStyles.timelineItem}>
+              <View style={localStyles.timeContainer}>
+                <Text style={localStyles.timeText}>
+                  {entry.timeLabel.split("-")[0].trim().replace(/^0/, '')}
+                </Text>
+              </View>
 
-            {/* Middle: Dot */}
-            <View style={localStyles.dotContainer}>
-              <View style={[localStyles.dot, { backgroundColor: dotColor }]} />
-            </View>
+              {/* Middle: Dot */}
+              <View style={localStyles.dotContainer}>
+                <View style={[localStyles.dot, { backgroundColor: dotColor }]} />
+              </View>
 
-            {/* Right side: Content */}
-            <View style={localStyles.contentContainer}>
-              <View style={localStyles.eventCard}>
-                <View style={localStyles.eventHeaderRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={localStyles.eventTitle} numberOfLines={2}>
-                      {entry.code} {entry.name}
-                    </Text>
-                    <Text style={localStyles.eventLocation}>
-                      {entry.locationLabel || "On Campus"}
-                    </Text>
+              {/* Right side: Content */}
+              <View style={localStyles.contentContainer}>
+                <View style={localStyles.eventCard}>
+                  <View style={localStyles.eventHeaderRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={localStyles.eventTitle} numberOfLines={2}>
+                        {entry.code} {entry.name}
+                      </Text>
+                      <Text style={localStyles.eventLocation}>
+                        {entry.locationLabel || "On Campus"}
+                      </Text>
+                    </View>
+                    <View style={[localStyles.badge, { backgroundColor: isEvent ? "rgba(255,149,0,0.1)" : "rgba(255,255,255,0.06)" }]}>
+                      <Text style={[localStyles.badgeText, { color: isEvent ? "#FF9500" : "#AAA" }]}>
+                        {isEvent ? "EVENT" : "CLASS"}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={[localStyles.badge, { backgroundColor: isEvent ? "rgba(255,149,0,0.1)" : "rgba(255,255,255,0.06)" }]}>
-                    <Text style={[localStyles.badgeText, { color: isEvent ? "#FF9500" : "#AAA" }]}>
-                      {isEvent ? "EVENT" : "CLASS"}
-                    </Text>
-                  </View>
+
+                  <TouchableOpacity 
+                    style={localStyles.directionsButton}
+                    onPress={() => handleGetDirections(entry)}
+                  >
+                    <Compass size={14} color="#007AFF" />
+                    <Text style={localStyles.directionsText}>Get Directions</Text>
+                  </TouchableOpacity>
                 </View>
-
-                <TouchableOpacity 
-                  style={localStyles.directionsButton}
-                  onPress={() => handleGetDirections(entry)}
-                >
-                  <Compass size={14} color="#007AFF" />
-                  <Text style={localStyles.directionsText}>Get Directions</Text>
-                </TouchableOpacity>
               </View>
             </View>
-          </View>
-        );
-      })}
-    </View>
+          );
+        })}
+      </View>
+    </TourTarget>
   );
 }
 

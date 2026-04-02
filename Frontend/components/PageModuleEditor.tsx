@@ -12,6 +12,7 @@ import { ChevronDown, ChevronUp, Cog, X } from 'lucide-react-native';
 
 import { ToggleLayoutItem } from '../store/appShellStore';
 import { useTheme } from './SharedUI';
+import { TourTarget, useTour } from './onboarding/TourProvider';
 
 interface PageModuleEditorProps<T extends string> {
   visible: boolean;
@@ -60,6 +61,7 @@ export function PageModuleEditor<T extends string>({
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark);
+  const { activeTargetName, advanceStep } = useTour();
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -86,14 +88,19 @@ export function PageModuleEditor<T extends string>({
             {items.map((item, index) => {
               const isTop = index === 0;
               const isBottom = index === items.length - 1;
-              return (
+              const row = (
                 <View key={item.id} style={styles.row}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.rowTitle}>{item.label}</Text>
                   </View>
                   <Switch
                     value={item.visible}
-                    onValueChange={() => onToggle(item.id)}
+                    onValueChange={() => {
+                      onToggle(item.id);
+                      if (item.id === 'Rec' && activeTargetName === 'add-gyms-toggle') {
+                        advanceStep('add-gyms-toggle');
+                      }
+                    }}
                     trackColor={{ false: COLORS.border, true: COLORS.primary }}
                     thumbColor="#FFFFFF"
                   />
@@ -115,6 +122,16 @@ export function PageModuleEditor<T extends string>({
                   </View>
                 </View>
               );
+
+              if (item.id === 'Rec') {
+                return (
+                  <TourTarget key={item.id} name="add-gyms-toggle">
+                    {row}
+                  </TourTarget>
+                );
+              }
+
+              return row;
             })}
           </ScrollView>
 

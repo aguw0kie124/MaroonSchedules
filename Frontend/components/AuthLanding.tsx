@@ -37,7 +37,7 @@ export function AuthLanding({ onLoginPress }: AuthLandingProps) {
 
           {/* App Title - Staggered */}
           <View>
-            <Text style={styles.appTitle}>Maroon Schedules</Text>
+            <Text style={styles.appTitle}>MaroonLife</Text>
           </View>
 
           {/* Tagline - Staggered */}
@@ -69,7 +69,7 @@ export function AuthLanding({ onLoginPress }: AuthLandingProps) {
           <View
             style={styles.infoContainer}
           >
-             <Text style={styles.infoTitle}>Why Maroon Schedules?</Text>
+             <Text style={styles.infoTitle}>Why MaroonLife?</Text>
              <Text style={styles.infoContent}>
                 Plan your classes, avoid conflicts, and get to graduation using your Texas A&M NetID. 
                 Experience a smooth schedule builder explicitly designed for Aggies.

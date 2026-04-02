@@ -1,14 +1,21 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withRepeat, 
+  withTiming, 
+  interpolateColor 
+} from 'react-native-reanimated';
+import { useTheme, useThemeStore } from './components/SharedUI';
 
 WebBrowser.maybeCompleteAuthSession();
 
-import { Onboarding } from './components/Onboarding';
 import { Dashboard } from './components/Dashboard';
 import { Profile } from './components/Profile';
 import { RecreationFacilitiesScreen } from './components/RecreationFacilitiesScreen';
@@ -44,7 +51,7 @@ import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 
 import { Home, Map, Users, User } from 'lucide-react-native';
-import { useTheme, useThemeStore } from './components/SharedUI';
+import { TourTarget, useTour } from './components/onboarding/TourProvider';
 
 import { syncUser } from './api/client';
 
@@ -159,6 +166,15 @@ function MainTabs() {
           initialParams={screen.initialParams}
           options={{
             title: screen.title,
+            tabBarButton: (props) => {
+              const { onPress, ...rest } = props as any;
+              
+              // We need useTour safely. Can we call useTour here inside the map? 
+              // Wait, tabBarButton is a component, but we are inside map.
+              // It's safer to extract it to a component, but we can't easily.
+              // Let's use a function component wrapper.
+              return <TabButtonWrapper screenName={screen.name} props={props} />;
+            },
             tabBarIcon: ({ color, focused }) => {
               return (
                 <View style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -186,11 +202,14 @@ function RootNavigator() {
   }
 
   const navigator = (
-    <Stack.Navigator id="RootStack" screenOptions={{
-      headerShown: false,
-      headerStyle: { backgroundColor: COLORS.background },
-      headerTintColor: COLORS.textPrimary,
-    }}>
+    <Stack.Navigator 
+      id="RootStack" 
+      screenOptions={{
+        headerShown: false,
+        headerStyle: { backgroundColor: COLORS.background },
+        headerTintColor: COLORS.textPrimary,
+      }}
+    >
       {isSignedIn ? (
         <>
           <Stack.Screen name="Main" component={MainTabs} />
@@ -229,7 +248,6 @@ function RootNavigator() {
         </>
       ) : (
         <>
-          <Stack.Screen name="Onboarding" component={Onboarding} />
           <Stack.Screen name="AuthLanding">
             {(props: any) => (
               <AuthLanding
@@ -248,11 +266,58 @@ function RootNavigator() {
   return isSignedIn ? <UserSync>{navigator}</UserSync> : navigator;
 }
 
-import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme, createNavigationContainerRef } from '@react-navigation/native';
 import { registerRootComponent } from 'expo';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { TourProvider } from './components/onboarding/TourProvider';
 
+export const navigationRef = createNavigationContainerRef();
 const queryClient = new QueryClient();
+
+function TabButtonWrapper({ screenName, props }: { screenName: string; props: any }) {
+  const { advanceStep, activeTargetName } = useTour();
+  const { COLORS } = useTheme();
+  const { onPress, onLongPress, ...rest } = props;
+
+  const pulseValue = useSharedValue(0);
+  const targetName = `${screenName.toLowerCase()}-tab`;
+  const isHighlighted = activeTargetName === targetName;
+
+  React.useEffect(() => {
+    if (isHighlighted) {
+      pulseValue.value = withRepeat(withTiming(1, { duration: 1000 }), -1, true);
+    } else {
+      pulseValue.value = 0;
+    }
+  }, [isHighlighted]);
+
+  const pulseStyle = useAnimatedStyle(() => {
+    return {
+      backgroundColor: interpolateColor(
+        pulseValue.value,
+        [0, 1],
+        ['transparent', COLORS.primary + '20']
+      ),
+      borderRadius: 12,
+      margin: 4,
+    };
+  });
+
+  const handlePress = (e: any) => {
+    if (activeTargetName === targetName) {
+      advanceStep(targetName);
+    }
+    if (onPress) onPress(e);
+  };
+
+  return (
+    <TourTarget name={targetName} style={{ flex: 1 }}>
+      <Animated.View style={[{ flex: 1 }, pulseStyle]}>
+        <Pressable {...rest} onPress={handlePress} onLongPress={onLongPress} />
+      </Animated.View>
+    </TourTarget>
+  );
+}
 
 function App() {
   const { theme, COLORS } = useTheme();
@@ -283,9 +348,11 @@ function App() {
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <ClerkLoaded>
         <QueryClientProvider client={queryClient}>
-          <NavigationContainer theme={navigationTheme}>
-            <RootNavigator />
-            <ShareOverlay />
+          <NavigationContainer theme={navigationTheme} ref={navigationRef}>
+            <TourProvider>
+              <RootNavigator />
+              <ShareOverlay />
+            </TourProvider>
           </NavigationContainer>
         </QueryClientProvider>
       </ClerkLoaded>

@@ -43,6 +43,7 @@ import {
 } from 'lucide-react-native';
 
 import { API_URL } from '../config';
+import { TourTarget, useTour } from './onboarding/TourProvider';
 import { useShareStore } from '../store/shareStore';
 import { useEventStore } from '../store/eventStore';
 import type { MajorOption, ScheduledEvent } from '../store/eventStore';
@@ -340,9 +341,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const { user } = useUser();
   const s = useMemo(() => getStyles(COLORS, isDark, embedded), [COLORS, isDark, embedded]);
 
+  const { advanceStep, activeTargetName } = useTour();
+
   const [events, setEvents] = useState<TAMUEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<EventsView>('discover');
+  const [view, setView] = useState<EventsView>('list');
   const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set());
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [searchQuery, setSearchQuery] = useState('');
@@ -544,12 +547,26 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               response: 'going',
             }),
           });
+          
+          // Onboarding: Navigate to today list on map after RSVP
+          if (activeTargetName === 'event-rsvp') {
+            // Optimistic update for local store so it shows up in TodayTimeline instantly
+            scheduleEvent(event as any);
+            advanceStep('event-rsvp');
+            navigation.navigate('Main', { 
+              screen: 'Places',
+              params: { 
+                isToday: true,
+                eventDate: event.date_iso // Pass the event date so map can switch to it
+              }
+            });
+          }
         } catch (error) {
           console.error('[Events] RSVP error:', error);
         }
       }
     },
-    [scheduleEvent, user],
+    [scheduleEvent, user, activeTargetName, advanceStep, navigation],
   );
 
   const handleShare = useCallback((event: TAMUEvent) => {
@@ -789,14 +806,17 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 snapToInterval={SCREEN_WIDTH - 52}
                 decelerationRate="fast"
               >
-                {discoverEvents.map((event) => (
-                  <HeroEventCard
-                    key={String(event.id)}
-                    event={event}
-                    onPress={() => setDetailEvent(event)}
-                    onMap={() => handleMapOpen(event)}
-                  />
-                ))}
+                {discoverEvents.map((event, i) => {
+                  const card = (
+                    <HeroEventCard
+                      key={String(event.id)}
+                      event={event}
+                      onPress={() => setDetailEvent(event)}
+                      onMap={() => handleMapOpen(event)}
+                    />
+                  );
+                  return card;
+                })}
               </ScrollView>
 
               <Pressable
@@ -849,17 +869,29 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               maxToRenderPerBatch={12}
               windowSize={7}
               removeClippedSubviews
-              renderItem={({ item }) => (
-                <ListEventRow
-                  event={item}
-                  saved={savedEventIds.includes(String(item.id))}
-                  scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(item.id))}
-                  onPress={() => setDetailEvent(item)}
-                  onSave={() => handleSaveToggle(item)}
-                  onShare={() => handleShare(item)}
-                  onSchedule={() => handleSchedule(item)}
-                />
-              )}
+              renderItem={({ item, index }) => {
+                const row = (
+                  <ListEventRow
+                    event={item}
+                    saved={savedEventIds.includes(String(item.id))}
+                    scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(item.id))}
+                    onPress={() => {
+                      if (index === 0 && activeTargetName === 'first-event-card') {
+                        advanceStep('first-event-card');
+                      }
+                      setDetailEvent(item);
+                    }}
+                    onSave={() => handleSaveToggle(item)}
+                    onShare={() => handleShare(item)}
+                    onSchedule={() => handleSchedule(item)}
+                  />
+                );
+                return index === 0 ? (
+                  <TourTarget key={String(item.id)} name="first-event-card" style={{ width: '100%' }}>
+                    {row}
+                  </TourTarget>
+                ) : row;
+              }}
               ListEmptyComponent={
                 <View style={s.emptyState}>
                   <Text style={s.emptyTitle}>Nothing matches right now</Text>
@@ -1518,19 +1550,20 @@ function DetailModal({
 }) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
+  const tour = useTour();
+  const navigation = useNavigation<any>();
 
   if (!event) return null;
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={stylesStatic.modalOverlay} onPress={onClose}>
-        <Pressable
-          style={[
-            stylesStatic.detailSheet,
-            { backgroundColor: COLORS.surface, borderColor: COLORS.border },
-          ]}
-          onPress={() => {}}
-        >
+    <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 100, elevation: 100, justifyContent: 'flex-end' }]} pointerEvents="box-none">
+      <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]} onPress={onClose} />
+      <View
+        style={[
+          stylesStatic.detailSheet,
+          { backgroundColor: COLORS.surface, borderColor: COLORS.border, maxHeight: '85%' },
+        ]}
+      >
           <ScrollView showsVerticalScrollIndicator={false}>
             <View style={stylesStatic.detailHeader}>
               <View
@@ -1584,16 +1617,18 @@ function DetailModal({
               </Text>
             ) : null}
 
-            <Pressable
-              style={[stylesStatic.primaryDetailButton, { backgroundColor: COLORS.primary }]}
-              onPress={() => {
-                onSchedule(event);
-                handleGoogleCalendar(event);
-              }}
-            >
-              <CalendarIcon size={18} color="#FFFFFF" />
-              <Text style={stylesStatic.primaryDetailButtonText}>Add to calendar</Text>
-            </Pressable>
+            <TourTarget name="event-rsvp">
+              <Pressable
+                style={[stylesStatic.primaryDetailButton, { backgroundColor: '#3CCB6C' }]}
+                onPress={() => {
+                  onSchedule(event);
+                  onClose();
+                }}
+              >
+                <Check size={18} color="#FFFFFF" strokeWidth={3} />
+                <Text style={stylesStatic.primaryDetailButtonText}>Add to current schedule</Text>
+              </Pressable>
+            </TourTarget>
 
             <View style={stylesStatic.detailActionRow}>
               <Pressable
@@ -1650,9 +1685,8 @@ function DetailModal({
               )}
             </View>
           </ScrollView>
-        </Pressable>
-      </Pressable>
-    </Modal>
+        </View>
+    </Animated.View>
   );
 }
 

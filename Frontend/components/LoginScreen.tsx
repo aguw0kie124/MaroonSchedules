@@ -57,7 +57,7 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
           )}
 
           <Text style={styles.title}>Log In</Text>
-          <Text style={styles.subtitle}>Welcome back to Maroon Schedules</Text>
+          <Text style={styles.subtitle}>Welcome back to MaroonLife</Text>
 
           {/* Setup for TAMU account context */}
           <Button

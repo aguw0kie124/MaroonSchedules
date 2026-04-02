@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useMemo, useCallback } from "react";
+import { TourProvider, useTour, TourTarget } from "../onboarding/TourProvider";
 import { useState } from "react";
 import {
   View,
@@ -127,6 +128,7 @@ export function LocationBottomSheet({
   selectedBus,
   openNavigationToLocation,
 }: LocationBottomSheetProps) {
+  const { advanceStep, activeTargetName } = useTour();
   const conciseDescription = useMemo(() => {
     const raw = selectedLoc?.description?.trim();
     if (!raw) return null;
@@ -150,19 +152,33 @@ export function LocationBottomSheet({
         damping: 30,
         stiffness: 260,
         mass: 0.9,
-      }).start(onDone);
+      }).start(() => {
+        if (onDone) onDone();
+        // Onboarding: Instant advance on full expansion
+        if (toValue === SNAP_FULL && activeTargetName === 'rec-center-item') {
+          advanceStep('rec-center-item');
+        }
+      });
     },
-    [sheetY],
+    [sheetY, activeTargetName, advanceStep],
   );
 
   useEffect(() => {
     setDiningDetailTab("reviews");
     if (selectedId) {
       animateSheet(SNAP_PEEK);
+      
+      // Onboarding: Auto-advance after 3 seconds of viewing Rec Center
+      if (activeTargetName === 'rec-center-item' && selectedLoc?.type === 'Rec') {
+        const timer = setTimeout(() => {
+          advanceStep('rec-center-item');
+        }, 3000);
+        return () => clearTimeout(timer);
+      }
     } else {
       animateSheet(SNAP_HIDDEN);
     }
-  }, [selectedId, animateSheet]);
+  }, [selectedId, animateSheet, activeTargetName, selectedLoc?.type]);
 
   const isDiningHallCard =
     !!selectedLoc &&
@@ -751,28 +767,30 @@ export function LocationBottomSheet({
                   {/* Traffic chart */}
                   {(selectedLoc.type === "Library" ||
                     selectedLoc.type === "Rec") && (
-                    <View style={styles.chartContainer}>
-                      <Text style={styles.chartTitle}>Foot Traffic · Last 8h</Text>
-                      <View style={styles.chartBars}>
-                        {(
-                          selectedLoc.traffic_history || [
-                            20, 45, 15, 60, 40, 25, 20, 50,
-                          ]
-                        ).map((val: number, i: number) => (
-                          <View key={i} style={styles.barWrapper}>
-                            <View
-                              style={[
-                                styles.barFill,
-                                {
-                                  height: Math.max(8, (val / 100) * 45),
-                                  backgroundColor: getStatusColor(val),
-                                },
-                              ]}
-                            />
-                          </View>
-                        ))}
+                    <TourTarget name="rec-center-capacity">
+                      <View style={styles.chartContainer}>
+                        <Text style={styles.chartTitle}>Foot Traffic · Last 8h</Text>
+                        <View style={styles.chartBars}>
+                          {(
+                            selectedLoc.traffic_history || [
+                              20, 45, 15, 60, 40, 25, 20, 50,
+                            ]
+                          ).map((val: number, i: number) => (
+                            <View key={i} style={styles.barWrapper}>
+                              <View
+                                style={[
+                                  styles.barFill,
+                                  {
+                                    height: Math.max(8, (val / 100) * 45),
+                                    backgroundColor: getStatusColor(val),
+                                  },
+                                ]}
+                              />
+                            </View>
+                          ))}
+                        </View>
                       </View>
-                    </View>
+                    </TourTarget>
                   )}
 
                   {/* Class meetings */}

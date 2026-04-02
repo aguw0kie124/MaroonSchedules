@@ -53,6 +53,7 @@ import {
 import type { WalkingRoute } from "../services/campusDirections";
 import { useTheme } from "./SharedUI";
 import { PageModuleEditor } from "./PageModuleEditor";
+import AnimatedReanimated, { useSharedValue, useAnimatedStyle, withTiming, runOnJS } from "react-native-reanimated";
 import MapView, {
   Marker,
   Circle,
@@ -97,6 +98,7 @@ import { TodayTimeline } from "./places/TodayTimeline";
 import { useScheduleMap } from "./places/useScheduleMap";
 
 // ── Shared data / utilities ───────────────────────────────────
+import { TourProvider, useTour } from "./onboarding/TourProvider";
 import {
   TAMU_CENTER,
   ALL_BUS_ROUTES_KEY,
@@ -161,6 +163,15 @@ export function PlacesMapScreen() {
   const mapRef = useRef<any>(null);
   const lastPlacesFitKey = useRef<string | null>(null);
   const [isListDroppedDown, setIsListDroppedDown] = useState(false);
+  const { activeTargetName, advanceStep } = useTour();
+
+
+  // Onboarding: Force expand list when targeting items inside it
+  useEffect(() => {
+    if (activeTargetName === 'rec-center-item') {
+      setIsListDroppedDown(true);
+    }
+  }, [activeTargetName]);
 
   // ── UI state ──────────────────────────────────────────────
   const [activeLayer, setActiveLayer] = useState<string>("Pulse");
@@ -176,6 +187,7 @@ export function PlacesMapScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [activeWalkingRoute, setActiveWalkingRoute] = useState<WalkingRoute | null>(null);
   const [isTodayExpanded, setIsTodayExpanded] = useState(false);
+  const timelineHeight = useSharedValue(0);
 
   // ── Location data ─────────────────────────────────────────
   const fullCampusIndex = useMemo(() => buildCampusDirectory(), []);
@@ -213,8 +225,70 @@ export function PlacesMapScreen() {
     scheduleLocations,
     scheduleSummaryLabel,
     isLoadingSchedules,
-    nextEntry
+    nextEntry,
+    refreshSchedules
   } = useScheduleMap(locations, selectedDate);
+
+  // Onboarding: Automatically expand Today timeline if navigated from RSVP with delay for smoothness
+  useEffect(() => {
+    if (route.params?.isToday) {
+      const timer = setTimeout(() => {
+        // Switch date if provided (e.g. from RSVP journey)
+        if (route.params?.eventDate) {
+          const targetDate = new Date(route.params.eventDate);
+          if (!isNaN(targetDate.getTime())) {
+            setSelectedDate(targetDate);
+          }
+        }
+        setActiveLayer("Today");
+        setIsTodayExpanded(true);
+        refreshSchedules();
+        navigation.setParams({ isToday: undefined, eventDate: undefined });
+      }, 400); // Wait for tab transition to complete
+      return () => clearTimeout(timer);
+    }
+  }, [route.params?.isToday, route.params?.eventDate, navigation, refreshSchedules]);
+
+  useEffect(() => {
+    timelineHeight.value = withTiming(isTodayExpanded ? 1 : 0, { duration: 400 });
+  }, [isTodayExpanded]);
+
+  const animatedTimelineStyle = useAnimatedStyle(() => ({
+    height: withTiming(isTodayExpanded ? 400 : 0, { duration: 400 }),
+    opacity: withTiming(isTodayExpanded ? 1 : 0, { duration: 300 }),
+    overflow: 'hidden'
+  }));
+
+  // Onboarding: Fallback idle timers (10 seconds) to prevent users from getting stuck
+  
+  // Onboarding: Force-collapse if stuck or moved away from Today
+  useEffect(() => {
+    if (activeTargetName === 'places-settings') {
+      setIsTodayExpanded(false);
+    }
+  }, [activeTargetName]);
+
+  // Onboarding: Master Persistent Timer for the Schedule Preview step
+  useEffect(() => {
+    if (activeTargetName === 'schedule-preview') {
+      const timer = setTimeout(() => {
+        advanceStep('schedule-preview');
+        setIsTodayExpanded(false);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTargetName, advanceStep]);
+
+  useEffect(() => {
+    const mapSteps = ['places-settings', 'add-gyms-toggle', 'gyms-pill', 'rec-center-item'];
+    if (mapSteps.includes(activeTargetName || '')) {
+      const timer = setTimeout(() => {
+        // If user hasn't acted in 10s, advance to keep movement
+        advanceStep(activeTargetName!);
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTargetName, advanceStep]);
 
   // ── Bus state ─────────────────────────────────────────────
   const [busRoutes, setBusRoutes] = useState<any[]>([]);
@@ -560,6 +634,26 @@ export function PlacesMapScreen() {
     setSearchQuery("");
     setShowSearchResults(false);
   }, []);
+
+  const handleGetDirections = useCallback((building: string) => {
+    // Find building in directory (e.g. "MSC", "ZEC")
+    const code = building.split(/\s+/)[0]?.toUpperCase();
+    const loc = locations.find(l => 
+      l.location.toUpperCase() === code || 
+      (l.shortName && l.shortName.toUpperCase().includes(code))
+    );
+    if (loc) {
+      setSelectedId(loc.location);
+      setIsTodayExpanded(false);
+      // Center map
+      mapRef.current?.animateToRegion({
+        latitude: loc.coord.lat - 0.0015,
+        longitude: loc.coord.lng,
+        latitudeDelta: 0.005,
+        longitudeDelta: 0.005,
+      }, 600);
+    }
+  }, [locations]);
 
   const getLayerForPlace = useCallback((loc: CampusLocation) => {
     if (loc.type === "Dining" || loc.type === "Hub") return "Dining";
@@ -1327,26 +1421,24 @@ export function PlacesMapScreen() {
                   <View style={styles.nextUpCardDivider} />
 
                   {/* Card Body: Summary or Timeline */}
-                  <ScrollView 
-                    style={{ maxHeight: isTodayExpanded ? 400 : 200 }} 
-                    showsVerticalScrollIndicator={false}
-                  >
-                    <View style={styles.nextUpCardBody}>
-                      {isTodayExpanded ? (
+                  <AnimatedReanimated.View style={animatedTimelineStyle}>
+                    <ScrollView 
+                      style={{ height: 400 }} 
+                      showsVerticalScrollIndicator={false}
+                    >
+                      <View style={styles.nextUpCardBody}>
                         <TodayTimeline
                           styles={styles}
                           COLORS={COLORS}
                           activeScheduleOption={activeScheduleOption}
-                          onGetDirections={(building) => {
-                            const loc = allMapLocations.find((l: any) =>
-                              l.location === building ||
-                              l.shortName === building ||
-                              l.location.includes(building)
-                            );
-                            if (loc) openNavigationToLocation(loc);
-                          }}
+                          onGetDirections={handleGetDirections}
                         />
-                      ) : nextEntry ? (
+                      </View>
+                    </ScrollView>
+                  </AnimatedReanimated.View>
+                  
+                  {!isTodayExpanded && nextEntry && (
+                    <View style={styles.nextUpCardBody}>
                         <View style={styles.nextUpMainRow}>
                           <View style={styles.nextUpTimeBox}>
                             <Text style={styles.nextUpTimeText}>{nextEntry.timeLabel}</Text>
@@ -1355,50 +1447,9 @@ export function PlacesMapScreen() {
                             <Text style={styles.nextUpTitle} numberOfLines={1}>{nextEntry.name}</Text>
                             <Text style={styles.nextUpLocation} numberOfLines={1}>{nextEntry.locationLabel}</Text>
                           </View>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                            <TouchableOpacity
-                              style={styles.nextUpDirectionsPill}
-                              onPress={() => {
-                                const loc = allMapLocations.find((l: any) =>
-                                  l.location === nextEntry.building ||
-                                  l.shortName === nextEntry.building ||
-                                  l.location.includes(nextEntry.building)
-                                );
-                                if (loc) {
-                                  openNavigationToLocation(loc);
-                                } else {
-                                  openNavigationToLocation({
-                                    location: nextEntry.building,
-                                    type: "Building",
-                                    coord: (nextEntry as any).lat ? { lat: (nextEntry as any).lat, lng: (nextEntry as any).lng } : { lat: 30.6181, lng: -96.3365 }
-                                  } as any);
-                                }
-                              }}
-                            >
-                              <Navigation size={14} color="#FFFFFF" />
-                              <Text style={styles.nextUpDirectionsPillText}>Directions</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                              style={styles.nextUpShareIcon}
-                              onPress={() => useShareStore.getState().openShare({
-                                title: nextEntry.name,
-                                message: `Heading to ${nextEntry.name} at ${nextEntry.locationLabel}!`,
-                                url: "https://maroonschedules.tamu.edu"
-                              })}
-                            >
-                              <Share2 size={16} color={COLORS.textSecondary} />
-                            </TouchableOpacity>
-                          </View>
                         </View>
-                      ) : (
-                        <View style={{ alignItems: "center", paddingVertical: 12 }}>
-                          <Text style={[styles.nextUpTitle, { marginBottom: 2 }]}>All done for today!</Text>
-                          <Text style={styles.nextUpLocation}>Nothing else in your schedule</Text>
-                        </View>
-                      )}
                     </View>
-                  </ScrollView>
+                  )}
                 </View>
               </View>
             )}

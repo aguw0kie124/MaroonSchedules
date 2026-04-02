@@ -18,6 +18,17 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withRepeat, 
+  withTiming, 
+  interpolateColor,
+  FadeIn,
+  FadeOut,
+  SlideInDown,
+  SlideOutDown
+} from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
@@ -53,6 +64,7 @@ import {
   uploadStreamImage,
 } from '../services/streamFeeds';
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
+import { TourTarget, useTour } from './onboarding/TourProvider';
 
 type PingCategory =
   | 'Free Food'
@@ -241,6 +253,7 @@ function mapActivityToPing(activity: any): PingCard {
 
 export function CampusPingsScreen() {
   const { COLORS } = useTheme();
+  const { advanceStep, activeTargetName } = useTour();
   const styles = useMemo(() => getStyles(COLORS), [COLORS]);
   const navigation = useNavigation<any>();
   const { user } = useUser();
@@ -262,6 +275,53 @@ export function CampusPingsScreen() {
   const [categoryFilter, setCategoryFilter] = useState<'All' | PingCategory>('All');
 
   const [composerVisible, setComposerVisible] = useState(false);
+
+  const pulseValue = useSharedValue(0);
+  // Onboarding logic: automatically advance if the tour is on the CTA step handled in the open composer call
+  // We added a 1s delay so the instructions and highlight appear AFTER the animation finishes
+  useEffect(() => {
+    if (activeTargetName === 'crowdping-cta' && composerVisible) {
+      const timer = setTimeout(() => {
+        advanceStep('crowdping-cta');
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTargetName, composerVisible, advanceStep]);
+
+  // Onboarding: Fallback idle timers (10 seconds)
+  useEffect(() => {
+    if (activeTargetName === 'crowdping-cta' || activeTargetName === 'crowdping-close') {
+      const timer = setTimeout(() => {
+        if (activeTargetName === 'crowdping-close') {
+          setComposerVisible(false);
+          resetComposer();
+          advanceStep('crowdping-close');
+          navigation.navigate('Main', { screen: 'Settings' });
+        } else {
+          // If they haven't clicked 'Tell people' but are just sitting there
+          // We can't easily force open the composer without a ref, but we can advance
+          // the tour step to the next one if they are truly stuck
+          advanceStep('crowdping-cta');
+          setComposerVisible(true); // Force open for them
+        }
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTargetName, advanceStep, navigation]);
+
+  const pulseStyle = useAnimatedStyle(() => {
+    return {
+      borderWidth: 2,
+      borderColor: interpolateColor(
+        pulseValue.value,
+        [0, 1],
+        ['transparent', COLORS.primary]
+      ),
+      transform: [{ scale: 1 + pulseValue.value * 0.02 }],
+      borderRadius: 16,
+      margin: -2,
+    };
+  });
   const [composerTitle, setComposerTitle] = useState('');
   const [composerBody, setComposerBody] = useState('');
   const [composerCategory, setComposerCategory] = useState<PingCategory>('Popup');
@@ -833,12 +893,24 @@ export function CampusPingsScreen() {
         </View>
       </View>
 
-      <Pressable style={styles.quickPostBar} onPress={() => setComposerVisible(true)}>
-        <View style={styles.quickPostIconWrap}>
-          <Megaphone size={16} color={COLORS.primary} />
-        </View>
-        <Text style={styles.quickPostText}>What's happening at...</Text>
-      </Pressable>
+      <TourTarget name="crowdping-cta">
+        <Animated.View style={pulseStyle}>
+          <Pressable 
+            style={styles.quickPostBar} 
+            onPress={() => {
+              setComposerVisible(true);
+              if (activeTargetName === 'crowdping-cta') {
+                advanceStep('crowdping-cta');
+              }
+            }}
+          >
+            <View style={styles.quickPostIconWrap}>
+              <Megaphone size={16} color={COLORS.primary} />
+            </View>
+            <Text style={styles.quickPostText}>What's happening at...</Text>
+          </Pressable>
+        </Animated.View>
+      </TourTarget>
 
       {streamError ? (
         <View style={styles.noticePill}>
@@ -917,165 +989,195 @@ export function CampusPingsScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      <Modal visible={composerVisible} animationType="slide" transparent>
-        <TouchableWithoutFeedback
-          onPress={() => {
-            setComposerVisible(false);
-            resetComposer();
-          }}
+      {/* ── CUSTOM COMPOSER OVERLAY (Replaces Modal for Tour Compatibility) ── */}
+      {composerVisible && (
+        <Animated.View 
+          entering={FadeIn} 
+          exiting={FadeOut}
+          style={StyleSheet.absoluteFill}
         >
-          <View style={styles.modalBackdrop}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={styles.modalKeyboardWrap}
-            >
-              <TouchableWithoutFeedback>
-                <View style={styles.modalCard}>
-                  <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Create a ping</Text>
-                    <Pressable
-                      onPress={() => {
-                        setComposerVisible(false);
-                        resetComposer();
-                      }}
-                    >
-                      <X size={20} color={COLORS.textPrimary} />
-                    </Pressable>
-                  </View>
-
-                  <ScrollView
-                    style={styles.modalScroll}
-                    contentContainerStyle={styles.modalScrollContent}
-                    showsVerticalScrollIndicator={false}
-                    keyboardShouldPersistTaps="handled"
-                  >
-                    <Text style={styles.modalLabel}>Category</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
-                      {PING_CATEGORIES.map((entry) => {
-                        const active = composerCategory === entry.id;
-                        return (
+          <TouchableWithoutFeedback
+            onPress={() => {
+              setComposerVisible(false);
+              resetComposer();
+            }}
+          >
+            <View style={styles.modalBackdrop}>
+               <Animated.View
+                entering={SlideInDown.springify().damping(20)}
+                exiting={SlideOutDown}
+                style={styles.modalKeyboardWrap}
+              >
+                <KeyboardAvoidingView
+                  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                  style={{ width: '100%' }}
+                >
+                  <TouchableWithoutFeedback>
+                    <View style={styles.modalCard}>
+                      <View style={styles.modalHeader}>
+                        <Text style={styles.modalTitle}>Create a ping</Text>
+                        <TourTarget name="crowdping-close">
                           <Pressable
-                            key={entry.id}
-                            style={[styles.modalChip, active && styles.modalChipActive]}
-                            onPress={() => setComposerCategory(entry.id)}
+                            onPress={() => {
+                              setComposerVisible(false);
+                              resetComposer();
+                              if (activeTargetName === 'crowdping-close') {
+                                advanceStep('crowdping-close');
+                                navigation.navigate('Main', { screen: 'Settings' });
+                              }
+                            }}
+                            style={[
+                              { padding: 12, borderRadius: 20 },
+                              activeTargetName === 'crowdping-close' && { backgroundColor: `${COLORS.primary}15` }
+                            ]}
                           >
-                            <Text style={[styles.modalChipLabel, active && styles.modalChipLabelActive]}>{entry.id}</Text>
+                            <X size={20} color={activeTargetName === 'crowdping-close' ? COLORS.primary : COLORS.textPrimary} />
                           </Pressable>
-                        );
-                      })}
-                    </ScrollView>
+                        </TourTarget>
+                      </View>
 
-                    <Text style={styles.modalLabel}>Title</Text>
-                    <TextInput
-                      value={composerTitle}
-                      onChangeText={setComposerTitle}
-                      placeholder="Free boba, pop-up market, pickup game..."
-                      placeholderTextColor={COLORS.textTertiary}
-                      style={styles.input}
-                    />
+                      <ScrollView
+                        style={styles.modalScroll}
+                        contentContainerStyle={styles.modalScrollContent}
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                      >
+                        <Text style={styles.modalLabel}>Category</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
+                          {PING_CATEGORIES.map((entry) => {
+                            const active = composerCategory === entry.id;
+                            return (
+                              <Pressable
+                                key={entry.id}
+                                style={[styles.modalChip, active && styles.modalChipActive]}
+                                onPress={() => setComposerCategory(entry.id)}
+                              >
+                                <Text style={[styles.modalChipLabel, active && styles.modalChipLabelActive]}>{entry.id}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </ScrollView>
 
-                    <Text style={styles.modalLabel}>Details</Text>
-                    <TextInput
-                      value={composerBody}
-                      onChangeText={setComposerBody}
-                      placeholder="Give people the quick context they need before they head over."
-                      placeholderTextColor={COLORS.textTertiary}
-                      style={[styles.input, styles.inputMultiline]}
-                      multiline
-                    />
+                        <Text style={styles.modalLabel}>Title</Text>
+                        <TextInput
+                          value={composerTitle}
+                          onChangeText={setComposerTitle}
+                          placeholder="Free boba, pop-up market, pickup game..."
+                          placeholderTextColor={COLORS.textTertiary}
+                          style={styles.input}
+                        />
 
-                    <Text style={styles.modalLabel}>Photo</Text>
-                    <View style={styles.imageComposerRow}>
-                      <Pressable style={styles.imagePickerButton} onPress={handlePickPingImage}>
-                        <ImageIcon size={16} color={COLORS.textPrimary} />
-                        <Text style={styles.imagePickerButtonText}>
-                          {composerImageUri ? 'Change photo' : 'Add photo'}
-                        </Text>
-                      </Pressable>
-                      {composerImageUri ? (
-                        <Pressable style={styles.imagePreviewWrap} onPress={handlePickPingImage}>
-                          <Image source={{ uri: composerImageUri }} style={styles.imagePreview} />
-                          <View style={styles.imagePreviewRemoveHint}>
-                            <Text style={styles.imagePreviewRemoveHintText}>Tap to edit</Text>
-                          </View>
-                        </Pressable>
-                      ) : (
-                        <View style={styles.imageEmptyState}>
-                          <Text style={styles.imageEmptyStateText}>Optional</Text>
-                        </View>
-                      )}
-                    </View>
+                        <Text style={styles.modalLabel}>Details</Text>
+                        <TextInput
+                          value={composerBody}
+                          onChangeText={setComposerBody}
+                          placeholder="Give people the quick context they need before they head over."
+                          placeholderTextColor={COLORS.textTertiary}
+                          style={[styles.input, styles.inputMultiline]}
+                          multiline
+                        />
 
-                    <Text style={styles.modalLabel}>When</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
-                      {TIME_PRESETS.map((entry) => {
-                        const active = composerTimePreset === entry.id;
-                        return (
-                          <Pressable
-                            key={entry.id}
-                            style={[styles.modalChip, active && styles.modalChipActive]}
-                            onPress={() => setComposerTimePreset(entry.id)}
-                          >
-                            <Text style={[styles.modalChipLabel, active && styles.modalChipLabelActive]}>{entry.label}</Text>
-                          </Pressable>
-                        );
-                      })}
-                    </ScrollView>
-
-                    <Text style={styles.modalLabel}>Location</Text>
-                    <View style={styles.searchInputWrap}>
-                      <Search size={16} color={COLORS.textSecondary} />
-                      <TextInput
-                        value={locationQuery}
-                        onChangeText={(text) => {
-                          setLocationQuery(text);
-                          setSelectedLocation(null);
-                        }}
-                        placeholder="Search for a campus location"
-                        placeholderTextColor={COLORS.textTertiary}
-                        style={styles.searchInput}
-                      />
-                    </View>
-
-                    <ScrollView style={styles.locationResults} keyboardShouldPersistTaps="handled">
-                      {locationSuggestions.map((location) => {
-                        const active = selectedLocation === location.location;
-                        return (
-                          <Pressable
-                            key={location.location}
-                            style={[styles.locationSuggestion, active && styles.locationSuggestionActive]}
-                            onPress={() => handleSelectLocation(location.location)}
-                          >
-                            <Text style={styles.locationSuggestionTitle}>{location.location}</Text>
-                            <Text style={styles.locationSuggestionMeta}>
-                              {location.type}
-                              {location.shortName ? ` · ${location.shortName}` : ''}
+                        <Text style={styles.modalLabel}>Photo</Text>
+                        <View style={styles.imageComposerRow}>
+                          <Pressable style={styles.imagePickerButton} onPress={handlePickPingImage}>
+                            <ImageIcon size={16} color={COLORS.textPrimary} />
+                            <Text style={styles.imagePickerButtonText}>
+                              {composerImageUri ? 'Change photo' : 'Add photo'}
                             </Text>
                           </Pressable>
-                        );
-                      })}
-                    </ScrollView>
-                  </ScrollView>
+                          {composerImageUri ? (
+                            <Pressable style={styles.imagePreviewWrap} onPress={handlePickPingImage}>
+                              <Image source={{ uri: composerImageUri }} style={styles.imagePreview} />
+                              <View style={styles.imagePreviewRemoveHint}>
+                                <Text style={styles.imagePreviewRemoveHintText}>Tap to edit</Text>
+                              </View>
+                            </Pressable>
+                          ) : (
+                            <View style={styles.imageEmptyState}>
+                              <Text style={styles.imageEmptyStateText}>Optional</Text>
+                            </View>
+                          )}
+                        </View>
 
-                  <View style={styles.modalFooter}>
-                    <Pressable style={styles.submitButton} onPress={handleCreatePing} disabled={isPosting}>
-                      {isPosting ? (
-                        <ActivityIndicator color="#FFFFFF" />
-                      ) : (
-                        <>
-                          <Plus size={18} color="#FFFFFF" />
-                          <Text style={styles.submitButtonLabel}>Post ping</Text>
-                        </>
-                      )}
-                    </Pressable>
-                  </View>
-                </View>
-              </TouchableWithoutFeedback>
-            </KeyboardAvoidingView>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+                        <Text style={styles.modalLabel}>When</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
+                          {TIME_PRESETS.map((entry) => {
+                            const active = composerTimePreset === entry.id;
+                            return (
+                              <Pressable
+                                key={entry.id}
+                                style={[styles.modalChip, active && styles.modalChipActive]}
+                                onPress={() => setComposerTimePreset(entry.id)}
+                              >
+                                <Text style={[styles.modalChipLabel, active && styles.modalChipLabelActive]}>{entry.label}</Text>
+                              </Pressable>
+                            );
+                          })}
+                        </ScrollView>
 
+                        <Text style={styles.modalLabel}>Location</Text>
+                        <View style={styles.searchInputWrap}>
+                          <Search size={16} color={COLORS.textSecondary} />
+                          <TextInput
+                            value={locationQuery}
+                            onChangeText={setLocationQuery}
+                            placeholder="Search for a building or spot..."
+                            placeholderTextColor={COLORS.textTertiary}
+                            style={styles.searchInput}
+                          />
+                        </View>
+
+                        {locationQuery.trim().length > 0 && !selectedLocation && (
+                          <View style={styles.suggestionsWrap}>
+                            {locationSuggestions.map((item) => (
+                              <Pressable
+                                key={item.location}
+                                style={styles.suggestionItem}
+                                onPress={() => handleSelectLocation(item.location)}
+                              >
+                                <MapPin size={14} color={COLORS.textSecondary} />
+                                <Text style={styles.suggestionText}>{item.location}</Text>
+                              </Pressable>
+                            ))}
+                          </View>
+                        )}
+
+                        {selectedLocation && (
+                          <View style={styles.selectedLocationBadge}>
+                            <MapPin size={14} color={COLORS.primary} />
+                            <Text style={styles.selectedLocationText}>{selectedLocation}</Text>
+                            <Pressable onPress={() => setSelectedLocation(null)}>
+                              <X size={14} color={COLORS.textSecondary} />
+                            </Pressable>
+                          </View>
+                        )}
+                        
+                        <View style={{ height: 100 }} />
+                      </ScrollView>
+
+                      <View style={styles.modalFooter}>
+                        <Pressable
+                          style={[styles.postButton, (!composerTitle.trim() || !composerBody.trim() || !selectedLocation) && styles.postButtonDisabled]}
+                          onPress={handleCreatePing}
+                          disabled={isPosting}
+                        >
+                          {isPosting ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
+                            <Text style={styles.postButtonText}>Post CrowdPing</Text>
+                          )}
+                        </Pressable>
+                      </View>
+                    </View>
+                  </TouchableWithoutFeedback>
+                </KeyboardAvoidingView>
+              </Animated.View>
+            </View>
+          </TouchableWithoutFeedback>
+        </Animated.View>
+      )}
+
+      {/* ── Featured Event Modal ── */}
       <Modal visible={!!activeFeaturedEvent} animationType="fade" transparent>
         <TouchableWithoutFeedback onPress={() => setActiveFeaturedEvent(null)}>
           <View style={styles.modalBackdrop}>
@@ -1135,6 +1237,7 @@ export function CampusPingsScreen() {
         </TouchableWithoutFeedback>
       </Modal>
 
+      {/* ── Comments Modal ── */}
       <Modal visible={commentModalVisible} animationType="fade" transparent>
         <TouchableWithoutFeedback
           onPress={() => {
@@ -1999,5 +2102,62 @@ const getStyles = (COLORS: any) =>
       backgroundColor: COLORS.primary,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    suggestionsWrap: {
+      maxHeight: 210,
+      marginTop: 10,
+      borderRadius: 16,
+      backgroundColor: COLORS.surface,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      overflow: 'hidden',
+    },
+    suggestionItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.border,
+    },
+    suggestionText: {
+      color: COLORS.textPrimary,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    selectedLocationBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      alignSelf: 'flex-start',
+      backgroundColor: `${COLORS.primary}12`,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 12,
+      marginTop: 12,
+      borderWidth: 1,
+      borderColor: `${COLORS.primary}25`,
+    },
+    selectedLocationText: {
+      color: COLORS.textPrimary,
+      fontSize: 14,
+      fontWeight: '700',
+    },
+    postButton: {
+      height: 56,
+      borderRadius: 18,
+      backgroundColor: COLORS.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 8,
+    },
+    postButtonDisabled: {
+      opacity: 0.5,
+    },
+    postButtonText: {
+      color: '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '800',
     },
   });

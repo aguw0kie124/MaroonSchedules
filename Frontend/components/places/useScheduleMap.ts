@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useUser } from "@clerk/clerk-expo";
 import { fetchSchedules } from "../../api/client";
 import { useCampusHubStore } from "../../store/campusHubStore";
@@ -16,9 +16,7 @@ export function useScheduleMap(fullCampusIndex: CampusLocation[], selectedDate: 
   const [isLoadingSchedules, setIsLoadingSchedules] = useState(false);
   const [activeScheduleId, setActiveScheduleId] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
+  const loadSchedules = useCallback(() => {
     if (!user?.id) {
       setSavedSchedules([]);
       setIsLoadingSchedules(false);
@@ -28,26 +26,24 @@ export function useScheduleMap(fullCampusIndex: CampusLocation[], selectedDate: 
     setIsLoadingSchedules(true);
     fetchSchedules(user.id)
       .then((data) => {
-        if (!cancelled) {
-          setSavedSchedules(Array.isArray(data) ? data : []);
-        }
+        setSavedSchedules(Array.isArray(data) ? data : []);
       })
       .catch((error) => {
         console.warn("Failed to fetch saved schedules", error);
-        if (!cancelled) {
-          setSavedSchedules([]);
-        }
+        setSavedSchedules([]);
       })
       .finally(() => {
-        if (!cancelled) {
-          setIsLoadingSchedules(false);
-        }
+        setIsLoadingSchedules(false);
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [user?.id]);
+
+  useEffect(() => {
+    loadSchedules();
+  }, [loadSchedules]);
+
+  const refreshSchedules = useCallback(() => {
+    loadSchedules();
+  }, [loadSchedules]);
 
   function parseTimeToMinutes(timeStr: string): number {
     if (!timeStr || timeStr === "Time TBA") return 0;
@@ -280,5 +276,5 @@ export function useScheduleMap(fullCampusIndex: CampusLocation[], selectedDate: 
     return `${classCount} class${classCount === 1 ? "" : "es"} across ${scheduleLocations.length} building${scheduleLocations.length === 1 ? "" : "s"}`;
   }, [activeScheduleOption, isLoadingSchedules, scheduleLocations.length]);
 
-  return { scheduleOptions, activeScheduleOption, activeScheduleId, setActiveScheduleId, scheduleLocations, scheduleSummaryLabel, isLoadingSchedules, nextEntry };
+  return { scheduleOptions, activeScheduleOption, activeScheduleId, setActiveScheduleId, scheduleLocations, scheduleSummaryLabel, isLoadingSchedules, nextEntry, refreshSchedules };
 }

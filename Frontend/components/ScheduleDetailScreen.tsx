@@ -16,6 +16,8 @@ export function ScheduleDetailScreen() {
     const userId = user?.id || 'anonymous';
     const [schedule, setSchedule] = useState<any>(scheduleObj);
     const { width } = useWindowDimensions();
+
+
     const handleBackToSchedules = () => {
         const state = navigation.getState();
         const schedIndex = state.routes.findIndex((r: any) => r.name === 'ScheduleList');
@@ -139,26 +141,27 @@ export function ScheduleDetailScreen() {
                 <Text style={styles.subtitle}>{getTermName(schedule?.term_code)}</Text>
             </View>
 
-            <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Courses ({schedule?.sections?.length || 0})</Text>
-                <PrimaryButton
-                    title="+ Add Class"
-                    onPress={() => navigation.navigate('NewCourseSearch', { returnTo: 'ScheduleDetail', scheduleId })}
-                    style={{ paddingVertical: 8, paddingHorizontal: 16 }}
-                />
-            </View>
+                <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>Courses ({schedule?.sections?.length || 0})</Text>
+                    <PrimaryButton
+                        title="+ Add Class"
+                        onPress={() => navigation.navigate('NewCourseSearch', { returnTo: 'ScheduleDetail', scheduleId })}
+                        style={{ paddingVertical: 8, paddingHorizontal: 16 }}
+                    />
+                </View>
 
-            {schedule?.sections?.map((sec: any) => (
-                <SectionRow
-                    key={sec.id || sec.section_id}
-                    section={sec}
-                    onRemove={handleRemove}
-                />
-            ))}
+                {schedule?.sections?.map((sec: any) => (
+                    <SectionRow
+                        key={sec.id || sec.section_id}
+                        section={sec}
+                        onRemove={handleRemove}
+                    />
+                ))}
 
-            {(!schedule?.sections || schedule.sections.length === 0) && (
-                <Text style={styles.empty}>No classes planned for this schedule.</Text>
-            )}
+                {(!schedule?.sections || schedule.sections.length === 0) && (
+                    <Text style={styles.empty}>No classes planned for this schedule.</Text>
+                )}
+
 
             <View style={styles.weeklyHeader}>
                 <Text style={styles.sectionTitle}>Weekly Grid Layout</Text>

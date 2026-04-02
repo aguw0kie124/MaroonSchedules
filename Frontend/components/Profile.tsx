@@ -10,6 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import {
   BriefcaseBusiness,
@@ -26,6 +27,8 @@ import {
   Sun,
   UserRound,
   Wallet,
+  Compass,
+  Sparkles,
 } from 'lucide-react-native';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
@@ -34,6 +37,7 @@ import * as Linking from 'expo-linking';
 import { getDefaultAccentColor, useTheme } from './SharedUI';
 import { fetchCampusOverview } from '../api/client';
 import { PARKING_PERMIT_OPTIONS, useAppShellStore } from '../store/appShellStore';
+import { useTour, TourTarget } from './onboarding/TourProvider';
 
 function channelToHex(channel: number) {
   return channel.toString(16).padStart(2, '0');
@@ -119,6 +123,7 @@ export function Profile() {
   } = useTheme();
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark);
+  const { startTour, endTour, activeTargetName } = useTour();
 
   const parkingPermit = useAppShellStore((state) => state.parkingPermit);
   const setParkingPermit = useAppShellStore((state) => state.setParkingPermit);
@@ -260,6 +265,81 @@ export function Profile() {
           </View>
         </View>
       </View>
+
+      <Pressable 
+        style={[styles.heroCard, { 
+          padding: 16, 
+          backgroundColor: isDark ? COLORS.surface : '#F8FAFC', 
+          borderColor: COLORS.primary, 
+          borderWidth: 1.5,
+          flexDirection: 'row', 
+          alignItems: 'center', 
+          gap: 12,
+          marginTop: 8
+        }]} 
+        onPress={() => startTour()}
+      >
+        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary + '15', alignItems: 'center', justifyContent: 'center' }}>
+          <Compass size={24} color={COLORS.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Restart Interactive Tour</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Replay the guided onboarding tutorial.</Text>
+        </View>
+        <ChevronRight size={20} color={COLORS.textTertiary} />
+      </Pressable>
+
+      {activeTargetName === 'tour-finish' && (
+        <LinearGradient
+          colors={[COLORS.primary, '#9B2C2C']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ 
+            marginTop: 24, 
+            padding: 24, 
+            borderRadius: 32, 
+            elevation: 12,
+            shadowColor: COLORS.primary,
+            shadowOffset: { width: 0, height: 10 },
+            shadowOpacity: 0.3,
+            shadowRadius: 20,
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>
+              <Sparkles size={28} color="#FFF" />
+            </View>
+            <View>
+              <Text style={{ color: '#FFF', fontSize: 24, fontWeight: '900', letterSpacing: -0.5 }}>You're all set!</Text>
+              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' }}>Onboarding Complete</Text>
+            </View>
+          </View>
+          
+          <Text style={{ color: 'rgba(255,255,255,0.95)', fontSize: 15, lineHeight: 22, marginBottom: 28, fontWeight: '500' }}>
+            Welcome to MaroonLife. Your personalized campus experience is ready for you to explore.
+          </Text>
+
+          <TourTarget name="tour-finish">
+            <Pressable 
+              style={({ pressed }) => ({ 
+                backgroundColor: '#FFF', 
+                padding: 18, 
+                borderRadius: 18, 
+                alignItems: 'center',
+                flexDirection: 'row',
+                justifyContent: 'center',
+                gap: 10,
+                opacity: pressed ? 0.9 : 1,
+                transform: [{ scale: pressed ? 0.98 : 1 }]
+              })}
+              onPress={() => endTour()}
+            >
+              <Text style={{ color: COLORS.primary, fontWeight: '900', fontSize: 17, letterSpacing: -0.2 }}>Launch MaroonLife</Text>
+              <ChevronRight size={20} color={COLORS.primary} strokeWidth={3} />
+            </Pressable>
+          </TourTarget>
+        </LinearGradient>
+      )}
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Preferences</Text>
