@@ -68,6 +68,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const { isSignedIn, userId } = useAuth();
   const { COLORS } = useTheme();
   const isTOSAccepted = useAppShellStore((state) => state.isTOSAccepted);
+  const isNotificationPrompted = useAppShellStore((state) => state.isNotificationPrompted);
   const isTourCompleted = useAppShellStore((state) => state.isTourCompleted);
   const setTourCompleted = useAppShellStore((state) => state.setTourCompleted);
 
@@ -83,11 +84,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
   const activeTargetName = isTourActive && currentStep < TOUR_SEQUENCE.length ? TOUR_SEQUENCE[currentStep].id : null;
 
-  useEffect(() => {
-    if (isSignedIn && userId && isTOSAccepted && !isTourCompleted) {
-      startTour();
-    }
-  }, [isSignedIn, userId, isTOSAccepted, isTourCompleted]);
+// moved below
 
   const updateTargetRect = async () => {
     if (!activeTargetName || !targetsRef.current[activeTargetName]) {
@@ -112,13 +109,16 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setCurrentStep(0);
     setIsTourActive(true);
     // Force user to Events tab if not there
-    if (navigationRef.isReady()) {
-      try {
-        (navigationRef as any).navigate('Dashboard');
-      } catch (e) {
-        console.warn("TourProvider couldn't navigate to Dashboard", e);
+    // We add a delay to ensure RootNavigator has finished switching from onboarding to MainStack
+    setTimeout(() => {
+      if (navigationRef.isReady()) {
+        try {
+          (navigationRef as any).navigate('Main', { screen: 'Dashboard' });
+        } catch (e) {
+          console.warn("TourProvider couldn't navigate to Dashboard", e);
+        }
       }
-    }
+    }, 300);
   }, []);
 
   const endTour = useCallback(async () => {
@@ -128,19 +128,29 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setIsIdle(false);
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     
-    if (navigationRef.isReady()) {
-      try {
-        (navigationRef as any).navigate('Dashboard');
-      } catch (e) {
-        console.warn("TourProvider couldn't navigate to Dashboard on end", e);
+    // Use nested navigation to ensures stable target resolution
+    setTimeout(() => {
+      if (navigationRef.isReady()) {
+        try {
+          (navigationRef as any).navigate('Main', { screen: 'Dashboard' });
+        } catch (e) {
+          console.warn("TourProvider couldn't navigate to Dashboard on end", e);
+        }
       }
-    }
+    }, 100);
 
     if (userId) {
       setTourCompleted(true);
       completeTour(userId).catch(err => console.warn('Failed to persist tour completion:', err));
     }
   }, [userId, setTourCompleted]);
+
+  // Initialization Effect: Wait for all prerequisite prompts to finish
+  useEffect(() => {
+    if (isSignedIn && userId && isTOSAccepted && isNotificationPrompted && !isTourCompleted) {
+      startTour();
+    }
+  }, [isSignedIn, userId, isTOSAccepted, isNotificationPrompted, isTourCompleted, startTour]);
 
   const resetIdleTimer = () => {
     setIsIdle(false);

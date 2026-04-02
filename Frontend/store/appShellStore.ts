@@ -205,7 +205,7 @@ export const useAppShellStore = create<AppShellState>()(
     }),
     {
       name: 'app-shell-store',
-      version: 3,
+      version: 4,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         parkingPermit: state.parkingPermit,
@@ -269,17 +269,24 @@ export const useAppShellStore = create<AppShellState>()(
         };
       },
       migrate: (persistedState: any, version: number) => {
-        if (version < 3) {
-          // Force Gyms (Rec) off for the walkthrough reset
+        if (version < 4) {
           const state = persistedState as Partial<AppShellState>;
+          const newState = { ...state };
+          
+          // 1. Reset Nav Defaults (Events, Places, Pings on; Dining off)
+          newState.navItems = DEFAULT_NAV_ITEMS;
+
+          // 2. Set Default Tab Bar Mode to 'floating'
+          newState.tabBarMode = 'floating';
+
+          // 3. Adjust Places Pills (Gyms off)
           if (state.placesPills && Array.isArray(state.placesPills)) {
-            return {
-              ...state,
-              placesPills: state.placesPills.map(p => 
-                p.id === 'Rec' ? { ...p, visible: false } : p
-              ),
-            };
+            newState.placesPills = state.placesPills.map(p => 
+              p.id === 'Rec' ? { ...p, visible: false } : p
+            );
           }
+          
+          return newState;
         }
         return persistedState;
       },
