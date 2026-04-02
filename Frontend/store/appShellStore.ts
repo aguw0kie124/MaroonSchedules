@@ -205,7 +205,7 @@ export const useAppShellStore = create<AppShellState>()(
     }),
     {
       name: 'app-shell-store',
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         parkingPermit: state.parkingPermit,
@@ -267,6 +267,21 @@ export const useAppShellStore = create<AppShellState>()(
             ? persisted.notificationLeadTime
             : currentState.notificationLeadTime,
         };
+      },
+      migrate: (persistedState: any, version: number) => {
+        if (version < 3) {
+          // Force Gyms (Rec) off for the walkthrough reset
+          const state = persistedState as Partial<AppShellState>;
+          if (state.placesPills && Array.isArray(state.placesPills)) {
+            return {
+              ...state,
+              placesPills: state.placesPills.map(p => 
+                p.id === 'Rec' ? { ...p, visible: false } : p
+              ),
+            };
+          }
+        }
+        return persistedState;
       },
     },
   ),

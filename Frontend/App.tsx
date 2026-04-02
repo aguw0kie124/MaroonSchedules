@@ -347,12 +347,11 @@ function RootNavigator() {
   return isSignedIn ? <UserSync>{navigator}</UserSync> : navigator;
 }
 
-import { NavigationContainer, DefaultTheme, DarkTheme, createNavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
+import { navigationRef } from './navigation/Refs';
 import { registerRootComponent } from 'expo';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TourProvider } from './components/onboarding/TourProvider';
-
-export const navigationRef = createNavigationContainerRef();
 const queryClient = new QueryClient();
 
 function TabButtonWrapper({ screenName, props }: { screenName: string; props: any }) {

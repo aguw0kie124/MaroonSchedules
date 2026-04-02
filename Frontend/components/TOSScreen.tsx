@@ -7,6 +7,7 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ShieldAlert, CheckCircle2, ChevronRight, Scale } from 'lucide-react-native';
@@ -84,9 +85,21 @@ export function TOSScreen({ clerkId, onAccepted }: TOSScreenProps) {
 
         <View style={styles.legalSection}>
           <Text style={[styles.legalText, { color: COLORS.textTertiary }]}>
-            By proceeding, you acknowledge that you have read and agree to our 
-            Terms of Service and Privacy Policy. You understand that failure to 
-            comply with these standards will result in permanent account termination.
+            By proceeding, you acknowledge that you have read and agree to our{' '}
+            <Text 
+              style={{ color: COLORS.primary, fontWeight: '700' }} 
+              onPress={() => Linking.openURL('https://maroonschedules.com/terms')}
+            >
+              Terms of Service
+            </Text>
+            {' '}and{' '}
+            <Text 
+              style={{ color: COLORS.primary, fontWeight: '700' }} 
+              onPress={() => Linking.openURL('https://maroonschedules.com/privacy-policy')}
+            >
+              Privacy Policy
+            </Text>
+            . You understand that failure to comply with these standards will result in permanent account termination.
           </Text>
         </View>
 

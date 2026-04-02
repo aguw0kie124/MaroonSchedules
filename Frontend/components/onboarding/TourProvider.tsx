@@ -45,7 +45,7 @@ const TourContext = createContext<TourContextType>({
 
 export const useTour = () => useContext(TourContext);
 
-import { useNavigation } from '@react-navigation/native';
+import { navigationRef } from '../../navigation/Refs';
 
 export const TOUR_SEQUENCE = [
   { id: 'switch-to-list', title: "View Options 📋", desc: "The tour requires 'List' view. Tap the 'List' tab to see the full campus schedule and continue." },
@@ -108,18 +108,18 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isTourActive, activeTargetName]);
 
-  const navigation = useNavigation<any>();
-
   const startTour = useCallback(() => {
     setCurrentStep(0);
     setIsTourActive(true);
     // Force user to Events tab if not there
-    try {
-      navigation.navigate('Dashboard');
-    } catch (e) {
-      console.warn("TourProvider couldn't navigate to Dashboard", e);
+    if (navigationRef.isReady()) {
+      try {
+        (navigationRef as any).navigate('Dashboard');
+      } catch (e) {
+        console.warn("TourProvider couldn't navigate to Dashboard", e);
+      }
     }
-  }, [navigation]);
+  }, []);
 
   const endTour = useCallback(async () => {
     setIsTourActive(false);
@@ -127,16 +127,20 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setTargetRect(null);
     setIsIdle(false);
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    try {
-      navigation.navigate('Dashboard');
-    } catch (e) {
-      console.warn("TourProvider couldn't navigate to Dashboard on end", e);
+    
+    if (navigationRef.isReady()) {
+      try {
+        (navigationRef as any).navigate('Dashboard');
+      } catch (e) {
+        console.warn("TourProvider couldn't navigate to Dashboard on end", e);
+      }
     }
+
     if (userId) {
       setTourCompleted(true);
       completeTour(userId).catch(err => console.warn('Failed to persist tour completion:', err));
     }
-  }, [userId, setTourCompleted, navigation]);
+  }, [userId, setTourCompleted]);
 
   const resetIdleTimer = () => {
     setIsIdle(false);

@@ -36,6 +36,7 @@ import {
   Sparkles,
   Trash2,
   Shield,
+  Scale,
   UserX,
   Bell,
 } from 'lucide-react-native';
@@ -873,7 +874,20 @@ export function Profile() {
       })}
 
       <Pressable
-        style={[styles.toolRow, styles.toolRowLast, { marginTop: 12 }]}
+        style={[styles.toolRow, { marginTop: 12 }]}
+        onPress={() => openExternal('https://maroonschedules.com/terms')}
+      >
+        <View style={[styles.toolIconBg, { backgroundColor: 'rgba(0, 122, 255, 0.15)' }]}>
+          <Scale size={20} color="#007AFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.toolTitle}>Terms of Service</Text>
+        </View>
+        <ExternalLink size={18} color={COLORS.textTertiary} />
+      </Pressable>
+
+      <Pressable
+        style={[styles.toolRow, styles.toolRowLast, { marginTop: 4 }]}
         onPress={() => openExternal('https://maroonschedules.com/privacy-policy')}
       >
         <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 199, 89, 0.15)' }]}>
