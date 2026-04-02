@@ -355,7 +355,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const [events, setEvents] = useState<TAMUEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<EventsView>('list');
+  const [view, setView] = useState<EventsView>('discover');
   const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set());
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [searchQuery, setSearchQuery] = useState('');

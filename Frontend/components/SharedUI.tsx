@@ -50,7 +50,7 @@ function isLegacyDefaultAccent(accentColor: string | null | undefined) {
 
 // Zustand Theme Store
 export const useThemeStore = create<any>((set, get) => ({
-  theme: 'dark', // 'dark' | 'light'
+  theme: 'light', // 'dark' | 'light'
   backgroundMode: 'solid', // 'solid' | 'custom'
   customWallpaperUri: null as string | null,
   accentColor: DEFAULT_DARK_ACCENT,

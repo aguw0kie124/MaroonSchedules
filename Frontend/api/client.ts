@@ -160,6 +160,10 @@ export const fetchCampusPlacesMap = async () => {
     return requestJson('/campus/places/map');
 };
 
+export const fetchCampusPlaceDetail = async (placeIdOrIdentifier: string) => {
+    return requestJson(`/campus/places/${encodeURIComponent(placeIdOrIdentifier)}/detail`);
+};
+
 export const fetchCampusPulseMap = async (limit = 12) => {
     return requestJson(`/campus/pulse/map?limit=${limit}`);
 };
