@@ -28,6 +28,7 @@ import {
   Platform,
   Dimensions,
   ScrollView,
+  InteractionManager,
 } from "react-native";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
@@ -642,7 +643,9 @@ export function PlacesMapScreen() {
   }, [openHotspotPlace]);
 
   const fetchPulseHotspots = useCallback(async () => {
-    setIsLoadingPulse(true);
+    if (!pulseHotspots.length) {
+      setIsLoadingPulse(true);
+    }
     try {
       const rawHotspots = await fetchCampusPulseMap(12);
       const placeLookup = new Map(
@@ -670,7 +673,7 @@ export function PlacesMapScreen() {
     } finally {
       setIsLoadingPulse(false);
     }
-  }, [pulsePlaces, selectedHotspotId]);
+  }, [pulseHotspots.length, pulsePlaces, selectedHotspotId]);
 
   const centerOnUserLocation = useCallback(async () => {
     try {
@@ -935,9 +938,11 @@ export function PlacesMapScreen() {
   }, [activeLayer, hydrateCampusHub, user?.id]);
 
   useEffect(() => {
-    if (!pulsePlaces.length) return;
-    fetchPulseHotspots();
-  }, [fetchPulseHotspots, pulsePlaces.length]);
+    const task = InteractionManager.runAfterInteractions(() => {
+      fetchPulseHotspots();
+    });
+    return () => task.cancel();
+  }, [fetchPulseHotspots]);
 
   useEffect(() => {
     if (activeLayer !== "Pulse") return;
