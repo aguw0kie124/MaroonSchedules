@@ -40,7 +40,6 @@ import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
 import { GPACalculatorScreen } from './components/GPACalculatorScreen';
 import { LeaderboardScreen } from './components/LeaderboardScreen';
-import { ShareOverlay } from './components/ShareOverlay';
 import { TimerScreen } from './components/TimerScreen';
 
 import DiningDashboard from './components/dining/DiningDashboard';
@@ -426,7 +425,6 @@ function App() {
               <ErrorBoundary name="Root Navigator">
                 <RootNavigator />
               </ErrorBoundary>
-              <ShareOverlay />
             </TourProvider>
           </NavigationContainer>
         </QueryClientProvider>
