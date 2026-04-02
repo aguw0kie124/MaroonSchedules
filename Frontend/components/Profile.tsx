@@ -424,16 +424,6 @@ export function Profile() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Academics</Text>
 
-        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('Leaderboard')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(212,175,55,0.15)' }]}>
-            <Trophy size={20} color="#D4AF37" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Campus Rankings & Podium</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
-
         <Pressable style={styles.toolRow} onPress={() => navigation.navigate('NewCourseSearch')}>
           <View style={[styles.toolIconBg, { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
             <Search size={20} color="#6366F1" />

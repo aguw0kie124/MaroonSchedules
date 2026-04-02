@@ -39,7 +39,6 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
 import { GPACalculatorScreen } from './components/GPACalculatorScreen';
-import { LeaderboardScreen } from './components/LeaderboardScreen';
 import { TimerScreen } from './components/TimerScreen';
 
 import DiningDashboard from './components/dining/DiningDashboard';
@@ -298,7 +297,6 @@ function RootNavigator() {
           <Stack.Screen name="TransitTripPlanner" component={TransitTripPlannerScreen} options={{ headerShown: false }} />
           <Stack.Screen name="TransitTripResults" component={TransitTripResultsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
           <Stack.Screen name="AnnexHub" component={AnnexHubScreen} options={{ headerShown: false }} />
           <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />

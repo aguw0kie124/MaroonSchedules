@@ -8,7 +8,8 @@ import {
   TextInput,
   Alert,
 } from 'react-native';
-import { Trash2, PlusCircle } from 'lucide-react-native';
+import { Trash2, PlusCircle, ArrowLeft } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useTheme } from './SharedUI';
 
 // ─── Grade map ───────────────────────────────────────────────
@@ -62,6 +63,7 @@ function gpaLabel(gpa: number): string {
 // ─── Component ───────────────────────────────────────────────
 export function GPACalculatorScreen() {
     const { COLORS } = useTheme();
+    const navigation = useNavigation();
     const styles = getStyles(COLORS);
   const [courses, setCourses] = useState<Course[]>(DEFAULT_COURSES);
 
@@ -131,9 +133,17 @@ export function GPACalculatorScreen() {
     <View style={styles.container}>
       {/* ── Header ─────────────────────────────────────────── */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>🎓 GPA Calculator</Text>
-          <Text style={styles.headerSubtitle}>Texas A&M · 4.0 Scale</Text>
+        <View style={styles.headerLeft}>
+          <Pressable 
+            onPress={() => navigation.goBack()}
+            style={({ pressed }) => [styles.backBtn, pressed && { opacity: 0.7 }]}
+          >
+            <ArrowLeft size={24} color="#FFF" strokeWidth={2.5} />
+          </Pressable>
+          <View>
+            <Text style={styles.headerTitle}>GPA Calculator</Text>
+            <Text style={styles.headerSubtitle}>Texas A&M · 4.0 Scale</Text>
+          </View>
         </View>
         <Pressable onPress={reset} style={styles.resetBtn}>
           <Text style={styles.resetText}>Reset</Text>
@@ -308,8 +318,15 @@ const getStyles = (COLORS: any) => StyleSheet.create({
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
   },
-  headerTitle: { fontSize: 26, fontWeight: '800', color: '#FFF', letterSpacing: -0.5 },
-  headerSubtitle: { fontSize: 13, color: 'rgba(255,255,255,0.65)', marginTop: 3 },
+  headerTitle: { fontSize: 24, fontWeight: '800', color: '#FFF', letterSpacing: -0.5 },
+  headerSubtitle: { fontSize: 13, color: 'rgba(255,255,255,0.65)', marginTop: 2 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  backBtn: {
+    padding: 8,
+    marginLeft: -8,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 12,
+  },
   resetBtn: {
     backgroundColor: 'rgba(255,255,255,0.18)',
     paddingHorizontal: 14,
