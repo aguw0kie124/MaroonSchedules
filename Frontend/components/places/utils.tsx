@@ -173,6 +173,24 @@ export function getLocationContextLink(location: CampusLocation) {
   return null;
 }
 
+export const getLayerForPlace = (loc: CampusLocation) => {
+  if (loc.type === "Dining" || loc.type === "Hub") return "Dining";
+  if (loc.type === "Rec") return "Rec";
+  if (loc.type === "Library") return "Library";
+  if (loc.type === "Study") return "Study";
+  if (loc.type === "Parking") return "Parking";
+  if (
+    loc.type === "Academic" ||
+    loc.type === "Landmark" ||
+    loc.type === "Athletics" ||
+    loc.type === "Housing" ||
+    loc.type === "General"
+  ) {
+    return "Academic";
+  }
+  return "Academic";
+};
+
 // ── Geo math ──────────────────────────────────────────────────
 export function haversineDistanceMeters(
   startLat: number,

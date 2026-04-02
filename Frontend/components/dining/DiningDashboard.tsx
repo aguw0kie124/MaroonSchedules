@@ -58,8 +58,8 @@ const DASHBOARD_TOOLS = [
   },
   {
     key: 'settings',
-    title: 'Tracker Settings',
-    subtitle: 'Buried profile and calorie-goal settings for this subsystem.',
+    title: 'Settings',
+    subtitle: 'Body profile, goals, calorie targets, and advanced nutrition preferences.',
     route: 'DiningSettings',
     icon: Settings2,
   },

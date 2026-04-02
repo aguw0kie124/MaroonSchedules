@@ -7,7 +7,7 @@ import {
   Pressable,
   Animated,
 } from 'react-native';
-import { Bus, MapPin, Navigation, Volume2, VolumeX, X as XIcon } from 'lucide-react-native';
+import { Bus, MapPin, Navigation, X as XIcon } from 'lucide-react-native';
 import { useTheme } from './SharedUI';
 import { DirectionStep } from '../services/campusDirections';
 import { stopSpeech } from '../services/campusTTS';
@@ -19,8 +19,6 @@ interface CampusDirectionsPanelProps {
   steps: DirectionStep[];
   modeLabel: string;
   routeNote?: string | null;
-  voiceEnabled: boolean;
-  onToggleVoice: () => void;
   onEnd: () => void;
 }
 
@@ -31,8 +29,6 @@ export function CampusDirectionsPanel({
   steps,
   modeLabel,
   routeNote,
-  voiceEnabled,
-  onToggleVoice,
   onEnd,
 }: CampusDirectionsPanelProps) {
     const { COLORS, theme } = useTheme();
@@ -85,15 +81,6 @@ export function CampusDirectionsPanel({
           ) : null}
         </View>
         <View style={styles.metaActions}>
-          <Pressable
-            style={({ pressed }) => [styles.voiceBtn, pressed && styles.voiceBtnPressed]}
-            onPress={onToggleVoice}
-          >
-            {voiceEnabled ? <Volume2 color={COLORS.primary} size={16} /> : <VolumeX color={COLORS.textSecondary} size={16} />}
-            <Text style={[styles.voiceBtnText, !voiceEnabled && styles.voiceBtnTextMuted]}>
-              {voiceEnabled ? 'Voice On' : 'Voice Off'}
-            </Text>
-          </Pressable>
           <Pressable
             style={({ pressed }) => [styles.endBtn, pressed && styles.endBtnPressed]}
             onPress={handleEnd}
@@ -205,28 +192,6 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 12,
     lineHeight: 18,
-  },
-  voiceBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: isDark ? 'rgba(0,0,0,0.42)' : 'rgba(12,12,14,0.05)',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(12,12,14,0.08)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  voiceBtnPressed: {
-    opacity: 0.8,
-  },
-  voiceBtnText: {
-    color: COLORS.textPrimary,
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  voiceBtnTextMuted: {
-    color: COLORS.textSecondary,
   },
   endBtn: {
     flexDirection: 'row',
