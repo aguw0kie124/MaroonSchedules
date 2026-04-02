@@ -875,7 +875,7 @@ export function Profile() {
 
       <Pressable
         style={[styles.toolRow, { marginTop: 12 }]}
-        onPress={() => openExternal('https://maroonschedules.com/terms')}
+        onPress={() => openExternal('https://www.termsfeed.com/live/2fc33440-a5a9-4943-a1da-d3c5d5abc1e5')}
       >
         <View style={[styles.toolIconBg, { backgroundColor: 'rgba(0, 122, 255, 0.15)' }]}>
           <Scale size={20} color="#007AFF" />
@@ -888,7 +888,7 @@ export function Profile() {
 
       <Pressable
         style={[styles.toolRow, styles.toolRowLast, { marginTop: 4 }]}
-        onPress={() => openExternal('https://maroonschedules.com/privacy-policy')}
+        onPress={() => openExternal('https://www.termsfeed.com/live/4889a318-ae78-48e2-975d-2eddfe043866')}
       >
         <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 199, 89, 0.15)' }]}>
           <Shield size={20} color="#34C759" />

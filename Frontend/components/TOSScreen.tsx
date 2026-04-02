@@ -88,14 +88,14 @@ export function TOSScreen({ clerkId, onAccepted }: TOSScreenProps) {
             By proceeding, you acknowledge that you have read and agree to our{' '}
             <Text 
               style={{ color: COLORS.primary, fontWeight: '700' }} 
-              onPress={() => Linking.openURL('https://maroonschedules.com/terms')}
+              onPress={() => Linking.openURL('https://www.termsfeed.com/live/2fc33440-a5a9-4943-a1da-d3c5d5abc1e5')}
             >
               Terms of Service
             </Text>
             {' '}and{' '}
             <Text 
               style={{ color: COLORS.primary, fontWeight: '700' }} 
-              onPress={() => Linking.openURL('https://maroonschedules.com/privacy-policy')}
+              onPress={() => Linking.openURL('https://www.termsfeed.com/live/4889a318-ae78-48e2-975d-2eddfe043866')}
             >
               Privacy Policy
             </Text>
