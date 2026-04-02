@@ -210,6 +210,12 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     };
   });
 
+  const animatedBoxStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ translateX: boxTranslateX.value }]
+    };
+  });
+
   const value = React.useMemo(() => ({
     startTour,
     endTour,
@@ -271,8 +277,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
                 ...(currentDef?.position === 'top' ? { top: 60 } :
                   currentDef?.position === 'bottom' ? { bottom: 40 } :
                     targetRect && targetRect.y > height * 0.6 ? { top: 60 } : { bottom: 40 }),
-                transform: [{ translateX: boxTranslateX }]
-              }
+              },
+              animatedBoxStyle
             ]}
             pointerEvents="box-none"
           >

@@ -14,7 +14,7 @@ import psycopg
 from db_config import CONNECTION_PARAMS
 from repositories import course_repository, user_repository
 from routers.traffic import tracker
-from services import cache_service, campus_events_service, place_registry_service
+from services import cache_service, campus_events_service, place_registry_service, campus_places_service
 
 HOWDY_URL = "https://howdy.tamu.edu/main/home/card-view"
 DINING_URL = "https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx"
@@ -269,6 +269,85 @@ def _ensure_social_tables(conn: psycopg.Connection | None = None) -> None:
                         captured_at TIMESTAMPTZ DEFAULT NOW(),
                         updated_at TIMESTAMPTZ DEFAULT NOW(),
                         PRIMARY KEY (clerk_id, system_id)
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS place_reviews (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        place_id TEXT NOT NULL,
+                        user_id TEXT NOT NULL,
+                        user_name TEXT,
+                        user_image TEXT,
+                        rating INTEGER,
+                        title TEXT,
+                        body TEXT,
+                        images TEXT[] DEFAULT '{}',
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ DEFAULT NOW(),
+                        is_anonymous BOOLEAN DEFAULT FALSE
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS crowdping_posts (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        user_id TEXT NOT NULL,
+                        user_name TEXT,
+                        user_image TEXT,
+                        content TEXT,
+                        lat DOUBLE PRECISION,
+                        lng DOUBLE PRECISION,
+                        location_tag TEXT,
+                        event_id TEXT,
+                        images TEXT[] DEFAULT '{}',
+                        is_anonymous BOOLEAN DEFAULT FALSE,
+                        visibility TEXT DEFAULT 'public',
+                        post_type TEXT DEFAULT 'post',
+                        custom_data JSONB DEFAULT '{}'::jsonb,
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS post_interactions (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        post_id TEXT NOT NULL,
+                        post_type TEXT NOT NULL,
+                        user_id TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        comment_text TEXT,
+                        user_name TEXT,
+                        user_image TEXT,
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS blocked_users (
+                        blocker_id TEXT NOT NULL,
+                        blocked_id TEXT NOT NULL,
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        PRIMARY KEY (blocker_id, blocked_id)
+                    )
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS content_reports (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        reporter_clerk_id TEXT NOT NULL,
+                        reportee_clerk_id TEXT NOT NULL,
+                        post_type TEXT,
+                        post_id TEXT,
+                        place_id TEXT,
+                        reason TEXT,
+                        comment TEXT,
+                        created_at TIMESTAMPTZ DEFAULT NOW()
                     )
                     """
                 )
