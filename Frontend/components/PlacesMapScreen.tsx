@@ -690,6 +690,7 @@ export function PlacesMapScreen() {
 
   const openHotspotPlace = useCallback((hotspot: CampusHotspot) => {
     if (!hotspot.place) {
+      // No resolved CampusLocation — just center the camera on the hotspot coordinates
       if (mapRef.current) {
         mapRef.current.animateCamera(
           {
@@ -707,8 +708,21 @@ export function PlacesMapScreen() {
       return;
     }
 
-    setActiveLayer(getLayerForPlace(hotspot.place));
-    handleSelectLocation(hotspot.place);
+    try {
+      setActiveLayer(getLayerForPlace(hotspot.place));
+      handleSelectLocation(hotspot.place);
+    } catch (err) {
+      console.warn('[Pulse] openHotspotPlace error, falling back to camera', err);
+      mapRef.current?.animateCamera(
+        {
+          center: { latitude: hotspot.coord.lat, longitude: hotspot.coord.lng },
+          zoom: 16.4,
+          pitch: isMapTilted ? 55 : 0,
+          heading: 0,
+        },
+        { duration: 650 },
+      );
+    }
   }, [getLayerForPlace, handleSelectLocation, isMapTilted]);
 
   const openHotspotItem = useCallback(async (

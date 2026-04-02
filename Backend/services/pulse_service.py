@@ -4,7 +4,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Tuple
 
 from routers.traffic import tracker
-from services import cache_service, ping_service, place_registry_service
+from services import cache_service, place_registry_service
+from repositories import feed_repository
 
 
 HOT_COLOR = "#FF6B57"
@@ -135,7 +136,9 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
     if cached is not None:
         return cached
 
-    pings = ping_service.get_campus_ping_activities(limit=80)
+    pings = feed_repository.get_crowdping_feed(limit=80)
+    post_ids = [p["id"] for p in pings]
+    interactions = feed_repository.get_batch_interaction_counts(post_ids) if post_ids else {}
     occupancy_by_place = _load_occupancy_by_place()
 
     grouped: Dict[str, Dict[str, Any]] = {}
@@ -155,18 +158,34 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
         return grouped[place_id]
 
     for ping in pings:
-        custom = ping.get("custom") or {}
-        place_id = custom.get("place_id")
+        ping_id = ping["id"]
+        custom = ping.get("custom_data") or {}
+
+        # Resolve place_id: check custom_data first, then try location_tag fallback
+        place_id = custom.get("place_id") or None
+        location_tag = ping.get("location_tag") or ""
+        lat = ping.get("lat")
+        lng = ping.get("lng")
+
+        if not place_id and location_tag:
+            resolved = place_registry_service.resolve_place(location_tag, lat, lng)
+            if resolved:
+                place_id = resolved["place_id"]
+
         if not place_id:
             continue
+
         place = place_registry_service.get_place_by_id(place_id)
         if not place:
             continue
 
-        category = str(custom.get("ping_category") or "Popup")
-        start_at = str(custom.get("start_at") or ping.get("time") or datetime.now(timezone.utc).isoformat())
-        like_count = int((ping.get("reaction_counts") or {}).get("like") or ping.get("reaction_count") or 0)
-        comment_count = int((ping.get("reaction_counts") or {}).get("comment") or 0)
+        category = str(custom.get("ping_category") or ping.get("post_type") or "Popup")
+        start_at = str(custom.get("start_at") or ping.get("created_at") or datetime.now(timezone.utc).isoformat())
+
+        counts = interactions.get(ping_id, {})
+        like_count = int(counts.get("like") or counts.get("upvote") or 0)
+        comment_count = int(counts.get("comment") or 0)
+
         weight = (
             14 * _recency_weight(start_at)
             + min(6, like_count * 0.8)
@@ -180,10 +199,10 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
         group["categoryWeights"][category] = group["categoryWeights"].get(category, 0) + weight
         group["items"].append(
             {
-                "id": ping.get("id") or f"ping:{place_id}:{len(group['items'])}",
+                "id": ping_id,
                 "source": "ping",
-                "title": custom.get("ping_title") or "Campus Ping",
-                "subtitle": custom.get("user_name") or "Aggie",
+                "title": custom.get("ping_title") or ping.get("content") or "Campus Ping",
+                "subtitle": custom.get("user_name") or ping.get("user_name") or "Aggie",
                 "category": category,
                 "timeLabel": _format_time_label(start_at),
                 "startAt": start_at,
@@ -194,9 +213,9 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
     hotspots: List[Dict[str, Any]] = []
     for place_id, group in grouped.items():
         percent_full = occupancy_by_place.get(place_id)
-        occupancy_boost = min(14, (percent_full - 35) * 0.22) if percent_full is not None and percent_full > 35 else 0
+        occupancy_boost = min(14, (percent_full - 15) * 0.18) if percent_full is not None and percent_full > 15 else 0
         score = round(group["score"] + occupancy_boost)
-        if score < 16:
+        if score < 8:
             continue
 
         dominant_category = sorted(
