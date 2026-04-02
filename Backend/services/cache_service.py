@@ -13,6 +13,11 @@ except Exception:  # pragma: no cover - optional dependency
 
 
 REDIS_URL = os.environ.get("REDIS_URL", "").strip()
+REDIS_HOST = os.environ.get("REDIS_HOST", "").strip()
+REDIS_PORT = os.environ.get("REDIS_PORT", "").strip()
+REDIS_USERNAME = os.environ.get("REDIS_USERNAME", "default").strip()
+REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", "").strip()
+REDIS_SSL = os.environ.get("REDIS_SSL", "true").strip().lower() not in {"0", "false", "no"}
 
 
 @dataclass
@@ -23,27 +28,69 @@ class _MemoryEntry:
 
 _MEMORY_CACHE: dict[str, _MemoryEntry] = {}
 _REDIS_CLIENT: redis.Redis | None = None
+_REDIS_STATUS_LOGGED = False
+_CACHE_LOGGED_KEYS: set[str] = set()
 
 
 def _get_client() -> redis.Redis | None:
     global _REDIS_CLIENT
-    if not REDIS_URL or redis is None:
+    global _REDIS_STATUS_LOGGED
+    if redis is None:
+        if not _REDIS_STATUS_LOGGED:
+            print("[cache] Redis unavailable: package not installed, using in-memory fallback")
+            _REDIS_STATUS_LOGGED = True
         return None
     if _REDIS_CLIENT is None:
+        normalized_url = _build_redis_url()
+        if not normalized_url:
+            if not _REDIS_STATUS_LOGGED:
+                print("[cache] Redis unavailable: no REDIS_URL or host credentials, using in-memory fallback")
+                _REDIS_STATUS_LOGGED = True
+            return None
+        try:
+            _REDIS_CLIENT = redis.from_url(normalized_url, decode_responses=True)
+            _REDIS_CLIENT.ping()
+            if not _REDIS_STATUS_LOGGED:
+                print("[cache] Redis connected")
+                _REDIS_STATUS_LOGGED = True
+        except Exception as exc:
+            if not _REDIS_STATUS_LOGGED:
+                print(f"[cache] Redis unavailable: {exc}; using in-memory fallback")
+                _REDIS_STATUS_LOGGED = True
+            _REDIS_CLIENT = None
+    return _REDIS_CLIENT
+
+
+def _build_redis_url() -> str | None:
+    if REDIS_URL:
         normalized_url = REDIS_URL
         if "://" not in normalized_url:
             normalized_url = f"rediss://{normalized_url}"
-        _REDIS_CLIENT = redis.from_url(normalized_url, decode_responses=True)
-    return _REDIS_CLIENT
+        return normalized_url
+
+    if REDIS_HOST and REDIS_PORT and REDIS_PASSWORD:
+        scheme = "rediss" if REDIS_SSL else "redis"
+        return f"{scheme}://{REDIS_USERNAME}:{REDIS_PASSWORD}@{REDIS_HOST}:{REDIS_PORT}"
+
+    return None
 
 
 def _memory_get(key: str) -> Any | None:
     entry = _MEMORY_CACHE.get(key)
     if not entry:
+        if key not in _CACHE_LOGGED_KEYS:
+            print(f"[cache] miss (memory): {key}")
+            _CACHE_LOGGED_KEYS.add(key)
         return None
     if entry.expires_at is not None and time.time() > entry.expires_at:
         _MEMORY_CACHE.pop(key, None)
+        if key not in _CACHE_LOGGED_KEYS:
+            print(f"[cache] expired (memory): {key}")
+            _CACHE_LOGGED_KEYS.add(key)
         return None
+    if key not in _CACHE_LOGGED_KEYS:
+        print(f"[cache] hit (memory): {key}")
+        _CACHE_LOGGED_KEYS.add(key)
     return entry.value
 
 
@@ -58,7 +105,13 @@ def get_json(key: str) -> Any | None:
         try:
             payload = client.get(key)
             if payload is None:
+                if key not in _CACHE_LOGGED_KEYS:
+                    print(f"[cache] miss (redis): {key}")
+                    _CACHE_LOGGED_KEYS.add(key)
                 return None
+            if key not in _CACHE_LOGGED_KEYS:
+                print(f"[cache] hit (redis): {key}")
+                _CACHE_LOGGED_KEYS.add(key)
             return json.loads(payload)
         except Exception:
             pass
