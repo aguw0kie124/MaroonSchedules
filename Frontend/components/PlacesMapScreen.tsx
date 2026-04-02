@@ -1396,7 +1396,10 @@ export function PlacesMapScreen() {
       </MapView>
 
       {/* Top UI Floating Elements */}
-      <View style={[styles.topContainer, { top: 54, alignItems: "center" }]}>
+      <View
+        pointerEvents="box-none"
+        style={[styles.topContainer, { top: 54, alignItems: "center" }]}
+      >
         <FloatingSearchBar
           styles={styles}
           COLORS={COLORS}
