@@ -37,6 +37,7 @@ async def start_background_snapshot_jobs():
 @app.on_event("shutdown")
 async def stop_background_snapshot_jobs():
     await snapshot_jobs.stop_snapshot_jobs(getattr(app.state, "snapshot_job_tasks", []))
+    cache_service.close_client()
 
 app.add_middleware(
     CORSMiddleware,

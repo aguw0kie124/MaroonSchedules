@@ -19,6 +19,9 @@ REDIS_PORT = os.environ.get("REDIS_PORT", "").strip()
 REDIS_USERNAME = os.environ.get("REDIS_USERNAME", "default").strip()
 REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", "").strip()
 REDIS_SSL = os.environ.get("REDIS_SSL", "true").strip().lower() not in {"0", "false", "no"}
+REDIS_MAX_CONNECTIONS = max(1, int(os.environ.get("REDIS_MAX_CONNECTIONS", "4")))
+REDIS_SOCKET_CONNECT_TIMEOUT = max(1.0, float(os.environ.get("REDIS_SOCKET_CONNECT_TIMEOUT", "3")))
+REDIS_SOCKET_TIMEOUT = max(1.0, float(os.environ.get("REDIS_SOCKET_TIMEOUT", "3")))
 MEMORY_CACHE_MAX_ENTRIES = max(32, int(os.environ.get("MEMORY_CACHE_MAX_ENTRIES", "256")))
 
 
@@ -50,10 +53,17 @@ def _get_client() -> redis.Redis | None:
                 _REDIS_STATUS_LOGGED = True
             return None
         try:
-            _REDIS_CLIENT = redis.from_url(normalized_url, decode_responses=True)
+            _REDIS_CLIENT = redis.from_url(
+                normalized_url,
+                decode_responses=True,
+                max_connections=REDIS_MAX_CONNECTIONS,
+                socket_connect_timeout=REDIS_SOCKET_CONNECT_TIMEOUT,
+                socket_timeout=REDIS_SOCKET_TIMEOUT,
+                health_check_interval=30,
+            )
             _REDIS_CLIENT.ping()
             if not _REDIS_STATUS_LOGGED:
-                print("[cache] Redis connected")
+                print(f"[cache] Redis connected (max_connections={REDIS_MAX_CONNECTIONS})")
                 _REDIS_STATUS_LOGGED = True
         except Exception as exc:
             if not _REDIS_STATUS_LOGGED:
@@ -61,6 +71,21 @@ def _get_client() -> redis.Redis | None:
                 _REDIS_STATUS_LOGGED = True
             _REDIS_CLIENT = None
     return _REDIS_CLIENT
+
+
+def close_client() -> None:
+    global _REDIS_CLIENT
+    if _REDIS_CLIENT is None:
+        return
+    try:
+        _REDIS_CLIENT.close()
+    except Exception:
+        pass
+    try:
+        _REDIS_CLIENT.connection_pool.disconnect()
+    except Exception:
+        pass
+    _REDIS_CLIENT = None
 
 
 def _build_redis_url() -> str | None:
