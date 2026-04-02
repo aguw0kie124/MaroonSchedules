@@ -191,11 +191,21 @@ def view_courses(user_id: str):
     from repositories import course_repository
     schedules = user_service.get_schedules(user_id)
 
-    # Expand section details for frontend display
+    # 1. Collect all unique section IDs from all schedules
+    all_sec_ids = set()
+    for sched in schedules:
+        for sec_id in sched.get("section_ids", []):
+            all_sec_ids.add(sec_id)
+            
+    # 2. Batch resolve all section metadata in ONE call
+    resolved_sections = course_repository.get_sections_by_ids(list(all_sec_ids))
+    sec_map = {str(s.get("id")): s for s in resolved_sections}
+
+    # 3. Map metadata back to the schedules
     for sched in schedules:
         expanded_sections = []
         for sec_id in sched.get("section_ids", []):
-            sec_metadata = course_repository.get_section_by_id(sec_id)
+            sec_metadata = sec_map.get(sec_id)
             if sec_metadata:
                 expanded_sections.append(sec_metadata)
             else:

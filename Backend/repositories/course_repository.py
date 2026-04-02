@@ -1,5 +1,10 @@
 import requests
-from typing import List, Optional
+import psycopg
+import json
+import gzip
+from datetime import datetime
+from db_config import CONNECTION_PARAMS
+from typing import List, Optional, Dict
 
 API_BASE = "https://api-aggiesbp.servehttp.com"
 CURRENT_TERM = "202611"  # Spring 2026 (College Station)
@@ -70,12 +75,18 @@ def _fetch_sections_for_course(course_code: str, term: str = CURRENT_TERM) -> Li
         url = f"{API_BASE}/sections/{term}/course/{clean_code}"
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()
-        return resp.json()
+        sections = resp.json()
+        
+        # Save results to DB cache for future lookups
+        for s in sections:
+            _save_section_to_db_cache(s)
+            
+        return sections
     except Exception as e:
         print(f"Error fetching sections for {course_code}: {e}")
         return []
 
-def _fetch_sections_paginated(term: str = CURRENT_TERM, limit: int = 100) -> List[dict]:
+def _fetch_sections_slice(term: str = CURRENT_TERM, limit: int = 100) -> List[dict]:
     """
     Fallback to fetch a small slice of sections for a term.
     Avoids 100k records to prevent OOM.
@@ -88,6 +99,107 @@ def _fetch_sections_paginated(term: str = CURRENT_TERM, limit: int = 100) -> Lis
     except Exception as e:
         print(f"Error fetching sections slice: {e}")
         return []
+
+def _get_sections_from_db_cache(section_ids: List[str]) -> Dict[str, dict]:
+    if not section_ids: return {}
+    try:
+        with psycopg.connect(CONNECTION_PARAMS) as conn:
+            with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+                placeholders = ", ".join(["%s"] * len(section_ids))
+                cur.execute(f"SELECT section_id, data FROM section_cache WHERE section_id IN ({placeholders})", section_ids)
+                rows = cur.fetchall()
+                return {row["section_id"]: row["data"] for row in rows}
+    except Exception as e:
+        print(f"Error reading section cache: {e}")
+    return {}
+
+def _get_section_from_db_cache(section_id: str) -> Optional[dict]:
+    res = _get_sections_from_db_cache([section_id])
+    return res.get(section_id)
+
+def _save_sections_to_db_cache(sections: List[dict]) -> None:
+    if not sections: return
+    try:
+        with psycopg.connect(CONNECTION_PARAMS) as conn:
+            with conn.cursor() as cur:
+                for section in sections:
+                    s_id = section.get("id")
+                    if not s_id: continue
+                    cur.execute(
+                        """
+                        INSERT INTO section_cache (section_id, term_code, crn, course_id, data)
+                        VALUES (%s, %s, %s, %s, %s)
+                        ON CONFLICT (section_id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+                        """,
+                        (
+                            s_id, 
+                            section.get("termCode"), 
+                            section.get("crn"),
+                            str(section.get("dept", "")) + str(section.get("courseNumber", "")),
+                            json.dumps(section)
+                        )
+                    )
+            conn.commit()
+    except Exception as e:
+        print(f"Error saving sections to cache: {e}")
+
+def _save_section_to_db_cache(section: dict) -> None:
+    _save_sections_to_db_cache([section])
+
+def _search_sections_in_api_stream(section_ids: List[str], term: str) -> List[dict]:
+    """
+    Memory-safe streaming search for multiple section IDs in a single pass.
+    """
+    if not section_ids: return []
+    target_ids = set(section_ids)
+    found_sections = []
+    
+    try:
+        print(f"Streaming search for {len(section_ids)} sections in {term}...")
+        url = f"{API_BASE}/sections/{term}?limit=100000"
+        # We explicitly request gzip but let requests/urllib3 handle decompression via stream=True
+        with requests.get(url, stream=True, timeout=60) as r:
+            r.raise_for_status()
+            
+            import ijson
+            # r.raw.decode_content = True enables automatic decompression 
+            # in the underlying urllib3 stream used by requests.
+            r.raw.decode_content = True
+            
+            try:
+                parser = ijson.items(r.raw, 'item')
+                for item in parser:
+                    s_id = str(item.get("id"))
+                    s_crn = str(item.get("crn"))
+                    
+                    if s_id in target_ids or s_crn in target_ids:
+                        found_sections.append(item)
+                        if s_id in target_ids: target_ids.remove(s_id)
+                        if s_crn in target_ids: target_ids.remove(s_crn)
+                        
+                        if not target_ids:
+                            break
+            except Exception as e:
+                print(f"Error parsing JSON stream for {term}: {e}. Retrying with manual chunks...")
+                # Fallback to manual chunk processing if ijson fails
+                pass
+                        
+        if found_sections:
+            _save_sections_to_db_cache(found_sections)
+        else:
+            print(f"No sections found in stream for {term} after scanning.")
+                        
+        if found_sections:
+            _save_sections_to_db_cache(found_sections)
+                
+    except Exception as e:
+        print(f"Error in batch streaming search: {e}")
+        
+    return found_sections
+
+def _search_section_in_api_stream(section_id: str, term: str) -> Optional[dict]:
+    res = _search_sections_in_api_stream([section_id], term)
+    return res[0] if res else None
 
 def _fetch_professors() -> List[dict]:
     global _professors_cache
@@ -207,48 +319,82 @@ def get_sections_for_course(course_id: str) -> List[dict]:
     results = sorted(list(unique_sections.values()), key=lambda x: str(x.get("sectionNumber", "") or x.get("section", "")))
     return results
 
-def get_section_by_id(section_id: str) -> Optional[dict]:
+def get_sections_by_ids(section_ids: List[str]) -> List[dict]:
     """
-    Fetches a single section. Since there is no direct ID API, 
-    we extract context (term/course) from the ID if possible.
+    Resolves a batch of sections efficiently.
+    Uses DB cache first, then a single streaming pass for missing ones.
     """
-    term = CURRENT_TERM
-    if "_" in section_id:
-        term = section_id.split("_")[0]
-        
-    # Attempt to find which course this section belongs to
-    # We can use the courses cache (small) to find a match if we have to,
-    # but usually we can try to fetch a slice or use CRN if the ID format is TERM_CRN
+    if not section_ids: return []
     
-    # Try fetching a small slice first if it's a cold lookup
-    sections = _fetch_sections_paginated(term, limit=500)
+    # 1. Fetch from DB cache
+    results_map = _get_sections_from_db_cache(section_ids)
     
+    missing_ids = [s_id for s_id in section_ids if s_id not in results_map]
+    if missing_ids:
+        # 2. Resolve missing via optimized single-stream
+        term_groups = {}
+        for m_id in missing_ids:
+            # Term code is usually the first 6 digits, e.g. 202531 from 202531_46760
+            term = CURRENT_TERM
+            if "_" in m_id:
+                parts = m_id.split("_")
+                if len(parts[0]) == 6 and parts[0].isdigit():
+                    term = parts[0]
+            term_groups.setdefault(term, []).append(m_id)
+            
+        for term, ids in term_groups.items():
+            found = _search_sections_in_api_stream(ids, term)
+            for f in found:
+                results_map[str(f.get("id"))] = f
+                results_map[str(f.get("crn"))] = f
+                
+    # 3. Enrich and finalize
+    final_results = []
+    
+    # Metadata for enrichment (fetched once per batch)
     professors = _fetch_professors()
     prof_map = {}
     for p in professors:
         if "name" in p and p["name"]:
             s_name = _simplify_name(p["name"])
             prof_map[s_name] = p
-            
-    for s in sections:
-        if str(s.get("id")) == section_id:
-            # Attach professor ratings
-            for inst in s.get("instructors", []):
+
+    for s_id in section_ids:
+        s = results_map.get(s_id)
+        if not s: continue
+        
+        # Attach extras (if not already cached)
+        if "instructors" in s and not any("overall_rating" in i for i in s["instructors"]):
+            for inst in s["instructors"]:
                 if inst and "name" in inst:
                     s_inst_name = _simplify_name(inst["name"])
                     p_data = prof_map.get(s_inst_name)
                     if p_data:
                         inst["overall_rating"] = p_data.get("overall_rating")
                         inst["total_reviews"] = p_data.get("total_reviews")
-            
-            # Attach prerequisites from parent course
+        
+        if "prerequisites" not in s:
             parent_course_id = str(s.get("course", "")) or (str(s.get("dept", "")) + str(s.get("courseNumber", "")))
             parent_course = get_course_by_id(parent_course_id)
             if parent_course and "prerequisites" in parent_course:
                 s["prerequisites"] = parent_course["prerequisites"]
+        
+        # Add friendly display names for the UI to prevent "ID formatted" titles
+        dn = f"{s.get('dept', '')} {s.get('courseNumber', '')}-{s.get('sectionNumber', '')}"
+        s["section_id_display"] = dn
+        s["formatted_title"] = dn
+        s["course_display"] = f"{s.get('dept', '')} {s.get('courseNumber', '')}"
                 
-            return s
-            
+        final_results.append(s)
+        
+    return final_results
+
+def get_section_by_id(section_id: str) -> Optional[dict]:
+    res = get_sections_by_ids([section_id])
+    return res[0] if res else None
+        
+    # 3. Final fallback: guesswork
+    # (If we get here, the section is truly unknown)
     return None
 
 def search_sections(term: Optional[str] = None, course_code: Optional[str] = None) -> List[dict]:
@@ -257,7 +403,7 @@ def search_sections(term: Optional[str] = None, course_code: Optional[str] = Non
     """
     t = term or CURRENT_TERM
     if course_code:
-        return _fetch_sections_for_course(course_code, term=t)
+        return get_sections_for_course(course_code)
     
     # If no course code, we return a small sample relative to the term
-    return _fetch_sections_paginated(term=t, limit=50)
+    return _fetch_sections_slice(term=t, limit=50)
