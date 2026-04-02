@@ -13,7 +13,8 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useUser } from '@clerk/clerk-expo';
-import { ChevronLeft } from 'lucide-react-native';
+import { ChevronDown, ChevronLeft, ChevronUp } from 'lucide-react-native';
+
 import { Card, SectionLabel, Badge } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
@@ -79,6 +80,16 @@ export default function FullMenuScreen({ navigation, route }: any) {
   const [error, setError] = useState('');
   const [portionCounts, setPortionCounts] = useState<Record<string, { count: number; entryIds: number[] }>>({});
   const [syncingItemKey, setSyncingItemKey] = useState<string | null>(null);
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+
+  const toggleCategory = useCallback((categoryName: string) => {
+    setCollapsedCategories((current) => {
+      const next = new Set(current);
+      if (next.has(categoryName)) next.delete(categoryName);
+      else next.add(categoryName);
+      return next;
+    });
+  }, []);
 
   const load = useCallback(async (nextMealPeriod: DiningMealPeriod) => {
     if (!location) {
@@ -117,6 +128,8 @@ export default function FullMenuScreen({ navigation, route }: any) {
 
   useEffect(() => {
     load(activeMealPeriod);
+    // When meal period changes, clear collapsed categories to keep everything expanded
+    setCollapsedCategories(new Set());
   }, [activeMealPeriod, load]);
 
   useEffect(() => {
@@ -264,11 +277,29 @@ export default function FullMenuScreen({ navigation, route }: any) {
               </Card>
             )}
 
-            {(menu?.categories || []).map((category: any) => (
-              <Card key={category.name}>
-                <SectionLabel>{category.name}</SectionLabel>
-                {category.items.map((item: any) => (
-                  <View key={`${category.name}-${item.location || 'menu'}-${item.name}`} style={[s.itemRow, { borderBottomColor: T.border }]}>
+            {(menu?.categories || []).map((category: any) => {
+              const isCollapsed = collapsedCategories.has(category.name);
+              return (
+                <Card key={category.name} style={{ paddingHorizontal: 0 }}>
+                  <TouchableOpacity
+                    style={s.categoryHeader}
+                    onPress={() => toggleCategory(category.name)}
+                    activeOpacity={0.7}
+                  >
+                    <SectionLabel style={{ marginBottom: isCollapsed ? 0 : 16 }}>{category.name}</SectionLabel>
+                    {!isCollapsed ? (
+                      <ChevronUp size={16} color={T.amber} />
+                    ) : (
+                      <ChevronDown size={16} color={T.amber} />
+                    )}
+                  </TouchableOpacity>
+
+                  {!isCollapsed && (
+                    <View style={{ paddingHorizontal: 20 }}>
+                      {category.items.map((item: any) => (
+                        <View key={`${category.name}-${item.location || 'menu'}-${item.name}`} style={[s.itemRow, { borderBottomColor: T.border }]}>
+
+
                     <View style={{ flex: 1, paddingRight: 12 }}>
                       <Text style={[s.itemName, { color: T.text }]}>{item.name}</Text>
                       <Text style={[s.itemMeta, { color: T.text3 }]}>
@@ -307,9 +338,13 @@ export default function FullMenuScreen({ navigation, route }: any) {
                       </TouchableOpacity>
                     </View>
                   </View>
-                ))}
-              </Card>
-            ))}
+                      ))}
+                    </View>
+                  )}
+                </Card>
+              );
+            })}
+
           </>
         )}
       </ScrollView>
@@ -344,4 +379,12 @@ const s = StyleSheet.create({
   },
   actionSymbol: { fontSize: 20, fontWeight: '900', lineHeight: 22 },
   countText: { fontSize: 12, fontWeight: '800', minWidth: 22, textAlign: 'right' },
+  categoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 4,
+  },
 });
+

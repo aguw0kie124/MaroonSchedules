@@ -111,9 +111,9 @@ def get_json(key: str) -> Any | None:
         try:
             payload = client.get(key)
             if payload is None:
-                print(f"[cache] miss (redis): {key}")
+                print(f"[cache] MISS (Redis): {key}")
                 return _memory_get(key)
-            print(f"[cache] hit (redis): {key}")
+            print(f"[cache] HIT  (Redis): {key}")
             decoded = json.loads(payload)
             _memory_set(key, decoded, 30)
             return decoded
@@ -129,6 +129,7 @@ def set_json(key: str, value: Any, ttl_seconds: int) -> None:
     if client is not None:
         try:
             client.setex(key, max(1, int(ttl_seconds)), json.dumps(value, ensure_ascii=False))
+            print(f"[cache] SET  (Redis): {key} (TTL: {ttl_seconds}s)")
             return
         except Exception as exc:
             if _redis_write_failed_due_to_capacity(exc):

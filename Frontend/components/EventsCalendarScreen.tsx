@@ -38,10 +38,12 @@ import {
   Settings,
   Share2,
   Ticket,
+  Trash2,
   Trophy,
   Users,
   X as XIcon,
 } from 'lucide-react-native';
+
 
 import { API_URL } from '../config';
 import { TourTarget, useTour } from './onboarding/TourProvider';
@@ -355,7 +357,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const [events, setEvents] = useState<TAMUEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<EventsView>('discover');
+  const [view, setView] = useState<EventsView>('list');
+
   const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set());
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [searchQuery, setSearchQuery] = useState('');
@@ -658,12 +661,13 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     [clearDisliked, dislikedEventIds, events, removeIdsFromDisliked],
   );
 
-  const renderHeader = (title: string, subtitle?: string) => (
+  const renderHeader = (title: string) => (
+
       <View style={s.headerBlock}>
         <View style={s.headerTopRow}>
           <View style={{ flex: 1 }}>
             <Text style={s.pageTitle}>{title}</Text>
-            {!!subtitle && <Text style={s.pageSubtitle}>{subtitle}</Text>}
+
         </View>
         <Pressable style={s.headerIconButton} onPress={() => setView('inbox')}>
           <Inbox size={18} color={COLORS.textPrimary} />
@@ -718,7 +722,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     <View style={s.container}>
       {view === 'discover' && (
         <>
-          {renderHeader('Events', 'Campus plans that are actually worth opening.')}
+          {renderHeader('Events')}
+
 
           {loading ? (
             <View style={s.loadingWrap}>
@@ -855,7 +860,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
       {view === 'list' && (
         <>
-          {renderHeader('Events', 'Search, save, and share what is happening next.')}
+          {renderHeader('Events')}
+
           <View style={s.listSearchRow}>
             <View style={s.searchShell}>
               <Search size={18} color={COLORS.textTertiary} />
@@ -872,6 +878,25 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               <Filter size={18} color={COLORS.textPrimary} />
             </Pressable>
           </View>
+
+          <View style={[s.categoryWrap, { marginBottom: 16, marginTop: 4 }]}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.categoryCollapsedRow}
+            >
+              {ALL_CATEGORIES.map((category) => (
+                <CategoryChip
+                  key={category}
+                  category={category}
+                  count={categoryCounts[category] || 0}
+                  active={selectedCategories.has(category)}
+                  onPress={() => toggleCategory(category)}
+                />
+              ))}
+            </ScrollView>
+          </View>
+
 
           {loading ? (
             <View style={s.loadingWrap}>
@@ -900,9 +925,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                       }
                       setDetailEvent(item);
                     }}
-                    onSave={() => handleSaveToggle(item)}
+                    onDelete={() => dislikeEvent(String(item.id))}
                     onShare={() => handleShare(item)}
                     onSchedule={() => handleSchedule(item)}
+
                   />
                 );
                 return index === 0 ? (
@@ -1213,17 +1239,19 @@ function ListEventRow({
   saved,
   scheduled,
   onPress,
-  onSave,
+  onDelete,
   onShare,
   onSchedule,
 }: {
+
   event: TAMUEvent;
   saved: boolean;
   scheduled: boolean;
   onPress: () => void;
-  onSave: () => void;
+  onDelete: () => void;
   onShare: () => void;
   onSchedule: () => void;
+
 }) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
@@ -1263,9 +1291,10 @@ function ListEventRow({
         </Text>
       </View>
       <View style={stylesStatic.listActions}>
-        <Pressable onPress={onSave} style={stylesStatic.listActionButton}>
-          <Heart size={20} color={saved ? '#FF4D6D' : COLORS.textSecondary} fill={saved ? '#FF4D6D' : 'none'} />
+        <Pressable onPress={onDelete} style={stylesStatic.listActionButton}>
+          <Trash2 size={20} color={COLORS.textSecondary} />
         </Pressable>
+
         <Pressable onPress={onShare} style={stylesStatic.listActionButton}>
           <Share2 size={20} color={COLORS.textSecondary} />
         </Pressable>

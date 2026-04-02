@@ -15,7 +15,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <!-- CSRF Token -->
-    <meta name="csrf-token" content="6sxFbROmqnFPoETQ5s7k7SzokBeohuGwAcD3RVkN">
+    <meta name="csrf-token" content="etlGCK3QlcpkmHPUx9At8x4JSIV1L4aUlnTiw2Q5">
 
     <title>
                     Events | Division of Student Affairs | Get Involved
@@ -249,44 +249,6 @@
         </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-12">
-                                    <div class="rounded-tl-lg rounded-tr-lg sm:rounded-tr-none group relative bg-white focus-within:ring-2 focus-within:ring-inset focus-within:ring-indigo-500">
-                        <div>
-                            <div class="relative">
-                                                                    <img src="https://getinvolved.tamu.edu/storage/organizations/1342/images/l2lJourneycover.png" class="group-hover:opacity-75 aspect-video" alt="">
-                                                            </div>
-                        </div>
-                        <div class="flex flex-col mt-4">
-                            <h3 class="h4-2 !mb-0 line-clamp-2">
-                                <a href="https://getinvolved.tamu.edu/org/dsa/events/19254/486117" class="focus:outline-none hover:no-underline">
-                                    <span class="absolute inset-0" aria-hidden="true"></span>
-                                    L2L Workshop: Leading with Integrity: Values in Action
-                                </a>
-                            </h3>
-                            <div class="pb-2 order-first">
-                                <p class="text-sm2 uppercase font-semibold mb-0">Tue, Mar 31, 2026 4:00 pm</p>
-                                                                    <p class="text-sm2 uppercase font-semibold mb-0 line-clamp-1">Department of Multicultural Services</p>
-                                                                                            </div>
-                        </div>
-                    </div>
-                                    <div class="rounded-tl-lg rounded-tr-lg sm:rounded-tr-none group relative bg-white focus-within:ring-2 focus-within:ring-inset focus-within:ring-indigo-500">
-                        <div>
-                            <div class="relative">
-                                                                    <img src="https://getinvolved.tamu.edu/storage/organizations/774/images/Event_Template_7_-_Horizontal-2.png" class="group-hover:opacity-75 aspect-video" alt="">
-                                                            </div>
-                        </div>
-                        <div class="flex flex-col mt-4">
-                            <h3 class="h4-2 !mb-0 line-clamp-2">
-                                <a href="https://getinvolved.tamu.edu/org/dsa/events/18012/484461" class="focus:outline-none hover:no-underline">
-                                    <span class="absolute inset-0" aria-hidden="true"></span>
-                                    RHA General Assembly: Executive Session
-                                </a>
-                            </h3>
-                            <div class="pb-2 order-first">
-                                <p class="text-sm2 uppercase font-semibold mb-0">Tue, Mar 31, 2026 7:00 pm</p>
-                                                                    <p class="text-sm2 uppercase font-semibold mb-0 line-clamp-1">Residential Housing Association</p>
-                                                                                            </div>
-                        </div>
-                    </div>
                                     <div class="rounded-tl-lg rounded-tr-lg sm:rounded-tr-none group relative bg-white focus-within:ring-2 focus-within:ring-inset focus-within:ring-indigo-500">
                         <div>
                             <div class="relative">
@@ -735,7 +697,7 @@
                                             </dl>
                 </div>
                         <div class="mt-6 lg:mt-0">
-                <div wire:snapshot="{&quot;data&quot;:{&quot;organization&quot;:[[],{&quot;key&quot;:2591,&quot;class&quot;:&quot;App\\Models\\OrgManagement\\Organization&quot;,&quot;relations&quot;:[&quot;header_file&quot;,&quot;organization_attribute_values&quot;,&quot;logo_file&quot;,&quot;organization_attributes&quot;,&quot;links&quot;],&quot;s&quot;:&quot;elmdl&quot;}],&quot;organizationAttributes&quot;:[{&quot;open_house_event&quot;:&quot;9784&quot;,&quot;open_house_payment&quot;:&quot;PAID&quot;,&quot;open_house_type&quot;:&quot;Special Interest&quot;,&quot;open_house_unpaid&quot;:&quot;ORG-2591&quot;,&quot;org_about&quot;:&quot;&lt;p&gt;The Division of Student Affairs is a community of dedicated professionals who provide exceptional programs, services, and facilities that create a supportive campus environment where students feel a sense of community and have the opportunity to develop as leaders. Through a student-centered approach to engagement, learning, leadership development, and wellbeing, we instill a commitment to critical thinking, lifelong learning, and the &lt;a href=\&quot;https:\/\/www.tamu.edu\/about\/coreValues.html\&quot;&gt;&lt;strong&gt;Aggie Core Values&lt;\/strong&gt;&lt;\/a&gt;.&lt;\/p&gt;&quot;,&quot;org_site&quot;:&quot;College Station&quot;,&quot;primary_color&quot;:&quot;#500000&quot;,&quot;profile_contact_email&quot;:null,&quot;profile_contact_name&quot;:null,&quot;profile_contact_person_id&quot;:null,&quot;profile_contact_phone&quot;:null,&quot;profile_email&quot;:&quot;vpsa@tamu.edu&quot;,&quot;profile_mailing_address&quot;:null,&quot;profile_mailing_city&quot;:null,&quot;profile_mailing_state&quot;:null,&quot;profile_mailing_zip&quot;:null,&quot;profile_phone&quot;:&quot;979.845.4728&quot;,&quot;profile_web&quot;:&quot;https:\/\/studentaffairs.tamu.edu\/&quot;,&quot;share_event_participants&quot;:&quot;1&quot;,&quot;social_discord&quot;:null,&quot;social_facebook&quot;:&quot;https:\/\/www.facebook.com\/TAMUDSA\/&quot;,&quot;social_groupme&quot;:null,&quot;social_instagram&quot;:&quot;https:\/\/www.instagram.com\/tamudsa\/&quot;,&quot;social_linkedin&quot;:null,&quot;social_slack&quot;:null,&quot;social_twitter&quot;:&quot;https:\/\/twitter.com\/tamudsa&quot;,&quot;social_youtube&quot;:&quot;https:\/\/www.youtube.com\/channel\/UCEGtYNG90MN_1T0_6ehWCpw?view_as=subscriber&quot;},{&quot;class&quot;:&quot;Illuminate\\Support\\Collection&quot;,&quot;s&quot;:&quot;clctn&quot;}],&quot;person&quot;:null,&quot;destination&quot;:&quot;vpsa@tamu.edu&quot;,&quot;messageText&quot;:null,&quot;sent&quot;:false},&quot;memo&quot;:{&quot;id&quot;:&quot;o6yybrIsqJ1xx44Tzhnd&quot;,&quot;name&quot;:&quot;organizations.send-message&quot;,&quot;path&quot;:&quot;org\/dsa\/events&quot;,&quot;method&quot;:&quot;GET&quot;,&quot;release&quot;:&quot;a-a-a&quot;,&quot;children&quot;:[],&quot;scripts&quot;:[],&quot;assets&quot;:[],&quot;errors&quot;:[],&quot;locale&quot;:&quot;en&quot;},&quot;checksum&quot;:&quot;6dcb5adc88675fc4bfaab98b6c96e4d7757a484e47158a2ff9dd1f20aec4c2db&quot;}" wire:effects="[]" wire:id="o6yybrIsqJ1xx44Tzhnd">
+                <div wire:snapshot="{&quot;data&quot;:{&quot;organization&quot;:[[],{&quot;key&quot;:2591,&quot;class&quot;:&quot;App\\Models\\OrgManagement\\Organization&quot;,&quot;relations&quot;:[&quot;header_file&quot;,&quot;organization_attribute_values&quot;,&quot;logo_file&quot;,&quot;organization_attributes&quot;,&quot;links&quot;],&quot;s&quot;:&quot;elmdl&quot;}],&quot;organizationAttributes&quot;:[{&quot;open_house_event&quot;:&quot;9784&quot;,&quot;open_house_payment&quot;:&quot;PAID&quot;,&quot;open_house_type&quot;:&quot;Special Interest&quot;,&quot;open_house_unpaid&quot;:&quot;ORG-2591&quot;,&quot;org_about&quot;:&quot;&lt;p&gt;The Division of Student Affairs is a community of dedicated professionals who provide exceptional programs, services, and facilities that create a supportive campus environment where students feel a sense of community and have the opportunity to develop as leaders. Through a student-centered approach to engagement, learning, leadership development, and wellbeing, we instill a commitment to critical thinking, lifelong learning, and the &lt;a href=\&quot;https:\/\/www.tamu.edu\/about\/coreValues.html\&quot;&gt;&lt;strong&gt;Aggie Core Values&lt;\/strong&gt;&lt;\/a&gt;.&lt;\/p&gt;&quot;,&quot;org_site&quot;:&quot;College Station&quot;,&quot;primary_color&quot;:&quot;#500000&quot;,&quot;profile_contact_email&quot;:null,&quot;profile_contact_name&quot;:null,&quot;profile_contact_person_id&quot;:null,&quot;profile_contact_phone&quot;:null,&quot;profile_email&quot;:&quot;vpsa@tamu.edu&quot;,&quot;profile_mailing_address&quot;:null,&quot;profile_mailing_city&quot;:null,&quot;profile_mailing_state&quot;:null,&quot;profile_mailing_zip&quot;:null,&quot;profile_phone&quot;:&quot;979.845.4728&quot;,&quot;profile_web&quot;:&quot;https:\/\/studentaffairs.tamu.edu\/&quot;,&quot;share_event_participants&quot;:&quot;1&quot;,&quot;social_discord&quot;:null,&quot;social_facebook&quot;:&quot;https:\/\/www.facebook.com\/TAMUDSA\/&quot;,&quot;social_groupme&quot;:null,&quot;social_instagram&quot;:&quot;https:\/\/www.instagram.com\/tamudsa\/&quot;,&quot;social_linkedin&quot;:null,&quot;social_slack&quot;:null,&quot;social_twitter&quot;:&quot;https:\/\/twitter.com\/tamudsa&quot;,&quot;social_youtube&quot;:&quot;https:\/\/www.youtube.com\/channel\/UCEGtYNG90MN_1T0_6ehWCpw?view_as=subscriber&quot;},{&quot;class&quot;:&quot;Illuminate\\Support\\Collection&quot;,&quot;s&quot;:&quot;clctn&quot;}],&quot;person&quot;:null,&quot;destination&quot;:&quot;vpsa@tamu.edu&quot;,&quot;messageText&quot;:null,&quot;sent&quot;:false},&quot;memo&quot;:{&quot;id&quot;:&quot;08ivwFomXsA9G9Vgzpwy&quot;,&quot;name&quot;:&quot;organizations.send-message&quot;,&quot;path&quot;:&quot;org\/dsa\/events&quot;,&quot;method&quot;:&quot;GET&quot;,&quot;release&quot;:&quot;a-a-a&quot;,&quot;children&quot;:[],&quot;scripts&quot;:[],&quot;assets&quot;:[],&quot;errors&quot;:[],&quot;locale&quot;:&quot;en&quot;},&quot;checksum&quot;:&quot;8e1e3ad6c991b0e8dca25b357fd4ed243fdc9014a2359df362d60cb66e94a1aa&quot;}" wire:effects="[]" wire:id="08ivwFomXsA9G9Vgzpwy">
     <!--[if BLOCK]><![endif]-->        <h2 class="block leading-6 !mb-4 !text-3xl2 font-semibold !mb-4 text-white">Message this organization</h2>
         <div class="grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">
             <!--[if BLOCK]><![endif]-->                <p class="block text-base2 font-semibold leading-6 sm:col-span-2 text-white">
@@ -777,6 +739,6 @@
 
 
 
-    <script src="https://getinvolved.tamu.edu/vendor/livewire/livewire.min.js?id=0f6341c0"   data-csrf="6sxFbROmqnFPoETQ5s7k7SzokBeohuGwAcD3RVkN" data-update-uri="/livewire/update" data-navigate-once="true"></script>
+    <script src="https://getinvolved.tamu.edu/vendor/livewire/livewire.min.js?id=0f6341c0"   data-csrf="etlGCK3QlcpkmHPUx9At8x4JSIV1L4aUlnTiw2Q5" data-update-uri="/livewire/update" data-navigate-once="true"></script>
 </body>
 </html>

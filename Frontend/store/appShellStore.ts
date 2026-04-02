@@ -15,7 +15,7 @@ export type PlacesPillId =
   | 'Academic'
   | 'Heatmap';
 export type ParkingPermit = 'visitor' | 'garage' | 'any_valid' | 'west_campus' | 'resident';
-export type SettingsTabId = 'personal' | 'layout' | 'resources';
+export type SettingsTabId = 'personal' | 'layout' | 'blocked' | 'resources';
 export type TabBarMode = 'floating' | 'solid';
 
 export interface ToggleLayoutItem<T extends string> {
@@ -115,7 +115,7 @@ function isPermit(value: unknown): value is ParkingPermit {
 }
 
 function isSettingsTabId(value: unknown): value is SettingsTabId {
-  return value === 'personal' || value === 'layout' || value === 'resources';
+  return value === 'personal' || value === 'layout' || value === 'blocked' || value === 'resources';
 }
 
 function isTabBarMode(value: unknown): value is TabBarMode {

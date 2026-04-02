@@ -135,6 +135,17 @@ def _safe_parse_dt(value: Any) -> Optional[datetime]:
         return None
 
 
+def _coerce_str_list(value: Any) -> List[str]:
+    """Coerce arbitrary values into a cleaned string list."""
+    if not value:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    return [str(value).strip()]
+
+
 def normalize_event(
     raw: Dict[str, Any],
     source_priority: str = "medium",
@@ -173,13 +184,17 @@ def normalize_event(
     host_type = raw.get("host_type", "unknown")
 
     # --- Department mapping ---
-    dept_code, dept_name, inferred_host_type = map_department(
-        source_name=raw.get("source_name"),
-        host_name=raw.get("host_name"),
-        location=raw.get("location"),
-        title=raw.get("title"),
-        description=raw.get("description"),
-    )
+    dept_code = raw.get("department_code")
+    dept_name = raw.get("department_name")
+    inferred_host_type = None
+    if not dept_code and not dept_name:
+        dept_code, dept_name, inferred_host_type = map_department(
+            source_name=raw.get("source_name"),
+            host_name=raw.get("host_name"),
+            location=raw.get("location"),
+            title=raw.get("title"),
+            description=raw.get("description"),
+        )
     # Use inferred host_type if the raw one is unknown
     if host_type == "unknown" and inferred_host_type:
         host_type = inferred_host_type
@@ -261,6 +276,12 @@ def normalize_event(
             event_url=raw.get("event_url"),
             discovered_via=raw.get("discovered_via"),
             crawl_path=raw.get("crawl_path", []),
+            registration_start=_safe_parse_dt(raw.get("registration_start")),
+            registration_end=_safe_parse_dt(raw.get("registration_end")),
+            registration_status=raw.get("registration_status"),
+            seats_available=raw.get("seats_available"),
+            seats_total=raw.get("seats_total"),
+            prerequisites=_coerce_str_list(raw.get("prerequisites")),
             tags=raw.get("tags", []),
             has_food=has_food,
             food_confidence=food_confidence,

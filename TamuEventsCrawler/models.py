@@ -44,10 +44,15 @@ class SourceConfig(BaseModel):
     url: Optional[str] = None
     urls: List[str] = Field(default_factory=list)  # Multi-URL sources
     queries: List[str] = Field(default_factory=list)  # Search query terms
+    base_urls: List[str] = Field(default_factory=list)
     base_url: Optional[str] = None
     page_pattern: Optional[str] = None
     max_pages: int = 1
     parser: Optional[str] = None
+    detail_pattern: Optional[str] = None
+    detail_parser: Optional[str] = None
+    filters: Dict[str, Any] = Field(default_factory=dict)
+    department_map: Dict[str, str] = Field(default_factory=dict)
     priority: SourcePriority = SourcePriority.MEDIUM
     campus_filter: str = "college_station"
     max_depth: int = 2  # Link-following depth from this source
@@ -95,6 +100,12 @@ class Event(BaseModel):
     event_url: Optional[str] = None
     discovered_via: Optional[str] = None
     crawl_path: List[str] = Field(default_factory=list)
+    registration_start: Optional[datetime] = None
+    registration_end: Optional[datetime] = None
+    registration_status: Optional[str] = None
+    seats_available: Optional[int] = None
+    seats_total: Optional[int] = None
+    prerequisites: List[str] = Field(default_factory=list)
 
     # --- Tags & audience ---
     tags: List[str] = Field(default_factory=list)

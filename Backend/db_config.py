@@ -11,8 +11,6 @@ load_dotenv(ROOT_DIR / ".env", override=False)
 load_dotenv(BACKEND_DIR / ".env", override=False)
 
 
-
-
 DB_HOST = os.getenv("DB_HOST")
 DB_NAME = os.getenv("DB_NAME", "maroon_schedules")
 DB_USER = os.getenv("DB_USER", "dev_rian")

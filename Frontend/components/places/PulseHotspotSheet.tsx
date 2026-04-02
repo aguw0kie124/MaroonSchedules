@@ -50,7 +50,6 @@ export function PulseHotspotSheet({
               <Text style={styles.pulseSheetPreviewLabel}>{hotspot.previewLabel}</Text>
             </View>
             <Text style={styles.pulseSheetTitle}>{hotspot.locationName}</Text>
-            <Text style={styles.pulseSheetSummary}>{hotspot.summary}</Text>
           </View>
 
           <Pressable style={styles.pulseSheetCloseButton} onPress={onClose}>
@@ -58,34 +57,8 @@ export function PulseHotspotSheet({
           </Pressable>
         </View>
 
-        <View style={styles.pulseSheetStatsRow}>
-          <View style={styles.pulseSheetStatCard}>
-            <TrendingUp size={15} color={hotspot.pulseColor} />
-            <Text style={styles.pulseSheetStatValue}>{hotspot.score}</Text>
-            <Text style={styles.pulseSheetStatLabel}>Pulse</Text>
-          </View>
-          <View style={styles.pulseSheetStatCard}>
-            <CalendarDays size={15} color={COLORS.textPrimary} />
-            <Text style={styles.pulseSheetStatValue}>
-              {hotspot.eventCount}
-            </Text>
-            <Text style={styles.pulseSheetStatLabel}>Events</Text>
-          </View>
-          <View style={styles.pulseSheetStatCard}>
-            <MapPin size={15} color={COLORS.textPrimary} />
-            <Text style={styles.pulseSheetStatValue}>
-              {hotspot.pingCount}
-            </Text>
-            <Text style={styles.pulseSheetStatLabel}>Pings</Text>
-          </View>
-        </View>
 
-        <View style={styles.pulseSheetActionsRow}>
-          <Pressable style={styles.pulseSheetPrimaryAction} onPress={() => onOpenPlace(hotspot)}>
-            <MapPin size={15} color="#FFFFFF" />
-            <Text style={styles.pulseSheetPrimaryActionText}>Open place</Text>
-          </Pressable>
-        </View>
+
 
         <View style={styles.pulseSheetSectionHeader}>
           <Text style={styles.pulseSheetSectionTitle}>What is happening here</Text>

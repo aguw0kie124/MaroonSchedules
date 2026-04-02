@@ -11,6 +11,7 @@ _REGISTRY: Dict[str, str] = {
     "html": "parsers.getinvolved:parse_getinvolved_events",
     "html_pagination": "parsers.getinvolved:parse_getinvolved_orgs",
     "html_search": "parsers.getinvolved:parse_getinvolved_search",
+    "html_dynamic_table": "parsers.ers:parse_ers_events_list",
 }
 
 

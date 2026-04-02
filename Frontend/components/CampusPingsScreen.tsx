@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import {
   ActivityIndicator,
@@ -13,6 +14,7 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableWithoutFeedback,
@@ -33,6 +35,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import {
+  ArrowBigDown,
+  ArrowBigUp,
   CalendarDays,
   ExternalLink,
   Flame,
@@ -41,8 +45,11 @@ import {
   Megaphone,
   MessageCircle,
   Pizza,
+  Flag,
+  MoreVertical,
   Plus,
   Search,
+  Shield,
   Sparkles,
   Trash2,
   Users,
@@ -58,13 +65,17 @@ import {
   addPing,
   connectFeedsUser,
   deletePing,
+  reportContent,
+  blockUser,
   getComments,
   getPingFeed,
   toggleLike,
+  toggleVote,
   uploadStreamImage,
 } from '../services/streamFeeds';
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
 import { TourTarget, useTour } from './onboarding/TourProvider';
+import { getPremiumName, getPremiumImage } from '../utils/userUtils';
 
 type PingCategory =
   | 'Free Food'
@@ -106,10 +117,10 @@ interface PingCard {
   userId?: string;
   userName: string;
   userImage?: string | null;
-  likeCount: number;
-  commentCount: number;
-  boostedByCurrentUser: boolean;
+  score: number;
+  ownVote: 'upvote' | 'downvote' | null;
   activityId?: string;
+  isAnonymous: boolean;
   sourceUrl?: string | null;
   locationLat?: number | null;
   locationLng?: number | null;
@@ -239,13 +250,13 @@ function mapActivityToPing(activity: any): PingCard {
     startAt: custom.start_at || activity.time || new Date().toISOString(),
     endAt: custom.end_at || null,
     createdAt: activity.time || activity.created_at || new Date().toISOString(),
-    userId: actor.id || activity.actor || '',
-    userName: actor.data?.name || custom.user_name || 'Aggie',
-    userImage: actor.data?.image || custom.user_image || null,
-    likeCount: activity.reaction_counts?.like || activity.reaction_count || 0,
-    commentCount: activity.reaction_counts?.comment || 0,
-    boostedByCurrentUser: (activity.own_reactions?.like || []).length > 0,
+    userId: (actor.id || activity.actor || '').replace('SU:', ''),
+    userName: custom.is_anonymous ? 'Aggie User' : (actor.name || actor.data?.name || custom.user_name || 'Aggie User'),
+    userImage: custom.is_anonymous ? null : (actor.image || actor.data?.image || custom.user_image || null),
+    score: activity.reaction_counts?.score || 0,
+    ownVote: (activity.own_reactions?.upvote || []).length > 0 ? 'upvote' : ((activity.own_reactions?.downvote || []).length > 0 ? 'downvote' : null),
     activityId: activity.id,
+    isAnonymous: !!custom.is_anonymous,
     sourceUrl: null,
     imageUrl: media.image_url || media.asset_url || null,
   };
@@ -315,14 +326,9 @@ export function CampusPingsScreen() {
   const [locationQuery, setLocationQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [composerImageUri, setComposerImageUri] = useState<string | null>(null);
+  const [composerAnonymous, setComposerAnonymous] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
 
-  const [commentModalVisible, setCommentModalVisible] = useState(false);
-  const [activeCommentPing, setActiveCommentPing] = useState<PingCard | null>(null);
-  const [comments, setComments] = useState<any[]>([]);
-  const [commentText, setCommentText] = useState('');
-  const [loadingComments, setLoadingComments] = useState(false);
-  const [sendingComment, setSendingComment] = useState(false);
   const [activeFeaturedEvent, setActiveFeaturedEvent] = useState<FeaturedEvent | null>(null);
 
   const locationSuggestions = useMemo(() => {
@@ -427,12 +433,7 @@ export function CampusPingsScreen() {
     }
 
     try {
-      const displayName =
-        user.username ||
-        user.fullName ||
-        user.primaryEmailAddress?.emailAddress?.split('@')[0] ||
-        'Aggie';
-      await connectFeedsUser(user.id, displayName, user.imageUrl);
+      await connectFeedsUser(user);
       setFeedConnected(true);
       await loadUserPings();
     } catch (error) {
@@ -466,6 +467,7 @@ export function CampusPingsScreen() {
     setLocationQuery('');
     setSelectedLocation(null);
     setComposerImageUri(null);
+    setComposerAnonymous(false);
   }, []);
 
   const handleRefresh = useCallback(() => {
@@ -511,10 +513,7 @@ export function CampusPingsScreen() {
       return;
     }
 
-    const displayName =
-      user.firstName && user.lastName
-        ? `${user.firstName} ${user.lastName}`.trim()
-        : user.firstName || user.fullName || user.username || 'Aggie';
+    const displayName = getPremiumName(user);
 
     const { startAt, endAt } = buildPresetWindow(composerTimePreset);
     setIsPosting(true);
@@ -526,8 +525,8 @@ export function CampusPingsScreen() {
 
       await addPing({
         userId: user.id,
-        userName: displayName,
-        userImage: user.imageUrl,
+        userName: composerAnonymous ? 'Aggie User' : displayName,
+        userImage: composerAnonymous ? undefined : user.imageUrl,
         title: composerTitle.trim(),
         body: composerBody.trim(),
         category: composerCategory,
@@ -561,23 +560,39 @@ export function CampusPingsScreen() {
     user,
   ]);
 
-  const handleBoostPing = useCallback(
-    async (ping: PingCard) => {
+  const handleVotePing = useCallback(
+    async (ping: PingCard, kind: 'upvote' | 'downvote') => {
       if (!user || !feedConnected || !ping.activityId || ping.source !== 'user') return;
-      if (ping.boostedByCurrentUser) return;
 
+      // Optimistic update
       setUserPings((current) =>
-        current.map((entry) =>
-          entry.id === ping.id
-            ? { ...entry, boostedByCurrentUser: true, likeCount: entry.likeCount + 1 }
-            : entry,
-        ),
+        current.map((entry) => {
+          if (entry.id !== ping.id) return entry;
+          
+          let newScore = entry.score;
+          let newOwnVote: 'upvote' | 'downvote' | null = kind;
+
+          if (entry.ownVote === kind) {
+            // Toggle off
+            newScore = kind === 'upvote' ? entry.score - 1 : entry.score + 1;
+            newOwnVote = null;
+          } else if (entry.ownVote === null) {
+            // First time vote
+            newScore = kind === 'upvote' ? entry.score + 1 : entry.score - 1;
+          } else {
+            // Switching votes
+            newScore = kind === 'upvote' ? entry.score + 2 : entry.score - 2;
+          }
+
+          return { ...entry, score: newScore, ownVote: newOwnVote };
+        }),
       );
 
       try {
-        await toggleLike(ping.activityId, user.id);
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        await toggleVote(ping.activityId, kind);
       } catch (error) {
-        console.warn('[Pings] boost failed', error);
+        console.warn('[Pings] vote failed', error);
         loadUserPings();
       }
     },
@@ -596,6 +611,7 @@ export function CampusPingsScreen() {
             try {
               await deletePing(ping.activityId!);
               setUserPings((current) => current.filter((entry) => entry.id !== ping.id));
+              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             } catch (error) {
               console.warn('[Pings] delete failed', error);
               Alert.alert('Delete failed', 'This ping could not be removed right now.');
@@ -608,43 +624,13 @@ export function CampusPingsScreen() {
   );
 
   const openComments = useCallback(async (ping: PingCard) => {
-    if (ping.source !== 'user' || !ping.activityId) return;
-    setActiveCommentPing(ping);
-    setCommentModalVisible(true);
-    setLoadingComments(true);
-    try {
-      const nextComments = await getComments(ping.activityId);
-      setComments(nextComments);
-    } catch (error) {
-      console.warn('[Pings] comment fetch failed', error);
-      setComments([]);
-    } finally {
-      setLoadingComments(false);
-    }
+    // Replies removed for pings
   }, []);
 
+  // Replies removed from pings
   const handleSendComment = useCallback(async () => {
-    if (!user || !activeCommentPing?.activityId || !commentText.trim()) return;
-    setSendingComment(true);
-    try {
-      await addComment(activeCommentPing.activityId, user, commentText.trim());
-      const nextComments = await getComments(activeCommentPing.activityId);
-      setComments(nextComments);
-      setCommentText('');
-      setUserPings((current) =>
-        current.map((entry) =>
-          entry.id === activeCommentPing.id
-            ? { ...entry, commentCount: entry.commentCount + 1 }
-            : entry,
-        ),
-      );
-    } catch (error) {
-      console.warn('[Pings] comment send failed', error);
-      Alert.alert('Comment failed', 'Could not post this reply right now.');
-    } finally {
-      setSendingComment(false);
-    }
-  }, [activeCommentPing, commentText, user]);
+    // No-op for pings
+  }, []);
 
   const openPingOnMap = useCallback(
     (ping: PingCard) => {
@@ -761,6 +747,56 @@ export function CampusPingsScreen() {
       </Pressable>
     );
   };
+  
+  const handleReportPing = (item: any) => {
+    Alert.alert(
+      'Report Content',
+      'Why are you reporting this ping?',
+      [
+        { text: 'Inappropriate', onPress: () => submitReport(item, 'inappropriate') },
+        { text: 'Spam', onPress: () => submitReport(item, 'spam') },
+        { text: 'Harassment', onPress: () => submitReport(item, 'harassment') },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const submitReport = async (item: any, reason: string) => {
+    try {
+      await reportContent({
+        reporteeId: item.userId,
+        postType: 'crowdping',
+        postId: item.id,
+        reason: reason
+      });
+      Alert.alert('Report Received', 'Thank you for keeping our community safe.');
+    } catch (err) {
+      Alert.alert('Error', 'Failed to submit report.');
+    }
+  };
+
+  const handleBlockPingAuthor = (item: any) => {
+    Alert.alert(
+      'Block User',
+      `Block ${item.userName}? You won't see their posts.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Block User', 
+          style: 'destructive',
+          onPress: async () => {
+             try {
+                await blockUser(item.userId);
+                handleRefresh();
+                Alert.alert('User Blocked');
+             } catch (err) {
+                Alert.alert('Error', 'Failed to block user.');
+             }
+          }
+        },
+      ]
+    );
+  };
 
   const renderPingCard = ({ item }: { item: PingCard }) => {
     const meta = categoryMeta(item.category);
@@ -770,6 +806,7 @@ export function CampusPingsScreen() {
     const isActive = isPingActiveNow(item.startAt, item.endAt);
     const initials = getInitials(item.userName);
     const AccentIcon = meta.Icon;
+    const isOwnPing = item.userId === user?.id;
 
     return (
       <View style={styles.pingCard}>
@@ -838,34 +875,57 @@ export function CampusPingsScreen() {
         </View>
 
         <View style={styles.actionRow}>
-          <Pressable style={styles.actionButton} onPress={() => openComments(item)}>
-            <MessageCircle size={16} color={COLORS.textPrimary} />
-            <Text style={styles.actionLabel}>{item.commentCount}</Text>
+          <Pressable
+            style={styles.actionButton}
+            onPress={() => handleVotePing(item, 'upvote')}
+          >
+            <ArrowBigUp
+              size={22}
+              color={item.ownVote === 'upvote' ? '#FF4500' : COLORS.textPrimary}
+              fill={item.ownVote === 'upvote' ? '#FF4500' : 'none'}
+            />
           </Pressable>
+
+          <Text style={[
+            styles.actionLabel, 
+            { fontSize: 15, minWidth: 20, textAlign: 'center' },
+            item.ownVote === 'upvote' && { color: '#FF4500' },
+            item.ownVote === 'downvote' && { color: '#7193FF' }
+          ]}>
+            {item.score}
+          </Text>
 
           <Pressable
-            style={[styles.actionButton, item.boostedByCurrentUser && styles.actionButtonActive]}
-            onPress={() => handleBoostPing(item)}
+            style={styles.actionButton}
+            onPress={() => handleVotePing(item, 'downvote')}
           >
-            <Heart
-              size={16}
-              color={item.boostedByCurrentUser ? '#FF647F' : COLORS.textPrimary}
-              fill={item.boostedByCurrentUser ? '#FF647F' : 'none'}
+            <ArrowBigDown
+              size={22}
+              color={item.ownVote === 'downvote' ? '#7193FF' : COLORS.textPrimary}
+              fill={item.ownVote === 'downvote' ? '#7193FF' : 'none'}
             />
-            <Text style={styles.actionLabel}>{item.likeCount}</Text>
           </Pressable>
 
-          <Pressable style={styles.actionButton} onPress={() => savePingToPlans(item)}>
-            <CalendarDays size={16} color={COLORS.textPrimary} />
+          <Pressable style={[styles.actionButton, { marginLeft: 8 }]} onPress={() => savePingToPlans(item)}>
+            <CalendarDays size={18} color={COLORS.textPrimary} />
           </Pressable>
 
           <View style={{ flex: 1 }} />
 
-          {canDelete ? (
+          {!isOwnPing ? (
+            <>
+              <Pressable style={styles.actionButton} onPress={() => handleReportPing(item)}>
+                <Flag size={18} color={COLORS.textTertiary} />
+              </Pressable>
+              <Pressable style={styles.actionButton} onPress={() => handleBlockPingAuthor(item)}>
+                <Shield size={18} color={COLORS.textTertiary} />
+              </Pressable>
+            </>
+          ) : (
             <Pressable style={styles.actionButton} onPress={() => handleDeletePing(item)}>
-              <Trash2 size={16} color="#E56B6B" />
+              <Trash2 size={18} color="#E56B6B" />
             </Pressable>
-          ) : null}
+          )}
         </View>
       </View>
     );
@@ -1137,6 +1197,19 @@ export function CampusPingsScreen() {
                             </Pressable>
                           </View>
                         )}
+
+                        <View style={{ marginTop: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <View>
+                            <Text style={styles.modalLabel}>Post Anonymously</Text>
+                            <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>Hides your name and profile photo</Text>
+                          </View>
+                          <Switch
+                            value={composerAnonymous}
+                            onValueChange={setComposerAnonymous}
+                            trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                            thumbColor={Platform.OS === 'ios' ? undefined : (composerAnonymous ? COLORS.background : '#f4f3f4')}
+                          />
+                        </View>
                         
                         <View style={{ height: 100 }} />
                       </ScrollView>
@@ -1215,88 +1288,6 @@ export function CampusPingsScreen() {
                         <Text style={styles.actionLabel}>Details</Text>
                       </Pressable>
                     ) : null}
-                  </View>
-                </View>
-              </TouchableWithoutFeedback>
-            </KeyboardAvoidingView>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      {/* ── Comments Modal ── */}
-      <Modal visible={commentModalVisible} animationType="fade" transparent>
-        <TouchableWithoutFeedback
-          onPress={() => {
-            setCommentModalVisible(false);
-            setActiveCommentPing(null);
-            setCommentText('');
-          }}
-        >
-          <View style={styles.modalBackdrop}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={styles.modalKeyboardWrap}
-            >
-              <TouchableWithoutFeedback>
-                <View style={styles.commentModalCard}>
-                  <View style={styles.modalHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.modalTitle}>Replies</Text>
-                      <Text style={styles.commentModalSubtitle} numberOfLines={2}>
-                        {activeCommentPing?.title}
-                      </Text>
-                    </View>
-                    <Pressable
-                      onPress={() => {
-                        setCommentModalVisible(false);
-                        setActiveCommentPing(null);
-                        setCommentText('');
-                      }}
-                    >
-                      <X size={20} color={COLORS.textPrimary} />
-                    </Pressable>
-                  </View>
-
-                  {loadingComments ? (
-                    <View style={styles.commentsLoadingWrap}>
-                      <ActivityIndicator color={COLORS.primary} />
-                    </View>
-                  ) : (
-                    <ScrollView style={styles.commentList} showsVerticalScrollIndicator={false}>
-                      {comments.length ? (
-                        comments.map((comment: any, index: number) => (
-                          <View key={`${comment.id || index}`} style={styles.commentRow}>
-                            <Text style={styles.commentName}>
-                              {comment.data?.name || comment.user?.data?.name || 'Aggie'}
-                            </Text>
-                            <Text style={styles.commentBody}>
-                              {comment.data?.text || comment.data?.comment || ''}
-                            </Text>
-                          </View>
-                        ))
-                      ) : (
-                        <View style={styles.emptyCommentsWrap}>
-                          <Text style={styles.emptyCommentsText}>No replies yet.</Text>
-                        </View>
-                      )}
-                    </ScrollView>
-                  )}
-
-                  <View style={styles.commentComposer}>
-                    <TextInput
-                      value={commentText}
-                      onChangeText={setCommentText}
-                      placeholder="Add a quick reply"
-                      placeholderTextColor={COLORS.textTertiary}
-                      style={styles.commentInput}
-                    />
-                    <Pressable style={styles.commentSendButton} onPress={handleSendComment} disabled={sendingComment}>
-                      {sendingComment ? (
-                        <ActivityIndicator color="#FFFFFF" size="small" />
-                      ) : (
-                        <MessageCircle size={16} color="#FFFFFF" />
-                      )}
-                    </Pressable>
                   </View>
                 </View>
               </TouchableWithoutFeedback>
