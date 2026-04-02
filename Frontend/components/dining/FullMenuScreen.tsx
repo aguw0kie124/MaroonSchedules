@@ -1,10 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Animated,
   ImageBackground,
-  PanResponder,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -60,103 +58,6 @@ function buildFoodPayload(item: any, location: string, mealPeriod: DiningMealPer
     meal_period: mealPeriod,
     quantity: 1,
   };
-}
-
-function SwipeableMenuItem({
-  item,
-  portionCount,
-  onAddPortion,
-  onRemovePortion,
-  borderColor,
-  textColor,
-  metaColor,
-  accentAdd,
-  accentRemove,
-}: any) {
-  const translateX = useRef(new Animated.Value(0)).current;
-
-  const resetPosition = useCallback(() => {
-    Animated.spring(translateX, {
-      toValue: 0,
-      useNativeDriver: true,
-      bounciness: 8,
-    }).start();
-  }, [translateX]);
-
-  const triggerAdd = useCallback(async () => {
-    await onAddPortion(item);
-    resetPosition();
-  }, [item, onAddPortion, resetPosition]);
-
-  const triggerRemove = useCallback(async () => {
-    if (portionCount <= 0) {
-      resetPosition();
-      return;
-    }
-    await onRemovePortion(item);
-    resetPosition();
-  }, [item, onRemovePortion, portionCount, resetPosition]);
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 10,
-        onPanResponderMove: (_, gesture) => {
-          const clamped = Math.max(-96, Math.min(96, gesture.dx));
-          translateX.setValue(clamped);
-        },
-        onPanResponderRelease: async (_, gesture) => {
-          if (gesture.dx >= 60) {
-            await triggerAdd();
-            return;
-          }
-          if (gesture.dx <= -60) {
-            await triggerRemove();
-            return;
-          }
-          resetPosition();
-        },
-        onPanResponderTerminate: resetPosition,
-      }),
-    [resetPosition, translateX, triggerAdd, triggerRemove],
-  );
-
-  return (
-    <View style={[s.swipeRowShell, { borderBottomColor: borderColor }]}>
-      <View style={[s.swipeAction, s.swipeActionLeft, { backgroundColor: accentRemove }]}>
-        <Text style={s.swipeActionText}>{portionCount > 0 ? 'Remove' : 'None'}</Text>
-      </View>
-      <View style={[s.swipeAction, s.swipeActionRight, { backgroundColor: accentAdd }]}>
-        <Text style={s.swipeActionText}>Add</Text>
-      </View>
-      <Animated.View
-        style={[
-          s.itemRow,
-          {
-            borderBottomColor: borderColor,
-            transform: [{ translateX }],
-          },
-        ]}
-        {...panResponder.panHandlers}
-      >
-        <View style={{ flex: 1, paddingRight: 12 }}>
-          <Text style={[s.itemName, { color: textColor }]}>{item.name}</Text>
-          <Text style={[s.itemMeta, { color: metaColor }]}>
-            {Math.round(item.calories || 0)} kcal
-            {!!item.protein && ` • ${Math.round(item.protein)}g protein`}
-            {!!item.location && ` • ${item.location}`}
-          </Text>
-        </View>
-        <View style={s.portionWrap}>
-          <Text style={[s.portionCount, { color: portionCount > 0 ? textColor : metaColor }]}>
-            {portionCount}x
-          </Text>
-          <Text style={[s.portionHint, { color: metaColor }]}>swipe</Text>
-        </View>
-      </Animated.View>
-    </View>
-  );
 }
 
 export default function FullMenuScreen({ navigation, route }: any) {
@@ -266,7 +167,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
       await refreshTrackerCounts();
     } catch (trackerError) {
       console.error('Could not add menu item to tracker', trackerError);
-      Alert.alert('Error', 'Could not add this portion right now.');
+      Alert.alert('Error', 'Could not add this item right now.');
     } finally {
       setSyncingItemKey(null);
     }
@@ -286,7 +187,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
       await refreshTrackerCounts();
     } catch (trackerError) {
       console.error('Could not remove menu item from tracker', trackerError);
-      Alert.alert('Error', 'Could not remove this portion right now.');
+      Alert.alert('Error', 'Could not remove this item right now.');
     } finally {
       setSyncingItemKey(null);
     }
@@ -367,23 +268,44 @@ export default function FullMenuScreen({ navigation, route }: any) {
               <Card key={category.name}>
                 <SectionLabel>{category.name}</SectionLabel>
                 {category.items.map((item: any) => (
-                  <View key={`${category.name}-${item.location || 'menu'}-${item.name}`}>
-                    <SwipeableMenuItem
-                      item={item}
-                      portionCount={portionCounts[buildMenuItemKey(item)]?.count || 0}
-                      onAddPortion={addPortion}
-                      onRemovePortion={removePortion}
-                      borderColor={T.border}
-                      textColor={T.text}
-                      metaColor={T.text3}
-                      accentAdd={T.sage}
-                      accentRemove={T.clay}
-                    />
-                    {syncingItemKey === buildMenuItemKey(item) ? (
-                      <View style={s.syncingBadge}>
-                        <ActivityIndicator color={T.tamuGold} size="small" />
+                  <View key={`${category.name}-${item.location || 'menu'}-${item.name}`} style={[s.itemRow, { borderBottomColor: T.border }]}>
+                    <View style={{ flex: 1, paddingRight: 12 }}>
+                      <Text style={[s.itemName, { color: T.text }]}>{item.name}</Text>
+                      <Text style={[s.itemMeta, { color: T.text3 }]}>
+                        {Math.round(item.calories || 0)} kcal
+                        {!!item.protein && ` • ${Math.round(item.protein)}g protein`}
+                        {!!item.location && menu.locations?.length > 1 && ` • ${item.location}`}
+                      </Text>
+                    </View>
+                    <View style={s.actionWrap}>
+                      <View style={s.countSlot}>
+                        {portionCounts[buildMenuItemKey(item)]?.count > 0 ? (
+                          <Text style={[s.countText, { color: T.text3 }]}>
+                            {portionCounts[buildMenuItemKey(item)]?.count}x
+                          </Text>
+                        ) : null}
                       </View>
-                    ) : null}
+                      {portionCounts[buildMenuItemKey(item)]?.count > 0 ? (
+                        <TouchableOpacity
+                          style={[s.actionButton, { borderColor: T.clay, backgroundColor: `${T.clay}18` }]}
+                          onPress={() => removePortion(item)}
+                          disabled={syncingItemKey === buildMenuItemKey(item)}
+                        >
+                          <Text style={[s.actionSymbol, { color: T.clay }]}>-</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                      <TouchableOpacity
+                        style={[s.actionButton, { borderColor: T.sage, backgroundColor: `${T.sage}18` }]}
+                        onPress={() => addPortion(item)}
+                        disabled={syncingItemKey === buildMenuItemKey(item)}
+                      >
+                        {syncingItemKey === buildMenuItemKey(item) ? (
+                          <ActivityIndicator color={T.sage} size="small" />
+                        ) : (
+                          <Text style={[s.actionSymbol, { color: T.sage }]}>+</Text>
+                        )}
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ))}
               </Card>
@@ -407,33 +329,19 @@ const s = StyleSheet.create({
   locationWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   locationPill: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
   locationText: { fontSize: 12, fontWeight: '700' },
-  swipeRowShell: { position: 'relative', overflow: 'hidden' },
-  swipeAction: {
-    position: 'absolute',
-    top: 0,
-    bottom: 1,
-    width: 96,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  swipeActionLeft: {
-    left: 0,
-  },
-  swipeActionRight: {
-    right: 0,
-  },
-  swipeActionText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  itemRow: { paddingVertical: 12, borderBottomWidth: 1, backgroundColor: 'transparent', flexDirection: 'row', alignItems: 'center' },
+  itemRow: { paddingVertical: 12, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center' },
   itemName: { fontSize: 15, fontWeight: '800' },
   itemMeta: { fontSize: 12, marginTop: 4, fontWeight: '500' },
-  portionWrap: { alignItems: 'flex-end', minWidth: 48 },
-  portionCount: { fontSize: 16, fontWeight: '900' },
-  portionHint: { fontSize: 10, fontWeight: '700', textTransform: 'uppercase', marginTop: 4 },
-  syncingBadge: { position: 'absolute', right: 0, top: 10 },
+  actionWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  countSlot: { minWidth: 28, alignItems: 'flex-end', justifyContent: 'center' },
+  actionButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionSymbol: { fontSize: 20, fontWeight: '900', lineHeight: 22 },
+  countText: { fontSize: 12, fontWeight: '800', minWidth: 22, textAlign: 'right' },
 });

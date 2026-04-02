@@ -28,6 +28,7 @@ import {
   Platform,
   Dimensions,
   ScrollView,
+  InteractionManager,
 } from "react-native";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
@@ -320,7 +321,6 @@ export function PlacesMapScreen() {
     if (activeLayer === "Today") return scheduleLocations;
     if (activeLayer === "Dining") return allMapLocations.filter((l) => l.type === "Dining" || l.type === "Hub");
     if (activeLayer === "Academic") return allMapLocations.filter((l) => l.type === "Academic" || l.type === "Landmark");
-    if (activeLayer === "Study") return allMapLocations.filter((l) => l.type === "Study" || l.type === "Library");
     if (activeLayer === "Rec") return allMapLocations.filter((l) => l.type === "Rec" || l.type === "Hub" && l.location.includes("Rec"));
     return allMapLocations.filter((l) => l.type === activeLayer);
   }, [activeLayer, allMapLocations, scheduleLocations]);
@@ -456,7 +456,7 @@ export function PlacesMapScreen() {
     const rec = recreationFacilityMap.get(getCanonicalLocationName(loc.location)) || null;
     if (rec?.source_url) return { label: "Open Official Page", url: rec.source_url };
     if (loc.type === "Dining" || loc.type === "Hub") return { label: "Dining Site", url: "https://dineoncampus.com/tamu" };
-    if (loc.type === "Library" || loc.type === "Study") return { label: "Library Site", url: "https://library.tamu.edu/" };
+    if (loc.type === "Library") return { label: "Library Site", url: "https://library.tamu.edu/" };
     if (loc.type === "Parking") return { label: "Parking Guide", url: PARKING_INFO_URL };
     return { label: "Open in Maps", url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${loc.location} Texas A&M University`)}` };
   }, [recreationFacilityMap]);
@@ -565,7 +565,6 @@ export function PlacesMapScreen() {
     if (loc.type === "Dining" || loc.type === "Hub") return "Dining";
     if (loc.type === "Rec") return "Rec";
     if (loc.type === "Library") return "Library";
-    if (loc.type === "Study") return "Study";
     if (loc.type === "Parking") return "Parking";
     if (
       loc.type === "Academic" ||
@@ -642,7 +641,9 @@ export function PlacesMapScreen() {
   }, [openHotspotPlace]);
 
   const fetchPulseHotspots = useCallback(async () => {
-    setIsLoadingPulse(true);
+    if (!pulseHotspots.length) {
+      setIsLoadingPulse(true);
+    }
     try {
       const rawHotspots = await fetchCampusPulseMap(12);
       const placeLookup = new Map(
@@ -670,7 +671,7 @@ export function PlacesMapScreen() {
     } finally {
       setIsLoadingPulse(false);
     }
-  }, [pulsePlaces, selectedHotspotId]);
+  }, [pulseHotspots.length, pulsePlaces, selectedHotspotId]);
 
   const centerOnUserLocation = useCallback(async () => {
     try {
@@ -935,9 +936,11 @@ export function PlacesMapScreen() {
   }, [activeLayer, hydrateCampusHub, user?.id]);
 
   useEffect(() => {
-    if (!pulsePlaces.length) return;
-    fetchPulseHotspots();
-  }, [fetchPulseHotspots, pulsePlaces.length]);
+    const task = InteractionManager.runAfterInteractions(() => {
+      fetchPulseHotspots();
+    });
+    return () => task.cancel();
+  }, [fetchPulseHotspots]);
 
   useEffect(() => {
     if (activeLayer !== "Pulse") return;
@@ -1137,6 +1140,7 @@ export function PlacesMapScreen() {
           const routeShortName = bus.routeShortName || bus.RouteShortName || selectedRoute?.ShortName || "";
           const routeColor = bus.routeColor || bus.RouteColor || selectedRoute?.Color || "#007AFF";
 
+          const hasDash = routeShortName.includes("-");
           return (
             <Marker
               key={`bus-${bus.Id || bus.Name || i}`}
@@ -1155,8 +1159,23 @@ export function PlacesMapScreen() {
                   ]
                 }
               ]}>
-                <View style={{ transform: [{ rotate: `-${bus.heading || bus.Heading || 0}deg` }] }}>
-                  <Text style={styles.busMarkerText}>{routeShortName}</Text>
+                <View style={{ 
+                  transform: [{ rotate: `-${bus.heading || bus.Heading || 0}deg` }],
+                  width: '100%',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingHorizontal: 2
+                }}>
+                  <Text 
+                    style={[
+                      styles.busMarkerText, 
+                      hasDash && { fontSize: 11, letterSpacing: -0.5 }
+                    ]} 
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    {routeShortName}
+                  </Text>
                 </View>
               </View>
             </Marker>
@@ -1225,9 +1244,10 @@ export function PlacesMapScreen() {
         {activeLayer !== "Bus" && markerLocations.map((loc) => {
           const isSelected = loc.location === selectedId;
           const isTodayLayer = activeLayer === "Today";
+          const isCapacityType = loc.type === "Library" || loc.type === "Rec";
           const pinColor = isTodayLayer
             ? getCategoryColor(loc.classMeetings?.[0]?.category)
-            : getStatusColor(loc.percent_full);
+            : isCapacityType ? getStatusColor(loc.percent_full) : COLORS.primary;
           const pinText = isTodayLayer && loc.sequenceIndex ? loc.sequenceIndex.toString() : null;
 
           return (
@@ -1461,7 +1481,8 @@ export function PlacesMapScreen() {
                           <View style={{ flex: 1 }}>
                             <Text style={(styles as any).listDropdownItemTitle} numberOfLines={1}>{loc.location}</Text>
                             <Text style={(styles as any).listDropdownItemSub} numberOfLines={1}>
-                              {loc.percent_full != null ? `${loc.percent_full}% full · ` : ""}{loc.type}
+                              {(loc.type === "Library" || loc.type === "Rec") && loc.percent_full != null ? `${loc.percent_full}% full · ` : ""}
+                              {loc.type !== "Dining" && loc.type !== "Hub" ? loc.type : ""}
                             </Text>
                           </View>
                           <ChevronRight size={16} color={COLORS.textTertiary} />
@@ -1572,7 +1593,7 @@ export function PlacesMapScreen() {
           onClose={() => setIsEditorVisible(false)}
           title="Places"
           items={getOrderedItems(placesPills).filter(
-            (item) => item.id !== "Academic" && item.id !== "Heatmap",
+            (item) => item.id !== "Academic" && item.id !== "Heatmap" && (item as any).id !== "Study",
           )}
           onToggle={togglePlacesPill}
           onMove={movePlacesPill}

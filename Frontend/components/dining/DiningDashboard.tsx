@@ -1,17 +1,26 @@
-import React from 'react';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useState } from 'react';
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import {
   ArrowLeft,
-  Calculator,
   Database,
   Flame,
   Scale,
   Settings2,
   Ticket,
   UtensilsCrossed,
+  ChevronRight,
 } from 'lucide-react-native';
 
 import { useTheme } from '../SharedUI';
+import { useDiningTheme } from './DiningTheme';
+import { getDiningMealPeriodForLocation } from '../../services/diningMenuCache';
+import { Card, SectionLabel, ActionButton } from './DiningUI';
+
+const HALLS = [
+  { key: 'Sbisa', label: 'Sbisa', sub: 'North Campus' },
+  { key: 'Commons', label: 'Commons', sub: 'South Campus' },
+  { key: 'Duncan', label: 'Duncan', sub: 'South / Quad' },
+];
 
 const DASHBOARD_TOOLS = [
   {
@@ -27,13 +36,6 @@ const DASHBOARD_TOOLS = [
     subtitle: 'Body-weight logging and progress trends.',
     route: 'WeightTracker',
     icon: Scale,
-  },
-  {
-    key: 'optimizer',
-    title: 'Meal Optimizer',
-    subtitle: 'Build a dining-hall plan around calorie and macro targets.',
-    route: 'MealOptimizer',
-    icon: Calculator,
   },
   {
     key: 'streaks',
@@ -58,8 +60,8 @@ const DASHBOARD_TOOLS = [
   },
   {
     key: 'settings',
-    title: 'Tracker Settings',
-    subtitle: 'Buried profile and calorie-goal settings for this subsystem.',
+    title: 'Settings',
+    subtitle: 'Body profile, goals, calorie targets, and advanced nutrition preferences.',
     route: 'DiningSettings',
     icon: Settings2,
   },
@@ -67,8 +69,25 @@ const DASHBOARD_TOOLS = [
 
 export default function DiningDashboard({ navigation }: any) {
   const { COLORS, theme } = useTheme();
-  const isDark = theme === 'dark';
-  const styles = getStyles(COLORS, isDark);
+  const darkMode = theme === 'dark';
+  const styles = getStyles(COLORS, darkMode);
+  const T = useDiningTheme(darkMode);
+
+  const [hall, setHall] = useState('Sbisa');
+
+  const openFullMenu = () => {
+    const mealPeriod = getDiningMealPeriodForLocation(hall);
+    navigation.navigate('FullMenu', {
+      location: hall,
+      mealPeriod,
+      title: `${hall} Menu`,
+      sourceHint: 'cached',
+    });
+  };
+
+  const selectedGlassFill = darkMode ? T.tamuGold + '18' : 'rgba(12,12,14,0.84)';
+  const selectedGlassText = darkMode ? T.tamuGold : '#FFFFFF';
+  const selectedGlassSub = darkMode ? T.text3 : 'rgba(255,255,255,0.72)';
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -90,6 +109,37 @@ export default function DiningDashboard({ navigation }: any) {
           </View>
         </View>
 
+        {/* New Live Menus Section */}
+        <Card style={{ paddingVertical: 14 }}>
+          <SectionLabel>Live Menus</SectionLabel>
+          <View style={s.chipRow}>
+            {HALLS.map(h => (
+              <TouchableOpacity key={h.key} 
+                  style={[
+                    s.chip,
+                    s.glassChip,
+                    { borderColor: T.btnBorder, backgroundColor: T.btnBg },
+                    hall === h.key && {
+                      borderColor: darkMode ? T.tamuGold : 'rgba(12,12,14,0.88)',
+                      backgroundColor: selectedGlassFill,
+                    },
+                  ]} 
+                  onPress={() => setHall(h.key)}>
+                <Text style={[s.chipText, { color: T.text2 }, hall === h.key && { color: selectedGlassText }]}>{h.label}</Text>
+                <Text style={[s.chipSub, { color: T.text3 }, hall === h.key && { color: selectedGlassSub }]}>{h.sub}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={{ marginTop: 14 }}>
+            <ActionButton 
+              label={`View ${hall} Menu`} 
+              onPress={openFullMenu}
+              style={{ backgroundColor: T.tamuMaroon }}
+              textStyle={{ color: T.text }}
+            />
+          </View>
+        </Card>
+
         <View style={styles.card}>
           {DASHBOARD_TOOLS.map((tool, index) => {
             const Icon = tool.icon;
@@ -106,6 +156,7 @@ export default function DiningDashboard({ navigation }: any) {
                   <Text style={styles.toolTitle}>{tool.title}</Text>
                   <Text style={styles.toolSubtitle}>{tool.subtitle}</Text>
                 </View>
+                <ChevronRight size={16} color={COLORS.textTertiary} />
               </Pressable>
             );
           })}
@@ -114,6 +165,28 @@ export default function DiningDashboard({ navigation }: any) {
     </SafeAreaView>
   );
 }
+
+const s = StyleSheet.create({
+  chipRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 12 },
+  chip: { 
+    flex: 1, 
+    minWidth: 80,
+    alignItems: 'center', 
+    padding: 13, 
+    borderRadius: 20, 
+    borderWidth: 1,
+    gap: 3 
+  },
+  glassChip: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 6,
+  },
+  chipText: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
+  chipSub: { fontSize: 10, fontWeight: '600' },
+});
 
 const getStyles = (COLORS: any, isDark: boolean) =>
   StyleSheet.create({

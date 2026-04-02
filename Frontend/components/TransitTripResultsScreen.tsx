@@ -197,7 +197,18 @@ export function TransitTripResultsScreen() {
                   style={styles.optionCard}
                   onPress={() =>
                     navigation.navigate('CampusNavigation', {
-                      ...(origin.id === 'current-location' ? {} : { initialOrigin: origin }),
+                      ...(origin.id === 'current-location'
+                        ? {}
+                        : {
+                            initialOrigin: {
+                              id: origin.id,
+                              name: origin.name,
+                              shortName: origin.subtitle || origin.name,
+                              latitude: origin.coordinate.latitude,
+                              longitude: origin.coordinate.longitude,
+                              type: origin.type,
+                            },
+                          }),
                       initialDestination: {
                         id: destination.id,
                         name: destination.name,

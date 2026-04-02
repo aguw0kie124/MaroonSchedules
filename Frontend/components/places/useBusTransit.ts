@@ -171,8 +171,7 @@ export function useBusTransit(
     setIsFetchingBus(true);
     try {
       console.log("[Transit] Fetching metadata and active routes...");
-      const metadata = await transitService.getRoutesMetadata();
-      const activeIds = await transitService.getActiveRoutes();
+      const { routes: metadata, activeIds } = await transitService.getTransitRoutes();
 
       console.log("[Transit] Metadata count:", metadata.length);
       console.log("[Transit] Active IDs:", activeIds);
@@ -302,20 +301,33 @@ export function useBusTransit(
     }
   }, [activeLayer]);
 
-  // Poll for bus locations
+  // Poll for bus locations using a safe recursive timeout
   useEffect(() => {
-    if (activeLayer === "Bus" && selectedBusRouteId) {
-      busPollInterval.current = setInterval(async () => {
+    let timeoutId: any;
+    let isActive = true;
+
+    const poll = async () => {
+      if (!isActive || activeLayer !== "Bus" || !selectedBusRouteId) return;
+      
+      try {
         const updated = isAllBusRoutesSelected
           ? await transitService.getVehicles()
           : await transitService.getVehicles(selectedBusRouteId);
-        setBusVehicles(updated);
-      }, 5000);
-    } else {
-      if (busPollInterval.current) clearInterval(busPollInterval.current);
+        if (isActive) setBusVehicles(updated);
+      } catch (e) {
+        console.warn("[Transit] Polling error:", e);
+      } finally {
+        if (isActive) timeoutId = setTimeout(poll, 5000);
+      }
+    };
+
+    if (activeLayer === "Bus" && selectedBusRouteId) {
+      poll();
     }
+
     return () => {
-      if (busPollInterval.current) clearInterval(busPollInterval.current);
+      isActive = false;
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, [activeLayer, isAllBusRoutesSelected, selectedBusRouteId]);
 
@@ -476,10 +488,9 @@ export function useBusTransit(
     busVehicles,
     busStops,
     selectedBusRouteId,
+    setSelectedBusRouteId,
     selectedRoute,
     busRouteOptions,
-    filteredBusRoutes,
-    isFetchingBus,
     isRouteDropdownOpen,
     setIsRouteDropdownOpen,
     routeSearchQuery,
@@ -498,5 +509,8 @@ export function useBusTransit(
     stopTimetable,
     allRouteBoards,
     getNearbyTransitInsight,
+    filteredBusRoutes,
+    isFetchingBus,
+    setIsFetchingBus
   };
 }

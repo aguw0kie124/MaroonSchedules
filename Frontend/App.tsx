@@ -27,6 +27,7 @@ import TransitTripPlannerScreen from './components/TransitTripPlannerScreen';
 import { TransitTripResultsScreen } from './components/TransitTripResultsScreen';
 import { PlacesMapScreen } from './components/PlacesMapScreen';
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
@@ -100,7 +101,7 @@ if (!publishableKey) {
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
-function MainTabs() {
+function MainTabs(props: any) {
   const { COLORS } = useTheme();
   const navItems = useAppShellStore((state) => state.navItems);
   const tabBarMode = useAppShellStore((state) => state.tabBarMode);
@@ -138,7 +139,11 @@ function MainTabs() {
       if (item.id === 'Dining') {
         return {
           name: 'Dining',
-          component: DiningDashboard,
+          component: () => (
+            <ErrorBoundary name="Dining Dashboard">
+              <DiningDashboard />
+            </ErrorBoundary>
+          ),
           title: 'Dining',
           icon: UtensilsCrossed,
           initialParams: undefined,
@@ -235,7 +240,13 @@ function RootNavigator() {
     }}>
       {isSignedIn ? (
         <>
-          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen name="Main">
+            {(props) => (
+              <ErrorBoundary name="Main Dashboard">
+                <MainTabs {...props} />
+              </ErrorBoundary>
+            )}
+          </Stack.Screen>
           <Stack.Screen name="CourseDetail" component={CourseDetail} options={{ headerShown: true }} />
 
           <Stack.Screen name="NewCourseSearch" component={NewCourseSearchScreen} options={{ headerShown: true, title: 'Course Search' }} />
@@ -328,7 +339,9 @@ function App() {
       <ClerkLoaded>
         <QueryClientProvider client={queryClient}>
           <NavigationContainer theme={navigationTheme}>
-            <RootNavigator />
+            <ErrorBoundary name="Root Navigator">
+              <RootNavigator />
+            </ErrorBoundary>
             <ShareOverlay />
           </NavigationContainer>
         </QueryClientProvider>

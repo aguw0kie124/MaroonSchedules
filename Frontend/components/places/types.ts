@@ -32,13 +32,14 @@ export type LocationType =
   | "Library"
   | "Dining"
   | "Hub"
-  | "Study"
   | "General"
   | "Academic"
   | "Parking"
   | "Landmark"
   | "Housing"
   | "Athletics";
+
+export type ParkingPermit = "visitor" | "garage" | "any_valid" | "west_campus" | "resident";
 
 export interface ScheduleMeetingEntry {
   id: string;

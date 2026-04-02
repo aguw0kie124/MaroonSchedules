@@ -337,7 +337,8 @@ export function CampusPingsScreen() {
       const res = await fetch(`${API_URL}/campus/events?limit=12`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const nextEvents = (data || []).map((event: any) => ({
+      const events = Array.isArray(data) ? data : Array.isArray(data?.events) ? data.events : [];
+      const nextEvents = events.map((event: any) => ({
         id: String(event.event_id),
         placeId: event.place_id ?? event.place?.place_id ?? null,
         title: event.title || 'Campus Event',

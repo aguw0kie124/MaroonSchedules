@@ -12,7 +12,6 @@ import {
   Keyboard,
   Dimensions,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import MapView, { Marker, Polyline, Region, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -71,30 +70,73 @@ type ManualOrigin = {
   coordinate: Coordinate;
 };
 
-const VOICE_PREF_KEY = 'campus_navigation_voice_enabled';
+type SeededLocationParams = {
+  id?: string;
+  name?: string;
+  shortName?: string;
+  latitude?: number;
+  longitude?: number;
+  type?: string;
+};
+
 const SCREEN_HEIGHT = Dimensions.get('window').height;
+
+function getSeededDestination(initialDestination?: SeededLocationParams) {
+  if (!initialDestination?.name || initialDestination.latitude == null || initialDestination.longitude == null) {
+    return null;
+  }
+
+  return {
+    type: 'building' as const,
+    name: initialDestination.name,
+    building: {
+      id: initialDestination.id || `custom-${initialDestination.name}`,
+      name: initialDestination.name,
+      shortName: initialDestination.shortName || initialDestination.name,
+      latitude: initialDestination.latitude,
+      longitude: initialDestination.longitude,
+      type: (initialDestination.type as CampusBuilding['type']) || 'landmark',
+    },
+  };
+}
+
+function getSeededOrigin(initialOrigin?: SeededLocationParams): ManualOrigin | null {
+  if (!initialOrigin?.name || initialOrigin.latitude == null || initialOrigin.longitude == null) {
+    return null;
+  }
+
+  return {
+    name: initialOrigin.name,
+    coordinate: {
+      latitude: initialOrigin.latitude,
+      longitude: initialOrigin.longitude,
+    },
+  };
+}
 
 export function CampusNavigationScreen() {
     const { COLORS, theme } = useTheme();
     const styles = getStyles(COLORS, theme === 'dark');
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const initialDestinationParam = route.params?.initialDestination as SeededLocationParams | undefined;
+  const initialOriginParam = route.params?.initialOrigin as SeededLocationParams | undefined;
+  const initialTravelModeParam = route.params?.initialTravelMode as TravelMode | undefined;
   // ─── State ──────────────────────────────────────────────────
-  const [navMode, setNavMode] = useState<NavMode>('idle');
+  const [navMode, setNavMode] = useState<NavMode>(initialDestinationParam ? 'selected' : 'idle');
   const [destination, setDestination] = useState<{
     type: 'building' | 'amenity';
     building?: CampusBuilding;
     amenity?: CampusAmenity;
     name: string;
-  } | null>(null);
-  const [manualOrigin, setManualOrigin] = useState<ManualOrigin | null>(null);
+  } | null>(() => getSeededDestination(initialDestinationParam));
+  const [manualOrigin, setManualOrigin] = useState<ManualOrigin | null>(() => getSeededOrigin(initialOriginParam));
   const [activeRoute, setActiveRoute] = useState<WalkingRoute | null>(null);
   const [transitPlan, setTransitPlan] = useState<CampusTransitPlan | null>(null);
   const [steps, setSteps] = useState<DirectionStep[]>([]);
-  const [travelMode, setTravelMode] = useState<TravelMode>('walk');
+  const [travelMode, setTravelMode] = useState<TravelMode>(initialTravelModeParam || 'walk');
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeNotice, setRouteNotice] = useState<string | null>(null);
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [nearbyItems, setNearbyItems] = useState<CampusSearchResult[]>([]);
   const [voiceState, setVoiceState] = useState<'idle' | 'listening' | 'processing'>('idle');
   const [voiceBanner, setVoiceBanner] = useState<{ text?: string; error?: string } | null>(null);
@@ -102,13 +144,13 @@ export function CampusNavigationScreen() {
     latitude: DEFAULT_USER_LOCATION.latitude,
     longitude: DEFAULT_USER_LOCATION.longitude,
   });
-  const [locationReady, setLocationReady] = useState(false);
 
   const mapRef = useRef<MapView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
   const routeGenerationRef = useRef(0);
-  const voicePreferenceReadyRef = useRef(false);
+  const seededOriginRef = useRef(false);
+  const seededTravelModeRef = useRef(false);
 
   const initialRegion: Region = {
     ...TAMU_CENTER,
@@ -116,6 +158,8 @@ export function CampusNavigationScreen() {
 
   const pinnedItems = useMemo(() => getPinnedItems(), []);
   const seededDestinationRef = useRef(false);
+  const preferredRouteKey = route.params?.preferredRouteKey as string | null | undefined;
+  const tripPreference = route.params?.tripPreference as 'best' | 'fewer_transfers' | 'less_walking' | undefined;
   const routeStartCoord = manualOrigin?.coordinate || userCoord;
   const routeStartName = manualOrigin?.name || 'Current Location';
   const destinationCoord: Coordinate | null = useMemo(() => (
@@ -156,6 +200,29 @@ export function CampusNavigationScreen() {
       ? `${activeTransitPlan.nearestVehicleLabel}. ${formatDistance(activeTransitPlan.walkingToStopMeters)} to the stop.`
       : `Walk ${formatDistance(activeTransitPlan.walkingToStopMeters)} to ${activeTransitPlan.originStop.Name}, then ride route ${activeTransitPlan.routeShortName}.`
     : routeNotice;
+  const transitStopMarkers = useMemo(() => {
+    if (!activeTransitPlan) return [];
+    return [
+      {
+        key: 'board',
+        title: activeTransitPlan.originStop.Name,
+        badge: 'Board',
+        coordinate: {
+          latitude: activeTransitPlan.originStop.Latitude,
+          longitude: activeTransitPlan.originStop.Longitude,
+        },
+      },
+      {
+        key: 'exit',
+        title: activeTransitPlan.destinationStop.Name,
+        badge: 'Exit',
+        coordinate: {
+          latitude: activeTransitPlan.destinationStop.Latitude,
+          longitude: activeTransitPlan.destinationStop.Longitude,
+        },
+      },
+    ];
+  }, [activeTransitPlan]);
 
   const fitMapToCoordinates = (
     coordinates: Coordinate[],
@@ -207,37 +274,6 @@ export function CampusNavigationScreen() {
 
   // ─── Effects ────────────────────────────────────────────────
 
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const stored = await AsyncStorage.getItem(VOICE_PREF_KEY);
-        if (!cancelled && stored != null) {
-          setVoiceEnabled(stored === 'true');
-        }
-      } catch (error) {
-        console.warn('[CampusNav] Failed to load voice preference:', error);
-      } finally {
-        voicePreferenceReadyRef.current = true;
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!voicePreferenceReadyRef.current) return;
-    AsyncStorage.setItem(VOICE_PREF_KEY, voiceEnabled ? 'true' : 'false').catch((error) => {
-      console.warn('[CampusNav] Failed to save voice preference:', error);
-    });
-    if (!voiceEnabled) {
-      stopSpeech();
-    }
-  }, [voiceEnabled]);
-
   // Request location permission and start watching GPS
   useEffect(() => {
     let sub: Location.LocationSubscription | null = null;
@@ -246,7 +282,6 @@ export function CampusNavigationScreen() {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           console.warn('[CampusNav] Location permission denied, using default location');
-          setLocationReady(true);
           return;
         }
 
@@ -259,7 +294,6 @@ export function CampusNavigationScreen() {
           longitude: initial.coords.longitude,
         };
         setUserCoord(coord);
-        setLocationReady(true);
 
         // Watch for updates
         sub = await Location.watchPositionAsync(
@@ -278,7 +312,6 @@ export function CampusNavigationScreen() {
         locationSubRef.current = sub;
       } catch (e) {
         console.error('[CampusNav] Location error:', e);
-        setLocationReady(true);
       }
     })();
 
@@ -350,7 +383,10 @@ export function CampusNavigationScreen() {
 
     (async () => {
       try {
-        const plan = await buildTransitPlan(routeStartCoord, destCoord, routeStartName, destination.name);
+        const plan = await buildTransitPlan(routeStartCoord, destCoord, routeStartName, destination.name, {
+          preferredRouteKey,
+          preference: tripPreference || 'best',
+        });
         if (cancelled || generationId !== routeGenerationRef.current) return;
 
         if (plan) {
@@ -389,7 +425,7 @@ export function CampusNavigationScreen() {
 
   useEffect(() => {
     if (seededDestinationRef.current) return;
-    const initialDestination = route.params?.initialDestination;
+    const initialDestination = route.params?.initialDestination as SeededLocationParams | undefined;
     if (!initialDestination?.name || initialDestination?.latitude == null || initialDestination?.longitude == null) {
       return;
     }
@@ -404,10 +440,35 @@ export function CampusNavigationScreen() {
         shortName: initialDestination.shortName || initialDestination.name,
         latitude: initialDestination.latitude,
         longitude: initialDestination.longitude,
-        type: initialDestination.type || 'landmark',
+        type: (initialDestination.type as CampusBuilding['type']) || 'landmark',
       },
     });
   }, [route.params?.initialDestination]);
+
+  useEffect(() => {
+    if (seededOriginRef.current) return;
+    const initialOrigin = route.params?.initialOrigin as SeededLocationParams | undefined;
+    if (!initialOrigin?.name || initialOrigin?.latitude == null || initialOrigin?.longitude == null) {
+      return;
+    }
+
+    seededOriginRef.current = true;
+    setManualOrigin({
+      name: initialOrigin.name,
+      coordinate: {
+        latitude: initialOrigin.latitude,
+        longitude: initialOrigin.longitude,
+      },
+    });
+  }, [route.params?.initialOrigin]);
+
+  useEffect(() => {
+    if (seededTravelModeRef.current) return;
+    const initialTravelMode = route.params?.initialTravelMode as TravelMode | undefined;
+    if (!initialTravelMode) return;
+    seededTravelModeRef.current = true;
+    setTravelMode(initialTravelMode);
+  }, [route.params?.initialTravelMode]);
 
   // ─── Handlers ───────────────────────────────────────────────
   const handleSearchSelect = (result: CampusSearchResult) => {
@@ -516,7 +577,6 @@ export function CampusNavigationScreen() {
     if ((!activeRoute && !activeTransitPlan) || !steps.length || !summaryDistance || !summaryEta) return;
     setNavMode('navigating');
     fitMapToCoordinates(activeTransitPlan?.polyline || activeRoute?.polyline || [], 'navigating');
-    if (!voiceEnabled) return;
 
     try {
       await stopSpeech();
@@ -551,18 +611,6 @@ export function CampusNavigationScreen() {
     setSteps([]);
     if (mapRef.current) {
       mapRef.current.animateToRegion(initialRegion, 800);
-    }
-  };
-
-  const handleToggleVoice = async () => {
-    if (voiceEnabled) {
-      await stopSpeech();
-      setVoiceEnabled(false);
-      return;
-    }
-    setVoiceEnabled(true);
-    if (navMode === 'navigating' && steps.length > 0) {
-      await speakStep(steps[0].instruction);
     }
   };
 
@@ -708,6 +756,30 @@ export function CampusNavigationScreen() {
               </View>
             </Marker>
           )}
+          {transitStopMarkers.map((stop) => (
+            <Marker
+              key={stop.key}
+              coordinate={stop.coordinate}
+              title={`${stop.badge}: ${stop.title}`}
+              anchor={{ x: 0.5, y: 1 }}
+            >
+              <View style={styles.transitStopMarkerWrap}>
+                <View style={[
+                  styles.transitStopPill,
+                  stop.badge === 'Board' ? styles.transitStopPillBoard : styles.transitStopPillExit,
+                ]}>
+                  <Text style={styles.transitStopPillBadge}>{stop.badge}</Text>
+                  <Text style={styles.transitStopPillTitle} numberOfLines={1}>
+                    {stop.title}
+                  </Text>
+                </View>
+                <View style={[
+                  styles.transitStopPin,
+                  stop.badge === 'Board' ? styles.transitStopPinBoard : styles.transitStopPinExit,
+                ]} />
+              </View>
+            </Marker>
+          ))}
           {destinationCoord ? (
             <Marker
               coordinate={destinationCoord}
@@ -729,7 +801,7 @@ export function CampusNavigationScreen() {
           </Marker>
 
           {/* Building markers */}
-          {!hasActiveRoute && BUILDINGS.map((b) => {
+          {!destination && BUILDINGS.map((b) => {
             const isDestination = destination?.building?.id === b.id;
             const Icon = getBuildingIcon(b.type);
             return (
@@ -750,7 +822,7 @@ export function CampusNavigationScreen() {
           })}
 
           {/* Amenity markers */}
-          {!hasActiveRoute && AMENITIES.map((a) => {
+          {!destination && AMENITIES.map((a) => {
             const isDestination = destination?.amenity?.id === a.id;
             const Icon = getAmenityIcon(a.type);
             return (
@@ -868,8 +940,6 @@ export function CampusNavigationScreen() {
             steps={steps}
             modeLabel={effectiveMode === 'bus' ? 'Bus Trip' : 'Walking'}
             routeNote={displayedRouteNote}
-            voiceEnabled={voiceEnabled}
-            onToggleVoice={handleToggleVoice}
             onEnd={handleEndDirections}
           />
         </View>
@@ -891,8 +961,6 @@ export function CampusNavigationScreen() {
           routeNote={displayedRouteNote}
           routeAccentColor={activeTransitPlan?.routeColor || COLORS.primary}
           isLoadingRoute={routeLoading}
-          voiceEnabled={voiceEnabled}
-          onToggleVoice={handleToggleVoice}
           onClearRoute={handleClearRoute}
           onStartDirections={handleStartDirections}
         />
@@ -1130,6 +1198,56 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     color: '#FFF',
     fontSize: 14,
     fontWeight: '900',
+  },
+  transitStopMarkerWrap: {
+    alignItems: 'center',
+  },
+  transitStopPill: {
+    maxWidth: 190,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 6,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  transitStopPillBoard: {
+    backgroundColor: isDark ? 'rgba(8,8,8,0.94)' : 'rgba(255,255,255,0.98)',
+    borderColor: COLORS.primary,
+  },
+  transitStopPillExit: {
+    backgroundColor: isDark ? 'rgba(8,8,8,0.94)' : 'rgba(255,255,255,0.98)',
+    borderColor: COLORS.danger,
+  },
+  transitStopPillBadge: {
+    color: COLORS.textSecondary,
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  transitStopPillTitle: {
+    color: COLORS.textPrimary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  transitStopPin: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  transitStopPinBoard: {
+    backgroundColor: COLORS.primary,
+  },
+  transitStopPinExit: {
+    backgroundColor: COLORS.danger,
   },
   destinationMarker: {
     minWidth: 32,

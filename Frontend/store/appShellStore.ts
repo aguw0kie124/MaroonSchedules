@@ -12,7 +12,7 @@ export type PlacesPillId =
   | 'Dining'
   | 'Parking'
   | 'Academic'
-  | 'Study'
+  | 'Academic'
   | 'Heatmap';
 export type ParkingPermit = 'visitor' | 'garage' | 'any_valid' | 'west_campus' | 'resident';
 export type SettingsTabId = 'personal' | 'layout' | 'resources';
@@ -47,10 +47,9 @@ export const DEFAULT_PLACES_PILLS: ToggleLayoutItem<PlacesPillId>[] = [
   { id: 'Dining', label: 'Dining', visible: true, order: 3 },
   { id: 'Heatmap', label: 'Traffic', visible: false, order: 4 },
   { id: 'Parking', label: 'Parking', visible: false, order: 5 },
-  { id: 'Library', label: 'Libraries', visible: false, order: 6 },
+  { id: 'Library', label: 'Libraries', visible: true, order: 6 },
   { id: 'Academic', label: 'Academic', visible: false, order: 7 },
-  { id: 'Rec', label: 'Gyms', visible: false, order: 8 },
-  { id: 'Study', label: 'Study', visible: false, order: 9 },
+  { id: 'Rec', label: 'Gyms', visible: true, order: 8 },
 ];
 
 function sortItems<T extends string>(items: ToggleLayoutItem<T>[]) {

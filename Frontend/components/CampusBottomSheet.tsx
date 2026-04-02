@@ -6,7 +6,7 @@ import {
   ScrollView,
   Pressable,
 } from 'react-native';
-import { Coffee, Library, MapPin, Utensils, Volume2, VolumeX } from 'lucide-react-native';
+import { Coffee, Library, MapPin, Utensils } from 'lucide-react-native';
 import { useTheme } from './SharedUI';
 import { CampusSearchResult } from '../services/campusSearch';
 import { formatDistance } from '../services/campusDirections';
@@ -26,8 +26,6 @@ interface CampusBottomSheetProps {
   routeNote?: string | null;
   routeAccentColor?: string;
   isLoadingRoute?: boolean;
-  voiceEnabled?: boolean;
-  onToggleVoice?: () => void;
   onClearRoute?: () => void;
   onStartDirections?: () => void;
 }
@@ -46,8 +44,6 @@ export function CampusBottomSheet({
   routeNote,
   routeAccentColor,
   isLoadingRoute = false,
-  voiceEnabled = true,
-  onToggleVoice,
   onClearRoute,
   onStartDirections,
 }: CampusBottomSheetProps) {
@@ -102,15 +98,6 @@ export function CampusBottomSheet({
             ) : null}
           </View>
           <View style={styles.routeFooter}>
-            <Pressable
-              style={({ pressed }) => [styles.voiceBtn, pressed && styles.btnPressed]}
-              onPress={onToggleVoice}
-            >
-              {voiceEnabled ? <Volume2 color={COLORS.primary} size={16} /> : <VolumeX color={COLORS.textSecondary} size={16} />}
-              <Text style={[styles.voiceBtnText, !voiceEnabled && styles.voiceBtnTextMuted]}>
-                {voiceEnabled ? 'Voice On' : 'Voice Off'}
-              </Text>
-            </Pressable>
             <Pressable
               style={({ pressed }) => [styles.startBtn, pressed && styles.btnPressed, isLoadingRoute && styles.startBtnDisabled]}
               onPress={onStartDirections}
@@ -269,27 +256,7 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   routeFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  voiceBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: isDark ? 'rgba(0,0,0,0.42)' : 'rgba(12,12,14,0.05)',
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255,255,255,0.10)' : COLORS.border,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  voiceBtnText: {
-    color: COLORS.textPrimary,
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  voiceBtnTextMuted: {
-    color: COLORS.textSecondary,
+    justifyContent: 'flex-end',
   },
   startBtn: {
     backgroundColor: COLORS.primary,
