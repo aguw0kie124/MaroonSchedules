@@ -21,11 +21,6 @@ import {
   View,
 } from 'react-native';
 import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withRepeat, 
-  withTiming, 
-  interpolateColor,
   FadeIn,
   FadeOut,
   SlideInDown,
@@ -290,7 +285,6 @@ export function CampusPingsScreen() {
 
   const [composerVisible, setComposerVisible] = useState(false);
 
-  const pulseValue = useSharedValue(0);
   // Onboarding logic: automatically advance if the tour is on the CTA step handled in the open composer call
   // We added a 1s delay so the instructions and highlight appear AFTER the animation finishes
   useEffect(() => {
@@ -309,19 +303,6 @@ export function CampusPingsScreen() {
     }
   }, [activeTargetName, composerVisible]);
 
-  const pulseStyle = useAnimatedStyle(() => {
-    return {
-      borderWidth: 2,
-      borderColor: interpolateColor(
-        pulseValue.value,
-        [0, 1],
-        ['transparent', COLORS.primary]
-      ),
-      transform: [{ scale: 1 + pulseValue.value * 0.02 }],
-      borderRadius: 16,
-      margin: -2,
-    };
-  });
   const [composerTitle, setComposerTitle] = useState('');
   const [composerBody, setComposerBody] = useState('');
   const [composerCategory, setComposerCategory] = useState<PingCategory>('Popup');
@@ -979,7 +960,16 @@ export function CampusPingsScreen() {
       </View>
 
       <TourTarget name="crowdping-cta">
-        <Animated.View style={pulseStyle}>
+        <View
+          style={[
+            activeTargetName === 'crowdping-cta' && {
+              borderWidth: 2,
+              borderColor: COLORS.primary,
+              borderRadius: 16,
+              padding: 2,
+            },
+          ]}
+        >
           <Pressable 
             style={styles.quickPostBar} 
             onPress={() => {
@@ -994,7 +984,7 @@ export function CampusPingsScreen() {
             </View>
             <Text style={styles.quickPostText}>What's happening at...</Text>
           </Pressable>
-        </Animated.View>
+        </View>
       </TourTarget>
 
       {streamError ? (

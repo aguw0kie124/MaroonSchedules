@@ -1397,29 +1397,6 @@ export function PlacesMapScreen() {
 
       {/* Top UI Floating Elements */}
       <View style={[styles.topContainer, { top: 54, alignItems: "center" }]}>
-        {(loading || isLoadingPulse || isLoadingSchedules) && (
-          <View
-            style={{
-              alignSelf: "center",
-              marginBottom: 10,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 999,
-              backgroundColor: isDark ? "rgba(17,24,39,0.88)" : "rgba(255,255,255,0.96)",
-              borderWidth: 1,
-              borderColor: COLORS.border,
-            }}
-          >
-            <Text style={{ color: COLORS.textPrimary, fontSize: 12, fontWeight: "700" }}>
-              {loading
-                ? "Refreshing campus map..."
-                : isLoadingPulse
-                  ? "Refreshing pulse activity..."
-                  : "Loading your Today map..."}
-            </Text>
-          </View>
-        )}
-
         <FloatingSearchBar
           styles={styles}
           COLORS={COLORS}

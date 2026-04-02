@@ -433,16 +433,6 @@ export function Profile() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Academics</Text>
 
-        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('NewCourseSearch')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
-            <Search size={20} color="#6366F1" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Major & Course Preferences</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
-
         <Pressable style={styles.toolRow} onPress={() => navigation.navigate('GradesScreen')}>
           <View style={[styles.toolIconBg, { backgroundColor: 'rgba(16,185,129,0.15)' }]}>
             <GraduationCap size={20} color="#10B981" />
@@ -453,7 +443,7 @@ export function Profile() {
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
 
-        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('ScheduleList')}>
+        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('ScheduleList')}>
           <View style={[styles.toolIconBg, { backgroundColor: 'rgba(139,92,246,0.15)' }]}>
             <Settings2 size={20} color="#8B5CF6" />
           </View>
@@ -463,15 +453,7 @@ export function Profile() {
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
 
-        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('GPACalculator')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(244,63,94,0.15)' }]}>
-            <GraduationCap size={20} color="#F43F5E" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>GPA Calculator</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
+        
       </View>
 
       <View style={styles.section}>

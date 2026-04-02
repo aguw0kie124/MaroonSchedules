@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Dimensions, Text, TouchableOpacity, Modal } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import Animated, {
   FadeIn,
@@ -8,18 +8,13 @@ import Animated, {
   SlideOutDown,
   useSharedValue,
   useAnimatedStyle,
-  withRepeat,
   withTiming,
-  withSequence,
-  withDelay,
   Easing
 } from 'react-native-reanimated';
 import Svg, { Defs, Rect, Mask, Circle } from 'react-native-svg';
 import { useTheme } from '../SharedUI';
 import { useAppShellStore } from '../../store/appShellStore';
 import { completeTour } from '../../api/client';
-
-const { width, height } = Dimensions.get('window');
 
 type TargetRect = { x: number; y: number; w: number; h: number };
 
@@ -71,16 +66,13 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const isNotificationPrompted = useAppShellStore((state) => state.isNotificationPrompted);
   const isTourCompleted = useAppShellStore((state) => state.isTourCompleted);
   const setTourCompleted = useAppShellStore((state) => state.setTourCompleted);
+  const { width, height } = useWindowDimensions();
 
   const [isTourActive, setIsTourActive] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
-  const [isIdle, setIsIdle] = useState(false);
 
   const targetsRef = useRef<Record<string, () => Promise<TargetRect | null>>>({});
-  const idleTimerRef = useRef<any>(null);
-
-  const boxTranslateX = useSharedValue(0);
 
   const activeTargetName = isTourActive && currentStep < TOUR_SEQUENCE.length ? TOUR_SEQUENCE[currentStep].id : null;
 
@@ -125,8 +117,6 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setIsTourActive(false);
     setCurrentStep(0);
     setTargetRect(null);
-    setIsIdle(false);
-    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
     
     // Use nested navigation to ensures stable target resolution
     setTimeout(() => {
@@ -152,31 +142,6 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isSignedIn, userId, isTOSAccepted, isNotificationPrompted, isTourCompleted, startTour]);
 
-  const resetIdleTimer = () => {
-    setIsIdle(false);
-    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    idleTimerRef.current = setTimeout(() => {
-      setIsIdle(true);
-      // Shake the box
-      boxTranslateX.value = withSequence(
-        withTiming(-10, { duration: 50 }),
-        withTiming(10, { duration: 50 }),
-        withTiming(-10, { duration: 50 }),
-        withTiming(10, { duration: 50 }),
-        withTiming(0, { duration: 50 })
-      );
-    }, 10000);
-  };
-
-  useEffect(() => {
-    if (isTourActive) {
-      resetIdleTimer();
-    }
-    return () => {
-      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    };
-  }, [currentStep, isTourActive]);
-
   const registerTarget = useCallback((name: string, measureFn: () => Promise<TargetRect | null>) => {
     targetsRef.current[name] = measureFn;
   }, []);
@@ -199,34 +164,23 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (isTourActive && targetRect) {
-      pulseVal.value = withRepeat(
-        withTiming(1, { duration: 1500, easing: Easing.out(Easing.quad) }),
-        -1,
-        false
-      );
+      pulseVal.value = withTiming(1, { duration: 350, easing: Easing.out(Easing.quad) });
     } else {
       pulseVal.value = 0;
     }
-  }, [isTourActive, !!targetRect]);
+  }, [isTourActive, !!targetRect, pulseVal]);
 
   const pulseStyle = useAnimatedStyle(() => {
     if (!targetRect) return { opacity: 0 };
     return {
       position: 'absolute',
-      left: targetRect.x - 14,
-      top: targetRect.y - 14,
-      width: targetRect.w + 28,
-      height: targetRect.h + 28,
-      borderRadius: targetRect.w < 60 ? (targetRect.w + 28) / 2 : 16,
+      left: targetRect.x - 10,
+      top: targetRect.y - 10,
+      width: targetRect.w + 20,
+      height: targetRect.h + 20,
+      borderRadius: targetRect.w < 60 ? (targetRect.w + 20) / 2 : 16,
       backgroundColor: COLORS.primary,
-      opacity: (1 - pulseVal.value) * 0.4,
-      transform: [{ scale: 1 + pulseVal.value * 0.8 }],
-    };
-  });
-
-  const animatedBoxStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateX: boxTranslateX.value }]
+      opacity: 0.16 * pulseVal.value,
     };
   });
 
@@ -284,15 +238,17 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
             style={[
               styles.tourBox,
               {
+                width: Math.min(width - 24, 420),
                 backgroundColor: COLORS.surface,
                 shadowColor: COLORS.border,
                 position: 'absolute',
                 // Stable positioning logic with preference mapping
-                ...(currentDef?.position === 'top' ? { top: 60 } :
-                  currentDef?.position === 'bottom' ? { bottom: 40 } :
-                    targetRect && targetRect.y > height * 0.6 ? { top: 60 } : { bottom: 40 }),
+                ...(currentDef?.position === 'top' ? { top: Math.max(20, Math.min(60, height * 0.06)) } :
+                  currentDef?.position === 'bottom' ? { bottom: Math.max(20, Math.min(40, height * 0.05)) } :
+                    targetRect && targetRect.y > height * 0.58
+                      ? { top: Math.max(20, Math.min(60, height * 0.06)) }
+                      : { bottom: Math.max(20, Math.min(40, height * 0.05)) }),
               },
-              animatedBoxStyle
             ]}
             pointerEvents="box-none"
           >
@@ -302,17 +258,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
             </View>
             <Text style={[styles.tourTitle, { color: COLORS.textPrimary }]}>{currentDef?.title}</Text>
             <Text style={[styles.tourDescription, { color: COLORS.textSecondary }]}>
-              {isIdle ? "🤔 Still there? " + currentDef?.desc : currentDef?.desc}
+              {currentDef?.desc}
             </Text>
-
-            {isIdle && (
-              <TouchableOpacity
-                style={[styles.idleSkipButton, { backgroundColor: COLORS.primary }]}
-                onPress={endTour}
-              >
-                <Text style={styles.idleSkipButtonText}>Skip Tutorial</Text>
-              </TouchableOpacity>
-            )}
           </Animated.View>
         </View>
       )}
@@ -367,7 +314,6 @@ const styles = StyleSheet.create({
     zIndex: 10000,
   },
   tourBox: {
-    width: width - 32,
     borderRadius: 20,
     padding: 16,
     elevation: 20,
@@ -409,18 +355,5 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: '50%',
     marginLeft: -12,
-  },
-  idleSkipButton: {
-    marginTop: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  idleSkipButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '800',
   }
 });
