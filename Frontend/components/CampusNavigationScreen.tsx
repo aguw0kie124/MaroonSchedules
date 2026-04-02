@@ -81,24 +81,60 @@ type SeededLocationParams = {
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
+function getSeededDestination(initialDestination?: SeededLocationParams) {
+  if (!initialDestination?.name || initialDestination.latitude == null || initialDestination.longitude == null) {
+    return null;
+  }
+
+  return {
+    type: 'building' as const,
+    name: initialDestination.name,
+    building: {
+      id: initialDestination.id || `custom-${initialDestination.name}`,
+      name: initialDestination.name,
+      shortName: initialDestination.shortName || initialDestination.name,
+      latitude: initialDestination.latitude,
+      longitude: initialDestination.longitude,
+      type: (initialDestination.type as CampusBuilding['type']) || 'landmark',
+    },
+  };
+}
+
+function getSeededOrigin(initialOrigin?: SeededLocationParams): ManualOrigin | null {
+  if (!initialOrigin?.name || initialOrigin.latitude == null || initialOrigin.longitude == null) {
+    return null;
+  }
+
+  return {
+    name: initialOrigin.name,
+    coordinate: {
+      latitude: initialOrigin.latitude,
+      longitude: initialOrigin.longitude,
+    },
+  };
+}
+
 export function CampusNavigationScreen() {
     const { COLORS, theme } = useTheme();
     const styles = getStyles(COLORS, theme === 'dark');
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const initialDestinationParam = route.params?.initialDestination as SeededLocationParams | undefined;
+  const initialOriginParam = route.params?.initialOrigin as SeededLocationParams | undefined;
+  const initialTravelModeParam = route.params?.initialTravelMode as TravelMode | undefined;
   // ─── State ──────────────────────────────────────────────────
-  const [navMode, setNavMode] = useState<NavMode>('idle');
+  const [navMode, setNavMode] = useState<NavMode>(initialDestinationParam ? 'selected' : 'idle');
   const [destination, setDestination] = useState<{
     type: 'building' | 'amenity';
     building?: CampusBuilding;
     amenity?: CampusAmenity;
     name: string;
-  } | null>(null);
-  const [manualOrigin, setManualOrigin] = useState<ManualOrigin | null>(null);
+  } | null>(() => getSeededDestination(initialDestinationParam));
+  const [manualOrigin, setManualOrigin] = useState<ManualOrigin | null>(() => getSeededOrigin(initialOriginParam));
   const [activeRoute, setActiveRoute] = useState<WalkingRoute | null>(null);
   const [transitPlan, setTransitPlan] = useState<CampusTransitPlan | null>(null);
   const [steps, setSteps] = useState<DirectionStep[]>([]);
-  const [travelMode, setTravelMode] = useState<TravelMode>('walk');
+  const [travelMode, setTravelMode] = useState<TravelMode>(initialTravelModeParam || 'walk');
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeNotice, setRouteNotice] = useState<string | null>(null);
   const [nearbyItems, setNearbyItems] = useState<CampusSearchResult[]>([]);
@@ -108,7 +144,6 @@ export function CampusNavigationScreen() {
     latitude: DEFAULT_USER_LOCATION.latitude,
     longitude: DEFAULT_USER_LOCATION.longitude,
   });
-  const [locationReady, setLocationReady] = useState(false);
 
   const mapRef = useRef<MapView>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -247,7 +282,6 @@ export function CampusNavigationScreen() {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
           console.warn('[CampusNav] Location permission denied, using default location');
-          setLocationReady(true);
           return;
         }
 
@@ -260,7 +294,6 @@ export function CampusNavigationScreen() {
           longitude: initial.coords.longitude,
         };
         setUserCoord(coord);
-        setLocationReady(true);
 
         // Watch for updates
         sub = await Location.watchPositionAsync(
@@ -279,7 +312,6 @@ export function CampusNavigationScreen() {
         locationSubRef.current = sub;
       } catch (e) {
         console.error('[CampusNav] Location error:', e);
-        setLocationReady(true);
       }
     })();
 
@@ -769,7 +801,7 @@ export function CampusNavigationScreen() {
           </Marker>
 
           {/* Building markers */}
-          {!hasActiveRoute && BUILDINGS.map((b) => {
+          {!destination && BUILDINGS.map((b) => {
             const isDestination = destination?.building?.id === b.id;
             const Icon = getBuildingIcon(b.type);
             return (
@@ -790,7 +822,7 @@ export function CampusNavigationScreen() {
           })}
 
           {/* Amenity markers */}
-          {!hasActiveRoute && AMENITIES.map((a) => {
+          {!destination && AMENITIES.map((a) => {
             const isDestination = destination?.amenity?.id === a.id;
             const Icon = getAmenityIcon(a.type);
             return (
