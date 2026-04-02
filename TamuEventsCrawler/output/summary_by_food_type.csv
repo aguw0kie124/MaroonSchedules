@@ -1,5 +1,8 @@
 food_type,event_count
 unknown,10
-lunch,4
-dinner,3
+lunch,6
+dinner,5
+reception,2
+snacks,1
 breakfast,1
+beverage,1

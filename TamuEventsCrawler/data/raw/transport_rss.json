@@ -141,8 +141,7 @@
                                 <li>
                                     <a id="HyperLink17" class="dropdown-item" href="https://health.tamu.edu/parking/index.html">HSC Parking</a></li>
                                 <li><a class="divider"></a></li>
-                                <li><a class="dropdown-item" href="https://transport2.tamu.edu/account/paycitation/search.aspx">Pay Parking Ticket</a></li>
-                                <li><a class="dropdown-item" href="https://transport2.tamu.edu/account/paycitation/search.aspx">Search for Citation</a></li>
+                                <li><a class="dropdown-item" href="https://myparking.tamu.edu/searchCitation">Pay Parking Citation</a></li>
                                 <li>
                                     <a id="hlAppeal" class="dropdown-item" href="../Parking/appeal.aspx">Appeal Parking Ticket</a></li>
                                 <li>
@@ -273,7 +272,7 @@
                 <ul class="nav navbar-nav">
                     <li class="nav-item">
                         
-                        <a id="account" class="dropdown-toggle myaccount" Title="To better protect our customers, Transportation Services is increasing the security of the My Parking Account Website. Please be aware that older browsers may have issues displaying the page. Please see transport.tamu.edu main homepage for or additional details." href="https://transport2.tamu.edu/account"><span class="fas fa-user" aria-label="User Icon"></span>&nbsp;&nbsp;&nbsp;My Account</a>
+                        <a id="account" class="dropdown-toggle myaccount" Title="My Parking" href="https://myparking.tamu.edu/"><span class="fas fa-user" aria-label="User Icon"></span>&nbsp;&nbsp;&nbsp;My Parking</a>
                     </li>
                 </ul>
                 <!--/.navbar-collapse -->
@@ -321,7 +320,7 @@
         </div>
 
         <form method="post" action="./rss.aspx" id="form1" role="main">
-<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="0/hAhW8Gx3ry4brzMdF0fZq1Mg/q6ivJN3Ymcr+E7VykpLZ04ehN40vaesoDJo8VDntqqet7RRXejR35Da84fwMxSHeFSU4NpIGFJ+HnL4xTV/qBcS7TcTDL8gAisJu04sTgRPa11/LD1r4DTI9oNmRVB0FSobxooIohQ5KF/ELQw8QFtbGLks4XQz9Xq6L//TWZxR9B0J3+iiPebYfqSXAAi8RrTwkDClufu5Tq2of90MysbKsU7PoHw6xiD0heEXcg0JZ4W3Vluq2UHqCX21Ue0n7jFLzKQxrH3mYUKzRNYFvx6Ak0T8QfeAVPXBL7EUs/QoxfOQeKa04BpGhcwcmQmgQXk1Urww4t1igbCYZtjjsdilcL8VbE9MTDu4vM9OlxVxzj2uQagXWWYtv08gRsKEO4D1aR30hIckgZ05S7xtHP643jkeyxCN/tz774EVVm+mcFErF9nmv6Tlt11+sscb9kezMYFcsuqAlzpAHDJEJkE8nUOFDgHW1G4wpF/lsgl4V4CzvguyxviC/5vp8wLclpNNo7MJycF06lwo+osP7J8r2cOBTzWo293Q1hKE5U9lJjrK3a+F8yc6eUHw==" />
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="5RbtrHtpUy5CCAQKSgkPlopi5vIcX0VP1deugRkwH8TGc4+Ah5cmYA+HUby95XnN7zJHGONIZh1Mfh85ZLUyFwlch5SuEiELzkYoAWwDB33HqVPExqmGV1Aj+ifdoxZgfH2kr2i3pp6VXPbb3F5gRao3GZV8TyrbFaoxOy6pe/frOzoKoNOUtNEi0lKsavAbAuaFj8bjI5vIAi98oxO4tKwO6ewghXpsD6VRZVWbmCu5T0DiwnyN7xUU1m/h/epoNXnyLA5icbrZRDr3uVYofjf0A5Rl32ZN5VcfIsh+P0BFavLPLvNoeYVD2aLIiQNRgy48f9IP4Etf4VelR/XnUgeXA9vPRXet2QVB7GDrnuvbXbkcLdPQYr09abG693ZpTo5xEmhL1aZvc5+uKkqHXFlo/obAmQWHUt7D1UIJoqxLhtgmCcOQh3BmIrKzNSAL81M3E+hAktFQ0sEga81R7/p9ZuwVqnjg7K+hwbq0zK5rU0gjti78og17WeMGy0CrChnqFouDII/sLgRc5Wzg2Fq02Q8bwQuFXNmtVbv38zyctf44ReBfhgjZgv9m35xn" />
 
 <input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="28EBB4DF" />
             <div id="main-content" class="homepagebanner" tabindex="-1">
@@ -465,7 +464,7 @@
                         
 	</div>
                     </div>
-                    <span id="Footerfooter_ReleaseVersionLabel" class="aspNetDisabled">version: P.SB2</span>
+                    <span id="Footerfooter_ReleaseVersionLabel" class="aspNetDisabled">version: P.SB3</span>
                 
 </div>
             </footer>
