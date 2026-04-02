@@ -98,9 +98,9 @@ def get_json(key: str) -> Any | None:
         try:
             payload = client.get(key)
             if payload is None:
-                print(f"[cache] miss (redis): {key}")
+                print(f"[cache] MISS (Redis): {key}")
                 return None
-            print(f"[cache] hit (redis): {key}")
+            print(f"[cache] HIT  (Redis): {key}")
             return json.loads(payload)
         except Exception:
             pass
@@ -112,6 +112,7 @@ def set_json(key: str, value: Any, ttl_seconds: int) -> None:
     if client is not None:
         try:
             client.setex(key, max(1, int(ttl_seconds)), json.dumps(value, ensure_ascii=False))
+            print(f"[cache] SET  (Redis): {key} (TTL: {ttl_seconds}s)")
             return
         except Exception:
             pass

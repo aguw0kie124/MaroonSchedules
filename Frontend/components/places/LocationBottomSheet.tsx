@@ -24,7 +24,12 @@ import {
   Layers,
   Star,
   Navigation,
+  Flag,
+  Shield,
+  MoreVertical,
+  Trash2,
 } from "lucide-react-native";
+import { useUser } from "@clerk/clerk-expo";
 import * as Linking from "expo-linking";
 import * as Haptics from "expo-haptics";
 import type { CampusLocation } from "./types";
@@ -41,7 +46,9 @@ import {
   getDiningMenuCandidates,
   isDiningHallMenuLocation,
 } from "../../services/diningMenuCache";
+import { reportContent, blockUser, deleteReview } from "../../services/streamFeeds";
 import { PillTabs } from "../PillTabs";
+import { Alert } from "react-native";
 
 interface LocationBottomSheetProps {
   styles: any;
@@ -128,6 +135,7 @@ export function LocationBottomSheet({
   selectedBus,
   openNavigationToLocation,
 }: LocationBottomSheetProps) {
+  const { user } = useUser();
   const { advanceStep, activeTargetName } = useTour();
   const conciseDescription = useMemo(() => {
     const raw = selectedLoc?.description?.trim();
@@ -227,6 +235,80 @@ export function LocationBottomSheet({
       }),
     [animateSheet, setSelectedId],
   );
+
+    const handleReportReview = (rev: any) => {
+        Alert.alert(
+            "Report Review",
+            "Why are you reporting this review?",
+            [
+                { text: "Inappropriate", onPress: () => submitReviewReport(rev, "inappropriate") },
+                { text: "Spam", onPress: () => submitReviewReport(rev, "spam") },
+                { text: "Harassment", onPress: () => submitReviewReport(rev, "harassment") },
+                { text: "Cancel", style: "cancel" },
+            ]
+        );
+    };
+
+    const submitReviewReport = async (rev: any, reason: string) => {
+        try {
+            await reportContent({
+                reporteeId: rev.userId || rev.user_id || rev.sub,
+                postType: 'review',
+                postId: rev.id,
+                reason: reason,
+                placeId: selectedId || undefined
+            });
+            Alert.alert("Report Received", "Thank you for your report.");
+        } catch (err) {
+            Alert.alert("Error", "Failed to submit report.");
+        }
+    };
+
+    const handleBlockReviewer = (rev: any) => {
+        Alert.alert(
+            "Block User",
+            `Block ${rev.user}? You won't see their reviews.`,
+            [
+                { text: "Cancel", style: "cancel" },
+                { 
+                    text: "Block", 
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            await blockUser(rev.userId || rev.user_id || rev.sub);
+                            fetchReviews(selectedId!, 10);
+                            Alert.alert("User Blocked");
+                        } catch (err) {
+                            Alert.alert("Error", "Failed to block user.");
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const handleDeleteReview = (rev: any) => {
+        Alert.alert(
+            "Delete Review",
+            "Are you sure you want to remove your review?",
+            [
+                { text: "Cancel", style: "cancel" },
+                { 
+                    text: "Delete", 
+                    style: "destructive",
+                    onPress: async () => {
+                        try {
+                            await deleteReview(selectedId!, rev.id);
+                            fetchReviews(selectedId!, 10);
+                            Alert.alert("Success", "Review deleted.");
+                        } catch (err) {
+                            Alert.alert("Error", "Failed to delete review.");
+                        }
+                    }
+                }
+            ]
+        );
+    };
 
   if (!selectedId || selectedStop || selectedBus) return null;
 
@@ -749,9 +831,27 @@ export function LocationBottomSheet({
                                 ))}
                               </View>
                             </View>
-                            <Text style={styles.reviewComment} numberOfLines={3}>
-                              {rev.comment}
-                            </Text>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.reviewComment} numberOfLines={3}>
+                                {rev.comment}
+                              </Text>
+                            </View>
+                            <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
+                                {rev.userId === user?.id ? (
+                                    <TouchableOpacity onPress={() => handleDeleteReview(rev)}>
+                                        <Trash2 size={14} color="#E56B6B" />
+                                    </TouchableOpacity>
+                                ) : (
+                                    <>
+                                        <TouchableOpacity onPress={() => handleReportReview(rev)}>
+                                            <Flag size={14} color="#888" />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity onPress={() => handleBlockReviewer(rev)}>
+                                            <Shield size={14} color="#888" />
+                                        </TouchableOpacity>
+                                    </>
+                                )}
+                            </View>
                           </View>
                         ))
                       ) : (
@@ -881,6 +981,22 @@ export function LocationBottomSheet({
                         <Text style={styles.reviewComment} numberOfLines={3}>
                           {rev.comment}
                         </Text>
+                        <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+                                {rev.userId === user?.id ? (
+                                    <TouchableOpacity onPress={() => handleDeleteReview(rev)}>
+                                        <Trash2 size={14} color="#E56B6B" />
+                                    </TouchableOpacity>
+                                ) : (
+                                    <>
+                                        <TouchableOpacity onPress={() => handleReportReview(rev)}>
+                                            <Flag size={14} color="#888" />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity onPress={() => handleBlockReviewer(rev)}>
+                                            <Shield size={14} color="#888" />
+                                        </TouchableOpacity>
+                                    </>
+                                )}
+                        </View>
                       </View>
                     ))
                   ) : (
@@ -1045,6 +1161,22 @@ export function LocationBottomSheet({
                             </View>
                           </View>
                           <Text style={styles.reviewComment}>{rev.comment}</Text>
+                          <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+                                {rev.userId === user?.id ? (
+                                    <TouchableOpacity onPress={() => handleDeleteReview(rev)}>
+                                        <Trash2 size={14} color="#E56B6B" />
+                                    </TouchableOpacity>
+                                ) : (
+                                    <>
+                                        <TouchableOpacity onPress={() => handleReportReview(rev)}>
+                                            <Flag size={14} color="#888" />
+                                        </TouchableOpacity>
+                                        <TouchableOpacity onPress={() => handleBlockReviewer(rev)}>
+                                            <Shield size={14} color="#888" />
+                                        </TouchableOpacity>
+                                    </>
+                                )}
+                          </View>
                         </View>
                       ))
                     ) : (

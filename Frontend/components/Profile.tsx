@@ -34,6 +34,9 @@ import {
   Wallet,
   Compass,
   Sparkles,
+  Trash2,
+  Shield,
+  UserX,
 } from 'lucide-react-native';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
@@ -41,6 +44,7 @@ import * as Linking from 'expo-linking';
 
 import { fetchCampusOverview } from '../api/client';
 import { PARKING_PERMIT_OPTIONS, useAppShellStore } from '../store/appShellStore';
+import { deleteAccount, getBlockedUsers, unblockUser } from '../services/streamFeeds';
 import { useTour, TourTarget } from './onboarding/TourProvider';
 import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme } from './SharedUI';
@@ -48,6 +52,7 @@ import { getDefaultAccentColor, useTheme } from './SharedUI';
 const SETTINGS_TABS = [
   { key: 'personal', label: 'Personal', icon: UserRound },
   { key: 'layout', label: 'Layout', icon: LayoutGrid },
+  { key: 'blocked', label: 'Blocked', icon: Shield },
   { key: 'resources', label: 'Resources', icon: LibraryBig },
 ] as const;
 
@@ -153,6 +158,8 @@ export function Profile() {
   const setActiveTab = useAppShellStore((state) => state.setSettingsTab);
   const tabBarMode = useAppShellStore((state) => state.tabBarMode);
   const setTabBarMode = useAppShellStore((state) => state.setTabBarMode);
+  const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+  const [loadingBlocked, setLoadingBlocked] = useState(false);
 
   const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
   const accentRatio = useMemo(() => getRatioFromColor(accentColor), [accentColor]);
@@ -197,6 +204,35 @@ export function Profile() {
       cancelled = true;
     };
   }, [isFocused, user]);
+
+  useEffect(() => {
+    if (activeTab === 'blocked' && user) {
+        loadBlockedUsers();
+    }
+  }, [activeTab, user]);
+
+  const loadBlockedUsers = async () => {
+    if (!user) return;
+    setLoadingBlocked(true);
+    try {
+        const data = await getBlockedUsers(user.id);
+        setBlockedUsers(data);
+    } catch (err) {
+        console.error('Failed to load blocked users', err);
+    } finally {
+        setLoadingBlocked(false);
+    }
+  };
+
+  const handleUnblock = async (targetId: string) => {
+    try {
+        await unblockUser(targetId);
+        Alert.alert('Success', 'User unblocked.');
+        loadBlockedUsers();
+    } catch (err) {
+        Alert.alert('Error', 'Failed to unblock user.');
+    }
+  };
 
   const handleAvatarPress = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -271,6 +307,30 @@ export function Profile() {
 
   const handleLogout = async () => {
     await signOut();
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account?',
+      'This will permanently delete your profile, posts, reviews, and all social data. This action CANNOT be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete Everything', 
+          style: 'destructive',
+          onPress: async () => {
+            if (!user) return;
+            try {
+              await deleteAccount(user.id);
+              await signOut();
+              Alert.alert('Account Deleted', 'Your data has been permanently removed.');
+            } catch (err) {
+              Alert.alert('Error', 'Failed to delete account. Please contact support.');
+            }
+          }
+        },
+      ]
+    );
   };
 
   const renderPersonalTab = () => (
@@ -455,6 +515,14 @@ export function Profile() {
         <LogOut size={18} color="#F3F1ED" />
         <Text style={styles.logoutText}>Log Out</Text>
       </Pressable>
+
+      <Pressable 
+        style={[styles.logoutButton, { backgroundColor: '#441111', marginTop: 8, borderColor: '#772222', borderWidth: 1 }]} 
+        onPress={handleDeleteAccount}
+      >
+        <Trash2 size={18} color="#E56B6B" />
+        <Text style={[styles.logoutText, { color: '#E56B6B' }]}>Delete Account</Text>
+      </Pressable>
     </>
   );
 
@@ -619,6 +687,68 @@ export function Profile() {
     </>
   );
 
+  const renderBlockedTab = () => (
+    <View style={styles.section}>
+      <View style={styles.heroHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.eyebrow}>Safety</Text>
+          <Text style={styles.title}>Blocked</Text>
+        </View>
+        <View style={styles.heroBadge}>
+          <Shield size={18} color="#FFFFFF" />
+        </View>
+      </View>
+
+      <Text style={[styles.sectionSubtitle, { marginBottom: 16 }]}>
+        Users you've blocked won't see your posts, and you won't see theirs.
+      </Text>
+
+      {loadingBlocked ? (
+        <ActivityIndicator color={COLORS.primary} style={{ marginTop: 24 }} />
+      ) : blockedUsers.length > 0 ? (
+        blockedUsers.map((item, index) => (
+          <View 
+            key={item.id} 
+            style={[
+                styles.toolRow, 
+                index === blockedUsers.length - 1 && styles.toolRowLast,
+                { paddingVertical: 12 }
+            ]}
+          >
+            <View style={styles.avatar}>
+              {item.profile_image_url ? (
+                <Image source={{ uri: item.profile_image_url }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatarText}>{item.name?.[0] || 'U'}</Text>
+              )}
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.toolTitle}>{item.name}</Text>
+                <Text style={styles.email} numberOfLines={1}>{item.id}</Text>
+            </View>
+            <Pressable 
+                style={{ 
+                    padding: 8, 
+                    backgroundColor: COLORS.surface + '20', 
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: COLORS.border
+                }}
+                onPress={() => handleUnblock(item.id)}
+            >
+                <UserX size={18} color={COLORS.danger || '#FF4444'} />
+            </Pressable>
+          </View>
+        ))
+      ) : (
+        <View style={{ alignItems: 'center', padding: 40, opacity: 0.5 }}>
+            <Shield size={48} color={COLORS.textTertiary} strokeWidth={1} />
+            <Text style={{ color: COLORS.textTertiary, marginTop: 12, fontSize: 15 }}>No blocked users</Text>
+        </View>
+      )}
+    </View>
+  );
+
   const renderResourcesTab = () => (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Campus Resources</Text>
@@ -712,6 +842,7 @@ export function Profile() {
 
         {activeTab === 'personal' ? renderPersonalTab() : null}
         {activeTab === 'layout' ? renderLayoutTab() : null}
+        {activeTab === 'blocked' ? renderBlockedTab() : null}
         {activeTab === 'resources' ? renderResourcesTab() : null}
 
         <View style={{ height: 120 }} />

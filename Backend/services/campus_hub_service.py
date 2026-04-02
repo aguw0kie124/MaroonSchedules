@@ -865,6 +865,7 @@ def get_academic_snapshot(clerk_id: str, conn: psycopg.Connection | None = None)
     profile = user_repository.get_user(clerk_id) or {}
     schedules = user_repository.get_schedules(clerk_id) or []
     primary_schedule = schedules[0] if schedules else {"name": "Schedule unavailable", "section_ids": []}
+    howdy_snapshot = parse_connector_snapshot(clerk_id, "howdy", conn=conn)
     sections = _expand_schedule_sections(primary_schedule)
     courses = _normalize_academic_courses(sections)
     next_course = _pick_next_course(courses)

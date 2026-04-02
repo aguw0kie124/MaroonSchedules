@@ -15,6 +15,7 @@ from routers.dining import router as dining_router
 from routers.campus_hub import router as campus_hub_router
 from routers.grades import router as grades_router
 from routers.annex import router as annex_router
+from routers.upload import router as upload_router
 
 from services import course_service, schedule_service, user_service
 from services import cache_service
@@ -42,6 +43,13 @@ app.include_router(dining_router)
 app.include_router(campus_hub_router)
 app.include_router(grades_router)
 app.include_router(annex_router)
+app.include_router(upload_router)
+
+from fastapi.staticfiles import StaticFiles
+# Ensure uploads directory exists
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 @app.get("/")
 def read_root():
@@ -50,6 +58,38 @@ def read_root():
 # ============================================================
 # Users
 # ============================================================
+
+import requests as http_requests
+
+@app.delete("/api/account")
+def delete_account(user_id: str = Query(...)):
+    """Permanently delete user account from Clerk and PostgreSQL."""
+    clerk_secret = os.environ.get("CLERK_SECRET_KEY")
+    if not clerk_secret:
+        raise HTTPException(status_code=500, detail="Clerk secret key not configured")
+
+    # 1. Delete from Clerk
+    try:
+        resp = http_requests.delete(
+            f"https://api.clerk.com/v1/users/{user_id}",
+            headers={"Authorization": f"Bearer {clerk_secret}"}
+        )
+        # Even if Clerk fails (e.g. user already deleted there), we proceed to DB cleanup 
+        # unless it's a critical error.
+        if resp.status_code not in [200, 204, 404]:
+            print(f"Clerk deletion error: {resp.text}")
+    except Exception as e:
+        print(f"Clerk API exception: {e}")
+
+    # 2. Delete from PostgreSQL (Cascade)
+    from repositories import feed_repository
+    feed_repository.delete_user_data_cascade(user_id)
+    
+    # 3. Clear caches
+    from services import cache_service
+    cache_service.delete(f"user:blocks:{user_id}")
+    
+    return {"status": "success", "message": "Account permanently deleted"}
 
 class SyncUserRequest(BaseModel):
     clerk_id: str

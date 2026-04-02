@@ -26,6 +26,7 @@ import {
 } from '../services/streamFeeds';
 
 import { Trash2 } from 'lucide-react-native';
+import { getPremiumName, getPremiumImage } from '../utils/userUtils';
 
 interface Post {
     id: string;
@@ -53,8 +54,8 @@ function mapActivityToPost(activity: any): Post {
     return {
         id: activity.id || Date.now().toString(),
         user_id: actor.id || activity.actor || '',
-        user_name: actor.data?.name || custom.user_name || actor.id || 'Aggie',
-        user_image: actor.data?.image || custom.user_image || null,
+        user_name: actor.data?.name || actor.name || custom.user_name || actor.id || 'Aggie User',
+        user_image: actor.data?.image || actor.image || custom.user_image || null,
         caption: activity.text || null,
         media_url: media.image_url || media.asset_url || null,
         media_type: media.type === 'video' ? 'video' : (media.type === 'image' ? 'image' : null),
@@ -128,8 +129,7 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
 
     useEffect(() => {
         if (user) {
-            const displayName = user.username || user.fullName || user.primaryEmailAddress?.emailAddress?.split('@')[0] || 'Aggie';
-            connectFeedsUser(user.id, displayName, user.imageUrl)
+            connectFeedsUser(user)
                 .then(() => {
                     setFeedConnected(true);
                     setStreamError(null);
@@ -469,7 +469,7 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
                         onPress={() => {
                             if (user) {
                                 setLoading(true);
-                                connectFeedsUser(user.id, user.fullName || 'Aggie', user.imageUrl, true).then(() => {
+                                connectFeedsUser(user, true).then(() => {
                                     setFeedConnected(true);
                                     fetchPosts();
                                 }).catch(() => setLoading(false));
