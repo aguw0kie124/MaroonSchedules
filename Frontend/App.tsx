@@ -59,10 +59,13 @@ import { GlassPillTabBar } from './components/GlassPillTabBar';
 import { getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
 
-import { syncUser } from './api/client';
+import { syncUser, fetchUserProfile } from './api/client';
+import { TOSScreen } from './components/TOSScreen';
 
 function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
+  const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
+  const setTourCompleted = useAppShellStore((state) => state.setTourCompleted);
   const lastSyncedUserId = React.useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -73,7 +76,16 @@ function UserSync({ children }: { children: React.ReactNode }) {
         user.primaryEmailAddress?.emailAddress,
         user.fullName ?? undefined,
         user.imageUrl ?? undefined,
-      ).catch((err: any) => console.warn('UserSync failed:', err));
+      ).then((data) => {
+        if (data) {
+          if (typeof data.tos_accepted === 'boolean') {
+            setTOSAccepted(data.tos_accepted);
+          }
+          if (typeof data.tour_completed === 'boolean') {
+            setTourCompleted(data.tour_completed);
+          }
+        }
+      }).catch((err: any) => console.warn('UserSync failed:', err));
     }
   }, [user?.id, user?.primaryEmailAddress?.emailAddress, user?.fullName, user?.imageUrl]);
 
@@ -237,9 +249,21 @@ function MainTabs(props: any) {
 function RootNavigator() {
   const { COLORS } = useTheme();
   const { isSignedIn, isLoaded } = useAuth();
+  const { user } = useUser();
+  const isTOSAccepted = useAppShellStore((state) => state.isTOSAccepted);
+  const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
 
   if (!isLoaded) {
     return null;
+  }
+
+  if (isSignedIn && !isTOSAccepted && user?.id) {
+    return (
+      <TOSScreen 
+        clerkId={user.id} 
+        onAccepted={() => setTOSAccepted(true)} 
+      />
+    );
   }
 
   const navigator = (

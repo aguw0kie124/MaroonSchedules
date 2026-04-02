@@ -1,0 +1,216 @@
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { ShieldAlert, CheckCircle2, ChevronRight, Scale } from 'lucide-react-native';
+import { useTheme } from './SharedUI';
+import { acceptToS } from '../api/client';
+
+interface TOSScreenProps {
+  clerkId: string;
+  onAccepted: () => void;
+}
+
+export function TOSScreen({ clerkId, onAccepted }: TOSScreenProps) {
+  const { COLORS, theme } = useTheme();
+  const isDark = theme === 'dark';
+  const [loading, setLoading] = useState(false);
+
+  const handleAccept = async () => {
+    setLoading(true);
+    try {
+      await acceptToS(clerkId);
+      onAccepted();
+    } catch (error: any) {
+      console.error('TOS Acceptance failed:', error);
+      Alert.alert('Error', 'Failed to save acceptance. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <LinearGradient
+        colors={isDark ? ['#1A1A1A', '#0D0D0D'] : ['#F8FAFC', '#F1F5F9']}
+        style={StyleSheet.absoluteFill}
+      />
+
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <View style={[styles.iconContainer, { backgroundColor: COLORS.primary + '15' }]}>
+            <Scale size={32} color={COLORS.primary} />
+          </View>
+          <Text style={[styles.title, { color: COLORS.textPrimary }]}>Community Standards</Text>
+          <Text style={[styles.subtitle, { color: COLORS.textSecondary }]}>
+            MaroonLife is dedicated to fostering a safe and respectful campus environment.
+          </Text>
+        </View>
+
+        <View style={styles.policyCard}>
+          <View style={styles.policyItem}>
+            <View style={styles.policyIconBg}>
+              <ShieldAlert size={20} color="#EF4444" />
+            </View>
+            <View style={styles.policyTextContainer}>
+              <Text style={[styles.policyTitle, { color: COLORS.textPrimary }]}>Zero Tolerance Policy</Text>
+              <Text style={[styles.policyDescription, { color: COLORS.textSecondary }]}>
+                Strict zero tolerance for objectionable content including hate speech, harassment, 
+                or sexually explicit material.
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.policyItem}>
+            <View style={styles.policyIconBg}>
+              <CheckCircle2 size={20} color={COLORS.primary} />
+            </View>
+            <View style={styles.policyTextContainer}>
+              <Text style={[styles.policyTitle, { color: COLORS.textPrimary }]}>Abuse Prevention</Text>
+              <Text style={[styles.policyDescription, { color: COLORS.textSecondary }]}>
+                Abusive users will be immediately suspended. We reserve the right to remove any 
+                content that violates these standards.
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.legalSection}>
+          <Text style={[styles.legalText, { color: COLORS.textTertiary }]}>
+            By proceeding, you acknowledge that you have read and agree to our 
+            Terms of Service and Privacy Policy. You understand that failure to 
+            comply with these standards will result in permanent account termination.
+          </Text>
+        </View>
+
+        <View style={{ height: 40 }} />
+      </ScrollView>
+
+      <View style={[styles.footer, { borderTopColor: COLORS.border }]}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.acceptButton,
+            { backgroundColor: COLORS.primary, opacity: pressed || loading ? 0.9 : 1 }
+          ]}
+          onPress={handleAccept}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <>
+              <Text style={styles.acceptButtonText}>I Accept and Agree</Text>
+              <ChevronRight size={18} color="#FFFFFF" strokeWidth={3} />
+            </>
+          )}
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 80,
+    paddingBottom: 120,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  iconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '900',
+    letterSpacing: -0.8,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  subtitle: {
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 24,
+    paddingHorizontal: 20,
+  },
+  policyCard: {
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 24,
+    padding: 20,
+    gap: 24,
+  },
+  policyItem: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  policyIconBg: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  policyTextContainer: {
+    flex: 1,
+  },
+  policyTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  policyDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  legalSection: {
+    marginTop: 32,
+    paddingHorizontal: 8,
+  },
+  legalText: {
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  footer: {
+    padding: 24,
+    paddingBottom: 40,
+    borderTopWidth: 1,
+    backgroundColor: 'transparent',
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  acceptButton: {
+    height: 58,
+    borderRadius: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  acceptButtonText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+});
