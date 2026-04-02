@@ -281,7 +281,7 @@ export function mapAmenityType(type: string): LocationType {
     case "dining":
       return "Dining";
     case "study":
-      return "Study";
+      return "General";
     case "parking":
       return "Parking";
     default:
@@ -376,6 +376,5 @@ export const CATEGORIES = [
   { id: "Library", label: "Libraries", icon: <Library size={18} /> },
   { id: "Academic", label: "Academic", icon: <GraduationCap size={18} /> },
   { id: "Rec", label: "Gyms", icon: <Dumbbell size={18} /> },
-  { id: "Study", label: "Study", icon: <Info size={18} /> },
   { id: "Heatmap", label: "Traffic", icon: <Layers size={18} /> },
 ];

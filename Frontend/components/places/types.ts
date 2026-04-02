@@ -32,7 +32,6 @@ export type LocationType =
   | "Library"
   | "Dining"
   | "Hub"
-  | "Study"
   | "General"
   | "Academic"
   | "Parking"

@@ -229,7 +229,9 @@ export function LocationBottomSheet({
               <View style={{ flex: 1, paddingRight: 12 }}>
                 <Text style={styles.locationName}>{selectedLoc.location}</Text>
                 <View style={styles.sheetBadgeRow}>
-                  <Text style={styles.typeTextSlim}>{selectedLoc.type}</Text>
+                  {selectedLoc.type !== "Dining" && selectedLoc.type !== "Hub" && (
+                    <Text style={styles.typeTextSlim}>{selectedLoc.type}</Text>
+                  )}
                   {selectedLoc.is_live ? (
                     <View style={styles.liveBadgeSlim}>
                       <Text style={styles.dotSeparator}>•</Text>
