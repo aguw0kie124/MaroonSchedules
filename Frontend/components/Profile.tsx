@@ -3,10 +3,12 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  ImageBackground,
   PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
@@ -16,14 +18,16 @@ import {
   Building2,
   Camera,
   ChevronRight,
-  Flame,
+  Dumbbell,
+  ExternalLink,
   GraduationCap,
+  LayoutGrid,
   LibraryBig,
   LogOut,
-  Moon,
   Palette,
   Search,
-  Sun,
+  Settings2,
+  Trophy,
   UserRound,
   Wallet,
 } from 'lucide-react-native';
@@ -31,9 +35,18 @@ import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
 
-import { getDefaultAccentColor, useTheme } from './SharedUI';
 import { fetchCampusOverview } from '../api/client';
-import { PARKING_PERMIT_OPTIONS, useAppShellStore } from '../store/appShellStore';
+import { PillTabs } from './PillTabs';
+import { getDefaultAccentColor, useTheme } from './SharedUI';
+import { useAppShellStore } from '../store/appShellStore';
+
+const SETTINGS_TABS = [
+  { key: 'personal', label: 'Personal', icon: UserRound },
+  { key: 'layout', label: 'Layout', icon: LayoutGrid },
+  { key: 'resources', label: 'Resources', icon: LibraryBig },
+] as const;
+
+type SettingsTabKey = typeof SETTINGS_TABS[number]['key'];
 
 function channelToHex(channel: number) {
   return channel.toString(16).padStart(2, '0');
@@ -113,19 +126,29 @@ export function Profile() {
   const {
     COLORS,
     theme,
-    accentColor,
     setTheme,
+    useWallpaper,
+    wallpaperUri,
+    setBackgroundMode,
+    setCustomWallpaper,
+    accentColor,
     setAccentColor,
+    applyAccentToText,
+    setApplyAccentToText,
   } = useTheme();
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark);
 
-  const parkingPermit = useAppShellStore((state) => state.parkingPermit);
-  const setParkingPermit = useAppShellStore((state) => state.setParkingPermit);
-
   const [academicStatus, setAcademicStatus] = useState<any | null>(null);
   const [loadingAcademicStatus, setLoadingAcademicStatus] = useState(true);
+  const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
   const [accentSliderWidth, setAccentSliderWidth] = useState(0);
+  const activeTab = useAppShellStore((state) => state.settingsTab) as SettingsTabKey;
+  const setActiveTab = useAppShellStore((state) => state.setSettingsTab);
+  const tabBarMode = useAppShellStore((state) => state.tabBarMode);
+  const setTabBarMode = useAppShellStore((state) => state.setTabBarMode);
+
+  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
   const accentRatio = useMemo(() => getRatioFromColor(accentColor), [accentColor]);
   const accentPreviewColor = useMemo(() => getSpectrumColorFromRatio(accentRatio), [accentRatio]);
 
@@ -205,13 +228,31 @@ export function Profile() {
     }
   };
 
-  const openRegistrationReadiness = () => {
-    Alert.alert(
-      academicStatus?.registrationReady ? 'Registration Ready' : 'Registration Needs Attention',
-      academicStatus?.activeHolds?.length
-        ? `Active holds: ${academicStatus.activeHolds.join(', ')}\n\nSource: ${academicStatus.sourceLabel || 'Unavailable'}`
-        : `No active holds are visible right now.\n\nSource: ${academicStatus?.sourceLabel || 'Unavailable'}`,
-    );
+  const handleWallpaperPick = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Denied', 'Camera roll permission is required to set a wallpaper.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      setUploadingWallpaper(true);
+      try {
+        await setCustomWallpaper(result.assets[0].uri);
+        setBackgroundMode('custom');
+      } catch (error) {
+        console.error('Failed to set wallpaper:', error);
+        Alert.alert('Error', 'Unable to save this wallpaper.');
+      } finally {
+        setUploadingWallpaper(false);
+      }
+    }
   };
 
   const openExternal = async (url: string) => {
@@ -222,17 +263,17 @@ export function Profile() {
     }
   };
 
-  return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      showsVerticalScrollIndicator={false}
-    >
+  const handleLogout = async () => {
+    await signOut();
+  };
+
+  const renderPersonalTab = () => (
+    <>
       <View style={styles.heroCard}>
         <View style={styles.heroHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.eyebrow}>Account</Text>
-            <Text style={styles.title}>Settings</Text>
+            <Text style={styles.eyebrow}>Identity</Text>
+            <Text style={styles.title}>Personal</Text>
           </View>
           <View style={styles.heroBadge}>
             <UserRound size={18} color="#FFFFFF" />
@@ -262,20 +303,108 @@ export function Profile() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Preferences</Text>
+        <Text style={styles.sectionTitle}>Academics</Text>
+
+        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('Leaderboard')}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(212,175,55,0.15)' }]}>
+            <Trophy size={20} color="#D4AF37" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Campus Rankings & Podium</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
+
+        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('NewCourseSearch')}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
+            <Search size={20} color="#F3F1ED" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Major & Course Preferences</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
+
+        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('GradesScreen')}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
+            <GraduationCap size={20} color="#F3F1ED" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Grades & Distributions</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
+
+        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('ScheduleList')}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
+            <Settings2 size={20} color="#F3F1ED" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Manage Academic Schedules</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
+
+        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('GPACalculator')}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
+            <GraduationCap size={20} color="#F3F1ED" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>GPA Calculator</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
+      </View>
+
+      <Pressable style={styles.logoutButton} onPress={handleLogout}>
+        <LogOut size={18} color="#F3F1ED" />
+        <Text style={styles.logoutText}>Log Out</Text>
+      </Pressable>
+    </>
+  );
+
+  const renderLayoutTab = () => (
+    <>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Tab Bar Style</Text>
+        <Text style={styles.sectionSubtitle}>Choose your navigation look.</Text>
+        <View style={styles.segmentedRow}>
+          {[
+            { id: 'floating', label: 'Floating' },
+            { id: 'solid', label: 'Main' },
+          ].map((option) => {
+            const selected = tabBarMode === option.id;
+            return (
+              <Pressable
+                key={option.id}
+                style={[styles.segmentButton, styles.segmentButtonStretch, selected && styles.segmentButtonActive]}
+                onPress={() => setTabBarMode(option.id as 'floating' | 'solid')}
+              >
+                <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Appearance</Text>
+
         <View style={styles.preferenceBlock}>
-          <Text style={styles.preferenceLabel}>Parking Permit</Text>
-          <View style={styles.preferenceColumn}>
-            {PARKING_PERMIT_OPTIONS.map((option) => {
-              const selected = parkingPermit === option.id;
+          <Text style={styles.preferenceLabel}>Theme</Text>
+          <View style={styles.segmentedRow}>
+            {['light', 'dark'].map((mode) => {
+              const selected = theme === mode;
               return (
                 <Pressable
-                  key={option.id}
-                  style={[styles.preferenceRow, selected && styles.preferenceRowActive]}
-                  onPress={() => setParkingPermit(option.id)}
+                  key={mode}
+                  style={[styles.segmentButton, selected && styles.segmentButtonActive]}
+                  onPress={() => setTheme(mode)}
                 >
-                  <Text style={[styles.preferenceRowTitle, selected && styles.preferenceRowTitleActive]}>
-                    {option.label}
+                  <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
+                    {mode === 'light' ? 'Light' : 'Dark'}
                   </Text>
                 </Pressable>
               );
@@ -284,33 +413,20 @@ export function Profile() {
         </View>
 
         <View style={styles.preferenceBlock}>
-          <Text style={styles.preferenceLabel}>Theme</Text>
-          <View style={styles.themeChoiceRow}>
-            {[
-              { id: 'light', label: 'Light', Icon: Sun },
-              { id: 'dark', label: 'Dark', Icon: Moon },
-            ].map(({ id, label, Icon }) => {
-              const selected = theme === id;
-              return (
-                <Pressable
-                  key={id}
-                  style={[styles.themeChoiceCard, selected && styles.themeChoiceCardActive]}
-                  onPress={() => setTheme(id)}
-                >
-                  <View style={[styles.themeChoiceIcon, selected && styles.themeChoiceIconActive]}>
-                    <Icon size={18} color={selected ? '#FFFFFF' : COLORS.textSecondary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.themeChoiceTitle, selected && styles.themeChoiceTitleActive]}>
-                      {label}
-                    </Text>
-                    <Text style={styles.themeChoiceSubtitle}>
-                      {id === 'light' ? 'Bright, airy surfaces' : 'Low-glare dark surfaces'}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })}
+          <Text style={styles.preferenceLabel}>Background</Text>
+          <View style={styles.segmentedRow}>
+            <Pressable
+              style={[styles.segmentButton, !useWallpaper && styles.segmentButtonActive]}
+              onPress={() => setBackgroundMode('solid')}
+            >
+              <Text style={[styles.segmentText, !useWallpaper && styles.segmentTextActive]}>Solid</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.segmentButton, useWallpaper && styles.segmentButtonActive]}
+              onPress={() => (wallpaperUri ? setBackgroundMode('custom') : handleWallpaperPick())}
+            >
+              <Text style={[styles.segmentText, useWallpaper && styles.segmentTextActive]}>Wallpaper</Text>
+            </Pressable>
           </View>
         </View>
 
@@ -365,156 +481,147 @@ export function Profile() {
               <Text style={styles.accentScaleLabel}>Dark</Text>
             </View>
           </View>
+          <View style={styles.inlineSwitchRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.inlineSwitchTitle}>Apply accent to accent text</Text>
+            </View>
+            <Switch
+              value={applyAccentToText}
+              onValueChange={setApplyAccentToText}
+              trackColor={{ false: COLORS.border, true: COLORS.primary }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+        </View>
+
+        <View style={styles.wallpaperCard}>
+          {wallpaperUri ? (
+            <Image source={{ uri: wallpaperUri }} style={styles.wallpaperPreview} />
+          ) : (
+            <View style={styles.wallpaperPlaceholder}>
+              <Palette size={22} color={COLORS.textTertiary} />
+              <Text style={styles.wallpaperPlaceholderText}>No custom wallpaper selected</Text>
+            </View>
+          )}
+
+          <View style={styles.wallpaperActions}>
+            <Pressable style={styles.wallpaperButton} onPress={handleWallpaperPick}>
+              <Text style={styles.wallpaperButtonText}>
+                {uploadingWallpaper ? 'Uploading...' : wallpaperUri ? 'Replace' : 'Choose Image'}
+              </Text>
+            </Pressable>
+            {wallpaperUri ? (
+              <Pressable
+                style={[styles.wallpaperButton, styles.wallpaperSecondaryButton]}
+                onPress={() => setCustomWallpaper(null)}
+              >
+                <Text style={[styles.wallpaperButtonText, styles.wallpaperSecondaryButtonText]}>Remove</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
       </View>
+    </>
+  );
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Academics</Text>
+  const renderResourcesTab = () => (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Campus Resources</Text>
 
-        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('Leaderboard')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(212,175,55,0.15)' }]}>
-            <Palette size={20} color="#D4AF37" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Campus Rankings & Podium</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
-
-        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('NewCourseSearch')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-            <Search size={20} color="#F3F1ED" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Major & Course Preferences</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
-
-        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('GradesScreen')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-            <GraduationCap size={20} color="#F3F1ED" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Grades & Distributions</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
-
-        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('ScheduleList')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-            <LibraryBig size={20} color="#F3F1ED" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>My Saved Schedules</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
-
-        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={openRegistrationReadiness}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-            <GraduationCap size={20} color="#F3F1ED" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Registration Readiness</Text>
-          </View>
-          {loadingAcademicStatus ? (
-            <ActivityIndicator size="small" color="#F3F1ED" />
-          ) : (
-            <ChevronRight size={20} color={COLORS.textTertiary} />
-          )}
-        </Pressable>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Resources</Text>
-        {[
-          {
-            key: 'howdy',
-            title: 'Howdy Portal',
-            icon: GraduationCap,
-            action: () => openExternal('https://howdy.tamu.edu/main/home/card-view'),
-          },
-          {
-            key: 'hire',
-            title: 'Hire Aggies',
-            icon: BriefcaseBusiness,
-            action: () => openExternal('https://tamu-csm.symplicity.com/students/index.php?signin_tab=0'),
-          },
-          {
-            key: 'transact',
-            title: 'Transact eAccounts',
-            icon: Wallet,
-            action: () => openExternal('https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx'),
-          },
-          {
-            key: 'rec',
-            title: 'Rec Center Hours',
-            icon: Building2,
-            action: () => navigation.navigate('RecreationFacilities'),
-          },
-        ].map((resource, index, array) => {
-          const Icon = resource.icon;
-          return (
-            <Pressable
-              key={resource.key}
-              style={[styles.toolRow, index === array.length - 1 && styles.toolRowLast]}
-              onPress={resource.action}
-            >
-              <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-                <Icon size={20} color="#F3F1ED" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.toolTitle}>{resource.title}</Text>
-              </View>
+      {[
+        {
+          key: 'howdy',
+          title: 'Howdy Portal',
+          icon: GraduationCap,
+          action: () => openExternal('https://howdy.tamu.edu/main/home/card-view'),
+        },
+        {
+          key: 'hire',
+          title: 'Hire Aggies',
+          icon: BriefcaseBusiness,
+          action: () => openExternal('https://tamu-csm.symplicity.com/students/index.php?signin_tab=0'),
+        },
+        {
+          key: 'annex',
+          title: 'The Annex',
+          icon: Building2,
+          action: () => navigation.navigate('AnnexHub'),
+          internal: true,
+        },
+        {
+          key: 'transact',
+          title: 'Transact eAccounts',
+          icon: Wallet,
+          action: () => openExternal('https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx'),
+        },
+        {
+          key: 'rec',
+          title: 'Rec Center Hours',
+          icon: Dumbbell,
+          action: () => navigation.navigate('RecreationFacilities'),
+        },
+      ].map((resource, index, array) => {
+        const Icon = resource.icon;
+        return (
+          <Pressable
+            key={resource.key}
+            style={[styles.toolRow, index === array.length - 1 && styles.toolRowLast]}
+            onPress={resource.action}
+          >
+            <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
+              <Icon size={20} color="#F3F1ED" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toolTitle}>{resource.title}</Text>
+            </View>
+            {resource.internal ? (
               <ChevronRight size={18} color={COLORS.textTertiary} />
-            </Pressable>
-          );
-        })}
-      </View>
+            ) : (
+              <ExternalLink size={18} color={COLORS.textTertiary} />
+            )}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Advanced</Text>
-        <Pressable
-          style={styles.toolRow}
-          onPress={() => navigation.navigate('DiningDashboard')}
-        >
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(80,0,0,0.15)' }]}>
-            <Flame size={20} color={COLORS.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Nutrition Dashboard</Text>
-            <Text style={styles.toolSubtitle}>
-              Old calorie tracker, meal tools, streaks, and database hub.
-            </Text>
-          </View>
-          <ChevronRight size={18} color={COLORS.textTertiary} />
-        </Pressable>
+  return (
+    <View style={[styles.container, useWallpaper && styles.transparentContainer]}>
+      {useWallpaper ? (
+        <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: isDark ? 'rgba(0,0,0,0.34)' : 'rgba(255,255,255,0.18)' },
+            ]}
+          />
+        </ImageBackground>
+      ) : null}
 
-        <Pressable
-          style={[styles.toolRow, styles.toolRowLast]}
-          onPress={() => navigation.navigate('DiningSettings')}
-        >
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(80,0,0,0.15)' }]}>
-            <Flame size={20} color={COLORS.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Nutrition Tracker Settings</Text>
-            <Text style={styles.toolSubtitle}>
-              Optional calorie and body-goal tools, tucked away from the main app.
-            </Text>
-          </View>
-          <ChevronRight size={18} color={COLORS.textTertiary} />
-        </Pressable>
-      </View>
+      <ScrollView
+        style={[styles.container, useWallpaper && styles.transparentContainer]}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.tabShell}>
+          <PillTabs
+            items={SETTINGS_TABS.map((tab) => ({ key: tab.key, label: tab.label, icon: tab.icon }))}
+            activeKey={activeTab}
+            onChange={(key) => setActiveTab(key as SettingsTabKey)}
+            floating={false}
+            compact={false}
+            activeTextMode="always"
+            layout="stacked"
+          />
+        </View>
 
-      <Pressable style={styles.logoutButton} onPress={() => signOut()}>
-        <LogOut size={18} color="#F3F1ED" />
-        <Text style={styles.logoutText}>Log Out</Text>
-      </Pressable>
+        {activeTab === 'personal' ? renderPersonalTab() : null}
+        {activeTab === 'layout' ? renderLayoutTab() : null}
+        {activeTab === 'resources' ? renderResourcesTab() : null}
 
-      <View style={{ height: 120 }} />
-    </ScrollView>
+        <View style={{ height: 120 }} />
+      </ScrollView>
+    </View>
   );
 }
 
@@ -523,6 +630,9 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     container: {
       flex: 1,
       backgroundColor: COLORS.background,
+    },
+    transparentContainer: {
+      backgroundColor: 'transparent',
     },
     contentContainer: {
       padding: 16,
@@ -558,26 +668,34 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       marginBottom: 6,
     },
     heroBadge: {
-      width: 42,
-      height: 42,
+      width: 44,
+      height: 44,
       borderRadius: 16,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: COLORS.primary,
+      backgroundColor: 'rgba(12,12,14,0.9)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.08)',
+    },
+    tabShell: {
+      marginTop: 2,
     },
     profileCard: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 16,
+      gap: 14,
+      padding: 14,
+      borderRadius: 22,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(80,0,0,0.03)',
     },
     avatarWrapper: {
       position: 'relative',
     },
     avatar: {
-      width: 78,
-      height: 78,
-      borderRadius: 24,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
+      width: 74,
+      height: 74,
+      borderRadius: 37,
+      backgroundColor: 'rgba(12,12,14,0.9)',
       alignItems: 'center',
       justifyContent: 'center',
       overflow: 'hidden',
@@ -587,53 +705,99 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       height: '100%',
     },
     avatarText: {
-      color: COLORS.textPrimary,
       fontSize: 26,
-      fontWeight: '900',
+      fontWeight: '800',
+      color: '#FFFFFF',
     },
     cameraBadge: {
       position: 'absolute',
-      right: -4,
-      bottom: -4,
+      right: -2,
+      bottom: -2,
       width: 28,
       height: 28,
       borderRadius: 14,
-      backgroundColor: COLORS.primary,
       alignItems: 'center',
       justifyContent: 'center',
+      backgroundColor: 'rgba(12,12,14,0.95)',
       borderWidth: 2,
       borderColor: COLORS.background,
     },
     name: {
+      fontSize: 20,
+      fontWeight: '800',
       color: COLORS.textPrimary,
-      fontSize: 23,
-      fontWeight: '900',
-      letterSpacing: -0.5,
       marginBottom: 4,
     },
     email: {
-      color: COLORS.textSecondary,
       fontSize: 14,
+      color: COLORS.textSecondary,
     },
     section: {
-      gap: 0,
       backgroundColor: isDark ? 'rgba(18,18,20,0.82)' : 'rgba(255,255,255,0.86)',
       borderRadius: 28,
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
-      padding: 20,
+      padding: 18,
+      gap: 14,
     },
     sectionTitle: {
+      fontSize: 22,
+      fontWeight: '900',
       color: COLORS.textPrimary,
-      fontSize: 18,
+      letterSpacing: -0.4,
+    },
+    sectionSubtitle: {
+      fontSize: 14,
+      lineHeight: 20,
+      color: COLORS.textSecondary,
+    },
+    preferenceBlock: {
+      gap: 10,
+    },
+    preferenceLabel: {
+      fontSize: 14,
       fontWeight: '800',
-      marginBottom: 14,
+      color: COLORS.accentText || COLORS.textPrimary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    segmentedRow: {
+      flexDirection: 'row',
+      gap: 10,
+      flexWrap: 'nowrap',
+    },
+    segmentButton: {
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: COLORS.surfaceElevated,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    segmentButtonStretch: {
+      flex: 1,
+      justifyContent: 'center',
+    },
+    segmentButtonActive: {
+      backgroundColor: 'rgba(12,12,14,0.92)',
+      borderColor: 'rgba(243,241,237,0.26)',
+    },
+    segmentText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
+    },
+    segmentTextActive: {
+      color: '#FFFFFF',
     },
     toolRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 14,
-      paddingVertical: 14,
+      paddingVertical: 12,
       borderBottomWidth: 1,
       borderBottomColor: COLORS.border,
     },
@@ -642,183 +806,172 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       paddingBottom: 0,
     },
     toolIconBg: {
-      width: 40,
-      height: 40,
+      width: 42,
+      height: 42,
       borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(243,241,237,0.12)',
     },
     toolTitle: {
-      color: COLORS.textPrimary,
-      fontSize: 15,
+      fontSize: 16,
       fontWeight: '700',
-    },
-    toolSubtitle: {
-      marginTop: 4,
-      color: COLORS.textSecondary,
-      fontSize: 12,
-      lineHeight: 17,
-    },
-    preferenceBlock: {
-      marginBottom: 18,
-    },
-    preferenceLabel: {
-      color: COLORS.textSecondary,
-      fontSize: 13,
-      fontWeight: '700',
-      marginBottom: 12,
-      textTransform: 'uppercase',
-      letterSpacing: 0.7,
-    },
-    preferenceColumn: {
-      gap: 10,
-    },
-    themeChoiceRow: {
-      gap: 10,
-    },
-    themeChoiceCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 14,
-      borderRadius: 20,
-      paddingHorizontal: 16,
-      paddingVertical: 15,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(80,0,0,0.03)',
-    },
-    themeChoiceCardActive: {
-      borderColor: COLORS.primary,
-      backgroundColor: isDark ? 'rgba(80,0,0,0.22)' : 'rgba(80,0,0,0.08)',
-    },
-    themeChoiceIcon: {
-      width: 38,
-      height: 38,
-      borderRadius: 19,
-      alignItems: 'center',
-      justifyContent: 'center',
-      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(80,0,0,0.06)',
-    },
-    themeChoiceIconActive: {
-      backgroundColor: COLORS.primary,
-    },
-    themeChoiceTitle: {
       color: COLORS.textPrimary,
-      fontSize: 15,
-      fontWeight: '800',
-      marginBottom: 2,
-    },
-    themeChoiceTitleActive: {
-      color: COLORS.primary,
-    },
-    themeChoiceSubtitle: {
-      color: COLORS.textSecondary,
-      fontSize: 12,
-    },
-    preferenceRow: {
-      borderRadius: 18,
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(80,0,0,0.03)',
-    },
-    preferenceRowActive: {
-      borderColor: COLORS.primary,
-      backgroundColor: isDark ? 'rgba(80,0,0,0.22)' : 'rgba(80,0,0,0.08)',
-    },
-    preferenceRowTitle: {
-      color: COLORS.textPrimary,
-      fontSize: 14,
-      fontWeight: '700',
-    },
-    preferenceRowTitleActive: {
-      color: COLORS.primary,
+      marginBottom: 4,
     },
     accentSliderCard: {
       borderRadius: 22,
-      padding: 16,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(80,0,0,0.04)',
       borderWidth: 1,
       borderColor: COLORS.border,
+      backgroundColor: COLORS.surfaceElevated,
+      padding: 14,
+      gap: 14,
     },
     accentSliderHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
-      marginBottom: 16,
     },
     accentPreview: {
-      width: 20,
-      height: 20,
-      borderRadius: 10,
-      borderWidth: 2,
-      borderColor: '#FFFFFF',
-    },
-    inlineSwitchTitle: {
-      color: COLORS.textPrimary,
-      fontSize: 15,
-      fontWeight: '800',
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: COLORS.border,
     },
     accentSliderTrack: {
-      height: 42,
+      height: 34,
+      borderRadius: 17,
+      overflow: 'hidden',
       justifyContent: 'center',
-      marginBottom: 12,
     },
     accentSliderGradient: {
-      height: 14,
+      flexDirection: 'row',
+      width: '100%',
+      height: 18,
       borderRadius: 999,
       overflow: 'hidden',
-      flexDirection: 'row',
     },
     accentSliderSegment: {
       flex: 1,
+      height: '100%',
     },
     accentSliderThumb: {
       position: 'absolute',
-      top: 8,
+      top: 4,
       width: 26,
       height: 26,
       borderRadius: 13,
       backgroundColor: '#FFFFFF',
       borderWidth: 2,
-      borderColor: COLORS.primary,
+      borderColor: 'rgba(12,12,14,0.74)',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.18,
+      shadowRadius: 6,
+      elevation: 4,
     },
     accentScaleRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      gap: 12,
-    },
-    accentScaleLabel: {
-      color: COLORS.textTertiary,
-      fontSize: 12,
-      fontWeight: '700',
-    },
-    accentResetButton: {
-      paddingHorizontal: 14,
-      paddingVertical: 8,
-      borderRadius: 999,
-      backgroundColor: COLORS.primary,
-    },
-    accentResetText: {
-      color: '#FFFFFF',
-      fontSize: 12,
-      fontWeight: '800',
-    },
-    logoutButton: {
-      marginTop: 4,
-      borderRadius: 22,
-      backgroundColor: COLORS.primary,
-      paddingVertical: 16,
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexDirection: 'row',
       gap: 10,
     },
-    logoutText: {
+    accentScaleLabel: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: COLORS.textSecondary,
+    },
+    accentResetButton: {
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      backgroundColor: COLORS.surface,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    accentResetText: {
+      fontSize: 12,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
+    },
+    inlineSwitchRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surfaceElevated,
+      padding: 14,
+    },
+    inlineSwitchTitle: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+      marginBottom: 4,
+    },
+    wallpaperCard: {
+      borderRadius: 20,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surfaceElevated,
+    },
+    wallpaperPreview: {
+      width: '100%',
+      height: 160,
+    },
+    wallpaperPlaceholder: {
+      height: 160,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(80,0,0,0.03)',
+    },
+    wallpaperPlaceholderText: {
+      fontSize: 14,
+      color: COLORS.textSecondary,
+    },
+    wallpaperActions: {
+      flexDirection: 'row',
+      gap: 10,
+      padding: 14,
+    },
+    wallpaperButton: {
+      flex: 1,
+      borderRadius: 14,
+      backgroundColor: 'rgba(12,12,14,0.92)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 12,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.08)',
+    },
+    wallpaperSecondaryButton: {
+      backgroundColor: 'transparent',
+      borderColor: COLORS.border,
+    },
+    wallpaperButtonText: {
       color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '800',
+    },
+    wallpaperSecondaryButtonText: {
+      color: COLORS.textPrimary,
+    },
+    logoutButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+      backgroundColor: isDark ? 'rgba(18,18,20,0.82)' : 'rgba(255,255,255,0.86)',
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.08)',
+      paddingVertical: 16,
+    },
+    logoutText: {
+      color: COLORS.textPrimary,
       fontSize: 15,
       fontWeight: '800',
     },

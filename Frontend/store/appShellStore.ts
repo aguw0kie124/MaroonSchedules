@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
+export type NavItemId = 'Dashboard' | 'Places' | 'Social' | 'Dining';
 export type PlacesPillId =
   | 'Pulse'
   | 'Today'
@@ -13,8 +14,9 @@ export type PlacesPillId =
   | 'Academic'
   | 'Study'
   | 'Heatmap';
-
 export type ParkingPermit = 'visitor' | 'garage' | 'any_valid' | 'west_campus' | 'resident';
+export type SettingsTabId = 'personal' | 'layout' | 'resources';
+export type TabBarMode = 'floating' | 'solid';
 
 export interface ToggleLayoutItem<T extends string> {
   id: T;
@@ -29,6 +31,13 @@ export const PARKING_PERMIT_OPTIONS: Array<{ id: ParkingPermit; label: string; d
   { id: 'any_valid', label: 'Any Valid Permit', description: 'Broad parking recommendations across lots and garages.' },
   { id: 'west_campus', label: 'West Campus', description: 'Prefers west campus garages and nearby lots.' },
   { id: 'resident', label: 'Resident', description: 'Keeps housing-adjacent parking easy to reach.' },
+];
+
+export const DEFAULT_NAV_ITEMS: ToggleLayoutItem<NavItemId>[] = [
+  { id: 'Dashboard', label: 'Events', visible: true, order: 0 },
+  { id: 'Places', label: 'Places', visible: true, order: 1 },
+  { id: 'Social', label: 'Pings', visible: true, order: 2 },
+  { id: 'Dining', label: 'Dining', visible: false, order: 3 },
 ];
 
 export const DEFAULT_PLACES_PILLS: ToggleLayoutItem<PlacesPillId>[] = [
@@ -106,12 +115,31 @@ function isPermit(value: unknown): value is ParkingPermit {
   return PARKING_PERMIT_OPTIONS.some((option) => option.id === value);
 }
 
+function isSettingsTabId(value: unknown): value is SettingsTabId {
+  return value === 'personal' || value === 'layout' || value === 'resources';
+}
+
+function isTabBarMode(value: unknown): value is TabBarMode {
+  return value === 'floating' || value === 'solid';
+}
+
 type AppShellState = {
   parkingPermit: ParkingPermit;
   placesPills: ToggleLayoutItem<PlacesPillId>[];
+  navItems: ToggleLayoutItem<NavItemId>[];
+  settingsTab: SettingsTabId;
+  tabBarMode: TabBarMode;
+  isBottomBarHidden: boolean;
+  selectedScheduleId: string | null;
   setParkingPermit: (permit: ParkingPermit) => void;
   togglePlacesPill: (id: PlacesPillId) => void;
   movePlacesPill: (id: PlacesPillId, direction: -1 | 1) => void;
+  toggleNavItem: (id: NavItemId) => void;
+  moveNavItem: (id: NavItemId, direction: -1 | 1) => void;
+  setSettingsTab: (tab: SettingsTabId) => void;
+  setTabBarMode: (mode: TabBarMode) => void;
+  setBottomBarHidden: (hidden: boolean) => void;
+  setSelectedScheduleId: (id: string | null) => void;
 };
 
 export const useAppShellStore = create<AppShellState>()(
@@ -119,6 +147,11 @@ export const useAppShellStore = create<AppShellState>()(
     (set) => ({
       parkingPermit: 'any_valid',
       placesPills: DEFAULT_PLACES_PILLS,
+      navItems: DEFAULT_NAV_ITEMS,
+      settingsTab: 'layout',
+      tabBarMode: 'solid',
+      isBottomBarHidden: false,
+      selectedScheduleId: null,
       setParkingPermit: (parkingPermit) => set({ parkingPermit }),
       togglePlacesPill: (id) =>
         set((state) => ({
@@ -128,13 +161,30 @@ export const useAppShellStore = create<AppShellState>()(
         set((state) => ({
           placesPills: moveItem(state.placesPills, id, direction),
         })),
+      toggleNavItem: (id) =>
+        set((state) => ({
+          navItems: toggleItem(state.navItems, id),
+        })),
+      moveNavItem: (id, direction) =>
+        set((state) => ({
+          navItems: moveItem(state.navItems, id, direction),
+        })),
+      setSettingsTab: (settingsTab) => set({ settingsTab }),
+      setTabBarMode: (tabBarMode) => set({ tabBarMode }),
+      setBottomBarHidden: (isBottomBarHidden) => set({ isBottomBarHidden }),
+      setSelectedScheduleId: (selectedScheduleId) => set({ selectedScheduleId }),
     }),
     {
       name: 'app-shell-store',
+      version: 2,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         parkingPermit: state.parkingPermit,
         placesPills: state.placesPills,
+        navItems: state.navItems,
+        settingsTab: state.settingsTab,
+        tabBarMode: state.tabBarMode,
+        selectedScheduleId: state.selectedScheduleId,
       }),
       merge: (persistedState, currentState) => {
         const persisted = (persistedState as Partial<AppShellState>) || {};
@@ -144,6 +194,17 @@ export const useAppShellStore = create<AppShellState>()(
             ? persisted.parkingPermit
             : currentState.parkingPermit,
           placesPills: normalizeItems(persisted.placesPills, currentState.placesPills),
+          navItems: normalizeItems(persisted.navItems, currentState.navItems),
+          settingsTab: isSettingsTabId(persisted.settingsTab)
+            ? persisted.settingsTab
+            : currentState.settingsTab,
+          tabBarMode: isTabBarMode(persisted.tabBarMode)
+            ? persisted.tabBarMode
+            : currentState.tabBarMode,
+          selectedScheduleId:
+            typeof persisted.selectedScheduleId === 'string' || persisted.selectedScheduleId === null
+              ? persisted.selectedScheduleId
+              : currentState.selectedScheduleId,
         };
       },
     },
@@ -152,4 +213,8 @@ export const useAppShellStore = create<AppShellState>()(
 
 export function getOrderedItems<T extends string>(items: ToggleLayoutItem<T>[]) {
   return sortItems(items);
+}
+
+export function getOrderedVisibleItems<T extends string>(items: ToggleLayoutItem<T>[]) {
+  return sortItems(items).filter((item) => item.visible);
 }
