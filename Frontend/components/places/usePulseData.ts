@@ -74,7 +74,7 @@ export function usePulseData(
     if (activeLayer !== "Pulse") return;
     const interval = setInterval(() => {
       fetchPulseHotspots();
-    }, 25000);
+    }, 60000);
     return () => clearInterval(interval);
   }, [activeLayer, fetchPulseHotspots]);
 

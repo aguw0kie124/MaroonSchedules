@@ -11,7 +11,7 @@ from repositories import feed_repository
 HOT_COLOR = "#FF6B57"
 ACTIVE_COLOR = "#FFB347"
 BUBBLING_COLOR = "#5ACD7C"
-PULSE_SNAPSHOT_TTL_SECONDS = 20
+PULSE_SNAPSHOT_TTL_SECONDS = 60
 
 
 def _parse_iso(iso_value: str | None) -> datetime | None:
@@ -136,10 +136,24 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
     if cached is not None:
         return cached
 
-    pings = feed_repository.get_crowdping_feed(limit=80)
+    try:
+        pings = feed_repository.get_crowdping_feed(limit=80)
+    except Exception as exc:
+        print(f"[pulse_service] DB query failed for crowdping feed: {exc}")
+        pings = []
+
     post_ids = [p["id"] for p in pings]
-    interactions = feed_repository.get_batch_interaction_counts(post_ids) if post_ids else {}
-    occupancy_by_place = _load_occupancy_by_place()
+    try:
+        interactions = feed_repository.get_batch_interaction_counts(post_ids) if post_ids else {}
+    except Exception as exc:
+        print(f"[pulse_service] DB query failed for interaction counts: {exc}")
+        interactions = {}
+
+    try:
+        occupancy_by_place = _load_occupancy_by_place()
+    except Exception as exc:
+        print(f"[pulse_service] occupancy load failed: {exc}")
+        occupancy_by_place = {}
 
     grouped: Dict[str, Dict[str, Any]] = {}
 

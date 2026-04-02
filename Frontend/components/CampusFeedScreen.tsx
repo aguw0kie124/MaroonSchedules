@@ -131,17 +131,10 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
 
     useEffect(() => {
         if (user) {
-            connectFeedsUser(user)
-                .then(() => {
-                    setFeedConnected(true);
-                    setStreamError(null);
-                    fetchPosts();
-                })
-                .catch((e) => {
-                    console.warn('[CampusFeed] Stream connection failed:', e);
-                    setStreamError('Could not connect to Stream Feeds.');
-                    setLoading(false);
-                });
+            connectFeedsUser(user);
+            setFeedConnected(true);
+            setStreamError(null);
+            fetchPosts();
 
             // Real-time effect: poll every 10 seconds
             const interval = setInterval(() => {
@@ -544,11 +537,9 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
                         onPress={() => {
                             if (user) {
                                 setLoading(true);
-                                connectFeedsUser(user, true).then(() => {
-                                    setFeedConnected(true);
-                                    fetchPosts();
-                                }).catch(() => setLoading(false));
-
+                                connectFeedsUser(user, true);
+                                setFeedConnected(true);
+                                fetchPosts();
                             }
                         }}
                     >

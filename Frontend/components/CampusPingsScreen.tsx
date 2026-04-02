@@ -434,14 +434,13 @@ export function CampusPingsScreen() {
       return;
     }
 
+    connectFeedsUser(user);
+    setFeedConnected(true);
     try {
-      await connectFeedsUser(user);
-      setFeedConnected(true);
       await loadUserPings();
     } catch (error) {
       console.warn('[Pings] Stream connection failed', error);
-      setFeedConnected(false);
-      setStreamError('Live pings are unavailable until the feed connection is restored.');
+      setStreamError('Could not load live pings right now.');
       setUserPings([]);
     } finally {
       setLoading(false);

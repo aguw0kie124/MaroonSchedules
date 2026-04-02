@@ -1045,7 +1045,7 @@ export function PlacesMapScreen() {
     if (activeLayer !== "Pulse") return;
     const interval = setInterval(() => {
       fetchPulseHotspots();
-    }, 25000);
+    }, 60000);
     return () => clearInterval(interval);
   }, [activeLayer, fetchPulseHotspots]);
 
@@ -1171,7 +1171,7 @@ export function PlacesMapScreen() {
 
   // Connect Stream feeds user
   useEffect(() => {
-    if (user?.id) connectFeedsUser(user.id).catch(() => { });
+    if (user?.id) connectFeedsUser(user);
   }, [user]);
 
   // ── Render ────────────────────────────────────────────────

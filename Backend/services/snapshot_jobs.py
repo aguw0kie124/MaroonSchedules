@@ -11,7 +11,7 @@ from services import cache_service, campus_events_service, campus_hub_service, c
 
 SNAPSHOT_JOBS_ENABLED = os.environ.get("SNAPSHOT_JOBS_ENABLED", "true").strip().lower() not in {"0", "false", "no"}
 PLACES_REFRESH_SECONDS = max(15, int(os.environ.get("PLACES_REFRESH_SECONDS", "45")))
-PULSE_REFRESH_SECONDS = max(10, int(os.environ.get("PULSE_REFRESH_SECONDS", "20")))
+PULSE_REFRESH_SECONDS = max(10, int(os.environ.get("PULSE_REFRESH_SECONDS", "60")))
 EVENTS_REFRESH_SECONDS = max(60, int(os.environ.get("EVENTS_REFRESH_SECONDS", "300")))
 RECREATION_REFRESH_SECONDS = max(30, int(os.environ.get("RECREATION_REFRESH_SECONDS", "120")))
 TRANSIT_REFRESH_SECONDS = max(15, int(os.environ.get("TRANSIT_REFRESH_SECONDS", "60")))

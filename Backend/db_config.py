@@ -24,7 +24,8 @@ CONNECTION_PARAMS = (
     f"dbname={DB_NAME} "
     f"user={DB_USER} "
     f"password={DB_PASS} "
-    f"connect_timeout={DB_CONNECT_TIMEOUT}"
+    f"connect_timeout={DB_CONNECT_TIMEOUT} "
+    f"options='-c statement_timeout=5000'"
 )
 
 

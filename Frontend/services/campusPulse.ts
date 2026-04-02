@@ -31,7 +31,17 @@ export interface CampusHotspot {
   place: CampusLocation | null;
 }
 
+const PULSE_CACHE_TTL_MS = 30_000;
+
+let _cachedHotspots: CampusHotspot[] | null = null;
+let _cachedAt = 0;
+
 export async function fetchCampusPulseMap(limit = 12): Promise<CampusHotspot[]> {
+  const now = Date.now();
+  if (_cachedHotspots && now - _cachedAt < PULSE_CACHE_TTL_MS) {
+    return _cachedHotspots;
+  }
+
   const response = await fetch(`${API_URL}/campus/pulse/map?limit=${limit}`);
   if (!response.ok) {
     throw new Error(`Pulse map failed with status ${response.status}`);
@@ -43,7 +53,7 @@ export async function fetchCampusPulseMap(limit = 12): Promise<CampusHotspot[]> 
     return [];
   }
 
-  return hotspots.map((hotspot: any) => ({
+  const mapped = hotspots.map((hotspot: any) => ({
     id: hotspot.id,
     placeId: hotspot.placeId ?? hotspot.place_id ?? hotspot.place?.place_id ?? null,
     locationName: hotspot.locationName,
@@ -61,4 +71,9 @@ export async function fetchCampusPulseMap(limit = 12): Promise<CampusHotspot[]> 
     items: Array.isArray(hotspot.items) ? hotspot.items : [],
     place: null,
   }));
+
+  _cachedHotspots = mapped;
+  _cachedAt = now;
+
+  return mapped;
 }
