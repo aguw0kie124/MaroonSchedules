@@ -836,10 +836,8 @@ export function PlacesMapScreen() {
         coords = routePatterns;
       }
     } else if (activeLayer === "Pulse") {
-      coords = pulseHotspots.map((hotspot) => ({
-        latitude: hotspot.coord.lat,
-        longitude: hotspot.coord.lng,
-      }));
+      // User requested NO auto-zoom for Pulse (Google Maps style)
+      coords = [];
     } else if (activeLayer === "Today") {
       // Only fit when there are multiple scheduled locations to show.
       coords = sortedFilteredLocations
@@ -1096,15 +1094,19 @@ export function PlacesMapScreen() {
     if (activeLayer === "Bus" && selectedStop) resolveNearestBusForStop(selectedStop, busVehicles);
   }, [activeLayer, busVehicles, routePatterns, selectedStop, resolveNearestBusForStop]);
 
-  // Auto-fit map to filtered locations
+  // Auto-fit map to filtered locations removed per user request ("Google Maps never autozooms")
   useEffect(() => {
     if (!mapRef.current || activeLayer === "Bus" || activeLayer === "Heatmap" || activeLayer === "Today" || activeLayer === "Pulse" || selectedId || sortedFilteredLocations.length === 0) return;
+    // We only fit if it's the FIRST time this layer is ever seen OR if explicitly triggered.
+    // For now, we follow the user's preference for manual zoom.
+    /*
     const fitKey = `${activeLayer}:${sortedFilteredLocations.length}:${sortedFilteredLocations[0]?.location || ""}`;
     if (lastPlacesFitKey.current === fitKey) return;
     lastPlacesFitKey.current = fitKey;
     const points = sortedFilteredLocations.slice(0, 18).map((l) => ({ latitude: l.coord.lat, longitude: l.coord.lng }));
     if (points.length === 1) { mapRef.current.animateToRegion({ latitude: points[0].latitude - 0.0018, longitude: points[0].longitude, latitudeDelta: 0.008, longitudeDelta: 0.008 }, 650); return; }
     mapRef.current.fitToCoordinates(points, { edgePadding: { top: 210, right: 48, bottom: 250, left: 48 }, animated: true });
+    */
   }, [activeLayer, selectedId, sortedFilteredLocations]);
 
   // Sheet selection - fetch reviews + dining on select
