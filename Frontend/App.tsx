@@ -59,6 +59,7 @@ import { TourTarget, useTour } from './components/onboarding/TourProvider';
 
 import { syncUser, fetchUserProfile } from './api/client';
 import { TOSScreen } from './components/TOSScreen';
+import { NotificationPromptScreen } from './components/onboarding/NotificationPromptScreen';
 
 function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
@@ -250,6 +251,8 @@ function RootNavigator() {
   const { user } = useUser();
   const isTOSAccepted = useAppShellStore((state) => state.isTOSAccepted);
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
+  const isNotificationPrompted = useAppShellStore((state) => state.isNotificationPrompted);
+  const setNotificationPrompted = useAppShellStore((state) => state.setNotificationPrompted);
 
   if (!isLoaded) {
     return null;
@@ -260,6 +263,14 @@ function RootNavigator() {
       <TOSScreen 
         clerkId={user.id} 
         onAccepted={() => setTOSAccepted(true)} 
+      />
+    );
+  }
+
+  if (isSignedIn && isTOSAccepted && !isNotificationPrompted) {
+    return (
+      <NotificationPromptScreen 
+        onDone={() => setNotificationPrompted(true)} 
       />
     );
   }

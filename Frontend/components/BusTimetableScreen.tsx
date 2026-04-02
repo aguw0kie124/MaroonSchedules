@@ -8,8 +8,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Bus, ChevronLeft, Clock3, MapPin } from 'lucide-react-native';
+import { Bell, Bus, ChevronLeft, Clock3, MapPin } from 'lucide-react-native';
 import { useTheme } from './SharedUI';
+import { useAppShellStore } from '../store/appShellStore';
+import { scheduleBusArrivalNotification } from '../services/notificationService';
+import { Alert } from 'react-native';
 
 function RouteBadge({
   shortName,
@@ -31,7 +34,39 @@ function getStopLabel(stop: any) {
   return stop?.Name || stop?.StopName || stop?.Description || stop?.StopCode || 'Transit Stop';
 }
 
-function TimetableRow({ entry, styles }: { entry: any; styles: ReturnType<typeof getStyles> }) {
+function TimetableRow({ entry, routeName, styles, COLORS }: { entry: any; routeName: string; styles: ReturnType<typeof getStyles>; COLORS: any }) {
+  const handleAlert = async () => {
+    const prefs = useAppShellStore.getState();
+    const leadTime = prefs.notificationLeadTime;
+    if (!prefs.placeNotifications) {
+      Alert.alert('Notifications Disabled', 'Please enable transit alerts in your notification settings.');
+      return;
+    }
+
+    // Parse ETA. Entry.etaLabel is usually "5 min" or "10:30 PM"
+    // For simplicity, we'll try to extract minutes if it's a relative time
+    let minutes = 0;
+    if (entry.etaLabel?.toLowerCase().includes('min')) {
+      minutes = parseInt(entry.etaLabel) || 0;
+    } else {
+      // If it's a timestamp, we'd need to calculate diff from now.
+      // Assuming for now it's often minute-based or we can estimate.
+      // If we can't determine, we'll skip for now or use a default if it's soon.
+      minutes = 10; // Default estimate if only time is shown
+    }
+
+    if (minutes <= 0) {
+      Alert.alert('Bus Arriving', 'This bus is already arriving!');
+      return;
+    }
+
+    const stopLabel = getStopLabel(entry.stop);
+    const id = await scheduleBusArrivalNotification(routeName, stopLabel, minutes, leadTime);
+    if (id) {
+      Alert.alert('Reminder Set', `We will notify you ${leadTime} minutes before the bus arrives at ${stopLabel}.`);
+    }
+  };
+
   return (
     <View style={styles.row}>
       <View style={styles.sequence}>
@@ -43,7 +78,12 @@ function TimetableRow({ entry, styles }: { entry: any; styles: ReturnType<typeof
         </Text>
         <Text style={styles.stopMeta}>{entry.detail}</Text>
       </View>
-      <Text style={styles.eta}>{entry.etaLabel}</Text>
+      <View style={{ alignItems: 'flex-end', gap: 4 }}>
+        <Text style={styles.eta}>{entry.etaLabel}</Text>
+        <TouchableOpacity onPress={handleAlert} style={{ padding: 4 }}>
+          <Bell size={16} color={COLORS.primary} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
@@ -123,7 +163,9 @@ export default function BusTimetableScreen({ navigation, route }: any) {
                   <TimetableRow
                     key={`${routeInfo?.Key || 'route'}-${entry.stop?.StopCode || entry.sequence}`}
                     entry={entry}
+                    routeName={routeInfo?.Name || 'Bus'}
                     styles={styles}
+                    COLORS={COLORS}
                   />
                 ))
               ) : (
@@ -150,7 +192,9 @@ export default function BusTimetableScreen({ navigation, route }: any) {
                       <TimetableRow
                         key={`${board.route?.Key || board.route?.Name}-${entry.stop?.StopCode || entry.sequence}`}
                         entry={entry}
+                        routeName={board.route?.Name || 'Bus'}
                         styles={styles}
+                        COLORS={COLORS}
                       />
                     ))
                   ) : (

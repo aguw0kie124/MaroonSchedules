@@ -59,6 +59,8 @@ import {
 
 import { API_URL } from '../config';
 import { useTheme } from './SharedUI';
+import { useAppShellStore } from '../store/appShellStore';
+import * as Notifications from 'expo-notifications';
 import { useEventStore } from '../store/eventStore';
 import {
   addComment,
@@ -541,6 +543,22 @@ export function CampusPingsScreen() {
       setComposerVisible(false);
       resetComposer();
       await loadUserPings();
+
+      // Demo Social Notification: Wait 15 seconds then notify of a simulated upvote
+      const prefs = useAppShellStore.getState();
+      if (prefs.notificationsEnabled && prefs.pingNotifications) {
+        setTimeout(async () => {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: "Social Ping!",
+              body: `Someone just upvoted your ping: "${composerTitle}"!`,
+              data: { type: 'social' },
+              sound: true,
+            },
+            trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 15 },
+          });
+        }, 1000);
+      }
     } catch (error: any) {
       console.error('[Pings] create failed', error);
       Alert.alert('Could not post ping', error?.message || 'Something went wrong while posting your ping.');

@@ -15,7 +15,7 @@ export type PlacesPillId =
   | 'Academic'
   | 'Heatmap';
 export type ParkingPermit = 'visitor' | 'garage' | 'any_valid' | 'west_campus' | 'resident';
-export type SettingsTabId = 'personal' | 'layout' | 'blocked' | 'resources';
+export type SettingsTabId = 'personal' | 'layout' | 'resources';
 export type TabBarMode = 'floating' | 'solid';
 
 export interface ToggleLayoutItem<T extends string> {
@@ -115,7 +115,7 @@ function isPermit(value: unknown): value is ParkingPermit {
 }
 
 function isSettingsTabId(value: unknown): value is SettingsTabId {
-  return value === 'personal' || value === 'layout' || value === 'blocked' || value === 'resources';
+  return value === 'personal' || value === 'layout' || value === 'resources';
 }
 
 function isTabBarMode(value: unknown): value is TabBarMode {
@@ -132,6 +132,12 @@ type AppShellState = {
   selectedScheduleId: string | null;
   isTOSAccepted: boolean;
   isTourCompleted: boolean;
+  isNotificationPrompted: boolean;
+  notificationsEnabled: boolean;
+  eventNotifications: boolean;
+  placeNotifications: boolean;
+  pingNotifications: boolean;
+  notificationLeadTime: number;
   setParkingPermit: (permit: ParkingPermit) => void;
   togglePlacesPill: (id: PlacesPillId) => void;
   movePlacesPill: (id: PlacesPillId, direction: -1 | 1) => void;
@@ -143,6 +149,10 @@ type AppShellState = {
   setSelectedScheduleId: (id: string | null) => void;
   setTOSAccepted: (accepted: boolean) => void;
   setTourCompleted: (completed: boolean) => void;
+  setNotificationPrompted: (prompted: boolean) => void;
+  setNotificationsEnabled: (enabled: boolean) => void;
+  setNotificationPreference: (key: 'event' | 'place' | 'ping', value: boolean) => void;
+  setNotificationLeadTime: (time: number) => void;
 };
 
 export const useAppShellStore = create<AppShellState>()(
@@ -157,6 +167,12 @@ export const useAppShellStore = create<AppShellState>()(
       selectedScheduleId: null,
       isTOSAccepted: false,
       isTourCompleted: false,
+      isNotificationPrompted: false,
+      notificationsEnabled: false,
+      eventNotifications: true,
+      placeNotifications: true,
+      pingNotifications: true,
+      notificationLeadTime: 5,
       setParkingPermit: (parkingPermit) => set({ parkingPermit }),
       togglePlacesPill: (id) =>
         set((state) => ({
@@ -180,6 +196,12 @@ export const useAppShellStore = create<AppShellState>()(
       setSelectedScheduleId: (selectedScheduleId) => set({ selectedScheduleId }),
       setTOSAccepted: (isTOSAccepted) => set({ isTOSAccepted }),
       setTourCompleted: (isTourCompleted) => set({ isTourCompleted }),
+      setNotificationPrompted: (isNotificationPrompted) => set({ isNotificationPrompted }),
+      setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
+      setNotificationPreference: (key, value) => set((state) => ({
+        [`${key}Notifications`]: value,
+      })),
+      setNotificationLeadTime: (notificationLeadTime) => set({ notificationLeadTime }),
     }),
     {
       name: 'app-shell-store',
@@ -194,6 +216,12 @@ export const useAppShellStore = create<AppShellState>()(
         selectedScheduleId: state.selectedScheduleId,
         isTOSAccepted: state.isTOSAccepted,
         isTourCompleted: state.isTourCompleted,
+        isNotificationPrompted: state.isNotificationPrompted,
+        notificationsEnabled: state.notificationsEnabled,
+        eventNotifications: state.eventNotifications,
+        placeNotifications: state.placeNotifications,
+        pingNotifications: state.pingNotifications,
+        notificationLeadTime: state.notificationLeadTime,
       }),
       merge: (persistedState, currentState) => {
         const persisted = (persistedState as Partial<AppShellState>) || {};
@@ -220,6 +248,24 @@ export const useAppShellStore = create<AppShellState>()(
           isTourCompleted: typeof persisted.isTourCompleted === 'boolean'
             ? persisted.isTourCompleted
             : currentState.isTourCompleted,
+          isNotificationPrompted: typeof persisted.isNotificationPrompted === 'boolean'
+            ? persisted.isNotificationPrompted
+            : currentState.isNotificationPrompted,
+          notificationsEnabled: typeof persisted.notificationsEnabled === 'boolean'
+            ? persisted.notificationsEnabled
+            : currentState.notificationsEnabled,
+          eventNotifications: typeof persisted.eventNotifications === 'boolean'
+            ? persisted.eventNotifications
+            : currentState.eventNotifications,
+          placeNotifications: typeof persisted.placeNotifications === 'boolean'
+            ? persisted.placeNotifications
+            : currentState.placeNotifications,
+          pingNotifications: typeof persisted.pingNotifications === 'boolean'
+            ? persisted.pingNotifications
+            : currentState.pingNotifications,
+          notificationLeadTime: typeof persisted.notificationLeadTime === 'number'
+            ? persisted.notificationLeadTime
+            : currentState.notificationLeadTime,
         };
       },
     },

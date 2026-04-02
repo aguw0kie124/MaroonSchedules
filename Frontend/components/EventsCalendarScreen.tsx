@@ -51,6 +51,8 @@ import { useShareStore } from '../store/shareStore';
 import { useEventStore } from '../store/eventStore';
 import type { MajorOption, ScheduledEvent } from '../store/eventStore';
 import { useTheme } from './SharedUI';
+import { useAppShellStore } from '../store/appShellStore';
+import { scheduleEventNotification } from '../services/notificationService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.24;
@@ -550,6 +552,18 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         categories: event.categories,
       };
       scheduleEvent(scheduled);
+
+      // Notification logic
+      const prefs = useAppShellStore.getState();
+      const leadTime = prefs.notificationLeadTime;
+      if (prefs.eventNotifications) {
+        scheduleEventNotification(
+          event.title,
+          `Starting at ${event.location || 'TAMU'} in ${leadTime} minutes.`,
+          new Date(event.date_ts * 1000),
+          leadTime
+        );
+      }
 
       if (user?.id) {
         try {

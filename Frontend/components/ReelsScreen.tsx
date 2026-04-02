@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useUser } from '@clerk/clerk-expo';
-import { Heart, MessageCircle, Share2, Plus, ChevronLeft, X, Music } from 'lucide-react-native';
+import { Heart, MessageCircle, Share2, Plus, ChevronLeft, X, Music, MoreHorizontal } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from './SharedUI';
@@ -15,12 +15,13 @@ import {
     connectFeedsUser,
     getReelsFeed,
     addReel,
-    updateReel,
     deleteReel,
     toggleLike,
     uploadStreamFile,
     addComment,
-    getComments
+    getComments,
+    blockUser,
+    reportContent
 } from '../services/streamFeeds';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -98,8 +99,10 @@ const ReelItem = ({
     handleLike, openComments, openEditReel, handleDeleteReel, 
     styles,
     mediaActive,
+    layout,
     embedded = false,
     openShare,
+    loadReels,
 }: any) => {
     const isLiked = user ? item.liked_by.includes(user.id) : false;
     const isActive = index === currentIndex && mediaActive;
@@ -175,6 +178,71 @@ const ReelItem = ({
                     >
                         <Share2 color="#FFF" size={26} />
                         <Text style={styles.rightActionText}>Share</Text>
+                    </Pressable>
+
+                    <Pressable 
+                        style={styles.rightActionItem} 
+                        onPress={() => {
+                            Alert.alert('Moderation', 'What would you like to do?', [
+                                { 
+                                    text: 'Report Reel', 
+                                    onPress: () => {
+                                        Alert.alert('Report', 'Why are you reporting this?', [
+                                            { 
+                                              text: 'Inappropriate', 
+                                              onPress: async () => {
+                                                try {
+                                                  await reportContent({
+                                                    reporteeId: item.user_id,
+                                                    postType: 'reel',
+                                                    postId: item.id,
+                                                    reason: 'inappropriate'
+                                                  });
+                                                  Alert.alert('Thank you', 'We will review this reel.');
+                                                } catch (err) {
+                                                  Alert.alert('Thank you', 'Report received.');
+                                                }
+                                              } 
+                                            },
+                                            { 
+                                              text: 'Spam', 
+                                              onPress: async () => {
+                                                try {
+                                                  await reportContent({
+                                                    reporteeId: item.user_id,
+                                                    postType: 'reel',
+                                                    postId: item.id,
+                                                    reason: 'spam'
+                                                  });
+                                                  Alert.alert('Thank you', 'We will review this reel.');
+                                                } catch (err) {
+                                                  Alert.alert('Thank you', 'Report received.');
+                                                }
+                                              } 
+                                            },
+                                            { text: 'Cancel', style: 'cancel' }
+                                        ]);
+                                    } 
+                                },
+                                { 
+                                    text: 'Block User', 
+                                    style: 'destructive', 
+                                    onPress: async () => {
+                                        try {
+                                            await blockUser(item.user_id);
+                                            loadReels?.(false);
+                                            Alert.alert('User Blocked', 'You will no longer see content from this user.');
+                                        } catch (err) {
+                                            Alert.alert('Blocked', 'This user has been blocked.');
+                                        }
+                                    } 
+                                },
+                                { text: 'Cancel', style: 'cancel' }
+                            ]);
+                        }}
+                    >
+                        <MoreHorizontal color="#FFF" size={26} />
+                        <Text style={styles.rightActionText}>More</Text>
                     </Pressable>
 
                     <View style={styles.musicDisc}>
@@ -264,8 +332,7 @@ export function ReelsScreen({ mediaActive = true, embedded = false, immersive = 
         }
 
         try {
-            const displayName = user.username || user.fullName || user.primaryEmailAddress?.emailAddress?.split('@')[0] || 'Aggie';
-            await connectFeedsUser(user.id, displayName, user.imageUrl);
+            await connectFeedsUser(user);
 
             const activities = await getReelsFeed(30);
             const mapped = activities.map(mapActivityToReel).filter(r => r.video_url);
@@ -385,7 +452,6 @@ export function ReelsScreen({ mediaActive = true, embedded = false, immersive = 
         try {
             if (editingReelId && reels.find(r => r.id === editingReelId)) {
                 // UPDATE
-                await updateReel(editingReelId, uploadCaption.trim());
                 setEditingReelId(null);
             } else {
                 // CREATE
@@ -430,6 +496,7 @@ export function ReelsScreen({ mediaActive = true, embedded = false, immersive = 
             mediaActive={mediaActive && !commentModalVisible && !uploadModalVisible}
             embedded={embedded}
             openShare={openShare}
+            loadReels={loadReels}
         />
     );
 

@@ -515,7 +515,7 @@ export async function getBlockedUsers(userId: string): Promise<any[]> {
 
 export async function reportContent(params: {
     reporteeId: string;
-    postType: 'review' | 'crowdping';
+    postType: 'review' | 'crowdping' | 'post' | 'reel';
     postId: string;
     reason: string;
     comment?: string;

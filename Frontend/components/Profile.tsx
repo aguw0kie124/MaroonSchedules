@@ -37,6 +37,7 @@ import {
   Trash2,
   Shield,
   UserX,
+  Bell,
 } from 'lucide-react-native';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
@@ -52,7 +53,6 @@ import { getDefaultAccentColor, useTheme } from './SharedUI';
 const SETTINGS_TABS = [
   { key: 'personal', label: 'Personal', icon: UserRound },
   { key: 'layout', label: 'Layout', icon: LayoutGrid },
-  { key: 'blocked', label: 'Blocked', icon: Shield },
   { key: 'resources', label: 'Resources', icon: LibraryBig },
 ] as const;
 
@@ -147,7 +147,7 @@ export function Profile() {
     setApplyAccentToText,
   } = useTheme();
   const isDark = theme === 'dark';
-  const styles = getStyles(COLORS, isDark);
+  const styles = getStyles(COLORS, isDark, accentColor);
   const { startTour, endTour, activeTargetName } = useTour();
 
   const [academicStatus, setAcademicStatus] = useState<any | null>(null);
@@ -158,6 +158,14 @@ export function Profile() {
   const setActiveTab = useAppShellStore((state) => state.setSettingsTab);
   const tabBarMode = useAppShellStore((state) => state.tabBarMode);
   const setTabBarMode = useAppShellStore((state) => state.setTabBarMode);
+  const eventNotifications = useAppShellStore((state) => state.eventNotifications);
+  const placeNotifications = useAppShellStore((state) => state.placeNotifications);
+  const pingNotifications = useAppShellStore((state) => state.pingNotifications);
+  const notificationLeadTime = useAppShellStore((state) => state.notificationLeadTime);
+  const setNotificationPreference = useAppShellStore((state) => state.setNotificationPreference);
+  const setNotificationLeadTime = useAppShellStore((state) => state.setNotificationLeadTime);
+  const notificationsEnabled = useAppShellStore((state) => state.notificationsEnabled);
+  const setNotificationsEnabled = useAppShellStore((state) => state.setNotificationsEnabled);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
 
@@ -206,7 +214,7 @@ export function Profile() {
   }, [isFocused, user]);
 
   useEffect(() => {
-    if (activeTab === 'blocked' && user) {
+    if (activeTab === 'personal' && user) {
         loadBlockedUsers();
     }
   }, [activeTab, user]);
@@ -478,6 +486,9 @@ export function Profile() {
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
       </View>
+      
+      {renderNotificationsTab()}
+      {renderBlockedTab()}
 
 
       <Pressable 
@@ -679,19 +690,80 @@ export function Profile() {
     </>
   );
 
-  const renderBlockedTab = () => (
+  const renderNotificationsTab = () => (
     <View style={styles.section}>
-      <View style={styles.heroHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.eyebrow}>Safety</Text>
-          <Text style={styles.title}>Blocked</Text>
+      <Text style={styles.sectionTitle}>Notifications</Text>
+      
+      <View style={{ marginTop: 8 }}>
+        <View style={styles.inlineSwitchRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inlineSwitchTitle}>Event Reminders</Text>
+          </View>
+          <Switch
+            value={eventNotifications}
+            onValueChange={(v) => setNotificationPreference('event', v)}
+            trackColor={{ false: COLORS.border, true: COLORS.primary }}
+            thumbColor="#FFFFFF"
+          />
         </View>
-        <View style={styles.heroBadge}>
-          <Shield size={18} color="#FFFFFF" />
+
+        <View style={[styles.inlineSwitchRow, { marginTop: 12 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inlineSwitchTitle}>Transit Alerts</Text>
+          </View>
+          <Switch
+            value={placeNotifications}
+            onValueChange={(v) => setNotificationPreference('place', v)}
+            trackColor={{ false: COLORS.border, true: COLORS.primary }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
+
+        <View style={[styles.inlineSwitchRow, { marginTop: 12 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inlineSwitchTitle}>Social Pings</Text>
+          </View>
+          <Switch
+            value={pingNotifications}
+            onValueChange={(v) => setNotificationPreference('ping', v)}
+            trackColor={{ false: COLORS.border, true: COLORS.primary }}
+            thumbColor="#FFFFFF"
+          />
         </View>
       </View>
 
-      <Text style={[styles.sectionSubtitle, { marginBottom: 16 }]}>
+      <Text style={[styles.preferenceLabel, { marginTop: 24, marginBottom: 12, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 }]}>
+        Alert Lead Time
+      </Text>
+      <View style={styles.segmentedRow}>
+        {[
+          { id: 5, label: '5m' },
+          { id: 10, label: '10m' },
+          { id: 15, label: '15m' },
+          { id: 30, label: '30m' },
+          { id: 60, label: '1h' },
+        ].map((option) => {
+          const selected = notificationLeadTime === option.id;
+          return (
+            <Pressable
+              key={option.id}
+              style={[styles.segmentButton, selected && styles.segmentButtonActive]}
+              onPress={() => setNotificationLeadTime(option.id)}
+            >
+              <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+
+  const renderBlockedTab = () => (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Blocked Users</Text>
+      <Text style={styles.sectionSubtitle}>
         Users you've blocked won't see your posts, and you won't see theirs.
       </Text>
 
@@ -799,6 +871,19 @@ export function Profile() {
           </Pressable>
         );
       })}
+
+      <Pressable
+        style={[styles.toolRow, styles.toolRowLast, { marginTop: 12 }]}
+        onPress={() => openExternal('https://maroonschedules.com/privacy-policy')}
+      >
+        <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 199, 89, 0.15)' }]}>
+          <Shield size={20} color="#34C759" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.toolTitle}>Privacy Policy</Text>
+        </View>
+        <ExternalLink size={18} color={COLORS.textTertiary} />
+      </Pressable>
     </View>
   );
 
@@ -834,7 +919,6 @@ export function Profile() {
 
         {activeTab === 'personal' ? renderPersonalTab() : null}
         {activeTab === 'layout' ? renderLayoutTab() : null}
-        {activeTab === 'blocked' ? renderBlockedTab() : null}
         {activeTab === 'resources' ? renderResourcesTab() : null}
 
         <View style={{ height: 120 }} />
@@ -843,7 +927,7 @@ export function Profile() {
   );
 }
 
-const getStyles = (COLORS: any, isDark: boolean) =>
+const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
   StyleSheet.create({
     container: {
       flex: 1,
@@ -1001,7 +1085,8 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     segmentButtonActive: {
       backgroundColor: 'rgba(12,12,14,0.92)',
-      borderColor: 'rgba(243,241,237,0.26)',
+      borderColor: accentColor,
+      borderWidth: 2,
     },
     segmentText: {
       fontSize: 13,

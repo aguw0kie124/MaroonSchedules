@@ -22,7 +22,9 @@ import {
     uploadStreamFile,
     uploadStreamImage,
     deletePost,
-    updatePost
+    updatePost,
+    blockUser,
+    reportContent
 } from '../services/streamFeeds';
 
 import { Trash2 } from 'lucide-react-native';
@@ -406,7 +408,80 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
                             </Pressable>
                         </View>
                     ) : (
-                        <Pressable style={styles.moreBtn}>
+                        <Pressable 
+                            style={styles.moreBtn} 
+                            onPress={() => {
+                                Alert.alert(
+                                    'Moderation',
+                                    'What would you like to do?',
+                                    [
+                                        { 
+                                            text: 'Report Post', 
+                                            onPress: () => {
+                                                Alert.alert('Report', 'Why are you reporting this?', [
+                                                    { 
+                                                      text: 'Inappropriate', 
+                                                      onPress: async () => {
+                                                        try {
+                                                          await reportContent({
+                                                            reporteeId: item.user_id,
+                                                            postType: 'post',
+                                                            postId: item.id,
+                                                            reason: 'inappropriate'
+                                                          });
+                                                          Alert.alert('Thank you', 'We will review this content.');
+                                                        } catch (err) {
+                                                          Alert.alert('Thank you', 'Report received.');
+                                                        }
+                                                      } 
+                                                    },
+                                                    { 
+                                                      text: 'Spam', 
+                                                      onPress: async () => {
+                                                        try {
+                                                          await reportContent({
+                                                            reporteeId: item.user_id,
+                                                            postType: 'post',
+                                                            postId: item.id,
+                                                            reason: 'spam'
+                                                          });
+                                                          Alert.alert('Thank you', 'We will review this content.');
+                                                        } catch (err) {
+                                                          Alert.alert('Thank you', 'Report received.');
+                                                        }
+                                                      } 
+                                                    },
+                                                    { text: 'Cancel', style: 'cancel' }
+                                                ]);
+                                            } 
+                                        },
+                                        { 
+                                            text: 'Block User', 
+                                            style: 'destructive',
+                                            onPress: () => {
+                                                Alert.alert('Block User', `Are you sure you want to block ${item.user_name}?`, [
+                                                    { text: 'Cancel', style: 'cancel' },
+                                                    { 
+                                                      text: 'Block', 
+                                                      style: 'destructive', 
+                                                      onPress: async () => {
+                                                        try {
+                                                          await blockUser(item.user_id);
+                                                          handleRefresh();
+                                                          Alert.alert('User Blocked');
+                                                        } catch (err) {
+                                                          Alert.alert('Error', 'Failed to block user.');
+                                                        }
+                                                      } 
+                                                    }
+                                                ]);
+                                            } 
+                                        },
+                                        { text: 'Cancel', style: 'cancel' }
+                                    ]
+                                );
+                            }}
+                        >
                             <MoreHorizontal color={T.text2} size={20} />
                         </Pressable>
                     )}
