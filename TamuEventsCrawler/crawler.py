@@ -248,6 +248,28 @@ async def crawl_source(
             state.update_source_state(src_name, errors=1)
             return []
 
+    elif src_type == "html_dynamic_table":
+        # HTML table source that may follow detail links for enrichment
+        primary_url = url or (source.base_urls[0] if source.base_urls else "")
+        try:
+            body, status, _ = await http_client.fetch(primary_url)
+            if body and status != 304:
+                save_raw(src_name, body)
+                raw_events = await parser(
+                    body,
+                    src_name,
+                    primary_url,
+                    http_client=http_client,
+                    source_config=source,
+                )
+            elif status == 304:
+                logger.info("Source %s not modified, skipping", src_name)
+                return []
+        except Exception as exc:
+            logger.error("Error crawling HTML dynamic table %s: %s", src_name, exc)
+            state.update_source_state(src_name, errors=1)
+            return []
+
     else:
         # Standard single-URL source (livewhale_json, html)
         try:

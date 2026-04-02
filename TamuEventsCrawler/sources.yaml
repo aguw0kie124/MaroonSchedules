@@ -178,6 +178,27 @@ sources:
   parser: getinvolved_events
   priority: high
   campus_filter: college_station
+- name: ers_tamu
+  type: html_dynamic_table
+  priority: high
+  base_urls:
+  - https://ers.tamu.edu/default.aspx
+  - https://ers.tamu.edu/
+  detail_pattern: /register.aspx\?ScheduleId=\d+
+  parser: ers_events_list
+  detail_parser: ers_event_detail
+  filters:
+    campus: college_station
+    exclude_hosts:
+    - Qatar
+    - Galveston
+  department_map:
+    CTE - English Language Proficiency: CTE
+    Center for Teaching Excellence: CTE
+    Residence Life: RESLIFE
+    Math Learning Center: MATH
+    Engineering Academic and Student Affairs: ENGR
+    Aggie Lyceum: LYCEUM
 - name: getinvolved_search_engineering
   type: html_search
   base_url: https://getinvolved.tamu.edu/events
