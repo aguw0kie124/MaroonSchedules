@@ -20,6 +20,7 @@ import {
   ChevronRight,
   Dumbbell,
   ExternalLink,
+  Flame,
   GraduationCap,
   LayoutGrid,
   LibraryBig,
@@ -351,6 +352,20 @@ export function Profile() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.toolTitle}>GPA Calculator</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Nutrition</Text>
+
+        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('DiningDashboard')}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(0, 207, 199, 0.14)' }]}>
+            <Flame size={20} color="#00CFC7" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Nutrition Dashboard</Text>
           </View>
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
