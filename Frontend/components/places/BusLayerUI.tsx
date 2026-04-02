@@ -6,14 +6,7 @@ import {
   ScrollView,
   LayoutAnimation,
 } from "react-native";
-import {
-  X,
-  ChevronDown,
-  Clock,
-  MapPin,
-  Bus,
-  Route,
-} from "lucide-react-native";
+import { X, ChevronDown, Clock, MapPin, Bus, Route } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { getStopLabel } from "./utils";
 
@@ -29,6 +22,8 @@ interface BusLayerUIProps {
   filteredBusRoutes: any[];
   handleSelectBusRoute: (routeId: string) => void;
   openBusTimetable: () => void;
+  selectedDirection?: string;
+  setSelectedDirection?: (v: string) => void;
   // Stop info card
   selectedStop: any;
   setSelectedStop: (v: any) => void;
@@ -52,7 +47,14 @@ export function BusRouteSelector({
   handleSelectBusRoute,
   openBusTimetable,
   openTransitTripPlanner,
-}: BusLayerUIProps) {
+  selectedDirection,
+  setSelectedDirection,
+  availableDirections,
+}: BusLayerUIProps & {
+  selectedDirection?: string;
+  setSelectedDirection?: (val: string) => void;
+  availableDirections?: string[];
+}) {
   if (busRoutes.length === 0) return null;
 
   return (
@@ -109,22 +111,70 @@ export function BusRouteSelector({
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.busTimetableButton}
-          onPress={openBusTimetable}
-          activeOpacity={0.85}
-        >
-          <Clock size={16} color={COLORS.textPrimary} />
-        </TouchableOpacity>
+        {!isAllBusRoutesSelected && (
+          <TouchableOpacity
+            style={styles.busTimetableButton}
+            onPress={openBusTimetable}
+            activeOpacity={0.85}
+          >
+            <Clock size={16} color={COLORS.textPrimary} />
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity
-          style={[styles.busTimetableButton, { backgroundColor: COLORS.primary }]}
+          style={[
+            styles.busTimetableButton,
+            { backgroundColor: COLORS.primary },
+          ]}
           onPress={openTransitTripPlanner}
           activeOpacity={0.85}
         >
           <Route size={16} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
+
+      {/* Direction Switcher */}
+      {!isAllBusRoutesSelected && selectedDirection && setSelectedDirection && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 4, gap: 8, marginTop: 8 }}
+        >
+          {availableDirections &&
+            availableDirections.length > 0 &&
+            availableDirections
+              .filter((d) => d !== "All")
+              .map((dir) => {
+                const isSelected = selectedDirection === dir;
+                return (
+                  <TouchableOpacity
+                    key={dir}
+                    onPress={() => setSelectedDirection(dir)}
+                    style={{
+                      paddingVertical: 6,
+                      paddingHorizontal: 12,
+                      backgroundColor: isSelected
+                        ? COLORS.primary
+                        : COLORS.surface,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: isSelected ? COLORS.primary : COLORS.border,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: isSelected ? "#fff" : COLORS.textSecondary,
+                        fontSize: 12,
+                        fontWeight: "600",
+                      }}
+                    >
+                      {dir}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+        </ScrollView>
+      )}
 
       {isRouteDropdownOpen && (
         <View style={styles.busRoutesDropdown}>
@@ -282,50 +332,67 @@ export function BusVehicleInfoCard({
       <View style={styles.busInfoIcon}>
         <Bus size={24} color="#FFF" />
       </View>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, paddingLeft: 12 }}>
         <View style={styles.busInfoBadgeRow}>
           <View style={styles.busInfoBadge}>
-            <Text style={styles.busInfoBadgeText}>
-              ID: {selectedBus.Name}
-            </Text>
+            <Text style={styles.busInfoBadgeText}>ID: {selectedBus.Name}</Text>
           </View>
-          {selectedBus.Capacity > 0 && (
-            <View
-              style={[
-                styles.loadBadge,
-                {
-                  backgroundColor:
-                    selectedBus.PassengersOnboard / selectedBus.Capacity > 0.8
-                      ? "#FF3B3020"
-                      : "#32D74B20",
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.loadText,
-                  {
-                    color:
-                      selectedBus.PassengersOnboard / selectedBus.Capacity > 0.8
-                        ? "#FF3B30"
-                        : "#32D74B",
-                  },
-                ]}
-              >
+
+          {(selectedBus.Speed !== undefined ||
+            selectedBus.speed !== undefined) && (
+            <View style={[styles.busInfoBadge, { marginLeft: 6 }]}>
+              <Text style={styles.busInfoBadgeText}>
                 {Math.round(
-                  (selectedBus.PassengersOnboard / selectedBus.Capacity) * 100,
-                )}
-                % Full
+                  (selectedBus.Speed || selectedBus.speed || 0) * 2.23694,
+                )}{" "}
+                mph
               </Text>
             </View>
           )}
+
+          {selectedBus.Capacity > 0 &&
+            selectedBus.PassengersOnboard !== undefined &&
+            !isNaN(selectedBus.PassengersOnboard) && (
+              <View
+                style={[
+                  styles.loadBadge,
+                  {
+                    backgroundColor:
+                      selectedBus.PassengersOnboard / selectedBus.Capacity > 0.8
+                        ? "#FF3B3020"
+                        : "#32D74B20",
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.loadText,
+                    {
+                      color:
+                        selectedBus.PassengersOnboard / selectedBus.Capacity >
+                        0.8
+                          ? "#FF3B30"
+                          : "#32D74B",
+                    },
+                  ]}
+                >
+                  {Math.round(
+                    (selectedBus.PassengersOnboard / selectedBus.Capacity) *
+                      100,
+                  ) || 0}
+                  % Full
+                </Text>
+              </View>
+            )}
         </View>
         <Text style={styles.busInfoRouteName}>
-          Heading on Route{" "}
           {selectedBus.RouteShortName ||
             selectedRoute?.ShortName ||
             selectedBus.RouteName ||
             "Bus Route"}
+          {selectedBus.DirectionName || selectedBus.direction
+            ? ` • ${selectedBus.DirectionName || selectedBus.direction}`
+            : ""}
         </Text>
       </View>
       <X size={20} color={COLORS.textTertiary} />
