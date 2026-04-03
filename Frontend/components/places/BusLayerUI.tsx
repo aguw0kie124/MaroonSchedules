@@ -141,7 +141,7 @@ export function BusRouteSelector({
           contentContainerStyle={{ paddingHorizontal: 4, gap: 8, marginTop: 8 }}
         >
           {availableDirections &&
-            availableDirections.length > 0 &&
+            availableDirections.filter((d) => d !== "All").length > 1 &&
             availableDirections
               .filter((d) => d !== "All")
               .map((dir) => {
