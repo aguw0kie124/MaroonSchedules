@@ -7,6 +7,7 @@ import { useUser } from '@clerk/clerk-expo';
 import { API_URL } from '../../config';
 import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
+import { normalizeExternalUrl } from '../../services/url';
 
 export function PendingReviewInterceptor() {
   const { user } = useUser();
@@ -16,11 +17,17 @@ export function PendingReviewInterceptor() {
   const [rating, setRating] = useState(0);
   const [feedback, setFeedback] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [confirmDismiss, setConfirmDismiss] = useState(false);
 
-  const fetchPendingReview = React.useCallback(async () => {
+  const fetchPendingReview = React.useCallback(async (eventId?: string | null) => {
     if (!user?.id) return null;
 
-    return fetch(`${API_URL}/admin/events/pending-reviews?clerk_id=${user.id}`)
+    const params = new URLSearchParams({ clerk_id: user.id });
+    if (eventId) {
+      params.set('event_id', eventId);
+    }
+
+    return fetch(`${API_URL}/admin/events/pending-reviews?${params.toString()}`)
       .then(res => {
         if (!res.ok) throw new Error('API error');
         return res.json();
@@ -41,26 +48,19 @@ export function PendingReviewInterceptor() {
 
   const handleReviewNotificationTap = React.useCallback(async (response?: Notifications.NotificationResponse | null) => {
     const data = response?.notification.request.content.data as Record<string, unknown> | undefined;
-    const directUrl = typeof data?.googleReviewUrl === 'string' ? data.googleReviewUrl : null;
+    const eventId = typeof data?.eventId === 'string' ? data.eventId : null;
+    const pending = await fetchPendingReview(eventId);
 
-    if (directUrl) {
-      try {
-        await Linking.openURL(directUrl);
-        return;
-      } catch (error) {
-        console.warn('Failed to open Google review URL from notification data', error);
-      }
-    }
-
-    const pending = await fetchPendingReview();
-    if (pending?.google_review_url) {
-      try {
-        await Linking.openURL(pending.google_review_url);
-      } catch (error) {
-        console.warn('Failed to open Google review URL', error);
-      }
+    if (!pending && eventId) {
+      await fetchPendingReview();
     }
   }, [fetchPendingReview]);
+
+  useEffect(() => {
+    setRating(0);
+    setFeedback('');
+    setConfirmDismiss(false);
+  }, [pendingEvent?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -138,15 +138,43 @@ export function PendingReviewInterceptor() {
   };
 
   const handleLeaveGoogleReview = () => {
-    if (pendingEvent.google_review_url) {
-      Linking.openURL(pendingEvent.google_review_url);
+    const reviewUrl = normalizeExternalUrl(pendingEvent.google_review_url);
+    if (reviewUrl) {
+      Linking.openURL(reviewUrl).catch((error) => {
+        console.warn('Failed to open Google review URL', error);
+      });
     }
     handleSubmit(rating);
   };
 
   const handleDismiss = () => {
-    setPendingEvent(null);
+    if (!pendingEvent?.id || !user?.id) {
+      setPendingEvent(null);
+      return;
+    }
+
+    if (!confirmDismiss) {
+      setConfirmDismiss(true);
+      return;
+    }
+
+    setSubmitting(true);
+    fetch(`${API_URL}/admin/events/${pendingEvent.id}/review-dismiss`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clerk_id: user.id }),
+    })
+      .catch((error) => {
+        console.warn('Failed to dismiss review prompt', error);
+      })
+      .finally(() => {
+        setSubmitting(false);
+        setConfirmDismiss(false);
+        setPendingEvent(null);
+      });
   };
+
+  const showPrivateFirst = rating > 0 && rating < 4;
 
   const styles = StyleSheet.create({
     centeredView: {
@@ -235,7 +263,11 @@ export function PendingReviewInterceptor() {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.subtitle}>You recently attended {pendingEvent.title}. Your feedback helps our local businesses!</Text>
+          <Text style={styles.subtitle}>
+            {confirmDismiss
+              ? `One last check: want to leave a review for ${pendingEvent.title}? Close again and we will stop reminding you about this event.`
+              : `You recently attended ${pendingEvent.title}. Your feedback helps our local businesses!`}
+          </Text>
 
           <View style={styles.starsContainer}>
             {[1, 2, 3, 4, 5].map((star) => (
@@ -251,37 +283,74 @@ export function PendingReviewInterceptor() {
 
           {rating > 0 && (
             <>
-              {pendingEvent.google_review_url ? (
-                <View style={styles.callOutBox}>
-                  <Text style={styles.callOutTitle}>Help {pendingEvent.location_name || 'them'} out!</Text>
-                  <Text style={styles.callOutText}>If you enjoyed the event, please consider leaving a quick review on Google to support them.</Text>
-                  <View style={{ marginTop: 12 }}>
-                    <Button onPress={handleLeaveGoogleReview} disabled={submitting}>
-                      Leave a Public Review on Google
-                    </Button>
-                  </View>
-                </View>
-              ) : null}
+              {showPrivateFirst ? (
+                <>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 }}>
+                    Leave private feedback first:
+                  </Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Let the organizer know what went wrong or what they could do better..."
+                    placeholderTextColor={COLORS.textTertiary}
+                    multiline
+                    numberOfLines={3}
+                    value={feedback}
+                    onChangeText={setFeedback}
+                  />
+                  <Button 
+                    onPress={() => handleSubmit(rating, feedback)} 
+                    disabled={submitting}
+                    variant={pendingEvent.google_review_url ? "primary" : "primary"}
+                  >
+                    {submitting ? "Sending..." : "Submit Private Feedback"}
+                  </Button>
+                  {pendingEvent.google_review_url ? (
+                    <View style={styles.callOutBox}>
+                      <Text style={styles.callOutTitle}>Still want to leave a public review?</Text>
+                      <Text style={styles.callOutText}>You can also use the organizer's public review link. Both options stay available.</Text>
+                      <View style={{ marginTop: 12 }}>
+                        <Button onPress={handleLeaveGoogleReview} disabled={submitting} variant="secondary">
+                          Leave a Public Review on Google
+                        </Button>
+                      </View>
+                    </View>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  {pendingEvent.google_review_url ? (
+                    <View style={styles.callOutBox}>
+                      <Text style={styles.callOutTitle}>Help {pendingEvent.location_name || 'them'} out!</Text>
+                      <Text style={styles.callOutText}>If you enjoyed the event, please consider leaving a quick review on Google to support them.</Text>
+                      <View style={{ marginTop: 12 }}>
+                        <Button onPress={handleLeaveGoogleReview} disabled={submitting}>
+                          Leave a Public Review on Google
+                        </Button>
+                      </View>
+                    </View>
+                  ) : null}
 
-              <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 }}>
-                Or, leave private feedback:
-              </Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Let the organizer know what you loved or what they could do better..."
-                placeholderTextColor={COLORS.textTertiary}
-                multiline
-                numberOfLines={3}
-                value={feedback}
-                onChangeText={setFeedback}
-              />
-              <Button 
-                onPress={() => handleSubmit(rating, feedback)} 
-                disabled={submitting}
-                variant={pendingEvent.google_review_url ? "secondary" : "primary"}
-              >
-                {submitting ? "Sending..." : "Submit Private Feedback"}
-              </Button>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.textPrimary, marginBottom: 8 }}>
+                    Or, leave private feedback:
+                  </Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Let the organizer know what you loved or what they could do better..."
+                    placeholderTextColor={COLORS.textTertiary}
+                    multiline
+                    numberOfLines={3}
+                    value={feedback}
+                    onChangeText={setFeedback}
+                  />
+                  <Button 
+                    onPress={() => handleSubmit(rating, feedback)} 
+                    disabled={submitting}
+                    variant={pendingEvent.google_review_url ? "secondary" : "primary"}
+                  >
+                    {submitting ? "Sending..." : "Submit Private Feedback"}
+                  </Button>
+                </>
+              )}
             </>
           )}
 

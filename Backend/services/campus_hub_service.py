@@ -351,6 +351,17 @@ def _ensure_social_tables(conn: psycopg.Connection | None = None) -> None:
                     )
                     """
                 )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS admin_event_subscriptions (
+                        user_clerk_id TEXT NOT NULL,
+                        admin_clerk_id TEXT NOT NULL,
+                        muted BOOLEAN NOT NULL DEFAULT TRUE,
+                        updated_at TIMESTAMPTZ DEFAULT NOW(),
+                        PRIMARY KEY (user_clerk_id, admin_clerk_id)
+                    )
+                    """
+                )
             c.commit()
 
         if conn:
@@ -1131,6 +1142,8 @@ def get_events_snapshot(
 ) -> List[Dict[str, Any]]:
     _ensure_social_tables(conn)
     rsvp_lookup: Dict[str, str] = {}
+    blocked_ids: set[str] = set()
+    muted_admin_ids: set[str] = set()
     if clerk_id:
         rows = _safe_db_fetchall(
             "SELECT event_id, response FROM campus_event_rsvps WHERE clerk_id = %s",
@@ -1138,6 +1151,26 @@ def get_events_snapshot(
             conn=conn,
         )
         rsvp_lookup = {row.get("event_id"): row.get("response", "interested") for row in rows}
+        blocked_rows = _safe_db_fetchall(
+            "SELECT blocked_id FROM blocked_users WHERE blocker_id = %s",
+            (clerk_id,),
+            conn=conn,
+        )
+        blocked_ids = {row.get("blocked_id") for row in blocked_rows if row.get("blocked_id")}
+        muted_rows = _safe_db_fetchall(
+            """
+            SELECT admin_clerk_id
+            FROM admin_event_subscriptions
+            WHERE user_clerk_id = %s AND muted = TRUE
+            """,
+            (clerk_id,),
+            conn=conn,
+        )
+        muted_admin_ids = {
+            row.get("admin_clerk_id")
+            for row in muted_rows
+            if row.get("admin_clerk_id")
+        }
 
     crawler_events = campus_events_service.load_campus_events()
     events = crawler_events.get("events") if isinstance(crawler_events, dict) else crawler_events
@@ -1146,8 +1179,33 @@ def get_events_snapshot(
     admin_events_list = []
     
     # Fetch Admin Events
-    admin_events_raw = _safe_db_fetchall("SELECT id, clerk_id, title, description, lat, lng, location_name, start_time, end_time, google_review_url FROM admin_events", conn=conn)
+    admin_events_raw = _safe_db_fetchall(
+        """
+        SELECT
+            e.id,
+            e.clerk_id,
+            e.title,
+            e.description,
+            e.lat,
+            e.lng,
+            e.location_name,
+            e.start_time,
+            e.end_time,
+            e.google_review_url,
+            e.image_url,
+            app.organization_name
+        FROM admin_events e
+        LEFT JOIN admin_applications app ON app.clerk_id = e.clerk_id
+        ORDER BY e.start_time ASC, e.created_at DESC
+        """,
+        conn=conn,
+    )
     for ad_ev in admin_events_raw:
+        admin_clerk_id = ad_ev.get("clerk_id")
+        if admin_clerk_id and (admin_clerk_id in blocked_ids or admin_clerk_id in muted_admin_ids):
+            continue
+
+        organization_name = ad_ev.get("organization_name") or "Campus organizer"
         admin_events_list.append({
             "event_id": str(ad_ev["id"]),
             "title": ad_ev["title"],
@@ -1158,8 +1216,12 @@ def get_events_snapshot(
             "end_time": ad_ev["end_time"].isoformat() if ad_ev["end_time"] else None,
             "description": ad_ev["description"],
             "google_review_url": ad_ev.get("google_review_url"),
+            "image_url": ad_ev.get("image_url"),
             "has_food": False,
             "source_name": "admin_portal",
+            "host_name": organization_name,
+            "organization_name": organization_name,
+            "admin_clerk_id": admin_clerk_id,
             "categories": {"featured": 1},
             "is_admin_event": True
         })

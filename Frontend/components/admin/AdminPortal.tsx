@@ -3,7 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { AdminMapPoster } from './AdminMapPoster';
 import { AdminAnalyticsScreen } from './AdminAnalyticsScreen';
 import { useTheme } from '../SharedUI';
-import { MapPin, BarChart2 } from 'lucide-react-native';
+import { MapPin, LayoutDashboard } from 'lucide-react-native';
 
 const Tab = createBottomTabNavigator();
 
@@ -20,8 +20,14 @@ export function AdminPortal() {
         tabBarStyle: {
           backgroundColor: COLORS.surface,
           borderTopColor: COLORS.border,
-          height: 60,
-          paddingBottom: 8,
+          borderTopWidth: 1,
+          height: 72,
+          paddingTop: 8,
+          paddingBottom: 10,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '700',
         },
       }}
     >
@@ -33,10 +39,10 @@ export function AdminPortal() {
         }}
       />
       <Tab.Screen 
-        name="Analytics" 
+        name="Manage Events" 
         component={AdminAnalyticsScreen} 
         options={{
-          tabBarIcon: ({ color }) => <BarChart2 color={color} size={24} />
+          tabBarIcon: ({ color }) => <LayoutDashboard color={color} size={24} />
         }}
       />
     </Tab.Navigator>
