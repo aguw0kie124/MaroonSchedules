@@ -139,22 +139,22 @@ const getNeonColor = (hex: string) => {
   let b = parseInt(hex.slice(5, 7), 16);
 
   if (hex.toUpperCase() === "#500000") return "#FF0055"; // Maroon -> Neon Pink
-  
+
   const max = Math.max(r, g, b);
   if (max === 0) return "#00FFFF";
-  
+
   // Normalize so highest channel is 255
   const m = 255 / max;
   r = Math.round(r * m);
   g = Math.round(g * m);
   b = Math.round(b * m);
 
-  // Add neon pop 
+  // Add neon pop
   const thr = 60;
-  if(r < thr) r += thr;
-  if(g < thr) g += thr;
-  if(b < thr) b += thr;
-  
+  if (r < thr) r += thr;
+  if (g < thr) g += thr;
+  if (b < thr) b += thr;
+
   return `#${[r, g, b]
     .map((c) => Math.min(255, c).toString(16).padStart(2, "0"))
     .join("")}`;
@@ -1087,7 +1087,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     } finally {
       setIsLoadingPulse(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const centerOnUserLocation = useCallback(async () => {
@@ -1504,7 +1504,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       ]).catch(() => {});
     });
     return () => task.cancel();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1513,7 +1513,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       fetchPulseHotspots();
     }, 60000);
     return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeLayer]);
 
   // Pulse animation for Bus layer
@@ -1725,7 +1725,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // Connect native social client for compatibility across feed surfaces
   useEffect(() => {
-    if (user?.id) { try { connectFeedsUser(user); } catch (_) {} }
+    if (user?.id) {
+      try {
+        connectFeedsUser(user);
+      } catch (_) {}
+    }
   }, [user]);
 
   // ── Render ────────────────────────────────────────────────
@@ -2510,7 +2514,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
             if (mapRef.current && sLat && sLng) {
               mapRef.current.animateToRegion(
                 {
-                  latitude: sLat,
+                  latitude: sLat - 0.0018,
                   longitude: sLng,
                   latitudeDelta: 0.005,
                   longitudeDelta: 0.005,

@@ -413,7 +413,8 @@ class AggieSpiritProxy:
             for route in data.get("routes", []):
                 for direction in route.get("directionList", []):
                     dkey = direction.get("direction", {}).get("key")
-                    dname = direction.get("destination") or direction.get("direction", {}).get("name")
+                    dname = direction.get("destination") or direction.get(
+                        "direction", {}).get("name")
                     if dkey and dname:
                         self._direction_cache[dkey] = dname
 
@@ -437,23 +438,28 @@ class AggieSpiritProxy:
         try:
             if not self._direction_cache:
                 self.get_routes()
-            
+
             payload = f"routeKeys%5B%5D={quote(route_key)}"
             data = self._post("/RouteMap/GetPatternPaths/", payload)
             points: List[Dict[str, float]] = []
             stops: List[Dict[str, Any]] = []
+            paths: List[Dict[str, Any]] = []
             seen_stops = set()
             if data:
                 for item in data[0].get("patternPaths", []):
                     # Fallback to parsing the string if directionKey isn't known
                     dkey = item.get("directionKey")
                     direction_name = self._direction_cache.get(dkey) or ""
-                    
+
+                    path_points = []
                     for point in item.get("patternPoints", []):
-                        points.append({
+                        pt = {
                             "latitude": point.get("latitude"),
                             "longitude": point.get("longitude"),
-                        })
+                        }
+                        points.append(pt)
+                        path_points.append(pt)
+
                         stop = point.get("stop")
                         if stop and stop.get("stopCode") not in seen_stops:
                             stop_name = stop.get("name") or ""
@@ -461,7 +467,7 @@ class AggieSpiritProxy:
                             resolved_dir = direction_name
                             if not resolved_dir and " - " in stop_name:
                                 resolved_dir = stop_name.split(" - ")[-1]
-                                
+
                             seen_stops.add(stop.get("stopCode"))
                             stops.append({
                                 "Name": stop_name,
@@ -470,12 +476,17 @@ class AggieSpiritProxy:
                                 "StopCode": stop.get("stopCode"),
                                 "DirectionName": resolved_dir,
                             })
-            snapshot = {"points": points, "stops": stops}
+                    if path_points:
+                        paths.append({
+                            "DirectionName": direction_name,
+                            "points": path_points
+                        })
+            snapshot = {"points": points, "stops": stops, "paths": paths}
             if points or stops:
                 self._pattern_cache[route_key] = snapshot
-            return snapshot if points or stops else self._pattern_cache.get(route_key, {"points": [], "stops": []})
+            return snapshot if points or stops else self._pattern_cache.get(route_key, {"points": [], "stops": [], "paths": []})
         except Exception:
-            return self._pattern_cache.get(route_key, {"points": [], "stops": []})
+            return self._pattern_cache.get(route_key, {"points": [], "stops": [], "paths": []})
 
     def get_vehicles(self, route_id: str = "") -> Dict[str, Any]:
         normalized_route_id = (route_id or "").strip().lower()
@@ -512,13 +523,14 @@ class AggieSpiritProxy:
                     dir_key = direction.get("directionKey")
                     for vehicle in direction.get("vehicles", []) or []:
                         location = vehicle.get("location") or {}
-                        
+
                         # Prioritize destination cache over raw direction name for consistency
                         v_dir_key = vehicle.get("directionKey") or dir_key
                         v_dir_name = self._direction_cache.get(v_dir_key)
-                        
+
                         if not v_dir_name:
-                            v_dir_name = vehicle.get("directionName") or direction.get("directionName") or direction.get("name") or "Unknown"
+                            v_dir_name = vehicle.get("directionName") or direction.get(
+                                "directionName") or direction.get("name") or "Unknown"
 
                         vehicles.append({
                             "Key": vehicle.get("key"),

@@ -131,13 +131,52 @@ export function BusTimetableSheet({
 
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.title, { color: COLORS.text }]}>
-            {selectedRoute
-              ? `Route ${selectedRoute.ShortName}`
-              : "Bus Timetable"}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            {selectedRoute && (
+              <View
+                style={{
+                  backgroundColor: selectedRoute.Color || "#500000",
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text
+                  style={{ color: "#FFF", fontWeight: "900", fontSize: 13 }}
+                >
+                  {selectedRoute.ShortName}
+                </Text>
+              </View>
+            )}
+            <Text
+              style={[
+                styles.title,
+                {
+                  color: COLORS.textPrimary,
+                  marginBottom: 0,
+                  fontSize: 24,
+                  fontWeight: "900",
+                  letterSpacing: -0.5,
+                },
+              ]}
+            >
+              {selectedRoute ? "Timetable" : "Bus Timetable"}
+            </Text>
+          </View>
           {selectedRoute && (
-            <Text style={[styles.subtitle, { color: COLORS.textSecondary }]}>
+            <Text
+              style={[
+                styles.subtitle,
+                {
+                  color: COLORS.textSecondary,
+                  marginTop: 6,
+                  fontSize: 14,
+                  fontWeight: "600",
+                },
+              ]}
+            >
               {selectedRoute.Name} • {liveBusCount} live bus
               {liveBusCount === 1 ? "" : "es"}
             </Text>
@@ -155,7 +194,7 @@ export function BusTimetableSheet({
       <ScrollView
         ref={scrollRef}
         style={styles.listContainer}
-        contentContainerStyle={{ paddingBottom: SNAP_FULL + 80 }}
+        contentContainerStyle={{ paddingBottom: SCREEN_HEIGHT / 2 }}
         showsVerticalScrollIndicator={false}
         scrollEnabled={scrollEnabled}
         onScroll={(e) => {
@@ -174,7 +213,10 @@ export function BusTimetableSheet({
             <TouchableOpacity
               key={item.stop.Id || index}
               style={styles.stopRow}
-              onPress={() => onStopPress(item.stop)}
+              onPress={() => {
+                snapTo(SNAP_PEEK);
+                onStopPress(item.stop);
+              }}
               activeOpacity={0.7}
             >
               <View style={styles.timelineCol}>
@@ -182,7 +224,9 @@ export function BusTimetableSheet({
                   style={[
                     styles.timelineLine,
                     {
-                      backgroundColor: COLORS.border,
+                      backgroundColor: isDark
+                        ? "rgba(255, 255, 255, 0.2)"
+                        : "rgba(80, 0, 0, 0.15)",
                       opacity: isFirst ? 0 : 1,
                       flex: 1,
                     },
@@ -193,13 +237,15 @@ export function BusTimetableSheet({
                     styles.timelineDot,
                     {
                       backgroundColor:
-                        item.etaLabel === "Now"
-                          ? COLORS.primary
-                          : COLORS.textTertiary,
-                      borderColor:
-                        COLORS.surfaceElevated ||
-                        COLORS.background ||
-                        (isDark ? "#111" : "#fff"),
+                        item.etaLabel === "Now" || item.etaLabel === "Arriving"
+                          ? isDark
+                            ? "#FF8FA3"
+                            : "#500000"
+                          : isDark
+                            ? "#2A2A2A"
+                            : "#F0F0F0",
+                      borderColor: isDark ? "#FF8FA3" : "#500000",
+                      shadowColor: isDark ? "#FF8FA3" : "#500000",
                     },
                   ]}
                 />
@@ -207,7 +253,9 @@ export function BusTimetableSheet({
                   style={[
                     styles.timelineLine,
                     {
-                      backgroundColor: COLORS.border,
+                      backgroundColor: isDark
+                        ? "rgba(255, 255, 255, 0.2)"
+                        : "rgba(80, 0, 0, 0.15)",
                       opacity: isLast ? 0 : 1,
                       flex: 1,
                     },
@@ -217,22 +265,27 @@ export function BusTimetableSheet({
               <View
                 style={[
                   styles.stopContent,
-                  { borderBottomColor: isLast ? "transparent" : COLORS.border },
+                  {
+                    borderBottomColor: isLast
+                      ? "transparent"
+                      : isDark
+                        ? "rgba(255, 255, 255, 0.05)"
+                        : "rgba(0,0,0,0.06)",
+                  },
                 ]}
               >
                 <View style={{ flex: 1, paddingRight: 10 }}>
                   <Text
-                    style={[styles.stopName, { color: COLORS.text }]}
-                    numberOfLines={1}
+                    style={[styles.stopName, { color: COLORS.textPrimary }]}
                   >
                     {item.stop.Name}
                   </Text>
                   <View style={styles.detailRow}>
-                    <MapPin size={12} color={COLORS.textTertiary} />
+                    <MapPin size={12} color={COLORS.textSecondary} />
                     <Text
                       style={[
                         styles.stopDetail,
-                        { color: COLORS.textTertiary },
+                        { color: COLORS.textSecondary },
                       ]}
                     >
                       Stop #{item.stop.StopCode || item.sequence}
@@ -244,18 +297,10 @@ export function BusTimetableSheet({
                     style={[
                       styles.etaBox,
                       {
-                        backgroundColor:
-                          item.etaLabel === "Now"
-                            ? `${COLORS.primary}22`
-                            : isDark
-                              ? "#222"
-                              : "#F5F5F5",
-                        color:
-                          item.etaLabel === "Now"
-                            ? COLORS.primary
-                            : isDark
-                              ? "#AAA"
-                              : "#666",
+                        backgroundColor: isDark
+                          ? "rgba(255, 143, 163, 0.15)"
+                          : "rgba(80, 0, 0, 0.1)",
+                        color: isDark ? "#FF8FA3" : "#500000",
                       },
                     ]}
                   >
@@ -268,7 +313,11 @@ export function BusTimetableSheet({
         })}
         {stopTimetable.length === 0 && (
           <View style={styles.emptyState}>
-            <Clock size={32} color={COLORS.textTertiary} />
+            <Clock
+              size={40}
+              color={isDark ? "#FF8FA3" : "#500000"}
+              style={{ opacity: 0.8, marginBottom: 12 }}
+            />
             <Text
               style={[styles.emptyStateText, { color: COLORS.textSecondary }]}
             >
@@ -293,12 +342,13 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderTopWidth: 1,
-    elevation: 20,
+
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -10 },
     shadowOpacity: 0.1,
     shadowRadius: 20,
-    zIndex: 999,
+    zIndex: 99999,
+    elevation: 999,
   },
   dragHandleArea: {
     width: "100%",
@@ -343,52 +393,68 @@ const styles = StyleSheet.create({
     minHeight: 64,
   },
   timelineCol: {
-    width: 24,
+    width: 32,
     alignItems: "center",
-    marginRight: 12,
+    marginRight: 16,
   },
   timelineDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 4,
     zIndex: 2,
     marginVertical: 4,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   timelineLine: {
-    width: 2,
+    width: 4,
+    borderRadius: 2,
   },
   stopContent: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 16,
+    paddingVertical: 18,
     borderBottomWidth: 1,
   },
   stopName: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 17,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+    lineHeight: 22,
   },
   detailRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 4,
+    marginTop: 6,
+    backgroundColor: "rgba(150, 150, 150, 0.1)",
+    alignSelf: "flex-start",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
   stopDetail: {
-    fontSize: 13,
+    fontSize: 12,
+    fontWeight: "600",
     marginLeft: 4,
   },
   etaContainer: {
     alignItems: "flex-end",
     justifyContent: "center",
+    marginLeft: 12,
   },
   etaBox: {
-    fontSize: 14,
-    fontWeight: "700",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
+    fontSize: 15,
+    fontWeight: "900",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
     overflow: "hidden",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   emptyState: {
     padding: 40,
