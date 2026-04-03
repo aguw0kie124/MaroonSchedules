@@ -12,5 +12,8 @@ tsc_errors.log
 tsc_output.txt
 tsc_final.log
 
+# System Files
+.DS_Store
+**/.DS_Store
 
 data_architecture_plan.md
