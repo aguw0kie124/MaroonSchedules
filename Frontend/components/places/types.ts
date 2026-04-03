@@ -7,7 +7,7 @@ export const SNAP_PEEK = SCREEN_HEIGHT * 0.45;
 export const SNAP_FULL = SCREEN_HEIGHT * 0.25;
 export const SNAP_HIDDEN = SCREEN_HEIGHT;
 export const SHEET_BOTTOM_OFFSET = 0;
-export const FLOATING_CARD_BOTTOM_OFFSET = 84; // lowered for better map centering visibility
+export const FLOATING_CARD_BOTTOM_OFFSET = 64; // lowered for better map centering visibility
 export { SCREEN_HEIGHT };
 
 // ── Sentinel values ───────────────────────────────────────────
