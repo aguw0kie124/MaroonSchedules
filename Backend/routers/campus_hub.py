@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, Body, Query, Depends, HTTPException
 from pydantic import BaseModel
 
 from services import campus_hub_service, campus_places_service, place_registry_service, pulse_service
+from auth.clerk_middleware import require_auth, optional_auth, ensure_matching_user
 
 router = APIRouter(prefix="/campus", tags=["Campus Hub"])
 
@@ -27,38 +28,42 @@ class ConnectorCaptureRequest(BaseModel):
     cookie_names: list[str] | None = None
 
 
+def require_clerk_user(clerk_id: str, user_id: str = Depends(require_auth)) -> str:
+    return ensure_matching_user(user_id, clerk_id, detail="You can only access your own campus data")
+
+
 @router.get("/health")
 def campus_health():
     return {"status": "ok", "message": "Campus hub router is active"}
 
 
 @router.get("/overview")
-def get_overview(clerk_id: str = Query(...)):
+def get_overview(clerk_id: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
     return campus_hub_service.get_overview(clerk_id)
 
 
 @router.get("/auth/status")
-def get_auth_status(clerk_id: str = Query(...)):
+def get_auth_status(clerk_id: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
     return campus_hub_service.get_auth_status(clerk_id)
 
 
 @router.get("/academics")
-def get_academics(clerk_id: str = Query(...)):
+def get_academics(clerk_id: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
     return campus_hub_service.get_academic_snapshot(clerk_id)
 
 
 @router.get("/dining/account")
-def get_dining_account(clerk_id: str = Query(...)):
+def get_dining_account(clerk_id: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
     return campus_hub_service.get_dining_snapshot(clerk_id)
 
 
 @router.get("/notifications")
-def get_notifications(clerk_id: str = Query(...)):
+def get_notifications(clerk_id: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
     return campus_hub_service.get_notification_hub(clerk_id)
 
 
 @router.get("/career")
-def get_career(clerk_id: str = Query(...)):
+def get_career(clerk_id: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
     return campus_hub_service.get_career_snapshot(clerk_id)
 
 
@@ -68,12 +73,14 @@ def discover_network(
     query: str | None = Query(None),
     major: str | None = Query(None),
     limit: int = Query(8, ge=1, le=25),
+    _auth_user_id: str = Depends(require_clerk_user),
 ):
     return campus_hub_service.discover_network(clerk_id, query=query, major=major, limit=limit)
 
 
 @router.post("/network/request")
-def create_connection_request(request: ConnectionRequest = Body(...)):
+def create_connection_request(request: ConnectionRequest = Body(...), auth_user_id: str = Depends(require_auth)):
+    ensure_matching_user(auth_user_id, request.requester_id, detail="You can only create connection requests as yourself")
     return campus_hub_service.create_connection_request(request.requester_id, request.recipient_id)
 
 
@@ -83,7 +90,12 @@ def get_events(
     limit: int = Query(250, ge=1, le=1000),
     category: str | None = Query(None),
     student_relevant_only: bool = Query(True),
+    auth_user_id: str | None = Depends(optional_auth),
 ):
+    if clerk_id is not None:
+        if auth_user_id is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only personalize events for your own account")
     return campus_hub_service.get_events_snapshot(
         clerk_id,
         limit=limit,
@@ -113,7 +125,8 @@ def get_pulse_map(limit: int = Query(12, ge=1, le=25)):
 
 
 @router.post("/events/rsvp")
-def save_rsvp(request: EventRSVPRequest = Body(...)):
+def save_rsvp(request: EventRSVPRequest = Body(...), auth_user_id: str = Depends(require_auth)):
+    ensure_matching_user(auth_user_id, request.clerk_id, detail="You can only RSVP as yourself")
     return campus_hub_service.save_event_rsvp(request.clerk_id, request.event_id, request.response)
 
 
@@ -133,12 +146,13 @@ def get_services():
 
 
 @router.get("/connectors")
-def get_connectors(clerk_id: str = Query(...)):
+def get_connectors(clerk_id: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
     return campus_hub_service.get_connector_snapshots(clerk_id)
 
 
 @router.post("/connectors/capture")
-def capture_connector_snapshot(request: ConnectorCaptureRequest = Body(...)):
+def capture_connector_snapshot(request: ConnectorCaptureRequest = Body(...), auth_user_id: str = Depends(require_auth)):
+    ensure_matching_user(auth_user_id, request.clerk_id, detail="You can only modify your own connectors")
     return campus_hub_service.capture_connector_snapshot(
         request.clerk_id,
         request.system_id,
@@ -151,5 +165,5 @@ def capture_connector_snapshot(request: ConnectorCaptureRequest = Body(...)):
 
 
 @router.delete("/connectors/{system_id}")
-def delete_connector_snapshot(system_id: str, clerk_id: str = Query(...)):
+def delete_connector_snapshot(system_id: str, clerk_id: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
     return campus_hub_service.delete_connector_snapshot(clerk_id, system_id)

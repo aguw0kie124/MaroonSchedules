@@ -4,7 +4,7 @@ import { Star, X } from 'lucide-react-native';
 import { useTheme } from '../SharedUI';
 import { Button } from '../Button';
 import { useUser } from '@clerk/clerk-expo';
-import { API_URL } from '../../config';
+import { requestJson } from '../../api/client';
 import * as Linking from 'expo-linking';
 
 export function PendingReviewInterceptor() {
@@ -18,11 +18,7 @@ export function PendingReviewInterceptor() {
 
   useEffect(() => {
     if (user?.id) {
-      fetch(`${API_URL}/admin/events/pending-reviews?clerk_id=${user.id}`)
-        .then(res => {
-          if (!res.ok) throw new Error('API error');
-          return res.json();
-        })
+      requestJson(`/admin/events/pending-reviews?clerk_id=${encodeURIComponent(user.id)}`)
         .then(data => {
           if (data && data.id) {
             setPendingEvent(data);
@@ -38,18 +34,14 @@ export function PendingReviewInterceptor() {
     if (!user?.id) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_URL}/admin/events/${pendingEvent.id}/reviews`, {
+      await requestJson(`/admin/events/${pendingEvent.id}/reviews`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clerk_id: user.id,
           rating: submitRating,
           feedback: submitFeedback || null
         })
       });
-      if (!res.ok) {
-        throw new Error('Failed to submit review');
-      }
       setPendingEvent(null);
       setRating(0);
       setFeedback('');

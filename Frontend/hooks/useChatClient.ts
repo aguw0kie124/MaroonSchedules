@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useUser } from '@clerk/clerk-expo';
 import { useCreateChatClient } from 'stream-chat-react-native';
 
-import { API_URL } from '../config';
+import { requestJson } from '../api/client';
 
 export function useChatClient() {
   const { user, isLoaded } = useUser();
@@ -14,15 +14,10 @@ export function useChatClient() {
   useEffect(() => {
     if (!isLoaded || !user) return;
 
-    fetch(`${API_URL}/chat/token`, {
+    requestJson('/chat/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clerk_user_id: user.id }),
     })
-      .then((response) => {
-        if (!response.ok) throw new Error(`Token fetch failed: ${response.status}`);
-        return response.json();
-      })
       .then((data) => {
         setApiKey(data.stream_api_key);
         setUserId(data.stream_user_id);

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, SafeAreaView, StatusBar, ImageBackground } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
-import { API_URL } from '../../config';
+import { requestJson } from '../../api/client';
 import { Card, SectionLabel, Divider, StatPill, ActionButton, Badge } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
@@ -53,11 +53,10 @@ export default function MealOptimizerScreen({ navigation, embedded = false }: an
     setActiveTopTab('menus');
     setLoading(true); setPlan(null); setMsg(null);
     try {
-      const res = await fetch(`${API_URL}/dining/optimize/day?clerk_id=${user.id}&dining_hall=${hall}`, {
+      const res = await requestJson(`/dining/optimize/day?clerk_id=${encodeURIComponent(user.id)}&dining_hall=${encodeURIComponent(hall)}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ selected_meals: selMeals, include_restaurant_alts: inclRest })
-      }).then(r => r.json());
+      });
       
       setPlan(res);
       setActive(selMeals[0] || 'breakfast');
@@ -71,9 +70,8 @@ export default function MealOptimizerScreen({ navigation, embedded = false }: an
   const addToTracker = async (mealPeriod: string, variant: any) => {
     if (!user) return;
     try {
-      await fetch(`${API_URL}/dining/tracker/${user.id}`, {
+      await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           date: getLocalDateString(),
           meal_period: mealPeriod,

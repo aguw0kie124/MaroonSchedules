@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, FlatList, ActivityIndicator, RefreshControl } f
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import { useTheme } from '../SharedUI';
 import { Button } from '../Button';
-import { API_URL } from '../../config';
+import { requestJson } from '../../api/client';
 import { Users, Share2, MapPin, Star } from 'lucide-react-native';
 
 interface AdminEvent {
@@ -28,11 +28,8 @@ export function AdminAnalyticsScreen() {
   const fetchEvents = async () => {
     if (!user?.id) return;
     try {
-      const res = await fetch(`${API_URL}/admin/events/me?clerk_id=${user.id}`);
-      if (res.ok) {
-        const data = await res.json();
-        setEvents(data);
-      }
+      const data = await requestJson(`/admin/events/me?clerk_id=${encodeURIComponent(user.id)}`);
+      setEvents(data);
     } catch (err) {
       console.error(err);
     } finally {

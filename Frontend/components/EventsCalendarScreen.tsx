@@ -46,6 +46,7 @@ import {
 
 
 import { API_URL } from '../config';
+import { saveCampusEventRsvp } from '../api/client';
 import { TourTarget, useTour } from './onboarding/TourProvider';
 import { useShareStore } from '../store/shareStore';
 import { useEventStore } from '../store/eventStore';
@@ -585,14 +586,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
       if (user?.id) {
         try {
-          await fetch(`${API_URL}/campus/events/rsvp`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              clerk_id: user.id,
-              event_id: String(event.id),
-              response: 'going',
-            }),
+          await saveCampusEventRsvp({
+            clerk_id: user.id,
+            event_id: String(event.id),
+            response: 'going',
           });
           
           // Onboarding: The tour now requires the user to manually navigate to the Places tab

@@ -55,6 +55,7 @@ import {
 } from 'lucide-react-native';
 
 import { API_URL } from '../config';
+import { requestJson, saveCampusEventRsvp } from '../api/client';
 import { useTheme } from './SharedUI';
 import { useAppShellStore } from '../store/appShellStore';
 import { useShareStore } from '../store/shareStore';
@@ -379,9 +380,7 @@ export function CampusPingsScreen() {
         params.set('clerk_id', user.id);
       }
 
-      const res = await fetch(`${API_URL}/campus/events?${params.toString()}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await requestJson(`/campus/events?${params.toString()}`);
       const events = Array.isArray(data) ? data : Array.isArray(data?.events) ? data.events : [];
       const nextEvents = events.map((event: any) => ({
         id: String(event.event_id),
@@ -742,14 +741,10 @@ export function CampusPingsScreen() {
       }
 
       try {
-        await fetch(`${API_URL}/campus/events/rsvp`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            clerk_id: user.id,
-            event_id: event.id,
-            response: 'going',
-          }),
+        await saveCampusEventRsvp({
+          clerk_id: user.id,
+          event_id: event.id,
+          response: 'going',
         });
 
         saveFeaturedEventToPlans(event);

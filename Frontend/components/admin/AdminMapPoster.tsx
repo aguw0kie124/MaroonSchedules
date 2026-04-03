@@ -4,7 +4,7 @@ import { useUser } from '@clerk/clerk-expo';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useTheme } from '../SharedUI';
 import { Button } from '../Button';
-import { API_URL } from '../../config';
+import { requestJson } from '../../api/client';
 
 function roundToNearestFiveMinutes(value: Date) {
   const next = new Date(value);
@@ -67,9 +67,8 @@ export function AdminMapPoster() {
 
       const endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);
 
-      const res = await fetch(`${API_URL}/admin/events`, {
+      await requestJson('/admin/events', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clerk_id: user?.id,
           title: title.trim(),
@@ -82,10 +81,6 @@ export function AdminMapPoster() {
           google_review_url: googleReviewUrl.trim() || null
         })
       });
-
-      if (!res.ok) {
-        throw new Error('Failed to create event');
-      }
 
       Alert.alert('Success', 'Event posted to the featured tab!');
       setTitle('');

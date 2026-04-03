@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import { useTheme } from '../SharedUI';
 import { Button } from '../Button';
-import { API_URL } from '../../config';
+import { requestJson } from '../../api/client';
 import { Shield } from 'lucide-react-native';
 import { useAppShellStore } from '../../store/appShellStore';
 
@@ -29,12 +29,7 @@ export function AdminApplicationScreen() {
     }
 
     try {
-      const res = await fetch(`${API_URL}/admin/status?clerk_id=${user.id}`);
-      if (!res.ok) {
-        throw new Error('Failed to check admin status');
-      }
-
-      const data = await res.json();
+      const data = await requestJson(`/admin/status?clerk_id=${encodeURIComponent(user.id)}`);
       setAdminAccessStatus(!!data.is_admin);
 
       if (data.is_admin) {
@@ -80,9 +75,8 @@ export function AdminApplicationScreen() {
     }
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/admin/apply`, {
+      await requestJson('/admin/apply', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clerk_id: user?.id,
           email: user?.primaryEmailAddress?.emailAddress,
@@ -90,7 +84,6 @@ export function AdminApplicationScreen() {
           reason: reason.trim(),
         }),
       });
-      if (!res.ok) throw new Error('Failed to submit');
       setStatus('pending');
       Alert.alert('Success', 'Your application has been submitted and is pending review.');
     } catch (error) {

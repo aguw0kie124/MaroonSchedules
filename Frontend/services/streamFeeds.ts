@@ -1,8 +1,16 @@
 import { getPremiumName, getPremiumImage } from '../utils/userUtils';
-import { API_URL } from '../config';
+import { apiFetch } from '../api/client';
 
 let connectedUserId: string | null = null;
 let currentFullUser: any | null = null;
+
+async function feedFetch(path: string, init: RequestInit = {}) {
+  const headers = {
+    ...(init.headers || {}),
+    ...(connectedUserId ? { 'X-Clerk-User-Id': connectedUserId } : {}),
+  };
+  return apiFetch(path, { ...init, headers });
+}
 
 /**
  * Connect the current Clerk user to the feed system.
@@ -33,12 +41,11 @@ export async function uploadStreamImage(uri: string): Promise<string> {
       type: type,
     } as any);
 
-    const res = await fetch(`${API_URL}/upload/image`, {
+    const res = await feedFetch('/upload/image', {
       method: 'POST',
       body: formData,
       headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'multipart/form-data',
+        Accept: 'application/json',
       },
     });
 
@@ -64,12 +71,11 @@ export async function uploadStreamFile(uri: string): Promise<string> {
       type: type,
     } as any);
 
-    const res = await fetch(`${API_URL}/upload/video`, {
+    const res = await feedFetch('/upload/video', {
       method: 'POST',
       body: formData,
       headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'multipart/form-data',
+        Accept: 'application/json',
       },
     });
 
@@ -84,9 +90,7 @@ export async function uploadStreamFile(uri: string): Promise<string> {
 
 export async function getCampusFeed(limit = 25): Promise<any[]> {
   try {
-    const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/campus_global?limit=${limit}`, {
-        headers: { 'X-Clerk-User-Id': connectedUserId || '' }
-    });
+    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_global?limit=${limit}`);
     if (!res.ok) throw new Error('Proxy Fetch Error');
     const data = await res.json();
     return data.results || [];
@@ -98,9 +102,7 @@ export async function getCampusFeed(limit = 25): Promise<any[]> {
 
 export async function getPingFeed(limit = 40): Promise<any[]> {
   try {
-    const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/campus_pings?limit=${limit}`, {
-        headers: { 'X-Clerk-User-Id': connectedUserId || '' }
-    });
+    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?limit=${limit}`);
     if (!res.ok) throw new Error('Proxy Fetch Error');
     const data = await res.json();
     return data.results || [];
@@ -151,7 +153,7 @@ export async function addPing(params: {
     },
   };
 
-  const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/campus_pings`, {
+  const res = await feedFetch('/chat/feeds/proxy/flat/campus_pings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ activity }),
@@ -165,9 +167,8 @@ export async function addPing(params: {
 }
 
 export async function deletePing(activityId: string) {
-  const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/campus_pings/${activityId}`, {
+  const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings/${activityId}`, {
     method: 'DELETE',
-    headers: { 'X-Clerk-User-Id': connectedUserId || '' }
   });
   if (!res.ok) {
     const err = await res.text();
@@ -207,7 +208,7 @@ export async function addPost(params: {
     }
   };
 
-  const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/campus_global`, {
+  const res = await feedFetch('/chat/feeds/proxy/flat/campus_global', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ activity })
@@ -222,7 +223,7 @@ export async function addPost(params: {
 
 export async function toggleVote(activityId: string, kind: 'upvote' | 'downvote'): Promise<any> {
     if (!connectedUserId) throw new Error('Must be logged in to vote.');
-    const res = await fetch(`${API_URL}/chat/feeds/proxy/reactions`, {
+    const res = await feedFetch('/chat/feeds/proxy/reactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -244,7 +245,7 @@ export async function toggleVote(activityId: string, kind: 'upvote' | 'downvote'
 }
 
 export async function toggleLike(activityId: string, userId: string): Promise<any> {
-    const res = await fetch(`${API_URL}/chat/feeds/proxy/reactions`, {
+    const res = await feedFetch('/chat/feeds/proxy/reactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -266,7 +267,7 @@ export async function toggleLike(activityId: string, userId: string): Promise<an
 }
 
 export async function addComment(activityId: string, user: any, text: string): Promise<any> {
-    const res = await fetch(`${API_URL}/chat/feeds/proxy/reactions`, {
+    const res = await feedFetch('/chat/feeds/proxy/reactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -291,7 +292,7 @@ export async function addComment(activityId: string, user: any, text: string): P
 
 export async function getComments(activityId: string): Promise<any[]> {
   try {
-    const res = await fetch(`${API_URL}/chat/feeds/proxy/reactions/${activityId}/comment`);
+    const res = await feedFetch(`/chat/feeds/proxy/reactions/${activityId}/comment`);
     if (!res.ok) return [];
     const data = await res.json();
     return data.results || data.comments || [];
@@ -324,7 +325,7 @@ export async function addReel(params: {
     }
   };
 
-  const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/reels_global`, {
+  const res = await feedFetch('/chat/feeds/proxy/flat/reels_global', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ activity })
@@ -337,18 +338,16 @@ export async function addReel(params: {
 }
 
 export async function deletePost(activityId: string) {
-    await fetch(`${API_URL}/chat/feeds/proxy/flat/campus_global/${activityId}`, {
+    await feedFetch(`/chat/feeds/proxy/flat/campus_global/${activityId}`, {
         method: 'DELETE',
-        headers: { 'X-Clerk-User-Id': connectedUserId || '' }
     });
 }
 
 export async function deleteReview(placeId: string, activityId: string) {
     const slugify = (text: string) => text.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
     const slug = slugify(placeId);
-    const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/place_review_${slug}/${activityId}`, {
+    const res = await feedFetch(`/chat/feeds/proxy/flat/place_review_${slug}/${activityId}`, {
         method: 'DELETE',
-        headers: { 'X-Clerk-User-Id': connectedUserId || '' }
     });
     if (!res.ok) {
         const err = await res.text();
@@ -358,15 +357,14 @@ export async function deleteReview(placeId: string, activityId: string) {
 }
 
 export async function deleteReel(activityId: string) {
-    await fetch(`${API_URL}/chat/feeds/proxy/flat/reels_global/${activityId}`, {
+    await feedFetch(`/chat/feeds/proxy/flat/reels_global/${activityId}`, {
         method: 'DELETE',
-        headers: { 'X-Clerk-User-Id': connectedUserId || '' }
     });
 }
 
 export async function updatePost(activityId: string, caption: string): Promise<any> {
     const activity = { text: caption };
-    await fetch(`${API_URL}/chat/feeds/proxy/flat/campus_global/${activityId}`, {
+    await feedFetch(`/chat/feeds/proxy/flat/campus_global/${activityId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ activity })
@@ -375,9 +373,7 @@ export async function updatePost(activityId: string, caption: string): Promise<a
 
 export async function getReelsFeed(limit = 20): Promise<any[]> {
   try {
-    const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/reels_global?limit=${limit}`, {
-        headers: { 'X-Clerk-User-Id': connectedUserId || '' }
-    });
+    const res = await feedFetch(`/chat/feeds/proxy/flat/reels_global?limit=${limit}`);
     if (!res.ok) throw new Error('Proxy Fetch Error');
     const data = await res.json();
     return data.results || [];
@@ -391,9 +387,7 @@ export async function getPlaceReviews(placeId: string, limit = 5): Promise<any[]
     const slugify = (text: string) => text.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
     try {
         const slug = slugify(placeId);
-        const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/place_review_${slug}?limit=${limit}`, {
-            headers: { 'X-Clerk-User-Id': connectedUserId || '' }
-        });
+        const res = await feedFetch(`/chat/feeds/proxy/flat/place_review_${slug}?limit=${limit}`);
         if (!res.ok) throw new Error(`Proxy Fetch Error: ${res.status}`);
         const data = await res.json();
         const results = data.results || [];
@@ -447,7 +441,7 @@ export async function addPlaceReview(params: any): Promise<any> {
         }
     };
 
-    const res = await fetch(`${API_URL}/chat/feeds/proxy/flat/place_review_${slug}`, {
+    const res = await feedFetch(`/chat/feeds/proxy/flat/place_review_${slug}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ activity })
@@ -469,7 +463,7 @@ export function disconnectFeeds() {
 
 export async function blockUser(targetId: string): Promise<void> {
     if (!connectedUserId) return;
-    const res = await fetch(`${API_URL}/chat/users/${connectedUserId}/block`, {
+    const res = await feedFetch(`/chat/users/${connectedUserId}/block`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target_id: targetId })
@@ -479,7 +473,7 @@ export async function blockUser(targetId: string): Promise<void> {
 
 export async function unblockUser(targetId: string): Promise<void> {
     if (!connectedUserId) return;
-    const res = await fetch(`${API_URL}/chat/users/${connectedUserId}/block/${targetId}`, {
+    const res = await feedFetch(`/chat/users/${connectedUserId}/block/${targetId}`, {
         method: 'DELETE'
     });
     if (!res.ok) throw new Error('Failed to unblock user.');
@@ -487,7 +481,7 @@ export async function unblockUser(targetId: string): Promise<void> {
 
 export async function getBlockedUsers(userId: string): Promise<any[]> {
     try {
-        const res = await fetch(`${API_URL}/chat/users/${userId}/blocked`);
+        const res = await feedFetch(`/chat/users/${userId}/blocked`);
         if (!res.ok) return [];
         return await res.json();
     } catch (e) {
@@ -504,11 +498,10 @@ export async function reportContent(params: {
     comment?: string;
     placeId?: string;
 }): Promise<void> {
-    const res = await fetch(`${API_URL}/chat/reports`, {
+    const res = await feedFetch('/chat/reports', {
         method: 'POST',
-        headers: { 
+        headers: {
             'Content-Type': 'application/json',
-            'X-Clerk-User-Id': connectedUserId || 'anonymous'
         },
         body: JSON.stringify({
             reportee_id: params.reporteeId,
@@ -523,7 +516,7 @@ export async function reportContent(params: {
 }
 
 export async function deleteAccount(userId: string): Promise<void> {
-    const res = await fetch(`${API_URL}/api/account?user_id=${userId}`, {
+    const res = await feedFetch(`/api/account?user_id=${encodeURIComponent(userId)}`, {
         method: 'DELETE'
     });
     if (!res.ok) throw new Error('Failed to delete account.');

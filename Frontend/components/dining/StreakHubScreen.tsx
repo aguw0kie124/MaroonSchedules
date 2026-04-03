@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Dim
 import { useFocusEffect } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import { Calendar } from 'react-native-calendars';
-import { API_URL } from '../../config';
+import { requestJson } from '../../api/client';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
 import { computeDiningStreakStats, didHitDiningGoal } from '../../services/diningStreaks';
@@ -23,8 +23,8 @@ export default function StreakHubScreen({ navigation, embedded = false }: any) {
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
-      fetch(`${API_URL}/dining/profile/${user.id}`).then(r => r.json()).then(setProfile).catch(console.error);
-      fetch(`${API_URL}/dining/history/${user.id}?days=180`).then(r => r.json()).then(setHistory).catch(console.error);
+      requestJson(`/dining/profile/${encodeURIComponent(user.id)}`).then(setProfile).catch(console.error);
+      requestJson(`/dining/history/${encodeURIComponent(user.id)}?days=180`).then(setHistory).catch(console.error);
     }, [user]),
   );
 
