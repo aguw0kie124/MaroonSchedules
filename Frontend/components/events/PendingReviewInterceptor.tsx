@@ -38,7 +38,7 @@ export function PendingReviewInterceptor() {
     if (!user?.id) return;
     setSubmitting(true);
     try {
-      await fetch(`${API_URL}/admin/events/${pendingEvent.id}/reviews`, {
+      const res = await fetch(`${API_URL}/admin/events/${pendingEvent.id}/reviews`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -47,9 +47,15 @@ export function PendingReviewInterceptor() {
           feedback: submitFeedback || null
         })
       });
+      if (!res.ok) {
+        throw new Error('Failed to submit review');
+      }
       setPendingEvent(null);
+      setRating(0);
+      setFeedback('');
     } catch (e) {
       console.warn("Failed to submit", e);
+      Alert.alert('Review not sent', 'Please try again in a moment.');
     } finally {
       setSubmitting(false);
     }
@@ -63,11 +69,20 @@ export function PendingReviewInterceptor() {
     }
   };
 
-  const handleLeaveGoogleReview = () => {
-    if (pendingEvent.google_review_url) {
-      Linking.openURL(pendingEvent.google_review_url);
+  const handleLeaveGoogleReview = async () => {
+    try {
+      if (pendingEvent.google_review_url) {
+        const supported = await Linking.canOpenURL(pendingEvent.google_review_url);
+        if (!supported) {
+          throw new Error('Unsupported review URL');
+        }
+        await Linking.openURL(pendingEvent.google_review_url);
+      }
+      await handleSubmit(rating);
+    } catch (e) {
+      console.warn('Failed to open Google review URL', e);
+      Alert.alert('Could not open Google Review', 'The review link looks invalid. You can still leave private feedback below.');
     }
-    handleSubmit(rating);
   };
 
   const handleDismiss = () => {
@@ -177,7 +192,7 @@ export function PendingReviewInterceptor() {
 
           {rating > 0 && (
             <>
-              {pendingEvent.google_review_url ? (
+              {rating >= 4 && pendingEvent.google_review_url ? (
                 <View style={styles.callOutBox}>
                   <Text style={styles.callOutTitle}>Help {pendingEvent.location_name || 'them'} out!</Text>
                   <Text style={styles.callOutText}>If you enjoyed the event, please consider leaving a quick review on Google to support them.</Text>
@@ -204,7 +219,7 @@ export function PendingReviewInterceptor() {
               <Button 
                 onPress={() => handleSubmit(rating, feedback)} 
                 disabled={submitting}
-                variant={pendingEvent.google_review_url ? "secondary" : "primary"}
+                variant={rating >= 4 && pendingEvent.google_review_url ? "secondary" : "primary"}
               >
                 {submitting ? "Sending..." : "Submit Private Feedback"}
               </Button>
