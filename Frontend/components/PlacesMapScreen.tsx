@@ -203,6 +203,8 @@ export function PlacesMapScreen() {
   const [loading, setLoading] = useState(false);
   const [pulseHotspots, setPulseHotspots] = useState<CampusHotspot[]>([]);
   const pulseHotspotsRef = useRef<CampusHotspot[]>([]);
+  const pulsePlacesRef = useRef<CampusLocation[]>([]);
+  const selectedHotspotIdRef = useRef<string | null>(null);
   const [isLoadingPulse, setIsLoadingPulse] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -443,6 +445,10 @@ export function PlacesMapScreen() {
     locations.forEach((location) => merged.set(location.location, location));
     return Array.from(merged.values());
   }, [fullCampusIndex, locations]);
+
+  // Keep refs in sync for stable callbacks
+  pulsePlacesRef.current = pulsePlaces;
+  selectedHotspotIdRef.current = selectedHotspotId;
 
   const filteredLocations = useMemo(() => {
     if (activeLayer === "Pulse") return [];
@@ -1020,8 +1026,9 @@ export function PlacesMapScreen() {
     }
     try {
       const rawHotspots = await fetchCampusPulseMap(12);
+      const currentPulsePlaces = pulsePlacesRef.current;
       const placeLookup = new Map(
-        pulsePlaces.flatMap((place) => {
+        currentPulsePlaces.flatMap((place) => {
           const keys = [place.location];
           if (place.placeId) keys.push(place.placeId);
           return keys.map((key) => [key, place] as const);
@@ -1037,19 +1044,21 @@ export function PlacesMapScreen() {
 
       pulseHotspotsRef.current = hotspots;
       setPulseHotspots(hotspots);
+      const currentSelectedId = selectedHotspotIdRef.current;
       if (
-        selectedHotspotId &&
-        !hotspots.some((hotspot) => hotspot.id === selectedHotspotId)
+        currentSelectedId &&
+        !hotspots.some((hotspot) => hotspot.id === currentSelectedId)
       ) {
         setSelectedHotspotId(null);
       }
     } catch (error) {
       console.warn("Failed to build pulse hotspots", error);
-      if (!selectedHotspotId) setPulseHotspots([]);
+      if (!selectedHotspotIdRef.current) setPulseHotspots([]);
     } finally {
       setIsLoadingPulse(false);
     }
-  }, [pulsePlaces, selectedHotspotId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const centerOnUserLocation = useCallback(async () => {
     try {
@@ -1354,16 +1363,6 @@ export function PlacesMapScreen() {
           latitude: cur.coords.latitude,
           longitude: cur.coords.longitude,
         });
-        if (!mounted || !mapRef.current) return;
-        mapRef.current.animateToRegion(
-          {
-            latitude: cur.coords.latitude,
-            longitude: cur.coords.longitude,
-            latitudeDelta: 0.03,
-            longitudeDelta: 0.03,
-          },
-          700,
-        );
         watcher = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.Balanced,
@@ -1457,7 +1456,8 @@ export function PlacesMapScreen() {
       ]).catch(() => {});
     });
     return () => task.cancel();
-  }, [fetchData, fetchPulseHotspots, refreshSchedules]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (activeLayer !== "Pulse") return;
@@ -1465,7 +1465,8 @@ export function PlacesMapScreen() {
       fetchPulseHotspots();
     }, 60000);
     return () => clearInterval(interval);
-  }, [activeLayer, fetchPulseHotspots]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeLayer]);
 
   // Pulse animation for Bus layer
   useEffect(() => {
