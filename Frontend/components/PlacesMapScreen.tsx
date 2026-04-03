@@ -314,12 +314,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
     const dirs = new Set<string>();
     busVehicles.forEach((bus) => {
       const dir = bus.direction || bus.DirectionName;
-      if (dir) dirs.add(dir.trim());
+      if (dir && typeof dir === 'string') dirs.add(dir.trim());
     });
     // Add any missing directions from the stops just in case vehicles are offline
     busStops.forEach((stop) => {
       const dir = stop.DirectionName || stop.direction;
-      if (dir) dirs.add(dir.trim());
+      if (dir && typeof dir === 'string') dirs.add(dir.trim());
     });
     return Array.from(dirs).filter(Boolean);
   }, [busVehicles, busStops, isAllBusRoutesSelected]);
@@ -1775,8 +1775,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 selectedDirection === "All" ||
                 (path.DirectionName || "")
                   .toLowerCase()
-                  .includes(selectedDirection.toLowerCase());
-              return path.points.length > 0 ? (
+                  .includes((selectedDirection || "All").toLowerCase());
+              return (path.points || []).length > 0 ? (
                 <Polyline
                   key={`path-${idx}`}
                   coordinates={path.points}
@@ -1803,7 +1803,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           isAllBusRoutesSelected &&
           Object.entries(allRoutePatternsById).map(([routeKey, pattern]) => {
             const route = busRoutes.find((r) => r.Key === routeKey);
-            return pattern.points.length > 0 ? (
+            return pattern?.points?.length > 0 ? (
               <Polyline
                 key={routeKey}
                 coordinates={pattern.points}
@@ -1825,7 +1825,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
             const stopSelected =
               selectedDirection === "All" ||
               isAllBusRoutesSelected ||
-              stopDir.toLowerCase().includes(selectedDirection.toLowerCase());
+              (stopDir || "").toLowerCase().includes((selectedDirection || "All").toLowerCase());
 
             return (
               <Marker
@@ -1872,7 +1872,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
             // Determine opacity based on selectedDirection
             const matchesDirection =
               selectedDirection === "All" ||
-              busDir.toLowerCase().includes(selectedDirection.toLowerCase());
+              (busDir || "").toLowerCase().includes((selectedDirection || "All").toLowerCase());
             const opacity = matchesDirection ? (isTrackedBus ? 1 : 0.9) : 0.3;
 
             const hasDash = routeShortName.includes("-");
