@@ -28,6 +28,7 @@ import {
   Dimensions,
   ScrollView,
   InteractionManager,
+  ActivityIndicator,
 } from "react-native";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
@@ -130,12 +131,10 @@ import {
 //    (replace with useLocationData / useScheduleMap / useBusTransit
 //     in the follow-on cleanup pass)
 
-export function PlacesMapScreen() {
+export function PlacesMapScreen({ route, navigation }: any) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === "dark";
   const styles = getStyles(COLORS, isDark);
-  const route = useRoute<any>();
-  const navigation = useNavigation<any>();
   const { user } = useUser();
   const insets = useSafeAreaInsets();
   const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -1448,8 +1447,12 @@ export function PlacesMapScreen() {
     }
   }, [activeLayer, hydrateCampusHub, user?.id]);
 
+  const hasFetchedInit = useRef(false);
   useEffect(() => {
+    if (hasFetchedInit.current) return;
+    
     const task = InteractionManager.runAfterInteractions(() => {
+      hasFetchedInit.current = true;
       Promise.allSettled([
         fetchData(),
         fetchPulseHotspots(),
@@ -1676,7 +1679,7 @@ export function PlacesMapScreen() {
 
   // Connect native social client for compatibility across feed surfaces
   useEffect(() => {
-    if (user?.id) connectFeedsUser(user.id).catch(() => {});
+    if (user?.id) connectFeedsUser(user);
   }, [user]);
 
   // ── Render ────────────────────────────────────────────────
