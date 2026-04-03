@@ -99,11 +99,13 @@ def _base_locations() -> Dict[str, Dict[str, Any]]:
             "is_live": False,
             "available_seats": None,
             "coord": dict(place["coord"]),
+            "aliases": list(place.get("aliases") or []),
             "hours": meta.get("hours"),
-            "description": meta.get("description"),
+            "description": meta.get("description") or place.get("description"),
             "features": meta.get("features"),
             "current_event": None,
-            "source": "snapshot",
+            "source": place.get("source") or "snapshot",
+            "searchOnly": bool(place.get("search_only")),
         }
     return snapshot
 
@@ -143,7 +145,7 @@ def _merge_operational_state(locations: Dict[str, Dict[str, Any]]) -> None:
                 "description": existing.get("description") or row.get("description") or meta.get("description"),
                 "features": existing.get("features") or meta.get("features"),
                 "current_event": row.get("current_event") or existing.get("current_event"),
-                "source": "snapshot",
+                "source": existing.get("source") or "snapshot",
             }
         )
 
@@ -160,6 +162,7 @@ def get_places_map_snapshot() -> Dict[str, Any]:
     ordered_locations: List[Dict[str, Any]] = sorted(
         locations.values(),
         key=lambda location: (
+            1 if location.get("searchOnly") else 0,
             0 if location["type"] in {"Hub", "Dining", "Library", "Rec"} else 1,
             location["location"],
         ),

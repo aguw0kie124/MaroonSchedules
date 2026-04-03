@@ -6,6 +6,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
+from services import osm_places_service
+
 
 FRONTEND_BUILDINGS_JSON = (
     Path(__file__).resolve().parents[2]
@@ -233,7 +235,13 @@ def _dedupe_preserving_latest(records: Iterable[Dict[str, Any]]) -> List[Dict[st
 
 @lru_cache(maxsize=1)
 def _build_registry() -> Dict[str, Any]:
-    records = _dedupe_preserving_latest([*_load_building_records(), *SPECIAL_PLACES])
+    records = _dedupe_preserving_latest(
+        [
+            *osm_places_service.get_osm_places(),
+            *_load_building_records(),
+            *SPECIAL_PLACES,
+        ]
+    )
     by_id: Dict[str, Dict[str, Any]] = {}
     by_name: Dict[str, Dict[str, Any]] = {}
     alias_lookup: Dict[str, Dict[str, Any]] = {}
@@ -273,13 +281,26 @@ def get_place_by_id(place_id: str | None) -> Dict[str, Any] | None:
 def serialize_place(place: Dict[str, Any] | None) -> Dict[str, Any] | None:
     if not place:
         return None
+    excluded_aliases = {
+        _normalize_key(place["name"]),
+        _normalize_key(place.get("short_name")),
+        _normalize_key(place["place_id"]),
+    }
+    aliases = [
+        alias
+        for alias in list(place.get("aliases") or [])
+        if _normalize_key(alias) not in excluded_aliases
+    ]
     return {
         "place_id": place["place_id"],
         "name": place["name"],
         "short_name": place.get("short_name"),
         "type": place["type"],
-        "aliases": list(place.get("aliases") or []),
+        "aliases": aliases,
         "coord": {"lat": place["lat"], "lng": place["lng"]},
+        "description": place.get("description"),
+        "search_only": bool(place.get("search_only")),
+        "source": place.get("source"),
     }
 
 
@@ -315,4 +336,3 @@ def resolve_place(
     if nearest and nearest_delta <= max_coord_delta:
         return nearest
     return None
-

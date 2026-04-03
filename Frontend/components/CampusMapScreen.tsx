@@ -44,7 +44,7 @@ export function CampusMapScreen() {
     try {
       const snapshot = await fetchCampusPlacesMap();
       const mapped = Array.isArray(snapshot?.locations)
-        ? snapshot.locations.filter((loc: any) => loc?.coord)
+        ? snapshot.locations.filter((loc: any) => loc?.coord && !loc?.searchOnly)
         : [];
       setLocations(mapped);
     } catch (err) {

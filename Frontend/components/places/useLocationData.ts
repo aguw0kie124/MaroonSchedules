@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { fetchCampusPlacesMap } from "../../api/client";
 import type { CampusLocation } from "./types";
-import { buildCampusDirectory } from "./campusData";
+import { buildExpandedPlacesDirectory, mergeCampusLocations } from "./campusData";
 
 export function useLocationData() {
-  const fullCampusIndex = useMemo(() => buildCampusDirectory(), []);
+  const fullCampusIndex = useMemo(() => buildExpandedPlacesDirectory(), []);
   const [locations, setLocations] = useState<CampusLocation[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -18,7 +18,11 @@ export function useLocationData() {
       const nextLocations = Array.isArray(payload?.locations)
         ? (payload.locations as CampusLocation[])
         : [];
-      setLocations(nextLocations.length ? nextLocations : fullCampusIndex);
+      setLocations(
+        nextLocations.length
+          ? mergeCampusLocations(fullCampusIndex, nextLocations)
+          : fullCampusIndex,
+      );
     } catch (err) {
       console.warn("Failed to fetch places map snapshot", err);
       setLocations(fullCampusIndex);
