@@ -131,6 +131,35 @@ import {
 //    (replace with useLocationData / useScheduleMap / useBusTransit
 //     in the follow-on cleanup pass)
 
+// Make map colors "neon" and bright
+const getNeonColor = (hex: string) => {
+  if (!hex || !hex.startsWith("#")) return "#00FFFF";
+  let r = parseInt(hex.slice(1, 3), 16);
+  let g = parseInt(hex.slice(3, 5), 16);
+  let b = parseInt(hex.slice(5, 7), 16);
+
+  if (hex.toUpperCase() === "#500000") return "#FF0055"; // Maroon -> Neon Pink
+  
+  const max = Math.max(r, g, b);
+  if (max === 0) return "#00FFFF";
+  
+  // Normalize so highest channel is 255
+  const m = 255 / max;
+  r = Math.round(r * m);
+  g = Math.round(g * m);
+  b = Math.round(b * m);
+
+  // Add neon pop 
+  const thr = 60;
+  if(r < thr) r += thr;
+  if(g < thr) g += thr;
+  if(b < thr) b += thr;
+  
+  return `#${[r, g, b]
+    .map((c) => Math.min(255, c).toString(16).padStart(2, "0"))
+    .join("")}`;
+};
+
 export function PlacesMapScreen({ route, navigation }: any) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === "dark";
@@ -217,7 +246,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setLoading(false);
     }
   }, [fullCampusIndex]);
-
 
   // ── Schedule state ────────────────────────────────────────
   const [activeScheduleId, setActiveScheduleId] = useState<string | null>(null);
@@ -307,19 +335,22 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const [selectedBus, setSelectedBus] = useState<any | null>(null);
   const [selectedDirection, setSelectedDirection] = useState<string>("All");
 
-  const isAllBusRoutesSelected = !selectedBusRouteId || selectedBusRouteId === ALL_BUS_ROUTES_KEY || selectedBusRouteId === "all";
+  const isAllBusRoutesSelected =
+    !selectedBusRouteId ||
+    selectedBusRouteId === ALL_BUS_ROUTES_KEY ||
+    selectedBusRouteId === "all";
 
   const availableDirections = useMemo(() => {
     if (isAllBusRoutesSelected) return ["All"];
     const dirs = new Set<string>();
     busVehicles.forEach((bus) => {
       const dir = bus.direction || bus.DirectionName;
-      if (dir && typeof dir === 'string') dirs.add(dir.trim());
+      if (dir && typeof dir === "string") dirs.add(dir.trim());
     });
     // Add any missing directions from the stops just in case vehicles are offline
     busStops.forEach((stop) => {
       const dir = stop.DirectionName || stop.direction;
-      if (dir && typeof dir === 'string') dirs.add(dir.trim());
+      if (dir && typeof dir === "string") dirs.add(dir.trim());
     });
     return Array.from(dirs).filter(Boolean);
   }, [busVehicles, busStops, isAllBusRoutesSelected]);
@@ -1221,7 +1252,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
         return;
       }
       try {
-        const { points, stops, paths } = await transitService.getRoutePattern(routeId);
+        const { points, stops, paths } =
+          await transitService.getRoutePattern(routeId);
         setRoutePatterns(points?.length ? points : []);
         setRoutePaths(paths?.length ? paths : []);
         setBusStops(stops?.length ? stops : []);
@@ -1344,7 +1376,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
             center: { latitude: sLat - 0.0018, longitude: sLng },
             zoom: 16.5,
           },
-          { duration: 600 }
+          { duration: 600 },
         );
       }
 
@@ -1466,7 +1498,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const hasFetchedInit = useRef(false);
   useEffect(() => {
     if (hasFetchedInit.current) return;
-    
+
     const task = InteractionManager.runAfterInteractions(() => {
       hasFetchedInit.current = true;
       Promise.allSettled([
@@ -1769,36 +1801,34 @@ export function PlacesMapScreen({ route, navigation }: any) {
         {/* Bus route polylines */}
         {activeLayer === "Bus" &&
           !isAllBusRoutesSelected &&
-          (routePaths && routePaths.length > 0 ? (
-            routePaths.map((path, idx) => {
-              const isSelected =
-                selectedDirection === "All" ||
-                (path.DirectionName || "")
-                  .toLowerCase()
-                  .includes((selectedDirection || "All").toLowerCase());
-              return (path.points || []).length > 0 ? (
+          (routePaths && routePaths.length > 0
+            ? routePaths.map((path, idx) => {
+                const isSelected =
+                  selectedDirection === "All" ||
+                  (path.DirectionName || "")
+                    .toLowerCase()
+                    .includes((selectedDirection || "All").toLowerCase());
+                return (path.points || []).length > 0 ? (
+                  <Polyline
+                    key={`path-${idx}`}
+                    coordinates={path.points}
+                    strokeColor={
+                      isSelected
+                        ? getNeonColor(selectedRoute?.Color || "#007AFF")
+                        : getNeonColor(selectedRoute?.Color || "#007AFF") + "40"
+                    }
+                    strokeWidth={isSelected ? 4 : 2}
+                    zIndex={isSelected ? 10 : 5}
+                  />
+                ) : null;
+              })
+            : routePatterns.length > 0 && (
                 <Polyline
-                  key={`path-${idx}`}
-                  coordinates={path.points}
-                  strokeColor={
-                    isSelected
-                      ? selectedRoute?.Color || "#007AFF"
-                      : (selectedRoute?.Color || "#007AFF") + "40"
-                  }
-                  strokeWidth={isSelected ? 6 : 4}
-                  zIndex={isSelected ? 10 : 5}
+                  coordinates={routePatterns}
+                  strokeColor={getNeonColor(selectedRoute?.Color || "#007AFF")}
+                  strokeWidth={4}
                 />
-              ) : null;
-            })
-          ) : (
-            routePatterns.length > 0 && (
-              <Polyline
-                coordinates={routePatterns}
-                strokeColor={selectedRoute?.Color || "#007AFF"}
-                strokeWidth={6}
-              />
-            )
-          ))}
+              ))}
         {activeLayer === "Bus" &&
           isAllBusRoutesSelected &&
           Object.entries(allRoutePatternsById).map(([routeKey, pattern]) => {
@@ -1807,8 +1837,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
               <Polyline
                 key={routeKey}
                 coordinates={pattern.points}
-                strokeColor={route?.Color || "#007AFF"}
-                strokeWidth={6}
+                strokeColor={getNeonColor(route?.Color || "#007AFF")}
+                strokeWidth={4}
               />
             ) : null;
           })}
@@ -1820,12 +1850,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
             const sLng =
               stop.Longitude !== undefined ? stop.Longitude : stop.lng;
             if (sLat == null || sLng == null) return null;
-            
+
             const stopDir = stop.DirectionName || stop.direction || "Unknown";
             const stopSelected =
               selectedDirection === "All" ||
               isAllBusRoutesSelected ||
-              (stopDir || "").toLowerCase().includes((selectedDirection || "All").toLowerCase());
+              (stopDir || "")
+                .toLowerCase()
+                .includes((selectedDirection || "All").toLowerCase());
 
             return (
               <Marker
@@ -1838,7 +1870,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 anchor={{ x: 0.5, y: 0.5 }}
                 zIndex={stopSelected ? 50 : 10}
               >
-                <View style={[styles.busStopMarker, { opacity: stopSelected ? 1 : 0.3 }]}>
+                <View
+                  style={[
+                    styles.busStopMarker,
+                    { opacity: stopSelected ? 1 : 0.3 },
+                  ]}
+                >
                   <View style={styles.busStopMarkerInner} />
                 </View>
               </Marker>
@@ -1872,7 +1909,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
             // Determine opacity based on selectedDirection
             const matchesDirection =
               selectedDirection === "All" ||
-              (busDir || "").toLowerCase().includes((selectedDirection || "All").toLowerCase());
+              (busDir || "")
+                .toLowerCase()
+                .includes((selectedDirection || "All").toLowerCase());
             const opacity = matchesDirection ? (isTrackedBus ? 1 : 0.9) : 0.3;
 
             const hasDash = routeShortName.includes("-");
@@ -1886,16 +1925,18 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 onPress={() => {
                   setSelectedBus(bus);
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  
-                  const bLat = bus.Latitude !== undefined ? bus.Latitude : bus.lat;
-                  const bLng = bus.Longitude !== undefined ? bus.Longitude : bus.lng;
+
+                  const bLat =
+                    bus.Latitude !== undefined ? bus.Latitude : bus.lat;
+                  const bLng =
+                    bus.Longitude !== undefined ? bus.Longitude : bus.lng;
                   if (bLat != null && bLng != null && mapRef.current) {
                     mapRef.current.animateCamera(
                       {
                         center: { latitude: bLat - 0.0018, longitude: bLng },
                         zoom: 16.5,
                       },
-                      { duration: 600 }
+                      { duration: 600 },
                     );
                   }
                 }}
