@@ -52,7 +52,7 @@ import { GlassPillTabBar } from './components/GlassPillTabBar';
 import { getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
 
-import { syncUser, fetchUserProfile } from './api/client';
+import { syncUser, fetchUserProfile, requestJson, setApiAuthTokenProvider } from './api/client';
 import { TOSScreen } from './components/TOSScreen';
 import { NotificationPromptScreen } from './components/onboarding/NotificationPromptScreen';
 
@@ -89,6 +89,20 @@ function UserSync({ children }: { children: React.ReactNode }) {
   }, [user?.id, user?.primaryEmailAddress?.emailAddress, user?.fullName, user?.imageUrl]);
 
   return <>{children}</>;
+}
+
+function ApiAuthBridge() {
+  const { getToken } = useAuth();
+
+  React.useLayoutEffect(() => {
+    setApiAuthTokenProvider(async () => {
+      const token = await getToken();
+      return token || null;
+    });
+    return () => setApiAuthTokenProvider(null);
+  }, [getToken]);
+
+  return null;
 }
 
 const tokenCache = {
@@ -258,8 +272,7 @@ function RootNavigator() {
 
   React.useEffect(() => {
     if (isSignedIn && user?.id) {
-       fetch(`${API_URL}/admin/status?clerk_id=${user.id}`)
-         .then(r => r.json())
+       requestJson(`/admin/status?clerk_id=${encodeURIComponent(user.id)}`)
          .then(data => setIsAdmin(data.is_admin))
          .catch(err => setIsAdmin(false));
     }
@@ -371,6 +384,7 @@ function RootNavigator() {
 
   return (
     <>
+      <ApiAuthBridge />
       {isSignedIn ? <UserSync>{navigator}</UserSync> : navigator}
       {isSignedIn && <PendingReviewInterceptor />}
     </>

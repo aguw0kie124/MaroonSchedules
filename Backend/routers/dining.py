@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import psycopg
 from db_config import get_db_connection
 from services import dining_service
+from auth.clerk_middleware import require_auth, ensure_matching_user
 import json
 from datetime import datetime, timedelta
 
@@ -38,12 +39,16 @@ class LogMealRequest(BaseModel):
     foods: List[Dict]
     notes: Optional[str] = None
 
+
+def require_clerk_user(clerk_id: str, user_id: str = Depends(require_auth)) -> str:
+    return ensure_matching_user(user_id, clerk_id, detail="You can only access your own dining data")
+
 # ============================================================
 # Routes
 # ============================================================
 
 @router.get("/profile/{clerk_id}")
-def get_dining_profile(clerk_id: str):
+def get_dining_profile(clerk_id: str, _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT * FROM dining_profiles WHERE clerk_id = %s", (clerk_id,))
@@ -74,7 +79,7 @@ def get_dining_profile(clerk_id: str):
             return profile
 
 @router.post("/profile/{clerk_id}")
-def update_dining_profile(clerk_id: str, req: UpdateDiningProfileRequest = Body(...)):
+def update_dining_profile(clerk_id: str, req: UpdateDiningProfileRequest = Body(...), _auth_user_id: str = Depends(require_clerk_user)):
     fields = {k: v for k, v in req.dict().items() if v is not None}
     if not fields:
         return {"status": "no changes"}
@@ -123,7 +128,8 @@ def get_full_menu(
 def optimize_day(
     clerk_id: str = Query(...), 
     dining_hall: str = Query("Sbisa"), 
-    options: Dict = Body(...)
+    options: Dict = Body(...),
+    _auth_user_id: str = Depends(require_clerk_user),
 ):
     # 1. Get Profile
     with psycopg.connect(get_db_connection()) as conn:
@@ -277,7 +283,7 @@ class OptimizeComboRequest(BaseModel):
     meal_period: str = "lunch"
 
 @router.post("/optimize/combo")
-def optimize_retail_combo(req: OptimizeComboRequest, clerk_id: str = Query(...), dining_hall: str = Query(...)):
+def optimize_retail_combo(req: OptimizeComboRequest, clerk_id: str = Query(...), dining_hall: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
     # 1. Get Profile
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
@@ -335,7 +341,7 @@ def optimize_retail_combo(req: OptimizeComboRequest, clerk_id: str = Query(...),
 
 
 @router.post("/tracker/{clerk_id}")
-def log_meal(clerk_id: str, req: LogMealRequest = Body(...)):
+def log_meal(clerk_id: str, req: LogMealRequest = Body(...), _auth_user_id: str = Depends(require_clerk_user)):
     totals = dining_service.compute_totals(req.foods)
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor() as cur:
@@ -352,7 +358,7 @@ def log_meal(clerk_id: str, req: LogMealRequest = Body(...)):
     return {"status": "success"}
 
 @router.delete("/tracker/{clerk_id}/{meal_id}")
-def delete_meal(clerk_id: str, meal_id: int):
+def delete_meal(clerk_id: str, meal_id: int, _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM meal_log WHERE clerk_id = %s AND id = %s", (clerk_id, meal_id))
@@ -376,7 +382,7 @@ def search_foods(q: str = Query(""), source: str = Query("all")):
     return results
 
 @router.get("/swipes/{clerk_id}")
-def get_swipes(clerk_id: str, date: Optional[str] = Query(None)):
+def get_swipes(clerk_id: str, date: Optional[str] = Query(None), _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT * FROM swipe_log WHERE clerk_id = %s ORDER BY date DESC", (clerk_id,))
@@ -402,7 +408,7 @@ def get_swipes(clerk_id: str, date: Optional[str] = Query(None)):
             }
 
 @router.post("/swipes/{clerk_id}")
-def log_swipe(clerk_id: str, entry: Dict = Body(...)):
+def log_swipe(clerk_id: str, entry: Dict = Body(...), _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -413,7 +419,7 @@ def log_swipe(clerk_id: str, entry: Dict = Body(...)):
     return {"status": "success"}
 
 @router.delete("/swipes/{clerk_id}/{swipe_id}")
-def delete_swipe(clerk_id: str, swipe_id: int):
+def delete_swipe(clerk_id: str, swipe_id: int, _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM swipe_log WHERE clerk_id = %s AND id = %s", (clerk_id, swipe_id))
@@ -421,7 +427,7 @@ def delete_swipe(clerk_id: str, swipe_id: int):
     return {"status": "success"}
 
 @router.get("/history/{clerk_id}")
-def get_history(clerk_id: str, days: int = 30):
+def get_history(clerk_id: str, days: int = 30, _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("""
@@ -436,7 +442,7 @@ def get_history(clerk_id: str, days: int = 30):
             return [{"date": str(r['date']), "calories": float(r['calories']), "protein": float(r['protein']), "carbs": float(r['carbs']), "fat": float(r['fat'])} for r in rows]
 
 @router.get("/tracker/{clerk_id}")
-def get_tracker(clerk_id: str, date: str = Query(None)):
+def get_tracker(clerk_id: str, date: str = Query(None), _auth_user_id: str = Depends(require_clerk_user)):
     if not date:
         date = datetime.now().strftime('%Y-%m-%d')
 
@@ -453,7 +459,7 @@ def get_tracker(clerk_id: str, date: str = Query(None)):
     return {"date": date, "entries": entries, "totals": totals}
 
 @router.get("/weights/{clerk_id}")
-def get_weights(clerk_id: str):
+def get_weights(clerk_id: str, _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT date, weight_lbs FROM weight_log WHERE clerk_id = %s ORDER BY date ASC", (clerk_id,))
@@ -461,7 +467,7 @@ def get_weights(clerk_id: str):
             return [{"date": str(r['date']), "weight_lbs": float(r['weight_lbs'])} for r in rows]
 
 @router.post("/weights/{clerk_id}")
-def log_weight(clerk_id: str, entry: Dict = Body(...)):
+def log_weight(clerk_id: str, entry: Dict = Body(...), _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -472,7 +478,7 @@ def log_weight(clerk_id: str, entry: Dict = Body(...)):
     return {"status": "success"}
 
 @router.delete("/weights/{clerk_id}/{date}")
-def delete_weight(clerk_id: str, date: str):
+def delete_weight(clerk_id: str, date: str, _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM weight_log WHERE clerk_id = %s AND date = %s", (clerk_id, date))
@@ -480,7 +486,7 @@ def delete_weight(clerk_id: str, date: str):
     return {"status": "success"}
 
 @router.get("/weight-stats/{clerk_id}")
-def get_weight_stats(clerk_id: str):
+def get_weight_stats(clerk_id: str, _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT weight_lbs FROM weight_log WHERE clerk_id = %s ORDER BY date DESC LIMIT 2", (clerk_id,))

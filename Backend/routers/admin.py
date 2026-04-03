@@ -1,35 +1,38 @@
 from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional
 import psycopg
-import json
 from db_config import CONNECTION_PARAMS
-import datetime
+from auth.clerk_middleware import require_auth, ensure_matching_user
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
 class AdminApplicationRequest(BaseModel):
     clerk_id: str
-    email: str
-    organization_name: str
-    reason: str
+    email: str = Field(..., min_length=3, max_length=320)
+    organization_name: str = Field(..., min_length=2, max_length=120)
+    reason: str = Field(..., min_length=10, max_length=2000)
 
 
 class AdminEventCreateRequest(BaseModel):
     clerk_id: str
-    title: str
-    description: str
+    title: str = Field(..., min_length=1, max_length=140)
+    description: str = Field(..., max_length=4000)
     lat: float
     lng: float
-    location_name: str
+    location_name: str = Field(..., min_length=1, max_length=200)
     start_time: str
     end_time: str
-    google_review_url: Optional[str] = None
+    google_review_url: Optional[str] = Field(default=None, max_length=2048)
+
+
+def require_clerk_user(clerk_id: str, user_id: str = Depends(require_auth)) -> str:
+    return ensure_matching_user(user_id, clerk_id, detail="You can only access your own admin data")
 
 
 @router.get("/status")
-def get_admin_status(clerk_id: str = Query(...)):
+def get_admin_status(clerk_id: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
     """Check if a user is an admin or has a pending application."""
     from repositories import user_repository
     user = user_repository.get_user(clerk_id)
@@ -60,7 +63,8 @@ def get_admin_status(clerk_id: str = Query(...)):
 
 
 @router.post("/apply")
-def submit_admin_application(req: AdminApplicationRequest):
+def submit_admin_application(req: AdminApplicationRequest, auth_user_id: str = Depends(require_auth)):
+    ensure_matching_user(auth_user_id, req.clerk_id, detail="You can only submit your own admin application")
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
             with conn.cursor() as cur:
@@ -86,11 +90,14 @@ def submit_admin_application(req: AdminApplicationRequest):
 
 
 @router.post("/events")
-def create_admin_event(req: AdminEventCreateRequest):
+def create_admin_event(req: AdminEventCreateRequest, auth_user_id: str = Depends(require_auth)):
+    ensure_matching_user(auth_user_id, req.clerk_id, detail="You can only create admin events as yourself")
     from repositories import user_repository
     user = user_repository.get_user(req.clerk_id)
     if not user or not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Unauthorized")
+    if req.google_review_url and not req.google_review_url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Google review URL must start with http:// or https://")
         
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
@@ -117,7 +124,7 @@ def create_admin_event(req: AdminEventCreateRequest):
 
 
 @router.get("/events/me")
-def get_my_admin_events(clerk_id: str = Query(...)):
+def get_my_admin_events(clerk_id: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
     """Fetch events created by this admin, along with share counts and RSVP counts."""
     from repositories import user_repository
     user = user_repository.get_user(clerk_id)
@@ -183,10 +190,10 @@ def track_admin_event_share(event_id: str):
 class AdminEventReviewRequest(BaseModel):
     clerk_id: str
     rating: int = Field(..., ge=1, le=5)
-    feedback: Optional[str] = None
+    feedback: Optional[str] = Field(default=None, max_length=2000)
 
 @router.get("/events/pending-reviews")
-def get_pending_reviews(clerk_id: str = Query(...)):
+def get_pending_reviews(clerk_id: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
     """Fetch one event the user RSVP'd for that has ended but not been reviewed."""
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
@@ -217,11 +224,27 @@ def get_pending_reviews(clerk_id: str = Query(...)):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/events/{event_id}/reviews")
-def submit_event_review(event_id: str, req: AdminEventReviewRequest):
+def submit_event_review(event_id: str, req: AdminEventReviewRequest, auth_user_id: str = Depends(require_auth)):
     """Submit an internal review for an event."""
+    ensure_matching_user(auth_user_id, req.clerk_id, detail="You can only submit reviews as yourself")
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
             with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT 1
+                    FROM admin_events e
+                    JOIN campus_event_rsvps r ON r.event_id = e.id::TEXT
+                    WHERE e.id = %s
+                    AND r.clerk_id = %s
+                    AND (r.response = 'going' OR r.response = 'yes')
+                    AND COALESCE(e.end_time, e.start_time + interval '6 hours') < NOW()
+                    LIMIT 1
+                    """,
+                    (event_id, req.clerk_id),
+                )
+                if not cur.fetchone():
+                    raise HTTPException(status_code=403, detail="You can only review events you attended after they end")
                 cur.execute(
                     """
                     INSERT INTO admin_event_reviews (event_id, clerk_id, rating, feedback)
