@@ -4,7 +4,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 // ── Snap points for bottom sheet ──────────────────────────────
 export const SNAP_PEEK = SCREEN_HEIGHT * 0.45;
-export const SNAP_FULL = SCREEN_HEIGHT * 0.08;
+export const SNAP_FULL = SCREEN_HEIGHT * 0.25;
 export const SNAP_HIDDEN = SCREEN_HEIGHT;
 export const SHEET_BOTTOM_OFFSET = 0;
 export const FLOATING_CARD_BOTTOM_OFFSET = 124;
@@ -38,7 +38,7 @@ export type LocationType =
   | "Parking"
   | "Landmark"
   | "Housing"
-  | "Athletics";
+  | "Athletics" | "Study";
 
 export type ParkingPermit = "visitor" | "garage" | "any_valid" | "west_campus" | "resident";
 
