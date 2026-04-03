@@ -20,6 +20,7 @@ export function AdminMapPoster() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [address, setAddress] = useState('');
+  const [googleReviewUrl, setGoogleReviewUrl] = useState('');
   const [startTime, setStartTime] = useState(() => roundToNearestFiveMinutes(new Date()));
   const [loading, setLoading] = useState(false);
 
@@ -77,7 +78,8 @@ export function AdminMapPoster() {
           lng: 0, // Fallback lng since map is removed
           location_name: address.trim(),
           start_time: startTime.toISOString(),
-          end_time: endTime.toISOString()
+          end_time: endTime.toISOString(),
+          google_review_url: googleReviewUrl.trim() || null
         })
       });
 
@@ -89,6 +91,7 @@ export function AdminMapPoster() {
       setTitle('');
       setDescription('');
       setAddress('');
+      setGoogleReviewUrl('');
       setStartTime(roundToNearestFiveMinutes(new Date()));
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Failed to create event.');
@@ -189,6 +192,17 @@ export function AdminMapPoster() {
           placeholderTextColor={COLORS.textTertiary}
           value={address}
           onChangeText={setAddress}
+        />
+
+        <Text style={styles.label}>Google Review URL (Optional)</Text>
+        <TextInput 
+          style={styles.input} 
+          placeholder="https://g.page/r/.../review" 
+          placeholderTextColor={COLORS.textTertiary}
+          value={googleReviewUrl}
+          onChangeText={setGoogleReviewUrl}
+          autoCapitalize="none"
+          keyboardType="url"
         />
 
         <Text style={styles.label}>Date</Text>
