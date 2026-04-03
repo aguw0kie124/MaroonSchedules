@@ -28,6 +28,7 @@ import {
   Dimensions,
   ScrollView,
   InteractionManager,
+  ActivityIndicator,
 } from "react-native";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
@@ -201,10 +202,10 @@ export function PlacesMapScreen() {
   const [locations, setLocations] = useState<CampusLocation[]>(fullCampusIndex);
   const [loading, setLoading] = useState(false);
   const [pulseHotspots, setPulseHotspots] = useState<CampusHotspot[]>([]);
+  const pulseHotspotsRef = useRef<CampusHotspot[]>([]);
   const [isLoadingPulse, setIsLoadingPulse] = useState(false);
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
     try {
       const payload = await fetchCampusPlacesMap();
       const nextLocations = Array.isArray(payload?.locations)
@@ -214,8 +215,6 @@ export function PlacesMapScreen() {
     } catch (err) {
       console.warn("Failed to fetch places map snapshot", err);
       setLocations(fullCampusIndex);
-    } finally {
-      setLoading(false);
     }
   }, [fullCampusIndex]);
 
@@ -1016,7 +1015,7 @@ export function PlacesMapScreen() {
   );
 
   const fetchPulseHotspots = useCallback(async () => {
-    if (!pulseHotspots.length) {
+    if (!pulseHotspotsRef.current.length) {
       setIsLoadingPulse(true);
     }
     try {
@@ -1036,6 +1035,7 @@ export function PlacesMapScreen() {
           null,
       }));
 
+      pulseHotspotsRef.current = hotspots;
       setPulseHotspots(hotspots);
       if (
         selectedHotspotId &&
@@ -1049,7 +1049,7 @@ export function PlacesMapScreen() {
     } finally {
       setIsLoadingPulse(false);
     }
-  }, [pulseHotspots.length, pulsePlaces, selectedHotspotId]);
+  }, [pulsePlaces, selectedHotspotId]);
 
   const centerOnUserLocation = useCallback(async () => {
     try {
@@ -1359,8 +1359,8 @@ export function PlacesMapScreen() {
           {
             latitude: cur.coords.latitude,
             longitude: cur.coords.longitude,
-            latitudeDelta: 0.018,
-            longitudeDelta: 0.018,
+            latitudeDelta: 0.03,
+            longitudeDelta: 0.03,
           },
           700,
         );
@@ -1676,22 +1676,10 @@ export function PlacesMapScreen() {
 
   // Connect native social client for compatibility across feed surfaces
   useEffect(() => {
-    if (user?.id) connectFeedsUser(user.id).catch(() => {});
+    if (user?.id) { try { connectFeedsUser(user); } catch (_) {} }
   }, [user]);
 
   // ── Render ────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <View
-        style={[
-          styles.container,
-          { justifyContent: "center", alignItems: "center" },
-        ]}
-      >
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>
