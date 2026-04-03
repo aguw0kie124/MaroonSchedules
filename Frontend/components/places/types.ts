@@ -78,6 +78,7 @@ export interface CampusLocation {
   current_event?: string;
   aliases?: string[];
   hours?: string;
+  address?: string;
   reviews?: Array<{ user: string; rating: number; comment: string }>;
   traffic_history?: number[];
   restaurants?: string[];

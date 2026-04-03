@@ -102,6 +102,7 @@ def _base_locations() -> Dict[str, Dict[str, Any]]:
             "aliases": list(place.get("aliases") or []),
             "hours": meta.get("hours"),
             "description": meta.get("description") or place.get("description"),
+            "address": place.get("address"),
             "features": meta.get("features"),
             "current_event": None,
             "source": place.get("source") or "snapshot",

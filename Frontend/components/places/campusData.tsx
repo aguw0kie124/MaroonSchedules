@@ -376,12 +376,28 @@ type LocalOSMPlaceRecord = {
   lng: number;
   aliases?: string[];
   description?: string | null;
+  address?: string | null;
   source?: string | null;
   search_only?: boolean;
 };
 
 function normalizeLocationKey(value?: string | null) {
   return (value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function areLocationCoordsClose(first: CampusLocation, second: CampusLocation, maxDelta = 0.0015) {
+  return (
+    Math.abs((first.coord?.lat || 0) - (second.coord?.lat || 0)) +
+      Math.abs((first.coord?.lng || 0) - (second.coord?.lng || 0)) <=
+    maxDelta
+  );
+}
+
+export function getLocationSelectionId(location: Pick<CampusLocation, "placeId" | "location" | "coord">) {
+  if (location.placeId) return location.placeId;
+  const lat = Number.isFinite(location.coord?.lat) ? location.coord.lat.toFixed(6) : "na";
+  const lng = Number.isFinite(location.coord?.lng) ? location.coord.lng.toFixed(6) : "na";
+  return `${normalizeLocationKey(location.location)}::${lat},${lng}`;
 }
 
 function toLocalOSMLocations(): CampusLocation[] {
@@ -401,6 +417,7 @@ function toLocalOSMLocations(): CampusLocation[] {
     coord: { lat: place.lat, lng: place.lng },
     aliases: Array.isArray(place.aliases) ? place.aliases : [],
     description: place.description || undefined,
+    address: place.address || undefined,
     source: (place.source as CampusLocation["source"]) || "osm",
     searchOnly: place.search_only !== false,
   }));
@@ -408,12 +425,19 @@ function toLocalOSMLocations(): CampusLocation[] {
 
 export function mergeCampusLocations(...groups: CampusLocation[][]): CampusLocation[] {
   const merged = new Map<string, CampusLocation>();
-  const normalizedNameToKey = new Map<string, string>();
+  const normalizedNameToKeys = new Map<string, string[]>();
 
   groups.flat().forEach((location) => {
-    const explicitKey = location.placeId || "";
+    const explicitKey = getLocationSelectionId(location);
     const normalizedName = normalizeLocationKey(location.location);
-    const existingKey = explicitKey || normalizedNameToKey.get(normalizedName) || normalizedName;
+    const explicitExisting = merged.get(explicitKey);
+    const candidateKeys = normalizedNameToKeys.get(normalizedName) || [];
+    const matchingNameKey =
+      candidateKeys.find((key) => {
+        const existing = merged.get(key);
+        return existing ? areLocationCoordsClose(existing, location) : false;
+      }) || null;
+    const existingKey = explicitExisting ? explicitKey : matchingNameKey || explicitKey;
     const existing = merged.get(existingKey);
     const nextAliases = Array.from(
       new Set([...(existing?.aliases || []), ...(location.aliases || [])].filter(Boolean)),
@@ -431,9 +455,10 @@ export function mergeCampusLocations(...groups: CampusLocation[][]): CampusLocat
         };
 
     merged.set(existingKey, next);
-    if (normalizedName) normalizedNameToKey.set(normalizedName, existingKey);
-    if (explicitKey && explicitKey !== existingKey) {
-      merged.delete(explicitKey);
+    if (normalizedName) {
+      const nextKeys = normalizedNameToKeys.get(normalizedName) || [];
+      if (!nextKeys.includes(existingKey)) nextKeys.push(existingKey);
+      normalizedNameToKeys.set(normalizedName, nextKeys);
     }
   });
 

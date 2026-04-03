@@ -226,11 +226,36 @@ def _load_building_records() -> Iterable[Dict[str, Any]]:
     return records
 
 
+def _records_overlap(first: Dict[str, Any], second: Dict[str, Any], max_coord_delta: float = 0.0015) -> bool:
+    return (
+        abs(float(first["lat"]) - float(second["lat"]))
+        + abs(float(first["lng"]) - float(second["lng"]))
+        <= max_coord_delta
+    )
+
+
 def _dedupe_preserving_latest(records: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    deduped: Dict[str, Dict[str, Any]] = {}
+    deduped: Dict[str, List[Dict[str, Any]]] = {}
     for record in records:
-        deduped[_normalize_key(record["name"])] = record
-    return list(deduped.values())
+        normalized_name = _normalize_key(record["name"])
+        existing_records = deduped.setdefault(normalized_name, [])
+        overlapping_index = next(
+            (
+                index
+                for index, existing in enumerate(existing_records)
+                if _records_overlap(existing, record)
+            ),
+            None,
+        )
+        if overlapping_index is None:
+            existing_records.append(record)
+        else:
+            existing_records[overlapping_index] = record
+
+    flattened: List[Dict[str, Any]] = []
+    for records_for_name in deduped.values():
+        flattened.extend(records_for_name)
+    return flattened
 
 
 @lru_cache(maxsize=1)
@@ -299,6 +324,7 @@ def serialize_place(place: Dict[str, Any] | None) -> Dict[str, Any] | None:
         "aliases": aliases,
         "coord": {"lat": place["lat"], "lng": place["lng"]},
         "description": place.get("description"),
+        "address": place.get("address"),
         "search_only": bool(place.get("search_only")),
         "source": place.get("source"),
     }

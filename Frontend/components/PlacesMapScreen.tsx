@@ -113,6 +113,7 @@ import {
   CAMPUS_ZONES,
   CATEGORIES,
   buildExpandedPlacesDirectory,
+  getLocationSelectionId,
   getCanonicalLocationName,
   getZoneDensity,
   mergeCampusLocations,
@@ -438,21 +439,11 @@ export function PlacesMapScreen() {
 
   // ── Derived map locations ─────────────────────────────────
   const allMapLocations = useMemo(() => {
-    const merged = new Map<string, CampusLocation>();
-    locations.forEach((l) => merged.set(l.location, l));
-    scheduleLocations.forEach((l: any) =>
-      merged.set(l.location, { ...(merged.get(l.location) || {}), ...l }),
-    );
-    return Array.from(merged.values());
+    return mergeCampusLocations(locations, scheduleLocations as CampusLocation[]);
   }, [locations, scheduleLocations]);
 
   const pulsePlaces = useMemo(() => {
-    const merged = new Map<string, CampusLocation>();
-    fullCampusIndex.forEach((location) =>
-      merged.set(location.location, location),
-    );
-    locations.forEach((location) => merged.set(location.location, location));
-    return Array.from(merged.values());
+    return mergeCampusLocations(fullCampusIndex, locations);
   }, [fullCampusIndex, locations]);
 
   // Keep refs in sync for stable callbacks
@@ -528,7 +519,7 @@ export function PlacesMapScreen() {
   const busPulseAnim = useRef(new Animated.Value(1)).current;
 
   const selectedLoc = useMemo(
-    () => allMapLocations.find((l) => l.location === selectedId),
+    () => allMapLocations.find((l) => getLocationSelectionId(l) === selectedId),
     [allMapLocations, selectedId],
   );
   const selectedHotspot = useMemo(
@@ -551,8 +542,8 @@ export function PlacesMapScreen() {
     if (activeLayer === "Heatmap" || activeLayer === "Bus")
       return selectedLoc ? [selectedLoc] : [];
     const merged = new Map<string, CampusLocation>();
-    filteredLocations.forEach((l) => merged.set(l.location, l));
-    if (selectedLoc) merged.set(selectedLoc.location, selectedLoc);
+    filteredLocations.forEach((l) => merged.set(getLocationSelectionId(l), l));
+    if (selectedLoc) merged.set(getLocationSelectionId(selectedLoc), selectedLoc);
     return Array.from(merged.values());
   }, [activeLayer, filteredLocations, selectedLoc]);
 
@@ -841,21 +832,22 @@ export function PlacesMapScreen() {
       );
       return;
     }
-    if (!selectedId || !newReviewText.trim() || newRating === 0) return;
+    const selectedReviewId = selectedLoc?.placeId || selectedLoc?.location || null;
+    if (!selectedReviewId || !newReviewText.trim() || newRating === 0) return;
     setIsPostingReview(true);
     try {
       const { postPlaceReview } = require("../services/streamFeeds");
-      await postPlaceReview(selectedId, newRating, newReviewText.trim());
+      await postPlaceReview(selectedReviewId, newRating, newReviewText.trim());
       setReviewModalVisible(false);
       setNewReviewText("");
       setNewRating(5);
-      fetchReviews(selectedId);
+      fetchReviews(selectedReviewId);
     } catch (e) {
       console.warn("Failed to post review", e);
     } finally {
       setIsPostingReview(false);
     }
-  }, [fetchReviews, isGuest, navigation, newRating, newReviewText, selectedId]);
+  }, [fetchReviews, isGuest, navigation, newRating, newReviewText, selectedLoc]);
 
   const loadBestDiningPreview = useCallback(
     async (locationName: string, preferredMeal: DiningMealPeriod) => {
@@ -928,7 +920,7 @@ export function PlacesMapScreen() {
               : "Academic";
     setActiveLayer(nextLayer);
     setSelectedHotspotId(null);
-    setSelectedId(loc.location);
+    setSelectedId(getLocationSelectionId(loc));
     setSelectedStop(null);
     setSelectedBus(null);
     setIsSearchExpanded(false);
@@ -946,7 +938,7 @@ export function PlacesMapScreen() {
           (l.shortName && l.shortName.toUpperCase().includes(code)),
       );
       if (loc) {
-        setSelectedId(loc.location);
+        setSelectedId(getLocationSelectionId(loc));
         setIsTodayExpanded(false);
         // Center map
         mapRef.current?.animateToRegion(
@@ -1451,7 +1443,7 @@ export function PlacesMapScreen() {
       (loc) => getCanonicalLocationName(loc.location) === targetName,
     );
     if (!match) return;
-    setSelectedId(match.location);
+    setSelectedId(getLocationSelectionId(match));
     setPendingInitialLocation(null);
   }, [allMapLocations, pendingInitialLocation]);
 
@@ -1636,8 +1628,9 @@ export function PlacesMapScreen() {
 
   // Sheet selection - fetch reviews + dining on select
   useEffect(() => {
-    if (selectedId) {
-      fetchReviews(selectedId);
+    const selectedReviewId = selectedLoc?.placeId || selectedLoc?.location || null;
+    if (selectedId && selectedReviewId) {
+      fetchReviews(selectedReviewId);
     } else {
       setStreamReviews([]);
       setHubRestaurants([]);
@@ -1647,7 +1640,7 @@ export function PlacesMapScreen() {
       setDiningMenuPreview(null);
       setSelectedPlaceDetail(null);
     }
-  }, [selectedId, fetchReviews]);
+  }, [selectedId, selectedLoc, fetchReviews]);
 
   useEffect(() => {
     if (!selectedLoc) {
@@ -1989,7 +1982,7 @@ export function PlacesMapScreen() {
         {/* Campus location markers */}
         {activeLayer !== "Bus" &&
           markerLocations.map((loc) => {
-            const isSelected = loc.location === selectedId;
+            const isSelected = getLocationSelectionId(loc) === selectedId;
             const isTodayLayer = activeLayer === "Today";
             const isCapacityType = loc.type === "Library" || loc.type === "Rec";
             const pinColor = isTodayLayer
@@ -2004,7 +1997,7 @@ export function PlacesMapScreen() {
 
             return (
               <Marker
-                key={`loc-${loc.location}`}
+                key={`loc-${getLocationSelectionId(loc)}`}
                 coordinate={{
                   latitude: loc.coord.lat,
                   longitude: loc.coord.lng,
