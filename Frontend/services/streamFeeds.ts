@@ -7,33 +7,16 @@ let currentFullUser: any | null = null;
 /**
  * Connect the current Clerk user to the feed system.
  */
-export async function connectFeedsUser(
+export function connectFeedsUser(
     clerkUser: any, 
-    forceRefresh = false
-): Promise<any> {
+    _forceRefresh = false
+): { id: string } {
   const clerkUserId = clerkUser?.id || clerkUser?.userId;
   if (!clerkUserId) return { id: 'anonymous' };
 
-  const clerkName = getPremiumName(clerkUser);
-  const clerkImage = getPremiumImage(clerkUser);
-
   connectedUserId = clerkUserId;
   currentFullUser = clerkUser;
-  
-  try {
-      await fetch(`${API_URL}/chat/feeds/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            clerk_user_id: clerkUserId,
-            name: clerkName,
-            image: clerkImage
-        }),
-      });
-  } catch (e) {
-      console.warn('[NativeFeeds] Token sync skipped', e);
-  }
-  
+
   return { id: clerkUserId };
 }
 

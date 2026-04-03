@@ -21,11 +21,6 @@ import {
   View,
 } from 'react-native';
 import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withRepeat, 
-  withTiming, 
-  interpolateColor,
   FadeIn,
   FadeOut,
   SlideInDown,
@@ -55,6 +50,7 @@ import {
   Users,
   X,
   Image as ImageIcon,
+  Camera,
 } from 'lucide-react-native';
 
 import { API_URL } from '../config';
@@ -289,7 +285,6 @@ export function CampusPingsScreen() {
 
   const [composerVisible, setComposerVisible] = useState(false);
 
-  const pulseValue = useSharedValue(0);
   // Onboarding logic: automatically advance if the tour is on the CTA step handled in the open composer call
   // We added a 1s delay so the instructions and highlight appear AFTER the animation finishes
   useEffect(() => {
@@ -308,19 +303,6 @@ export function CampusPingsScreen() {
     }
   }, [activeTargetName, composerVisible]);
 
-  const pulseStyle = useAnimatedStyle(() => {
-    return {
-      borderWidth: 2,
-      borderColor: interpolateColor(
-        pulseValue.value,
-        [0, 1],
-        ['transparent', COLORS.primary]
-      ),
-      transform: [{ scale: 1 + pulseValue.value * 0.02 }],
-      borderRadius: 16,
-      margin: -2,
-    };
-  });
   const [composerTitle, setComposerTitle] = useState('');
   const [composerBody, setComposerBody] = useState('');
   const [composerCategory, setComposerCategory] = useState<PingCategory>('Popup');
@@ -434,14 +416,13 @@ export function CampusPingsScreen() {
       return;
     }
 
+    connectFeedsUser(user);
+    setFeedConnected(true);
     try {
-      await connectFeedsUser(user);
-      setFeedConnected(true);
       await loadUserPings();
     } catch (error) {
       console.warn('[Pings] Stream connection failed', error);
-      setFeedConnected(false);
-      setStreamError('Live pings are unavailable until the feed connection is restored.');
+      setStreamError('Could not load live pings right now.');
       setUserPings([]);
     } finally {
       setLoading(false);
@@ -494,6 +475,26 @@ export function CampusPingsScreen() {
       allowsEditing: true,
       quality: 0.82,
       aspect: [4, 3],
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setComposerImageUri(result.assets[0].uri);
+    }
+  }, []);
+
+  const handleCapturePingImage = useCallback(async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Camera unavailable', 'Allow camera access to take a photo for your ping.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.82,
+      aspect: [4, 3],
+      cameraType: ImagePicker.CameraType.back,
     });
 
     if (!result.canceled && result.assets[0]) {
@@ -959,7 +960,16 @@ export function CampusPingsScreen() {
       </View>
 
       <TourTarget name="crowdping-cta">
-        <Animated.View style={pulseStyle}>
+        <View
+          style={[
+            activeTargetName === 'crowdping-cta' && {
+              borderWidth: 2,
+              borderColor: COLORS.primary,
+              borderRadius: 16,
+              padding: 2,
+            },
+          ]}
+        >
           <Pressable 
             style={styles.quickPostBar} 
             onPress={() => {
@@ -974,7 +984,7 @@ export function CampusPingsScreen() {
             </View>
             <Text style={styles.quickPostText}>What's happening at...</Text>
           </Pressable>
-        </Animated.View>
+        </View>
       </TourTarget>
 
       {streamError ? (
@@ -1143,22 +1153,28 @@ export function CampusPingsScreen() {
 
                         <Text style={styles.modalLabel}>Photo</Text>
                         <View style={styles.imageComposerRow}>
-                          <Pressable style={styles.imagePickerButton} onPress={handlePickPingImage}>
-                            <ImageIcon size={16} color={COLORS.textPrimary} />
-                            <Text style={styles.imagePickerButtonText}>
-                              {composerImageUri ? 'Change photo' : 'Add photo'}
-                            </Text>
-                          </Pressable>
+                          <View style={styles.imagePickerActions}>
+                            <Pressable style={styles.imagePickerButton} onPress={handlePickPingImage}>
+                              <ImageIcon size={16} color={COLORS.textPrimary} />
+                              <Text style={styles.imagePickerButtonText}>
+                                {composerImageUri ? 'Choose another' : 'Choose photo'}
+                              </Text>
+                            </Pressable>
+                            <Pressable style={styles.imagePickerButton} onPress={handleCapturePingImage}>
+                              <Camera size={16} color={COLORS.textPrimary} />
+                              <Text style={styles.imagePickerButtonText}>Take photo</Text>
+                            </Pressable>
+                          </View>
                           {composerImageUri ? (
                             <Pressable style={styles.imagePreviewWrap} onPress={handlePickPingImage}>
                               <Image source={{ uri: composerImageUri }} style={styles.imagePreview} />
                               <View style={styles.imagePreviewRemoveHint}>
-                                <Text style={styles.imagePreviewRemoveHintText}>Tap to edit</Text>
+                                <Text style={styles.imagePreviewRemoveHintText}>Tap to replace</Text>
                               </View>
                             </Pressable>
                           ) : (
                             <View style={styles.imageEmptyState}>
-                              <Text style={styles.imageEmptyStateText}>Optional</Text>
+                              <Text style={styles.imageEmptyStateText}>Camera or Photos</Text>
                             </View>
                           )}
                         </View>
@@ -1956,6 +1972,10 @@ const getStyles = (COLORS: any) =>
       alignItems: 'stretch',
       gap: 12,
       marginBottom: 4,
+    },
+    imagePickerActions: {
+      flex: 1,
+      gap: 12,
     },
     imagePickerButton: {
       flex: 1,

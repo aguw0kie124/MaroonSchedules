@@ -30,6 +30,7 @@ export const TAMU_CENTER = {
 export type LocationType =
   | "Rec"
   | "Library"
+  | "Study"
   | "Dining"
   | "Hub"
   | "General"

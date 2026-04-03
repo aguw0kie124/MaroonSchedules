@@ -5,13 +5,6 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withTiming,
-  interpolateColor
-} from 'react-native-reanimated';
 import { useTheme, useThemeStore } from './components/SharedUI';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -23,6 +16,8 @@ import { CourseDetail } from './components/CourseDetail';
 import { AuthLanding } from './components/AuthLanding';
 import { LoginScreen } from './components/LoginScreen';
 import { AnnexHubScreen } from './components/AnnexHubScreen';
+import { AnnexLibraryDetailScreen } from './components/AnnexLibraryDetailScreen';
+import { AnnexRentalDetailScreen } from './components/AnnexRentalDetailScreen';
 
 import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
 import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
@@ -309,6 +304,8 @@ function RootNavigator() {
           <Stack.Screen name="TransitTripResults" component={TransitTripResultsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
           <Stack.Screen name="AnnexHub" component={AnnexHubScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="AnnexLibraryDetail" component={AnnexLibraryDetailScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="AnnexRentalDetail" component={AnnexRentalDetailScreen} options={{ headerShown: false }} />
           <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
           <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
           <Stack.Screen
@@ -359,29 +356,8 @@ function TabButtonWrapper({ screenName, props }: { screenName: string; props: an
   const { COLORS } = useTheme();
   const { onPress, onLongPress, ...rest } = props;
 
-  const pulseValue = useSharedValue(0);
   const targetName = `${screenName.toLowerCase()}-tab`;
   const isHighlighted = activeTargetName === targetName;
-
-  React.useEffect(() => {
-    if (isHighlighted) {
-      pulseValue.value = withRepeat(withTiming(1, { duration: 1000 }), -1, true);
-    } else {
-      pulseValue.value = 0;
-    }
-  }, [isHighlighted]);
-
-  const pulseStyle = useAnimatedStyle(() => {
-    return {
-      backgroundColor: interpolateColor(
-        pulseValue.value,
-        [0, 1],
-        ['transparent', COLORS.primary + '20']
-      ),
-      borderRadius: 12,
-      margin: 4,
-    };
-  });
 
   const handlePress = (e: any) => {
     if (activeTargetName === targetName) {
@@ -392,9 +368,18 @@ function TabButtonWrapper({ screenName, props }: { screenName: string; props: an
 
   return (
     <TourTarget name={targetName} style={{ flex: 1 }}>
-      <Animated.View style={[{ flex: 1 }, pulseStyle]}>
+      <View
+        style={[
+          { flex: 1, margin: 4, borderRadius: 12 },
+          isHighlighted && {
+            backgroundColor: COLORS.primary + '14',
+            borderWidth: 1,
+            borderColor: COLORS.primary + '45',
+          },
+        ]}
+      >
         <Pressable {...rest} onPress={handlePress} onLongPress={onLongPress} />
-      </Animated.View>
+      </View>
     </TourTarget>
   );
 }

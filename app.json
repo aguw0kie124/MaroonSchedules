@@ -1,5 +1,52 @@
 {
-  "plugins": [
-    "@react-native-community/datetimepicker"
-  ]
+  "expo": {
+    "name": "MaroonLife",
+    "slug": "maroonlife",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "scheme": "maroonlife",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#500000"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.maroonlife.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "MaroonLife uses your location to show nearby campus places, transit options, and directions.",
+        "NSPhotoLibraryUsageDescription": "MaroonLife uses your photo library so you can choose a profile photo or attach an image to your campus posts.",
+        "NSCameraUsageDescription": "MaroonLife uses the camera when you choose to capture a photo for your profile or a campus post."
+      }
+    },
+    "android": {
+      "package": "com.maroonlife.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#500000"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker",
+      "expo-notifications"
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    }
+  }
 }

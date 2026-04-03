@@ -7,7 +7,11 @@ import { useEventStore } from "../../store/eventStore";
 import type { CampusLocation, LocationType, ScheduleMeetingEntry, ScheduleMapOption } from "./types";
 import { resolveScheduleBuilding, getCanonicalLocationName, getBuildingCategory } from "./campusData";
 
-export function useScheduleMap(fullCampusIndex: CampusLocation[], selectedDate: Date = new Date()) {
+export function useScheduleMap(
+  fullCampusIndex: CampusLocation[],
+  selectedDate: Date = new Date(),
+  options: { skipInitialLoad?: boolean } = {}
+) {
   const { user } = useUser();
   const campusHubSnapshot = useCampusHubStore((state) => state.snapshot);
   const scheduledEvents = useEventStore((state) => state.scheduledEvents);
@@ -16,7 +20,7 @@ export function useScheduleMap(fullCampusIndex: CampusLocation[], selectedDate: 
   const [isLoadingSchedules, setIsLoadingSchedules] = useState(false);
   const [activeScheduleId, setActiveScheduleId] = useState<string | null>(null);
 
-  const loadSchedules = useCallback(() => {
+  const loadSchedules = useCallback(async () => {
     if (!user?.id) {
       setSavedSchedules([]);
       setIsLoadingSchedules(false);
@@ -24,7 +28,7 @@ export function useScheduleMap(fullCampusIndex: CampusLocation[], selectedDate: 
     }
 
     setIsLoadingSchedules(true);
-    fetchSchedules(user.id)
+    return fetchSchedules(user.id)
       .then((data) => {
         setSavedSchedules(Array.isArray(data) ? data : []);
       })
@@ -38,11 +42,12 @@ export function useScheduleMap(fullCampusIndex: CampusLocation[], selectedDate: 
   }, [user?.id]);
 
   useEffect(() => {
+    if (options.skipInitialLoad) return;
     loadSchedules();
-  }, [loadSchedules]);
+  }, [loadSchedules, options.skipInitialLoad]);
 
   const refreshSchedules = useCallback(() => {
-    loadSchedules();
+    return loadSchedules();
   }, [loadSchedules]);
 
   function parseTimeToMinutes(timeStr: string): number {

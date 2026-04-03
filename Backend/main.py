@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
 from pydantic import BaseModel
 import os
+import psycopg
 from dotenv import load_dotenv
 
 # Force reload from .env dynamically bypassing terminal memory
@@ -121,6 +122,9 @@ def accept_tos(clerk_id: str):
     try:
         user_service.accept_tos(clerk_id)
         return {"status": "success"}
+    except psycopg.OperationalError as e:
+        print(f"DEBUG: accept_tos db unavailable: {e}")
+        raise HTTPException(status_code=503, detail="Database temporarily unavailable")
     except Exception as e:
         print(f"DEBUG: accept_tos error: {e}")
         raise HTTPException(status_code=400, detail=str(e))

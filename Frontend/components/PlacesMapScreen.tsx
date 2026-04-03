@@ -22,7 +22,6 @@ import {
   View,
   Text,
   StyleSheet,
-  ActivityIndicator,
   TouchableOpacity,
   Animated,
   Platform,
@@ -199,12 +198,13 @@ export function PlacesMapScreen() {
 
   // ── Location data ─────────────────────────────────────────
   const fullCampusIndex = useMemo(() => buildCampusDirectory(), []);
-  const [locations, setLocations] = useState<CampusLocation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [locations, setLocations] = useState<CampusLocation[]>(fullCampusIndex);
+  const [loading, setLoading] = useState(false);
   const [pulseHotspots, setPulseHotspots] = useState<CampusHotspot[]>([]);
   const [isLoadingPulse, setIsLoadingPulse] = useState(false);
 
   const fetchData = useCallback(async () => {
+    setLoading(true);
     try {
       const payload = await fetchCampusPlacesMap();
       const nextLocations = Array.isArray(payload?.locations)
@@ -219,9 +219,6 @@ export function PlacesMapScreen() {
     }
   }, [fullCampusIndex]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
 
   // ── Schedule state ────────────────────────────────────────
   const [activeScheduleId, setActiveScheduleId] = useState<string | null>(null);
@@ -1453,16 +1450,20 @@ export function PlacesMapScreen() {
 
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
-      fetchPulseHotspots();
+      Promise.allSettled([
+        fetchData(),
+        fetchPulseHotspots(),
+        Promise.resolve(refreshSchedules()),
+      ]).catch(() => {});
     });
     return () => task.cancel();
-  }, [fetchPulseHotspots]);
+  }, [fetchData, fetchPulseHotspots, refreshSchedules]);
 
   useEffect(() => {
     if (activeLayer !== "Pulse") return;
     const interval = setInterval(() => {
       fetchPulseHotspots();
-    }, 25000);
+    }, 60000);
     return () => clearInterval(interval);
   }, [activeLayer, fetchPulseHotspots]);
 
@@ -1673,7 +1674,7 @@ export function PlacesMapScreen() {
     };
   }, [activeDiningMealPeriod, activeDiningMenu, loadBestDiningPreview]);
 
-  // Connect Stream feeds user
+  // Connect native social client for compatibility across feed surfaces
   useEffect(() => {
     if (user?.id) connectFeedsUser(user.id).catch(() => {});
   }, [user]);
@@ -2032,7 +2033,10 @@ export function PlacesMapScreen() {
       </MapView>
 
       {/* Top UI Floating Elements */}
-      <View style={[styles.topContainer, { top: 54, alignItems: "center" }]}>
+      <View
+        pointerEvents="box-none"
+        style={[styles.topContainer, { top: 54, alignItems: "center" }]}
+      >
         <FloatingSearchBar
           styles={styles}
           COLORS={COLORS}

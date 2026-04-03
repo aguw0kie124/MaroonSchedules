@@ -332,7 +332,7 @@ export function ReelsScreen({ mediaActive = true, embedded = false, immersive = 
         }
 
         try {
-            await connectFeedsUser(user);
+            connectFeedsUser(user);
 
             const activities = await getReelsFeed(30);
             const mapped = activities.map(mapActivityToReel).filter(r => r.video_url);

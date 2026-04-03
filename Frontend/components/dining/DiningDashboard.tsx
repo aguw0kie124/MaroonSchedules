@@ -112,6 +112,9 @@ export default function DiningDashboard({ navigation }: any) {
         {/* New Live Menus Section */}
         <Card style={{ paddingVertical: 14 }}>
           <SectionLabel>Live Menus</SectionLabel>
+          <Text style={[styles.subtitle, { marginTop: -4, marginBottom: 12 }]}>
+            Jump straight into any dining hall menu without leaving the nutrition tools flow.
+          </Text>
           <View style={s.chipRow}>
             {HALLS.map(h => (
               <TouchableOpacity key={h.key} 
@@ -132,7 +135,7 @@ export default function DiningDashboard({ navigation }: any) {
           </View>
           <View style={{ marginTop: 14 }}>
             <ActionButton 
-              label={`View ${hall} Menu`} 
+              label={`View ${hall} Dining Hall Menu`} 
               onPress={openFullMenu}
               style={{ backgroundColor: T.tamuMaroon }}
               textStyle={{ color: T.text }}
