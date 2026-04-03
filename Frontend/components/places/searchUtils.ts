@@ -2,7 +2,7 @@ import type { CampusLocation } from "./types";
 
 type SearchableLocation = Pick<
   CampusLocation,
-  "location" | "shortName" | "aliases" | "description"
+  "location" | "shortName" | "aliases" | "description" | "address"
 >;
 
 function normalizeSearchText(value: string | null | undefined): string {
@@ -60,6 +60,7 @@ export function scoreLocationSearch(location: SearchableLocation, query: string)
     location.location,
     location.shortName,
     ...(location.aliases || []),
+    location.address,
     location.description,
   ]
     .filter(Boolean)
@@ -107,6 +108,9 @@ export function searchCampusLocations<T extends SearchableLocation>(
     .filter((entry): entry is { location: T; score: number } => entry.score != null)
     .sort((a, b) => {
       if (a.score !== b.score) return a.score - b.score;
+      if ((a.location.address || "") !== (b.location.address || "")) {
+        return (a.location.address || "").localeCompare(b.location.address || "");
+      }
       return a.location.location.localeCompare(b.location.location);
     });
 

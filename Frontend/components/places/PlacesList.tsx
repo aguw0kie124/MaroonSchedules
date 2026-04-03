@@ -19,7 +19,7 @@ import {
   getParkingRecommendation,
   haversineDistanceMeters,
 } from "./utils";
-import { getCanonicalLocationName } from "./campusData";
+import { getCanonicalLocationName, getLocationSelectionId } from "./campusData";
 import { TodayTimeline } from "./TodayTimeline";
 import { TourTarget, useTour } from "../onboarding/TourProvider";
 
@@ -363,7 +363,7 @@ export function PlacesList({
     }
 
     return (
-      <Card key={`list-${loc.location}`} style={[styles.placesSheetItemCard, compact && styles.placesSheetItemCardCompact]}>
+      <Card key={`list-${getLocationSelectionId(loc)}`} style={[styles.placesSheetItemCard, compact && styles.placesSheetItemCardCompact]}>
         {loc.location === "Student Recreation Center" ? (
           <TourTarget name="rec-center-item" style={{ flex: 1 }}>
             <TouchableOpacity
@@ -409,7 +409,7 @@ export function PlacesList({
                 {statusChips.length ? (
                   <View style={styles.placesSheetItemStatusRow}>
                     {statusChips.slice(0, 3).map((chip) => (
-                      <View key={`${loc.location}-${chip}`} style={styles.placesSheetItemStatusChip}>
+                      <View key={`${getLocationSelectionId(loc)}-${chip}`} style={styles.placesSheetItemStatusChip}>
                         <Text style={styles.placesSheetItemStatusChipText}>{chip}</Text>
                       </View>
                     ))}
@@ -466,7 +466,7 @@ export function PlacesList({
               {statusChips.length ? (
                 <View style={styles.placesSheetItemStatusRow}>
                   {statusChips.slice(0, 3).map((chip) => (
-                    <View key={`${loc.location}-${chip}`} style={styles.placesSheetItemStatusChip}>
+                    <View key={`${getLocationSelectionId(loc)}-${chip}`} style={styles.placesSheetItemStatusChip}>
                       <Text style={styles.placesSheetItemStatusChipText}>{chip}</Text>
                     </View>
                   ))}

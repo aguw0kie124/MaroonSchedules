@@ -140,6 +140,8 @@ export function LocationBottomSheet({
   const { user } = useUser();
   const isGuest = useSessionStore((state) => state.isGuest);
   const { advanceStep, activeTargetName } = useTour();
+  const selectedReviewId = selectedLoc?.placeId || selectedLoc?.location || null;
+  const selectedLabel = selectedLoc?.location || selectedId || "";
   const conciseDescription = useMemo(() => {
     const raw = selectedLoc?.description?.trim();
     if (!raw) return null;
@@ -270,7 +272,7 @@ export function LocationBottomSheet({
                 postType: 'review',
                 postId: rev.id,
                 reason: reason,
-                placeId: selectedId || undefined
+                placeId: selectedReviewId || undefined
             });
             Alert.alert("Report Received", "Thank you for your report.");
         } catch (err) {
@@ -290,7 +292,7 @@ export function LocationBottomSheet({
                     onPress: async () => {
                         try {
                             await blockUser(rev.userId || rev.user_id || rev.sub);
-                            fetchReviews(selectedId!, 10);
+                            if (selectedReviewId) fetchReviews(selectedReviewId, 10);
                             Alert.alert("User Blocked");
                         } catch (err) {
                             Alert.alert("Error", "Failed to block user.");
@@ -312,8 +314,9 @@ export function LocationBottomSheet({
                     style: "destructive",
                     onPress: async () => {
                         try {
-                            await deleteReview(selectedId!, rev.id);
-                            fetchReviews(selectedId!, 10);
+                            if (!selectedReviewId) return;
+                            await deleteReview(selectedReviewId, rev.id);
+                            fetchReviews(selectedReviewId, 10);
                             Alert.alert("Success", "Review deleted.");
                         } catch (err) {
                             Alert.alert("Error", "Failed to delete review.");
@@ -810,7 +813,7 @@ export function LocationBottomSheet({
                           <TouchableOpacity
                             onPress={() => {
                               setAllReviewsModalVisible(true);
-                              fetchReviews(selectedId!, 30);
+                              if (selectedReviewId) fetchReviews(selectedReviewId, 30);
                             }}
                           >
                             <Text style={styles.seeAllText}>See all</Text>
@@ -963,7 +966,7 @@ export function LocationBottomSheet({
                       <TouchableOpacity
                         onPress={() => {
                           setAllReviewsModalVisible(true);
-                          fetchReviews(selectedId!, 30);
+                          if (selectedReviewId) fetchReviews(selectedReviewId, 30);
                         }}
                       >
                         <Text style={styles.seeAllText}>See all</Text>
@@ -1046,7 +1049,7 @@ export function LocationBottomSheet({
               >
                 <View style={styles.reviewModalContainer}>
                   <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Rate {selectedId}</Text>
+                    <Text style={styles.modalTitle}>Rate {selectedLabel}</Text>
                     <TouchableOpacity
                       onPress={() => setReviewModalVisible(false)}
                     >
@@ -1138,7 +1141,7 @@ export function LocationBottomSheet({
                 <View style={styles.fullReviewsHeader}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.fullReviewsTitle}>User Reviews</Text>
-                    <Text style={styles.fullReviewsSubtitle}>{selectedId}</Text>
+                    <Text style={styles.fullReviewsSubtitle}>{selectedLabel}</Text>
                   </View>
                   <TouchableOpacity
                     onPress={() => setAllReviewsModalVisible(false)}
