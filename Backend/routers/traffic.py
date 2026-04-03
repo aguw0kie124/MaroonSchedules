@@ -413,7 +413,7 @@ class AggieSpiritProxy:
             for route in data.get("routes", []):
                 for direction in route.get("directionList", []):
                     dkey = direction.get("direction", {}).get("key")
-                    dname = direction.get("direction", {}).get("name")
+                    dname = direction.get("destination") or direction.get("direction", {}).get("name")
                     if dkey and dname:
                         self._direction_cache[dkey] = dname
 
@@ -510,14 +510,15 @@ class AggieSpiritProxy:
                     continue
                 for direction in route.get("vehiclesByDirections", []) or []:
                     dir_key = direction.get("directionKey")
-                    dir_name_from_obj = direction.get("directionName") or direction.get("name")
                     for vehicle in direction.get("vehicles", []) or []:
                         location = vehicle.get("location") or {}
                         
-                        # Fix for bus missing directionName: fallback to direction object or cache
-                        v_dir_name = vehicle.get("directionName")
+                        # Prioritize destination cache over raw direction name for consistency
+                        v_dir_key = vehicle.get("directionKey") or dir_key
+                        v_dir_name = self._direction_cache.get(v_dir_key)
+                        
                         if not v_dir_name:
-                            v_dir_name = dir_name_from_obj or self._direction_cache.get(dir_key) or self._direction_cache.get(vehicle.get("directionKey")) or "Unknown"
+                            v_dir_name = vehicle.get("directionName") or direction.get("directionName") or direction.get("name") or "Unknown"
 
                         vehicles.append({
                             "Key": vehicle.get("key"),
