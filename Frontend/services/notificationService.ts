@@ -123,6 +123,45 @@ export async function scheduleAdminEventReviewNotification(
   }
 }
 
+export async function scheduleRsvpSuccessNotification(
+  title: string,
+  startDate?: Date | null,
+  locationName?: string | null,
+): Promise<string | null> {
+  const startLabel = startDate
+    ? startDate.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : null;
+
+  try {
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'RSVP confirmed',
+        body: `You're in for ${title}${locationName ? ` at ${locationName}` : ''}${startLabel ? ` on ${startLabel}` : ''}.`,
+        data: {
+          type: 'featured_event_rsvp_confirmed',
+          title,
+          locationName: locationName || null,
+          startDate: startDate?.toISOString() || null,
+        },
+        sound: true,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 1,
+      },
+    });
+    return id;
+  } catch (error) {
+    console.error('[NotificationService] Failed to schedule RSVP success notification:', error);
+    return null;
+  }
+}
+
 /**
  * Schedule a local notification for a bus arrival.
  * @param routeName Name of the bus route
