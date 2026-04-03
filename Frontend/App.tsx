@@ -56,6 +56,10 @@ import { syncUser, fetchUserProfile } from './api/client';
 import { TOSScreen } from './components/TOSScreen';
 import { NotificationPromptScreen } from './components/onboarding/NotificationPromptScreen';
 
+import { AdminApplicationScreen } from './components/admin/AdminApplicationScreen';
+import { AdminPortal } from './components/admin/AdminPortal';
+import { API_URL } from './config';
+
 function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
@@ -248,6 +252,17 @@ function RootNavigator() {
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const isNotificationPrompted = useAppShellStore((state) => state.isNotificationPrompted);
   const setNotificationPrompted = useAppShellStore((state) => state.setNotificationPrompted);
+  const isAdmin = useAppShellStore((state) => state.adminAccessStatus);
+  const setIsAdmin = useAppShellStore((state) => state.setAdminAccessStatus);
+
+  React.useEffect(() => {
+    if (isSignedIn && user?.id) {
+       fetch(`${API_URL}/admin/status?clerk_id=${user.id}`)
+         .then(r => r.json())
+         .then(data => setIsAdmin(data.is_admin))
+         .catch(err => setIsAdmin(false));
+    }
+  }, [isSignedIn, user?.id]);
 
   if (!isLoaded) {
     return null;
@@ -280,6 +295,17 @@ function RootNavigator() {
       }}
     >
       {isSignedIn ? (
+        !user?.primaryEmailAddress?.emailAddress?.endsWith('@tamu.edu') ? (
+          isAdmin === null ? (
+            <Stack.Screen name="AdminLoading" options={{ headerShown: false }}>
+               {() => <View style={{flex: 1, backgroundColor: COLORS.background}} />}
+            </Stack.Screen>
+          ) : isAdmin ? (
+            <Stack.Screen name="AdminPortal" component={AdminPortal} options={{ headerShown: false }} />
+          ) : (
+            <Stack.Screen name="AdminApply" component={AdminApplicationScreen} options={{ headerShown: false }} />
+          )
+        ) : (
         <>
           <Stack.Screen name="Main">
             {(props) => (
@@ -324,6 +350,7 @@ function RootNavigator() {
           <Stack.Screen name="StreakHub" component={StreakHubScreen} options={{ headerShown: false }} />
           <Stack.Screen name="GradesScreen" component={GradesScreen} options={{ headerShown: true, title: 'Grade Distributions' }} />
         </>
+        )
       ) : (
         <>
           <Stack.Screen name="AuthLanding">

@@ -1142,11 +1142,34 @@ def get_events_snapshot(
     crawler_events = campus_events_service.load_campus_events()
     events = crawler_events.get("events") if isinstance(crawler_events, dict) else crawler_events
     source_status = crawler_events.get("source_status") if isinstance(crawler_events, dict) else "live"
+    events_copy = list(events) if events else []
+    admin_events_list = []
+    
+    # Fetch Admin Events
+    admin_events_raw = _safe_db_fetchall("SELECT id, clerk_id, title, description, lat, lng, location_name, start_time, end_time FROM admin_events", conn=conn)
+    for ad_ev in admin_events_raw:
+        admin_events_list.append({
+            "event_id": str(ad_ev["id"]),
+            "title": ad_ev["title"],
+            "location": ad_ev["location_name"],
+            "location_lat": ad_ev["lat"],
+            "location_lng": ad_ev["lng"],
+            "start_time": ad_ev["start_time"].isoformat() if ad_ev["start_time"] else None,
+            "end_time": ad_ev["end_time"].isoformat() if ad_ev["end_time"] else None,
+            "description": ad_ev["description"],
+            "has_food": False,
+            "source_name": "admin_portal",
+            "categories": {"featured": 1},
+            "is_admin_event": True
+        })
+
+    events = admin_events_list + events_copy
+
     if events:
         if student_relevant_only:
             events = [
                 e for e in events
-                if e.get("campus_interest_label") != "low"
+                if e.get("campus_interest_label") != "low" or e.get("is_admin_event")
             ]
         if category:
             events = [

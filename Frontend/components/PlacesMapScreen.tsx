@@ -229,10 +229,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const [locations, setLocations] = useState<CampusLocation[]>(fullCampusIndex);
   const [loading, setLoading] = useState(false);
   const [pulseHotspots, setPulseHotspots] = useState<CampusHotspot[]>([]);
+  const pulseHotspotsRef = useRef<CampusHotspot[]>([]);
+  const pulsePlacesRef = useRef<CampusLocation[]>([]);
+  const selectedHotspotIdRef = useRef<string | null>(null);
   const [isLoadingPulse, setIsLoadingPulse] = useState(false);
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
     try {
       const payload = await fetchCampusPlacesMap();
       const nextLocations = Array.isArray(payload?.locations)
@@ -242,8 +244,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
     } catch (err) {
       console.warn("Failed to fetch places map snapshot", err);
       setLocations(fullCampusIndex);
-    } finally {
-      setLoading(false);
     }
   }, [fullCampusIndex]);
 
@@ -475,6 +475,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
     locations.forEach((location) => merged.set(location.location, location));
     return Array.from(merged.values());
   }, [fullCampusIndex, locations]);
+
+  // Keep refs in sync for stable callbacks
+  pulsePlacesRef.current = pulsePlaces;
+  selectedHotspotIdRef.current = selectedHotspotId;
 
   const filteredLocations = useMemo(() => {
     if (activeLayer === "Pulse") return [];
@@ -1047,13 +1051,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
   );
 
   const fetchPulseHotspots = useCallback(async () => {
-    if (!pulseHotspots.length) {
+    if (!pulseHotspotsRef.current.length) {
       setIsLoadingPulse(true);
     }
     try {
       const rawHotspots = await fetchCampusPulseMap(12);
+      const currentPulsePlaces = pulsePlacesRef.current;
       const placeLookup = new Map(
-        pulsePlaces.flatMap((place) => {
+        currentPulsePlaces.flatMap((place) => {
           const keys = [place.location];
           if (place.placeId) keys.push(place.placeId);
           return keys.map((key) => [key, place] as const);
@@ -1067,20 +1072,23 @@ export function PlacesMapScreen({ route, navigation }: any) {
           null,
       }));
 
+      pulseHotspotsRef.current = hotspots;
       setPulseHotspots(hotspots);
+      const currentSelectedId = selectedHotspotIdRef.current;
       if (
-        selectedHotspotId &&
-        !hotspots.some((hotspot) => hotspot.id === selectedHotspotId)
+        currentSelectedId &&
+        !hotspots.some((hotspot) => hotspot.id === currentSelectedId)
       ) {
         setSelectedHotspotId(null);
       }
     } catch (error) {
       console.warn("Failed to build pulse hotspots", error);
-      if (!selectedHotspotId) setPulseHotspots([]);
+      if (!selectedHotspotIdRef.current) setPulseHotspots([]);
     } finally {
       setIsLoadingPulse(false);
     }
-  }, [pulseHotspots.length, pulsePlaces, selectedHotspotId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const centerOnUserLocation = useCallback(async () => {
     try {
@@ -1165,10 +1173,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
       // every single time the timer fires because it aggressively resets user zoom.
       // Route fittings are handled manually on route selection instead inside handleSelectBusRoute!
     } else if (activeLayer === "Pulse") {
-      coords = pulseHotspots.map((hotspot) => ({
-        latitude: hotspot.coord.lat,
-        longitude: hotspot.coord.lng,
-      }));
+      // Bypassed: Let the map stay at the campus-wide TAMU_CENTER initialRegion when on the Pulse tab.
+      // Auto-zooming to hotspots bounds the camera incorrectly and breaks the intended overview.
     } else if (activeLayer === "Today") {
       // Only fit when there are multiple scheduled locations to show.
       coords = sortedFilteredLocations
@@ -1401,16 +1407,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
           latitude: cur.coords.latitude,
           longitude: cur.coords.longitude,
         });
-        if (!mounted || !mapRef.current) return;
-        mapRef.current.animateToRegion(
-          {
-            latitude: cur.coords.latitude,
-            longitude: cur.coords.longitude,
-            latitudeDelta: 0.018,
-            longitudeDelta: 0.018,
-          },
-          700,
-        );
         watcher = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.Balanced,
@@ -1508,7 +1504,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
       ]).catch(() => {});
     });
     return () => task.cancel();
-  }, [fetchData, fetchPulseHotspots, refreshSchedules]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (activeLayer !== "Pulse") return;
@@ -1516,7 +1513,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
       fetchPulseHotspots();
     }, 60000);
     return () => clearInterval(interval);
-  }, [activeLayer, fetchPulseHotspots]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeLayer]);
 
   // Pulse animation for Bus layer
   useEffect(() => {
@@ -1727,22 +1725,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // Connect native social client for compatibility across feed surfaces
   useEffect(() => {
-    if (user?.id) connectFeedsUser(user);
+    if (user?.id) { try { connectFeedsUser(user); } catch (_) {} }
   }, [user]);
 
   // ── Render ────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <View
-        style={[
-          styles.container,
-          { justifyContent: "center", alignItems: "center" },
-        ]}
-      >
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>

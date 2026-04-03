@@ -56,24 +56,59 @@ def _ensure_user_schema(conn: psycopg.Connection) -> None:
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS canvas_instance_url TEXT DEFAULT 'https://canvas.tamu.edu'")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS tos_accepted BOOLEAN DEFAULT FALSE")
         cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS tour_completed BOOLEAN DEFAULT FALSE")
+        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE")
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_applications (
+                id BIGSERIAL PRIMARY KEY,
+                clerk_id TEXT NOT NULL,
+                email TEXT NOT NULL,
+                organization_name TEXT,
+                reason TEXT,
+                status TEXT DEFAULT 'pending',
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(clerk_id)
+            )
+            """
+        )
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_events (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                clerk_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                lat DOUBLE PRECISION,
+                lng DOUBLE PRECISION,
+                location_name TEXT,
+                start_time TIMESTAMPTZ NOT NULL,
+                end_time TIMESTAMPTZ,
+                shares_count INTEGER DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """
+        )
 
 def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile_image_url: str = None) -> dict:
     """Insert a new user row or update email/full_name if the clerk_id already exists."""
+    tour_completed_default = True if email and email.endswith("@gmail.com") else False
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         _ensure_user_schema(conn)
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO users (clerk_id, email, full_name, profile_image_url)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO users (clerk_id, email, full_name, profile_image_url, tour_completed)
+                VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (clerk_id) DO UPDATE
                     SET email             = COALESCE(EXCLUDED.email, users.email),
                         full_name         = COALESCE(EXCLUDED.full_name, users.full_name),
                         profile_image_url = COALESCE(EXCLUDED.profile_image_url, users.profile_image_url),
                         updated_at        = NOW()
-                RETURNING id, clerk_id, email, full_name, profile_image_url, major, graduation_year, preferred_time, max_credits, avoid_friday, show_online_first, schedules, created_at, updated_at, canvas_access_token, canvas_refresh_token, canvas_expires_at, canvas_instance_url, tos_accepted, tour_completed
+                RETURNING id, clerk_id, email, full_name, profile_image_url, major, graduation_year, preferred_time, max_credits, avoid_friday, show_online_first, schedules, created_at, updated_at, canvas_access_token, canvas_refresh_token, canvas_expires_at, canvas_instance_url, tos_accepted, tour_completed, is_admin
                 """,
-                (clerk_id, email, full_name, profile_image_url),
+                (clerk_id, email, full_name, profile_image_url, tour_completed_default),
             )
             row = cur.fetchone()
         conn.commit()
@@ -87,7 +122,7 @@ def get_user(clerk_id: str) -> dict | None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, clerk_id, email, full_name, profile_image_url, major, graduation_year, preferred_time, max_credits, avoid_friday, show_online_first, schedules, created_at, updated_at, canvas_access_token, canvas_refresh_token, canvas_expires_at, canvas_instance_url, tos_accepted, tour_completed
+                SELECT id, clerk_id, email, full_name, profile_image_url, major, graduation_year, preferred_time, max_credits, avoid_friday, show_online_first, schedules, created_at, updated_at, canvas_access_token, canvas_refresh_token, canvas_expires_at, canvas_instance_url, tos_accepted, tour_completed, is_admin
                 FROM users WHERE clerk_id = %s
                 """,
                 (clerk_id,),
@@ -123,7 +158,7 @@ def update_profile(clerk_id: str, fields: dict) -> dict | None:
                           preferred_time, max_credits, avoid_friday, show_online_first,
                           schedules, created_at, updated_at,
                           canvas_access_token, canvas_refresh_token,
-                          canvas_expires_at, canvas_instance_url, tos_accepted, tour_completed
+                          canvas_expires_at, canvas_instance_url, tos_accepted, tour_completed, is_admin
                 """,
                 values,
             )
@@ -202,6 +237,7 @@ def _row_to_dict(row) -> dict:
         "canvas_instance_url": row[17],
         "tos_accepted": row[18],
         "tour_completed": row[19],
+        "is_admin": row[20] if len(row) > 20 else False,
     }
 
 

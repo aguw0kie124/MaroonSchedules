@@ -36,6 +36,7 @@ export interface CampusEventResponse {
   food_confidence?: number;
   food_type?: string | null;
   categories?: Record<string, number>;
+  is_admin_event?: boolean;
 }
 
 export interface TAMUEvent {
@@ -60,6 +61,7 @@ export interface TAMUEvent {
   _searchBlob?: string;
   _category?: ExploreCategory;
   _socialMode?: SocialMode;
+  is_admin_event?: boolean;
 }
 
 export const ALL_CATEGORIES: ExploreCategory[] = [

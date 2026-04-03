@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth, useUser } from '@clerk/clerk-expo';
 import Animated, {
   FadeIn,
   FadeOut,
@@ -61,6 +61,7 @@ export const TOUR_SEQUENCE = [
 
 export function TourProvider({ children }: { children: React.ReactNode }) {
   const { isSignedIn, userId } = useAuth();
+  const { user } = useUser();
   const { COLORS } = useTheme();
   const isTOSAccepted = useAppShellStore((state) => state.isTOSAccepted);
   const isNotificationPrompted = useAppShellStore((state) => state.isNotificationPrompted);
@@ -73,6 +74,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
 
   const targetsRef = useRef<Record<string, () => Promise<TargetRect | null>>>({});
+  const primaryEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase() || '';
+  const shouldSkipTourForEmail = primaryEmail.endsWith('@gmail.com');
 
   const activeTargetName = isTourActive && currentStep < TOUR_SEQUENCE.length ? TOUR_SEQUENCE[currentStep].id : null;
 
@@ -135,12 +138,32 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     }
   }, [userId, setTourCompleted]);
 
+  useEffect(() => {
+    if (isSignedIn && shouldSkipTourForEmail) {
+      if (isTourActive) {
+        setIsTourActive(false);
+        setCurrentStep(0);
+        setTargetRect(null);
+      }
+      if (!isTourCompleted) {
+        setTourCompleted(true);
+      }
+    }
+  }, [isSignedIn, isTourActive, isTourCompleted, setTourCompleted, shouldSkipTourForEmail]);
+
   // Initialization Effect: Wait for all prerequisite prompts to finish
   useEffect(() => {
-    if (isSignedIn && userId && isTOSAccepted && isNotificationPrompted && !isTourCompleted) {
+    if (
+      isSignedIn &&
+      userId &&
+      isTOSAccepted &&
+      isNotificationPrompted &&
+      !isTourCompleted &&
+      !shouldSkipTourForEmail
+    ) {
       startTour();
     }
-  }, [isSignedIn, userId, isTOSAccepted, isNotificationPrompted, isTourCompleted, startTour]);
+  }, [isSignedIn, userId, isTOSAccepted, isNotificationPrompted, isTourCompleted, shouldSkipTourForEmail, startTour]);
 
   const registerTarget = useCallback((name: string, measureFn: () => Promise<TargetRect | null>) => {
     targetsRef.current[name] = measureFn;
