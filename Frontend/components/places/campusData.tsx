@@ -14,6 +14,7 @@ import {
   Flame,
 } from "lucide-react-native";
 import { BUILDINGS, AMENITIES } from "../../data/campus";
+import LOCAL_OSM_PLACES_PAYLOAD from "../../data/osm_places_tamu_10mi.json";
 import type { CampusLocation, LocationType } from "./types";
 
 // ── Canonical naming ──────────────────────────────────────────
@@ -364,6 +365,83 @@ export function buildCampusDirectory(): CampusLocation[] {
     merged.set(location.location, location);
   });
   return Array.from(merged.values());
+}
+
+type LocalOSMPlaceRecord = {
+  place_id: string;
+  name: string;
+  short_name?: string | null;
+  type: string;
+  lat: number;
+  lng: number;
+  aliases?: string[];
+  description?: string | null;
+  source?: string | null;
+  search_only?: boolean;
+};
+
+function normalizeLocationKey(value?: string | null) {
+  return (value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function toLocalOSMLocations(): CampusLocation[] {
+  const payload = LOCAL_OSM_PLACES_PAYLOAD as {
+    places?: LocalOSMPlaceRecord[];
+  };
+
+  const places = Array.isArray(payload?.places) ? payload.places : [];
+  return places.map((place) => ({
+    placeId: place.place_id,
+    location: place.name,
+    shortName: place.short_name || place.name,
+    percent_full: 0,
+    type: (place.type as LocationType) || "General",
+    is_live: false,
+    available_seats: null,
+    coord: { lat: place.lat, lng: place.lng },
+    aliases: Array.isArray(place.aliases) ? place.aliases : [],
+    description: place.description || undefined,
+    source: (place.source as CampusLocation["source"]) || "osm",
+    searchOnly: place.search_only !== false,
+  }));
+}
+
+export function mergeCampusLocations(...groups: CampusLocation[][]): CampusLocation[] {
+  const merged = new Map<string, CampusLocation>();
+  const normalizedNameToKey = new Map<string, string>();
+
+  groups.flat().forEach((location) => {
+    const explicitKey = location.placeId || "";
+    const normalizedName = normalizeLocationKey(location.location);
+    const existingKey = explicitKey || normalizedNameToKey.get(normalizedName) || normalizedName;
+    const existing = merged.get(existingKey);
+    const nextAliases = Array.from(
+      new Set([...(existing?.aliases || []), ...(location.aliases || [])].filter(Boolean)),
+    );
+
+    const next: CampusLocation = existing
+      ? {
+          ...existing,
+          ...location,
+          aliases: nextAliases,
+        }
+      : {
+          ...location,
+          aliases: nextAliases,
+        };
+
+    merged.set(existingKey, next);
+    if (normalizedName) normalizedNameToKey.set(normalizedName, existingKey);
+    if (explicitKey && explicitKey !== existingKey) {
+      merged.delete(explicitKey);
+    }
+  });
+
+  return Array.from(merged.values());
+}
+
+export function buildExpandedPlacesDirectory(): CampusLocation[] {
+  return mergeCampusLocations(buildCampusDirectory(), toLocalOSMLocations());
 }
 
 // ── Category definitions ──────────────────────────────────────

@@ -86,6 +86,7 @@ import {
 import { FloatingSearchBar } from "./places/FloatingSearchBar";
 import { LayerPillScroller } from "./places/LayerPillScroller";
 import { SearchOverlay } from "./places/SearchOverlay";
+import { searchCampusLocations } from "./places/searchUtils";
 import {
   BusRouteSelector,
   BusStopInfoCard,
@@ -111,9 +112,10 @@ import {
 import {
   CAMPUS_ZONES,
   CATEGORIES,
-  buildCampusDirectory,
+  buildExpandedPlacesDirectory,
   getCanonicalLocationName,
   getZoneDensity,
+  mergeCampusLocations,
 } from "./places/campusData";
 import {
   getStatusColor,
@@ -201,7 +203,7 @@ export function PlacesMapScreen() {
   const timelineHeight = useSharedValue(0);
 
   // ── Location data ─────────────────────────────────────────
-  const fullCampusIndex = useMemo(() => buildCampusDirectory(), []);
+  const fullCampusIndex = useMemo(() => buildExpandedPlacesDirectory(), []);
   const [locations, setLocations] = useState<CampusLocation[]>(fullCampusIndex);
   const [loading, setLoading] = useState(false);
   const [pulseHotspots, setPulseHotspots] = useState<CampusHotspot[]>([]);
@@ -216,7 +218,11 @@ export function PlacesMapScreen() {
       const nextLocations = Array.isArray(payload?.locations)
         ? (payload.locations as CampusLocation[])
         : [];
-      setLocations(nextLocations.length ? nextLocations : fullCampusIndex);
+      setLocations(
+        nextLocations.length
+          ? mergeCampusLocations(fullCampusIndex, nextLocations)
+          : fullCampusIndex,
+      );
     } catch (err) {
       console.warn("Failed to fetch places map snapshot", err);
       setLocations(fullCampusIndex);
@@ -454,23 +460,24 @@ export function PlacesMapScreen() {
   selectedHotspotIdRef.current = selectedHotspotId;
 
   const filteredLocations = useMemo(() => {
+    const browsableLocations = allMapLocations.filter((l) => !l.searchOnly);
     if (activeLayer === "Pulse") return [];
     if (activeLayer === "Heatmap") return [];
     if (activeLayer === "Today") return scheduleLocations;
     if (activeLayer === "Dining")
-      return allMapLocations.filter(
+      return browsableLocations.filter(
         (l) => l.type === "Dining" || l.type === "Hub",
       );
     if (activeLayer === "Academic")
-      return allMapLocations.filter(
+      return browsableLocations.filter(
         (l) => l.type === "Academic" || l.type === "Landmark",
       );
     if (activeLayer === "Rec")
-      return allMapLocations.filter(
+      return browsableLocations.filter(
         (l) =>
           l.type === "Rec" || (l.type === "Hub" && l.location.includes("Rec")),
       );
-    return allMapLocations.filter((l) => l.type === activeLayer);
+    return browsableLocations.filter((l) => l.type === activeLayer);
   }, [activeLayer, allMapLocations, scheduleLocations]);
 
   const sortedFilteredLocations = useMemo(() => {
@@ -503,21 +510,7 @@ export function PlacesMapScreen() {
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
-    const q = searchQuery.toLowerCase();
-    return allMapLocations
-      .filter(
-        (l) =>
-          l.location.toLowerCase().includes(q) ||
-          (l.shortName || "").toLowerCase().includes(q) ||
-          (l.description || "").toLowerCase().includes(q),
-      )
-      .sort((a, b) => {
-        const aS = a.location.toLowerCase().startsWith(q) ? 0 : 1;
-        const bS = b.location.toLowerCase().startsWith(q) ? 0 : 1;
-        if (aS !== bS) return aS - bS;
-        return a.location.localeCompare(b.location);
-      })
-      .slice(0, 8);
+    return searchCampusLocations(allMapLocations, searchQuery, 8);
   }, [allMapLocations, searchQuery]);
 
   const busRouteSearchResults = useMemo(() => {
@@ -923,6 +916,17 @@ export function PlacesMapScreen() {
   }, []);
 
   const handleSelectLocation = useCallback((loc: CampusLocation) => {
+    const nextLayer =
+      loc.type === "Dining" || loc.type === "Hub"
+        ? "Dining"
+        : loc.type === "Rec"
+          ? "Rec"
+          : loc.type === "Library"
+            ? "Library"
+            : loc.type === "Parking"
+              ? "Parking"
+              : "Academic";
+    setActiveLayer(nextLayer);
     setSelectedHotspotId(null);
     setSelectedId(loc.location);
     setSelectedStop(null);
@@ -1668,6 +1672,19 @@ export function PlacesMapScreen() {
   }, [selectedLoc?.location, selectedLoc?.placeId]);
 
   useEffect(() => {
+    if (!selectedLoc || !mapRef.current) return;
+    mapRef.current.animateToRegion(
+      {
+        latitude: selectedLoc.coord.lat - 0.0015,
+        longitude: selectedLoc.coord.lng,
+        latitudeDelta: 0.008,
+        longitudeDelta: 0.008,
+      },
+      650,
+    );
+  }, [selectedLoc?.location, selectedLoc?.coord.lat, selectedLoc?.coord.lng]);
+
+  useEffect(() => {
     if (!selectedLoc || !isDiningHallMenuLocation(selectedLoc.location)) {
       setHubRestaurants([]);
       setDiningMenuOptions([]);
@@ -2395,16 +2412,8 @@ export function PlacesMapScreen() {
       <SearchOverlay
         styles={styles}
         COLORS={COLORS}
-        searchResults={fullCampusIndex.filter(
-          (loc) =>
-            loc.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            loc.shortName?.toLowerCase().includes(searchQuery.toLowerCase()),
-        )}
-        busRouteResults={busRoutes.filter(
-          (route) =>
-            route.Name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            route.ShortName?.toLowerCase().includes(searchQuery.toLowerCase()),
-        )}
+        searchResults={searchResults}
+        busRouteResults={busRouteSearchResults}
         isSearchExpanded={isSearchExpanded}
         showSearchResults={showSearchResults}
         onSelectLocation={(loc) => {
@@ -2413,8 +2422,7 @@ export function PlacesMapScreen() {
           setShowSearchResults(false);
         }}
         onSelectBusRoute={(route) => {
-          setActiveLayer("Bus");
-          handleSelectBusRoute(route.Key);
+          handleSelectBusRouteFromSearch(route);
           setIsSearchExpanded(false);
           setShowSearchResults(false);
         }}
