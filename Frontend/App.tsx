@@ -252,8 +252,8 @@ function RootNavigator() {
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const isNotificationPrompted = useAppShellStore((state) => state.isNotificationPrompted);
   const setNotificationPrompted = useAppShellStore((state) => state.setNotificationPrompted);
-
-  const [isAdmin, setIsAdmin] = React.useState<boolean | null>(null);
+  const isAdmin = useAppShellStore((state) => state.adminAccessStatus);
+  const setIsAdmin = useAppShellStore((state) => state.setAdminAccessStatus);
 
   React.useEffect(() => {
     if (isSignedIn && user?.id) {

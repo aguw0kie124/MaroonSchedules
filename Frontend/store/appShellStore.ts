@@ -133,6 +133,7 @@ type AppShellState = {
   isTOSAccepted: boolean;
   isTourCompleted: boolean;
   isNotificationPrompted: boolean;
+  adminAccessStatus: boolean | null;
   notificationsEnabled: boolean;
   eventNotifications: boolean;
   placeNotifications: boolean;
@@ -150,6 +151,7 @@ type AppShellState = {
   setTOSAccepted: (accepted: boolean) => void;
   setTourCompleted: (completed: boolean) => void;
   setNotificationPrompted: (prompted: boolean) => void;
+  setAdminAccessStatus: (status: boolean | null) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
   setNotificationPreference: (key: 'event' | 'place' | 'ping', value: boolean) => void;
   setNotificationLeadTime: (time: number) => void;
@@ -168,6 +170,7 @@ export const useAppShellStore = create<AppShellState>()(
       isTOSAccepted: false,
       isTourCompleted: false,
       isNotificationPrompted: false,
+      adminAccessStatus: null,
       notificationsEnabled: false,
       eventNotifications: true,
       placeNotifications: true,
@@ -197,6 +200,7 @@ export const useAppShellStore = create<AppShellState>()(
       setTOSAccepted: (isTOSAccepted) => set({ isTOSAccepted }),
       setTourCompleted: (isTourCompleted) => set({ isTourCompleted }),
       setNotificationPrompted: (isNotificationPrompted) => set({ isNotificationPrompted }),
+      setAdminAccessStatus: (adminAccessStatus) => set({ adminAccessStatus }),
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
       setNotificationPreference: (key, value) => set((state) => ({
         [`${key}Notifications`]: value,
