@@ -2111,6 +2111,7 @@ export function PlacesMapScreen() {
                         <TodayTimeline
                           styles={styles}
                           COLORS={COLORS}
+                          isDark={isDark}
                           activeScheduleOption={activeScheduleOption}
                           onGetDirections={handleGetDirections}
                         />

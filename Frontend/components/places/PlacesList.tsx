@@ -26,6 +26,7 @@ import { TourTarget, useTour } from "../onboarding/TourProvider";
 interface PlacesListProps {
   styles: any;
   COLORS: any;
+  isDark: boolean;
   activeLayer: string;
   selectedId: string | null;
   sortedFilteredLocations: CampusLocation[];
@@ -54,6 +55,7 @@ interface PlacesListProps {
 export function PlacesList({
   styles,
   COLORS,
+  isDark,
   activeLayer,
   selectedId,
   sortedFilteredLocations,
@@ -302,6 +304,7 @@ export function PlacesList({
       <TodayTimeline
         styles={styles}
         COLORS={COLORS}
+        isDark={isDark}
         activeScheduleOption={activeScheduleOption}
         onGetDirections={handleTimelineGetDirections}
       />
