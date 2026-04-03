@@ -131,7 +131,7 @@ def _load_occupancy_by_place() -> Dict[str, int]:
 
 
 def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
-    cache_key = f"campus:pulse:map:v1:{limit}"
+    cache_key = f"campus:pulse:map:v2:{limit}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
         return cached
@@ -196,6 +196,15 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
         category = str(custom.get("ping_category") or ping.get("post_type") or "Popup")
         start_at = str(custom.get("start_at") or ping.get("created_at") or datetime.now(timezone.utc).isoformat())
 
+        target_time = _parse_iso(start_at)
+        if target_time:
+            dh = (target_time - datetime.now(timezone.utc)).total_seconds() / 3600
+            if dh < -18 or dh > 72:
+                continue
+        else:
+            print(f"[pulse_service] Warning: Failed to parse start_at for ping {ping_id} ({start_at})")
+            continue  # Don't show pings with invalid dates!
+
         counts = interactions.get(ping_id, {})
         like_count = int(counts.get("like") or counts.get("upvote") or 0)
         comment_count = int(counts.get("comment") or 0)
@@ -206,6 +215,8 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
             + min(4, comment_count * 0.7)
             + _ping_category_boost(category)
         )
+        
+        print(f"[pulse_service] Including ping: {ping_id} (Date: {start_at}, Weight: {weight}, Category: {category})")
 
         group = ensure_group(place_id, place["name"], {"lat": place["lat"], "lng": place["lng"]})
         group["score"] += weight
