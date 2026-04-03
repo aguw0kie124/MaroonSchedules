@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query, Body, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 import psycopg
 import json
@@ -182,7 +182,7 @@ def track_admin_event_share(event_id: str):
 
 class AdminEventReviewRequest(BaseModel):
     clerk_id: str
-    rating: int
+    rating: int = Field(..., ge=1, le=5)
     feedback: Optional[str] = None
 
 @router.get("/events/pending-reviews")
