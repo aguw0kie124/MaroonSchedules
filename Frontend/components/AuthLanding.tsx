@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,16 +6,49 @@ import {
   ScrollView,
   Platform,
   SafeAreaView,
+  Alert,
 } from 'react-native';
+import { useOAuth } from '@clerk/clerk-expo';
 import { COLORS, TYPOGRAPHY, SPACING } from '../constants';
 import { Button } from './Button';
 import { GraduationCap } from 'lucide-react-native';
+import * as Linking from 'expo-linking';
+import { useSessionStore } from '../store/sessionStore';
 
-interface AuthLandingProps {
-  onLoginPress: () => void;
-}
+export function AuthLanding() {
+  const { startOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
+  const enterGuestMode = useSessionStore((state) => state.enterGuestMode);
+  const exitGuestMode = useSessionStore((state) => state.exitGuestMode);
+  const [isLoading, setIsLoading] = useState(false);
+  const [activeFlow, setActiveFlow] = useState<'tamu' | 'admin' | null>(null);
 
-export function AuthLanding({ onLoginPress }: AuthLandingProps) {
+  const onGooglePress = async (flow: 'tamu' | 'admin') => {
+    try {
+      exitGuestMode();
+      setIsLoading(true);
+      setActiveFlow(flow);
+      const { createdSessionId, setActive } = await startOAuthFlow({
+        redirectUrl: Linking.createURL('/'),
+      });
+      if (createdSessionId) {
+        await setActive!({ session: createdSessionId });
+      }
+    } catch (err: any) {
+      Alert.alert(
+        'Error',
+        err.errors?.[0]?.message ||
+          (flow === 'admin' ? 'Admin sign in failed' : 'TAMU sign in failed'),
+      );
+    } finally {
+      setIsLoading(false);
+      setActiveFlow(null);
+    }
+  };
+
+  const handleGuestContinue = () => {
+    enterGuestMode();
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
@@ -40,11 +73,6 @@ export function AuthLanding({ onLoginPress }: AuthLandingProps) {
             <Text style={styles.appTitle}>MaroonLife</Text>
           </View>
 
-          {/* Tagline - Staggered */}
-          <View>
-            <Text style={styles.tagline}>Build Your Aggie Schedule. Gig 'em!</Text>
-          </View>
-
           {/* Colored Accent Line */}
           <View style={styles.accentLine} />
 
@@ -55,25 +83,30 @@ export function AuthLanding({ onLoginPress }: AuthLandingProps) {
           <View
             style={styles.buttonGroup}
           >
-            {/* Primary CTA: Log In */}
             <Button
               variant="primary"
               style={styles.primaryButton}
-              onPress={onLoginPress}
+              onPress={() => onGooglePress('tamu')}
+              disabled={isLoading}
             >
-              Log In
+              {isLoading && activeFlow === 'tamu' ? 'Loading...' : 'Continue with TAMU Account'}
             </Button>
-          </View>
-
-          {/* Informational Panel */}
-          <View
-            style={styles.infoContainer}
-          >
-             <Text style={styles.infoTitle}>Why MaroonLife?</Text>
-             <Text style={styles.infoContent}>
-                Plan your classes, avoid conflicts, and get to graduation using your Texas A&M NetID. 
-                Experience a smooth schedule builder explicitly designed for Aggies.
-             </Text>
+            <Button
+              variant="secondary"
+              style={styles.secondaryButton}
+              onPress={() => onGooglePress('admin')}
+              disabled={isLoading}
+            >
+              {isLoading && activeFlow === 'admin' ? 'Loading...' : 'Continue with Admin Account'}
+            </Button>
+            <Button
+              variant="secondary"
+              style={styles.guestButton}
+              onPress={handleGuestContinue}
+              disabled={isLoading}
+            >
+              Continue as Guest
+            </Button>
           </View>
 
           {/* Colored Background Accent Bottom */}
@@ -161,14 +194,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     zIndex: 1,
   },
-  tagline: {
-    ...TYPOGRAPHY.body,
-    fontSize: 16,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    marginBottom: SPACING.xl,
-    zIndex: 1,
-  },
   accentLine: {
     width: 60,
     height: 4,
@@ -190,28 +215,12 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     width: '100%',
+    marginBottom: SPACING.md,
   },
-  infoContainer: {
+  guestButton: {
     width: '100%',
-    marginTop: SPACING.lg * 2,
-    padding: SPACING.md,
     backgroundColor: COLORS.white,
-    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
-    zIndex: 1,
-  },
-  infoTitle: {
-    ...TYPOGRAPHY.title,
-    fontSize: 18,
-    fontWeight: '600',
-    color: COLORS.primary,
-    marginBottom: SPACING.sm,
-  },
-  infoContent: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.textSecondary,
-    lineHeight: 22,
-    fontSize: 14,
   },
 });

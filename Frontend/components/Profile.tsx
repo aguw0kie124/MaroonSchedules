@@ -25,6 +25,7 @@ import {
   GraduationCap,
   LayoutGrid,
   LibraryBig,
+  LogIn,
   LogOut,
   Palette,
   Search,
@@ -46,10 +47,12 @@ import * as Linking from 'expo-linking';
 
 import { fetchCampusOverview } from '../api/client';
 import { PARKING_PERMIT_OPTIONS, useAppShellStore } from '../store/appShellStore';
+import { useSessionStore } from '../store/sessionStore';
 import { deleteAccount, getBlockedUsers, unblockUser } from '../services/streamFeeds';
 import { useTour, TourTarget } from './onboarding/TourProvider';
 import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme } from './SharedUI';
+import { navigateToLogin } from '../utils/guestAccess';
 
 const SETTINGS_TABS = [
   { key: 'personal', label: 'Personal', icon: UserRound },
@@ -134,6 +137,7 @@ export function Profile() {
   const isFocused = useIsFocused();
   const { user } = useUser();
   const { signOut } = useClerk();
+  const isGuest = useSessionStore((state) => state.isGuest);
   const {
     COLORS,
     theme,
@@ -193,7 +197,7 @@ export function Profile() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!user || !isFocused) return;
+    if (!user || !isFocused || isGuest) return;
 
     setLoadingAcademicStatus(true);
     fetchCampusOverview(user.id)
@@ -212,16 +216,16 @@ export function Profile() {
     return () => {
       cancelled = true;
     };
-  }, [isFocused, user]);
+  }, [isFocused, isGuest, user]);
 
   useEffect(() => {
-    if (activeTab === 'personal' && user) {
+    if (activeTab === 'personal' && user && !isGuest) {
         loadBlockedUsers();
     }
-  }, [activeTab, user]);
+  }, [activeTab, isGuest, user]);
 
   const loadBlockedUsers = async () => {
-    if (!user) return;
+    if (!user || isGuest) return;
     setLoadingBlocked(true);
     try {
         const data = await getBlockedUsers(user.id);
@@ -316,6 +320,22 @@ export function Profile() {
 
   const handleLogout = async () => {
     await signOut();
+  };
+
+  const handleLogin = () => {
+    navigateToLogin(navigation);
+  };
+
+  const openGuestRecCapacity = () => {
+    const rootNav =
+      navigation.getParent?.('RootStack') || navigation.getParent?.() || navigation;
+    rootNav.navigate('Main', {
+      screen: 'Places',
+      params: {
+        initialLayer: 'Rec',
+        focusToken: 'guest-rec',
+      },
+    });
   };
 
   const handleDeleteAccount = () => {
@@ -883,6 +903,85 @@ export function Profile() {
     </View>
   );
 
+  const renderGuestView = () => (
+    <>
+      <View style={styles.heroCard}>
+        <View style={styles.heroHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.eyebrow}>Guest Mode</Text>
+            <Text style={styles.title}>Browse Campus Fast</Text>
+          </View>
+          <View style={styles.heroBadge}>
+            <UserRound size={18} color="#FFFFFF" />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>What You Can Do</Text>
+
+        <View style={styles.toolRow}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(80,0,0,0.12)' }]}>
+            <GraduationCap size={20} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Browse campus events</Text>
+          </View>
+        </View>
+
+        <View style={styles.toolRow}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(59,130,246,0.12)' }]}>
+            <Compass size={20} color="#3B82F6" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Use Places and view Rec capacity</Text>
+          </View>
+        </View>
+
+        <View style={[styles.toolRow, styles.toolRowLast]}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(249,115,22,0.12)' }]}>
+            <ExternalLink size={20} color="#F97316" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Share events with other people</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Log In For More</Text>
+
+        <Pressable style={styles.toolRow} onPress={openGuestRecCapacity}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(34,197,94,0.14)' }]}>
+            <Dumbbell size={20} color="#22C55E" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Open Rec Capacity in Places</Text>
+          </View>
+          <ChevronRight size={18} color={COLORS.textTertiary} />
+        </Pressable>
+
+        <Pressable
+          style={[styles.toolRow, styles.toolRowLast]}
+          onPress={() => openExternal('https://www.termsfeed.com/live/4889a318-ae78-48e2-975d-2eddfe043866')}
+        >
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 199, 89, 0.15)' }]}>
+            <Shield size={20} color="#34C759" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Privacy Policy</Text>
+          </View>
+          <ExternalLink size={18} color={COLORS.textTertiary} />
+        </Pressable>
+      </View>
+
+      <Pressable style={styles.logoutButton} onPress={handleLogin}>
+        <LogIn size={18} color="#F3F1ED" />
+        <Text style={styles.logoutText}>Log In</Text>
+      </Pressable>
+    </>
+  );
+
   return (
     <View style={[styles.container, useWallpaper && styles.transparentContainer]}>
       {useWallpaper ? (
@@ -901,21 +1000,27 @@ export function Profile() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.tabShell}>
-          <PillTabs
-            items={SETTINGS_TABS.map((tab) => ({ key: tab.key, label: tab.label, icon: tab.icon }))}
-            activeKey={activeTab}
-            onChange={(key) => setActiveTab(key as SettingsTabKey)}
-            floating={false}
-            compact={false}
-            activeTextMode="always"
-            layout="stacked"
-          />
-        </View>
+        {isGuest ? (
+          renderGuestView()
+        ) : (
+          <>
+            <View style={styles.tabShell}>
+              <PillTabs
+                items={SETTINGS_TABS.map((tab) => ({ key: tab.key, label: tab.label, icon: tab.icon }))}
+                activeKey={activeTab}
+                onChange={(key) => setActiveTab(key as SettingsTabKey)}
+                floating={false}
+                compact={false}
+                activeTextMode="always"
+                layout="stacked"
+              />
+            </View>
 
-        {activeTab === 'personal' ? renderPersonalTab() : null}
-        {activeTab === 'layout' ? renderLayoutTab() : null}
-        {activeTab === 'resources' ? renderResourcesTab() : null}
+            {activeTab === 'personal' ? renderPersonalTab() : null}
+            {activeTab === 'layout' ? renderLayoutTab() : null}
+            {activeTab === 'resources' ? renderResourcesTab() : null}
+          </>
+        )}
 
         <View style={{ height: 120 }} />
       </ScrollView>

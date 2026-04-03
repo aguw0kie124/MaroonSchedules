@@ -1,6 +1,7 @@
 import React, { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Dimensions,
   FlatList,
@@ -53,7 +54,9 @@ import { useEventStore } from '../store/eventStore';
 import type { MajorOption, ScheduledEvent } from '../store/eventStore';
 import { useTheme } from './SharedUI';
 import { useAppShellStore } from '../store/appShellStore';
+import { useSessionStore } from '../store/sessionStore';
 import { scheduleEventNotification } from '../services/notificationService';
+import { promptGuestLogin } from '../utils/guestAccess';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.24;
@@ -367,13 +370,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const isDark = theme === 'dark';
   const navigation = useNavigation<any>();
   const { user } = useUser();
+  const isGuest = useSessionStore((state) => state.isGuest);
   const s = useMemo(() => getStyles(COLORS, isDark, embedded), [COLORS, isDark, embedded]);
 
   const { advanceStep, activeTargetName } = useTour();
 
   const [events, setEvents] = useState<TAMUEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<EventsView>('discover');
+  const [view, setView] = useState<EventsView>(isGuest ? 'list' : 'discover');
 
   const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set());
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
@@ -389,19 +393,23 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     selectedMajor,
     setMajorSpecific,
     setSelectedMajor,
-    scheduledEvents,
+    scheduledEvents: persistedScheduledEvents,
     scheduleEvent,
-    savedEventIds,
+    savedEventIds: persistedSavedEventIds,
     saveEvent,
     unsaveEvent,
-    dislikedEventIds,
+    dislikedEventIds: persistedDislikedEventIds,
     dislikeEvent,
     removeIdsFromDisliked,
     clearDisliked,
-    receivedInvites,
+    receivedInvites: persistedReceivedInvites,
     acceptInvite,
     rejectInvite,
   } = useEventStore();
+  const scheduledEvents = isGuest ? [] : persistedScheduledEvents;
+  const savedEventIds = isGuest ? [] : persistedSavedEventIds;
+  const dislikedEventIds = isGuest ? [] : persistedDislikedEventIds;
+  const receivedInvites = isGuest ? [] : persistedReceivedInvites;
 
   const pan = useRef(new Animated.ValueXY()).current;
   const opacity = useRef(new Animated.Value(1)).current;
@@ -540,6 +548,12 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     setSwipeIndex(0);
   }, [selectedCategories, socialMode, deferredSearchQuery, isMajorSpecific, selectedMajor]);
 
+  useEffect(() => {
+    if (isGuest) {
+      setView('list');
+    }
+  }, [isGuest]);
+
   const changeView = useCallback((nextView: EventsView) => {
     startTransition(() => {
       setView(nextView);
@@ -557,6 +571,15 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const handleSchedule = useCallback(
     async (event: TAMUEvent) => {
+      if (isGuest) {
+        promptGuestLogin(
+          navigation,
+          event.is_admin_event
+            ? 'RSVPs require a signed-in account.'
+            : 'Saving events to your schedule requires a signed-in account.',
+        );
+        return;
+      }
       const scheduled: ScheduledEvent = {
         id: String(event.id),
         title: event.title,
@@ -603,7 +626,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         }
       }
     },
-    [scheduleEvent, user, activeTargetName, advanceStep, navigation],
+    [activeTargetName, advanceStep, isGuest, navigation, scheduleEvent, user],
   );
 
   const handleShare = useCallback((event: TAMUEvent) => {
@@ -645,11 +668,18 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const handleSaveToggle = useCallback(
     (event: TAMUEvent) => {
+      if (isGuest) {
+        promptGuestLogin(
+          navigation,
+          'Saving events requires a signed-in account.',
+        );
+        return;
+      }
       const id = String(event.id);
       if (savedEventIds.includes(id)) unsaveEvent(id);
       else saveEvent(id);
     },
-    [savedEventIds, saveEvent, unsaveEvent],
+    [isGuest, navigation, saveEvent, savedEventIds, unsaveEvent],
   );
 
   const handleSwipeAdvance = useCallback(() => {
@@ -660,10 +690,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const handleSwipeLeft = useCallback(
     (event: TAMUEvent) => {
+      if (isGuest) {
+        handleSwipeAdvance();
+        return;
+      }
       dislikeEvent(String(event.id));
       handleSwipeAdvance();
     },
-    [dislikeEvent, handleSwipeAdvance],
+    [dislikeEvent, handleSwipeAdvance, isGuest],
   );
 
   const handleSwipeRight = useCallback(
@@ -950,6 +984,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 const row = (
                   <ListEventRow
                     event={item}
+                    isGuest={isGuest}
                     saved={savedEventIds.includes(String(item.id))}
                     scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(item.id))}
                     onPress={() => {
@@ -1157,6 +1192,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         <DetailModal
           event={detailEvent}
           onClose={() => setDetailEvent(null)}
+          isGuest={isGuest}
           onSaveToggle={handleSaveToggle}
           onSchedule={handleSchedule}
           onShare={handleShare}
@@ -1270,6 +1306,7 @@ function HeroEventCard({
 
 function ListEventRow({
   event,
+  isGuest,
   saved,
   scheduled,
   onPress,
@@ -1279,6 +1316,7 @@ function ListEventRow({
 }: {
 
   event: TAMUEvent;
+  isGuest: boolean;
   saved: boolean;
   scheduled: boolean;
   onPress: () => void;
@@ -1325,9 +1363,11 @@ function ListEventRow({
         </Text>
       </View>
       <View style={stylesStatic.listActions}>
-        <Pressable onPress={onDelete} style={stylesStatic.listActionButton}>
-          <Trash2 size={20} color={COLORS.textSecondary} />
-        </Pressable>
+        {!isGuest ? (
+          <Pressable onPress={onDelete} style={stylesStatic.listActionButton}>
+            <Trash2 size={20} color={COLORS.textSecondary} />
+          </Pressable>
+        ) : null}
 
         <Pressable onPress={onShare} style={stylesStatic.listActionButton}>
           <Share2 size={20} color={COLORS.textSecondary} />
@@ -1626,6 +1666,7 @@ function SettingsModal({
 function DetailModal({
   event,
   onClose,
+  isGuest,
   onSaveToggle,
   onSchedule,
   onShare,
@@ -1635,6 +1676,7 @@ function DetailModal({
 }: {
   event: TAMUEvent | null;
   onClose: () => void;
+  isGuest: boolean;
   onSaveToggle: (event: TAMUEvent) => void;
   onSchedule: (event: TAMUEvent) => void;
   onShare: (event: TAMUEvent) => void;
@@ -1680,9 +1722,11 @@ function DetailModal({
                   {classifyCategory(event)}
                 </Text>
               </View>
-              <Pressable onPress={() => onSaveToggle(event)} style={stylesStatic.detailSaveButton}>
-                <Heart size={18} color={saved ? '#FF4D6D' : COLORS.textSecondary} fill={saved ? '#FF4D6D' : 'none'} />
-              </Pressable>
+              {!isGuest ? (
+                <Pressable onPress={() => onSaveToggle(event)} style={stylesStatic.detailSaveButton}>
+                  <Heart size={18} color={saved ? '#FF4D6D' : COLORS.textSecondary} fill={saved ? '#FF4D6D' : 'none'} />
+                </Pressable>
+              ) : null}
             </View>
 
             <Text style={[stylesStatic.detailTitle, { color: COLORS.textPrimary }]}>{event.title}</Text>
@@ -1726,9 +1770,11 @@ function DetailModal({
               >
                 <Check size={18} color="#FFFFFF" strokeWidth={3} />
                 <Text style={stylesStatic.primaryDetailButtonText}>
-                  {event.is_admin_event
-                    ? (scheduled ? 'RSVP Saved' : 'RSVP to Featured Event')
-                    : 'Add to current schedule'}
+                  {isGuest
+                    ? 'Log in to RSVP or save'
+                    : event.is_admin_event
+                      ? (scheduled ? 'RSVP Saved' : 'RSVP to Featured Event')
+                      : 'Add to current schedule'}
                 </Text>
               </Pressable>
             </TourTarget>

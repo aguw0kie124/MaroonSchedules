@@ -2,30 +2,34 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   SafeAreaView,
   Pressable,
   ScrollView,
   Alert,
 } from 'react-native';
-import { useSignIn, useOAuth } from '@clerk/clerk-expo';
+import { useOAuth } from '@clerk/clerk-expo';
 import { COLORS, TYPOGRAPHY, SPACING } from '../constants';
 import { Button } from './Button';
 import * as Linking from 'expo-linking';
+import { useSessionStore } from '../store/sessionStore';
 
 interface LoginScreenProps {
   onBack?: () => void;
 }
 
 export function LoginScreen({ onBack }: LoginScreenProps) {
-  const { signIn, setActive, isLoaded } = useSignIn();
   const { startOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
+  const enterGuestMode = useSessionStore((state) => state.enterGuestMode);
+  const exitGuestMode = useSessionStore((state) => state.exitGuestMode);
   const [isLoading, setIsLoading] = useState(false);
+  const [activeFlow, setActiveFlow] = useState<'tamu' | 'admin' | null>(null);
 
-  const onGooglePress = async () => {
+  const onGooglePress = async (flow: 'tamu' | 'admin') => {
     try {
+      exitGuestMode();
       setIsLoading(true);
+      setActiveFlow(flow);
       const { createdSessionId, setActive } = await startOAuthFlow({
         redirectUrl: Linking.createURL('/'),
       });
@@ -33,12 +37,20 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
         await setActive!({ session: createdSessionId });
       }
     } catch (err: any) {
-      Alert.alert('Error', err.errors?.[0]?.message || 'TAMU SSO sign in failed');
+      Alert.alert(
+        'Error',
+        err.errors?.[0]?.message ||
+          (flow === 'admin' ? 'Admin sign in failed' : 'TAMU sign in failed'),
+      );
     } finally {
       setIsLoading(false);
+      setActiveFlow(null);
     }
   };
 
+  const handleGuestContinue = () => {
+    enterGuestMode();
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -56,17 +68,39 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
             </Pressable>
           )}
 
-          <Text style={styles.title}>Log In</Text>
-          <Text style={styles.subtitle}>Welcome back to MaroonLife</Text>
+          <Text style={styles.title}>Choose How To Continue</Text>
+          <Text style={styles.subtitle}>Pick the experience that fits how you want to use MaroonLife.</Text>
 
-          {/* Setup for TAMU account context */}
+          <Button
+            variant="primary"
+            style={styles.googleButton}
+            onPress={() => onGooglePress('tamu')}
+            disabled={isLoading}
+          >
+            {isLoading && activeFlow === 'tamu' ? 'Loading...' : 'Continue with TAMU Account'}
+          </Button>
+
           <Button
             variant="secondary"
-            style={styles.googleButton}
-            onPress={onGooglePress}
+            style={styles.secondaryActionButton}
+            onPress={() => onGooglePress('admin')}
+            disabled={isLoading}
           >
-            {isLoading ? 'Loading...' : 'Continue with TAMU Account'}
+            {isLoading && activeFlow === 'admin' ? 'Loading...' : 'Continue with Admin Account'}
           </Button>
+
+          <Button
+            variant="secondary"
+            style={styles.guestButton}
+            onPress={handleGuestContinue}
+            disabled={isLoading}
+          >
+            Continue as Guest
+          </Button>
+
+          <Text style={styles.helperText}>
+            Guest mode keeps Events sharing and Places browsing available, but account-based tools like RSVP, saved schedules, and Pings stay locked until you log in.
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -113,79 +147,27 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.body,
     color: COLORS.textSecondary,
     marginBottom: SPACING.xl,
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    marginBottom: SPACING.md,
-    backgroundColor: COLORS.gray50,
-    borderRadius: 10,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  toggleButton: {
-    flex: 1,
-    paddingVertical: SPACING.sm,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  toggleButtonActive: {
-    backgroundColor: COLORS.white,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
-  },
-  toggleButtonPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.97 }],
-  },
-  toggleText: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
-  },
-  toggleTextActive: {
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  input: {
-    ...TYPOGRAPHY.body,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 10,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-    color: COLORS.text,
-  },
-  primaryButton: {
-    width: '100%',
-    marginTop: SPACING.md,
-    marginBottom: SPACING.md,
-  },
-  secondaryButton: {
-    marginTop: SPACING.md,
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: SPACING.lg,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: COLORS.border,
-  },
-  dividerText: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.textSecondary,
-    marginHorizontal: SPACING.md,
-    fontWeight: '600',
-    fontSize: 12,
+    lineHeight: 22,
   },
   googleButton: {
     width: '100%',
+  },
+  secondaryActionButton: {
+    width: '100%',
+    marginTop: SPACING.md,
+  },
+  guestButton: {
+    width: '100%',
+    marginTop: SPACING.md,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  helperText: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: SPACING.lg,
   },
 });

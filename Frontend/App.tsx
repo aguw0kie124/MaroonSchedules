@@ -49,7 +49,8 @@ import StreakHubScreen from './components/dining/StreakHubScreen';
 
 import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio } from 'lucide-react-native';
 import { GlassPillTabBar } from './components/GlassPillTabBar';
-import { getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
+import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
+import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
 
 import { syncUser, fetchUserProfile, requestJson, setApiAuthTokenProvider } from './api/client';
@@ -137,7 +138,15 @@ function MainTabs(props: any) {
   const { COLORS } = useTheme();
   const navItems = useAppShellStore((state) => state.navItems);
   const tabBarMode = useAppShellStore((state) => state.tabBarMode);
-  const visibleNavItems = React.useMemo(() => getOrderedVisibleItems(navItems), [navItems]);
+  const isGuest = useSessionStore((state) => state.isGuest);
+  const visibleNavItems = React.useMemo(() => {
+    if (!isGuest) {
+      return getOrderedVisibleItems(navItems);
+    }
+    return getOrderedItems(navItems)
+      .filter((item) => item.id === 'Dashboard' || item.id === 'Places')
+      .map((item) => ({ ...item, visible: true }));
+  }, [isGuest, navItems]);
 
   const tabScreens = [
     ...visibleNavItems.map((item) => {
@@ -263,6 +272,8 @@ function RootNavigator() {
   const { COLORS } = useTheme();
   const { isSignedIn, isLoaded } = useAuth();
   const { user } = useUser();
+  const isGuest = useSessionStore((state) => state.isGuest);
+  const exitGuestMode = useSessionStore((state) => state.exitGuestMode);
   const isTOSAccepted = useAppShellStore((state) => state.isTOSAccepted);
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const isNotificationPrompted = useAppShellStore((state) => state.isNotificationPrompted);
@@ -277,6 +288,12 @@ function RootNavigator() {
          .catch(err => setIsAdmin(false));
     }
   }, [isSignedIn, user?.id]);
+
+  React.useEffect(() => {
+    if (isSignedIn && isGuest) {
+      exitGuestMode();
+    }
+  }, [exitGuestMode, isGuest, isSignedIn]);
 
   if (!isLoaded) {
     return null;
@@ -299,8 +316,13 @@ function RootNavigator() {
     );
   }
 
+  const hasAppAccess = isSignedIn || isGuest;
+  const isAdminRoute = isSignedIn && !user?.primaryEmailAddress?.emailAddress?.endsWith('@tamu.edu');
+  const navigatorMode = isAdminRoute ? 'admin' : hasAppAccess ? 'app' : 'auth';
+
   const navigator = (
     <Stack.Navigator
+      key={navigatorMode}
       id="RootStack"
       screenOptions={{
         headerShown: false,
@@ -308,8 +330,7 @@ function RootNavigator() {
         headerTintColor: COLORS.textPrimary,
       }}
     >
-      {isSignedIn ? (
-        !user?.primaryEmailAddress?.emailAddress?.endsWith('@tamu.edu') ? (
+      {isAdminRoute ? (
           isAdmin === null ? (
             <Stack.Screen name="AdminLoading" options={{ headerShown: false }}>
                {() => <View style={{flex: 1, backgroundColor: COLORS.background}} />}
@@ -319,7 +340,7 @@ function RootNavigator() {
           ) : (
             <Stack.Screen name="AdminApply" component={AdminApplicationScreen} options={{ headerShown: false }} />
           )
-        ) : (
+        ) : hasAppAccess ? (
         <>
           <Stack.Screen name="Main">
             {(props) => (
@@ -363,16 +384,14 @@ function RootNavigator() {
           <Stack.Screen name="TrackerHub" component={TrackerHubScreen} options={{ headerShown: false }} />
           <Stack.Screen name="StreakHub" component={StreakHubScreen} options={{ headerShown: false }} />
           <Stack.Screen name="GradesScreen" component={GradesScreen} options={{ headerShown: true, title: 'Grade Distributions' }} />
+          <Stack.Screen name="GuestLogin">
+            {(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />}
+          </Stack.Screen>
         </>
-        )
       ) : (
         <>
           <Stack.Screen name="AuthLanding">
-            {(props: any) => (
-              <AuthLanding
-                onLoginPress={() => props.navigation.navigate('Login')}
-              />
-            )}
+            {() => <AuthLanding />}
           </Stack.Screen>
           <Stack.Screen name="Login">
             {(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />}

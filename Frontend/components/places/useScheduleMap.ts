@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useUser } from "@clerk/clerk-expo";
 import { fetchSchedules } from "../../api/client";
 import { useCampusHubStore } from "../../store/campusHubStore";
+import { useSessionStore } from "../../store/sessionStore";
 import { BUILDINGS } from "../../data/campus";
 import { useEventStore } from "../../store/eventStore";
 import type { CampusLocation, LocationType, ScheduleMeetingEntry, ScheduleMapOption } from "./types";
@@ -13,15 +14,17 @@ export function useScheduleMap(
   options: { skipInitialLoad?: boolean } = {}
 ) {
   const { user } = useUser();
+  const isGuest = useSessionStore((state) => state.isGuest);
   const campusHubSnapshot = useCampusHubStore((state) => state.snapshot);
-  const scheduledEvents = useEventStore((state) => state.scheduledEvents);
+  const persistedScheduledEvents = useEventStore((state) => state.scheduledEvents);
+  const scheduledEvents = isGuest ? [] : persistedScheduledEvents;
 
   const [savedSchedules, setSavedSchedules] = useState<any[]>([]);
   const [isLoadingSchedules, setIsLoadingSchedules] = useState(false);
   const [activeScheduleId, setActiveScheduleId] = useState<string | null>(null);
 
   const loadSchedules = useCallback(async () => {
-    if (!user?.id) {
+    if (!user?.id || isGuest) {
       setSavedSchedules([]);
       setIsLoadingSchedules(false);
       return;
@@ -39,7 +42,7 @@ export function useScheduleMap(
       .finally(() => {
         setIsLoadingSchedules(false);
       });
-  }, [user?.id]);
+  }, [isGuest, user?.id]);
 
   useEffect(() => {
     if (options.skipInitialLoad) return;
@@ -74,7 +77,7 @@ export function useScheduleMap(
 
   const scheduleOptions = useMemo(() => {
     const options: ScheduleMapOption[] = [];
-    const uploadedCourses = campusHubSnapshot?.academic?.courses || [];
+    const uploadedCourses = isGuest ? [] : campusHubSnapshot?.academic?.courses || [];
     
     const dayMap: Record<number, string> = { 1: "M", 2: "T", 3: "W", 4: "R", 5: "F" };
     const currentDayChar = dayMap[selectedDate.getDay()];
@@ -197,7 +200,7 @@ export function useScheduleMap(
     });
 
     return options;
-  }, [campusHubSnapshot?.academic?.courses, campusHubSnapshot?.academic?.scheduleName, savedSchedules, scheduledEvents, selectedDate]);
+  }, [campusHubSnapshot?.academic?.courses, campusHubSnapshot?.academic?.scheduleName, isGuest, savedSchedules, scheduledEvents, selectedDate]);
 
   useEffect(() => {
     if (scheduleOptions.length === 0) {

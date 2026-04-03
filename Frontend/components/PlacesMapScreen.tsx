@@ -69,8 +69,10 @@ import { connectFeedsUser } from "../services/streamFeeds";
 import { API_URL } from "../config";
 import { useCampusHubStore } from "../store/campusHubStore";
 import { getOrderedItems, useAppShellStore } from "../store/appShellStore";
+import { useSessionStore } from "../store/sessionStore";
 import { useShareStore } from "../store/shareStore";
 import { fetchCampusPlaceDetail, fetchCampusPlacesMap } from "../api/client";
+import { promptGuestLogin } from "../utils/guestAccess";
 import {
   DiningMealPeriod,
   fetchDiningFullMenuCached,
@@ -138,6 +140,7 @@ export function PlacesMapScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
   const { user } = useUser();
+  const isGuest = useSessionStore((state) => state.isGuest);
   const insets = useSafeAreaInsets();
   const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -752,16 +755,30 @@ export function PlacesMapScreen() {
   );
 
   const openScheduleList = useCallback(() => {
+    if (isGuest) {
+      promptGuestLogin(
+        navigation,
+        "Saved schedules are only available once you log in.",
+      );
+      return;
+    }
     const rootNav =
       navigation.getParent?.("RootStack") || navigation.getParent?.();
     (rootNav?.navigate || navigation.navigate)("ScheduleList");
-  }, [navigation]);
+  }, [isGuest, navigation]);
 
   const openNewCourseSearch = useCallback(() => {
+    if (isGuest) {
+      promptGuestLogin(
+        navigation,
+        "Adding classes to your map requires a signed-in account.",
+      );
+      return;
+    }
     const rootNav =
       navigation.getParent?.("RootStack") || navigation.getParent?.();
     (rootNav?.navigate || navigation.navigate)("NewCourseSearch");
-  }, [navigation]);
+  }, [isGuest, navigation]);
 
   const openBusTimetable = useCallback(() => {
     const params = isAllBusRoutesSelected
@@ -824,6 +841,13 @@ export function PlacesMapScreen() {
   }, []);
 
   const handlePostReview = useCallback(async () => {
+    if (isGuest) {
+      promptGuestLogin(
+        navigation,
+        "Guest mode can browse reviews, but posting one needs a signed-in account.",
+      );
+      return;
+    }
     if (!selectedId || !newReviewText.trim() || newRating === 0) return;
     setIsPostingReview(true);
     try {
@@ -838,7 +862,7 @@ export function PlacesMapScreen() {
     } finally {
       setIsPostingReview(false);
     }
-  }, [fetchReviews, newRating, newReviewText, selectedId]);
+  }, [fetchReviews, isGuest, navigation, newRating, newReviewText, selectedId]);
 
   const loadBestDiningPreview = useCallback(
     async (locationName: string, preferredMeal: DiningMealPeriod) => {
@@ -1436,6 +1460,7 @@ export function PlacesMapScreen() {
   // Hydrate hub when tab needs it
   useEffect(() => {
     if (
+      !isGuest &&
       user?.id &&
       (activeLayer === "Rec" ||
         activeLayer === "Library" ||
@@ -1443,7 +1468,7 @@ export function PlacesMapScreen() {
     ) {
       hydrateCampusHub(user.id).catch(() => {});
     }
-  }, [activeLayer, hydrateCampusHub, user?.id]);
+  }, [activeLayer, hydrateCampusHub, isGuest, user?.id]);
 
   useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
@@ -1675,8 +1700,12 @@ export function PlacesMapScreen() {
 
   // Connect native social client for compatibility across feed surfaces
   useEffect(() => {
-    if (user?.id) { try { connectFeedsUser(user); } catch (_) {} }
-  }, [user]);
+    if (!isGuest && user?.id) {
+      try {
+        connectFeedsUser(user);
+      } catch (_) {}
+    }
+  }, [isGuest, user]);
 
   // ── Render ────────────────────────────────────────────────
 
