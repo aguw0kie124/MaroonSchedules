@@ -111,6 +111,7 @@ export function EventDetailModal({
   onShare,
   onMap,
   saved,
+  scheduled,
 }: {
   event: TAMUEvent | null;
   onClose: () => void;
@@ -119,6 +120,7 @@ export function EventDetailModal({
   onShare: (event: TAMUEvent) => void;
   onMap: (event: TAMUEvent) => void;
   saved: boolean;
+  scheduled: boolean;
 }) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
@@ -202,6 +204,23 @@ export function EventDetailModal({
               <CalendarIcon size={18} color="#FFFFFF" />
               <Text style={styles.primaryDetailButtonText}>Add to calendar</Text>
             </Pressable>
+
+            {event.is_admin_event ? (
+              <Pressable
+                style={[
+                  styles.primaryDetailButton,
+                  { backgroundColor: '#2F80ED', marginTop: 12 },
+                ]}
+                onPress={() => {
+                  onSchedule(event);
+                }}
+              >
+                <BadgeCheck size={18} color="#FFFFFF" />
+                <Text style={styles.primaryDetailButtonText}>
+                  {scheduled ? 'RSVP Saved' : 'RSVP to Featured Event'}
+                </Text>
+              </Pressable>
+            ) : null}
 
             <View style={styles.detailActionRow}>
               <Pressable

@@ -44,6 +44,7 @@ import {
   MoreVertical,
   Plus,
   Search,
+  Share2,
   Shield,
   Sparkles,
   Trash2,
@@ -56,6 +57,7 @@ import {
 import { API_URL } from '../config';
 import { useTheme } from './SharedUI';
 import { useAppShellStore } from '../store/appShellStore';
+import { useShareStore } from '../store/shareStore';
 import * as Notifications from 'expo-notifications';
 import { useEventStore } from '../store/eventStore';
 import {
@@ -99,6 +101,8 @@ interface FeaturedEvent {
   locationLat?: number | null;
   locationLng?: number | null;
   categories?: Record<string, number>;
+  isAdminEvent?: boolean;
+  rsvpStatus?: string;
 }
 
 interface PingCard {
@@ -370,7 +374,12 @@ export function CampusPingsScreen() {
 
   const loadFeaturedEvents = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/campus/events?limit=12`);
+      const params = new URLSearchParams({ limit: '12' });
+      if (user?.id) {
+        params.set('clerk_id', user.id);
+      }
+
+      const res = await fetch(`${API_URL}/campus/events?${params.toString()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const events = Array.isArray(data) ? data : Array.isArray(data?.events) ? data.events : [];
@@ -386,13 +395,15 @@ export function CampusPingsScreen() {
         locationLat: event.location_lat ?? null,
         locationLng: event.location_lng ?? null,
         categories: event.categories || undefined,
+        isAdminEvent: !!event.is_admin_event,
+        rsvpStatus: event.rsvp_status ?? 'none',
       }));
       setFeaturedEvents(nextEvents);
     } catch (error) {
       console.warn('[Pings] Failed to load featured events', error);
       setFeaturedEvents([]);
     }
-  }, []);
+  }, [user?.id]);
 
   const loadUserPings = useCallback(async () => {
     try {
@@ -722,6 +733,55 @@ export function CampusPingsScreen() {
     },
     [locationLookup, saveEvent, scheduleEvent],
   );
+
+  const handleFeaturedEventRsvp = useCallback(
+    async (event: FeaturedEvent) => {
+      if (!user?.id) {
+        Alert.alert('Sign in required', 'Sign in to RSVP for featured events.');
+        return;
+      }
+
+      try {
+        await fetch(`${API_URL}/campus/events/rsvp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clerk_id: user.id,
+            event_id: event.id,
+            response: 'going',
+          }),
+        });
+
+        saveFeaturedEventToPlans(event);
+        setFeaturedEvents((current) =>
+          current.map((entry) =>
+            entry.id === event.id ? { ...entry, rsvpStatus: 'going' } : entry,
+          ),
+        );
+        setActiveFeaturedEvent((current) =>
+          current?.id === event.id ? { ...current, rsvpStatus: 'going' } : current,
+        );
+      } catch (error) {
+        console.warn('[Pings] Failed to RSVP for featured event', error);
+        Alert.alert('RSVP failed', 'We could not save your RSVP right now.');
+      }
+    },
+    [saveFeaturedEventToPlans, user?.id],
+  );
+
+  const handleFeaturedEventShare = useCallback((event: FeaturedEvent) => {
+    useShareStore.getState().openShare({
+      title: event.title,
+      message: `Check out this featured event: ${event.title} at ${getCanonicalLocationName(event.location)}!`,
+      url: event.link || 'https://maroonschedules.tamu.edu',
+    });
+
+    if (event.isAdminEvent) {
+      fetch(`${API_URL}/admin/events/${event.id}/share`, { method: 'POST' }).catch((error) =>
+        console.error('[Pings] Failed to track featured event share', error),
+      );
+    }
+  }, []);
 
   const openFeaturedEventLink = useCallback(async (event: FeaturedEvent) => {
     if (!event.link) return;
@@ -1301,17 +1361,32 @@ export function CampusPingsScreen() {
                   <View style={styles.featuredModalActions}>
                     <Pressable
                       style={styles.primaryActionButton}
-                      onPress={() => activeFeaturedEvent && openFeaturedEventOnMap(activeFeaturedEvent)}
+                      onPress={() =>
+                        activeFeaturedEvent && handleFeaturedEventRsvp(activeFeaturedEvent)
+                      }
                     >
-                      <MapPin size={16} color="#FFFFFF" />
-                      <Text style={styles.primaryActionLabel}>Open on map</Text>
+                      <CalendarDays size={16} color="#FFFFFF" />
+                      <Text style={styles.primaryActionLabel}>
+                        {activeFeaturedEvent?.rsvpStatus === 'going' ? 'RSVP saved' : 'RSVP'}
+                      </Text>
                     </Pressable>
                     <Pressable
                       style={styles.actionButton}
-                      onPress={() => activeFeaturedEvent && saveFeaturedEventToPlans(activeFeaturedEvent)}
+                      onPress={() =>
+                        activeFeaturedEvent && handleFeaturedEventShare(activeFeaturedEvent)
+                      }
                     >
-                      <CalendarDays size={16} color={COLORS.textPrimary} />
-                      <Text style={styles.actionLabel}>Save</Text>
+                      <Share2 size={16} color={COLORS.textPrimary} />
+                      <Text style={styles.actionLabel}>Share</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.actionButton}
+                      onPress={() =>
+                        activeFeaturedEvent && openFeaturedEventOnMap(activeFeaturedEvent)
+                      }
+                    >
+                      <MapPin size={16} color={COLORS.textPrimary} />
+                      <Text style={styles.actionLabel}>Open on map</Text>
                     </Pressable>
                     {activeFeaturedEvent?.link ? (
                       <Pressable

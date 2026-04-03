@@ -78,6 +78,7 @@ interface CampusEventResponse {
   food_type?: string | null;
   categories?: Record<string, number>;
   image_url?: string | null;
+  is_admin_event?: boolean;
 }
 
 interface TAMUEvent {
@@ -100,12 +101,14 @@ interface TAMUEvent {
   food_type?: string | null;
   categories?: Record<string, number>;
   imageUrl?: string | null;
+  is_admin_event?: boolean;
   _searchBlob?: string;
   _category?: ExploreCategory;
   _socialMode?: SocialMode;
 }
 
 type ExploreCategory =
+  | 'Featured'
   | 'Food'
   | 'Sports'
   | 'Social'
@@ -119,6 +122,7 @@ type SocialMode = 'casual' | 'professional';
 type EventsView = 'discover' | 'list' | 'swipe' | 'inbox';
 
 const ALL_CATEGORIES: ExploreCategory[] = [
+  'Featured',
   'Sports',
   'Academic',
   'Food',
@@ -152,6 +156,13 @@ export const CATEGORY_META: Record<
     icon: React.ComponentType<any>;
   }
 > = {
+  Featured: {
+    accent: '#FFD700',
+    chipBg: '#FFF9C4',
+    chipText: '#F57F17',
+    cardTint: '#FBC02D',
+    icon: BadgeCheck,
+  },
   Sports: {
     accent: '#71B7FF',
     chipBg: '#CFE7FF',
@@ -246,6 +257,8 @@ function resolveEventImageUrl(value?: string | null) {
 }
 
 function classifyCategory(event: TAMUEvent): ExploreCategory {
+  if (event.is_admin_event || event.categories?.featured) return 'Featured';
+
   if (event.categories) {
     if (event.categories.food) return 'Food';
     if (event.categories.sports) return 'Sports';
@@ -426,6 +439,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               food_type: event.food_type ?? null,
               categories: event.categories || undefined,
               imageUrl: resolveEventImageUrl(event.image_url ?? null),
+              is_admin_event: !!event.is_admin_event,
             };
           })
           .map((event) => {
@@ -451,6 +465,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const categoryCounts = useMemo(() => {
     const counts: Record<ExploreCategory, number> = {
+      Featured: 0,
       Sports: 0,
       Academic: 0,
       Food: 0,
@@ -462,7 +477,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     };
 
     events.forEach((event) => {
-      if (event.date_ts < nowTs) return;
+      const isOngoing = (event.date2_ts != null && event.date2_ts > nowTs) || (event.date_ts >= nowTs - 7200);
+      if (!isOngoing) return;
       if (isMajorSpecific && !matchesMajor(event, selectedMajor)) return;
       const category = event._category || classifyCategory(event);
       counts[category] += 1;
@@ -472,7 +488,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   }, [events, isMajorSpecific, nowTs, selectedMajor]);
 
   const filteredUpcomingEvents = useMemo(() => {
-    let next = events.filter((event) => event.date_ts >= nowTs);
+    let next = events.filter((event) => {
+      return (event.date2_ts != null && event.date2_ts > nowTs) || (event.date_ts >= nowTs - 7200);
+    });
 
     if (deferredSearchQuery.trim()) {
       const q = deferredSearchQuery.toLowerCase();
@@ -597,6 +615,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       message: `Check out this event: ${event.title} at ${event.location || 'TAMU'}!`,
       url: event.url || 'https://maroonschedules.tamu.edu',
     });
+
+    if (event.is_admin_event) {
+      fetch(`${API_URL}/admin/events/${event.id}/share`, { method: 'POST' }).catch(e => console.error(e));
+    }
   }, []);
 
   const handleMapOpen = useCallback(
@@ -1135,15 +1157,16 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         onRestoreCategory={handleRestoreCategory}
       />
 
-      <DetailModal
-        event={detailEvent}
-        onClose={() => setDetailEvent(null)}
-        onSaveToggle={handleSaveToggle}
-        onSchedule={handleSchedule}
-        onShare={handleShare}
-        onMap={handleMapOpen}
-        saved={detailEvent ? savedEventIds.includes(String(detailEvent.id)) : false}
-      />
+        <DetailModal
+          event={detailEvent}
+          onClose={() => setDetailEvent(null)}
+          onSaveToggle={handleSaveToggle}
+          onSchedule={handleSchedule}
+          onShare={handleShare}
+          onMap={handleMapOpen}
+          saved={detailEvent ? savedEventIds.includes(String(detailEvent.id)) : false}
+          scheduled={detailEvent ? scheduledEvents.some((scheduled) => String(scheduled.id) === String(detailEvent.id)) : false}
+        />
     </View>
   );
 }
@@ -1611,6 +1634,7 @@ function DetailModal({
   onShare,
   onMap,
   saved,
+  scheduled,
 }: {
   event: TAMUEvent | null;
   onClose: () => void;
@@ -1619,6 +1643,7 @@ function DetailModal({
   onShare: (event: TAMUEvent) => void;
   onMap: (event: TAMUEvent) => void;
   saved: boolean;
+  scheduled: boolean;
 }) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
@@ -1703,7 +1728,11 @@ function DetailModal({
                 }}
               >
                 <Check size={18} color="#FFFFFF" strokeWidth={3} />
-                <Text style={stylesStatic.primaryDetailButtonText}>Add to current schedule</Text>
+                <Text style={stylesStatic.primaryDetailButtonText}>
+                  {event.is_admin_event
+                    ? (scheduled ? 'RSVP Saved' : 'RSVP to Featured Event')
+                    : 'Add to current schedule'}
+                </Text>
               </Pressable>
             </TourTarget>
 
