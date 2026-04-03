@@ -86,7 +86,23 @@ def _ensure_user_schema(conn: psycopg.Connection) -> None:
                 start_time TIMESTAMPTZ NOT NULL,
                 end_time TIMESTAMPTZ,
                 shares_count INTEGER DEFAULT 0,
+                google_review_url TEXT,
                 created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """
+        )
+        cur.execute("ALTER TABLE admin_events ADD COLUMN IF NOT EXISTS google_review_url TEXT")
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_event_reviews (
+                id BIGSERIAL PRIMARY KEY,
+                event_id UUID REFERENCES admin_events(id) ON DELETE CASCADE,
+                clerk_id TEXT NOT NULL,
+                rating INTEGER NOT NULL,
+                feedback TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(event_id, clerk_id)
             )
             """
         )

@@ -25,6 +25,7 @@ class AdminEventCreateRequest(BaseModel):
     location_name: str
     start_time: str
     end_time: str
+    google_review_url: Optional[str] = None
 
 
 @router.get("/status")
@@ -97,11 +98,11 @@ def create_admin_event(req: AdminEventCreateRequest):
                 cur.execute(
                     """
                     INSERT INTO admin_events
-                    (clerk_id, title, description, lat, lng, location_name, start_time, end_time)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    (clerk_id, title, description, lat, lng, location_name, start_time, end_time, google_review_url)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
-                    (req.clerk_id, req.title, req.description, req.lat, req.lng, req.location_name, req.start_time, req.end_time)
+                    (req.clerk_id, req.title, req.description, req.lat, req.lng, req.location_name, req.start_time, req.end_time, req.google_review_url)
                 )
                 event_id = cur.fetchone()[0]
                 conn.commit()
@@ -129,8 +130,10 @@ def get_my_admin_events(clerk_id: str = Query(...)):
                 cur.execute(
                     """
                     SELECT e.id, e.title, e.description, e.lat, e.lng, e.location_name, 
-                           e.start_time, e.end_time, e.shares_count, e.created_at,
-                           (SELECT COUNT(*) FROM campus_event_rsvps r WHERE r.event_id = e.id::TEXT) as rsvp_count
+                           e.start_time, e.end_time, e.shares_count, e.created_at, e.google_review_url,
+                           (SELECT COUNT(*) FROM campus_event_rsvps r WHERE r.event_id = e.id::TEXT) as rsvp_count,
+                           (SELECT COALESCE(AVG(r3.rating), 0) FROM admin_event_reviews r3 WHERE r3.event_id = e.id) as avg_rating,
+                           (SELECT json_agg(json_build_object('rating', r2.rating, 'feedback', r2.feedback, 'created_at', r2.created_at)) FROM admin_event_reviews r2 WHERE r2.event_id = e.id AND r2.rating <= 3) as private_feedbacks
                     FROM admin_events e
                     WHERE e.clerk_id = %s
                     ORDER BY e.created_at DESC
@@ -144,6 +147,7 @@ def get_my_admin_events(clerk_id: str = Query(...)):
                     event['start_time'] = event['start_time'].isoformat() if event['start_time'] else None
                     event['end_time'] = event['end_time'].isoformat() if event['end_time'] else None
                     event['created_at'] = event['created_at'].isoformat() if event['created_at'] else None
+                    event['private_feedbacks'] = event['private_feedbacks'] or []
                 return events
     except Exception as e:
         print(f"Error fetching admin events: {e}")
@@ -174,4 +178,63 @@ def track_admin_event_share(event_id: str):
          raise
     except Exception as e:
         print(f"Error tracking share count: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+class AdminEventReviewRequest(BaseModel):
+    clerk_id: str
+    rating: int
+    feedback: Optional[str] = None
+
+@router.get("/events/pending-reviews")
+def get_pending_reviews(clerk_id: str = Query(...)):
+    """Fetch one event the user RSVP'd for that has ended but not been reviewed."""
+    try:
+        with psycopg.connect(CONNECTION_PARAMS) as conn:
+            with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+                cur.execute(
+                    """
+                    SELECT e.id, e.title, e.location_name, e.google_review_url
+                    FROM admin_events e
+                    JOIN campus_event_rsvps r ON r.event_id = e.id::TEXT
+                    WHERE r.clerk_id = %s 
+                    AND (r.response = 'going' OR r.response = 'yes')
+                    AND COALESCE(e.end_time, e.start_time + interval '6 hours') < NOW()
+                    AND NOT EXISTS (
+                        SELECT 1 FROM admin_event_reviews rev 
+                        WHERE rev.event_id = e.id AND rev.clerk_id = %s
+                    )
+                    ORDER BY COALESCE(e.end_time, e.start_time + interval '6 hours') DESC
+                    LIMIT 1
+                    """,
+                    (clerk_id, clerk_id)
+                )
+                event = cur.fetchone()
+                if event:
+                    event['id'] = str(event['id'])
+                return event
+    except Exception as e:
+        print(f"Error checking pending reviews: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.post("/events/{event_id}/reviews")
+def submit_event_review(event_id: str, req: AdminEventReviewRequest):
+    """Submit an internal review for an event."""
+    try:
+        with psycopg.connect(CONNECTION_PARAMS) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO admin_event_reviews (event_id, clerk_id, rating, feedback)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (event_id, clerk_id) DO UPDATE SET
+                    rating = EXCLUDED.rating,
+                    feedback = EXCLUDED.feedback,
+                    created_at = NOW()
+                    """,
+                    (event_id, req.clerk_id, req.rating, req.feedback)
+                )
+                conn.commit()
+                return {"status": "success"}
+    except Exception as e:
+        print(f"Error submitting review: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

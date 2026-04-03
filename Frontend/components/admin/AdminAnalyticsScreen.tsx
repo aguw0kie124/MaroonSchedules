@@ -4,7 +4,7 @@ import { useUser, useAuth } from '@clerk/clerk-expo';
 import { useTheme } from '../SharedUI';
 import { Button } from '../Button';
 import { API_URL } from '../../config';
-import { Users, Share2, MapPin } from 'lucide-react-native';
+import { Users, Share2, MapPin, Star } from 'lucide-react-native';
 
 interface AdminEvent {
   id: string;
@@ -13,6 +13,8 @@ interface AdminEvent {
   shares_count: number;
   rsvp_count: number;
   created_at: string;
+  avg_rating?: number;
+  private_feedbacks?: { rating: number, feedback: string, created_at: string }[];
 }
 
 export function AdminAnalyticsScreen() {
@@ -123,6 +125,33 @@ export function AdminAnalyticsScreen() {
       color: COLORS.textSecondary,
       fontSize: 16,
       textAlign: 'center'
+    },
+    feedbackSection: {
+      marginTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: COLORS.border,
+      paddingTop: 16,
+    },
+    feedbackTitle: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: COLORS.textSecondary,
+      marginBottom: 8,
+    },
+    feedbackItem: {
+      backgroundColor: COLORS.background,
+      padding: 12,
+      borderRadius: 8,
+      marginBottom: 8,
+    },
+    feedbackStars: {
+      flexDirection: 'row',
+      gap: 2,
+      marginBottom: 6,
+    },
+    feedbackText: {
+      fontSize: 14,
+      color: COLORS.textPrimary,
     }
   });
 
@@ -135,14 +164,38 @@ export function AdminAnalyticsScreen() {
       </View>
       <View style={styles.metricsRow}>
         <View style={styles.metric}>
+          <Star size={18} color="#FFD700" fill="#FFD700" />
+          <Text style={styles.metricValue}>{Number(item.avg_rating || 0).toFixed(1)}</Text>
+        </View>
+        <View style={styles.metric}>
           <Users size={18} color={COLORS.primary} />
           <Text style={styles.metricValue}>{item.rsvp_count} RSVP</Text>
         </View>
         <View style={styles.metric}>
           <Share2 size={18} color={COLORS.primary} />
-          <Text style={styles.metricValue}>{item.shares_count} Shares</Text>
+          <Text style={styles.metricValue}>{item.shares_count}</Text>
         </View>
       </View>
+      {item.private_feedbacks && item.private_feedbacks.length > 0 && (
+        <View style={styles.feedbackSection}>
+          <Text style={styles.feedbackTitle}>Private Feedback (Needs Improvement)</Text>
+          {item.private_feedbacks.map((fb, idx) => (
+            <View key={idx} style={styles.feedbackItem}>
+              <View style={styles.feedbackStars}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <Star 
+                    key={star}
+                    size={12}
+                    fill={star <= fb.rating ? '#FFD700' : 'transparent'} 
+                    color={star <= fb.rating ? '#FFD700' : COLORS.textTertiary}
+                  />
+                ))}
+              </View>
+              <Text style={styles.feedbackText}>{fb.feedback || "No comment provided."}</Text>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 

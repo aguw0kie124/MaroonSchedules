@@ -58,6 +58,7 @@ import { NotificationPromptScreen } from './components/onboarding/NotificationPr
 
 import { AdminApplicationScreen } from './components/admin/AdminApplicationScreen';
 import { AdminPortal } from './components/admin/AdminPortal';
+import { PendingReviewInterceptor } from './components/events/PendingReviewInterceptor';
 import { API_URL } from './config';
 
 function UserSync({ children }: { children: React.ReactNode }) {
@@ -368,7 +369,12 @@ function RootNavigator() {
     </Stack.Navigator>
   );
 
-  return isSignedIn ? <UserSync>{navigator}</UserSync> : navigator;
+  return (
+    <>
+      {isSignedIn ? <UserSync>{navigator}</UserSync> : navigator}
+      {isSignedIn && <PendingReviewInterceptor />}
+    </>
+  );
 }
 
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
