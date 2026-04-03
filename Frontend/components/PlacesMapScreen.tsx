@@ -1335,9 +1335,22 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setSelectedBus(null);
       setNearestBusInfo("Finding closest bus...");
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const sLat = stop.Latitude !== undefined ? stop.Latitude : stop.lat;
+      const sLng = stop.Longitude !== undefined ? stop.Longitude : stop.lng;
+      if (sLat != null && sLng != null && mapRef.current) {
+        mapRef.current.animateCamera(
+          {
+            center: { latitude: sLat - 0.0018, longitude: sLng },
+            zoom: 16.5,
+          },
+          { duration: 600 }
+        );
+      }
+
       resolveNearestBusForStop(stop, busVehicles);
     },
-    [busVehicles, resolveNearestBusForStop],
+    [busVehicles, mapRef, resolveNearestBusForStop],
   );
 
   // ── Effects ───────────────────────────────────────────────
@@ -1873,6 +1886,18 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 onPress={() => {
                   setSelectedBus(bus);
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  
+                  const bLat = bus.Latitude !== undefined ? bus.Latitude : bus.lat;
+                  const bLng = bus.Longitude !== undefined ? bus.Longitude : bus.lng;
+                  if (bLat != null && bLng != null && mapRef.current) {
+                    mapRef.current.animateCamera(
+                      {
+                        center: { latitude: bLat - 0.0018, longitude: bLng },
+                        zoom: 16.5,
+                      },
+                      { duration: 600 }
+                    );
+                  }
                 }}
                 anchor={{ x: 0.5, y: 0.5 }}
                 zIndex={isTrackedBus ? 501 : 500}
