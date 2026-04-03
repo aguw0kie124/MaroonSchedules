@@ -1142,10 +1142,8 @@ export function PlacesMapScreen() {
       // every single time the timer fires because it aggressively resets user zoom.
       // Route fittings are handled manually on route selection instead inside handleSelectBusRoute!
     } else if (activeLayer === "Pulse") {
-      coords = pulseHotspots.map((hotspot) => ({
-        latitude: hotspot.coord.lat,
-        longitude: hotspot.coord.lng,
-      }));
+      // Bypassed: Let the map stay at the campus-wide TAMU_CENTER initialRegion when on the Pulse tab.
+      // Auto-zooming to hotspots bounds the camera incorrectly and breaks the intended overview.
     } else if (activeLayer === "Today") {
       // Only fit when there are multiple scheduled locations to show.
       coords = sortedFilteredLocations
