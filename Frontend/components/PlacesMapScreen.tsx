@@ -297,8 +297,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
     ALL_BUS_ROUTES_KEY,
   );
   const [routePatterns, setRoutePatterns] = useState<any[]>([]);
+  const [routePaths, setRoutePaths] = useState<any[]>([]);
   const [allRoutePatternsById, setAllRoutePatternsById] = useState<
-    Record<string, { points: any[]; stops: any[] }>
+    Record<string, { points: any[]; stops: any[]; paths?: any[] }>
   >({});
   const [isFetchingBus, setIsFetchingBus] = useState(false);
   const [isRouteDropdownOpen, setIsRouteDropdownOpen] = useState(false);
@@ -1101,6 +1102,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setBusVehicles([]);
     setBusStops([]);
     setRoutePatterns([]);
+    setRoutePaths([]);
     if (!routesToLoad.length) {
       setAllRoutePatternsById({});
       return;
@@ -1219,8 +1221,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
         return;
       }
       try {
-        const { points, stops } = await transitService.getRoutePattern(routeId);
+        const { points, stops, paths } = await transitService.getRoutePattern(routeId);
         setRoutePatterns(points?.length ? points : []);
+        setRoutePaths(paths?.length ? paths : []);
         setBusStops(stops?.length ? stops : []);
         if (mapRef.current && points?.length)
           mapRef.current.fitToCoordinates(points, {
@@ -1753,13 +1756,36 @@ export function PlacesMapScreen({ route, navigation }: any) {
         {/* Bus route polylines */}
         {activeLayer === "Bus" &&
           !isAllBusRoutesSelected &&
-          routePatterns.length > 0 && (
-            <Polyline
-              coordinates={routePatterns}
-              strokeColor={selectedRoute?.Color || "#007AFF"}
-              strokeWidth={6}
-            />
-          )}
+          (routePaths && routePaths.length > 0 ? (
+            routePaths.map((path, idx) => {
+              const isSelected =
+                selectedDirection === "All" ||
+                (path.DirectionName || "")
+                  .toLowerCase()
+                  .includes(selectedDirection.toLowerCase());
+              return path.points.length > 0 ? (
+                <Polyline
+                  key={`path-${idx}`}
+                  coordinates={path.points}
+                  strokeColor={
+                    isSelected
+                      ? selectedRoute?.Color || "#007AFF"
+                      : (selectedRoute?.Color || "#007AFF") + "40"
+                  }
+                  strokeWidth={isSelected ? 6 : 4}
+                  zIndex={isSelected ? 10 : 5}
+                />
+              ) : null;
+            })
+          ) : (
+            routePatterns.length > 0 && (
+              <Polyline
+                coordinates={routePatterns}
+                strokeColor={selectedRoute?.Color || "#007AFF"}
+                strokeWidth={6}
+              />
+            )
+          ))}
         {activeLayer === "Bus" &&
           isAllBusRoutesSelected &&
           Object.entries(allRoutePatternsById).map(([routeKey, pattern]) => {
@@ -1781,6 +1807,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
             const sLng =
               stop.Longitude !== undefined ? stop.Longitude : stop.lng;
             if (sLat == null || sLng == null) return null;
+            
+            const stopDir = stop.DirectionName || stop.direction || "Unknown";
+            const stopSelected =
+              selectedDirection === "All" ||
+              isAllBusRoutesSelected ||
+              stopDir.toLowerCase().includes(selectedDirection.toLowerCase());
+
             return (
               <Marker
                 key={`stop-${stop.StopCode || stop.Name || sLat}`}
@@ -1790,8 +1823,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 }}
                 onPress={() => handleStopPress(stop)}
                 anchor={{ x: 0.5, y: 0.5 }}
+                zIndex={stopSelected ? 50 : 10}
               >
-                <View style={styles.busStopMarker}>
+                <View style={[styles.busStopMarker, { opacity: stopSelected ? 1 : 0.3 }]}>
                   <View style={styles.busStopMarkerInner} />
                 </View>
               </Marker>
