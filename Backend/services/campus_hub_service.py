@@ -1146,7 +1146,7 @@ def get_events_snapshot(
     admin_events_list = []
     
     # Fetch Admin Events
-    admin_events_raw = _safe_db_fetchall("SELECT id, clerk_id, title, description, lat, lng, location_name, start_time, end_time FROM admin_events", conn=conn)
+    admin_events_raw = _safe_db_fetchall("SELECT id, clerk_id, title, description, lat, lng, location_name, start_time, end_time, google_review_url FROM admin_events", conn=conn)
     for ad_ev in admin_events_raw:
         admin_events_list.append({
             "event_id": str(ad_ev["id"]),
@@ -1157,6 +1157,7 @@ def get_events_snapshot(
             "start_time": ad_ev["start_time"].isoformat() if ad_ev["start_time"] else None,
             "end_time": ad_ev["end_time"].isoformat() if ad_ev["end_time"] else None,
             "description": ad_ev["description"],
+            "google_review_url": ad_ev.get("google_review_url"),
             "has_food": False,
             "source_name": "admin_portal",
             "categories": {"featured": 1},

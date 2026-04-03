@@ -52,7 +52,7 @@ import { useEventStore } from '../store/eventStore';
 import type { MajorOption, ScheduledEvent } from '../store/eventStore';
 import { useTheme } from './SharedUI';
 import { useAppShellStore } from '../store/appShellStore';
-import { scheduleEventNotification } from '../services/notificationService';
+import { scheduleAdminEventReviewNotification, scheduleEventNotification } from '../services/notificationService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.24;
@@ -79,6 +79,7 @@ interface CampusEventResponse {
   categories?: Record<string, number>;
   image_url?: string | null;
   is_admin_event?: boolean;
+  google_review_url?: string | null;
 }
 
 interface TAMUEvent {
@@ -102,6 +103,7 @@ interface TAMUEvent {
   categories?: Record<string, number>;
   imageUrl?: string | null;
   is_admin_event?: boolean;
+  google_review_url?: string | null;
   _searchBlob?: string;
   _category?: ExploreCategory;
   _socialMode?: SocialMode;
@@ -440,6 +442,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               categories: event.categories || undefined,
               imageUrl: resolveEventImageUrl(event.image_url ?? null),
               is_admin_event: !!event.is_admin_event,
+              google_review_url: event.google_review_url ?? null,
             };
           })
           .map((event) => {
@@ -574,14 +577,24 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       // Notification logic
       const prefs = useAppShellStore.getState();
       const leadTime = prefs.notificationLeadTime;
-      if (prefs.eventNotifications) {
-        scheduleEventNotification(
-          event.title,
-          `Starting at ${event.location || 'TAMU'} in ${leadTime} minutes.`,
-          new Date(event.date_ts * 1000),
-          leadTime
-        );
-      }
+        if (prefs.eventNotifications) {
+          scheduleEventNotification(
+            event.title,
+            `Starting at ${event.location || 'TAMU'} in ${leadTime} minutes.`,
+            new Date(event.date_ts * 1000),
+            leadTime
+          );
+
+          if (event.is_admin_event && event.date2_ts) {
+            scheduleAdminEventReviewNotification(
+              event.title,
+              event.location,
+              new Date(event.date2_ts * 1000),
+              event.google_review_url,
+              String(event.id),
+            );
+          }
+        }
 
       if (user?.id) {
         try {

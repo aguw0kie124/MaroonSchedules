@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, AppState } from 'react-native';
 import { Star, X } from 'lucide-react-native';
 import { useTheme } from '../SharedUI';
 import { Button } from '../Button';
 import { useUser } from '@clerk/clerk-expo';
 import { API_URL } from '../../config';
 import * as Linking from 'expo-linking';
+import * as Notifications from 'expo-notifications';
 
 export function PendingReviewInterceptor() {
   const { user } = useUser();
@@ -16,21 +17,94 @@ export function PendingReviewInterceptor() {
   const [feedback, setFeedback] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (user?.id) {
-      fetch(`${API_URL}/admin/events/pending-reviews?clerk_id=${user.id}`)
-        .then(res => {
-          if (!res.ok) throw new Error('API error');
-          return res.json();
-        })
-        .then(data => {
-          if (data && data.id) {
-            setPendingEvent(data);
-          }
-        })
-        .catch(err => console.log('Pending review fetch failed', err));
+  const fetchPendingReview = React.useCallback(async () => {
+    if (!user?.id) return null;
+
+    return fetch(`${API_URL}/admin/events/pending-reviews?clerk_id=${user.id}`)
+      .then(res => {
+        if (!res.ok) throw new Error('API error');
+        return res.json();
+      })
+      .then(data => {
+        if (data && data.id) {
+          setPendingEvent((current: any) => current?.id === data.id ? current : data);
+          return data;
+        }
+        setPendingEvent((current: any) => current && submitting ? current : null);
+        return null;
+      })
+      .catch(err => {
+        console.log('Pending review fetch failed', err);
+        return null;
+      });
+  }, [submitting, user?.id]);
+
+  const handleReviewNotificationTap = React.useCallback(async (response?: Notifications.NotificationResponse | null) => {
+    const data = response?.notification.request.content.data as Record<string, unknown> | undefined;
+    const directUrl = typeof data?.googleReviewUrl === 'string' ? data.googleReviewUrl : null;
+
+    if (directUrl) {
+      try {
+        await Linking.openURL(directUrl);
+        return;
+      } catch (error) {
+        console.warn('Failed to open Google review URL from notification data', error);
+      }
     }
-  }, [user?.id]);
+
+    const pending = await fetchPendingReview();
+    if (pending?.google_review_url) {
+      try {
+        await Linking.openURL(pending.google_review_url);
+      } catch (error) {
+        console.warn('Failed to open Google review URL', error);
+      }
+    }
+  }, [fetchPendingReview]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    fetchPendingReview();
+
+    const interval = setInterval(() => {
+      fetchPendingReview();
+    }, 30000);
+
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        fetchPendingReview();
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      appStateSubscription.remove();
+    };
+  }, [fetchPendingReview, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const handleResponse = async (response: Notifications.NotificationResponse | null) => {
+      const type = response?.notification.request.content.data?.type;
+      if (type === 'admin_event_review') {
+        await handleReviewNotificationTap(response);
+      }
+    };
+
+    Notifications.getLastNotificationResponseAsync()
+      .then(handleResponse)
+      .catch((error) => console.warn('Failed to inspect last notification response', error));
+
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      handleResponse(response);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [handleReviewNotificationTap, user?.id]);
 
   if (!pendingEvent) return null;
 

@@ -85,6 +85,44 @@ export async function scheduleEventNotification(
   }
 }
 
+export async function scheduleAdminEventReviewNotification(
+  title: string,
+  locationName: string | null | undefined,
+  endDate: Date,
+  googleReviewUrl?: string | null,
+  eventId?: string | null,
+): Promise<string | null> {
+  const triggerDate = endDate.getTime() <= Date.now()
+    ? new Date(Date.now() + 1000)
+    : endDate;
+
+  try {
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `How was ${title}?`,
+        body: `Your RSVP event just ended${locationName ? ` at ${locationName}` : ''}. Tap to leave a quick review.`,
+        data: {
+          type: 'admin_event_review',
+          eventId: eventId || null,
+          title,
+          locationName: locationName || null,
+          endDate: endDate.toISOString(),
+          googleReviewUrl: googleReviewUrl || null,
+        },
+        sound: true,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: triggerDate.getTime(),
+      },
+    });
+    return id;
+  } catch (error) {
+    console.error('[NotificationService] Failed to schedule admin event review notification:', error);
+    return null;
+  }
+}
+
 /**
  * Schedule a local notification for a bus arrival.
  * @param routeName Name of the bus route

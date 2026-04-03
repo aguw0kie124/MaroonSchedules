@@ -9,6 +9,53 @@ import datetime
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
+def _ensure_admin_review_schema(conn: psycopg.Connection) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_events (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                clerk_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                lat DOUBLE PRECISION,
+                lng DOUBLE PRECISION,
+                location_name TEXT,
+                start_time TIMESTAMPTZ NOT NULL,
+                end_time TIMESTAMPTZ,
+                shares_count INTEGER DEFAULT 0,
+                google_review_url TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """
+        )
+        cur.execute("ALTER TABLE admin_events ADD COLUMN IF NOT EXISTS google_review_url TEXT")
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_event_reviews (
+                id BIGSERIAL PRIMARY KEY,
+                event_id UUID REFERENCES admin_events(id) ON DELETE CASCADE,
+                clerk_id TEXT NOT NULL,
+                rating INTEGER NOT NULL,
+                feedback TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(event_id, clerk_id)
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS campus_event_rsvps (
+                clerk_id TEXT NOT NULL,
+                event_id TEXT NOT NULL,
+                response TEXT NOT NULL,
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (clerk_id, event_id)
+            )
+            """
+        )
+
+
 class AdminApplicationRequest(BaseModel):
     clerk_id: str
     email: str
@@ -94,6 +141,7 @@ def create_admin_event(req: AdminEventCreateRequest):
         
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_review_schema(conn)
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -126,6 +174,7 @@ def get_my_admin_events(clerk_id: str = Query(...)):
         
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_review_schema(conn)
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(
                     """
@@ -159,6 +208,7 @@ def track_admin_event_share(event_id: str):
     """Track an admin event share."""
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_review_schema(conn)
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -190,6 +240,7 @@ def get_pending_reviews(clerk_id: str = Query(...)):
     """Fetch one event the user RSVP'd for that has ended but not been reviewed."""
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_review_schema(conn)
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(
                     """
@@ -221,6 +272,7 @@ def submit_event_review(event_id: str, req: AdminEventReviewRequest):
     """Submit an internal review for an event."""
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_review_schema(conn)
             with conn.cursor() as cur:
                 cur.execute(
                     """

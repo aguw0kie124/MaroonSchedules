@@ -76,6 +76,7 @@ import {
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
 import { TourTarget, useTour } from './onboarding/TourProvider';
 import { getPremiumName, getPremiumImage } from '../utils/userUtils';
+import { scheduleAdminEventReviewNotification } from '../services/notificationService';
 
 type PingCategory =
   | 'Free Food'
@@ -98,6 +99,7 @@ interface FeaturedEvent {
   startTime: string;
   endTime?: string | null;
   link?: string | null;
+  googleReviewUrl?: string | null;
   locationLat?: number | null;
   locationLng?: number | null;
   categories?: Record<string, number>;
@@ -392,6 +394,7 @@ export function CampusPingsScreen() {
         startTime: event.start_time,
         endTime: event.end_time,
         link: event.link || event.source_url || null,
+        googleReviewUrl: event.google_review_url || null,
         locationLat: event.location_lat ?? null,
         locationLng: event.location_lng ?? null,
         categories: event.categories || undefined,
@@ -751,6 +754,17 @@ export function CampusPingsScreen() {
             response: 'going',
           }),
         });
+
+        const prefs = useAppShellStore.getState();
+        if (prefs.notificationsEnabled && prefs.eventNotifications && event.isAdminEvent && event.endTime) {
+          await scheduleAdminEventReviewNotification(
+            event.title,
+            event.location,
+            new Date(event.endTime),
+            event.googleReviewUrl,
+            event.id,
+          );
+        }
 
         saveFeaturedEventToPlans(event);
         setFeaturedEvents((current) =>

@@ -22,6 +22,10 @@ export function AdminMapPoster() {
   const [address, setAddress] = useState('');
   const [googleReviewUrl, setGoogleReviewUrl] = useState('');
   const [startTime, setStartTime] = useState(() => roundToNearestFiveMinutes(new Date()));
+  const [endTime, setEndTime] = useState(() => {
+    const initialStart = roundToNearestFiveMinutes(new Date());
+    return new Date(initialStart.getTime() + 2 * 60 * 60 * 1000);
+  });
   const [loading, setLoading] = useState(false);
 
   const today = new Date();
@@ -33,10 +37,23 @@ export function AdminMapPoster() {
       next.setFullYear(nextValue.getFullYear(), nextValue.getMonth(), nextValue.getDate());
       return next;
     });
+    setEndTime((current) => {
+      const next = new Date(current);
+      next.setFullYear(nextValue.getFullYear(), nextValue.getMonth(), nextValue.getDate());
+      return next;
+    });
   };
 
-  const updateTimePart = (nextValue: Date) => {
+  const updateStartTimePart = (nextValue: Date) => {
     setStartTime((current) => {
+      const next = new Date(current);
+      next.setHours(nextValue.getHours(), nextValue.getMinutes(), 0, 0);
+      return next;
+    });
+  };
+
+  const updateEndTimePart = (nextValue: Date) => {
+    setEndTime((current) => {
       const next = new Date(current);
       next.setHours(nextValue.getHours(), nextValue.getMinutes(), 0, 0);
       return next;
@@ -50,7 +67,12 @@ export function AdminMapPoster() {
 
   const handleTimeChange = (_event: DateTimePickerEvent, selectedValue?: Date) => {
     if (!selectedValue) return;
-    updateTimePart(selectedValue);
+    updateStartTimePart(selectedValue);
+  };
+
+  const handleEndTimeChange = (_event: DateTimePickerEvent, selectedValue?: Date) => {
+    if (!selectedValue) return;
+    updateEndTimePart(selectedValue);
   };
 
   const handleSubmit = async () => {
@@ -61,11 +83,12 @@ export function AdminMapPoster() {
 
     setLoading(true);
     try {
-      if (isNaN(startTime.getTime())) {
+      if (isNaN(startTime.getTime()) || isNaN(endTime.getTime())) {
         throw new Error('Invalid date or time format');
       }
-
-      const endTime = new Date(startTime.getTime() + 2 * 60 * 60 * 1000);
+      if (endTime <= startTime) {
+        throw new Error('End time must be after the start time');
+      }
 
       const res = await fetch(`${API_URL}/admin/events`, {
         method: 'POST',
@@ -92,7 +115,9 @@ export function AdminMapPoster() {
       setDescription('');
       setAddress('');
       setGoogleReviewUrl('');
-      setStartTime(roundToNearestFiveMinutes(new Date()));
+      const nextStart = roundToNearestFiveMinutes(new Date());
+      setStartTime(nextStart);
+      setEndTime(new Date(nextStart.getTime() + 2 * 60 * 60 * 1000));
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Failed to create event.');
     } finally {
@@ -228,9 +253,9 @@ export function AdminMapPoster() {
           />
         </View>
 
-        <Text style={styles.label}>Time</Text>
+        <Text style={styles.label}>Start Time</Text>
         <View style={styles.pickerWrap}>
-          <Text style={styles.pickerValueMeta}>Selected time</Text>
+          <Text style={styles.pickerValueMeta}>Selected start time</Text>
           <Text style={styles.pickerValue}>
             {startTime.toLocaleTimeString('en-US', {
               hour: 'numeric',
@@ -242,6 +267,28 @@ export function AdminMapPoster() {
             mode="time"
             display="spinner"
             onChange={handleTimeChange}
+            is24Hour={false}
+            themeVariant={Platform.OS === 'ios' ? theme : undefined}
+            textColor={Platform.OS === 'ios' ? COLORS.textPrimary : undefined}
+            accentColor={Platform.OS === 'ios' ? COLORS.primary : undefined}
+            style={styles.picker}
+          />
+        </View>
+
+        <Text style={styles.label}>End Time</Text>
+        <View style={styles.pickerWrap}>
+          <Text style={styles.pickerValueMeta}>Selected end time</Text>
+          <Text style={styles.pickerValue}>
+            {endTime.toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: '2-digit',
+            })}
+          </Text>
+          <DateTimePicker
+            value={endTime}
+            mode="time"
+            display="spinner"
+            onChange={handleEndTimeChange}
             is24Hour={false}
             themeVariant={Platform.OS === 'ios' ? theme : undefined}
             textColor={Platform.OS === 'ios' ? COLORS.textPrimary : undefined}
