@@ -42,7 +42,32 @@
     "plugins": [
       "@react-native-community/datetimepicker",
       "expo-apple-authentication",
-      "expo-notifications"
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "MaroonLife uses your photo library so you can choose a profile photo or attach an image to your campus posts.",
+          "cameraPermission": "MaroonLife uses the camera when you choose to capture a photo for your profile or a campus post."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "MaroonLife uses your location to show nearby campus places, transit options, and directions."
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "MaroonLife uses the microphone for optional voice commands during campus navigation."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/adaptive-icon-v2.png",
+          "color": "#500000"
+        }
+      ]
     ],
     "runtimeVersion": {
       "policy": "appVersion"
