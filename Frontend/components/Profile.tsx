@@ -828,34 +828,44 @@ export function Profile() {
 
       {[
         {
+          key: 'annex',
+          title: 'Library Services',
+          icon: LibraryBig,
+          iconColor: '#00CFC7',
+          iconBg: 'rgba(0, 207, 199, 0.14)',
+          action: () => navigation.navigate('AnnexHub'),
+          internal: true,
+        },
+        {
           key: 'howdy',
           title: 'Howdy Portal',
           icon: GraduationCap,
+          iconColor: COLORS.primary,
+          iconBg: 'rgba(80,0,0,0.12)',
           action: () => openExternal('https://howdy.tamu.edu/main/home/card-view'),
         },
         {
           key: 'hire',
           title: 'Hire Aggies',
           icon: BriefcaseBusiness,
+          iconColor: '#3B82F6',
+          iconBg: 'rgba(59,130,246,0.12)',
           action: () => openExternal('https://tamu-csm.symplicity.com/students/index.php?signin_tab=0'),
-        },
-        {
-          key: 'annex',
-          title: 'The Annex',
-          icon: Building2,
-          action: () => navigation.navigate('AnnexHub'),
-          internal: true,
         },
         {
           key: 'transact',
           title: 'Transact eAccounts',
           icon: Wallet,
+          iconColor: '#F59E0B',
+          iconBg: 'rgba(245, 158, 11, 0.15)',
           action: () => openExternal('https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx'),
         },
         {
           key: 'rec',
           title: 'Rec Center Hours',
           icon: Dumbbell,
+          iconColor: '#10B981',
+          iconBg: 'rgba(16,185,129,0.15)',
           action: () => navigation.navigate('RecreationFacilities'),
         },
       ].map((resource, index, array) => {
@@ -866,8 +876,8 @@ export function Profile() {
             style={[styles.toolRow, index === array.length - 1 && styles.toolRowLast]}
             onPress={resource.action}
           >
-            <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-              <Icon size={20} color="#F3F1ED" />
+            <View style={[styles.toolIconBg, { backgroundColor: resource.iconBg || 'rgba(243,241,237,0.12)' }]}>
+              <Icon size={20} color={resource.iconColor || "#F3F1ED"} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.toolTitle}>{resource.title}</Text>
