@@ -1298,7 +1298,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       try {
         const { points, stops, paths } =
           await transitService.getRoutePattern(routeId);
-          
+
         if (currentBusRouteFetchId.current !== routeId) return; // Prevent race condition crashes
 
         setRoutePatterns(points?.length ? points : []);
@@ -1309,7 +1309,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
             edgePadding: { top: 220, right: 60, bottom: 80, left: 60 },
             animated: true,
           });
-        
+
         const vehicles = await transitService.getVehicles(routeId);
         if (currentBusRouteFetchId.current === routeId) {
           setBusVehicles(vehicles);
