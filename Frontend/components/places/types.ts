@@ -76,7 +76,9 @@ export interface CampusLocation {
   available_seats: number | null;
   coord: { lat: number; lng: number };
   current_event?: string;
+  aliases?: string[];
   hours?: string;
+  address?: string;
   reviews?: Array<{ user: string; rating: number; comment: string }>;
   traffic_history?: number[];
   restaurants?: string[];
@@ -84,7 +86,8 @@ export interface CampusLocation {
   shortName?: string;
   description?: string;
   features?: string[];
-  source?: "traffic" | "directory" | "schedule" | "snapshot";
+  source?: "traffic" | "directory" | "schedule" | "snapshot" | "osm";
+  searchOnly?: boolean;
   classMeetings?: ScheduleMeetingEntry[];
   scheduleLabel?: string;
   sequenceIndex?: number;

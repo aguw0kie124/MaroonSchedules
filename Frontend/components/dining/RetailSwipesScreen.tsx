@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView, SafeAreaView, StatusBar, ImageBackground } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { Trophy } from 'lucide-react-native';
-import { API_URL } from '../../config';
+import { requestJson } from '../../api/client';
 import { Card, SectionLabel, StatPill, Divider, ActionButton } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
@@ -46,7 +46,7 @@ export default function RetailSwipesScreen({ navigation, embedded = false }: any
   const loadProfile = async () => {
       if (!user) return;
       try {
-          const res = await fetch(`${API_URL}/dining/profile/${user.id}`).then(r => r.json());
+          const res = await requestJson(`/dining/profile/${encodeURIComponent(user.id)}`);
           setProfile(res);
       } catch {}
   };
@@ -54,7 +54,7 @@ export default function RetailSwipesScreen({ navigation, embedded = false }: any
   const load = async () => {
     if (!user) return;
     try {
-      const resp = await fetch(`${API_URL}/dining/swipes/${user.id}?date=${getLocalDateString()}`).then(r => r.json());
+      const resp = await requestJson(`/dining/swipes/${encodeURIComponent(user.id)}?date=${encodeURIComponent(getLocalDateString())}`);
       setInfo(resp);
     } catch {}
   };
@@ -63,9 +63,8 @@ export default function RetailSwipesScreen({ navigation, embedded = false }: any
     if (!user) return;
     setSaving(true);
     try {
-      await fetch(`${API_URL}/dining/swipes/${user.id}`, {
+      await requestJson(`/dining/swipes/${encodeURIComponent(user.id)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date: getLocalDateString(), restaurant: logRest, total_cost: +logCost || 11 }),
       });
       load(); setShowLog(false); setLogCost('');
@@ -76,7 +75,7 @@ export default function RetailSwipesScreen({ navigation, embedded = false }: any
   const doDelete = (id: any) => Alert.alert('Remove?', '', [
     { text: 'Cancel' },
     { text: 'Remove', style: 'destructive', onPress: async () => {
-      try { await fetch(`${API_URL}/dining/swipes/${user?.id}/${id}`, { method: 'DELETE' }); load(); } catch {}
+      try { await requestJson(`/dining/swipes/${encodeURIComponent(user?.id || '')}/${id}`, { method: 'DELETE' }); load(); } catch {}
     }},
   ]);
 
@@ -85,11 +84,10 @@ export default function RetailSwipesScreen({ navigation, embedded = false }: any
     setOptLoad(true); setOptResult(null);
     try {
         // Pass the BRAND name as dining_hall — the backend will look it up in RESTAURANT_GROUPS
-        const res = await fetch(`${API_URL}/dining/optimize/day?clerk_id=${user.id}&dining_hall=${selRest}`, {
+        const res = await requestJson(`/dining/optimize/day?clerk_id=${encodeURIComponent(user.id)}&dining_hall=${encodeURIComponent(selRest)}`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ selected_meals: [selMeal], include_restaurant_alts: true })
-        }).then(r => r.json());
+        });
         
         // FIX: Check res.success (not res.status)
         if (res.success && res.plan?.[selMeal]) {

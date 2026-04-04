@@ -9,6 +9,7 @@ import traceback
 
 from services import ping_service, cache_service
 from repositories import feed_repository, user_repository
+from auth.clerk_middleware import require_auth, optional_auth, ensure_matching_user
 
 # Force reload from the exact .env file
 env_path = os.path.join(os.path.dirname(__file__), '.env')
@@ -41,7 +42,7 @@ class ReportRequest(BaseModel):
 # --- User Management (Clerk) ---
 
 @router.get("/users")
-async def list_users(exclude_id: str = ""):
+async def list_users(exclude_id: str = "", _auth_user_id: str = Depends(require_auth)):
     """Returns all Clerk users for messaging. Pass exclude_id to hide the current user."""
     clerk_secret = os.environ.get("CLERK_SECRET_KEY", "")
     if not clerk_secret:
@@ -74,9 +75,10 @@ async def list_users(exclude_id: str = ""):
 
 @router.post("/token")
 @router.post("/feeds/token")
-async def get_noop_token(body: Dict[str, Any]):
+async def get_noop_token(body: Dict[str, Any], auth_user_id: str = Depends(require_auth)):
     """Actually sync the user to our DB during the connection phase to fix the Aggie bug."""
-    clerk_id = body.get("clerk_user_id")
+    clerk_id = body.get("clerk_user_id") or auth_user_id
+    ensure_matching_user(auth_user_id, clerk_id, detail="You can only initialize chat as yourself")
     if clerk_id:
         user_repository.upsert_user(
             clerk_id=clerk_id,
@@ -93,9 +95,19 @@ async def get_noop_token(body: Dict[str, Any]):
 # --- Feed Proxy (Now 100% Native) ---
 
 @router.get("/feeds/proxy/{feed_group}/{feed_id}")
-async def proxy_get_feed(feed_group: str, feed_id: str, limit: int = 25, clerk_id: str = Header(None, alias="X-Clerk-User-Id")):
+async def proxy_get_feed(
+    feed_group: str,
+    feed_id: str,
+    limit: int = 25,
+    clerk_id: str = Header(None, alias="X-Clerk-User-Id"),
+    auth_user_id: str | None = Depends(optional_auth),
+):
     """Fetch feed activities natively (Postgres) with Redis Backbone caching."""
     try:
+        if auth_user_id and clerk_id:
+            ensure_matching_user(auth_user_id, clerk_id, detail="Feed identity header does not match the signed-in user")
+        resolved_user_id = auth_user_id or clerk_id
+
         # 1. Check Backbone Cache
         cache_key = f"feed:backbone:{feed_group}:{feed_id}"
         backbone = cache_service.get_json(cache_key)
@@ -120,7 +132,7 @@ async def proxy_get_feed(feed_group: str, feed_id: str, limit: int = 25, clerk_i
                 cache_service.set_json(cache_key, raw_items, ttl_seconds=60)
 
         # 2. In-Memory Personalization (Filtering & Hydration)
-        blocked_ids = _get_blocked_ids_cached(clerk_id) if clerk_id else []
+        blocked_ids = _get_blocked_ids_cached(resolved_user_id) if resolved_user_id else []
         
         filtered_items = [item for item in raw_items if item.get("user_id") not in blocked_ids]
         final_list = filtered_items[:limit]
@@ -134,10 +146,10 @@ async def proxy_get_feed(feed_group: str, feed_id: str, limit: int = 25, clerk_i
             pid = item["id"]
             # Detect own reactions for this specific caller
             own_reactions = {}
-            if clerk_id:
+            if resolved_user_id:
                 post_type = item.get("post_type") or ("review" if feed_id.startswith("place_review_") else "post")
                 all_ints = feed_repository.get_post_interactions(pid, post_type)
-                own_reactions = {i["interaction_type"]: [True] for i in all_ints if i["user_id"] == clerk_id}
+                own_reactions = {i["interaction_type"]: [True] for i in all_ints if i["user_id"] == resolved_user_id}
             
             if feed_id.startswith("place_review_"):
                 results.append(_transform_review_to_activity(item, interaction_map.get(pid, {}), own_reactions))
@@ -214,11 +226,12 @@ def _transform_post_to_activity(p: Dict[str, Any], counts: Dict[str, Any], own_r
     return activity
 
 @router.post("/feeds/proxy/{feed_group}/{feed_id}")
-async def proxy_add_activity(feed_group: str, feed_id: str, body: FeedActivity):
+async def proxy_add_activity(feed_group: str, feed_id: str, body: FeedActivity, auth_user_id: str = Depends(require_auth)):
     """Add an activity to the feed (100% Native Postgres)."""
     try:
         activity = body.activity
         user_id = activity["actor"].replace("SU:", "")
+        ensure_matching_user(auth_user_id, user_id, detail="You can only create activity as yourself")
         content = activity.get("text", "")
         verb = activity.get("verb", "post")
         custom = activity.get("custom", {})
@@ -263,13 +276,21 @@ async def proxy_add_activity(feed_group: str, feed_id: str, body: FeedActivity):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/feeds/proxy/{feed_group}/{feed_id}/{activity_id}")
-async def proxy_delete_activity(feed_group: str, feed_id: str, activity_id: str, user_id: str = "", clerk_id: str = Header(None, alias="X-Clerk-User-Id")):
+async def proxy_delete_activity(
+    feed_group: str,
+    feed_id: str,
+    activity_id: str,
+    user_id: str = "",
+    clerk_id: str = Header(None, alias="X-Clerk-User-Id"),
+    auth_user_id: str = Depends(require_auth),
+):
     """Delete activity from native storage (Postgres)."""
     try:
-        # Use header clerk_id as primary for safety
-        final_user_id = clerk_id or user_id
-        if not final_user_id:
-            raise HTTPException(status_code=401, detail="X-Clerk-User-Id required for deletion")
+        if clerk_id:
+            ensure_matching_user(auth_user_id, clerk_id, detail="Delete identity header does not match the signed-in user")
+        if user_id:
+            ensure_matching_user(auth_user_id, user_id, detail="You can only delete your own activity")
+        final_user_id = auth_user_id
 
         # Check both tables as the ID could be in either
         deleted = False
@@ -277,26 +298,22 @@ async def proxy_delete_activity(feed_group: str, feed_id: str, activity_id: str,
             deleted = feed_repository.delete_place_review(activity_id, final_user_id)
         else:
             deleted = feed_repository.delete_crowdping_post(activity_id, final_user_id)
-        
-        if not deleted:
-            # Fallback for older or mismatched feed_ids
-            deleted = feed_repository.delete_crowdping_post(activity_id, user_id)
-            if not deleted:
-                deleted = feed_repository.delete_place_review(activity_id, user_id)
-
         if deleted:
             cache_service.delete(f"feed:backbone:{feed_group}:{feed_id}")
             return {"status": "success"}
         else:
             raise HTTPException(status_code=404, detail="Activity not found or unauthorized")
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Delete Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/feeds/proxy/reactions")
-async def proxy_add_reaction(body: ReactionPayload):
+async def proxy_add_reaction(body: ReactionPayload, auth_user_id: str = Depends(require_auth)):
     """Add a reaction (Like/Comment/Upvote/Downvote) natively with toggle support."""
     try:
+        ensure_matching_user(auth_user_id, body.user_id, detail="You can only react as yourself")
         # 1. Resolve naming/image from DB if possible to fix "Aggie" bug
         user_profile = user_repository.get_user(body.user_id)
         final_name = user_profile.get("full_name") if user_profile else (body.data.get("name") if body.data else "Aggie")
@@ -360,9 +377,10 @@ async def proxy_get_reactions(activity_id: str, kind: str):
 # --- Block & Report Endpoints ---
 
 @router.post("/users/{clerk_id}/block")
-async def proxy_block_user(clerk_id: str, body: BlockRequest = Body(...)):
+async def proxy_block_user(clerk_id: str, body: BlockRequest = Body(...), auth_user_id: str = Depends(require_auth)):
     """Block another user (Bidirectional)."""
     try:
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only block users from your own account")
         feed_repository.add_block(clerk_id, body.target_id)
         # Invalidate cached blocked list
         cache_service.delete(f"user:blocks:{clerk_id}")
@@ -373,9 +391,10 @@ async def proxy_block_user(clerk_id: str, body: BlockRequest = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/users/{clerk_id}/blocked")
-async def get_blocked_users(clerk_id: str):
+async def get_blocked_users(clerk_id: str, auth_user_id: str = Depends(require_auth)):
     """Return a list of user profiles that the current user has blocked."""
     try:
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only view your own blocked list")
         blocked_ids = feed_repository.get_blocked_user_ids(clerk_id)
         if not blocked_ids:
             return []
@@ -396,9 +415,10 @@ async def get_blocked_users(clerk_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/users/{clerk_id}/block/{target_id}")
-async def proxy_unblock_user(clerk_id: str, target_id: str):
+async def proxy_unblock_user(clerk_id: str, target_id: str, auth_user_id: str = Depends(require_auth)):
     """Unblock another user."""
     try:
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only unblock users from your own account")
         feed_repository.remove_block(clerk_id, target_id)
         cache_service.delete(f"user:blocks:{clerk_id}")
         cache_service.delete(f"user:blocks:{target_id}")
@@ -407,11 +427,11 @@ async def proxy_unblock_user(clerk_id: str, target_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/reports")
-async def proxy_report_content(body: ReportRequest, reporter_id: str = Header(None, alias="X-Clerk-User-Id")):
+async def proxy_report_content(body: ReportRequest, auth_user_id: str = Depends(require_auth)):
     """Submit a report for content."""
     try:
         report_id = feed_repository.add_content_report(
-            reporter_id=reporter_id or "anonymous",
+            reporter_id=auth_user_id,
             reportee_id=body.reportee_id,
             post_type=body.post_type,
             post_id=body.post_id,

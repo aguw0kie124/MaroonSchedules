@@ -55,10 +55,10 @@ import {
 } from 'lucide-react-native';
 
 import { API_URL } from '../config';
+import { requestJson, saveCampusEventRsvp } from '../api/client';
 import { useTheme } from './SharedUI';
 import { useAppShellStore } from '../store/appShellStore';
 import { useShareStore } from '../store/shareStore';
-import * as Notifications from 'expo-notifications';
 import { useEventStore } from '../store/eventStore';
 import {
   addComment,
@@ -76,6 +76,8 @@ import {
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
 import { TourTarget, useTour } from './onboarding/TourProvider';
 import { getPremiumName, getPremiumImage } from '../utils/userUtils';
+import { scheduleAdminEventReviewNotification } from '../services/notificationService';
+import { normalizeExternalUrl } from '../services/url';
 
 type PingCategory =
   | 'Free Food'
@@ -98,6 +100,7 @@ interface FeaturedEvent {
   startTime: string;
   endTime?: string | null;
   link?: string | null;
+  googleReviewUrl?: string | null;
   locationLat?: number | null;
   locationLng?: number | null;
   categories?: Record<string, number>;
@@ -271,7 +274,9 @@ export function CampusPingsScreen() {
   const navigation = useNavigation<any>();
   const { user } = useUser();
   const scheduleEvent = useEventStore((state) => state.scheduleEvent);
+  const removeScheduledEvent = useEventStore((state) => state.removeScheduledEvent);
   const saveEvent = useEventStore((state) => state.saveEvent);
+  const unsaveEvent = useEventStore((state) => state.unsaveEvent);
 
   const directory = useMemo(() => buildCampusDirectory(), []);
   const locationLookup = useMemo(
@@ -318,6 +323,7 @@ export function CampusPingsScreen() {
   const [isPosting, setIsPosting] = useState(false);
 
   const [activeFeaturedEvent, setActiveFeaturedEvent] = useState<FeaturedEvent | null>(null);
+  const [rsvpBanner, setRsvpBanner] = useState<string | null>(null);
 
   const locationSuggestions = useMemo(() => {
     const query = locationQuery.trim().toLowerCase();
@@ -379,9 +385,7 @@ export function CampusPingsScreen() {
         params.set('clerk_id', user.id);
       }
 
-      const res = await fetch(`${API_URL}/campus/events?${params.toString()}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await requestJson(`/campus/events?${params.toString()}`);
       const events = Array.isArray(data) ? data : Array.isArray(data?.events) ? data.events : [];
       const nextEvents = events.map((event: any) => ({
         id: String(event.event_id),
@@ -392,6 +396,7 @@ export function CampusPingsScreen() {
         startTime: event.start_time,
         endTime: event.end_time,
         link: event.link || event.source_url || null,
+        googleReviewUrl: event.google_review_url || null,
         locationLat: event.location_lat ?? null,
         locationLng: event.location_lng ?? null,
         categories: event.categories || undefined,
@@ -556,21 +561,6 @@ export function CampusPingsScreen() {
       resetComposer();
       await loadUserPings();
 
-      // Demo Social Notification: Wait 15 seconds then notify of a simulated upvote
-      const prefs = useAppShellStore.getState();
-      if (prefs.notificationsEnabled && prefs.pingNotifications) {
-        setTimeout(async () => {
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: "Social Ping!",
-              body: `Someone just upvoted your ping: "${composerTitle}"!`,
-              data: { type: 'social' },
-              sound: true,
-            },
-            trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 15 },
-          });
-        }, 1000);
-      }
     } catch (error: any) {
       console.error('[Pings] create failed', error);
       Alert.alert('Could not post ping', error?.message || 'Something went wrong while posting your ping.');
@@ -734,6 +724,14 @@ export function CampusPingsScreen() {
     [locationLookup, saveEvent, scheduleEvent],
   );
 
+  const removeFeaturedEventFromPlans = useCallback(
+    (event: FeaturedEvent) => {
+      removeScheduledEvent(`featured-${event.id}`);
+      unsaveEvent(`featured-${event.id}`);
+    },
+    [removeScheduledEvent, unsaveEvent],
+  );
+
   const handleFeaturedEventRsvp = useCallback(
     async (event: FeaturedEvent) => {
       if (!user?.id) {
@@ -742,31 +740,48 @@ export function CampusPingsScreen() {
       }
 
       try {
-        await fetch(`${API_URL}/campus/events/rsvp`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            clerk_id: user.id,
-            event_id: event.id,
-            response: 'going',
-          }),
+        const isRemoving = event.rsvpStatus === 'going';
+        await saveCampusEventRsvp({
+          clerk_id: user.id,
+          event_id: event.id,
+          response: isRemoving ? 'none' : 'going',
         });
 
-        saveFeaturedEventToPlans(event);
+        const prefs = useAppShellStore.getState();
+        if (!isRemoving && prefs.notificationsEnabled && prefs.eventNotifications && event.isAdminEvent && event.endTime) {
+          await scheduleAdminEventReviewNotification(
+            event.title,
+            event.location,
+            new Date(event.endTime),
+            event.googleReviewUrl,
+            event.id,
+          );
+        }
+
+        if (isRemoving) {
+          removeFeaturedEventFromPlans(event);
+        } else {
+          saveFeaturedEventToPlans(event);
+        }
         setFeaturedEvents((current) =>
           current.map((entry) =>
-            entry.id === event.id ? { ...entry, rsvpStatus: 'going' } : entry,
+            entry.id === event.id ? { ...entry, rsvpStatus: isRemoving ? 'none' : 'going' } : entry,
           ),
         );
         setActiveFeaturedEvent((current) =>
-          current?.id === event.id ? { ...current, rsvpStatus: 'going' } : current,
+          current?.id === event.id ? { ...current, rsvpStatus: isRemoving ? 'none' : 'going' } : current,
         );
+        const successMessage = isRemoving
+          ? `${event.title} was removed from your plans.`
+          : `${event.title} is in your plans now.`;
+        setRsvpBanner(successMessage);
+        Alert.alert(isRemoving ? 'RSVP removed' : 'RSVP saved', successMessage);
       } catch (error) {
         console.warn('[Pings] Failed to RSVP for featured event', error);
-        Alert.alert('RSVP failed', 'We could not save your RSVP right now.');
+        Alert.alert('RSVP failed', 'We could not update your RSVP right now.');
       }
     },
-    [saveFeaturedEventToPlans, user?.id],
+    [removeFeaturedEventFromPlans, saveFeaturedEventToPlans, user?.id],
   );
 
   const handleFeaturedEventShare = useCallback((event: FeaturedEvent) => {
@@ -784,48 +799,85 @@ export function CampusPingsScreen() {
   }, []);
 
   const openFeaturedEventLink = useCallback(async (event: FeaturedEvent) => {
-    if (!event.link) return;
+    const normalizedUrl = normalizeExternalUrl(event.link);
+    if (!normalizedUrl) return;
     try {
-      await Linking.openURL(event.link);
+      await Linking.openURL(normalizedUrl);
     } catch (error) {
       console.warn('[Pings] Failed to open featured event link', error);
+      Alert.alert('Link unavailable', 'We could not open the event link. Please ask the organizer to verify it.');
     }
   }, []);
 
   const renderFeaturedEvent = ({ item }: { item: FeaturedEvent }) => {
     const meta = categoryMeta(mapOfficialEventCategory(item));
     const FeaturedIcon = meta.Icon;
+    const isRsvped = item.rsvpStatus === 'going';
     return (
-      <Pressable
-        style={[styles.featuredCard, { borderColor: `${meta.accent}30` }]}
-        onPress={() => setActiveFeaturedEvent(item)}
-      >
-        <LinearGradient
-          colors={[`${meta.accent}F2`, `${meta.accent}99`]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.featuredVisual}
-        >
-          <View style={styles.featuredCardTopRow}>
-            <View style={styles.featuredVisualChip}>
-              <Text style={styles.featuredVisualChipText}>{mapOfficialEventCategory(item)}</Text>
+      <View style={[styles.featuredCard, { borderColor: `${meta.accent}30` }]}>
+        <Pressable onPress={() => setActiveFeaturedEvent(item)}>
+          <LinearGradient
+            colors={[`${meta.accent}F2`, `${meta.accent}99`]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.featuredVisual}
+          >
+            <View style={styles.featuredCardTopRow}>
+              <View style={styles.featuredVisualChip}>
+                <Text style={styles.featuredVisualChipText}>{mapOfficialEventCategory(item)}</Text>
+              </View>
+              <FeaturedIcon size={20} color="#FFFFFF" />
             </View>
-            <FeaturedIcon size={20} color="#FFFFFF" />
-          </View>
-        </LinearGradient>
+          </LinearGradient>
 
-        <View style={styles.featuredContent}>
-          <Text style={styles.featuredTitle} numberOfLines={2}>
-            {item.title}
-          </Text>
-          <Text style={styles.featuredMeta}>{formatStartLabel(item.startTime)}</Text>
-          <Text style={styles.featuredMeta} numberOfLines={1}>
-            {getCanonicalLocationName(item.location)}
-          </Text>
+          <View style={styles.featuredContent}>
+            <Text style={styles.featuredTitle} numberOfLines={2}>
+              {item.title}
+            </Text>
+            <Text style={styles.featuredMeta}>{formatStartLabel(item.startTime)}</Text>
+            <Text style={styles.featuredMeta} numberOfLines={1}>
+              {getCanonicalLocationName(item.location)}
+            </Text>
+          </View>
+        </Pressable>
+
+        <View style={styles.featuredFooter}>
+          <Pressable
+            style={[styles.featuredRsvpButton, isRsvped && styles.featuredRsvpButtonSaved]}
+            onPress={() => handleFeaturedEventRsvp(item)}
+          >
+            <CalendarDays size={14} color={isRsvped ? COLORS.textPrimary : '#FFFFFF'} />
+            <Text
+              style={[styles.featuredRsvpButtonText, isRsvped && styles.featuredRsvpButtonTextSaved]}
+              numberOfLines={!item.isAdminEvent && !isRsvped ? 2 : 1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+            >
+              {item.isAdminEvent
+                ? isRsvped
+                  ? "You're in"
+                  : 'RSVP'
+                : isRsvped
+                  ? 'Added'
+                  : 'Add'}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={styles.featuredDetailsButton}
+            onPress={() => setActiveFeaturedEvent(item)}
+          >
+            <Text style={styles.featuredDetailsButtonText}>Details</Text>
+          </Pressable>
         </View>
-      </Pressable>
+      </View>
     );
   };
+
+  useEffect(() => {
+    if (!rsvpBanner) return undefined;
+    const timeout = setTimeout(() => setRsvpBanner(null), 2800);
+    return () => clearTimeout(timeout);
+  }, [rsvpBanner]);
   
   const handleReportPing = (item: any) => {
     Alert.alert(
@@ -1079,6 +1131,11 @@ export function CampusPingsScreen() {
           <View style={styles.sectionRow}>
             <Text style={styles.sectionTitle}>Featured</Text>
           </View>
+          {rsvpBanner ? (
+            <View style={styles.rsvpBanner}>
+              <Text style={styles.rsvpBannerText}>{rsvpBanner}</Text>
+            </View>
+          ) : null}
           <FlatList
             horizontal
             data={featuredCards}
@@ -1366,8 +1423,25 @@ export function CampusPingsScreen() {
                       }
                     >
                       <CalendarDays size={16} color="#FFFFFF" />
-                      <Text style={styles.primaryActionLabel}>
-                        {activeFeaturedEvent?.rsvpStatus === 'going' ? 'RSVP saved' : 'RSVP'}
+                      <Text
+                        style={styles.primaryActionLabel}
+                        numberOfLines={
+                          activeFeaturedEvent?.isAdminEvent
+                            ? 1
+                            : activeFeaturedEvent?.rsvpStatus === 'going'
+                              ? 1
+                              : 2
+                        }
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.75}
+                      >
+                        {activeFeaturedEvent?.isAdminEvent
+                          ? activeFeaturedEvent?.rsvpStatus === 'going'
+                            ? 'Remove RSVP'
+                            : 'RSVP'
+                          : activeFeaturedEvent?.rsvpStatus === 'going'
+                            ? 'Remove from Schedule'
+                            : 'Add'}
                       </Text>
                     </Pressable>
                     <Pressable
@@ -1615,6 +1689,53 @@ const getStyles = (COLORS: any) =>
       paddingHorizontal: 12,
       paddingVertical: 12,
     },
+    featuredFooter: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+      paddingTop: 2,
+    },
+    featuredRsvpButton: {
+      flex: 1,
+      minHeight: 40,
+      borderRadius: 12,
+      backgroundColor: COLORS.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 6,
+      paddingHorizontal: 12,
+    },
+    featuredRsvpButtonSaved: {
+      backgroundColor: `${COLORS.primary}14`,
+      borderWidth: 1,
+      borderColor: `${COLORS.primary}26`,
+    },
+    featuredRsvpButtonText: {
+      color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '800',
+    },
+    featuredRsvpButtonTextSaved: {
+      color: COLORS.textPrimary,
+    },
+    featuredDetailsButton: {
+      minHeight: 40,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.background,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 12,
+    },
+    featuredDetailsButtonText: {
+      color: COLORS.textSecondary,
+      fontSize: 13,
+      fontWeight: '700',
+    },
     featuredTitle: {
       color: COLORS.textPrimary,
       fontSize: 15,
@@ -1626,6 +1747,22 @@ const getStyles = (COLORS: any) =>
       color: COLORS.textSecondary,
       fontSize: 11,
       fontWeight: '600',
+    },
+    rsvpBanner: {
+      marginLeft: 18,
+      marginBottom: 10,
+      alignSelf: 'flex-start',
+      borderRadius: 999,
+      backgroundColor: '#EAF8EE',
+      borderWidth: 1,
+      borderColor: '#B9E8C4',
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    rsvpBannerText: {
+      color: '#17663A',
+      fontSize: 12,
+      fontWeight: '800',
     },
     pingCard: {
       marginTop: 16,

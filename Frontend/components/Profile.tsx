@@ -25,6 +25,7 @@ import {
   GraduationCap,
   LayoutGrid,
   LibraryBig,
+  LogIn,
   LogOut,
   Palette,
   Search,
@@ -39,6 +40,7 @@ import {
   Scale,
   UserX,
   Bell,
+  LifeBuoy,
 } from 'lucide-react-native';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
@@ -46,10 +48,14 @@ import * as Linking from 'expo-linking';
 
 import { fetchCampusOverview } from '../api/client';
 import { PARKING_PERMIT_OPTIONS, useAppShellStore } from '../store/appShellStore';
+import { useSessionStore } from '../store/sessionStore';
 import { deleteAccount, getBlockedUsers, unblockUser } from '../services/streamFeeds';
 import { useTour, TourTarget } from './onboarding/TourProvider';
 import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme } from './SharedUI';
+import { navigateToLogin } from '../utils/guestAccess';
+
+const SUPPORT_CONTACT_URL = 'mailto:tejtalluri1@gmail.com?subject=MaroonLife%20Support';
 
 const SETTINGS_TABS = [
   { key: 'personal', label: 'Personal', icon: UserRound },
@@ -134,6 +140,8 @@ export function Profile() {
   const isFocused = useIsFocused();
   const { user } = useUser();
   const { signOut } = useClerk();
+  const isGuest = useSessionStore((state) => state.isGuest);
+  const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
   const {
     COLORS,
     theme,
@@ -193,7 +201,7 @@ export function Profile() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!user || !isFocused) return;
+    if (!user || !isFocused || isGuest) return;
 
     setLoadingAcademicStatus(true);
     fetchCampusOverview(user.id)
@@ -212,16 +220,16 @@ export function Profile() {
     return () => {
       cancelled = true;
     };
-  }, [isFocused, user]);
+  }, [isFocused, isGuest, user]);
 
   useEffect(() => {
-    if (activeTab === 'personal' && user) {
+    if (activeTab === 'personal' && user && !isGuest) {
         loadBlockedUsers();
     }
-  }, [activeTab, user]);
+  }, [activeTab, isGuest, user]);
 
   const loadBlockedUsers = async () => {
-    if (!user) return;
+    if (!user || isGuest) return;
     setLoadingBlocked(true);
     try {
         const data = await getBlockedUsers(user.id);
@@ -315,7 +323,24 @@ export function Profile() {
   };
 
   const handleLogout = async () => {
+    resetSessionMode();
     await signOut();
+  };
+
+  const handleLogin = () => {
+    navigateToLogin(navigation);
+  };
+
+  const openGuestRecCapacity = () => {
+    const rootNav =
+      navigation.getParent?.('RootStack') || navigation.getParent?.() || navigation;
+    rootNav.navigate('Main', {
+      screen: 'Places',
+      params: {
+        initialLayer: 'Rec',
+        focusToken: 'guest-rec',
+      },
+    });
   };
 
   const handleDeleteAccount = () => {
@@ -331,6 +356,7 @@ export function Profile() {
             if (!user) return;
             try {
               await deleteAccount(user.id);
+              resetSessionMode();
               await signOut();
               Alert.alert('Account Deleted', 'Your data has been permanently removed.');
             } catch (err) {
@@ -351,7 +377,7 @@ export function Profile() {
             <Text style={styles.title}>Personal</Text>
           </View>
           <View style={styles.heroBadge}>
-            <UserRound size={18} color="#FFFFFF" />
+            <UserRound size={18} color={COLORS.textPrimary} />
           </View>
         </View>
 
@@ -365,7 +391,7 @@ export function Profile() {
               )}
             </View>
             <View style={styles.cameraBadge}>
-              <Camera size={14} color="#FFFFFF" />
+              <Camera size={14} color={COLORS.textPrimary} />
             </View>
           </Pressable>
           <View style={{ flex: 1 }}>
@@ -498,16 +524,16 @@ export function Profile() {
       </Pressable>
 
       <Pressable style={styles.logoutButton} onPress={handleLogout}>
-        <LogOut size={18} color="#F3F1ED" />
+        <LogOut size={18} color={COLORS.textPrimary} />
         <Text style={styles.logoutText}>Log Out</Text>
       </Pressable>
 
       <Pressable 
-        style={[styles.logoutButton, { backgroundColor: '#441111', marginTop: 8, borderColor: '#772222', borderWidth: 1 }]} 
+        style={[styles.logoutButton, { backgroundColor: isDark ? '#441111' : '#FFF0F0', marginTop: 8, borderColor: isDark ? '#772222' : '#FFCCCC', borderWidth: 1 }]} 
         onPress={handleDeleteAccount}
       >
-        <Trash2 size={18} color="#E56B6B" />
-        <Text style={[styles.logoutText, { color: '#E56B6B' }]}>Delete Account</Text>
+        <Trash2 size={18} color={isDark ? '#E56B6B' : '#CC0000'} />
+        <Text style={[styles.logoutText, { color: isDark ? '#E56B6B' : '#CC0000' }]}>Delete Account</Text>
       </Pressable>
     </>
   );
@@ -802,34 +828,44 @@ export function Profile() {
 
       {[
         {
+          key: 'annex',
+          title: 'Library Services',
+          icon: LibraryBig,
+          iconColor: '#00CFC7',
+          iconBg: 'rgba(0, 207, 199, 0.14)',
+          action: () => navigation.navigate('AnnexHub'),
+          internal: true,
+        },
+        {
           key: 'howdy',
           title: 'Howdy Portal',
           icon: GraduationCap,
+          iconColor: COLORS.primary,
+          iconBg: 'rgba(80,0,0,0.12)',
           action: () => openExternal('https://howdy.tamu.edu/main/home/card-view'),
         },
         {
           key: 'hire',
           title: 'Hire Aggies',
           icon: BriefcaseBusiness,
+          iconColor: '#3B82F6',
+          iconBg: 'rgba(59,130,246,0.12)',
           action: () => openExternal('https://tamu-csm.symplicity.com/students/index.php?signin_tab=0'),
-        },
-        {
-          key: 'annex',
-          title: 'The Annex',
-          icon: Building2,
-          action: () => navigation.navigate('AnnexHub'),
-          internal: true,
         },
         {
           key: 'transact',
           title: 'Transact eAccounts',
           icon: Wallet,
+          iconColor: '#F59E0B',
+          iconBg: 'rgba(245, 158, 11, 0.15)',
           action: () => openExternal('https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx'),
         },
         {
           key: 'rec',
           title: 'Rec Center Hours',
           icon: Dumbbell,
+          iconColor: '#10B981',
+          iconBg: 'rgba(16,185,129,0.15)',
           action: () => navigation.navigate('RecreationFacilities'),
         },
       ].map((resource, index, array) => {
@@ -840,8 +876,8 @@ export function Profile() {
             style={[styles.toolRow, index === array.length - 1 && styles.toolRowLast]}
             onPress={resource.action}
           >
-            <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-              <Icon size={20} color="#F3F1ED" />
+            <View style={[styles.toolIconBg, { backgroundColor: resource.iconBg || 'rgba(243,241,237,0.12)' }]}>
+              <Icon size={20} color={resource.iconColor || COLORS.textPrimary} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.toolTitle}>{resource.title}</Text>
@@ -880,7 +916,112 @@ export function Profile() {
         </View>
         <ExternalLink size={18} color={COLORS.textTertiary} />
       </Pressable>
+
+      <Pressable
+        style={[styles.toolRow, styles.toolRowLast, { marginTop: 12 }]}
+        onPress={() => openExternal(SUPPORT_CONTACT_URL)}
+      >
+        <View style={[styles.toolIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+          <LifeBuoy size={20} color="#F59E0B" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.toolTitle}>Contact Support</Text>
+        </View>
+        <ExternalLink size={18} color={COLORS.textTertiary} />
+      </Pressable>
     </View>
+  );
+
+  const renderGuestView = () => (
+    <>
+      <View style={styles.heroCard}>
+        <View style={styles.heroHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.eyebrow}>Guest Mode</Text>
+            <Text style={styles.title}>Browse Campus Fast</Text>
+          </View>
+          <View style={styles.heroBadge}>
+            <UserRound size={18} color={COLORS.textPrimary} />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>What You Can Do</Text>
+
+        <View style={styles.toolRow}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(80,0,0,0.12)' }]}>
+            <GraduationCap size={20} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Browse campus events</Text>
+          </View>
+        </View>
+
+        <View style={styles.toolRow}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(59,130,246,0.12)' }]}>
+            <Compass size={20} color="#3B82F6" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Use Places and view Rec capacity</Text>
+          </View>
+        </View>
+
+        <View style={[styles.toolRow, styles.toolRowLast]}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(249,115,22,0.12)' }]}>
+            <ExternalLink size={20} color="#F97316" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Share events with other people</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Log In For More</Text>
+
+        <Pressable style={styles.toolRow} onPress={openGuestRecCapacity}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(34,197,94,0.14)' }]}>
+            <Dumbbell size={20} color="#22C55E" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Open Rec Capacity in Places</Text>
+          </View>
+          <ChevronRight size={18} color={COLORS.textTertiary} />
+        </Pressable>
+
+        <Pressable
+          style={[styles.toolRow, styles.toolRowLast]}
+          onPress={() => openExternal('https://www.termsfeed.com/live/4889a318-ae78-48e2-975d-2eddfe043866')}
+        >
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 199, 89, 0.15)' }]}>
+            <Shield size={20} color="#34C759" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Privacy Policy</Text>
+          </View>
+          <ExternalLink size={18} color={COLORS.textTertiary} />
+        </Pressable>
+
+        <Pressable
+          style={[styles.toolRow, styles.toolRowLast, { marginTop: 12 }]}
+          onPress={() => openExternal(SUPPORT_CONTACT_URL)}
+        >
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+            <LifeBuoy size={20} color="#F59E0B" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Contact Support</Text>
+          </View>
+          <ExternalLink size={18} color={COLORS.textTertiary} />
+        </Pressable>
+      </View>
+
+      <Pressable style={styles.logoutButton} onPress={handleLogin}>
+        <LogIn size={18} color={COLORS.textPrimary} />
+        <Text style={styles.logoutText}>Log In</Text>
+      </Pressable>
+    </>
   );
 
   return (
@@ -901,21 +1042,27 @@ export function Profile() {
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.tabShell}>
-          <PillTabs
-            items={SETTINGS_TABS.map((tab) => ({ key: tab.key, label: tab.label, icon: tab.icon }))}
-            activeKey={activeTab}
-            onChange={(key) => setActiveTab(key as SettingsTabKey)}
-            floating={false}
-            compact={false}
-            activeTextMode="always"
-            layout="stacked"
-          />
-        </View>
+        {isGuest ? (
+          renderGuestView()
+        ) : (
+          <>
+            <View style={styles.tabShell}>
+              <PillTabs
+                items={SETTINGS_TABS.map((tab) => ({ key: tab.key, label: tab.label, icon: tab.icon }))}
+                activeKey={activeTab}
+                onChange={(key) => setActiveTab(key as SettingsTabKey)}
+                floating={false}
+                compact={false}
+                activeTextMode="always"
+                layout="stacked"
+              />
+            </View>
 
-        {activeTab === 'personal' ? renderPersonalTab() : null}
-        {activeTab === 'layout' ? renderLayoutTab() : null}
-        {activeTab === 'resources' ? renderResourcesTab() : null}
+            {activeTab === 'personal' ? renderPersonalTab() : null}
+            {activeTab === 'layout' ? renderLayoutTab() : null}
+            {activeTab === 'resources' ? renderResourcesTab() : null}
+          </>
+        )}
 
         <View style={{ height: 120 }} />
       </ScrollView>
@@ -971,9 +1118,9 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       borderRadius: 16,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(12,12,14,0.9)',
+      backgroundColor: isDark ? 'rgba(12,12,14,0.9)' : 'rgba(80,0,0,0.06)',
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.08)',
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'transparent',
     },
     tabShell: {
       marginTop: 2,
@@ -993,7 +1140,7 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       width: 74,
       height: 74,
       borderRadius: 37,
-      backgroundColor: 'rgba(12,12,14,0.9)',
+      backgroundColor: isDark ? 'rgba(12,12,14,0.9)' : 'rgba(80,0,0,0.06)',
       alignItems: 'center',
       justifyContent: 'center',
       overflow: 'hidden',
@@ -1005,7 +1152,7 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
     avatarText: {
       fontSize: 26,
       fontWeight: '800',
-      color: '#FFFFFF',
+      color: COLORS.textPrimary,
     },
     cameraBadge: {
       position: 'absolute',
@@ -1016,7 +1163,7 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(12,12,14,0.95)',
+      backgroundColor: isDark ? 'rgba(12,12,14,0.95)' : 'rgba(255,255,255,0.9)',
       borderWidth: 2,
       borderColor: COLORS.background,
     },

@@ -1,7 +1,7 @@
-from fastapi import FastAPI, HTTPException, Body, Query
+from fastapi import FastAPI, HTTPException, Body, Query, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import os
 import psycopg
 from dotenv import load_dotenv
@@ -22,8 +22,22 @@ from routers.admin import router as admin_router
 from services import course_service, schedule_service, user_service
 from services import cache_service, snapshot_jobs
 from models.search import CourseSearchRequest
+from auth.clerk_middleware import require_auth, ensure_matching_user
 
 app = FastAPI()
+
+raw_cors_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
+if raw_cors_origins.strip():
+    cors_allow_origins = [origin.strip() for origin in raw_cors_origins.split(",") if origin.strip()]
+else:
+    cors_allow_origins = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:8081",
+        "http://127.0.0.1:8081",
+        "http://localhost:19006",
+        "http://127.0.0.1:19006",
+    ]
 
 
 @app.on_event("startup")
@@ -43,11 +57,21 @@ async def stop_background_snapshot_jobs():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_allow_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
 
 app.include_router(chat_router)
 app.include_router(traffic_router, prefix="/traffic", tags=["Traffic"])
@@ -76,8 +100,9 @@ def read_root():
 import requests as http_requests
 
 @app.delete("/api/account")
-def delete_account(user_id: str = Query(...)):
+def delete_account(user_id: str = Query(...), auth_user_id: str = Depends(require_auth)):
     """Permanently delete user account from Clerk and PostgreSQL."""
+    ensure_matching_user(auth_user_id, user_id, detail="You can only delete your own account")
     clerk_secret = os.environ.get("CLERK_SECRET_KEY")
     if not clerk_secret:
         raise HTTPException(status_code=500, detail="Clerk secret key not configured")
@@ -112,14 +137,16 @@ class SyncUserRequest(BaseModel):
     profile_image_url: Optional[str] = None
 
 @app.post("/users/sync")
-def sync_user(req: SyncUserRequest = Body(...)):
+def sync_user(req: SyncUserRequest = Body(...), auth_user_id: str = Depends(require_auth)):
     """Create or update a user row when they sign in."""
+    ensure_matching_user(auth_user_id, req.clerk_id, detail="You can only sync your own profile")
     return user_service.sync_user(req.clerk_id, req.email, req.full_name, req.profile_image_url)
 
 
 @app.post("/users/{clerk_id}/tos/accept/")
-def accept_tos(clerk_id: str):
+def accept_tos(clerk_id: str, auth_user_id: str = Depends(require_auth)):
     """Mark that the user has accepted the Terms of Service."""
+    ensure_matching_user(auth_user_id, clerk_id, detail="You can only update your own Terms of Service")
     print(f"DEBUG: accept_tos called for {clerk_id}")
     try:
         user_service.accept_tos(clerk_id)
@@ -133,8 +160,9 @@ def accept_tos(clerk_id: str):
 
 
 @app.get("/users/{clerk_id}")
-def get_user(clerk_id: str):
+def get_user(clerk_id: str, auth_user_id: str = Depends(require_auth)):
     """Return full user record (profile + schedules)."""
+    ensure_matching_user(auth_user_id, clerk_id, detail="You can only view your own profile")
     user = user_service.get_profile(clerk_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -142,8 +170,9 @@ def get_user(clerk_id: str):
 
 @app.post("/users/{clerk_id}/tour/complete")
 @app.post("/users/{clerk_id}/tour/complete/")
-def complete_tour(clerk_id: str):
+def complete_tour(clerk_id: str, auth_user_id: str = Depends(require_auth)):
     """Mark that the user has completed the interactive tour."""
+    ensure_matching_user(auth_user_id, clerk_id, detail="You can only update your own tour state")
     print(f"DEBUG: complete_tour called for {clerk_id}")
     try:
         user_service.complete_tour(clerk_id)
@@ -162,15 +191,11 @@ class UpdateProfileRequest(BaseModel):
     show_online_first: Optional[bool] = None
 
 @app.put("/users/{clerk_id}/profile")
-def update_profile(clerk_id: str, req: UpdateProfileRequest = Body(...)):
+def update_profile(clerk_id: str, req: UpdateProfileRequest = Body(...), auth_user_id: str = Depends(require_auth)):
     """Update profile preferences for a user."""
+    ensure_matching_user(auth_user_id, clerk_id, detail="You can only update your own profile")
     fields = {k: v for k, v in req.dict().items() if v is not None}
     result = user_service.update_profile(clerk_id, fields)
-    if not result:
-        raise HTTPException(status_code=404, detail="User not found")
-    return result
-
-
     if not result:
         raise HTTPException(status_code=404, detail="User not found")
     return result
@@ -221,20 +246,22 @@ def generate_schedules(course_ids: List[str] = Query(..., description="List of c
 
 class CreateScheduleRequest(BaseModel):
     user_id: str
-    name: str
-    term_code: str
+    name: str = Field(..., min_length=1, max_length=80)
+    term_code: str = Field(..., min_length=4, max_length=16)
 
 @app.post("/schedules")
-def create_schedule(req: CreateScheduleRequest = Body(...)):
+def create_schedule(req: CreateScheduleRequest = Body(...), auth_user_id: str = Depends(require_auth)):
     """Create a new prospective schedule for a user."""
+    ensure_matching_user(auth_user_id, req.user_id, detail="You can only create schedules for your own account")
     try:
         return user_service.create_schedule(req.user_id, req.name, req.term_code)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.delete("/schedules/{schedule_id}")
-def delete_schedule(schedule_id: str, user_id: str = Query(...)):
+def delete_schedule(schedule_id: str, user_id: str = Query(...), auth_user_id: str = Depends(require_auth)):
     """Delete a user's schedule."""
+    ensure_matching_user(auth_user_id, user_id, detail="You can only delete your own schedules")
     try:
         success = user_service.delete_schedule(user_id, schedule_id)
         if not success:
@@ -253,8 +280,9 @@ class AddCourseRequest(BaseModel):
     section_id: str
 
 @app.post("/user/schedule/add")
-def add_section(req: AddCourseRequest = Body(...)):
+def add_section(req: AddCourseRequest = Body(...), auth_user_id: str = Depends(require_auth)):
     """Add course to user profile data (update StudentSectionProfessor equivalent)."""
+    ensure_matching_user(auth_user_id, req.user_id, detail="You can only edit your own schedules")
     try:
         return user_service.add_section(req.user_id, req.schedule_id, req.section_id)
     except ValueError as e:
@@ -268,8 +296,9 @@ class RemoveCourseRequest(BaseModel):
     section_id: str
 
 @app.delete("/user/schedule/remove")
-def remove_section(req: RemoveCourseRequest = Body(...)):
+def remove_section(req: RemoveCourseRequest = Body(...), auth_user_id: str = Depends(require_auth)):
     """Remove unwanted courses or specific sections from the user's current schedule."""
+    ensure_matching_user(auth_user_id, req.user_id, detail="You can only edit your own schedules")
     try:
         return user_service.remove_section(req.user_id, req.schedule_id, req.section_id)
     except ValueError as e:
@@ -280,8 +309,9 @@ def remove_section(req: RemoveCourseRequest = Body(...)):
 # --- View schedules ---
 
 @app.get("/user/schedule")
-def view_courses(user_id: str):
+def view_courses(user_id: str, auth_user_id: str = Depends(require_auth)):
     """Send course data to frontend to be displayed in schedule format. Limit to user's retrieved planners."""
+    ensure_matching_user(auth_user_id, user_id, detail="You can only view your own schedules")
     from repositories import course_repository
     schedules = user_service.get_schedules(user_id)
 

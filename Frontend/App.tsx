@@ -49,15 +49,17 @@ import StreakHubScreen from './components/dining/StreakHubScreen';
 
 import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio } from 'lucide-react-native';
 import { GlassPillTabBar } from './components/GlassPillTabBar';
-import { getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
+import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
+import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
 
-import { syncUser, fetchUserProfile } from './api/client';
+import { syncUser, fetchUserProfile, requestJson, setApiAuthTokenProvider } from './api/client';
 import { TOSScreen } from './components/TOSScreen';
 import { NotificationPromptScreen } from './components/onboarding/NotificationPromptScreen';
 
 import { AdminApplicationScreen } from './components/admin/AdminApplicationScreen';
 import { AdminPortal } from './components/admin/AdminPortal';
+import { PendingReviewInterceptor } from './components/events/PendingReviewInterceptor';
 import { API_URL } from './config';
 
 function UserSync({ children }: { children: React.ReactNode }) {
@@ -88,6 +90,20 @@ function UserSync({ children }: { children: React.ReactNode }) {
   }, [user?.id, user?.primaryEmailAddress?.emailAddress, user?.fullName, user?.imageUrl]);
 
   return <>{children}</>;
+}
+
+function ApiAuthBridge() {
+  const { getToken } = useAuth();
+
+  React.useLayoutEffect(() => {
+    setApiAuthTokenProvider(async () => {
+      const token = await getToken();
+      return token || null;
+    });
+    return () => setApiAuthTokenProvider(null);
+  }, [getToken]);
+
+  return null;
 }
 
 const tokenCache = {
@@ -122,7 +138,15 @@ function MainTabs(props: any) {
   const { COLORS } = useTheme();
   const navItems = useAppShellStore((state) => state.navItems);
   const tabBarMode = useAppShellStore((state) => state.tabBarMode);
-  const visibleNavItems = React.useMemo(() => getOrderedVisibleItems(navItems), [navItems]);
+  const isGuest = useSessionStore((state) => state.isGuest);
+  const visibleNavItems = React.useMemo(() => {
+    if (!isGuest) {
+      return getOrderedVisibleItems(navItems);
+    }
+    return getOrderedItems(navItems)
+      .filter((item) => item.id === 'Dashboard' || item.id === 'Places')
+      .map((item) => ({ ...item, visible: true }));
+  }, [isGuest, navItems]);
 
   const tabScreens = [
     ...visibleNavItems.map((item) => {
@@ -248,6 +272,9 @@ function RootNavigator() {
   const { COLORS } = useTheme();
   const { isSignedIn, isLoaded } = useAuth();
   const { user } = useUser();
+  const isGuest = useSessionStore((state) => state.isGuest);
+  const authMode = useSessionStore((state) => state.authMode);
+  const exitGuestMode = useSessionStore((state) => state.exitGuestMode);
   const isTOSAccepted = useAppShellStore((state) => state.isTOSAccepted);
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const isNotificationPrompted = useAppShellStore((state) => state.isNotificationPrompted);
@@ -257,118 +284,131 @@ function RootNavigator() {
 
   React.useEffect(() => {
     if (isSignedIn && user?.id) {
-       fetch(`${API_URL}/admin/status?clerk_id=${user.id}`)
-         .then(r => r.json())
+       requestJson(`/admin/status?clerk_id=${encodeURIComponent(user.id)}`)
          .then(data => setIsAdmin(data.is_admin))
          .catch(err => setIsAdmin(false));
     }
   }, [isSignedIn, user?.id]);
 
+  React.useEffect(() => {
+    if (isSignedIn && isGuest) {
+      exitGuestMode();
+    }
+  }, [exitGuestMode, isGuest, isSignedIn]);
+
   if (!isLoaded) {
     return null;
   }
 
+  let content: React.ReactNode;
+
   if (isSignedIn && !isTOSAccepted && user?.id) {
-    return (
+    content = (
       <TOSScreen 
         clerkId={user.id} 
         onAccepted={() => setTOSAccepted(true)} 
       />
     );
-  }
-
-  if (isSignedIn && isTOSAccepted && !isNotificationPrompted) {
-    return (
+  } else if (isSignedIn && isTOSAccepted && !isNotificationPrompted) {
+    content = (
       <NotificationPromptScreen 
         onDone={() => setNotificationPrompted(true)} 
       />
     );
+  } else {
+    const hasAppAccess = isSignedIn || isGuest;
+    const isAdminRoute = isSignedIn && authMode === 'admin';
+    const navigatorMode = isAdminRoute ? 'admin' : hasAppAccess ? 'app' : 'auth';
+
+    content = (
+      <Stack.Navigator
+        key={navigatorMode}
+        id="RootStack"
+        screenOptions={{
+          headerShown: false,
+          headerStyle: { backgroundColor: COLORS.background },
+          headerTintColor: COLORS.textPrimary,
+        }}
+      >
+        {isAdminRoute ? (
+            isAdmin === null ? (
+              <Stack.Screen name="AdminLoading" options={{ headerShown: false }}>
+                 {() => <View style={{flex: 1, backgroundColor: COLORS.background}} />}
+              </Stack.Screen>
+            ) : isAdmin ? (
+              <Stack.Screen name="AdminPortal" component={AdminPortal} options={{ headerShown: false }} />
+            ) : (
+              <Stack.Screen name="AdminApply" component={AdminApplicationScreen} options={{ headerShown: false }} />
+            )
+          ) : hasAppAccess ? (
+          <>
+            <Stack.Screen name="Main">
+              {(props) => (
+                <ErrorBoundary name="Main Dashboard">
+                  <MainTabs {...props} />
+                </ErrorBoundary>
+              )}
+            </Stack.Screen>
+            <Stack.Screen name="CourseDetail" component={CourseDetail} options={{ headerShown: true }} />
+
+            <Stack.Screen name="NewCourseSearch" component={NewCourseSearchScreen} options={{ headerShown: true, title: 'Course Search' }} />
+            <Stack.Screen name="NewCourseDetail" component={NewCourseDetailScreen} options={{ headerShown: true, title: 'Course Details' }} />
+            <Stack.Screen name="ScheduleList" component={ScheduleListScreen} options={{ headerShown: true, title: 'My Schedules' }} />
+            <Stack.Screen name="ScheduleDetail" component={ScheduleDetailScreen} options={{ headerShown: true, title: 'Schedule Details' }} />
+            <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
+            <Stack.Screen
+              name="BusTimetable"
+              component={BusTimetableScreen}
+              options={{ headerShown: false, presentation: 'modal' }}
+            />
+            <Stack.Screen name="TransitTripPlanner" component={TransitTripPlannerScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="TransitTripResults" component={TransitTripResultsScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="AnnexHub" component={AnnexHubScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="AnnexLibraryDetail" component={AnnexLibraryDetailScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="AnnexRentalDetail" component={AnnexRentalDetailScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
+            <Stack.Screen
+              name="FullMenu"
+              component={FullMenuScreen}
+              options={{ headerShown: false, presentation: 'modal' }}
+            />
+            <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: false }} />
+            <Stack.Screen name="DiningSettings" component={DiningSettingsScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="MealOptimizer" component={MealOptimizerScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="MealTracker" component={MealTrackerScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="RetailSwipes" component={RetailSwipesScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="FoodDatabase" component={FoodDatabaseScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="WeightTracker" component={WeightTrackerScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="TrackerHub" component={TrackerHubScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="StreakHub" component={StreakHubScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="GradesScreen" component={GradesScreen} options={{ headerShown: true, title: 'Grade Distributions' }} />
+            <Stack.Screen name="GuestLogin">
+              {(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />}
+            </Stack.Screen>
+          </>
+        ) : (
+          <>
+            <Stack.Screen name="AuthLanding">
+              {() => <AuthLanding />}
+            </Stack.Screen>
+            <Stack.Screen name="Login">
+              {(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />}
+            </Stack.Screen>
+          </>
+        )}
+      </Stack.Navigator>
+    );
   }
 
-  const navigator = (
-    <Stack.Navigator
-      id="RootStack"
-      screenOptions={{
-        headerShown: false,
-        headerStyle: { backgroundColor: COLORS.background },
-        headerTintColor: COLORS.textPrimary,
-      }}
-    >
-      {isSignedIn ? (
-        !user?.primaryEmailAddress?.emailAddress?.endsWith('@tamu.edu') ? (
-          isAdmin === null ? (
-            <Stack.Screen name="AdminLoading" options={{ headerShown: false }}>
-               {() => <View style={{flex: 1, backgroundColor: COLORS.background}} />}
-            </Stack.Screen>
-          ) : isAdmin ? (
-            <Stack.Screen name="AdminPortal" component={AdminPortal} options={{ headerShown: false }} />
-          ) : (
-            <Stack.Screen name="AdminApply" component={AdminApplicationScreen} options={{ headerShown: false }} />
-          )
-        ) : (
-        <>
-          <Stack.Screen name="Main">
-            {(props) => (
-              <ErrorBoundary name="Main Dashboard">
-                <MainTabs {...props} />
-              </ErrorBoundary>
-            )}
-          </Stack.Screen>
-          <Stack.Screen name="CourseDetail" component={CourseDetail} options={{ headerShown: true }} />
-
-          <Stack.Screen name="NewCourseSearch" component={NewCourseSearchScreen} options={{ headerShown: true, title: 'Course Search' }} />
-          <Stack.Screen name="NewCourseDetail" component={NewCourseDetailScreen} options={{ headerShown: true, title: 'Course Details' }} />
-          <Stack.Screen name="ScheduleList" component={ScheduleListScreen} options={{ headerShown: true, title: 'My Schedules' }} />
-          <Stack.Screen name="ScheduleDetail" component={ScheduleDetailScreen} options={{ headerShown: true, title: 'Schedule Details' }} />
-          <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
-          <Stack.Screen
-            name="BusTimetable"
-            component={BusTimetableScreen}
-            options={{ headerShown: false, presentation: 'modal' }}
-          />
-          <Stack.Screen name="TransitTripPlanner" component={TransitTripPlannerScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="TransitTripResults" component={TransitTripResultsScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="EventsCalendar" component={EventsCalendarScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="AnnexHub" component={AnnexHubScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="AnnexLibraryDetail" component={AnnexLibraryDetailScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="AnnexRentalDetail" component={AnnexRentalDetailScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
-          <Stack.Screen
-            name="FullMenu"
-            component={FullMenuScreen}
-            options={{ headerShown: false, presentation: 'modal' }}
-          />
-          <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: false }} />
-          <Stack.Screen name="DiningSettings" component={DiningSettingsScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="MealOptimizer" component={MealOptimizerScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="MealTracker" component={MealTrackerScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="RetailSwipes" component={RetailSwipesScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="FoodDatabase" component={FoodDatabaseScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="WeightTracker" component={WeightTrackerScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="TrackerHub" component={TrackerHubScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="StreakHub" component={StreakHubScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="GradesScreen" component={GradesScreen} options={{ headerShown: true, title: 'Grade Distributions' }} />
-        </>
-        )
-      ) : (
-        <>
-          <Stack.Screen name="AuthLanding">
-            {(props: any) => (
-              <AuthLanding
-                onLoginPress={() => props.navigation.navigate('Login')}
-              />
-            )}
-          </Stack.Screen>
-          <Stack.Screen name="Login">
-            {(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />}
-          </Stack.Screen>
-        </>
-      )}
-    </Stack.Navigator>
+  return (
+    <>
+      <ApiAuthBridge />
+      {isSignedIn ? <UserSync>{content}</UserSync> : content}
+      {isSignedIn && <PendingReviewInterceptor />}
+    </>
   );
-
-  return isSignedIn ? <UserSync>{navigator}</UserSync> : navigator;
 }
 
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';

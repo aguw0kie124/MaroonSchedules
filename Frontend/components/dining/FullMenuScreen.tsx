@@ -19,7 +19,7 @@ import { Card, SectionLabel, Badge } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
 import { PillTabs } from '../PillTabs';
-import { API_URL } from '../../config';
+import { requestJson } from '../../api/client';
 import { getLocalDateString } from '../../services/dateUtils';
 import {
   DiningMealPeriod,
@@ -140,7 +140,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
   const refreshTrackerCounts = useCallback(async () => {
     if (!user) return;
     try {
-      const tracker = await fetch(`${API_URL}/dining/tracker/${user.id}?date=${getLocalDateString()}`).then((response) => response.json());
+      const tracker = await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}?date=${encodeURIComponent(getLocalDateString())}`);
       const entries = Array.isArray(tracker?.entries) ? tracker.entries : [];
       const nextCounts = entries.reduce((acc: Record<string, { count: number; entryIds: number[] }>, entry: any) => {
         if (entry.meal_period !== activeMealPeriod) return acc;
@@ -166,9 +166,8 @@ export default function FullMenuScreen({ navigation, route }: any) {
     const itemKey = buildMenuItemKey(item);
     setSyncingItemKey(itemKey);
     try {
-      await fetch(`${API_URL}/dining/tracker/${user.id}`, {
+      await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           date: getLocalDateString(),
           meal_period: activeMealPeriod,
@@ -195,7 +194,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
 
     setSyncingItemKey(itemKey);
     try {
-      await fetch(`${API_URL}/dining/tracker/${user.id}/${entryId}`, { method: 'DELETE' });
+      await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}/${entryId}`, { method: 'DELETE' });
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await refreshTrackerCounts();
     } catch (trackerError) {
@@ -387,4 +386,3 @@ const s = StyleSheet.create({
     paddingVertical: 4,
   },
 });
-

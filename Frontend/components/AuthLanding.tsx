@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,77 +6,191 @@ import {
   ScrollView,
   Platform,
   SafeAreaView,
+  Alert,
+  Image,
 } from 'react-native';
+import { useOAuth } from '@clerk/clerk-expo';
 import { COLORS, TYPOGRAPHY, SPACING } from '../constants';
 import { Button } from './Button';
-import { GraduationCap } from 'lucide-react-native';
+import * as Linking from 'expo-linking';
+import { useSessionStore } from '../store/sessionStore';
+import { GoogleIcon } from './common/CustomIcons';
 
-interface AuthLandingProps {
-  onLoginPress: () => void;
-}
+const APPLE_LABEL = '\uF8FF';
 
-export function AuthLanding({ onLoginPress }: AuthLandingProps) {
+export function AuthLanding() {
+  const { startOAuthFlow: startGoogleOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
+  const { startOAuthFlow: startAppleOAuthFlow } = useOAuth({ strategy: 'oauth_apple' });
+  const enterGuestMode = useSessionStore((state) => state.enterGuestMode);
+  const exitGuestMode = useSessionStore((state) => state.exitGuestMode);
+  const setAuthMode = useSessionStore((state) => state.setAuthMode);
+  const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
+  const [isLoading, setIsLoading] = useState(false);
+  const [activeFlow, setActiveFlow] = useState<'tamu' | 'admin' | 'apple' | 'adminApple' | null>(null);
+
+  const getAuthErrorMessage = (flow: 'tamu' | 'admin' | 'apple' | 'adminApple', err: any) => {
+    return (
+      err?.errors?.[0]?.longMessage ||
+      err?.errors?.[0]?.message ||
+      err?.message ||
+      (flow === 'admin' || flow === 'adminApple'
+        ? 'Admin sign in failed'
+        : flow === 'apple'
+          ? 'Apple sign in failed'
+          : 'Google sign in failed')
+    );
+  };
+
+  const onOAuthPress = async (flow: 'tamu' | 'admin' | 'apple' | 'adminApple') => {
+    try {
+      exitGuestMode();
+      setAuthMode(flow === 'admin' || flow === 'adminApple' ? 'admin' : 'user');
+      setIsLoading(true);
+      setActiveFlow(flow);
+      const authResult =
+        flow === 'apple' || flow === 'adminApple'
+          ? await startAppleOAuthFlow({
+              redirectUrl: Linking.createURL('/'),
+            })
+          : await startGoogleOAuthFlow({
+              redirectUrl: Linking.createURL('/'),
+            });
+      const { createdSessionId, setActive } = authResult;
+      if (createdSessionId && setActive) {
+        await setActive({ session: createdSessionId });
+      } else {
+        resetSessionMode();
+        Alert.alert('Error', 'Clerk did not return a valid session for this sign-in attempt.');
+      }
+    } catch (err: any) {
+      resetSessionMode();
+      console.error('Sign in failed', flow, JSON.stringify(err, null, 2));
+      Alert.alert('Error', getAuthErrorMessage(flow, err));
+    } finally {
+      setIsLoading(false);
+      setActiveFlow(null);
+    }
+  };
+
+  const handleGuestContinue = () => {
+    resetSessionMode();
+    enterGuestMode();
+  };
+
+  const renderGoogleLabel = (prefix: string, variant: 'primary' | 'secondary') => (
+    <View style={styles.oauthLabel}>
+      <Text
+        style={[
+          styles.providerButtonText,
+          variant === 'primary' ? styles.oauthLabelTextPrimary : styles.oauthLabelTextSecondary,
+        ]}
+      >
+        {prefix}
+      </Text>
+      <GoogleIcon size={18} />
+    </View>
+  );
+
+  const renderAppleLabel = (prefix: string, variant: 'primary' | 'secondary') => (
+    <Text
+      style={[
+        styles.providerButtonText,
+        variant === 'primary' ? styles.oauthLabelTextPrimary : styles.oauthLabelTextSecondary,
+      ]}
+    >
+      {prefix} {APPLE_LABEL}
+    </Text>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View
-          style={styles.content}
-        >
-          {/* Colored Background Accent */}
+        <View style={styles.content}>
           <View style={styles.colorAccentTop} />
 
-          {/* Logo */}
           <View style={styles.logoContainer}>
-            <View style={styles.logoBackground}>
-              <GraduationCap size={90} color={COLORS.primary} strokeWidth={2} />
-            </View>
+            <Image
+              source={require('../../assets/login-logo-transparent.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
           </View>
 
-          {/* App Title - Staggered */}
           <View>
             <Text style={styles.appTitle}>MaroonLife</Text>
           </View>
 
-          {/* Tagline - Staggered */}
-          <View>
-            <Text style={styles.tagline}>Build Your Aggie Schedule. Gig 'em!</Text>
-          </View>
-
-          {/* Colored Accent Line */}
           <View style={styles.accentLine} />
-
-          {/* Spacer */}
           <View style={styles.spacer} />
 
-          {/* Button Group - Staggered */}
-          <View
-            style={styles.buttonGroup}
-          >
-            {/* Primary CTA: Log In */}
+          <View style={styles.buttonGroup}>
+            <View style={styles.accountCard}>
+              <View style={styles.accountHeader}>
+                <Text style={styles.accountTitle}>Student</Text>
+                <Text style={styles.accountSubtitle}>Classes, events, places, and campus tools</Text>
+              </View>
+              <View style={styles.providerRow}>
+                <Button
+                  variant="primary"
+                  style={styles.providerButton}
+                  onPress={() => onOAuthPress('tamu')}
+                  disabled={isLoading}
+                >
+                  {isLoading && activeFlow === 'tamu' ? 'Loading...' : renderGoogleLabel('With', 'primary')}
+                </Button>
+                {Platform.OS === 'ios' && (
+                  <Button
+                    variant="secondary"
+                    style={styles.providerButton}
+                    onPress={() => onOAuthPress('apple')}
+                    disabled={isLoading}
+                  >
+                    {isLoading && activeFlow === 'apple' ? 'Loading...' : renderAppleLabel('With', 'secondary')}
+                  </Button>
+                )}
+              </View>
+            </View>
+
+            <View style={styles.accountCard}>
+              <View style={styles.accountHeader}>
+                <Text style={styles.accountTitle}>Admin</Text>
+                <Text style={styles.accountSubtitle}>Post and manage featured campus events</Text>
+              </View>
+              <View style={styles.providerRow}>
+                <Button
+                  variant="secondary"
+                  style={styles.providerButton}
+                  onPress={() => onOAuthPress('admin')}
+                  disabled={isLoading}
+                >
+                  {isLoading && activeFlow === 'admin' ? 'Loading...' : renderGoogleLabel('Admin', 'secondary')}
+                </Button>
+                {Platform.OS === 'ios' && (
+                  <Button
+                    variant="secondary"
+                    style={styles.providerButton}
+                    onPress={() => onOAuthPress('adminApple')}
+                    disabled={isLoading}
+                  >
+                    {isLoading && activeFlow === 'adminApple' ? 'Loading...' : renderAppleLabel('Admin', 'secondary')}
+                  </Button>
+                )}
+              </View>
+            </View>
+
             <Button
-              variant="primary"
-              style={styles.primaryButton}
-              onPress={onLoginPress}
+              variant="secondary"
+              style={styles.guestButton}
+              onPress={handleGuestContinue}
+              disabled={isLoading}
             >
-              Log In
+              Continue as Guest
             </Button>
           </View>
 
-          {/* Informational Panel */}
-          <View
-            style={styles.infoContainer}
-          >
-             <Text style={styles.infoTitle}>Why MaroonLife?</Text>
-             <Text style={styles.infoContent}>
-                Plan your classes, avoid conflicts, and get to graduation using your Texas A&M NetID. 
-                Experience a smooth schedule builder explicitly designed for Aggies.
-             </Text>
-          </View>
-
-          {/* Colored Background Accent Bottom */}
           <View style={styles.colorAccentBottom} />
         </View>
       </ScrollView>
@@ -131,26 +245,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 1,
   },
-  logoBackground: {
+  logoImage: {
     width: 180,
     height: 180,
-    borderRadius: 90,
-    backgroundColor: COLORS.primaryLight + '50',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: COLORS.primary + '20',
-    ...Platform.select({
-      ios: {
-        shadowColor: COLORS.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
   },
   appTitle: {
     ...TYPOGRAPHY.title,
@@ -159,14 +256,6 @@ const styles = StyleSheet.create({
     color: '#000000',
     marginBottom: SPACING.sm,
     textAlign: 'center',
-    zIndex: 1,
-  },
-  tagline: {
-    ...TYPOGRAPHY.body,
-    fontSize: 16,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    marginBottom: SPACING.xl,
     zIndex: 1,
   },
   accentLine: {
@@ -178,40 +267,64 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   spacer: {
-    height: SPACING.md,
+    height: SPACING.sm,
   },
   buttonGroup: {
     width: '100%',
     zIndex: 1,
+    gap: SPACING.md,
   },
-  primaryButton: {
+  accountCard: {
     width: '100%',
-    marginBottom: SPACING.md,
-  },
-  secondaryButton: {
-    width: '100%',
-  },
-  infoContainer: {
-    width: '100%',
-    marginTop: SPACING.lg * 2,
-    padding: SPACING.md,
     backgroundColor: COLORS.white,
-    borderRadius: 12,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
-    zIndex: 1,
+    padding: SPACING.md,
+    gap: SPACING.sm,
   },
-  infoTitle: {
-    ...TYPOGRAPHY.title,
+  accountHeader: {
+    gap: 4,
+  },
+  accountTitle: {
+    ...TYPOGRAPHY.body,
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '700',
     color: COLORS.primary,
-    marginBottom: SPACING.sm,
   },
-  infoContent: {
+  accountSubtitle: {
     ...TYPOGRAPHY.body,
     color: COLORS.textSecondary,
-    lineHeight: 22,
-    fontSize: 14,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  providerRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  providerButton: {
+    flex: 1,
+  },
+  oauthLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  providerButtonText: {
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  oauthLabelTextPrimary: {
+    color: '#FFFFFF',
+  },
+  oauthLabelTextSecondary: {
+    color: COLORS.primary,
+  },
+  guestButton: {
+    width: '100%',
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
 });
