@@ -194,6 +194,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // ── Map ref ───────────────────────────────────────────────
   const mapRef = useRef<any>(null);
+  const currentBusRouteFetchId = useRef<string | null>(null);
   const lastPlacesFitKey = useRef<string | null>(null);
   const [isListDroppedDown, setIsListDroppedDown] = useState(false);
   const { activeTargetName, advanceStep } = useTour();
@@ -1282,9 +1283,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const handleSelectBusRoute = useCallback(
     async (routeId: string, availableRoutes: any[] = busRoutes) => {
       setSelectedBusRouteId(routeId);
+      currentBusRouteFetchId.current = routeId;
       setBusVehicles([]);
       setSelectedStop(null);
       setSelectedBus(null);
+      setRoutePatterns([]); // Clear previous traces
+      setRoutePaths([]);
+      setBusStops([]);
+
       if (routeId === ALL_BUS_ROUTES_KEY) {
         await loadAllBusRoutes(availableRoutes);
         return;
@@ -1292,6 +1298,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
       try {
         const { points, stops, paths } =
           await transitService.getRoutePattern(routeId);
+          
+        if (currentBusRouteFetchId.current !== routeId) return; // Prevent race condition crashes
+
         setRoutePatterns(points?.length ? points : []);
         setRoutePaths(paths?.length ? paths : []);
         setBusStops(stops?.length ? stops : []);
@@ -1300,7 +1309,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
             edgePadding: { top: 220, right: 60, bottom: 80, left: 60 },
             animated: true,
           });
-        setBusVehicles(await transitService.getVehicles(routeId));
+        
+        const vehicles = await transitService.getVehicles(routeId);
+        if (currentBusRouteFetchId.current === routeId) {
+          setBusVehicles(vehicles);
+        }
       } catch (e) {
         console.warn("Failed to select bus route", e);
       }
