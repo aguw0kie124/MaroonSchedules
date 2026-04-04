@@ -273,6 +273,7 @@ function RootNavigator() {
   const { isSignedIn, isLoaded } = useAuth();
   const { user } = useUser();
   const isGuest = useSessionStore((state) => state.isGuest);
+  const authMode = useSessionStore((state) => state.authMode);
   const exitGuestMode = useSessionStore((state) => state.exitGuestMode);
   const isTOSAccepted = useAppShellStore((state) => state.isTOSAccepted);
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
@@ -316,7 +317,8 @@ function RootNavigator() {
     );
   } else {
     const hasAppAccess = isSignedIn || isGuest;
-    const isAdminRoute = isSignedIn && !user?.primaryEmailAddress?.emailAddress?.endsWith('@tamu.edu');
+    const isAdminRoute =
+      isSignedIn && (authMode === 'admin' || (authMode !== 'user' && isAdmin === true));
     const navigatorMode = isAdminRoute ? 'admin' : hasAppAccess ? 'app' : 'auth';
 
     content = (

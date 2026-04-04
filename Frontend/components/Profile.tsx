@@ -40,6 +40,7 @@ import {
   Scale,
   UserX,
   Bell,
+  LifeBuoy,
 } from 'lucide-react-native';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
@@ -53,6 +54,8 @@ import { useTour, TourTarget } from './onboarding/TourProvider';
 import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme } from './SharedUI';
 import { navigateToLogin } from '../utils/guestAccess';
+
+const SUPPORT_CONTACT_URL = 'mailto:support@maroonschedules.tamu.edu?subject=MaroonLife%20Support';
 
 const SETTINGS_TABS = [
   { key: 'personal', label: 'Personal', icon: UserRound },
@@ -138,6 +141,7 @@ export function Profile() {
   const { user } = useUser();
   const { signOut } = useClerk();
   const isGuest = useSessionStore((state) => state.isGuest);
+  const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
   const {
     COLORS,
     theme,
@@ -319,6 +323,7 @@ export function Profile() {
   };
 
   const handleLogout = async () => {
+    resetSessionMode();
     await signOut();
   };
 
@@ -351,6 +356,7 @@ export function Profile() {
             if (!user) return;
             try {
               await deleteAccount(user.id);
+              resetSessionMode();
               await signOut();
               Alert.alert('Account Deleted', 'Your data has been permanently removed.');
             } catch (err) {
@@ -900,6 +906,19 @@ export function Profile() {
         </View>
         <ExternalLink size={18} color={COLORS.textTertiary} />
       </Pressable>
+
+      <Pressable
+        style={[styles.toolRow, styles.toolRowLast, { marginTop: 12 }]}
+        onPress={() => openExternal(SUPPORT_CONTACT_URL)}
+      >
+        <View style={[styles.toolIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+          <LifeBuoy size={20} color="#F59E0B" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.toolTitle}>Contact Support</Text>
+        </View>
+        <ExternalLink size={18} color={COLORS.textTertiary} />
+      </Pressable>
     </View>
   );
 
@@ -970,6 +989,19 @@ export function Profile() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.toolTitle}>Privacy Policy</Text>
+          </View>
+          <ExternalLink size={18} color={COLORS.textTertiary} />
+        </Pressable>
+
+        <Pressable
+          style={[styles.toolRow, styles.toolRowLast, { marginTop: 12 }]}
+          onPress={() => openExternal(SUPPORT_CONTACT_URL)}
+        >
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+            <LifeBuoy size={20} color="#F59E0B" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Contact Support</Text>
           </View>
           <ExternalLink size={18} color={COLORS.textTertiary} />
         </Pressable>

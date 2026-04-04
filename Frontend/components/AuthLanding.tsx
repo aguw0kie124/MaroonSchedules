@@ -15,29 +15,55 @@ import { GraduationCap } from 'lucide-react-native';
 import * as Linking from 'expo-linking';
 import { useSessionStore } from '../store/sessionStore';
 
+const APPLE_LABEL = '';
+
 export function AuthLanding() {
-  const { startOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
+  const { startOAuthFlow: startGoogleOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
+  const { startOAuthFlow: startAppleOAuthFlow } = useOAuth({ strategy: 'oauth_apple' });
   const enterGuestMode = useSessionStore((state) => state.enterGuestMode);
   const exitGuestMode = useSessionStore((state) => state.exitGuestMode);
+  const setAuthMode = useSessionStore((state) => state.setAuthMode);
   const [isLoading, setIsLoading] = useState(false);
-  const [activeFlow, setActiveFlow] = useState<'tamu' | 'admin' | null>(null);
+  const [activeFlow, setActiveFlow] = useState<'tamu' | 'admin' | 'apple' | 'adminApple' | null>(null);
 
-  const onGooglePress = async (flow: 'tamu' | 'admin') => {
+  const getAuthErrorMessage = (flow: 'tamu' | 'admin' | 'apple' | 'adminApple', err: any) => {
+    return (
+      err?.errors?.[0]?.longMessage ||
+      err?.errors?.[0]?.message ||
+      err?.message ||
+      (flow === 'admin' || flow === 'adminApple'
+        ? 'Admin sign in failed'
+        : flow === 'apple'
+          ? 'Apple sign in failed'
+          : 'TAMU sign in failed')
+    );
+  };
+
+  const onOAuthPress = async (flow: 'tamu' | 'admin' | 'apple' | 'adminApple') => {
     try {
       exitGuestMode();
       setIsLoading(true);
       setActiveFlow(flow);
-      const { createdSessionId, setActive } = await startOAuthFlow({
-        redirectUrl: Linking.createURL('/'),
-      });
-      if (createdSessionId) {
-        await setActive!({ session: createdSessionId });
+      const authResult =
+        flow === 'apple' || flow === 'adminApple'
+          ? await startAppleOAuthFlow({
+              redirectUrl: Linking.createURL('/'),
+            })
+          : await startGoogleOAuthFlow({
+              redirectUrl: Linking.createURL('/'),
+            });
+      const { createdSessionId, setActive } = authResult;
+      if (createdSessionId && setActive) {
+        await setActive({ session: createdSessionId });
+        setAuthMode(flow === 'admin' || flow === 'adminApple' ? 'admin' : 'user');
+      } else {
+        Alert.alert('Error', 'Clerk did not return a valid session for this sign-in attempt.');
       }
     } catch (err: any) {
+      console.error('Sign in failed', flow, JSON.stringify(err, null, 2));
       Alert.alert(
         'Error',
-        err.errors?.[0]?.message ||
-          (flow === 'admin' ? 'Admin sign in failed' : 'TAMU sign in failed'),
+        getAuthErrorMessage(flow, err),
       );
     } finally {
       setIsLoading(false);
@@ -86,15 +112,37 @@ export function AuthLanding() {
             <Button
               variant="primary"
               style={styles.primaryButton}
-              onPress={() => onGooglePress('tamu')}
+              onPress={() => onOAuthPress('tamu')}
               disabled={isLoading}
             >
               {isLoading && activeFlow === 'tamu' ? 'Loading...' : 'Continue with TAMU Account'}
             </Button>
+            {Platform.OS === 'ios' && (
+              <Button
+                variant="secondary"
+              style={styles.secondaryButton}
+              onPress={() => onOAuthPress('apple')}
+              disabled={isLoading}
+            >
+              {isLoading && activeFlow === 'apple' ? 'Loading...' : `Continue with ${APPLE_LABEL}`}
+            </Button>
+            )}
+            {Platform.OS === 'ios' && (
+              <Button
+                variant="secondary"
+                style={styles.secondaryButton}
+                onPress={() => onOAuthPress('adminApple')}
+                disabled={isLoading}
+              >
+                {isLoading && activeFlow === 'adminApple'
+                  ? 'Loading...'
+                  : `Continue with Admin ${APPLE_LABEL} Account`}
+              </Button>
+            )}
             <Button
               variant="secondary"
               style={styles.secondaryButton}
-              onPress={() => onGooglePress('admin')}
+              onPress={() => onOAuthPress('admin')}
               disabled={isLoading}
             >
               {isLoading && activeFlow === 'admin' ? 'Loading...' : 'Continue with Admin Account'}

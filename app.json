@@ -23,7 +23,8 @@
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "MaroonLife uses your location to show nearby campus places, transit options, and directions.",
         "NSPhotoLibraryUsageDescription": "MaroonLife uses your photo library so you can choose a profile photo or attach an image to your campus posts.",
-        "NSCameraUsageDescription": "MaroonLife uses the camera when you choose to capture a photo for your profile or a campus post."
+        "NSCameraUsageDescription": "MaroonLife uses the camera when you choose to capture a photo for your profile or a campus post.",
+        "NSMicrophoneUsageDescription": "MaroonLife uses the microphone for optional voice commands during campus navigation."
       }
     },
     "android": {
@@ -40,6 +41,7 @@
     },
     "plugins": [
       "@react-native-community/datetimepicker",
+      "expo-apple-authentication",
       "expo-notifications"
     ],
     "runtimeVersion": {
