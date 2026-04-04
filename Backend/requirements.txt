@@ -5,7 +5,6 @@ python-dotenv
 python-multipart
 stream-python
 pydantic
-pyjwt
 psycopg[binary]
 stream_chat
 protobuf<5.0.0
@@ -15,3 +14,5 @@ PuLP
 pydantic-settings
 typing-extensions
 redis
+PyJWT==2.10.1
+cryptography>=42,<45
