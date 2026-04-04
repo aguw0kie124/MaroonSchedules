@@ -14,6 +14,7 @@ import { COLORS, TYPOGRAPHY, SPACING } from '../constants';
 import { Button } from './Button';
 import * as Linking from 'expo-linking';
 import { useSessionStore } from '../store/sessionStore';
+import { GoogleIcon } from './common/CustomIcons';
 
 const APPLE_LABEL = '';
 
@@ -27,6 +28,7 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
   const enterGuestMode = useSessionStore((state) => state.enterGuestMode);
   const exitGuestMode = useSessionStore((state) => state.exitGuestMode);
   const setAuthMode = useSessionStore((state) => state.setAuthMode);
+  const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
   const [isLoading, setIsLoading] = useState(false);
   const [activeFlow, setActiveFlow] = useState<'tamu' | 'admin' | 'apple' | 'adminApple' | null>(null);
 
@@ -46,6 +48,7 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
   const onOAuthPress = async (flow: 'tamu' | 'admin' | 'apple' | 'adminApple') => {
     try {
       exitGuestMode();
+      setAuthMode(flow === 'admin' || flow === 'adminApple' ? 'admin' : 'user');
       setIsLoading(true);
       setActiveFlow(flow);
       const authResult =
@@ -59,11 +62,12 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
       const { createdSessionId, setActive } = authResult;
       if (createdSessionId && setActive) {
         await setActive({ session: createdSessionId });
-        setAuthMode(flow === 'admin' || flow === 'adminApple' ? 'admin' : 'user');
       } else {
+        resetSessionMode();
         Alert.alert('Error', 'Clerk did not return a valid session for this sign-in attempt.');
       }
     } catch (err: any) {
+      resetSessionMode();
       console.error('Sign in failed', flow, JSON.stringify(err, null, 2));
       Alert.alert(
         'Error',
@@ -76,8 +80,33 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
   };
 
   const handleGuestContinue = () => {
+    resetSessionMode();
     enterGuestMode();
   };
+
+  const renderGoogleLabel = (prefix: string, suffix: string, variant: 'primary' | 'secondary') => (
+    <View style={styles.oauthLabel}>
+      <Text
+        style={[
+          styles.oauthLabelText,
+          variant === 'primary' ? styles.oauthLabelTextPrimary : styles.oauthLabelTextSecondary,
+        ]}
+      >
+        {prefix}
+      </Text>
+      <GoogleIcon size={18} />
+      {suffix ? (
+        <Text
+          style={[
+            styles.oauthLabelText,
+            variant === 'primary' ? styles.oauthLabelTextPrimary : styles.oauthLabelTextSecondary,
+          ]}
+        >
+          {suffix}
+        </Text>
+      ) : null}
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -104,7 +133,9 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
             onPress={() => onOAuthPress('tamu')}
             disabled={isLoading}
           >
-            {isLoading && activeFlow === 'tamu' ? 'Loading...' : 'Continue with TAMU Account'}
+            {isLoading && activeFlow === 'tamu'
+              ? 'Loading...'
+              : renderGoogleLabel('Continue with', '', 'primary')}
           </Button>
 
           {Platform.OS === 'ios' && (
@@ -137,7 +168,9 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
             onPress={() => onOAuthPress('admin')}
             disabled={isLoading}
           >
-            {isLoading && activeFlow === 'admin' ? 'Loading...' : 'Continue with Admin Account'}
+            {isLoading && activeFlow === 'admin'
+              ? 'Loading...'
+              : renderGoogleLabel('Continue with Admin', 'Account', 'secondary')}
           </Button>
 
           <Button
@@ -202,6 +235,22 @@ const styles = StyleSheet.create({
   },
   googleButton: {
     width: '100%',
+  },
+  oauthLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  oauthLabelText: {
+    fontWeight: '600',
+    fontSize: 16,
+  },
+  oauthLabelTextPrimary: {
+    color: '#FFFFFF',
+  },
+  oauthLabelTextSecondary: {
+    color: COLORS.primary,
   },
   secondaryActionButton: {
     width: '100%',

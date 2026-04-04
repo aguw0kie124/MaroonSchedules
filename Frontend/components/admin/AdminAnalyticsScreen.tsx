@@ -26,6 +26,7 @@ import { Users, Share2, MapPin, Star, Pencil, Trash2, MessageSquare, LogOut, Ima
 import { normalizeExternalUrl } from '../../services/url';
 import { getAdminLocationSuggestions, resolveAdminEventLocation } from '../../services/adminEventLocation';
 import { uploadStreamImage } from '../../services/streamFeeds';
+import { useSessionStore } from '../../store/sessionStore';
 
 interface AdminEvent {
   id: string;
@@ -71,6 +72,7 @@ export function AdminAnalyticsScreen() {
   const { COLORS, theme } = useTheme();
   const { user } = useUser();
   const { signOut } = useAuth();
+  const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
   const [events, setEvents] = useState<AdminEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -737,7 +739,13 @@ export function AdminAnalyticsScreen() {
           <Text style={styles.title}>Manage Events</Text>
           <Text style={styles.subtitle}>Edit, monitor, and remove the events you've posted.</Text>
         </View>
-        <Pressable style={styles.signOutButton} onPress={() => signOut()}>
+        <Pressable
+          style={styles.signOutButton}
+          onPress={() => {
+            resetSessionMode();
+            signOut();
+          }}
+        >
           <LogOut size={16} color={COLORS.textPrimary} />
           <Text style={styles.signOutText}>Sign Out</Text>
         </Pressable>

@@ -44,8 +44,10 @@ export function Button({ variant = 'primary', children, onPress, style, textStyl
         >
             {variant === 'icon' ? (
                 children
-            ) : (
+            ) : typeof children === 'string' || typeof children === 'number' ? (
                 <Text style={getTextStyle()}>{children}</Text>
+            ) : (
+                children
             )}
         </Pressable>
     );

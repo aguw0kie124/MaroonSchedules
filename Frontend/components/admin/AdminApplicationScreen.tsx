@@ -7,6 +7,7 @@ import { Button } from '../Button';
 import { requestJson } from '../../api/client';
 import { Shield } from 'lucide-react-native';
 import { useAppShellStore } from '../../store/appShellStore';
+import { useSessionStore } from '../../store/sessionStore';
 
 export function AdminApplicationScreen() {
   const { COLORS } = useTheme();
@@ -14,6 +15,7 @@ export function AdminApplicationScreen() {
   const { user } = useUser();
   const { signOut } = useAuth();
   const setAdminAccessStatus = useAppShellStore((state) => state.setAdminAccessStatus);
+  const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
   
   const [orgName, setOrgName] = useState('');
   const [reason, setReason] = useState('');
@@ -234,7 +236,15 @@ export function AdminApplicationScreen() {
         )}
 
         <View style={styles.signOutBtn}>
-          <Button variant="secondary" onPress={() => signOut()}>Sign Out</Button>
+          <Button
+            variant="secondary"
+            onPress={() => {
+              resetSessionMode();
+              signOut();
+            }}
+          >
+            Sign Out
+          </Button>
         </View>
       </ScrollView>
     </View>

@@ -317,8 +317,7 @@ function RootNavigator() {
     );
   } else {
     const hasAppAccess = isSignedIn || isGuest;
-    const isAdminRoute =
-      isSignedIn && (authMode === 'admin' || (authMode !== 'user' && isAdmin === true));
+    const isAdminRoute = isSignedIn && authMode === 'admin';
     const navigatorMode = isAdminRoute ? 'admin' : hasAppAccess ? 'app' : 'auth';
 
     content = (

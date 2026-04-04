@@ -12,6 +12,7 @@ import { normalizeExternalUrl } from '../../services/url';
 import { getAdminLocationSuggestions, resolveAdminEventLocation } from '../../services/adminEventLocation';
 import { LogOut, PlusCircle, ImagePlus, Sparkles, MapPinned } from 'lucide-react-native';
 import { uploadStreamImage } from '../../services/streamFeeds';
+import { useSessionStore } from '../../store/sessionStore';
 
 function roundToNearestFiveMinutes(value: Date) {
   const next = new Date(value);
@@ -25,6 +26,7 @@ export function AdminMapPoster() {
   const { COLORS, theme } = useTheme();
   const { user } = useUser();
   const { signOut } = useAuth();
+  const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [address, setAddress] = useState('');
@@ -432,7 +434,13 @@ export function AdminMapPoster() {
             <Text style={styles.title}>Post New Event</Text>
             <Text style={styles.subtitle}>Create a featured event and set up the student review flow in one place.</Text>
           </View>
-          <Pressable style={styles.signOutButton} onPress={() => signOut()}>
+          <Pressable
+            style={styles.signOutButton}
+            onPress={() => {
+              resetSessionMode();
+              signOut();
+            }}
+          >
             <LogOut size={16} color={COLORS.textPrimary} />
             <Text style={styles.signOutText}>Sign Out</Text>
           </Pressable>
