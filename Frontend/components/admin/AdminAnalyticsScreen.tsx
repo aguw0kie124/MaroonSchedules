@@ -21,6 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../SharedUI';
 import { Button } from '../Button';
 import { API_URL } from '../../config';
+import { requestJson } from '../../api/client';
 import { Users, Share2, MapPin, Star, Pencil, Trash2, MessageSquare, LogOut, ImagePlus } from 'lucide-react-native';
 import { normalizeExternalUrl } from '../../services/url';
 import { getAdminLocationSuggestions, resolveAdminEventLocation } from '../../services/adminEventLocation';
@@ -95,13 +96,13 @@ export function AdminAnalyticsScreen() {
   }, [events]);
 
   const fetchEvents = useCallback(async () => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     try {
-      const res = await fetch(`${API_URL}/admin/events/me?clerk_id=${user.id}`);
-      if (!res.ok) {
-        throw new Error('Failed to load your events');
-      }
-      const data = await res.json();
+      const data = await requestJson(`/admin/events/me?clerk_id=${encodeURIComponent(user.id)}`);
       setEvents(data);
     } catch (err) {
       console.error(err);
@@ -207,9 +208,8 @@ export function AdminAnalyticsScreen() {
 
     setSaving(true);
     try {
-      const res = await fetch(`${API_URL}/admin/events/${editingEvent.id}`, {
+      await requestJson(`/admin/events/${editingEvent.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clerk_id: user.id,
           title: draft.title.trim(),
@@ -223,10 +223,6 @@ export function AdminAnalyticsScreen() {
           image_url: draft.image_url || null,
         }),
       });
-
-      if (!res.ok) {
-        throw new Error('Failed to update event');
-      }
 
       await fetchEvents();
       closeEditor();
@@ -243,13 +239,9 @@ export function AdminAnalyticsScreen() {
 
     setDeletingEventId(eventId);
     try {
-      const res = await fetch(`${API_URL}/admin/events/${eventId}?clerk_id=${encodeURIComponent(user.id)}`, {
+      await requestJson(`/admin/events/${eventId}?clerk_id=${encodeURIComponent(user.id)}`, {
         method: 'DELETE',
       });
-
-      if (!res.ok) {
-        throw new Error('Failed to delete event');
-      }
 
       setEvents((current) => current.filter((event) => event.id !== eventId));
       if (editingEvent?.id === eventId) {

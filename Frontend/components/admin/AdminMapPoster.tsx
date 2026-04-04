@@ -7,6 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../SharedUI';
 import { Button } from '../Button';
 import { API_URL } from '../../config';
+import { requestJson } from '../../api/client';
 import { normalizeExternalUrl } from '../../services/url';
 import { getAdminLocationSuggestions, resolveAdminEventLocation } from '../../services/adminEventLocation';
 import { LogOut, PlusCircle, ImagePlus, Sparkles, MapPinned } from 'lucide-react-native';
@@ -121,9 +122,8 @@ export function AdminMapPoster() {
       const resolvedLocation = resolveAdminEventLocation(address);
       const uploadedImageUrl = imageUri ? await uploadStreamImage(imageUri) : null;
 
-      const res = await fetch(`${API_URL}/admin/events`, {
+      await requestJson('/admin/events', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clerk_id: user?.id,
           title: title.trim(),
@@ -137,10 +137,6 @@ export function AdminMapPoster() {
           image_url: uploadedImageUrl,
         })
       });
-
-      if (!res.ok) {
-        throw new Error('Failed to create event');
-      }
 
       Alert.alert('Success', 'Event posted to the featured tab!');
       setTitle('');
@@ -549,17 +545,6 @@ export function AdminMapPoster() {
         <Text style={[styles.helperText, { marginTop: 6 }]}>
           Paste the full review URL. If you leave off `https://`, we’ll add it automatically.
         </Text>
-
-        <Text style={styles.label}>Google Review URL (Optional)</Text>
-        <TextInput 
-          style={styles.input} 
-          placeholder="https://g.page/r/.../review" 
-          placeholderTextColor={COLORS.textTertiary}
-          value={googleReviewUrl}
-          onChangeText={setGoogleReviewUrl}
-          autoCapitalize="none"
-          keyboardType="url"
-        />
 
         <Text style={styles.label}>Date</Text>
         <View style={styles.pickerWrap}>
