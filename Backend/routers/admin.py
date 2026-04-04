@@ -2,10 +2,84 @@ from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from pydantic import BaseModel, Field
 from typing import Optional
 import psycopg
+
 from db_config import CONNECTION_PARAMS
 from auth.clerk_middleware import require_auth, ensure_matching_user
+from services import cache_service
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+def _ensure_admin_review_schema(conn: psycopg.Connection) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_events (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                clerk_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                lat DOUBLE PRECISION,
+                lng DOUBLE PRECISION,
+                location_name TEXT,
+                start_time TIMESTAMPTZ NOT NULL,
+                end_time TIMESTAMPTZ,
+                shares_count INTEGER DEFAULT 0,
+                google_review_url TEXT,
+                image_url TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """
+        )
+        cur.execute("ALTER TABLE admin_events ADD COLUMN IF NOT EXISTS google_review_url TEXT")
+        cur.execute("ALTER TABLE admin_events ADD COLUMN IF NOT EXISTS image_url TEXT")
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_event_reviews (
+                id BIGSERIAL PRIMARY KEY,
+                event_id UUID REFERENCES admin_events(id) ON DELETE CASCADE,
+                clerk_id TEXT NOT NULL,
+                rating INTEGER NOT NULL,
+                feedback TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                UNIQUE(event_id, clerk_id)
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_event_review_dismissals (
+                event_id UUID REFERENCES admin_events(id) ON DELETE CASCADE,
+                clerk_id TEXT NOT NULL,
+                dismiss_count INTEGER NOT NULL DEFAULT 0,
+                suppressed BOOLEAN NOT NULL DEFAULT FALSE,
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (event_id, clerk_id)
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS campus_event_rsvps (
+                clerk_id TEXT NOT NULL,
+                event_id TEXT NOT NULL,
+                response TEXT NOT NULL,
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (clerk_id, event_id)
+            )
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_event_subscriptions (
+                user_clerk_id TEXT NOT NULL,
+                admin_clerk_id TEXT NOT NULL,
+                muted BOOLEAN NOT NULL DEFAULT TRUE,
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (user_clerk_id, admin_clerk_id)
+            )
+            """
+        )
 
 
 class AdminApplicationRequest(BaseModel):
@@ -19,52 +93,112 @@ class AdminEventCreateRequest(BaseModel):
     clerk_id: str
     title: str = Field(..., min_length=1, max_length=140)
     description: str = Field(..., max_length=4000)
-    lat: float
-    lng: float
+    lat: Optional[float] = None
+    lng: Optional[float] = None
     location_name: str = Field(..., min_length=1, max_length=200)
     start_time: str
     end_time: str
     google_review_url: Optional[str] = Field(default=None, max_length=2048)
+    image_url: Optional[str] = Field(default=None, max_length=2048)
+
+
+class AdminEventUpdateRequest(AdminEventCreateRequest):
+    pass
+
+
+class AdminEventReviewRequest(BaseModel):
+    clerk_id: str
+    rating: int = Field(..., ge=1, le=5)
+    feedback: Optional[str] = Field(default=None, max_length=2000)
+
+
+class AdminEventReviewDismissRequest(BaseModel):
+    clerk_id: str
+
+
+class AdminOrganizerPreferenceRequest(BaseModel):
+    clerk_id: str
 
 
 def require_clerk_user(clerk_id: str, user_id: str = Depends(require_auth)) -> str:
-    return ensure_matching_user(user_id, clerk_id, detail="You can only access your own admin data")
+    return ensure_matching_user(
+        user_id,
+        clerk_id,
+        detail="You can only access your own admin data",
+    )
+
+
+def _require_admin_user(clerk_id: str):
+    from repositories import user_repository
+
+    user = user_repository.get_user(clerk_id)
+    if not user or not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    return user
+
+
+def _require_owned_admin_event(cur, event_id: str, clerk_id: str):
+    cur.execute("SELECT id, clerk_id FROM admin_events WHERE id = %s", (event_id,))
+    event = cur.fetchone()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    owner_id = event["clerk_id"] if isinstance(event, dict) else event[1]
+    if owner_id != clerk_id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    return event
+
+
+def _invalidate_admin_event_caches() -> None:
+    for key in [
+        "campus:pulse:map:v2:12",
+        "campus:pulse:map:v2:25",
+        "campus:pulse:map:v2:8",
+    ]:
+        cache_service.delete(key)
 
 
 @router.get("/status")
-def get_admin_status(clerk_id: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
-    """Check if a user is an admin or has a pending application."""
+def get_admin_status(
+    clerk_id: str = Query(...),
+    _auth_user_id: str = Depends(require_clerk_user),
+):
     from repositories import user_repository
+
     user = user_repository.get_user(clerk_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-        
-    is_admin = user.get("is_admin", False)
-    
-    # Check application status
+
     application_status = None
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(
                     "SELECT status FROM admin_applications WHERE clerk_id = %s",
-                    (clerk_id,)
+                    (clerk_id,),
                 )
                 row = cur.fetchone()
                 if row:
                     application_status = row["status"]
     except Exception as e:
         print(f"Error checking admin application: {e}")
-        
+
     return {
-        "is_admin": is_admin,
-        "application_status": application_status
+        "is_admin": user.get("is_admin", False),
+        "application_status": application_status,
     }
 
 
 @router.post("/apply")
-def submit_admin_application(req: AdminApplicationRequest, auth_user_id: str = Depends(require_auth)):
-    ensure_matching_user(auth_user_id, req.clerk_id, detail="You can only submit your own admin application")
+def submit_admin_application(
+    req: AdminApplicationRequest,
+    auth_user_id: str = Depends(require_auth),
+):
+    ensure_matching_user(
+        auth_user_id,
+        req.clerk_id,
+        detail="You can only submit your own admin application",
+    )
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
             with conn.cursor() as cur:
@@ -79,7 +213,7 @@ def submit_admin_application(req: AdminApplicationRequest, auth_user_id: str = D
                     created_at = NOW()
                     RETURNING id
                     """,
-                    (req.clerk_id, req.email, req.organization_name, req.reason)
+                    (req.clerk_id, req.email, req.organization_name, req.reason),
                 )
                 app_id = cur.fetchone()[0]
                 conn.commit()
@@ -90,54 +224,156 @@ def submit_admin_application(req: AdminApplicationRequest, auth_user_id: str = D
 
 
 @router.post("/events")
-def create_admin_event(req: AdminEventCreateRequest, auth_user_id: str = Depends(require_auth)):
-    ensure_matching_user(auth_user_id, req.clerk_id, detail="You can only create admin events as yourself")
-    from repositories import user_repository
-    user = user_repository.get_user(req.clerk_id)
-    if not user or not user.get("is_admin"):
-        raise HTTPException(status_code=403, detail="Unauthorized")
+def create_admin_event(
+    req: AdminEventCreateRequest,
+    auth_user_id: str = Depends(require_auth),
+):
+    ensure_matching_user(
+        auth_user_id,
+        req.clerk_id,
+        detail="You can only create admin events as yourself",
+    )
+    _require_admin_user(req.clerk_id)
     if req.google_review_url and not req.google_review_url.startswith(("http://", "https://")):
-        raise HTTPException(status_code=400, detail="Google review URL must start with http:// or https://")
-        
+        raise HTTPException(
+            status_code=400,
+            detail="Google review URL must start with http:// or https://",
+        )
+
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_review_schema(conn)
             with conn.cursor() as cur:
                 cur.execute(
                     """
                     INSERT INTO admin_events
-                    (clerk_id, title, description, lat, lng, location_name, start_time, end_time, google_review_url)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    (clerk_id, title, description, lat, lng, location_name, start_time, end_time, google_review_url, image_url)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
-                    (req.clerk_id, req.title, req.description, req.lat, req.lng, req.location_name, req.start_time, req.end_time, req.google_review_url)
+                    (
+                        req.clerk_id,
+                        req.title,
+                        req.description,
+                        req.lat,
+                        req.lng,
+                        req.location_name,
+                        req.start_time,
+                        req.end_time,
+                        req.google_review_url,
+                        req.image_url,
+                    ),
                 )
                 event_id = cur.fetchone()[0]
                 conn.commit()
-                
-                # Mock notification feature
-                print(f"[NOTIFICATION MOCK] Sending notification to users: New admin event '{req.title}' created by {req.clerk_id}!")
-                
+                _invalidate_admin_event_caches()
+                print(
+                    f"[NOTIFICATION MOCK] Sending notification to users: New admin event '{req.title}' created by {req.clerk_id}!"
+                )
                 return {"status": "success", "event_id": str(event_id)}
     except Exception as e:
         print(f"Error creating admin event: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
-@router.get("/events/me")
-def get_my_admin_events(clerk_id: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
-    """Fetch events created by this admin, along with share counts and RSVP counts."""
-    from repositories import user_repository
-    user = user_repository.get_user(clerk_id)
-    if not user or not user.get("is_admin"):
-        raise HTTPException(status_code=403, detail="Unauthorized")
-        
+@router.put("/events/{event_id}")
+def update_admin_event(
+    event_id: str,
+    req: AdminEventUpdateRequest,
+    auth_user_id: str = Depends(require_auth),
+):
+    ensure_matching_user(
+        auth_user_id,
+        req.clerk_id,
+        detail="You can only update admin events as yourself",
+    )
+    _require_admin_user(req.clerk_id)
+
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_review_schema(conn)
+            with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+                _require_owned_admin_event(cur, event_id, req.clerk_id)
+                cur.execute(
+                    """
+                    UPDATE admin_events
+                    SET title = %s,
+                        description = %s,
+                        lat = %s,
+                        lng = %s,
+                        location_name = %s,
+                        start_time = %s,
+                        end_time = %s,
+                        google_review_url = %s,
+                        image_url = %s
+                    WHERE id = %s
+                    RETURNING id
+                    """,
+                    (
+                        req.title,
+                        req.description,
+                        req.lat,
+                        req.lng,
+                        req.location_name,
+                        req.start_time,
+                        req.end_time,
+                        req.google_review_url,
+                        req.image_url,
+                        event_id,
+                    ),
+                )
+                updated = cur.fetchone()
+                conn.commit()
+                _invalidate_admin_event_caches()
+                return {"status": "success", "event_id": str(updated["id"])}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error updating admin event: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.delete("/events/{event_id}")
+def delete_admin_event(
+    event_id: str,
+    clerk_id: str = Query(...),
+    _auth_user_id: str = Depends(require_clerk_user),
+):
+    _require_admin_user(clerk_id)
+
+    try:
+        with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_review_schema(conn)
+            with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+                _require_owned_admin_event(cur, event_id, clerk_id)
+                cur.execute("DELETE FROM campus_event_rsvps WHERE event_id = %s", (event_id,))
+                cur.execute("DELETE FROM admin_events WHERE id = %s RETURNING id", (event_id,))
+                deleted = cur.fetchone()
+                conn.commit()
+                _invalidate_admin_event_caches()
+                return {"status": "success", "event_id": str(deleted["id"])}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Error deleting admin event: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/events/me")
+def get_my_admin_events(
+    clerk_id: str = Query(...),
+    _auth_user_id: str = Depends(require_clerk_user),
+):
+    _require_admin_user(clerk_id)
+
+    try:
+        with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_review_schema(conn)
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(
                     """
-                    SELECT e.id, e.title, e.description, e.lat, e.lng, e.location_name, 
-                           e.start_time, e.end_time, e.shares_count, e.created_at, e.google_review_url,
+                    SELECT e.id, e.title, e.description, e.lat, e.lng, e.location_name,
+                           e.start_time, e.end_time, e.shares_count, e.created_at, e.google_review_url, e.image_url,
                            (SELECT COUNT(*) FROM campus_event_rsvps r WHERE r.event_id = e.id::TEXT) as rsvp_count,
                            (SELECT COALESCE(AVG(r3.rating), 0) FROM admin_event_reviews r3 WHERE r3.event_id = e.id) as avg_rating,
                            (SELECT json_agg(json_build_object('rating', r2.rating, 'feedback', r2.feedback, 'created_at', r2.created_at)) FROM admin_event_reviews r2 WHERE r2.event_id = e.id AND r2.rating <= 3) as private_feedbacks
@@ -145,16 +381,15 @@ def get_my_admin_events(clerk_id: str = Query(...), _auth_user_id: str = Depends
                     WHERE e.clerk_id = %s
                     ORDER BY e.created_at DESC
                     """,
-                    (clerk_id,)
+                    (clerk_id,),
                 )
                 events = cur.fetchall()
-                # Parse times correctly for JSON
                 for event in events:
-                    event['id'] = str(event['id'])
-                    event['start_time'] = event['start_time'].isoformat() if event['start_time'] else None
-                    event['end_time'] = event['end_time'].isoformat() if event['end_time'] else None
-                    event['created_at'] = event['created_at'].isoformat() if event['created_at'] else None
-                    event['private_feedbacks'] = event['private_feedbacks'] or []
+                    event["id"] = str(event["id"])
+                    event["start_time"] = event["start_time"].isoformat() if event["start_time"] else None
+                    event["end_time"] = event["end_time"].isoformat() if event["end_time"] else None
+                    event["created_at"] = event["created_at"].isoformat() if event["created_at"] else None
+                    event["private_feedbacks"] = event["private_feedbacks"] or []
                 return events
     except Exception as e:
         print(f"Error fetching admin events: {e}")
@@ -163,9 +398,9 @@ def get_my_admin_events(clerk_id: str = Query(...), _auth_user_id: str = Depends
 
 @router.post("/events/{event_id}/share")
 def track_admin_event_share(event_id: str):
-    """Track an admin event share."""
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_review_schema(conn)
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -174,7 +409,7 @@ def track_admin_event_share(event_id: str):
                     WHERE id = %s
                     RETURNING shares_count
                     """,
-                    (event_id,)
+                    (event_id,),
                 )
                 res = cur.fetchone()
                 conn.commit()
@@ -182,53 +417,72 @@ def track_admin_event_share(event_id: str):
                     raise HTTPException(status_code=404, detail="Event not found")
                 return {"status": "success", "shares_count": res[0]}
     except HTTPException:
-         raise
+        raise
     except Exception as e:
         print(f"Error tracking share count: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-class AdminEventReviewRequest(BaseModel):
-    clerk_id: str
-    rating: int = Field(..., ge=1, le=5)
-    feedback: Optional[str] = Field(default=None, max_length=2000)
 
 @router.get("/events/pending-reviews")
-def get_pending_reviews(clerk_id: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
-    """Fetch one event the user RSVP'd for that has ended but not been reviewed."""
+def get_pending_reviews(
+    clerk_id: str = Query(...),
+    event_id: Optional[str] = Query(default=None),
+    _auth_user_id: str = Depends(require_clerk_user),
+):
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_review_schema(conn)
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
-                cur.execute(
-                    """
+                query = """
                     SELECT e.id, e.title, e.location_name, e.google_review_url
                     FROM admin_events e
                     JOIN campus_event_rsvps r ON r.event_id = e.id::TEXT
-                    WHERE r.clerk_id = %s 
+                    WHERE r.clerk_id = %s
                     AND (r.response = 'going' OR r.response = 'yes')
                     AND COALESCE(e.end_time, e.start_time + interval '6 hours') < NOW()
                     AND NOT EXISTS (
-                        SELECT 1 FROM admin_event_reviews rev 
+                        SELECT 1 FROM admin_event_reviews rev
                         WHERE rev.event_id = e.id AND rev.clerk_id = %s
                     )
+                    AND NOT EXISTS (
+                        SELECT 1 FROM admin_event_review_dismissals dis
+                        WHERE dis.event_id = e.id
+                        AND dis.clerk_id = %s
+                        AND dis.suppressed = TRUE
+                    )
+                """
+                params = [clerk_id, clerk_id, clerk_id]
+                if event_id:
+                    query += " AND e.id::TEXT = %s"
+                    params.append(event_id)
+                query += """
                     ORDER BY COALESCE(e.end_time, e.start_time + interval '6 hours') DESC
                     LIMIT 1
-                    """,
-                    (clerk_id, clerk_id)
-                )
+                """
+                cur.execute(query, tuple(params))
                 event = cur.fetchone()
                 if event:
-                    event['id'] = str(event['id'])
+                    event["id"] = str(event["id"])
                 return event
     except Exception as e:
         print(f"Error checking pending reviews: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+
 @router.post("/events/{event_id}/reviews")
-def submit_event_review(event_id: str, req: AdminEventReviewRequest, auth_user_id: str = Depends(require_auth)):
-    """Submit an internal review for an event."""
-    ensure_matching_user(auth_user_id, req.clerk_id, detail="You can only submit reviews as yourself")
+def submit_event_review(
+    event_id: str,
+    req: AdminEventReviewRequest,
+    auth_user_id: str = Depends(require_auth),
+):
+    ensure_matching_user(
+        auth_user_id,
+        req.clerk_id,
+        detail="You can only submit reviews as yourself",
+    )
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_review_schema(conn)
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -244,7 +498,10 @@ def submit_event_review(event_id: str, req: AdminEventReviewRequest, auth_user_i
                     (event_id, req.clerk_id),
                 )
                 if not cur.fetchone():
-                    raise HTTPException(status_code=403, detail="You can only review events you attended after they end")
+                    raise HTTPException(
+                        status_code=403,
+                        detail="You can only review events you attended after they end",
+                    )
                 cur.execute(
                     """
                     INSERT INTO admin_event_reviews (event_id, clerk_id, rating, feedback)
@@ -254,10 +511,90 @@ def submit_event_review(event_id: str, req: AdminEventReviewRequest, auth_user_i
                     feedback = EXCLUDED.feedback,
                     created_at = NOW()
                     """,
-                    (event_id, req.clerk_id, req.rating, req.feedback)
+                    (event_id, req.clerk_id, req.rating, req.feedback),
                 )
                 conn.commit()
                 return {"status": "success"}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error submitting review: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/events/{event_id}/review-dismiss")
+def dismiss_event_review(
+    event_id: str,
+    req: AdminEventReviewDismissRequest,
+    auth_user_id: str = Depends(require_auth),
+):
+    ensure_matching_user(
+        auth_user_id,
+        req.clerk_id,
+        detail="You can only dismiss your own review prompts",
+    )
+    try:
+        with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_review_schema(conn)
+            with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+                cur.execute(
+                    """
+                    INSERT INTO admin_event_review_dismissals (event_id, clerk_id, dismiss_count, suppressed, updated_at)
+                    VALUES (%s, %s, 1, FALSE, NOW())
+                    ON CONFLICT (event_id, clerk_id) DO UPDATE SET
+                    dismiss_count = admin_event_review_dismissals.dismiss_count + 1,
+                    suppressed = (admin_event_review_dismissals.dismiss_count + 1) >= 2,
+                    updated_at = NOW()
+                    RETURNING dismiss_count, suppressed
+                    """,
+                    (event_id, req.clerk_id),
+                )
+                result = cur.fetchone()
+                conn.commit()
+                return {
+                    "status": "success",
+                    "dismiss_count": result["dismiss_count"],
+                    "suppressed": result["suppressed"],
+                }
+    except Exception as e:
+        print(f"Error dismissing event review prompt: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/admins/{admin_clerk_id}/unsubscribe")
+def unsubscribe_from_admin(
+    admin_clerk_id: str,
+    req: AdminOrganizerPreferenceRequest,
+    auth_user_id: str = Depends(require_auth),
+):
+    ensure_matching_user(
+        auth_user_id,
+        req.clerk_id,
+        detail="You can only update your own organizer preferences",
+    )
+    if not req.clerk_id:
+        raise HTTPException(status_code=400, detail="Missing user id")
+
+    try:
+        with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_review_schema(conn)
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO admin_event_subscriptions (user_clerk_id, admin_clerk_id, muted, updated_at)
+                    VALUES (%s, %s, TRUE, NOW())
+                    ON CONFLICT (user_clerk_id, admin_clerk_id) DO UPDATE SET
+                    muted = TRUE,
+                    updated_at = NOW()
+                    """,
+                    (req.clerk_id, admin_clerk_id),
+                )
+                conn.commit()
+                return {
+                    "status": "success",
+                    "admin_clerk_id": admin_clerk_id,
+                    "muted": True,
+                }
+    except Exception as e:
+        print(f"Error muting admin organizer: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

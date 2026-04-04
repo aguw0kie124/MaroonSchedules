@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Tuple
+import psycopg
 
 from routers.traffic import tracker
 from services import cache_service, place_registry_service
 from repositories import feed_repository
+from db_config import CONNECTION_PARAMS
 
 
 HOT_COLOR = "#FF6B57"
 ACTIVE_COLOR = "#FFB347"
 BUBBLING_COLOR = "#5ACD7C"
+BOOSTED_GOLD_COLOR = "#F5B301"
 PULSE_SNAPSHOT_TTL_SECONDS = 60
 
 
@@ -107,6 +110,34 @@ def _build_summary(location_name: str, ping_count: int, event_count: int, percen
     return f"{location_name} has {' · '.join(parts)}."
 
 
+def _load_admin_events() -> List[Dict[str, Any]]:
+    try:
+        with psycopg.connect(CONNECTION_PARAMS) as conn:
+            with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        e.id,
+                        e.title,
+                        e.location_name,
+                        e.lat,
+                        e.lng,
+                        e.start_time,
+                        e.end_time,
+                        e.image_url,
+                        app.organization_name
+                    FROM admin_events e
+                    LEFT JOIN admin_applications app ON app.clerk_id = e.clerk_id
+                    WHERE COALESCE(e.end_time, e.start_time + interval '6 hours') >= NOW() - interval '18 hours'
+                    ORDER BY e.start_time ASC
+                    """
+                )
+                return cur.fetchall()
+    except Exception as exc:
+        print(f"[pulse_service] failed to load admin events: {exc}")
+        return []
+
+
 def _load_occupancy_by_place() -> Dict[str, int]:
     try:
         locations = tracker.get_all_locations_with_events()
@@ -166,6 +197,7 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
                 "score": 0.0,
                 "pingCount": 0,
                 "eventCount": 0,
+                "boosted": False,
                 "categoryWeights": {},
                 "items": [],
             }
@@ -235,6 +267,52 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
             }
         )
 
+    for event in _load_admin_events():
+        start_at = event["start_time"].isoformat() if event.get("start_time") else datetime.now(timezone.utc).isoformat()
+        target_time = _parse_iso(start_at)
+        if target_time:
+            dh = (target_time - datetime.now(timezone.utc)).total_seconds() / 3600
+            if dh < -18 or dh > 72:
+                continue
+
+        resolved_place = place_registry_service.resolve_place(
+            event.get("location_name"),
+            event.get("lat"),
+            event.get("lng"),
+        )
+        boosted = False
+        if not resolved_place:
+            resolved_place = place_registry_service.resolve_place("Memorial Student Center", None, None)
+            boosted = True
+
+        if not resolved_place:
+            continue
+
+        group = ensure_group(
+            resolved_place["place_id"],
+            resolved_place["name"],
+            {"lat": resolved_place["lat"], "lng": resolved_place["lng"]},
+        )
+        weight = 18 * _recency_weight(start_at) + 12
+        if boosted:
+            weight += 10
+            group["boosted"] = True
+        group["score"] += weight
+        group["eventCount"] += 1
+        group["categoryWeights"]["Featured Event"] = group["categoryWeights"].get("Featured Event", 0) + weight
+        group["items"].append(
+            {
+                "id": str(event["id"]),
+                "source": "event",
+                "title": event.get("title") or "Featured Event",
+                "subtitle": event.get("organization_name") or "Campus organizer",
+                "category": "Featured Event",
+                "timeLabel": _format_time_label(start_at),
+                "startAt": start_at,
+                "link": None,
+            }
+        )
+
     hotspots: List[Dict[str, Any]] = []
     for place_id, group in grouped.items():
         percent_full = occupancy_by_place.get(place_id)
@@ -256,8 +334,8 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
                 "locationName": group["locationName"],
                 "coord": group["coord"],
                 "score": score,
-                "pulseLabel": _pulse_label_for(score),
-                "pulseColor": _pulse_color_for(score),
+                "pulseLabel": "Hot" if group.get("boosted") else _pulse_label_for(score),
+                "pulseColor": BOOSTED_GOLD_COLOR if group.get("boosted") else _pulse_color_for(score),
                 "radius": 110 + min(score, 80) * 3.2,
                 "pingCount": group["pingCount"],
                 "eventCount": group["eventCount"],
