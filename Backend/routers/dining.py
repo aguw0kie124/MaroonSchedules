@@ -193,7 +193,7 @@ def optimize_day(
                 cur.execute("""
                     SELECT * FROM food_items 
                     WHERE (location = %s OR location ILIKE %s) 
-                    AND location_type = 'dining_hall'
+                    AND location_type = 'dining'
                     AND active = TRUE
                 """, (dining_hall, f"%{dining_hall}%"))
                 all_foods = [dict(r) for r in cur.fetchall()]
@@ -220,7 +220,7 @@ def optimize_day(
                         cur.execute(f"""
                             SELECT * FROM food_items 
                             WHERE (location = %s OR location ILIKE %s) 
-                            AND location_type = 'dining_hall'
+                            AND location_type = 'dining'
                             AND meal_period IN ({placeholders})
                             AND active = TRUE
                         """, [dining_hall, f"%{dining_hall}%"] + aliases)

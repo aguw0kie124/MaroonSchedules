@@ -377,7 +377,7 @@ export function Profile() {
             <Text style={styles.title}>Personal</Text>
           </View>
           <View style={styles.heroBadge}>
-            <UserRound size={18} color="#FFFFFF" />
+            <UserRound size={18} color={COLORS.textPrimary} />
           </View>
         </View>
 
@@ -391,7 +391,7 @@ export function Profile() {
               )}
             </View>
             <View style={styles.cameraBadge}>
-              <Camera size={14} color="#FFFFFF" />
+              <Camera size={14} color={COLORS.textPrimary} />
             </View>
           </Pressable>
           <View style={{ flex: 1 }}>
@@ -524,16 +524,16 @@ export function Profile() {
       </Pressable>
 
       <Pressable style={styles.logoutButton} onPress={handleLogout}>
-        <LogOut size={18} color="#F3F1ED" />
+        <LogOut size={18} color={COLORS.textPrimary} />
         <Text style={styles.logoutText}>Log Out</Text>
       </Pressable>
 
       <Pressable 
-        style={[styles.logoutButton, { backgroundColor: '#441111', marginTop: 8, borderColor: '#772222', borderWidth: 1 }]} 
+        style={[styles.logoutButton, { backgroundColor: isDark ? '#441111' : '#FFF0F0', marginTop: 8, borderColor: isDark ? '#772222' : '#FFCCCC', borderWidth: 1 }]} 
         onPress={handleDeleteAccount}
       >
-        <Trash2 size={18} color="#E56B6B" />
-        <Text style={[styles.logoutText, { color: '#E56B6B' }]}>Delete Account</Text>
+        <Trash2 size={18} color={isDark ? '#E56B6B' : '#CC0000'} />
+        <Text style={[styles.logoutText, { color: isDark ? '#E56B6B' : '#CC0000' }]}>Delete Account</Text>
       </Pressable>
     </>
   );
@@ -828,34 +828,44 @@ export function Profile() {
 
       {[
         {
+          key: 'annex',
+          title: 'Library Services',
+          icon: LibraryBig,
+          iconColor: '#00CFC7',
+          iconBg: 'rgba(0, 207, 199, 0.14)',
+          action: () => navigation.navigate('AnnexHub'),
+          internal: true,
+        },
+        {
           key: 'howdy',
           title: 'Howdy Portal',
           icon: GraduationCap,
+          iconColor: COLORS.primary,
+          iconBg: 'rgba(80,0,0,0.12)',
           action: () => openExternal('https://howdy.tamu.edu/main/home/card-view'),
         },
         {
           key: 'hire',
           title: 'Hire Aggies',
           icon: BriefcaseBusiness,
+          iconColor: '#3B82F6',
+          iconBg: 'rgba(59,130,246,0.12)',
           action: () => openExternal('https://tamu-csm.symplicity.com/students/index.php?signin_tab=0'),
-        },
-        {
-          key: 'annex',
-          title: 'The Annex',
-          icon: Building2,
-          action: () => navigation.navigate('AnnexHub'),
-          internal: true,
         },
         {
           key: 'transact',
           title: 'Transact eAccounts',
           icon: Wallet,
+          iconColor: '#F59E0B',
+          iconBg: 'rgba(245, 158, 11, 0.15)',
           action: () => openExternal('https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx'),
         },
         {
           key: 'rec',
           title: 'Rec Center Hours',
           icon: Dumbbell,
+          iconColor: '#10B981',
+          iconBg: 'rgba(16,185,129,0.15)',
           action: () => navigation.navigate('RecreationFacilities'),
         },
       ].map((resource, index, array) => {
@@ -866,8 +876,8 @@ export function Profile() {
             style={[styles.toolRow, index === array.length - 1 && styles.toolRowLast]}
             onPress={resource.action}
           >
-            <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-              <Icon size={20} color="#F3F1ED" />
+            <View style={[styles.toolIconBg, { backgroundColor: resource.iconBg || 'rgba(243,241,237,0.12)' }]}>
+              <Icon size={20} color={resource.iconColor || COLORS.textPrimary} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.toolTitle}>{resource.title}</Text>
@@ -931,7 +941,7 @@ export function Profile() {
             <Text style={styles.title}>Browse Campus Fast</Text>
           </View>
           <View style={styles.heroBadge}>
-            <UserRound size={18} color="#FFFFFF" />
+            <UserRound size={18} color={COLORS.textPrimary} />
           </View>
         </View>
       </View>
@@ -1008,7 +1018,7 @@ export function Profile() {
       </View>
 
       <Pressable style={styles.logoutButton} onPress={handleLogin}>
-        <LogIn size={18} color="#F3F1ED" />
+        <LogIn size={18} color={COLORS.textPrimary} />
         <Text style={styles.logoutText}>Log In</Text>
       </Pressable>
     </>
@@ -1108,9 +1118,9 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       borderRadius: 16,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(12,12,14,0.9)',
+      backgroundColor: isDark ? 'rgba(12,12,14,0.9)' : 'rgba(80,0,0,0.06)',
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.08)',
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'transparent',
     },
     tabShell: {
       marginTop: 2,
@@ -1130,7 +1140,7 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       width: 74,
       height: 74,
       borderRadius: 37,
-      backgroundColor: 'rgba(12,12,14,0.9)',
+      backgroundColor: isDark ? 'rgba(12,12,14,0.9)' : 'rgba(80,0,0,0.06)',
       alignItems: 'center',
       justifyContent: 'center',
       overflow: 'hidden',
@@ -1142,7 +1152,7 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
     avatarText: {
       fontSize: 26,
       fontWeight: '800',
-      color: '#FFFFFF',
+      color: COLORS.textPrimary,
     },
     cameraBadge: {
       position: 'absolute',
@@ -1153,7 +1163,7 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(12,12,14,0.95)',
+      backgroundColor: isDark ? 'rgba(12,12,14,0.95)' : 'rgba(255,255,255,0.9)',
       borderWidth: 2,
       borderColor: COLORS.background,
     },
