@@ -55,7 +55,7 @@ import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme } from './SharedUI';
 import { navigateToLogin } from '../utils/guestAccess';
 
-const SUPPORT_CONTACT_URL = 'mailto:support@maroonschedules.tamu.edu?subject=MaroonLife%20Support';
+const SUPPORT_CONTACT_URL = 'mailto:tejtalluri1@gmail.com?subject=MaroonLife%20Support';
 
 const SETTINGS_TABS = [
   { key: 'personal', label: 'Personal', icon: UserRound },
