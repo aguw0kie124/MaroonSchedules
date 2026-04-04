@@ -50,7 +50,7 @@ import {
 
 
 import { API_URL } from '../config';
-import { saveCampusEventRsvp } from '../api/client';
+import { requestJson, saveCampusEventRsvp } from '../api/client';
 import { TourTarget, useTour } from './onboarding/TourProvider';
 import { useShareStore } from '../store/shareStore';
 import { useEventStore } from '../store/eventStore';
@@ -434,9 +434,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       if (user?.id) {
         params.set('clerk_id', user.id);
       }
-      const res = await fetch(`${API_URL}/campus/events?${params.toString()}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const payload = (await res.json()) as { events?: CampusEventResponse[] } | CampusEventResponse[];
+      const payload = (await requestJson(
+        `/campus/events?${params.toString()}`,
+      )) as { events?: CampusEventResponse[] } | CampusEventResponse[];
       const raw = Array.isArray(payload) ? payload : payload.events || [];
       const parsed: TAMUEvent[] = raw
         .filter((event) => event && event.event_id && event.title && event.start_time)
@@ -759,14 +759,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             style: 'destructive',
             onPress: async () => {
               try {
-                const res = await fetch(`${API_URL}/admin/admins/${event.admin_clerk_id}/unsubscribe`, {
+                await requestJson(`/admin/admins/${event.admin_clerk_id}/unsubscribe`, {
                   method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ clerk_id: user.id }),
                 });
-                if (!res.ok) {
-                  throw new Error('Failed to update organizer preference');
-                }
                 removeOrganizerEvents(event.admin_clerk_id as string);
                 Alert.alert('Organizer muted', `You will no longer see events from ${organizerName}.`);
               } catch (error) {
@@ -1492,8 +1488,17 @@ function HeroEventCard({
               stylesStatic.heroRsvpButtonText,
               { color: scheduled ? '#C65A28' : '#174F2E' },
             ]}
+            numberOfLines={!event.is_admin_event && !scheduled ? 2 : 1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
           >
-            {scheduled ? 'Remove RSVP' : 'RSVP'}
+            {event.is_admin_event
+              ? scheduled
+                ? 'Remove RSVP'
+                : 'RSVP'
+              : scheduled
+                ? 'Remove from Schedule'
+                : 'Add'}
           </Text>
         </Pressable>
       </View>
@@ -1984,7 +1989,7 @@ function DetailModal({
                     ? 'Log in to RSVP or save'
                     : event.is_admin_event
                       ? (scheduled ? 'Remove RSVP' : 'RSVP to Featured Event')
-                      : (scheduled ? 'Remove from current schedule' : 'Add to current schedule')}
+                      : (scheduled ? 'Remove from current schedule' : 'Add')}
                 </Text>
               </Pressable>
             </TourTarget>

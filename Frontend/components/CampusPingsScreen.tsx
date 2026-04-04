@@ -863,8 +863,19 @@ export function CampusPingsScreen() {
             onPress={() => handleFeaturedEventRsvp(item)}
           >
             <CalendarDays size={14} color={isRsvped ? COLORS.textPrimary : '#FFFFFF'} />
-            <Text style={[styles.featuredRsvpButtonText, isRsvped && styles.featuredRsvpButtonTextSaved]}>
-              {isRsvped ? "You're in" : 'RSVP'}
+            <Text
+              style={[styles.featuredRsvpButtonText, isRsvped && styles.featuredRsvpButtonTextSaved]}
+              numberOfLines={!item.isAdminEvent && !isRsvped ? 2 : 1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+            >
+              {item.isAdminEvent
+                ? isRsvped
+                  ? "You're in"
+                  : 'RSVP'
+                : isRsvped
+                  ? 'Added'
+                  : 'Add'}
             </Text>
           </Pressable>
           <Pressable
@@ -1428,8 +1439,25 @@ export function CampusPingsScreen() {
                       }
                     >
                       <CalendarDays size={16} color="#FFFFFF" />
-                      <Text style={styles.primaryActionLabel}>
-                        {activeFeaturedEvent?.rsvpStatus === 'going' ? 'Remove RSVP' : 'RSVP'}
+                      <Text
+                        style={styles.primaryActionLabel}
+                        numberOfLines={
+                          activeFeaturedEvent?.isAdminEvent
+                            ? 1
+                            : activeFeaturedEvent?.rsvpStatus === 'going'
+                              ? 1
+                              : 2
+                        }
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.75}
+                      >
+                        {activeFeaturedEvent?.isAdminEvent
+                          ? activeFeaturedEvent?.rsvpStatus === 'going'
+                            ? 'Remove RSVP'
+                            : 'RSVP'
+                          : activeFeaturedEvent?.rsvpStatus === 'going'
+                            ? 'Remove from Schedule'
+                            : 'Add'}
                       </Text>
                     </Pressable>
                     <Pressable
