@@ -20,7 +20,7 @@ export function resolveAdminEventLocation(locationName?: string | null) {
   const trimmed = locationName?.trim();
   if (!trimmed) {
     return {
-      location_name: FALLBACK_LOCATION.location,
+      location_name: 'Unknown address',
       lat: FALLBACK_LOCATION.coord.lat,
       lng: FALLBACK_LOCATION.coord.lng,
     };
@@ -41,14 +41,14 @@ export function resolveAdminEventLocation(locationName?: string | null) {
 
   if (trimmed.toLowerCase() === 'virtual') {
     return {
-      location_name: FALLBACK_LOCATION.location,
+      location_name: 'Virtual',
       lat: FALLBACK_LOCATION.coord.lat,
       lng: FALLBACK_LOCATION.coord.lng,
     };
   }
 
   return {
-    location_name: FALLBACK_LOCATION.location,
+    location_name: trimmed,
     lat: FALLBACK_LOCATION.coord.lat,
     lng: FALLBACK_LOCATION.coord.lng,
   };

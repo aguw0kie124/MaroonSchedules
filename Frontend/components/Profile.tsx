@@ -6,6 +6,7 @@ import {
   ImageBackground,
   PanResponder,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
@@ -163,6 +164,7 @@ export function Profile() {
   const [loadingAcademicStatus, setLoadingAcademicStatus] = useState(true);
   const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
   const [accentSliderWidth, setAccentSliderWidth] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const activeTab = useAppShellStore((state) => state.settingsTab) as SettingsTabKey;
   const setActiveTab = useAppShellStore((state) => state.setSettingsTab);
   const tabBarMode = useAppShellStore((state) => state.tabBarMode);
@@ -242,12 +244,34 @@ export function Profile() {
   };
 
   const handleUnblock = async (targetId: string) => {
+    if (!user?.id) {
+      Alert.alert('Error', 'You must be signed in to unblock a user.');
+      return;
+    }
     try {
-        await unblockUser(targetId);
+        await unblockUser(targetId, user.id);
+        setBlockedUsers((current) => current.filter((item) => item.id !== targetId));
+        await loadBlockedUsers();
         Alert.alert('Success', 'User unblocked.');
-        loadBlockedUsers();
     } catch (err) {
+        console.error('Failed to unblock user', err);
         Alert.alert('Error', 'Failed to unblock user.');
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (!user || isGuest) return;
+    setRefreshing(true);
+    try {
+      const data = await fetchCampusOverview(user.id);
+      setAcademicStatus(data?.academic || null);
+      if (activeTab === 'personal') {
+        await loadBlockedUsers();
+      }
+    } catch (error) {
+      console.warn('Failed to refresh settings:', error);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -773,7 +797,7 @@ export function Profile() {
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Blocked Users</Text>
       <Text style={styles.sectionSubtitle}>
-        Users you've blocked won't see your posts, and you won't see theirs.
+        People and organizers you've blocked will be hidden only for this account.
       </Text>
 
       {loadingBlocked ? (
@@ -1041,6 +1065,7 @@ export function Profile() {
         style={[styles.container, useWallpaper && styles.transparentContainer]}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
       >
         {isGuest ? (
           renderGuestView()

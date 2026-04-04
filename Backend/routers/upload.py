@@ -6,8 +6,10 @@ from auth.clerk_middleware import require_auth
 
 router = APIRouter(prefix="/upload", tags=["upload"])
 
-# Base directory for uploads
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "static", "uploads")
+# Store uploaded media outside the repo by default so user content lives with backend data,
+# not in the source tree. This can be overridden in production with UPLOAD_DIR.
+DEFAULT_UPLOAD_ROOT = os.path.join(os.path.expanduser("~"), ".maroonlife")
+UPLOAD_DIR = os.getenv("UPLOAD_DIR", os.path.join(DEFAULT_UPLOAD_ROOT, "uploads"))
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Base URL for serving files (in production this should be the public domain)

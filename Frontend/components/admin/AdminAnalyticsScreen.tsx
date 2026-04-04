@@ -20,10 +20,9 @@ import DateTimePicker, { type DateTimePickerEvent } from '@react-native-communit
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../SharedUI';
 import { Button } from '../Button';
-import { API_URL } from '../../config';
 import { requestJson } from '../../api/client';
 import { Users, Share2, MapPin, Star, Pencil, Trash2, MessageSquare, LogOut, ImagePlus } from 'lucide-react-native';
-import { normalizeExternalUrl } from '../../services/url';
+import { normalizeExternalUrl, normalizeImageUrl } from '../../services/url';
 import { getAdminLocationSuggestions, resolveAdminEventLocation } from '../../services/adminEventLocation';
 import { uploadStreamImage } from '../../services/streamFeeds';
 import { useSessionStore } from '../../store/sessionStore';
@@ -62,7 +61,7 @@ function buildDraft(event: AdminEvent): EventDraft {
     description: event.description || '',
     location_name: event.location_name || '',
     google_review_url: event.google_review_url || '',
-    image_url: event.image_url || '',
+    image_url: normalizeImageUrl(event.image_url) || '',
     start_time: new Date(event.start_time),
     end_time: new Date(event.end_time),
   };
@@ -657,7 +656,9 @@ export function AdminAnalyticsScreen() {
 
   const renderItem = ({ item }: { item: AdminEvent }) => (
     <View style={styles.card}>
-      {item.image_url ? <Image source={{ uri: item.image_url }} style={styles.cardImage} resizeMode="cover" /> : null}
+      {normalizeImageUrl(item.image_url) ? (
+        <Image source={{ uri: normalizeImageUrl(item.image_url)! }} style={styles.cardImage} resizeMode="cover" />
+      ) : null}
       <Text style={styles.eventTitle}>{item.title}</Text>
       <View style={styles.locationRow}>
         <MapPin size={14} color={COLORS.textTertiary} />

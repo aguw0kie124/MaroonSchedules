@@ -335,35 +335,30 @@ def get_batch_interaction_counts(post_ids: List[str]) -> Dict[str, Dict[str, Any
 # --- Compliance (Blocking & Reporting) ---
 
 def add_block(blocker_id: str, blocked_id: str) -> bool:
-    """Creates a bidirectional block in the database."""
+    """Creates a one-way block in the database."""
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         with conn.cursor() as cur:
-            # Add A blocks B
             cur.execute(
                 "INSERT INTO blocked_users (blocker_id, blocked_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                 (blocker_id, blocked_id)
-            )
-            # Add B blocks A (bidirectional)
-            cur.execute(
-                "INSERT INTO blocked_users (blocker_id, blocked_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
-                (blocked_id, blocker_id)
             )
         conn.commit()
     return True
 
 def remove_block(blocker_id: str, blocked_id: str) -> bool:
-    """Removes a bidirectional block."""
+    """Removes a one-way block."""
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM blocked_users WHERE (blocker_id = %s AND blocked_id = %s) OR (blocker_id = %s AND blocked_id = %s)",
-                (blocker_id, blocked_id, blocked_id, blocker_id)
+                "DELETE FROM blocked_users WHERE blocker_id = %s AND blocked_id = %s",
+                (blocker_id, blocked_id)
             )
+            deleted = cur.rowcount > 0
         conn.commit()
-    return True
+    return deleted
 
 def get_blocked_user_ids(user_id: str) -> List[str]:
-    """Returns a list of clerk_ids that the user has blocked or has been blocked by."""
+    """Returns a list of clerk_ids that the user has explicitly blocked."""
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT blocked_id FROM blocked_users WHERE blocker_id = %s", (user_id,))

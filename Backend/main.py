@@ -17,6 +17,7 @@ from routers.campus_hub import router as campus_hub_router
 from routers.grades import router as grades_router
 from routers.annex import router as annex_router
 from routers.upload import router as upload_router
+from routers.upload import UPLOAD_DIR
 from routers.admin import router as admin_router
 
 from services import course_service, schedule_service, user_service
@@ -85,7 +86,6 @@ app.include_router(admin_router)
 
 from fastapi.staticfiles import StaticFiles
 # Ensure uploads directory exists
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 

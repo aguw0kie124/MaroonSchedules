@@ -15,7 +15,7 @@ export type ExploreCategory =
   | 'Health & Wellness';
 
 export type SocialMode = 'casual' | 'professional';
-export type EventsView = 'discover' | 'list' | 'swipe' | 'inbox';
+export type EventsView = 'discover' | 'list' | 'swipe';
 
 export interface CampusEventResponse {
   event_id: string;

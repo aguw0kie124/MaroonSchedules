@@ -77,7 +77,7 @@ import { buildCampusDirectory, getCanonicalLocationName } from './places/campusD
 import { TourTarget, useTour } from './onboarding/TourProvider';
 import { getPremiumName, getPremiumImage } from '../utils/userUtils';
 import { scheduleAdminEventReviewNotification } from '../services/notificationService';
-import { normalizeExternalUrl } from '../services/url';
+import { normalizeExternalUrl, normalizeImageUrl } from '../services/url';
 
 type PingCategory =
   | 'Free Food'
@@ -263,7 +263,7 @@ function mapActivityToPing(activity: any): PingCard {
     activityId: activity.id,
     isAnonymous: !!custom.is_anonymous,
     sourceUrl: null,
-    imageUrl: media.image_url || media.asset_url || null,
+    imageUrl: normalizeImageUrl(media.image_url || media.asset_url || null),
   };
 }
 
@@ -1196,9 +1196,9 @@ export function CampusPingsScreen() {
           >
             <View style={styles.modalBackdrop}>
                <Animated.View
-                entering={SlideInDown.springify().damping(20)}
-                exiting={SlideOutDown}
-                style={styles.modalKeyboardWrap}
+                entering={SlideInDown.duration(220)}
+                exiting={SlideOutDown.duration(180)}
+                 style={styles.modalKeyboardWrap}
               >
                 <KeyboardAvoidingView
                   behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -1268,7 +1268,7 @@ export function CampusPingsScreen() {
                           multiline
                         />
 
-                        <Text style={styles.modalLabel}>Photo</Text>
+                        <Text style={styles.modalLabel}>Photo (Optional)</Text>
                         <View style={styles.imageComposerRow}>
                           <View style={styles.imagePickerActions}>
                             <Pressable style={styles.imagePickerButton} onPress={handlePickPingImage}>
@@ -1291,10 +1291,16 @@ export function CampusPingsScreen() {
                             </Pressable>
                           ) : (
                             <View style={styles.imageEmptyState}>
-                              <Text style={styles.imageEmptyStateText}>Camera or Photos</Text>
+                              <Text style={styles.imageEmptyStateText}>No photo attached</Text>
                             </View>
                           )}
                         </View>
+                        <Text style={styles.optionalHelperText}>You can post a CrowdPing without adding an image.</Text>
+                        {composerImageUri ? (
+                          <Pressable style={styles.removeImageButton} onPress={() => setComposerImageUri(null)}>
+                            <Text style={styles.removeImageButtonText}>Remove photo</Text>
+                          </Pressable>
+                        ) : null}
 
                         <Text style={styles.modalLabel}>When</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
@@ -2247,6 +2253,27 @@ const getStyles = (COLORS: any) =>
     },
     imageEmptyStateText: {
       color: COLORS.textTertiary,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    optionalHelperText: {
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      lineHeight: 18,
+      marginTop: 2,
+    },
+    removeImageButton: {
+      alignSelf: 'flex-start',
+      marginTop: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surface,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    removeImageButtonText: {
+      color: COLORS.textPrimary,
       fontSize: 12,
       fontWeight: '700',
     },

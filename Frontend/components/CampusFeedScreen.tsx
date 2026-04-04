@@ -26,6 +26,7 @@ import {
     blockUser,
     reportContent
 } from '../services/streamFeeds';
+import { normalizeImageUrl } from '../services/url';
 
 import { Trash2 } from 'lucide-react-native';
 import { getPremiumName, getPremiumImage } from '../utils/userUtils';
@@ -59,7 +60,7 @@ function mapActivityToPost(activity: any): Post {
         user_name: actor.data?.name || actor.name || custom.user_name || actor.id || 'Aggie User',
         user_image: actor.data?.image || actor.image || custom.user_image || null,
         caption: activity.text || null,
-        media_url: media.image_url || media.asset_url || null,
+        media_url: normalizeImageUrl(media.image_url || media.asset_url || null),
         media_type: media.type === 'video' ? 'video' : (media.type === 'image' ? 'image' : null),
         location_tag: custom.location_tag || null,
         likes: activity.reaction_counts?.like || activity.reaction_count || 0,

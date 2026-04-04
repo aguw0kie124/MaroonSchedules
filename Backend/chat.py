@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Header, Query, Body
 from pydantic import BaseModel
 import os
+import psycopg
 from dotenv import load_dotenv
 import requests as http_requests
 from typing import Dict, Any, List, Optional
@@ -9,6 +10,7 @@ import traceback
 
 from services import ping_service, cache_service
 from repositories import feed_repository, user_repository
+from db_config import CONNECTION_PARAMS
 from auth.clerk_middleware import require_auth, optional_auth, ensure_matching_user
 
 # Force reload from the exact .env file
@@ -378,13 +380,12 @@ async def proxy_get_reactions(activity_id: str, kind: str):
 
 @router.post("/users/{clerk_id}/block")
 async def proxy_block_user(clerk_id: str, body: BlockRequest = Body(...), auth_user_id: str = Depends(require_auth)):
-    """Block another user (Bidirectional)."""
+    """Block another user for the current account only."""
     try:
         ensure_matching_user(auth_user_id, clerk_id, detail="You can only block users from your own account")
         feed_repository.add_block(clerk_id, body.target_id)
         # Invalidate cached blocked list
         cache_service.delete(f"user:blocks:{clerk_id}")
-        cache_service.delete(f"user:blocks:{body.target_id}")
         return {"status": "success"}
     except Exception as e:
         print(f"Block Error: {e}")
@@ -399,16 +400,40 @@ async def get_blocked_users(clerk_id: str, auth_user_id: str = Depends(require_a
         if not blocked_ids:
             return []
             
-        # Get profiles from local database
         profiles = []
-        for bid in blocked_ids:
-            profile = user_repository.get_user(bid)
-            if profile:
-                profiles.append({
-                    "id": profile["clerk_id"],
-                    "name": profile["full_name"] or "Aggie User",
-                    "profile_image_url": profile["profile_image_url"]
-                })
+        with psycopg.connect(CONNECTION_PARAMS) as conn:
+            with conn.cursor() as cur:
+                for bid in blocked_ids:
+                    profile = user_repository.get_user(bid)
+                    if profile:
+                        profiles.append({
+                            "id": profile["clerk_id"],
+                            "name": profile["full_name"] or "Aggie User",
+                            "profile_image_url": profile["profile_image_url"]
+                        })
+                        continue
+
+                    cur.execute(
+                        """
+                        SELECT organization_name
+                        FROM admin_applications
+                        WHERE clerk_id = %s
+                        """,
+                        (bid,),
+                    )
+                    admin_row = cur.fetchone()
+                    if admin_row:
+                        profiles.append({
+                            "id": bid,
+                            "name": admin_row[0] or "Campus organizer",
+                            "profile_image_url": None,
+                        })
+                    else:
+                        profiles.append({
+                            "id": bid,
+                            "name": "Blocked user",
+                            "profile_image_url": None,
+                        })
         return profiles
     except Exception as e:
         print(f"Get Blocked Error: {e}")
@@ -419,10 +444,13 @@ async def proxy_unblock_user(clerk_id: str, target_id: str, auth_user_id: str = 
     """Unblock another user."""
     try:
         ensure_matching_user(auth_user_id, clerk_id, detail="You can only unblock users from your own account")
-        feed_repository.remove_block(clerk_id, target_id)
+        removed = feed_repository.remove_block(clerk_id, target_id)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Block record not found")
         cache_service.delete(f"user:blocks:{clerk_id}")
-        cache_service.delete(f"user:blocks:{target_id}")
         return {"status": "success"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

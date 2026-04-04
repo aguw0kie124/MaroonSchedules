@@ -461,9 +461,12 @@ export function disconnectFeeds() {
   currentFullUser = null;
 }
 
-export async function blockUser(targetId: string): Promise<void> {
-    if (!connectedUserId) return;
-    const res = await feedFetch(`/chat/users/${connectedUserId}/block`, {
+export async function blockUser(targetId: string, actingUserId?: string): Promise<void> {
+    const blockerId = actingUserId || connectedUserId;
+    if (!blockerId) {
+        throw new Error('Must be signed in to block a user.');
+    }
+    const res = await feedFetch(`/chat/users/${blockerId}/block`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target_id: targetId })
@@ -471,9 +474,12 @@ export async function blockUser(targetId: string): Promise<void> {
     if (!res.ok) throw new Error('Failed to block user.');
 }
 
-export async function unblockUser(targetId: string): Promise<void> {
-    if (!connectedUserId) return;
-    const res = await feedFetch(`/chat/users/${connectedUserId}/block/${targetId}`, {
+export async function unblockUser(targetId: string, actingUserId?: string): Promise<void> {
+    const blockerId = actingUserId || connectedUserId;
+    if (!blockerId) {
+        throw new Error('Must be signed in to unblock a user.');
+    }
+    const res = await feedFetch(`/chat/users/${blockerId}/block/${targetId}`, {
         method: 'DELETE'
     });
     if (!res.ok) throw new Error('Failed to unblock user.');

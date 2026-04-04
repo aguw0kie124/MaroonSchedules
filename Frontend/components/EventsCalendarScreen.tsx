@@ -10,6 +10,7 @@ import {
   PanResponder,
   Platform,
   Pressable,
+  RefreshControl,
   Image,
   ScrollView,
   StyleSheet,
@@ -51,6 +52,7 @@ import {
 
 import { API_URL } from '../config';
 import { requestJson, saveCampusEventRsvp } from '../api/client';
+import { normalizeImageUrl } from '../services/url';
 import { TourTarget, useTour } from './onboarding/TourProvider';
 import { useShareStore } from '../store/shareStore';
 import { useEventStore } from '../store/eventStore';
@@ -265,10 +267,7 @@ function getSearchBlob(event: TAMUEvent) {
 }
 
 function resolveEventImageUrl(value?: string | null) {
-  if (!value) return null;
-  if (value.startsWith('http://') || value.startsWith('https://')) return value;
-  if (value.startsWith('/')) return `${API_URL}${value}`;
-  return value;
+  return normalizeImageUrl(value);
 }
 
 function classifyCategory(event: TAMUEvent): ExploreCategory {
@@ -397,6 +396,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [swipeIndex, setSwipeIndex] = useState(0);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const {
@@ -430,7 +430,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const fetchEvents = useCallback(async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({ limit: '1000' });
+      const params = new URLSearchParams({
+        limit: '1000',
+        student_relevant_only: 'false',
+      });
       if (user?.id) {
         params.set('clerk_id', user.id);
       }
@@ -495,6 +498,15 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       fetchEvents();
     }, [fetchEvents]),
   );
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchEvents();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchEvents]);
 
   const categoryCounts = useMemo(() => {
     const counts: Record<ExploreCategory, number> = {
@@ -795,7 +807,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             style: 'destructive',
             onPress: async () => {
               try {
-                await blockUser(event.admin_clerk_id as string);
+                await blockUser(event.admin_clerk_id as string, user.id);
                 removeOrganizerEvents(event.admin_clerk_id as string);
                 Alert.alert('Organizer blocked', `${organizerName} has been blocked.`);
               } catch (error) {
@@ -893,14 +905,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             <Text style={s.pageTitle}>{title}</Text>
 
         </View>
-        <Pressable style={s.headerIconButton} onPress={() => setView('inbox')}>
-          <Inbox size={18} color={COLORS.textPrimary} />
-          {receivedInvites.length > 0 ? (
-            <View style={s.headerBadge}>
-              <Text style={s.headerBadgeText}>{receivedInvites.length}</Text>
-            </View>
-          ) : null}
-        </Pressable>
         <Pressable style={s.headerIconButton} onPress={() => setSettingsVisible(true)}>
           <Settings size={18} color={COLORS.textPrimary} />
         </Pressable>
@@ -958,6 +962,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             <ScrollView
               contentContainerStyle={s.scrollContent}
               showsVerticalScrollIndicator={false}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
             >
               <View style={s.categoryWrap}>
                 {categoriesExpanded ? (
@@ -1051,21 +1056,25 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={s.heroRail}
-                snapToInterval={HERO_CARD_SNAP_INTERVAL}
+                snapToOffsets={discoverEvents.map((_, index) => index * HERO_CARD_SNAP_INTERVAL)}
                 snapToAlignment="start"
                 disableIntervalMomentum
                 decelerationRate="fast"
               >
                 {discoverEvents.map((event, i) => {
                   const card = (
-                    <HeroEventCard
+                    <View
                       key={String(event.id)}
-                      event={event}
-                      scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
-                      onSchedule={() => handleSchedule(event)}
-                      onPress={() => setDetailEvent(event)}
-                      onMap={() => handleMapOpen(event)}
-                    />
+                      style={{ marginRight: i === discoverEvents.length - 1 ? 0 : HERO_CARD_GAP }}
+                    >
+                      <HeroEventCard
+                        event={event}
+                        scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
+                        onSchedule={() => handleSchedule(event)}
+                        onPress={() => setDetailEvent(event)}
+                        onMap={() => handleMapOpen(event)}
+                      />
+                    </View>
                   );
                   return card;
                 })}
@@ -1137,6 +1146,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               keyExtractor={(event) => String(event.id)}
               contentContainerStyle={s.listScroll}
               showsVerticalScrollIndicator={false}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
               initialNumToRender={10}
               maxToRenderPerBatch={12}
               windowSize={7}
@@ -1385,7 +1395,12 @@ function CategoryChip({
       onPress={onPress}
       style={[
         stylesStatic.categoryChip,
-        { backgroundColor: active ? accent : chipBg, opacity: count ? 1 : 0.48 },
+        {
+          backgroundColor: active ? accent : chipBg,
+          opacity: count ? 1 : 0.48,
+          borderWidth: active ? 2 : 1,
+          borderColor: active ? '#FFFFFF' : `${chipText}26`,
+        },
       ]}
     >
       <Icon size={17} color={active ? '#FFFFFF' : chipText} />
@@ -2278,9 +2293,8 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
   heroRail: {
       paddingTop: 18,
-      paddingLeft: 20,
-      paddingRight: 20,
-      gap: 14,
+      paddingLeft: 0,
+      paddingRight: 0,
     },
     swipeCta: {
       marginTop: 16,

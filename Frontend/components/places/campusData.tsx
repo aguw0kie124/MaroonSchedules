@@ -393,6 +393,15 @@ function areLocationCoordsClose(first: CampusLocation, second: CampusLocation, m
   );
 }
 
+function shouldPreserveExistingType(existing: CampusLocation, incoming: CampusLocation) {
+  if (incoming.source !== "osm") return false;
+
+  const strongTypes = new Set(["Dining", "Hub", "Rec", "Library", "Parking"]);
+  const weakIncomingTypes = new Set(["Academic", "Landmark", "General"]);
+
+  return strongTypes.has(existing.type) && weakIncomingTypes.has(incoming.type);
+}
+
 export function getLocationSelectionId(location: Pick<CampusLocation, "placeId" | "location" | "coord">) {
   if (location.placeId) return location.placeId;
   const lat = Number.isFinite(location.coord?.lat) ? location.coord.lat.toFixed(6) : "na";
@@ -447,6 +456,7 @@ export function mergeCampusLocations(...groups: CampusLocation[][]): CampusLocat
       ? {
           ...existing,
           ...location,
+          type: shouldPreserveExistingType(existing, location) ? existing.type : location.type,
           aliases: nextAliases,
         }
       : {
