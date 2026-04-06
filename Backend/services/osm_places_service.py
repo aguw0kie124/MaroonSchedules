@@ -11,7 +11,7 @@ import requests
 
 
 OVERPASS_API_URL = "https://overpass-api.de/api/interpreter"
-TAMU_CENTER = {"lat": 30.6153, "lng": -96.3410}
+TAMU_CENTER = {"lat": 30.6123, "lng": -96.3415}
 SEARCH_RADIUS_MILES = 10
 SEARCH_RADIUS_METERS = 16093
 OSM_PLACE_DATA_PATH = Path(__file__).resolve().parents[1] / "Data" / "osm_places_tamu_10mi.json"

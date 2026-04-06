@@ -26,6 +26,7 @@ export const CANONICAL_LOCATION_ALIASES: Record<string, string> = {
   "Rec": "Student Recreation Center",
   "Southside Rec Center": "Southside Recreation Center",
   "Polo Road Rec Center": "Polo Road Recreation Center",
+  "Commons Dining Hall": "The Commons Dining Hall",
   "Evans Library": "Sterling C. Evans Library",
   "Memorial Student Center (MSC)": "Memorial Student Center",
 };
@@ -61,15 +62,16 @@ export function getCanonicalLocationName(name: string): string {
 }
 
 export function getCanonicalCoords(
-  name: string,
-  fallback: { lat: number; lng: number },
+  name: string
 ): { lat: number; lng: number } {
   const canonicalName = getCanonicalLocationName(name);
-  return (
-    BUILDING_COORDS.get(canonicalName) ||
-    AMENITY_COORDS.get(canonicalName) ||
-    fallback
-  );
+  const coords = BUILDING_COORDS.get(canonicalName) || AMENITY_COORDS.get(canonicalName);
+  
+  if (!coords) {
+    console.warn(`[campusData] No coordinates found for "${name}" (canonical: "${canonicalName}") in Master Registry.`);
+    return { lat: 30.6153, lng: -96.3410 }; // Default to campus center if absolutely missing
+  }
+  return coords;
 }
 
 // ── Campus density zones ──────────────────────────────────────
@@ -85,10 +87,7 @@ export const CAMPUS_ZONES: Array<{
 }> = [
   {
     name: "Student Recreation Center",
-    ...getCanonicalCoords("Student Recreation Center", {
-      lat: 30.6094,
-      lng: -96.34,
-    }),
+    ...getCanonicalCoords("Student Recreation Center"),
     peak: 70,
     off: 10,
     radius: 220,
@@ -97,10 +96,7 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "Southside Recreation Center",
-    ...getCanonicalCoords("Southside Recreation Center", {
-      lat: 30.6093,
-      lng: -96.339,
-    }),
+    ...getCanonicalCoords("Southside Recreation Center"),
     peak: 65,
     off: 10,
     radius: 200,
@@ -108,10 +104,7 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "Polo Road Recreation Center",
-    ...getCanonicalCoords("Polo Road Recreation Center", {
-      lat: 30.6237,
-      lng: -96.3395,
-    }),
+    ...getCanonicalCoords("Polo Road Recreation Center"),
     peak: 55,
     off: 8,
     radius: 200,
@@ -119,10 +112,7 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "Sterling C. Evans Library",
-    ...getCanonicalCoords("Sterling C. Evans Library", {
-      lat: 30.6171,
-      lng: -96.3387,
-    }),
+    ...getCanonicalCoords("Sterling C. Evans Library"),
     peak: 82,
     off: 18,
     radius: 160,
@@ -130,10 +120,7 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "Evans Library Annex",
-    ...getCanonicalCoords("Evans Library Annex", {
-      lat: 30.6168,
-      lng: -96.3383,
-    }),
+    ...getCanonicalCoords("Evans Library Annex"),
     peak: 70,
     off: 15,
     radius: 120,
@@ -141,10 +128,7 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "West Campus Library",
-    ...getCanonicalCoords("West Campus Library", {
-      lat: 30.6146,
-      lng: -96.344,
-    }),
+    ...getCanonicalCoords("West Campus Library"),
     peak: 60,
     off: 14,
     radius: 160,
@@ -152,10 +136,7 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "Memorial Student Center",
-    ...getCanonicalCoords("Memorial Student Center", {
-      lat: 30.6123,
-      lng: -96.3415,
-    }),
+    ...getCanonicalCoords("Memorial Student Center"),
     peak: 85,
     off: 15,
     radius: 180,
@@ -163,10 +144,7 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "Polo Road Garage Dining",
-    ...getCanonicalCoords("Polo Road Garage Dining", {
-      lat: 30.6235,
-      lng: -96.3388,
-    }),
+    ...getCanonicalCoords("Polo Road Garage Dining"),
     peak: 80,
     off: 10,
     radius: 180,
@@ -174,13 +152,18 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "Sbisa Dining Hall",
-    ...getCanonicalCoords("Sbisa Dining Hall", {
-      lat: 30.617135,
-      lng: -96.343777,
-    }),
+    ...getCanonicalCoords("Sbisa Dining Hall"),
     peak: 70,
     off: 5,
     radius: 150,
+    type: "Dining",
+  },
+  {
+    name: "The Commons Dining Hall",
+    ...getCanonicalCoords("The Commons Dining Hall"),
+    peak: 75,
+    off: 12,
+    radius: 170,
     type: "Dining",
   },
 ];
