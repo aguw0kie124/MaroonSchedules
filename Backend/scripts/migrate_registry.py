@@ -163,10 +163,7 @@ FRONTEND_PRIMARY = [
 
 # 3. Frontend Amenities (from campus.ts hardcoded lists)
 FRONTEND_AMENITIES = [
-    { "id": 'revs-msc', "name": "Rev's Coffee (MSC)", "latitude": 30.612206, "longitude": -96.341130, "type": 'coffee' },
     { "id": 'starbucks-msc', "name": 'Starbucks (MSC)', "latitude": 30.612309, "longitude": -96.341378, "type": 'coffee' },
-    { "id": 'revs-zach', "name": "Rev's Coffee (Zachry)", "latitude": 30.620956, "longitude": -96.340564, "type": 'coffee' },
-    { "id": 'sweet-eugene', "name": "Sweet Eugene's Coffee", "latitude": 30.6273, "longitude": -96.3345, "type": 'coffee' },
     { "id": 'underground-food', "name": 'Underground Food Court', "latitude": 30.617020, "longitude": -96.343250, "type": 'dining' },
     { "id": 'cfa', "name": 'Chick-fil-A (MSC)', "latitude": 30.611881, "longitude": -96.341541, "type": 'dining' },
     { "id": 'panda-msc', "name": 'Panda Express (MSC)', "latitude": 30.612020, "longitude": -96.341180, "type": 'dining' },
@@ -211,6 +208,11 @@ def normalize_key(value: str) -> str:
     text = (value or "").strip().lower()
     text = text.replace("&", " and ")
     return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+EXCLUDED_PLACE_NAMES = {
+    normalize_key("Sweet Eugene's Coffee"),
+    normalize_key("Sweet Eugene's Java House"),
+}
 
 def run_migration():
     print(f"--- Starting Full Consolidation to {DB_PATH.name} ---")
@@ -272,6 +274,9 @@ def run_migration():
         skipped = 0
         for row in osm_data:
             nk = normalize_key(row["name"])
+            if nk in EXCLUDED_PLACE_NAMES:
+                skipped += 1
+                continue
             if nk in PREMIUM_NAMES:
                 skipped += 1
                 continue

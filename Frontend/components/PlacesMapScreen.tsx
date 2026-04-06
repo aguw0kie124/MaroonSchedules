@@ -112,6 +112,7 @@ import {
   getCanonicalLocationName,
   getZoneDensity,
   mergeCampusLocations,
+  shouldHideFoodCourtLocationInBrowse,
 } from "./places/campusData";
 import {
   getStatusColor,
@@ -460,7 +461,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (activeLayer === "Today") return scheduleLocations;
     if (activeLayer === "Dining")
       return browsableLocations.filter(
-        (l) => l.type === "Dining" || l.type === "Hub",
+        (l) =>
+          (l.type === "Dining" || l.type === "Hub") &&
+          !shouldHideFoodCourtLocationInBrowse(l, allMapLocations),
       );
     if (activeLayer === "Academic")
       return browsableLocations.filter(
@@ -526,7 +529,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setSelectedId,
     selectedLoc,
     selectedPlaceDetail,
-    hubRestaurants,
+    foodCourtVenues,
     isFetchingDining,
     diningMenuOptions,
     activeDiningMenu,
@@ -2321,7 +2324,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         setAllReviewsModalVisible={setAllReviewsModalVisible}
         isFetchingReviews={isFetchingReviews}
         fetchReviews={fetchReviews}
-        hubRestaurants={hubRestaurants}
+        foodCourtVenues={foodCourtVenues}
         diningMenuOptions={diningMenuOptions}
         activeDiningMenu={activeDiningMenu}
         setActiveDiningMenu={setActiveDiningMenu}

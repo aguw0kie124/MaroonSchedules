@@ -33,7 +33,7 @@ import { useUser } from "@clerk/clerk-expo";
 import * as Linking from "expo-linking";
 import * as Haptics from "expo-haptics";
 import type { CampusLocation } from "./types";
-import { SNAP_PEEK, SNAP_FULL, SNAP_HIDDEN, SHEET_BOTTOM_OFFSET, SCREEN_HEIGHT } from "./types";
+import { SHEET_BOTTOM_OFFSET, SCREEN_HEIGHT } from "./types";
 import {
   getStatusColor,
   formatScheduleDays,
@@ -43,14 +43,34 @@ import { getCanonicalLocationName } from "./campusData";
 import {
   DiningMealPeriod,
   getDiningMealOptionsForLocation,
-  getDiningMenuCandidates,
   isDiningHallMenuLocation,
 } from "../../services/diningMenuCache";
 import { reportContent, blockUser, deleteReview } from "../../services/streamFeeds";
 import { useSessionStore } from "../../store/sessionStore";
 import { promptGuestLogin } from "../../utils/guestAccess";
-import { PillTabs } from "../PillTabs";
 import { Alert } from "react-native";
+
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.94;
+const SHEET_TOP_VISIBLE_HEIGHT = SCREEN_HEIGHT * 0.84;
+const SHEET_TOP_SNAP = Math.max(SHEET_HEIGHT - SHEET_TOP_VISIBLE_HEIGHT, 0);
+const SHEET_MID_VISIBLE_HEIGHT = Math.min(440, SCREEN_HEIGHT * 0.48);
+const SHEET_PEEK_VISIBLE_HEIGHT = Math.min(108, SCREEN_HEIGHT * 0.115);
+const SHEET_MID_SNAP = Math.max(SHEET_HEIGHT - SHEET_MID_VISIBLE_HEIGHT, 0);
+const SHEET_PEEK_SNAP = Math.max(SHEET_HEIGHT - SHEET_PEEK_VISIBLE_HEIGHT, 0);
+const SHEET_HIDDEN_SNAP = SCREEN_HEIGHT;
+
+type SheetMode = "peek" | "mid" | "top" | "hidden";
+
+function getSheetModeForSnap(toValue: number): SheetMode {
+  const topMidThreshold = (SHEET_TOP_SNAP + SHEET_MID_SNAP) / 2;
+  const midPeekThreshold = (SHEET_MID_SNAP + SHEET_PEEK_SNAP) / 2;
+  const peekHiddenThreshold = (SHEET_PEEK_SNAP + SHEET_HIDDEN_SNAP) / 2;
+
+  if (toValue >= peekHiddenThreshold) return "hidden";
+  if (toValue >= midPeekThreshold) return "peek";
+  if (toValue >= topMidThreshold) return "mid";
+  return "top";
+}
 
 interface LocationBottomSheetProps {
   styles: any;
@@ -74,7 +94,12 @@ interface LocationBottomSheetProps {
   isFetchingReviews: boolean;
   fetchReviews: (placeId: string, limit?: number) => void;
   // Dining
-  hubRestaurants: string[];
+  foodCourtVenues: Array<{
+    selectionId: string;
+    label: string;
+    menuCandidate: string | null;
+    location: CampusLocation;
+  }>;
   diningMenuOptions: string[];
   activeDiningMenu: string | null;
   setActiveDiningMenu: (v: string | null) => void;
@@ -118,7 +143,7 @@ export function LocationBottomSheet({
   setAllReviewsModalVisible,
   isFetchingReviews,
   fetchReviews,
-  hubRestaurants,
+  foodCourtVenues,
   diningMenuOptions,
   activeDiningMenu,
   setActiveDiningMenu,
@@ -149,9 +174,10 @@ export function LocationBottomSheet({
   }, [selectedLoc?.description]);
 
   // ── Bottom sheet animation ──────────────────────────────────
-  const sheetY = useRef(new Animated.Value(SNAP_HIDDEN)).current;
-  const sheetSnap = useRef<number>(SNAP_HIDDEN);
-  const panStartY = useRef<number>(SNAP_HIDDEN);
+  const sheetY = useRef(new Animated.Value(SHEET_HIDDEN_SNAP)).current;
+  const sheetSnap = useRef<number>(SHEET_HIDDEN_SNAP);
+  const panStartY = useRef<number>(SHEET_HIDDEN_SNAP);
+  const [sheetMode, setSheetMode] = useState<SheetMode>("hidden");
   const [diningDetailTab, setDiningDetailTab] = useState<"reviews" | "menus">(
     "reviews",
   );
@@ -159,6 +185,7 @@ export function LocationBottomSheet({
   const animateSheet = useCallback(
     (toValue: number, onDone?: () => void) => {
       sheetSnap.current = toValue;
+      setSheetMode(getSheetModeForSnap(toValue));
       Animated.spring(sheetY, {
         toValue,
         useNativeDriver: true,
@@ -168,7 +195,7 @@ export function LocationBottomSheet({
       }).start(() => {
         if (onDone) onDone();
         // Onboarding: Instant advance on full expansion
-        if (toValue === SNAP_FULL && activeTargetName === 'rec-center-item') {
+        if (toValue === SHEET_TOP_SNAP && activeTargetName === 'rec-center-item') {
           advanceStep('rec-center-item');
         }
       });
@@ -179,7 +206,7 @@ export function LocationBottomSheet({
   useEffect(() => {
     setDiningDetailTab("reviews");
     if (selectedId) {
-      animateSheet(SNAP_PEEK);
+      animateSheet(SHEET_MID_SNAP);
       
       // Onboarding: Auto-advance after 3 seconds of viewing Rec Center
       if (activeTargetName === 'rec-center-item' && selectedLoc?.type === 'Rec') {
@@ -189,7 +216,7 @@ export function LocationBottomSheet({
         return () => clearTimeout(timer);
       }
     } else {
-      animateSheet(SNAP_HIDDEN);
+      animateSheet(SHEET_HIDDEN_SNAP);
     }
   }, [selectedId, animateSheet, activeTargetName, selectedLoc?.type]);
 
@@ -197,6 +224,34 @@ export function LocationBottomSheet({
     !!selectedLoc &&
     isDiningHallMenuLocation(selectedLoc.location) &&
     isPrimaryDiningHallSelection;
+  const isFoodCourtHub = foodCourtVenues.length > 0;
+  const isDiningMenuExperience = isDiningHallCard || isFoodCourtHub;
+  const isPeekSheet = sheetMode === "peek";
+  const peekMetaText = useMemo(() => {
+    if (!selectedLoc) return "";
+
+    const bits: string[] = [];
+    if (isFoodCourtHub) {
+      bits.push(`${foodCourtVenues.length} locations`);
+    } else if (selectedLoc.type !== "Dining" && selectedLoc.type !== "Hub") {
+      bits.push(selectedLoc.type);
+    }
+
+    if (
+      (selectedLoc.type === "Library" || selectedLoc.type === "Rec") &&
+      selectedLoc.percent_full > 0
+    ) {
+      bits.push(`${selectedLoc.percent_full}% full`);
+    }
+
+    if (selectedLoc.hours) {
+      bits.push(selectedLoc.hours);
+    } else if (selectedLoc.current_event) {
+      bits.push(selectedLoc.current_event);
+    }
+
+    return bits.filter(Boolean).join(" • ");
+  }, [foodCourtVenues.length, isFoodCourtHub, selectedLoc]);
 
   const openReviewComposer = useCallback(() => {
     if (isGuest) {
@@ -218,34 +273,54 @@ export function LocationBottomSheet({
           sheetY.stopAnimation();
         },
         onPanResponderMove: (_, { dy }) => {
-          const next = Math.max(SNAP_FULL, panStartY.current + dy);
+          const next = Math.max(
+            SHEET_TOP_SNAP,
+            Math.min(SHEET_HIDDEN_SNAP, panStartY.current + dy),
+          );
           sheetY.setValue(next);
         },
         onPanResponderRelease: (_, { dy, vy }) => {
           const liveY = panStartY.current + dy;
 
+          const snapPoints = [
+            SHEET_TOP_SNAP,
+            SHEET_MID_SNAP,
+            SHEET_PEEK_SNAP,
+            SHEET_HIDDEN_SNAP,
+          ];
+          const currentIndex = snapPoints.reduce((bestIndex, point, index) => {
+            const bestDistance = Math.abs(snapPoints[bestIndex] - sheetSnap.current);
+            const nextDistance = Math.abs(point - sheetSnap.current);
+            return nextDistance < bestDistance ? index : bestIndex;
+          }, 0);
+
+          if (vy < -1.0) {
+            animateSheet(snapPoints[Math.max(0, currentIndex - 1)]);
+            return;
+          }
+
           if (vy > 1.0) {
-            if (sheetSnap.current < SNAP_PEEK - 20) {
-              animateSheet(SNAP_PEEK);
+            const nextSnap = snapPoints[Math.min(snapPoints.length - 1, currentIndex + 1)];
+            if (nextSnap === SHEET_HIDDEN_SNAP) {
+              animateSheet(SHEET_HIDDEN_SNAP, () => setSelectedId(null));
             } else {
-              animateSheet(SNAP_HIDDEN, () => setSelectedId(null));
+              animateSheet(nextSnap);
             }
             return;
           }
-          if (vy < -1.0) {
-            animateSheet(SNAP_FULL);
-            return;
-          }
 
-          const midPeekFull = (SNAP_PEEK + SNAP_FULL) / 2;
-          const midPeekHidden = (SNAP_PEEK + SNAP_HIDDEN) / 2;
+          const topMidThreshold = (SHEET_TOP_SNAP + SHEET_MID_SNAP) / 2;
+          const midPeekThreshold = (SHEET_MID_SNAP + SHEET_PEEK_SNAP) / 2;
+          const peekHiddenThreshold = (SHEET_PEEK_SNAP + SHEET_HIDDEN_SNAP) / 2;
 
-          if (liveY > midPeekHidden) {
-            animateSheet(SNAP_HIDDEN, () => setSelectedId(null));
-          } else if (liveY > midPeekFull) {
-            animateSheet(SNAP_PEEK);
+          if (liveY >= peekHiddenThreshold) {
+            animateSheet(SHEET_HIDDEN_SNAP, () => setSelectedId(null));
+          } else if (liveY >= midPeekThreshold) {
+            animateSheet(SHEET_PEEK_SNAP);
+          } else if (liveY >= topMidThreshold) {
+            animateSheet(SHEET_MID_SNAP);
           } else {
-            animateSheet(SNAP_FULL);
+            animateSheet(SHEET_TOP_SNAP);
           }
         },
       }),
@@ -343,28 +418,35 @@ export function LocationBottomSheet({
             <View style={styles.sheetHeader}>
               <View style={{ flex: 1, paddingRight: 12 }}>
                 <Text style={styles.locationName}>{selectedLoc.location}</Text>
-                <View style={styles.sheetBadgeRow}>
-                  {selectedLoc.type !== "Dining" && selectedLoc.type !== "Hub" && (
-                    <Text style={styles.typeTextSlim}>{selectedLoc.type}</Text>
-                  )}
-                  {selectedLoc.is_live ? (
-                    <View style={styles.liveBadgeSlim}>
-                      <Text style={styles.dotSeparator}>•</Text>
-                      <View style={styles.livePulse} />
-                      <Text style={styles.liveTextSlim}>Live Traffic</Text>
-                    </View>
-                  ) : selectedLoc.classMeetings?.length ? (
-                    <View style={styles.aiBadgeSlim}>
-                      <Text style={styles.dotSeparator}>•</Text>
-                      <Text style={styles.aiTextSlim}>Your events</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.aiBadgeSlim}>
-                      <Text style={styles.dotSeparator}>•</Text>
-                      <Text style={styles.aiTextSlim}>Directory</Text>
-                    </View>
-                  )}
-                </View>
+                {(selectedLoc.type !== "Dining" &&
+                  selectedLoc.type !== "Hub") ||
+                selectedLoc.is_live ||
+                !!selectedLoc.classMeetings?.length ? (
+                  <View style={styles.sheetBadgeRow}>
+                    {selectedLoc.type !== "Dining" &&
+                    selectedLoc.type !== "Hub" ? (
+                      <Text style={styles.typeTextSlim}>{selectedLoc.type}</Text>
+                    ) : null}
+                    {selectedLoc.is_live ? (
+                      <View style={styles.liveBadgeSlim}>
+                        <Text style={styles.dotSeparator}>•</Text>
+                        <View style={styles.livePulse} />
+                        <Text style={styles.liveTextSlim}>Live Traffic</Text>
+                      </View>
+                    ) : selectedLoc.classMeetings?.length ? (
+                      <View style={styles.aiBadgeSlim}>
+                        <Text style={styles.dotSeparator}>•</Text>
+                        <Text style={styles.aiTextSlim}>Your events</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
+
+                {isPeekSheet && peekMetaText ? (
+                  <Text style={styles.peekMetaText} numberOfLines={1}>
+                    {peekMetaText}
+                  </Text>
+                ) : null}
               </View>
 
               <View style={{ alignItems: "center", gap: 12 }}>
@@ -409,7 +491,7 @@ export function LocationBottomSheet({
               </View>
             </View>
 
-            {conciseDescription ? (
+            {!isPeekSheet && conciseDescription ? (
               <Text style={styles.descriptionText} numberOfLines={1}>
                 {conciseDescription}
               </Text>
@@ -450,9 +532,7 @@ export function LocationBottomSheet({
                         </Text>
                       </TouchableOpacity>
 
-                    {isDiningHallMenuLocation(selectedLoc.location) &&
-                    activeDiningMenu &&
-                    isPrimaryDiningHallSelection ? (
+                    {activeDiningMenu && isDiningHallCard ? (
                       <TouchableOpacity
                         style={[styles.quickActionPill, styles.quickActionPrimary]}
                         onPress={() => openFullMenu(activeDiningMenu)}
@@ -474,7 +554,7 @@ export function LocationBottomSheet({
                       </TouchableOpacity>
                     ) : null}
 
-                    {contextLink ? (
+                    {!isPeekSheet && contextLink ? (
                       <TouchableOpacity
                         style={styles.quickActionPill}
                         onPress={() =>
@@ -492,7 +572,7 @@ export function LocationBottomSheet({
 
                   </View>
 
-                  {parkingRecommendation ? (
+                  {!isPeekSheet && parkingRecommendation ? (
                     <View style={styles.contextCard}>
                       <Text style={styles.contextCardTitle}>
                         {parkingRecommendation.badge}
@@ -503,7 +583,7 @@ export function LocationBottomSheet({
                     </View>
                   ) : null}
 
-                  {selectedLoc.current_event ? (
+                  {!isPeekSheet && selectedLoc.current_event ? (
                     <View style={styles.contextCard}>
                       <Text style={styles.contextCardTitle}>
                         Active at this place
@@ -518,31 +598,8 @@ export function LocationBottomSheet({
             })()}
 
             {/* Hub Restaurants / Occupancy / Hours */}
-            {hubRestaurants.length > 0 ? (
+            {!isPeekSheet && isFoodCourtHub ? (
               <View style={styles.infoBlock}>
-                <View style={{ marginBottom: 16 }}>
-                  <Text style={styles.sectionTitle}>Inside this Hub</Text>
-                  <View style={styles.restaurantChipList}>
-                    {hubRestaurants.map((r, i) => (
-                      <TouchableOpacity
-                        key={i}
-                        style={[
-                          styles.restaurantChip,
-                          activeDiningMenu === getDiningMenuCandidates(r)[0] &&
-                            styles.restaurantChipActive,
-                        ]}
-                        onPress={() => {
-                          const nextMenu = getDiningMenuCandidates(r)[0];
-                          if (nextMenu) {
-                            setActiveDiningMenu(nextMenu);
-                          }
-                        }}
-                      >
-                        <Text style={styles.restaurantChipText}>{r}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
                 <View style={styles.hoursInfo}>
                   <Clock size={12} color={COLORS.textTertiary} />
                   <Text style={styles.hoursText}>
@@ -550,7 +607,7 @@ export function LocationBottomSheet({
                   </Text>
                 </View>
               </View>
-            ) : (
+            ) : !isPeekSheet ? (
               <View style={styles.infoBlock}>
                 {selectedLoc.type === "Library" || selectedLoc.type === "Rec" ? (
                   <View style={styles.occupancyBlock}>
@@ -622,43 +679,72 @@ export function LocationBottomSheet({
                   </View>
                 )}
               </View>
-            )}
+            ) : null}
 
-            <View style={styles.sheetDivider} />
+            {!isPeekSheet ? <View style={styles.sheetDivider} /> : null}
 
             {/* Scrollable detail content */}
+            {!isPeekSheet ? (
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: 40 }}
               scrollEventThrottle={16}
             >
-              {isDiningHallCard ? (
+              {isDiningMenuExperience ? (
                 <>
-                  <View style={styles.detailTabsWrap}>
-                    <PillTabs
-                      items={[
-                        { key: "reviews", label: "Reviews" },
-                        { key: "menus", label: "Menus" },
-                      ]}
-                      activeKey={diningDetailTab}
-                      onChange={(key) =>
-                        setDiningDetailTab(key as "reviews" | "menus")
-                      }
-                      floating
-                      compact
-                    />
+                    <View style={styles.detailTabsWrap}>
+                      <View style={styles.mapsTabRow}>
+                        {[
+                          { key: "reviews", label: "Reviews" },
+                          {
+                            key: "menus",
+                            label: isDiningHallCard ? "Menu" : "Locations",
+                          },
+                        ].map((tab) => {
+                          const isActive = diningDetailTab === tab.key;
+                          return (
+                          <TouchableOpacity
+                            key={tab.key}
+                            style={styles.mapsTabButton}
+                            onPress={() =>
+                              setDiningDetailTab(tab.key as "reviews" | "menus")
+                            }
+                            activeOpacity={0.75}
+                          >
+                            <Text
+                              style={[
+                                styles.mapsTabLabel,
+                                isActive && styles.mapsTabLabelActive,
+                              ]}
+                            >
+                              {tab.label}
+                            </Text>
+                            <View
+                              style={[
+                                styles.mapsTabUnderline,
+                                isActive && styles.mapsTabUnderlineActive,
+                              ]}
+                            />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
                   </View>
 
                   {diningDetailTab === "menus" ? (
                     <View style={styles.infoBlock}>
                       <View style={styles.reviewsHeader}>
                         <View>
-                          <Text style={styles.sectionTitle}>Live menus</Text>
+                          <Text style={styles.sectionTitle}>
+                            {isDiningHallCard ? "Live menus" : "Inside this Food Court"}
+                          </Text>
                           <Text style={styles.menuIntroText}>
-                            Live dining hall menu.
+                            {isDiningHallCard
+                              ? "Live dining hall menu."
+                              : "Browse the dining locations available inside this hub."}
                           </Text>
                         </View>
-                        {activeDiningMenu ? (
+                        {isDiningHallCard && activeDiningMenu ? (
                           <TouchableOpacity
                             onPress={() =>
                               openFullMenu(
@@ -671,7 +757,35 @@ export function LocationBottomSheet({
                         ) : null}
                       </View>
 
-                      {diningMenuOptions.length > 1 ? (
+                      {!isDiningHallCard && foodCourtVenues.length > 0 ? (
+                        <View style={styles.foodCourtVenueList}>
+                          {foodCourtVenues.map((venue) => (
+                            <View
+                              key={venue.selectionId}
+                              style={[
+                                styles.foodCourtVenueCard,
+                              ]}
+                            >
+                              <View style={{ flex: 1, paddingRight: 12 }}>
+                                <Text style={styles.foodCourtVenueTitle}>
+                                  {venue.label}
+                                </Text>
+                                <Text style={styles.foodCourtVenueMeta}>
+                                  {venue.location.shortName &&
+                                  venue.location.shortName !== venue.location.location
+                                    ? venue.location.shortName
+                                    : "Dining location"}
+                                </Text>
+                              </View>
+                              <Text style={styles.foodCourtVenueAction}>
+                                Inside
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
+
+                      {isDiningHallCard && diningMenuOptions.length > 1 ? (
                         <View style={styles.restaurantChipList}>
                           {diningMenuOptions.map((option) => (
                             <TouchableOpacity
@@ -691,7 +805,7 @@ export function LocationBottomSheet({
                         </View>
                       ) : null}
 
-                      {activeDiningMenu ? (
+                      {isDiningHallCard && activeDiningMenu ? (
                         <View style={styles.restaurantChipList}>
                           {getDiningMealOptionsForLocation(activeDiningMenu).map(
                             (mealPeriod) => (
@@ -718,85 +832,95 @@ export function LocationBottomSheet({
                         </View>
                       ) : null}
 
-                      <View style={styles.metaPillRow}>
-                        <View style={styles.metaPill}>
-                          <Text style={styles.metaPillText}>
-                            {diningMenuPreview?.count ?? 0} items
-                          </Text>
-                        </View>
-                        <View style={styles.metaPill}>
-                          <Text style={styles.metaPillText}>
-                            {diningMenuPreview?.categories?.length ?? 0} categories
-                          </Text>
-                        </View>
-                      </View>
-
-                      {isFetchingDining ? (
-                        <ActivityIndicator
-                          color={COLORS.primary}
-                          style={{ marginVertical: 18 }}
-                        />
-                      ) : diningMenuPreview?.categories?.length ? (
-                        <View style={styles.menuCategoryList}>
-                          {diningMenuPreview.categories.map((category: any) => (
-                            <View
-                              key={category.name}
-                              style={styles.menuCategoryCard}
-                            >
-                              <View style={styles.menuCategoryHeader}>
-                                <Text style={styles.menuCategoryTitle}>
-                                  {category.name}
-                                </Text>
-                                <Text style={styles.menuCategoryCount}>
-                                  {category.items.length}
-                                </Text>
-                              </View>
-
-                              <View style={styles.menuCategoryItems}>
-                                {category.items.slice(0, 2).map((item: any) => (
-                                  <View
-                                    key={`${activeDiningMenu}-${category.name}-${item.name}`}
-                                    style={styles.menuCategoryItem}
-                                  >
-                                    <View style={{ flex: 1 }}>
-                                      <Text style={styles.menuCategoryItemName}>
-                                        {item.name}
-                                      </Text>
-                                      {item.calories || item.protein ? (
-                                        <Text
-                                          style={styles.menuCategoryItemMeta}
-                                          numberOfLines={1}
-                                        >
-                                          {item.calories
-                                            ? `${Math.round(item.calories || 0)} kcal`
-                                            : ""}
-                                          {item.calories && item.protein
-                                            ? " · "
-                                            : ""}
-                                          {item.protein
-                                            ? `${Math.round(item.protein)}g protein`
-                                            : ""}
-                                        </Text>
-                                      ) : null}
-                                    </View>
-                                  </View>
-                                ))}
-                                {category.items.length > 2 ? (
-                                  <Text style={styles.menuCategoryMoreText}>
-                                    +{category.items.length - 2} more items
-                                  </Text>
-                                ) : null}
-                              </View>
+                      {isDiningHallCard ? (
+                        <>
+                          <View style={styles.metaPillRow}>
+                            <View style={styles.metaPill}>
+                              <Text style={styles.metaPillText}>
+                                {diningMenuPreview?.count ?? 0} items
+                              </Text>
                             </View>
-                          ))}
-                        </View>
-                      ) : (
+                            <View style={styles.metaPill}>
+                              <Text style={styles.metaPillText}>
+                                {diningMenuPreview?.categories?.length ?? 0} categories
+                              </Text>
+                            </View>
+                          </View>
+
+                          {isFetchingDining ? (
+                            <ActivityIndicator
+                              color={COLORS.primary}
+                              style={{ marginVertical: 18 }}
+                            />
+                          ) : diningMenuPreview?.categories?.length ? (
+                            <View style={styles.menuCategoryList}>
+                              {diningMenuPreview.categories.map((category: any) => (
+                                <View
+                                  key={category.name}
+                                  style={styles.menuCategoryCard}
+                                >
+                                  <View style={styles.menuCategoryHeader}>
+                                    <Text style={styles.menuCategoryTitle}>
+                                      {category.name}
+                                    </Text>
+                                    <Text style={styles.menuCategoryCount}>
+                                      {category.items.length}
+                                    </Text>
+                                  </View>
+
+                                  <View style={styles.menuCategoryItems}>
+                                    {category.items.slice(0, 2).map((item: any) => (
+                                      <View
+                                        key={`${activeDiningMenu}-${category.name}-${item.name}`}
+                                        style={styles.menuCategoryItem}
+                                      >
+                                        <View style={{ flex: 1 }}>
+                                          <Text style={styles.menuCategoryItemName}>
+                                            {item.name}
+                                          </Text>
+                                          {item.calories || item.protein ? (
+                                            <Text
+                                              style={styles.menuCategoryItemMeta}
+                                              numberOfLines={1}
+                                            >
+                                              {item.calories
+                                                ? `${Math.round(item.calories || 0)} kcal`
+                                                : ""}
+                                              {item.calories && item.protein
+                                                ? " · "
+                                                : ""}
+                                              {item.protein
+                                                ? `${Math.round(item.protein)}g protein`
+                                                : ""}
+                                            </Text>
+                                          ) : null}
+                                        </View>
+                                      </View>
+                                    ))}
+                                    {category.items.length > 2 ? (
+                                      <Text style={styles.menuCategoryMoreText}>
+                                        +{category.items.length - 2} more items
+                                      </Text>
+                                    ) : null}
+                                  </View>
+                                </View>
+                              ))}
+                            </View>
+                          ) : (
+                            <View style={styles.emptyReviews}>
+                              <Text style={styles.emptyReviewsText}>
+                                Menu not available yet for this meal period.
+                              </Text>
+                            </View>
+                          )}
+                        </>
+                      ) : foodCourtVenues.length === 0 ? (
                         <View style={styles.emptyReviews}>
                           <Text style={styles.emptyReviewsText}>
-                            Menu not available yet for this meal period.
+                            No dining locations are listed inside this hub yet.
                           </Text>
                         </View>
-                      )}
+                      ) : null}
                     </View>
                   ) : (
                     <View style={styles.infoBlock}>
@@ -1030,6 +1154,7 @@ export function LocationBottomSheet({
                 </>
               )}
             </ScrollView>
+            ) : null}
           </>
         ) : null}
       </Animated.View>

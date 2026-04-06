@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-06T20:09:50.256091+00:00",
-  "count": 2133,
+  "generated_at": "2026-04-06T20:59:37.842240+00:00",
+  "count": 2129,
   "attribution": "\u00a9 OpenStreetMap contributors, MaroonSchedules Registry",
   "places": [
     {
@@ -5149,24 +5149,6 @@
       "aliases": [
         "restaurant",
         "sushi masa"
-      ]
-    },
-    {
-      "place_id": "osm:node:4102833558",
-      "name": "Sweet Eugene's Java House",
-      "short_name": "Cafe",
-      "type": "Dining",
-      "lat": 30.6177234,
-      "lng": -96.3174447,
-      "description": null,
-      "hours": null,
-      "features": null,
-      "address": null,
-      "search_only": true,
-      "source": "osm",
-      "aliases": [
-        "cafe",
-        "sweet eugene s java house"
       ]
     },
     {
@@ -29914,10 +29896,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "refuse collection maintenance",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1214015182",
@@ -29932,10 +29911,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "rellis academic complex phase 2",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:556782265",
@@ -29950,10 +29926,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "rellis operations building",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052718",
@@ -29968,10 +29941,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "reynolds medical sciences building",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:869904389",
@@ -29986,10 +29956,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "river bend elementary school csisd",
-        "school"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407982468",
@@ -30004,10 +29971,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "rollins urban and structural entomology facility",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052762",
@@ -30022,10 +29986,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "rosenthal meat science and technology center",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052476",
@@ -30040,10 +30001,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "rudder theatre complex",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052552",
@@ -30058,10 +30016,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "sanders corps of cadets center",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:521350301",
@@ -30076,10 +30031,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "satellite utility plant no 1",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:633044836",
@@ -30094,10 +30046,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "school of public health admin bldg 1518",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:633044835",
@@ -30112,10 +30061,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "school of public health lab bldg 1519",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407982467",
@@ -30130,10 +30076,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "schubot exotic bird health center",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052524",
@@ -30148,10 +30091,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "scoates hall",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:464805078",
@@ -30166,10 +30106,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "scotts turf lab 1 admin bldg",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:464805079",
@@ -30184,10 +30121,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "scotts turf lab 2 shop bldg",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:496182534",
@@ -30202,10 +30136,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "small upland fowl res lab 1579",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:91100249",
@@ -30220,10 +30151,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "softball building",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:413449709",
@@ -30238,10 +30166,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "soil and crop sci dry processing",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:457944620",
@@ -30256,10 +30181,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "soil and crop sci greenhouse",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407982458",
@@ -30274,10 +30196,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "soil crop cotton genetic greenhouse",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407982469",
@@ -30292,10 +30211,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "soil testing lab",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408027616",
@@ -30310,10 +30226,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "school",
-        "south knoll elementary school"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052698",
@@ -30328,10 +30241,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "southern crop improvement greenhouse",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:419063485",
@@ -30346,10 +30256,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "springer family stadium club",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1279565481",
@@ -30364,10 +30271,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "school",
-        "st joseph catholic secondary campus"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:791937392",
@@ -30382,10 +30286,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "student services building",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052690",
@@ -30400,10 +30301,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "supplemental utility plant 3",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:95151464",
@@ -30418,10 +30316,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "teague building",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:552022981",
@@ -30436,10 +30331,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "teex esti fts rescue training facility",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:552022982",
@@ -30454,10 +30346,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "teex esti scba facility",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:552658802",
@@ -30472,10 +30361,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "teex law enforcement and security training",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408342536",
@@ -30490,10 +30376,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "texas a and m geochemical and environmental research group",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:418820758",
@@ -30508,10 +30391,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "texas a and m nuclear science center",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:418820739",
@@ -30526,10 +30406,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "texas a and m physics teaching observatory",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:196207211",
@@ -30544,10 +30421,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "texas a and m university space engineering research center",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405532315",
@@ -30562,10 +30436,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "texas a and m university system state headquarters",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1034278660",
@@ -30580,10 +30451,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "the agrilife center",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405487032",
@@ -30598,10 +30466,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "the gardens f",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405487147",
@@ -30616,10 +30481,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "the gardens g",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405487309",
@@ -30634,10 +30496,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "the gardens h",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405486876",
@@ -30652,10 +30511,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "the gardens j",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405486915",
@@ -30670,10 +30526,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "the gardens k",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405486951",
@@ -30688,10 +30541,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "the gardens l",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405487312",
@@ -30706,10 +30556,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "the gardens m",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405487344",
@@ -30724,10 +30571,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "the gardens n",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405487353",
@@ -30742,10 +30586,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "the gardens p",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405487392",
@@ -30760,10 +30601,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "the gardens q",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:260842864",
@@ -30778,10 +30616,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "the hub bicycle maintenance shack",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408330473",
@@ -30796,10 +30631,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "theriogenology facility equine reproduction",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407982464",
@@ -30814,10 +30646,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "tick research facility",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:496182522",
@@ -30832,10 +30661,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "track and field support center",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405482354",
@@ -30850,10 +30676,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "transportation services hq",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:637923396",
@@ -30868,10 +30691,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "tti headquarters",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:411525266",
@@ -30886,10 +30706,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "tti state headquarters and research building",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:951923065",
@@ -30904,10 +30721,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "turbo laboratory support building",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:951923066",
@@ -30922,10 +30736,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "turbo machine storage facility",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407979800",
@@ -30940,10 +30751,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "turbomachinery laboratory 1299",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:413444313",
@@ -30958,10 +30766,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "turfgrass field lab",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407982463",
@@ -30976,10 +30781,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "tvmc experimental animal building",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407982460",
@@ -30994,10 +30796,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "tvmc poultry disease research",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:413449693",
@@ -31012,10 +30811,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "tvmc surgery building",
-        "university"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:485230498",
@@ -31030,10 +30826,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "university apartments community maintenance bldg"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:413444297",
@@ -31048,10 +30841,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "usda greenhouse 1"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:413444300",
@@ -31066,10 +30856,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "usda greenhouse 2"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:413444266",
@@ -31084,10 +30871,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "utilities and energy services business office"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052713",
@@ -31102,10 +30886,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "utilities and energy services central office"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:418784773",
@@ -31120,10 +30901,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "utilities and energy services energy office"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408443907",
@@ -31138,10 +30916,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "veterinary medical sciences building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408443906",
@@ -31156,10 +30931,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "veterinary medicine administration"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408443901",
@@ -31174,10 +30946,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "veterinary research building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408443905",
@@ -31192,10 +30961,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "veterinary teaching hospital"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407982462",
@@ -31210,10 +30976,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "vmp shop"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408443914",
@@ -31228,10 +30991,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "w p luse foundation building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405352388",
@@ -31246,10 +31006,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "wahlberg golf learning center"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:637923397",
@@ -31264,10 +31021,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "college",
-        "walter c schwartz building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052572",
@@ -31282,10 +31036,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "wehner building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:632653856",
@@ -31300,10 +31051,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "school",
-        "wellborn middle school"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405480255",
@@ -31318,10 +31066,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "west campus data center"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:496182514",
@@ -31336,10 +31081,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "west campus office pavilion"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052691",
@@ -31354,10 +31096,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "west campus switching station"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:521350274",
@@ -31372,10 +31111,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "white creek apartments 1 1590"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:521350273",
@@ -31390,10 +31126,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "white creek apartments 2 1591"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:521350277",
@@ -31408,10 +31141,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "white creek apartments 3 1592"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:521350279",
@@ -31426,10 +31156,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "white creek apartments activity center 1589"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:661590592",
@@ -31444,10 +31171,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "white creek community center"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:457957712",
@@ -31462,10 +31186,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "wildlife and exotic animal ctr"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:418863347",
@@ -31480,10 +31201,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "wildlife fisheries and ecological sciences building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:496182523",
@@ -31498,10 +31216,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "wireless telecommunications facility"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:915378602",
@@ -31516,10 +31231,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "wisenbaker engineering building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052548",
@@ -31534,10 +31246,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "university",
-        "ymca building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:496808614",
@@ -31552,10 +31261,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "100",
-        "apartments"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:relation:7140749",
@@ -31570,10 +31276,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "100 park",
-        "apartments"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:261141482",
@@ -31588,10 +31291,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "1111 research parkway building",
-        "office"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:419068129",
@@ -31606,10 +31306,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "16",
-        "house"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:496808618",
@@ -31624,10 +31321,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "200",
-        "apartments"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:node:1997951151",
@@ -31642,10 +31336,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "24th street townhomes",
-        "terrace"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:496808619",
@@ -31660,10 +31351,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "300",
-        "apartments"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871992376",
@@ -31678,10 +31366,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "4 0 barber shop",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:496808620",
@@ -31696,10 +31381,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "400",
-        "apartments"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:496808615",
@@ -31714,10 +31396,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "500",
-        "apartments"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1414273233",
@@ -31732,10 +31411,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "600",
-        "apartments"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:496808616",
@@ -31750,10 +31426,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "700",
-        "apartments"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:496808617",
@@ -31768,10 +31441,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "800",
-        "apartments"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:660631338",
@@ -31786,10 +31456,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "a 1 towing and recovery",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:784831782",
@@ -31804,10 +31471,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "adam maintenance",
-        "shed"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:402981672",
@@ -31822,10 +31486,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "aggieland crossfit",
-        "commercial"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1216663965",
@@ -31840,10 +31501,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "aggieland express car wash",
-        "commercial"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:427888064",
@@ -31858,10 +31516,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "aggieland title company",
-        "commercial"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052521",
@@ -31876,10 +31531,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "agrilife rainwater harvesting covered walkway",
-        "roof"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:418784779",
@@ -31894,10 +31546,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "airport aircraft hanger j",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:418784778",
@@ -31912,10 +31561,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "airport hanger",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:784916142",
@@ -31930,10 +31576,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "allegiance ambulance",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:414683278",
@@ -31948,10 +31591,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "alpha chi omega",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:414683283",
@@ -31966,10 +31606,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "alpha delta pi",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:53256267",
@@ -31984,10 +31621,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "altice media solutions",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1180585667",
@@ -32002,10 +31636,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "american fire protection group inc",
-        "commercial"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:847343397",
@@ -32020,10 +31651,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "american red cross",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:664879785",
@@ -32038,10 +31666,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "apex"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052587",
@@ -32056,10 +31681,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "appelt residence hall",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:relation:2083292",
@@ -32074,10 +31696,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "aston residence hall",
-        "dormitory"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407840135",
@@ -32092,10 +31711,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "athome",
-        "commercial"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:869882959",
@@ -32110,10 +31726,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "barrett gear facility esti building 54",
-        "service"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:415387899",
@@ -32128,10 +31741,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "baylor scott and white medical office building",
-        "hospital"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:324056348",
@@ -32146,10 +31756,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "bcs modern",
-        "commercial"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:847297023",
@@ -32164,10 +31771,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "bethel baptist church",
-        "church"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:485230483",
@@ -32182,10 +31786,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "biology greenhouse",
-        "greenhouse"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871553157",
@@ -32200,10 +31801,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "bldg 13",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1416536658",
@@ -32218,10 +31816,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "blinn college bryan campus administration building",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408442929",
@@ -32236,10 +31831,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "blueforge alliance",
-        "commercial"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408482909",
@@ -32254,10 +31846,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "brazos bingo",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:849364923",
@@ -32272,10 +31861,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "brazos moving",
-        "commercial"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:532412305",
@@ -32290,10 +31876,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "brazos valley expo complex",
-        "commercial"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1216153409",
@@ -32308,10 +31891,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "brazos valley floor and design center",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:86199576",
@@ -32326,10 +31906,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "briggs hall dorm 3",
-        "dormitory"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:node:368160072",
@@ -32344,10 +31921,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "bryan compress and warehouse",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:660631327",
@@ -32362,10 +31936,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "bryan marine",
-        "retail"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:660631328",
@@ -32380,10 +31951,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "bryan marine",
-        "retail"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:418742853",
@@ -32398,10 +31966,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "building 11"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:419258096",
@@ -32416,10 +31981,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "building 50 51",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:220408377",
@@ -32434,10 +31996,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "building 7",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408027982",
@@ -32452,10 +32011,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "callaway house"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:520408575",
@@ -32470,10 +32026,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "candlewood suites college station at university an ihg hotel",
-        "hotel"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:544924405",
@@ -32488,10 +32041,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "caprock er",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:220799483",
@@ -32506,10 +32056,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "casa konderla",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:783365280",
@@ -32524,10 +32071,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "cedar lane",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:260848378",
@@ -32542,10 +32086,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "central utility plant",
-        "service"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:966852033",
@@ -32560,10 +32101,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "charlotte sharp children s center",
-        "kindergarten"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:414683285",
@@ -32578,10 +32116,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "chi omega house",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:268641287",
@@ -32596,10 +32131,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "chi st joseph ems",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:261325731",
@@ -32614,10 +32146,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "christian science reading room",
-        "church"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1218405937",
@@ -32632,10 +32161,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "city of college station forestry department",
-        "commercial"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:951889534",
@@ -32650,10 +32176,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "civilian lounge a1",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:951889535",
@@ -32668,10 +32191,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "civilian lounge a2",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:951897042",
@@ -32686,10 +32206,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "civilian lounge a3",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:168585261",
@@ -32704,10 +32221,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "clayton w williams jr alumni center",
-        "office"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052660",
@@ -32722,10 +32236,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "clements residence hall",
-        "dormitory"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:966764916",
@@ -32740,10 +32251,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "club carwash",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1218405904",
@@ -32758,10 +32266,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "college station isd purchasing dept",
-        "commercial"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1218405905",
@@ -32776,10 +32281,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "college station isd transportation",
-        "commercial"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408493733",
@@ -32794,10 +32296,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "college station professional building 1",
-        "commercial"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408493734",
@@ -32812,10 +32311,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "college station professional building 2",
-        "commercial"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:415185389",
@@ -32830,10 +32326,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "crystal park plaza",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1217921044",
@@ -32848,10 +32341,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "customer impact"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407835297",
@@ -32866,10 +32356,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "david gardner s jewelers"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052720",
@@ -32884,10 +32371,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "david gary residence hall",
-        "dormitory"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1414270855",
@@ -32902,10 +32386,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "daybreak",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:414683279",
@@ -32920,10 +32401,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "delta delta delta",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:414683293",
@@ -32938,10 +32416,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "delta gamma",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:414683280",
@@ -32956,10 +32431,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "delta zeta sorority",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:261139889",
@@ -32974,10 +32446,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "donald l houston building",
-        "office"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:relation:2083291",
@@ -32992,10 +32461,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "dunn residence hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:52720454",
@@ -33010,10 +32476,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "airport terminal",
-        "easterwood airport"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:765326523",
@@ -33028,10 +32491,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "easterwood fbo and hangar",
-        "hangar"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:52866439",
@@ -33046,10 +32506,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "easterwood fbo and hanger",
-        "hangar"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:418784776",
@@ -33064,10 +32521,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "easterwood general aviation offices",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:765557778",
@@ -33082,10 +32536,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "easterwood maintenance support facility",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:765557777",
@@ -33100,10 +32551,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "easterwood shops",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:261142509",
@@ -33118,10 +32566,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "electron beam food research facility",
-        "office"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:418993048",
@@ -33136,10 +32581,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "emergency operations training center",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549531",
@@ -33154,10 +32596,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "ems classroom ems storage",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:814741691",
@@ -33172,10 +32611,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "energy plaza"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052679",
@@ -33190,10 +32626,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "eppright residence hall",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405137685",
@@ -33208,10 +32641,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "barn",
-        "equine initiative barn"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:869892340",
@@ -33226,10 +32656,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti arff training prop 30",
-        "service"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871553159",
@@ -33244,10 +32671,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti bldg 11",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871553158",
@@ -33262,10 +32686,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti bldg 12",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:419258097",
@@ -33280,10 +32701,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti bldg 57",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549527",
@@ -33298,10 +32716,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti building 52",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549525",
@@ -33316,10 +32731,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti building 55",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549519",
@@ -33334,10 +32746,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti building 59",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871553110",
@@ -33352,10 +32761,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti building 73",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549533",
@@ -33370,10 +32776,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti business office",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549535",
@@ -33388,10 +32791,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti curriculum office",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549529",
@@ -33406,10 +32806,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti ems classroom",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549530",
@@ -33424,10 +32821,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti ems office",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:418993050",
@@ -33442,10 +32836,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti extinguisher refill building",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:418993051",
@@ -33460,10 +32851,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti field maintenance shop",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549524",
@@ -33478,10 +32866,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti first aid station",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:418993042",
@@ -33496,10 +32881,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti h d smith operations complex",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549542",
@@ -33514,10 +32896,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti haz mat technician shop",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549540",
@@ -33532,10 +32911,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti hazardous material classroom",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549532",
@@ -33550,10 +32926,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti hazardous materials classroom marketing office",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871553147",
@@ -33568,10 +32941,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti industrial classroom",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549536",
@@ -33586,10 +32956,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti leadership cerfication evaluation office",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:946940579",
@@ -33604,10 +32971,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 31",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:946940580",
@@ -33622,10 +32986,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 32",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:946940581",
@@ -33640,10 +33001,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 33",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:946940582",
@@ -33658,10 +33016,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 34",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:946940583",
@@ -33676,10 +33031,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 41",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:946940584",
@@ -33694,10 +33046,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 42",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:946940585",
@@ -33712,10 +33061,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 43",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:946940586",
@@ -33730,10 +33076,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 44",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:946940587",
@@ -33748,10 +33091,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 45",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:946940588",
@@ -33766,10 +33106,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 46",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549522",
@@ -33784,10 +33121,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 47a and 47b",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549526",
@@ -33802,10 +33136,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 53",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549521",
@@ -33820,10 +33151,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 56",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549520",
@@ -33838,10 +33166,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 58s",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:946940589",
@@ -33856,10 +33181,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 64",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:946940590",
@@ -33874,10 +33196,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 65",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:946940591",
@@ -33892,10 +33211,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 66",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:946940592",
@@ -33910,10 +33226,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 67",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871553104",
@@ -33928,10 +33241,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 80",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:946940593",
@@ -33946,10 +33256,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti prop 88",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549541",
@@ -33964,10 +33271,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "esti technical equipment storage",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052699",
@@ -33982,10 +33286,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "fedex",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:node:368163639",
@@ -34000,10 +33301,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "first national bank and trust building",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:node:368163790",
@@ -34018,10 +33316,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "first state bank and trust building",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:951897044",
@@ -34036,10 +33331,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "floriculture farm storage building",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:485230484",
@@ -34054,10 +33346,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "floriculture greenhouse",
-        "greenhouse"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:485230485",
@@ -34072,10 +33361,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "floriculture growing facility",
-        "greenhouse"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:485230486",
@@ -34090,10 +33376,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "floriculture research greenhouse",
-        "greenhouse"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:415389853",
@@ -34108,10 +33391,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "fortress nursing and rehabilitation",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:86199569",
@@ -34126,10 +33406,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "fountain hall dorm 4"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1012223007",
@@ -34144,10 +33421,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "fowler residence hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:86199575",
@@ -34162,10 +33436,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "gainer hall dorm 5"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:414683282",
@@ -34180,10 +33451,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "gamma phi beta",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407837433",
@@ -34198,10 +33466,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "gateway shopping center"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1459623542",
@@ -34216,10 +33481,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "global"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1414273237",
@@ -34234,10 +33496,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "goldstar",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:619702891",
@@ -34252,10 +33511,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "golf cart storage building",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:619705088",
@@ -34270,10 +33526,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "golf course halfway house",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:619702892",
@@ -34288,10 +33541,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "golf course maintenance building",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1216663970",
@@ -34306,10 +33556,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "ground shuttle college station"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:485933759",
@@ -34324,10 +33571,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "greenhouse",
-        "grounds maintenance greenhouse"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:485933760",
@@ -34342,10 +33586,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "greenhouse",
-        "grounds maintenance greenhouse"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:485933761",
@@ -34360,10 +33601,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "greenhouse",
-        "grounds maintenance greenhouse"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:485933758",
@@ -34378,10 +33616,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "greenhouse",
-        "grounds maintenance greenhouse 4"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:485933757",
@@ -34396,10 +33631,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "greenhouse",
-        "grounds maintenance greenhouse 5"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:53256233",
@@ -34414,10 +33646,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "gubagoo",
-        "office"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052667",
@@ -34432,10 +33661,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "haas residence hall",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:418784780",
@@ -34450,10 +33676,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "hangar 1091",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:52866421",
@@ -34468,10 +33691,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "hangar",
-        "hangar 1092"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:835643896",
@@ -34486,10 +33706,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "harrell hall dorm 8"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:86199571",
@@ -34504,10 +33721,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "harrington hall dorm 11"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:261142789",
@@ -34522,10 +33736,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "health technologies building",
-        "office"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052703",
@@ -34540,10 +33751,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "henderson hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:847255955",
@@ -34558,10 +33766,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "hicks customs"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1219905179",
@@ -34576,10 +33781,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "hill country electric supply"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052710",
@@ -34594,10 +33796,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "hobby residence hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1216377842",
@@ -34612,10 +33811,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "holiday rv park",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052722",
@@ -34630,10 +33826,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "hotard hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:node:368162504",
@@ -34648,10 +33841,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "howell house",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:56005982",
@@ -34666,10 +33856,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "htri",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052540",
@@ -34684,10 +33871,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "hughes residence hall",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:260847573",
@@ -34702,10 +33886,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "hullabaloo residence hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408442927",
@@ -34720,10 +33901,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "ibio cmo llc"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:870621006",
@@ -34738,10 +33916,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "ion"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:966370663",
@@ -34756,10 +33931,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "jefferson christian custom homes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:91079547",
@@ -34774,10 +33946,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "kalcorp",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:414683287",
@@ -34792,10 +33961,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "kappa alpha theta",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:414683292",
@@ -34810,10 +33976,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "kappa delta",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1012223005",
@@ -34828,10 +33991,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "keathley residence hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1265549180",
@@ -34846,10 +34006,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "kent moore cabinets",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:86199584",
@@ -34864,10 +34021,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "kiest hall dorm 2"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:relation:2083296",
@@ -34882,10 +34036,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "krueger residence hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:86199579",
@@ -34900,10 +34051,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "lacy hall dorm 6"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:node:1997951154",
@@ -34918,10 +34066,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "laurelhouse studio",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:862856693",
@@ -34936,10 +34081,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "lawyers title company of brazos county"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:631877643",
@@ -34954,10 +34096,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "legal monkeys",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:86199585",
@@ -34972,10 +34111,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "leonard hall dorm 7"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1134393971",
@@ -34990,10 +34126,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "live oak archery",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:847255953",
@@ -35008,10 +34141,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "lonny s lawn mower repair and more"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052695",
@@ -35026,10 +34156,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "mcfadden residence hall",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052661",
@@ -35044,10 +34171,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "milner hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871985767",
@@ -35062,10 +34186,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "mission ranch clubhouse",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871970183",
@@ -35080,10 +34201,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "mission ranch welcome center",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407788594",
@@ -35098,10 +34216,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "montelongo s fine jewelry"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:961925405",
@@ -35116,10 +34231,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "moore house",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1012223006",
@@ -35134,10 +34246,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "moses residence hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:relation:2083293",
@@ -35152,10 +34261,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "mosher residence hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:91100270",
@@ -35170,10 +34276,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "nagle hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:416813859",
@@ -35188,10 +34291,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "neal recreation building",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052616",
@@ -35206,10 +34306,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "neeley residence hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:783369101",
@@ -35224,10 +34321,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "northgate proper apartments",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407788579",
@@ -35242,10 +34336,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "northpoint crossing"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407803995",
@@ -35260,10 +34351,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "northpoint crossing building 4"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:520402765",
@@ -35278,10 +34366,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "northpoint crossing building 5"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:520402770",
@@ -35296,10 +34381,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "northpoint crossing building 6"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1217921035",
@@ -35314,10 +34396,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "nutech inc"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:847208774",
@@ -35332,10 +34411,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "oakmont temporary local management"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1414270860",
@@ -35350,10 +34426,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "office",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:621255032",
@@ -35368,10 +34441,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "park hudson place"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:node:368160115",
@@ -35386,10 +34456,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "parker lumber company complex",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:632653899",
@@ -35404,10 +34471,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "petsmart"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:414683290",
@@ -35422,10 +34486,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "pi beta phi",
-        "residential"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1216153408",
@@ -35440,10 +34501,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "premier countertop design",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:871549544",
@@ -35458,10 +34516,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "rescue disaster city warehouse",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1460405117",
@@ -35476,10 +34531,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "rev northgate student living"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:51868347",
@@ -35494,10 +34546,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "office",
-        "reynolds and reynolds"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:511304501",
@@ -35512,10 +34561,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "rick davis and associates",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:284924985",
@@ -35530,10 +34576,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "rock prairie elementary school",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052685",
@@ -35548,10 +34591,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "residential",
-        "rudder residence hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:416785209",
@@ -35566,10 +34606,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "saint joseph administrative building",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:411547598",
@@ -35584,10 +34621,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "church",
-        "saint thomas episcopal church"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1368017453",
@@ -35602,10 +34636,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "save our streets ministries",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:862856695",
@@ -35620,10 +34651,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "scasta family eye care",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:908938654",
@@ -35638,10 +34666,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "schaefer custom homes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052671",
@@ -35656,10 +34681,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "schuhmacher residence hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:966370649",
@@ -35674,10 +34696,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "south land title"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:86199578",
@@ -35692,10 +34711,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "spence hall dorm 1"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1173090092",
@@ -35710,10 +34726,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "retail",
-        "spice world"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1180584305",
@@ -35728,10 +34741,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "church",
-        "st francis episcopal church"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:416815357",
@@ -35746,10 +34756,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "hospital",
-        "st joseph emergency center"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:416815361",
@@ -35764,10 +34771,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "hospital",
-        "st joseph urgent care"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:53786330",
@@ -35782,10 +34786,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "statacorp",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:53786331",
@@ -35800,10 +34801,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "statacorp",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:664879786",
@@ -35818,10 +34816,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "sterling northgate",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:relation:11826855",
@@ -35836,10 +34831,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "sterling northgate",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1218296630",
@@ -35854,10 +34846,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "stylecraft yaupon trails office",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1134396909",
@@ -35872,10 +34861,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "synagogue",
-        "temple freda"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:261142249",
@@ -35890,10 +34876,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "office",
-        "testing and characterization facility"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:405507545",
@@ -35908,10 +34891,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "texags"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:53623224",
@@ -35926,10 +34906,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "texas a and m",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:496155218",
@@ -35944,10 +34921,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "texas a and m veterinary medical diagnostic laboratory"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:427888063",
@@ -35962,10 +34936,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "texas regional eye center",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:92959984",
@@ -35980,10 +34951,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "the blood center",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1368017455",
@@ -35998,10 +34966,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "the bryan ballroom"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408628413",
@@ -36016,10 +34981,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "the cambridge"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:814314901",
@@ -36034,10 +34996,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "retail",
-        "the crawfish hole"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:199388980",
@@ -36052,10 +35011,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "the factory"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:485227155",
@@ -36070,10 +35026,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "the george"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:485227156",
@@ -36088,10 +35041,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "hotel",
-        "the george"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:260844326",
@@ -36106,10 +35056,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "the golf club at texas a and m",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:relation:11826713",
@@ -36124,10 +35071,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "the hudson",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:256658129",
@@ -36142,10 +35086,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "the lofts at wolfpen"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:418742821",
@@ -36160,10 +35101,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "the london"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:260850454",
@@ -36178,10 +35116,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "the rise"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408437118",
@@ -36196,10 +35131,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "the stack"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:261326509",
@@ -36214,10 +35146,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "the warehouse"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1217227347",
@@ -36232,10 +35161,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "time works unlimited inc"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1279565480",
@@ -36250,10 +35176,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "top golf",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1180584303",
@@ -36268,10 +35191,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "traditions",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:520411104",
@@ -36286,10 +35206,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "traditions country club",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:529701478",
@@ -36304,10 +35221,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "trufit"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1460405119",
@@ -36322,10 +35236,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "apartments",
-        "twelve north"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052688",
@@ -36340,10 +35251,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "residential",
-        "underwood residence hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:407835300",
@@ -36358,10 +35266,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "university title company"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:86199570",
@@ -36376,10 +35281,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "utay hall dorm 12"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:220524538",
@@ -36394,10 +35296,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "valley park center i",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:220524539",
@@ -36412,10 +35311,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "valley park center ii",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:416785122",
@@ -36430,10 +35326,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "varisco building",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1227419262",
@@ -36448,10 +35341,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "vending machine booth",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:415365026",
@@ -36466,10 +35356,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "vet"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408443903",
@@ -36484,10 +35371,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "hospital",
-        "veterinary large animal hospital"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1206223586",
@@ -36502,10 +35386,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "veterinary medicine building 1",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1206223585",
@@ -36520,10 +35401,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "veterinary medicine building 2",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1206223584",
@@ -36538,10 +35416,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "veterinary medicine building 3",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:408443904",
@@ -36556,10 +35431,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "hospital",
-        "veterinary small animal hospital"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1216153461",
@@ -36574,10 +35446,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "waggie pet zone",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052483",
@@ -36592,10 +35461,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "walton residence hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:relation:9990410",
@@ -36610,10 +35476,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "watson townhomes",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:155052684",
@@ -36628,10 +35491,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "residential",
-        "wells residence hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:1367436236",
@@ -36646,10 +35506,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "commercial",
-        "west brazos animal center"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:86199583",
@@ -36664,10 +35521,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "white hall dorm 10"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:86199573",
@@ -36682,10 +35536,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "dormitory",
-        "whitely hall dorm 9"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:765557782",
@@ -36700,10 +35551,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "wind tunnel compressor building",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:137627839",
@@ -36718,10 +35566,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "wolf pen creek amphitheater",
-        "yes"
-      ]
+      "aliases": []
     },
     {
       "place_id": "osm:way:414683288",
@@ -36736,10 +35581,7 @@
       "address": null,
       "search_only": true,
       "source": "osm",
-      "aliases": [
-        "residential",
-        "zeta tau alpha"
-      ]
+      "aliases": []
     },
     {
       "place_id": "zach",
@@ -36754,10 +35596,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "zach",
-        "zachry engineering education complex"
-      ]
+      "aliases": []
     },
     {
       "place_id": "bloc",
@@ -36772,10 +35611,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "bloc",
-        "blocker building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "hrbb",
@@ -36790,10 +35626,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "harrington tower",
-        "hrbb"
-      ]
+      "aliases": []
     },
     {
       "place_id": "etb",
@@ -36808,10 +35641,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "engineering technology building",
-        "etb"
-      ]
+      "aliases": []
     },
     {
       "place_id": "wisn",
@@ -36826,10 +35656,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "werc",
-        "wisenbaker engineering research center"
-      ]
+      "aliases": []
     },
     {
       "place_id": "lang",
@@ -36844,10 +35671,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "lang",
-        "langford architecture center"
-      ]
+      "aliases": []
     },
     {
       "place_id": "held",
@@ -36862,10 +35686,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "held",
-        "heldenfels hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "mphy",
@@ -36880,10 +35701,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "mitchell physics building",
-        "mphy"
-      ]
+      "aliases": []
     },
     {
       "place_id": "acad",
@@ -36898,10 +35716,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "acad",
-        "academic building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "wehner",
@@ -36916,10 +35731,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "mays business school wehner",
-        "wehner"
-      ]
+      "aliases": []
     },
     {
       "place_id": "oam",
@@ -36934,10 +35746,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "o and m",
-        "oceanography and meteorology building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "bsbe",
@@ -36952,10 +35761,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "biological sciences building east",
-        "bsbe"
-      ]
+      "aliases": []
     },
     {
       "place_id": "hecl",
@@ -36970,10 +35776,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "harrington education center",
-        "hecc"
-      ]
+      "aliases": []
     },
     {
       "place_id": "petr",
@@ -36988,10 +35791,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "peterson building",
-        "petr"
-      ]
+      "aliases": []
     },
     {
       "place_id": "rich",
@@ -37006,10 +35806,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "rich",
-        "richardson building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "thom",
@@ -37024,10 +35821,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "thom",
-        "thompson hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "bright",
@@ -37042,10 +35836,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "brgt",
-        "bright building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "kleb",
@@ -37060,10 +35851,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "kleb",
-        "kleberg center"
-      ]
+      "aliases": []
     },
     {
       "place_id": "coke",
@@ -37078,10 +35866,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "coke",
-        "coke building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "chem",
@@ -37096,10 +35881,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "chem",
-        "chemistry building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "butler",
@@ -37114,10 +35896,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "blhr",
-        "butler hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "scc",
@@ -37132,10 +35911,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "scc",
-        "student computing center"
-      ]
+      "aliases": []
     },
     {
       "place_id": "ilsb",
@@ -37150,10 +35926,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "ilsb",
-        "interdisciplinary life sciences building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "lassb",
@@ -37168,10 +35941,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "lasb",
-        "liberal arts and social sciences building"
-      ]
+      "aliases": []
     },
     {
       "place_id": "john-koldus",
@@ -37186,10 +35956,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "john j koldus building",
-        "koldus"
-      ]
+      "aliases": []
     },
     {
       "place_id": "bush-lib",
@@ -37204,13 +35971,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "bush",
-        "bush library",
-        "bush school",
-        "george bush library",
-        "george h w bush presidential library"
-      ]
+      "aliases": []
     },
     {
       "place_id": "century",
@@ -37225,10 +35986,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "century",
-        "century tree"
-      ]
+      "aliases": []
     },
     {
       "place_id": "bonfire",
@@ -37243,10 +36001,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "bonfire",
-        "bonfire memorial"
-      ]
+      "aliases": []
     },
     {
       "place_id": "sdf",
@@ -37261,10 +36016,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "sdf",
-        "simpson drill field"
-      ]
+      "aliases": []
     },
     {
       "place_id": "albritton",
@@ -37279,10 +36031,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "albritton",
-        "albritton bell tower"
-      ]
+      "aliases": []
     },
     {
       "place_id": "aggie-park",
@@ -37297,9 +36046,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "aggie park"
-      ]
+      "aliases": []
     },
     {
       "place_id": "academic-plaza",
@@ -37314,10 +36061,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "academic plaza",
-        "plaza"
-      ]
+      "aliases": []
     },
     {
       "place_id": "kyle",
@@ -37332,10 +36076,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "kyle",
-        "kyle field"
-      ]
+      "aliases": []
     },
     {
       "place_id": "reed",
@@ -37350,10 +36091,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "reed",
-        "reed arena"
-      ]
+      "aliases": []
     },
     {
       "place_id": "olsen",
@@ -37368,10 +36106,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "olsen",
-        "olsen field blue bell park"
-      ]
+      "aliases": []
     },
     {
       "place_id": "rec",
@@ -37386,15 +36121,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "osm way 206530669",
-        "rec",
-        "rec center",
-        "srec",
-        "student rec center",
-        "student recreation center",
-        "the rec"
-      ]
+      "aliases": []
     },
     {
       "place_id": "polo",
@@ -37409,10 +36136,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "polo",
-        "polo road rec fields"
-      ]
+      "aliases": []
     },
     {
       "place_id": "hulla",
@@ -37427,10 +36151,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "hulla",
-        "hullabaloo hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "corps",
@@ -37445,10 +36166,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "corps",
-        "corps of cadets quad"
-      ]
+      "aliases": []
     },
     {
       "place_id": "white",
@@ -37463,10 +36181,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "wcreek",
-        "white creek apartments"
-      ]
+      "aliases": []
     },
     {
       "place_id": "neeley",
@@ -37481,10 +36196,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "neeley",
-        "neeley hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "mosher",
@@ -37499,10 +36211,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "mosher",
-        "mosher hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "aston",
@@ -37517,10 +36226,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "aston",
-        "aston hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "krueger",
@@ -37535,10 +36241,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "krueger",
-        "krueger hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "davis-gary",
@@ -37553,27 +36256,7 @@
       "address": null,
       "search_only": false,
       "source": "frontend",
-      "aliases": [
-        "davis gary",
-        "davis gary hall"
-      ]
-    },
-    {
-      "place_id": "revs-msc",
-      "name": "Rev's Coffee (MSC)",
-      "short_name": null,
-      "type": "coffee",
-      "lat": 30.612206,
-      "lng": -96.34113,
-      "description": null,
-      "hours": null,
-      "features": null,
-      "address": null,
-      "search_only": false,
-      "source": "amenity",
-      "aliases": [
-        "rev s coffee msc"
-      ]
+      "aliases": []
     },
     {
       "place_id": "starbucks-msc",
@@ -37588,43 +36271,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "starbucks msc"
-      ]
-    },
-    {
-      "place_id": "revs-zach",
-      "name": "Rev's Coffee (Zachry)",
-      "short_name": null,
-      "type": "coffee",
-      "lat": 30.620956,
-      "lng": -96.340564,
-      "description": null,
-      "hours": null,
-      "features": null,
-      "address": null,
-      "search_only": false,
-      "source": "amenity",
-      "aliases": [
-        "rev s coffee zachry"
-      ]
-    },
-    {
-      "place_id": "sweet-eugene",
-      "name": "Sweet Eugene's Coffee",
-      "short_name": null,
-      "type": "coffee",
-      "lat": 30.6273,
-      "lng": -96.3345,
-      "description": null,
-      "hours": null,
-      "features": null,
-      "address": null,
-      "search_only": false,
-      "source": "amenity",
-      "aliases": [
-        "sweet eugene s coffee"
-      ]
+      "aliases": []
     },
     {
       "place_id": "underground-food",
@@ -37639,9 +36286,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "underground food court"
-      ]
+      "aliases": []
     },
     {
       "place_id": "cfa",
@@ -37656,9 +36301,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "chick fil a msc"
-      ]
+      "aliases": []
     },
     {
       "place_id": "panda-msc",
@@ -37673,9 +36316,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "panda express msc"
-      ]
+      "aliases": []
     },
     {
       "place_id": "revs-msc-food",
@@ -37690,9 +36331,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "rev s american grill msc"
-      ]
+      "aliases": []
     },
     {
       "place_id": "houston-msc",
@@ -37707,9 +36346,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "houston street subs msc"
-      ]
+      "aliases": []
     },
     {
       "place_id": "abu-omar-msc",
@@ -37724,9 +36361,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "abu omar halal msc"
-      ]
+      "aliases": []
     },
     {
       "place_id": "panda-polo",
@@ -37741,9 +36376,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "panda express polo"
-      ]
+      "aliases": []
     },
     {
       "place_id": "salata-polo",
@@ -37758,9 +36391,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "salata polo"
-      ]
+      "aliases": []
     },
     {
       "place_id": "shake-polo",
@@ -37775,9 +36406,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "shake smart polo"
-      ]
+      "aliases": []
     },
     {
       "place_id": "rr-msc",
@@ -37792,9 +36421,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "restroom msc 1st floor"
-      ]
+      "aliases": []
     },
     {
       "place_id": "rr-evans",
@@ -37809,9 +36436,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "restroom evans library"
-      ]
+      "aliases": []
     },
     {
       "place_id": "rr-blocker",
@@ -37826,9 +36451,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "restroom blocker 1st floor"
-      ]
+      "aliases": []
     },
     {
       "place_id": "rr-zach",
@@ -37843,9 +36466,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "restroom zachry 1st floor"
-      ]
+      "aliases": []
     },
     {
       "place_id": "rr-rudder",
@@ -37860,9 +36481,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "restroom rudder tower"
-      ]
+      "aliases": []
     },
     {
       "place_id": "rr-rec",
@@ -37877,9 +36496,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "restroom rec center"
-      ]
+      "aliases": []
     },
     {
       "place_id": "study-annex",
@@ -37894,9 +36511,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "study room annex"
-      ]
+      "aliases": []
     },
     {
       "place_id": "study-wcl",
@@ -37911,9 +36526,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "study room west campus library"
-      ]
+      "aliases": []
     },
     {
       "place_id": "study-bloc",
@@ -37928,9 +36541,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "study lounge blocker"
-      ]
+      "aliases": []
     },
     {
       "place_id": "study-zach",
@@ -37945,9 +36556,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "study area zachry"
-      ]
+      "aliases": []
     },
     {
       "place_id": "lot30",
@@ -37962,9 +36571,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "parking lot 30"
-      ]
+      "aliases": []
     },
     {
       "place_id": "lot50",
@@ -37979,9 +36586,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "parking lot 50"
-      ]
+      "aliases": []
     },
     {
       "place_id": "garage-cain",
@@ -37996,9 +36601,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "cain parking garage"
-      ]
+      "aliases": []
     },
     {
       "place_id": "garage-polo",
@@ -38013,9 +36616,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "polo road garage"
-      ]
+      "aliases": []
     },
     {
       "place_id": "garage-west-campus",
@@ -38030,9 +36631,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "west campus garage"
-      ]
+      "aliases": []
     },
     {
       "place_id": "garage-university-center",
@@ -38047,9 +36646,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "university center garage"
-      ]
+      "aliases": []
     },
     {
       "place_id": "lot100",
@@ -38064,9 +36661,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "parking lot 100"
-      ]
+      "aliases": []
     },
     {
       "place_id": "lot61",
@@ -38081,9 +36676,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "parking lot 61"
-      ]
+      "aliases": []
     },
     {
       "place_id": "lot74",
@@ -38098,9 +36691,7 @@
       "address": null,
       "search_only": false,
       "source": "amenity",
-      "aliases": [
-        "parking lot 74"
-      ]
+      "aliases": []
     },
     {
       "place_id": "libr",
@@ -38115,11 +36706,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "evans",
-        "evans library",
-        "sterling c evans library"
-      ]
+      "aliases": []
     },
     {
       "place_id": "annex",
@@ -38134,9 +36721,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "evans library annex"
-      ]
+      "aliases": []
     },
     {
       "place_id": "psel",
@@ -38151,10 +36736,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "policy sciences and economics library",
-        "psel"
-      ]
+      "aliases": []
     },
     {
       "place_id": "msl",
@@ -38169,10 +36751,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "medical sciences library",
-        "msl"
-      ]
+      "aliases": []
     },
     {
       "place_id": "wcl",
@@ -38187,11 +36766,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "blcc",
-        "west campus library",
-        "west campus library and business learning complex"
-      ]
+      "aliases": []
     },
     {
       "place_id": "cush",
@@ -38206,10 +36781,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "cushing",
-        "cushing memorial library"
-      ]
+      "aliases": []
     },
     {
       "place_id": "southside-rec",
@@ -38224,11 +36796,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "osm way 1367436238",
-        "southside rec center",
-        "southside recreation center"
-      ]
+      "aliases": []
     },
     {
       "place_id": "polo-rec",
@@ -38243,11 +36811,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "osm way 904033099",
-        "polo road rec center",
-        "polo road recreation center"
-      ]
+      "aliases": []
     },
     {
       "place_id": "msc",
@@ -38262,11 +36826,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "memorial student center",
-        "memorial student center msc",
-        "msc"
-      ]
+      "aliases": []
     },
     {
       "place_id": "sbisa",
@@ -38281,11 +36841,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "osm way 720954602",
-        "sbisa",
-        "sbisa dining hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "commons",
@@ -38300,13 +36856,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "commons",
-        "commons dining hall",
-        "osm node 8223259463",
-        "the commons",
-        "the commons dining hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "west-campus-dining",
@@ -38321,11 +36871,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "wcd",
-        "west campus dining",
-        "west campus dining facility"
-      ]
+      "aliases": []
     },
     {
       "place_id": "duncan",
@@ -38340,9 +36886,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "duncan dining hall"
-      ]
+      "aliases": []
     },
     {
       "place_id": "polo-garage-food",
@@ -38357,12 +36901,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "polo dining",
-        "polo road garage",
-        "polo road garage dining",
-        "polo road garage food"
-      ]
+      "aliases": []
     },
     {
       "place_id": "rudder",
@@ -38377,10 +36916,7 @@
       "address": null,
       "search_only": false,
       "source": "special",
-      "aliases": [
-        "rudder",
-        "rudder tower"
-      ]
+      "aliases": []
     }
   ]
 }

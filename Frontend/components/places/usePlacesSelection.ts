@@ -8,7 +8,13 @@ import {
   isDiningHallMenuLocation,
   type DiningMealPeriod,
 } from "../../services/diningMenuCache";
-import { getLocationSelectionId } from "./campusData";
+import {
+  findFoodCourtParentLocation,
+  getFoodCourtVenueLabel,
+  getFoodCourtVenueLocations,
+  getLocationSelectionId,
+  shouldHideFoodCourtLocationInBrowse,
+} from "./campusData";
 import type { CampusLocation } from "./types";
 
 function getLayerForPlace(loc: CampusLocation): string {
@@ -31,7 +37,6 @@ export function usePlacesSelection({
   onAfterSelectLocation,
 }: UsePlacesSelectionParams) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [hubRestaurants, setHubRestaurants] = useState<string[]>([]);
   const [isFetchingDining, setIsFetchingDining] = useState(false);
   const [diningMenuOptions, setDiningMenuOptions] = useState<string[]>([]);
   const [activeDiningMenu, setActiveDiningMenu] = useState<string | null>(null);
@@ -46,8 +51,17 @@ export function usePlacesSelection({
     [allMapLocations, selectedId],
   );
 
+  const foodCourtVenues = useMemo(() => {
+    if (!selectedLoc) return [];
+    return getFoodCourtVenueLocations(selectedLoc, allMapLocations).map((location) => ({
+      location,
+      label: getFoodCourtVenueLabel(location.location),
+      menuCandidate: getDiningMenuCandidates(location.location)[0] || null,
+      selectionId: getLocationSelectionId(location),
+    }));
+  }, [allMapLocations, selectedLoc]);
+
   const resetDiningState = useCallback(() => {
-    setHubRestaurants([]);
     setDiningMenuOptions([]);
     setActiveDiningMenu(null);
     setActiveDiningMealPeriod("lunch");
@@ -91,13 +105,39 @@ export function usePlacesSelection({
     async (loc: CampusLocation) => {
       setIsFetchingDining(true);
       try {
+        const foodCourtLocations = getFoodCourtVenueLocations(loc, allMapLocations);
+        if (foodCourtLocations.length > 0) {
+          const nextMenuOptions = Array.from(
+            new Set(
+              foodCourtLocations.flatMap((venue) =>
+                getDiningMenuCandidates(venue.location),
+              ),
+            ),
+          );
+          const fallbackMenu =
+            foodCourtLocations
+              .map((venue) => getDiningMenuCandidates(venue.location)[0])
+              .find(Boolean) || null;
+          const nextMenu =
+            (activeDiningMenu && nextMenuOptions.includes(activeDiningMenu)
+              ? activeDiningMenu
+              : fallbackMenu || nextMenuOptions[0]) || null;
+
+          setDiningMenuOptions(nextMenuOptions);
+          setActiveDiningMenu(nextMenu);
+          setActiveDiningMealPeriod(
+            getDiningMealPeriodForLocation(nextMenu || loc.location) as DiningMealPeriod,
+          );
+          setDiningMenuPreview(null);
+          return;
+        }
+
         if (!isDiningHallMenuLocation(loc.location)) {
           resetDiningState();
           return;
         }
 
         const menuCandidates = getDiningMenuCandidates(loc.location, []);
-        setHubRestaurants([]);
         setDiningMenuOptions(menuCandidates);
         setActiveDiningMenu(loc.location);
         setActiveDiningMealPeriod(
@@ -110,17 +150,30 @@ export function usePlacesSelection({
         setIsFetchingDining(false);
       }
     },
-    [resetDiningState],
+    [activeDiningMenu, allMapLocations, resetDiningState],
   );
 
   const handleSelectLocation = useCallback(
     (loc: CampusLocation) => {
-      const nextLayer = getLayerForPlace(loc);
+      const parentFoodCourtLocation = findFoodCourtParentLocation(loc, allMapLocations);
+      const nextLocation = parentFoodCourtLocation || loc;
+      const preferredMenu = shouldHideFoodCourtLocationInBrowse(loc, allMapLocations)
+        ? getDiningMenuCandidates(loc.location)[0] || null
+        : null;
+
+      if (preferredMenu) {
+        setActiveDiningMenu(preferredMenu);
+        setActiveDiningMealPeriod(
+          getDiningMealPeriodForLocation(preferredMenu) as DiningMealPeriod,
+        );
+      }
+
+      const nextLayer = getLayerForPlace(nextLocation);
       setActiveLayer(nextLayer);
-      setSelectedId(getLocationSelectionId(loc));
-      onAfterSelectLocation?.(loc, nextLayer);
+      setSelectedId(getLocationSelectionId(nextLocation));
+      onAfterSelectLocation?.(nextLocation, nextLayer);
     },
-    [onAfterSelectLocation, setActiveLayer],
+    [allMapLocations, onAfterSelectLocation, setActiveLayer],
   );
 
   useEffect(() => {
@@ -191,7 +244,7 @@ export function usePlacesSelection({
     setSelectedId,
     selectedLoc,
     selectedPlaceDetail,
-    hubRestaurants,
+    foodCourtVenues,
     isFetchingDining,
     diningMenuOptions,
     activeDiningMenu,

@@ -406,6 +406,148 @@ export function buildCampusDirectory(): CampusLocation[] {
   return CAMPUS_REGISTRY_PLACES.map(toRegistryCampusLocation);
 }
 
+type FoodCourtGroupConfig = {
+  id: string;
+  canonicalParentPlaceId: string;
+  canonicalParentName: string;
+  aliasParentPlaceIds: string[];
+  aliasParentNames: string[];
+  childPlaceIds: string[];
+  childNamePatterns: RegExp[];
+};
+
+const FOOD_COURT_GROUPS: FoodCourtGroupConfig[] = [
+  {
+    id: "msc-food-court",
+    canonicalParentPlaceId: "msc",
+    canonicalParentName: "Memorial Student Center",
+    aliasParentPlaceIds: ["msc"],
+    aliasParentNames: ["Memorial Student Center", "Memorial Student Center (MSC)"],
+    childPlaceIds: [
+      "cfa",
+      "panda-msc",
+      "revs-msc-food",
+      "houston-msc",
+      "abu-omar-msc",
+      "starbucks-msc",
+    ],
+    childNamePatterns: [/\(msc\)\s*$/i, /\s-\s*msc\s*$/i],
+  },
+  {
+    id: "polo-food-court",
+    canonicalParentPlaceId: "polo-garage-food",
+    canonicalParentName: "Polo Road Garage Dining",
+    aliasParentPlaceIds: ["polo-garage-food", "garage-polo"],
+    aliasParentNames: ["Polo Road Garage Dining", "Polo Road Garage"],
+    childPlaceIds: ["panda-polo", "salata-polo", "shake-polo"],
+    childNamePatterns: [/\(polo\)\s*$/i, /\s-\s*polo(?:\s+garage)?\s*$/i],
+  },
+];
+
+function matchesFoodCourtParent(
+  group: FoodCourtGroupConfig,
+  location?: Pick<CampusLocation, "placeId" | "location"> | null,
+) {
+  if (!location) return false;
+  const normalizedLocation = normalizeLocationKey(location.location);
+  return (
+    (!!location.placeId && group.aliasParentPlaceIds.includes(location.placeId)) ||
+    group.aliasParentNames.some(
+      (name) => normalizeLocationKey(name) === normalizedLocation,
+    )
+  );
+}
+
+function matchesFoodCourtChild(
+  group: FoodCourtGroupConfig,
+  location?: Pick<CampusLocation, "placeId" | "location" | "type" | "shortName"> | null,
+) {
+  if (!location || matchesFoodCourtParent(group, location)) return false;
+  if (!!location.placeId && group.childPlaceIds.includes(location.placeId)) return true;
+  if (location.type !== "Dining" && location.type !== "Hub") return false;
+
+  const candidates = [location.location, location.shortName || ""];
+  return candidates.some((candidate) =>
+    group.childNamePatterns.some((pattern) => pattern.test(candidate)),
+  );
+}
+
+function findFoodCourtGroup(
+  location?: Pick<CampusLocation, "placeId" | "location" | "type" | "shortName"> | null,
+) {
+  if (!location) return null;
+  return (
+    FOOD_COURT_GROUPS.find(
+      (group) =>
+        matchesFoodCourtParent(group, location) || matchesFoodCourtChild(group, location),
+    ) || null
+  );
+}
+
+export function getFoodCourtVenueLabel(name: string) {
+  return name
+    .replace(/\s*\((MSC|Polo)\)\s*$/i, "")
+    .replace(/\s*-\s*(MSC|Polo(?:\s+Garage)?)\s*$/i, "")
+    .trim();
+}
+
+export function findFoodCourtParentLocation(
+  location: Pick<CampusLocation, "placeId" | "location" | "type" | "shortName"> | null,
+  allLocations: CampusLocation[],
+) {
+  const group = findFoodCourtGroup(location);
+  if (!group) return null;
+
+  return (
+    allLocations.find((candidate) => candidate.placeId === group.canonicalParentPlaceId) ||
+    allLocations.find(
+      (candidate) =>
+        normalizeLocationKey(candidate.location) ===
+        normalizeLocationKey(group.canonicalParentName),
+    ) ||
+    allLocations.find((candidate) => matchesFoodCourtParent(group, candidate)) ||
+    null
+  );
+}
+
+export function getFoodCourtVenueLocations(
+  location: Pick<CampusLocation, "placeId" | "location" | "type" | "shortName"> | null,
+  allLocations: CampusLocation[],
+) {
+  const group = findFoodCourtGroup(location);
+  if (!group) return [];
+
+  const canonicalParent = findFoodCourtParentLocation(location, allLocations);
+  const canonicalParentKey = canonicalParent
+    ? getLocationSelectionId(canonicalParent)
+    : null;
+
+  return allLocations
+    .filter((candidate) => matchesFoodCourtChild(group, candidate))
+    .filter((candidate) => getLocationSelectionId(candidate) !== canonicalParentKey)
+    .sort((first, second) =>
+      getFoodCourtVenueLabel(first.location).localeCompare(
+        getFoodCourtVenueLabel(second.location),
+      ),
+    );
+}
+
+export function shouldHideFoodCourtLocationInBrowse(
+  location: Pick<CampusLocation, "placeId" | "location" | "type" | "shortName" | "coord">,
+  allLocations: CampusLocation[],
+) {
+  const group = findFoodCourtGroup(location);
+  if (!group) return false;
+  if (matchesFoodCourtChild(group, location)) return true;
+
+  const canonicalParent = findFoodCourtParentLocation(location, allLocations);
+  return !!(
+    canonicalParent &&
+    matchesFoodCourtParent(group, location) &&
+    getLocationSelectionId(canonicalParent) !== getLocationSelectionId(location)
+  );
+}
+
 function normalizeLocationKey(value?: string | null) {
   return (value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
