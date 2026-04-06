@@ -45,156 +45,7 @@ RECREATION_SNAPSHOT_TTL_SECONDS = 120
 TRANSIT_SNAPSHOT_TTL_SECONDS = 30
 SERVICES_SNAPSHOT_TTL_SECONDS = 86400
 
-REC_FACILITIES = [
-    {
-        "id": "student-rec",
-        "name": "Student Recreation Center",
-        "source_url": "https://recsports.tamu.edu/facilities/student-rec-center/",
-        "hours_hint": "See official facility page for current hours",
-    },
-    {
-        "id": "southside-rec",
-        "name": "Southside Recreation Center",
-        "source_url": "https://recsports.tamu.edu/facilities/southside-rec/",
-        "hours_hint": "See official facility page for current hours",
-    },
-    {
-        "id": "polo-road-rec",
-        "name": "Polo Road Recreation Center",
-        "source_url": "https://recsports.tamu.edu/facilities/polo-road-rec/",
-        "hours_hint": "See official facility page for current hours",
-    },
-    {
-        "id": "penberthy",
-        "name": "Penberthy Rec Sports Complex",
-        "source_url": "https://recsports.tamu.edu/facilities/penberthy-rec-sports-complex/",
-        "hours_hint": "See official facility page for current hours",
-    },
-    {
-        "id": "peap",
-        "name": "PEAP",
-        "source_url": "https://recsports.tamu.edu/facilities/peap/",
-        "hours_hint": "See official facility page for current hours",
-    },
-    {
-        "id": "tennis-center",
-        "name": "Tennis Center",
-        "source_url": "https://recsports.tamu.edu/facilities/tennis-center/",
-        "hours_hint": "See official facility page for current hours",
-    },
-]
-FALL_SPRING_HOURS_BY_FACILITY = {
-    "student-rec": {
-        "Sunday": "12:00 PM - 11:59 PM",
-        "Monday": "6:00 AM - 11:59 PM",
-        "Tuesday": "6:00 AM - 11:59 PM",
-        "Wednesday": "6:00 AM - 11:59 PM",
-        "Thursday": "6:00 AM - 11:59 PM",
-        "Friday": "6:00 AM - 11:00 PM",
-        "Saturday": "10:00 AM - 11:00 PM",
-    },
-    "southside-rec": {
-        "Sunday": "12:00 PM - 11:59 PM",
-        "Monday": "5:30 AM - 11:59 PM",
-        "Tuesday": "5:30 AM - 11:59 PM",
-        "Wednesday": "5:30 AM - 11:59 PM",
-        "Thursday": "5:30 AM - 11:59 PM",
-        "Friday": "5:30 AM - 11:00 PM",
-        "Saturday": "10:00 AM - 11:00 PM",
-    },
-    "polo-road-rec": {
-        "Sunday": "Closed",
-        "Monday": "6:00 AM - 9:00 PM",
-        "Tuesday": "6:00 AM - 9:00 PM",
-        "Wednesday": "6:00 AM - 9:00 PM",
-        "Thursday": "6:00 AM - 9:00 PM",
-        "Friday": "6:00 AM - 9:00 PM",
-        "Saturday": "Closed",
-    },
-    "penberthy": {
-        "Sunday": "North: 3:00 PM - 10:00 PM\nSouth: 3:00 PM - 10:00 PM",
-        "Monday": "North: 5:00 PM - 10:00 PM\nSouth: 5:00 PM - 10:00 PM",
-        "Tuesday": "North: 5:00 PM - 10:00 PM\nSouth: 5:00 PM - 10:00 PM",
-        "Wednesday": "North: 5:00 PM - 10:00 PM\nSouth: 5:00 PM - 10:00 PM",
-        "Thursday": "North: 5:00 PM - 10:00 PM\nSouth: 5:00 PM - 10:00 PM",
-        "Friday": "North: 5:00 PM - 8:00 PM\nSouth: Closed",
-        "Saturday": "North: 12:00 PM - 8:00 PM\nSouth: Closed",
-    },
-    "peap": {
-        "Sunday": "6:00 PM - 11:00 PM",
-        "Monday": "6:00 PM - 11:00 PM",
-        "Tuesday": "6:00 PM - 11:00 PM",
-        "Wednesday": "6:00 PM - 11:00 PM",
-        "Thursday": "6:00 PM - 11:00 PM",
-        "Friday": "Closed",
-        "Saturday": "Closed",
-    },
-    "tennis-center": {
-        "Sunday": "3:00 PM - 10:00 PM",
-        "Monday": "6:00 PM - 10:00 PM",
-        "Tuesday": "6:00 PM - 10:00 PM",
-        "Wednesday": "6:00 PM - 10:00 PM",
-        "Thursday": "6:00 PM - 10:00 PM",
-        "Friday": "5:00 PM - 8:00 PM",
-        "Saturday": "5:00 PM - 8:00 PM",
-    },
-}
-SUMMER_HOURS_BY_FACILITY = {
-    "student-rec": {
-        "Sunday": "12:00 PM - 10:00 PM",
-        "Monday": "6:00 AM - 10:00 PM",
-        "Tuesday": "6:00 AM - 10:00 PM",
-        "Wednesday": "6:00 AM - 10:00 PM",
-        "Thursday": "6:00 AM - 10:00 PM",
-        "Friday": "6:00 AM - 10:00 PM",
-        "Saturday": "9:00 AM - 10:00 PM",
-    },
-    "southside-rec": {
-        "Sunday": "12:00 PM - 10:00 PM",
-        "Monday": "6:00 AM - 10:00 PM",
-        "Tuesday": "6:00 AM - 10:00 PM",
-        "Wednesday": "6:00 AM - 10:00 PM",
-        "Thursday": "6:00 AM - 10:00 PM",
-        "Friday": "6:00 AM - 10:00 PM",
-        "Saturday": "9:00 AM - 10:00 PM",
-    },
-    "polo-road-rec": {
-        "Sunday": "12:00 PM - 10:00 PM",
-        "Monday": "6:00 AM - 10:00 PM",
-        "Tuesday": "6:00 AM - 10:00 PM",
-        "Wednesday": "6:00 AM - 10:00 PM",
-        "Thursday": "6:00 AM - 10:00 PM",
-        "Friday": "6:00 AM - 10:00 PM",
-        "Saturday": "9:00 AM - 10:00 PM",
-    },
-    "penberthy": {
-        "Sunday": "7:00 PM - 10:00 PM",
-        "Monday": "7:00 PM - 10:00 PM",
-        "Tuesday": "7:00 PM - 10:00 PM",
-        "Wednesday": "7:00 PM - 10:00 PM",
-        "Thursday": "7:00 PM - 10:00 PM",
-        "Friday": "5:00 PM - 8:00 PM",
-        "Saturday": "5:00 PM - 8:00 PM",
-    },
-    "peap": {
-        "Sunday": "4:00 PM - 10:00 PM",
-        "Monday": "5:00 PM - 10:00 PM",
-        "Tuesday": "5:00 PM - 10:00 PM",
-        "Wednesday": "5:00 PM - 10:00 PM",
-        "Thursday": "5:00 PM - 10:00 PM",
-        "Friday": "Closed",
-        "Saturday": "Closed",
-    },
-    "tennis-center": {
-        "Sunday": "7:00 PM - 10:00 PM",
-        "Monday": "7:00 PM - 10:00 PM",
-        "Tuesday": "7:00 PM - 10:00 PM",
-        "Wednesday": "7:00 PM - 10:00 PM",
-        "Thursday": "7:00 PM - 10:00 PM",
-        "Friday": "5:00 PM - 8:00 PM",
-        "Saturday": "5:00 PM - 8:00 PM",
-    },
-}
+# (Removed hardcoded REC_FACILITIES and FALL_SPRING_HOURS_BY_FACILITY - now in DB registry)
 REC_PAGE_CACHE_TTL_SECONDS = 60 * 60 * 6
 REC_PAGE_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
 REC_NOTICES_CACHE_TTL_SECONDS = 60 * 30
@@ -1326,23 +1177,52 @@ def get_recreation_snapshot() -> Dict[str, Any]:
 
     occupancy_rows = tracker.fetch_rec_data() or []
     notices = _fetch_rec_notices()
-    occupancy_by_name = {
-        row.get("LocationName", "").strip().lower(): row for row in occupancy_rows
-    }
+    
+    # Map GoBoard "LocationName" or "FacilityName" to Registry Place
+    occupancy_by_place_id: Dict[str, Any] = {}
+    for row in occupancy_rows:
+        # Try both LocationName and FacilityName for matching
+        name_to_resolve = row.get("LocationName") or row.get("FacilityName")
+        resolved = place_registry_service.resolve_place(name_to_resolve)
+        if resolved and resolved.get("type") == "Rec":
+            pid = resolved["place_id"]
+            if pid not in occupancy_by_place_id:
+                occupancy_by_place_id[pid] = row
 
     facilities = []
-    for facility in REC_FACILITIES:
-        source_row = occupancy_by_name.get(facility["name"].strip().lower())
-        page_details = _fetch_rec_facility_page_details(facility["source_url"])
-        schedule_details = _weekly_hours_for_facility(facility["id"])
+    # Major Aggie Rec IDs for the Hub Snapshot
+    MAJOR_REC_IDS = ["rec", "southside-rec", "polo-rec"]
+    
+    # Get Rec places from registry and filter to ONLY the major ones
+    rec_places = [
+        p for p in place_registry_service.get_all_places() 
+        if p["place_id"] in MAJOR_REC_IDS
+    ]
+    
+    # Sort them according to MAJOR_REC_IDS order (Student Rec first)
+    rec_places.sort(key=lambda x: MAJOR_REC_IDS.index(x["place_id"]) if x["place_id"] in MAJOR_REC_IDS else 99)
+    
+    for place in rec_places:
+        pid = place["place_id"]
+        source_row = occupancy_by_place_id.get(pid)
+        
+        # Determine source URL (some might have them in features, fallback to Google search or hardcoded common ones)
+        source_url = f"https://recsports.tamu.edu/facilities/{pid}/" # Guessing URL pattern
+        if pid == "srec":
+            source_url = "https://recsports.tamu.edu/facilities/student-rec-center/"
+        elif pid == "southside-rec":
+            source_url = "https://recsports.tamu.edu/facilities/southside-rec/"
+        elif pid == "polo-rec":
+            source_url = "https://recsports.tamu.edu/facilities/polo-road-rec/"
+
+        page_details = _fetch_rec_facility_page_details(source_url)
+        
+        # Notices filter
         facility_notices = [
-            {
-                "window": notice.get("window"),
-                "detail": notice.get("detail"),
-            }
-            for notice in notices
-            if facility["id"] in notice.get("facility_ids", [])
+            {"window": n.get("window"), "detail": n.get("detail")}
+            for n in notices if pid in n.get("facility_ids", []) or pid.replace("-rec", "") in n.get("facility_ids", [])
         ]
+
         current_count = source_row.get("LastCount") if source_row else None
         capacity = source_row.get("TotalCapacity") if source_row else None
         percent_full = None
@@ -1352,21 +1232,18 @@ def get_recreation_snapshot() -> Dict[str, Any]:
             except Exception:
                 percent_full = None
 
-        facilities.append(
-            {
-                **facility,
-                "summary": page_details.get("summary"),
-                "amenities": page_details.get("amenities", []),
-                "hours_hint": schedule_details.get("today_hours") or page_details.get("hours_hint") or facility["hours_hint"],
-                "today_hours": schedule_details.get("today_hours"),
-                "weekly_hours": schedule_details.get("weekly_hours", []),
-                "hours_source": schedule_details.get("hours_source"),
-                "notices": facility_notices,
-                "percent_full": percent_full,
-                "current_count": current_count,
-                "capacity": capacity,
-            }
-        )
+        facilities.append({
+            "id": pid,
+            "name": place["name"],
+            "summary": place.get("description") or page_details.get("summary"),
+            "amenities": place.get("features") or page_details.get("amenities", []),
+            "hours_hint": place.get("hours") or page_details.get("hours_hint") or "See official page",
+            "notices": facility_notices,
+            "percent_full": percent_full,
+            "current_count": current_count,
+            "capacity": capacity,
+            "source_url": source_url
+        })
 
     payload = {
         "generated_at": datetime.utcnow().isoformat() + "Z",

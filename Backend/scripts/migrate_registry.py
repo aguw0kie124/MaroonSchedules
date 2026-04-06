@@ -7,26 +7,109 @@ from pathlib import Path
 # --- Configuration ---
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 OSM_DATA_PATH = BACKEND_DIR / "Data" / "osm_places_tamu_10mi.json"
-ALL_BUILDINGS_PATH = BACKEND_DIR.parent / "Frontend" / "data" / "all_buildings.json"
 DB_PATH = BACKEND_DIR / "Data" / "campus_registry.db"
 
 # --- Source Data (Unified from all locations) ---
 
-# 1. Specialty Overrides (High priority name/alias mapping)
+# 1. Specialty Overrides (High priority name/alias mapping + Metadata)
 SPECIAL_PLACES = [
-    {"place_id": "libr", "name": "Sterling C. Evans Library", "short_name": "LIBR", "type": "Library", "lat": 30.616332, "lng": -96.338571, "aliases": ["Evans Library", "Evans"]},
-    {"place_id": "annex", "name": "Evans Library Annex", "short_name": "ANNEX", "type": "Library", "lat": 30.616531, "lng": -96.338456, "aliases": []},
-    {"place_id": "wcl", "name": "West Campus Library", "short_name": "WCL", "type": "Library", "lat": 30.611581, "lng": -96.350275, "aliases": ["BLCC"]},
-    {"place_id": "cush", "name": "Cushing Memorial Library", "short_name": "CUSH", "type": "Library", "lat": 30.61636, "lng": -96.3399, "aliases": ["Cushing"]},
-    {"place_id": "srec", "name": "Student Recreation Center", "short_name": "SREC", "type": "Rec", "lat": 30.60695, "lng": -96.342954, "aliases": ["Student Rec Center", "Rec Center", "The Rec", "Rec"]},
-    {"place_id": "southside-rec", "name": "Southside Recreation Center", "short_name": "SSRC", "type": "Rec", "lat": 30.615858627009548, "lng": -96.33350512942744, "aliases": ["Southside Rec Center"]},
-    {"place_id": "polo-rec", "name": "Polo Road Recreation Center", "short_name": "POLO REC", "type": "Rec", "lat": 30.62322838512405, "lng": -96.33752363659374, "aliases": ["Polo Road Rec Center"]},
-    {"place_id": "msc", "name": "Memorial Student Center", "short_name": "MSC", "type": "Hub", "lat": 30.61225, "lng": -96.341242, "aliases": ["Memorial Student Center (MSC)", "MSC"]},
-    {"place_id": "sbisa", "name": "Sbisa Dining Hall", "short_name": "SBISA", "type": "Dining", "lat": 30.617135, "lng": -96.343777, "aliases": ["Sbisa"]},
-    {"place_id": "commons", "name": "The Commons Dining Hall", "short_name": "COMMONS", "type": "Dining", "lat": 30.6153804, "lng": -96.3360119, "aliases": ["Commons Dining Hall", "The Commons", "Commons"]},
-    {"place_id": "duncan", "name": "Duncan Dining Hall", "short_name": "DUNCAN", "type": "Dining", "lat": 30.612072, "lng": -96.335505, "aliases": []},
-    {"place_id": "polo-garage-food", "name": "Polo Road Garage Dining", "short_name": "POLO DINING", "type": "Dining", "lat": 30.622723, "lng": -96.337939, "aliases": ["Polo Road Garage", "Polo Dining", "Polo Road Garage Food"]},
-    {"place_id": "rudder", "name": "Rudder Tower", "short_name": "RUDDER", "type": "Landmark", "lat": 30.613251, "lng": -96.339957, "aliases": []},
+    {
+        "place_id": "libr", "name": "Sterling C. Evans Library", "short_name": "LIBR", "type": "Library", "lat": 30.616332, "lng": -96.338571, 
+        "aliases": ["Evans Library", "Evans"],
+        "hours": "Open daily · check library schedule",
+        "description": "Main research library near the Academic Plaza."
+    },
+    {
+        "place_id": "annex", "name": "Evans Library Annex", "short_name": "ANNEX", "type": "Library", "lat": 30.616531, "lng": -96.338456, "aliases": [],
+        "hours": "Open daily · check library schedule",
+        "description": "Annex study and overflow library space."
+    },
+    {
+        "place_id": "psel", "name": "Policy Sciences & Economics Library", "short_name": "PSEL", "type": "Library", "lat": 30.59744, "lng": -96.35355, 
+        "aliases": ["Policy Sciences and Economics Library", "PSEL"],
+        "description": "Library specializing in government, economics, and policy resources."
+    },
+    {
+        "place_id": "bush-lib", "name": "George H.W. Bush Presidential Library", "short_name": "BUSH", "type": "Library", "lat": 30.5966, "lng": -96.3533, 
+        "aliases": ["George Bush Library", "Bush Library", "Bush School"],
+        "description": "Presidential library and museum dedicated to George H.W. Bush."
+    },
+    {
+        "place_id": "msl", "name": "Medical Sciences Library", "short_name": "MSL", "type": "Library", "lat": 30.61182, "lng": -96.35161, 
+        "aliases": ["Medical Sciences Library", "MSL"],
+        "description": "Primary library for medical and veterinary sciences."
+    },
+    {
+        "place_id": "wcl", "name": "West Campus Library", "short_name": "WCL", "type": "Library", "lat": 30.611581, "lng": -96.350275, 
+        "aliases": ["BLCC", "West Campus Library and Business Learning Complex"],
+        "hours": "Open daily · check library schedule",
+        "description": "Business and west campus study hub."
+    },
+    {
+        "place_id": "cush", "name": "Cushing Memorial Library", "short_name": "CUSH", "type": "Library", "lat": 30.61636, "lng": -96.3399, "aliases": ["Cushing"],
+        "description": "Historical and special collections library."
+    },
+    {
+        "place_id": "rec", "name": "Student Recreation Center", "short_name": "SREC", "type": "Rec", "lat": 30.607369543290172, "lng": -96.34287943254921, 
+        "aliases": ["Student Rec Center", "Rec Center", "The Rec", "Rec"],
+        "hours": "6:00 AM – 11:45 PM",
+        "description": "Primary rec center with fitness, courts, pools, and climbing.",
+        "features": ["Strength & Conditioning", "Indoor Track", "Pools", "Climbing Wall"]
+    },
+    {
+        "place_id": "southside-rec", "name": "Southside Recreation Center", "short_name": "SSRC", "type": "Rec", "lat": 30.615858627009548, "lng": -96.33350512942744, 
+        "aliases": ["Southside Rec Center"],
+        "hours": "5:30 AM – 11:59 PM",
+        "description": "Southside rec center near the Commons with indoor and outdoor space.",
+        "features": ["Strength & Conditioning", "Cardio Equipment", "Locker Rooms", "Sand Volleyball"]
+    },
+    {
+        "place_id": "polo-rec", "name": "Polo Road Recreation Center", "short_name": "POLO REC", "type": "Rec", "lat": 30.62322838512405, "lng": -96.33752363659374, 
+        "aliases": ["Polo Road Rec Center"],
+        "hours": "6:00 AM – 10:00 PM",
+        "description": "North campus rec center focused on cardio and strength training.",
+        "features": ["Strength & Conditioning", "Cardio Equipment", "Indoor Track"]
+    },
+    {
+        "place_id": "msc", "name": "Memorial Student Center", "short_name": "MSC", "type": "Hub", "lat": 30.61225, "lng": -96.341242, 
+        "aliases": ["Memorial Student Center (MSC)", "MSC", "Memorial Student Center"],
+        "hours": "Open daily",
+        "description": "Central student hub, dining, lounges, and events."
+    },
+    {
+        "place_id": "sbisa", "name": "Sbisa Dining Hall", "short_name": "SBISA", "type": "Dining", "lat": 30.617135, "lng": -96.343777, 
+        "aliases": ["Sbisa"],
+        "hours": "Breakfast, lunch, and dinner service",
+        "description": "Northside all-you-care-to-eat dining hall."
+    },
+    {
+        "place_id": "commons", "name": "The Commons Dining Hall", "short_name": "COMMONS", "type": "Dining", "lat": 30.6153804, "lng": -96.3360119, 
+        "aliases": ["Commons Dining Hall", "The Commons", "Commons"],
+        "hours": "Breakfast, lunch, and dinner service",
+        "description": "Southside dining hall near the Commons."
+    },
+    {
+        "place_id": "west-campus-dining", "name": "West Campus Dining Facility", "short_name": "WCD", "type": "Dining", "lat": 30.61020, "lng": -96.34863, 
+        "aliases": ["West Campus Dining", "WCD"],
+        "hours": "Check dining schedule",
+        "description": "Modern dining facility located on West Campus."
+    },
+    {
+        "place_id": "duncan", "name": "Duncan Dining Hall", "short_name": "DUNCAN", "type": "Dining", "lat": 30.612072, "lng": -96.335505, "aliases": [],
+        "hours": "Check dining schedule",
+        "description": "Dining hall near the Corps Quad."
+    },
+    {
+        "place_id": "polo-garage-food", "name": "Polo Road Garage Dining", "short_name": "POLO DINING", "type": "Dining", "lat": 30.622723, "lng": -96.337939, 
+        "aliases": ["Polo Road Garage", "Polo Dining", "Polo Road Garage Food"],
+        "hours": "Check dining schedule",
+        "description": "Dining hub inside the Polo Road Garage complex."
+    },
+    {
+        "place_id": "rudder", "name": "Rudder Tower", "short_name": "RUDDER", "type": "Landmark", "lat": 30.613251, "lng": -96.339957, "aliases": ["Rudder"],
+        "hours": "Open daily",
+        "description": "Event and campus activity landmark adjacent to the MSC."
+    },
 ]
 
 # 2. Frontend Primary Overrides (from campus.ts hardcoded lists)
@@ -116,7 +199,7 @@ FRONTEND_AMENITIES = [
 
 # 4. Traffic Overrides (from traffic.py)
 TRAFFIC_DATA = {
-    "Student Rec Center":   {"lat": 30.607120, "lng": -96.345403, "type": "Rec"},
+    "Student Rec Center":   {"lat": 30.607369543290172, "lng": -96.34287943254921, "type": "Rec"},
     "Southside Rec Center": {"lat": 30.615858627009548, "lng": -96.33350512942744, "type": "Rec"},
     "Polo Road Rec Center": {"lat": 30.62322838512405, "lng": -96.33752363659374, "type": "Rec"},
     "Evans Library":                          {"lat": 30.616607, "lng": -96.339047, "type": "Library"},
@@ -159,6 +242,8 @@ def run_migration():
             lat REAL NOT NULL,
             lng REAL NOT NULL,
             description TEXT,
+            hours TEXT,
+            features TEXT,
             address TEXT,
             search_only INTEGER DEFAULT 0,
             source TEXT
@@ -210,29 +295,6 @@ def run_migration():
                  cur.execute("INSERT OR IGNORE INTO aliases (place_id, alias) VALUES (?, ?)", (row["place_id"], normalize_key(row["short_name"])))
         print(f"Skipped {skipped} conflicting OSM records.")
 
-    # 2. Load Legacy All Buildings JSON (for completeness)
-    if ALL_BUILDINGS_PATH.exists():
-        with open(ALL_BUILDINGS_PATH, "r", encoding="utf-8") as f:
-            all_b = json.load(f)
-        print(f"Checking {len(all_b)} legacy buildings for premium conflicts...")
-        skipped = 0
-        for row in all_b:
-            nk = normalize_key(row["name"])
-            if nk in PREMIUM_NAMES:
-                skipped += 1
-                continue
-                
-            pid = row["id"]
-            name = row["name"]
-            cur.execute("""
-                INSERT OR IGNORE INTO places (place_id, name, short_name, type, lat, lng, source)
-                VALUES (?, ?, ?, ?, ?, ?, 'legacy')
-            """, (pid, name, row.get("shortName"), row["type"], float(row["latitude"]), float(row["longitude"])))
-            cur.execute("INSERT OR IGNORE INTO aliases (place_id, alias) VALUES (?, ?)", (pid, nk))
-            if row.get("shortName"):
-                 cur.execute("INSERT OR IGNORE INTO aliases (place_id, alias) VALUES (?, ?)", (pid, normalize_key(row["shortName"])))
-        print(f"Skipped {skipped} conflicting legacy records.")
-
     # 3. Apply Frontend Primary Overrides (Academic, Housing, Landmark, etc)
     print(f"Applying {len(FRONTEND_PRIMARY)} Frontend Buildings (WINS)...")
     for b in FRONTEND_PRIMARY:
@@ -257,15 +319,19 @@ def run_migration():
         """, (a["id"], a["name"], a["type"], a["latitude"], a["longitude"]))
         cur.execute("INSERT OR IGNORE INTO aliases (place_id, alias) VALUES (?, ?)", (a["id"], normalize_key(a["name"])))
 
-    # 5. Apply Specialty Overrides (High priority aliases)
+    # 5. Apply Specialty Overrides (High priority aliases + Metadata)
     print(f"Applying {len(SPECIAL_PLACES)} Specialty Aliases (WINS)...")
     for sp in SPECIAL_PLACES:
+        features_json = json.dumps(sp.get("features", [])) if sp.get("features") else None
         cur.execute("""
-            INSERT INTO places (place_id, name, short_name, type, lat, lng, source)
-            VALUES (?, ?, ?, ?, ?, ?, 'special')
+            INSERT INTO places (place_id, name, short_name, type, lat, lng, description, hours, features, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'special')
             ON CONFLICT(place_id) DO UPDATE SET
-                name=excluded.name, short_name=excluded.short_name, type=excluded.type, lat=excluded.lat, lng=excluded.lng, source='special'
-        """, (sp["place_id"], sp["name"], sp["short_name"], sp["type"], sp["lat"], sp["lng"]))
+                name=excluded.name, short_name=excluded.short_name, type=excluded.type, 
+                lat=excluded.lat, lng=excluded.lng, 
+                description=excluded.description, hours=excluded.hours, features=excluded.features,
+                source='special'
+        """, (sp["place_id"], sp["name"], sp["short_name"], sp["type"], sp["lat"], sp["lng"], sp.get("description"), sp.get("hours"), features_json))
         cur.execute("INSERT OR IGNORE INTO aliases (place_id, alias) VALUES (?, ?)", (sp["place_id"], normalize_key(sp["name"])))
         for alias in sp.get("aliases", []):
             cur.execute("INSERT OR IGNORE INTO aliases (place_id, alias) VALUES (?, ?)", (sp["place_id"], normalize_key(alias)))
@@ -277,7 +343,7 @@ def run_migration():
         cur.execute("SELECT DISTINCT place_id FROM aliases WHERE alias = ?", (normalize_key(name),))
         ids = cur.fetchall()
         for res in ids:
-            cur.execute("UPDATE places SET lat=?, lng=? WHERE place_id=?", (data["lat"], data["lng"], res[0]))
+            cur.execute("UPDATE places SET lat=?, lng=?, type=COALESCE(?, type) WHERE place_id=?", (data["lat"], data["lng"], data.get("type"), res[0]))
 
     conn.commit()
     conn.close()

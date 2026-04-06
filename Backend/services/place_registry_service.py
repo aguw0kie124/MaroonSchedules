@@ -3,6 +3,7 @@ import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List
+import json
 
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
@@ -40,6 +41,8 @@ def _build_registry() -> Dict[str, Any]:
         # Ensure lat/lng are floats
         record["lat"] = float(record["lat"])
         record["lng"] = float(record["lng"])
+        record["hours"] = record.get("hours")
+        record["features"] = json.loads(record["features"]) if record.get("features") else []
         record["aliases"] = [] # To be filled next
         
         records.append(record)
@@ -99,6 +102,8 @@ def serialize_place(place: Dict[str, Any] | None) -> Dict[str, Any] | None:
         "aliases": aliases,
         "coord": {"lat": place["lat"], "lng": place["lng"]},
         "description": place.get("description"),
+        "hours": place.get("hours"),
+        "features": place.get("features") or [],
         "address": place.get("address"),
         "search_only": bool(place.get("search_only")),
         "source": place.get("source"),
