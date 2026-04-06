@@ -3,6 +3,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# iOS generated files
+ios/Pods/
+ios/build/
+ios/.xcode.env.local
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/project.xcworkspace/
+
 # Environment variables
 .env
 .env.local
