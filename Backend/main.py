@@ -19,6 +19,8 @@ from routers.annex import router as annex_router
 from routers.upload import router as upload_router
 from routers.upload import UPLOAD_DIR
 from routers.admin import router as admin_router
+from routers.clubs import router as clubs_router
+from routers.maps import router as maps_router
 
 from services import course_service, schedule_service, user_service
 from services import cache_service, snapshot_jobs
@@ -83,6 +85,8 @@ app.include_router(grades_router)
 app.include_router(annex_router)
 app.include_router(upload_router)
 app.include_router(admin_router)
+app.include_router(clubs_router)
+app.include_router(maps_router)
 
 from fastapi.staticfiles import StaticFiles
 # Ensure uploads directory exists

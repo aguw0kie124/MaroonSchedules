@@ -92,9 +92,11 @@ export interface CampusLocation {
     | "schedule"
     | "snapshot"
     | "osm"
+    | "global"
     | "amenity"
     | "frontend"
     | "special";
+  searchImportance?: number;
   searchOnly?: boolean;
   classMeetings?: ScheduleMeetingEntry[];
   scheduleLabel?: string;

@@ -30,8 +30,11 @@ export const CANONICAL_LOCATION_ALIASES: Record<string, string> = {
   "Rec": "Student Recreation Center",
   "Southside Rec Center": "Southside Recreation Center",
   "Polo Road Rec Center": "Polo Road Recreation Center",
-  "Commons Dining Hall": "The Commons Dining Hall",
   "Evans Library": "Sterling C. Evans Library",
+  "Sterling C. Evans Library Annex": "Evans Library Annex",
+  "Commons Dining Hall": "The Commons Dining Hall",
+  "The Commons": "The Commons Dining Hall",
+  "Commons": "The Commons Dining Hall",
   "Memorial Student Center (MSC)": "Memorial Student Center",
 };
 
@@ -305,9 +308,12 @@ export function mapBuildingType(type: string): LocationType {
 
 export function mapAmenityType(type: string): LocationType {
   switch (type.toLowerCase()) {
+    case "coffee":
     case "dining":
       return "Dining";
     case "study":
+      return "General";
+    case "restroom":
       return "General";
     case "parking":
       return "Parking";
@@ -549,7 +555,10 @@ export function shouldHideFoodCourtLocationInBrowse(
 }
 
 function normalizeLocationKey(value?: string | null) {
-  return (value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return getCanonicalLocationName(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function areLocationCoordsClose(first: CampusLocation, second: CampusLocation, maxDelta = 0.0015) {
@@ -565,6 +574,40 @@ function shouldPreserveExistingType(existing: CampusLocation, incoming: CampusLo
   const weakIncomingTypes = new Set(["Academic", "Landmark", "General"]);
 
   return strongTypes.has(existing.type) && weakIncomingTypes.has(incoming.type);
+}
+
+function shouldMergeByCanonicalName(existing: CampusLocation, incoming: CampusLocation) {
+  if (normalizeLocationKey(existing.location) !== normalizeLocationKey(incoming.location)) {
+    return false;
+  }
+
+  return (
+    (existing.source === "directory" && incoming.source === "osm") ||
+    (existing.source === "osm" && incoming.source === "directory")
+  );
+}
+
+function shouldPreserveExistingCoordinate(existing: CampusLocation, incoming: CampusLocation) {
+  if (existing.source !== "directory" || incoming.source !== "osm") return false;
+
+  const protectedTypes = new Set<CampusLocation["type"]>([
+    "Dining",
+    "Hub",
+    "Library",
+    "Rec",
+  ]);
+
+  return protectedTypes.has(existing.type);
+}
+
+function mergeDefinedFields<T extends Record<string, any>>(base: T, incoming: Partial<T>) {
+  const next = { ...base };
+  Object.entries(incoming).forEach(([key, value]) => {
+    if (value !== undefined) {
+      (next as any)[key] = value;
+    }
+  });
+  return next;
 }
 
 export function getLocationSelectionId(location: Pick<CampusLocation, "placeId" | "location" | "coord">) {
@@ -586,7 +629,10 @@ export function mergeCampusLocations(...groups: CampusLocation[][]): CampusLocat
     const matchingNameKey =
       candidateKeys.find((key) => {
         const existing = merged.get(key);
-        return existing ? areLocationCoordsClose(existing, location) : false;
+        return existing
+          ? areLocationCoordsClose(existing, location) ||
+              shouldMergeByCanonicalName(existing, location)
+          : false;
       }) || null;
     const existingKey = explicitExisting ? explicitKey : matchingNameKey || explicitKey;
     const existing = merged.get(existingKey);
@@ -596,9 +642,11 @@ export function mergeCampusLocations(...groups: CampusLocation[][]): CampusLocat
 
     const next: CampusLocation = existing
       ? {
-          ...existing,
-          ...location,
+          ...mergeDefinedFields(existing, location),
           type: shouldPreserveExistingType(existing, location) ? existing.type : location.type,
+          coord: shouldPreserveExistingCoordinate(existing, location)
+            ? existing.coord
+            : location.coord,
           aliases: nextAliases,
         }
       : {

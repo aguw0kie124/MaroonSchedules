@@ -109,6 +109,18 @@ interface FeaturedEvent {
   rsvpStatus?: string;
 }
 
+function parseFeaturedEventTime(value?: string | null): number | null {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function isFeaturedEventUpcoming(event: FeaturedEvent): boolean {
+  const relevantTime = parseFeaturedEventTime(event.endTime) ?? parseFeaturedEventTime(event.startTime);
+  if (relevantTime == null) return true;
+  return relevantTime >= Date.now();
+}
+
 interface PingCard {
   id: string;
   source: 'user' | 'official';
@@ -340,6 +352,7 @@ export function CampusPingsScreen() {
 
   const featuredCards = useMemo(() => {
     return featuredEvents
+      .filter((event) => isFeaturedEventUpcoming(event))
       .filter((event) => categoryFilter === 'All' || mapOfficialEventCategory(event) === categoryFilter)
       .map((event) => {
         const canonicalLocation = getCanonicalLocationName(event.location);
@@ -403,7 +416,7 @@ export function CampusPingsScreen() {
         categories: event.categories || undefined,
         isAdminEvent: !!event.is_admin_event,
         rsvpStatus: event.rsvp_status ?? 'none',
-      }));
+      })).filter((event) => isFeaturedEventUpcoming(event));
       setFeaturedEvents(nextEvents);
     } catch (error) {
       console.warn('[Pings] Failed to load featured events', error);

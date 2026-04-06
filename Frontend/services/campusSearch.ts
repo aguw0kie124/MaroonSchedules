@@ -1,24 +1,36 @@
 /**
  * Campus Search Service
- * Fuzzy substring search over buildings and amenities
+ * Fuzzy search over the expanded campus place directory
  */
 
-import { BUILDINGS, AMENITIES, CampusBuilding, CampusAmenity } from '../data/campus';
+import { buildExpandedPlacesDirectory, getLocationSelectionId } from '../components/places/campusData';
+import type { CampusLocation } from '../components/places/types';
 import { computeDistanceMeters, Coordinate } from './campusDirections';
+import { searchCampusLocations } from '../components/places/searchUtils';
 
 export interface CampusSearchResult {
   id: string;
   label: string;
   subtitle: string;
-  kind: 'building' | 'amenity' | 'command';
-  building?: CampusBuilding;
-  amenity?: CampusAmenity;
+  kind: 'location' | 'command';
+  location?: CampusLocation;
   commandType?: string;
+  query?: string;
   distance?: number;
 }
 
+const CAMPUS_LOCATIONS = buildExpandedPlacesDirectory();
+const BROWSABLE_CAMPUS_LOCATIONS = CAMPUS_LOCATIONS.filter((location) => !location.searchOnly);
+
+function formatLocationSubtitle(location: CampusLocation) {
+  const parts = [location.shortName, location.type, location.address]
+    .filter((value) => !!value)
+    .map((value) => String(value));
+  return parts.join(' • ');
+}
+
 /**
- * Search buildings and amenities by query text
+ * Search campus locations by query text
  */
 export function searchCampus(
   query: string,
@@ -28,49 +40,25 @@ export function searchCampus(
   const q = query.toLowerCase().trim();
   if (q.length === 0) return [];
 
-  const results: CampusSearchResult[] = [];
-
-  // Search buildings
-  for (const b of BUILDINGS) {
-    const nameMatch = b.name.toLowerCase().includes(q);
-    const shortMatch = b.shortName.toLowerCase().includes(q);
-    if (nameMatch || shortMatch) {
-      const dist = userCoord
-        ? computeDistanceMeters(userCoord, { latitude: b.latitude, longitude: b.longitude })
-        : undefined;
-      results.push({
-        id: `bldg:${b.id}`,
-        label: b.name,
-        subtitle: `${b.shortName} • ${b.type}`,
-        kind: 'building',
-        building: b,
-        distance: dist,
-      });
-    }
-  }
-
-  // Search amenities
-  for (const a of AMENITIES) {
-    if (a.name.toLowerCase().includes(q) || a.type.toLowerCase().includes(q)) {
-      const dist = userCoord
-        ? computeDistanceMeters(userCoord, { latitude: a.latitude, longitude: a.longitude })
-        : undefined;
-      results.push({
-        id: `amenity:${a.id}`,
-        label: a.name,
-        subtitle: a.type,
-        kind: 'amenity',
-        amenity: a,
-        distance: dist,
-      });
-    }
-  }
-
-  // Sort by distance if available, otherwise alphabetical
-  results.sort((a, b) => {
-    if (a.distance != null && b.distance != null) return a.distance - b.distance;
-    return a.label.localeCompare(b.label);
-  });
+  const matchedLocations = searchCampusLocations(
+    CAMPUS_LOCATIONS,
+    query,
+    maxResults * 2,
+    { referenceCoord: userCoord ?? null },
+  );
+  const results: CampusSearchResult[] = matchedLocations.map((location) => ({
+    id: `loc:${getLocationSelectionId(location)}`,
+    label: location.location,
+    subtitle: formatLocationSubtitle(location),
+    kind: 'location',
+    location,
+    distance: userCoord
+      ? computeDistanceMeters(userCoord, {
+          latitude: location.coord.lat,
+          longitude: location.coord.lng,
+        })
+      : undefined,
+  }));
 
   return results.slice(0, maxResults);
 }
@@ -118,29 +106,17 @@ export function getNearbyItems(
   userCoord: Coordinate,
   maxResults = 10,
 ): CampusSearchResult[] {
-  const items: CampusSearchResult[] = [];
-
-  for (const b of BUILDINGS) {
-    items.push({
-      id: `bldg:${b.id}`,
-      label: b.name,
-      subtitle: b.shortName,
-      kind: 'building',
-      building: b,
-      distance: computeDistanceMeters(userCoord, { latitude: b.latitude, longitude: b.longitude }),
-    });
-  }
-
-  for (const a of AMENITIES) {
-    items.push({
-      id: `amenity:${a.id}`,
-      label: a.name,
-      subtitle: a.type,
-      kind: 'amenity',
-      amenity: a,
-      distance: computeDistanceMeters(userCoord, { latitude: a.latitude, longitude: a.longitude }),
-    });
-  }
+  const items: CampusSearchResult[] = BROWSABLE_CAMPUS_LOCATIONS.map((location) => ({
+    id: `loc:${getLocationSelectionId(location)}`,
+    label: location.location,
+    subtitle: formatLocationSubtitle(location),
+    kind: 'location',
+    location,
+    distance: computeDistanceMeters(userCoord, {
+      latitude: location.coord.lat,
+      longitude: location.coord.lng,
+    }),
+  }));
 
   items.sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity));
   return items.slice(0, maxResults);

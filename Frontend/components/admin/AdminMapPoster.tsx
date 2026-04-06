@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Text, TextInput, ScrollView, Alert, Platform, Image } from 'react-native';
 import { Pressable } from 'react-native';
 import { useUser, useAuth } from '@clerk/clerk-expo';
@@ -13,6 +13,8 @@ import { getAdminLocationSuggestions, resolveAdminEventLocation } from '../../se
 import { LogOut, PlusCircle, ImagePlus, Sparkles, MapPinned } from 'lucide-react-native';
 import { uploadStreamImage } from '../../services/streamFeeds';
 import { useSessionStore } from '../../store/sessionStore';
+import { TagSelector } from './TagSelector';
+import { TagChips } from '../common/TagChips';
 
 function roundToNearestFiveMinutes(value: Date) {
   const next = new Date(value);
@@ -32,6 +34,8 @@ export function AdminMapPoster() {
   const [address, setAddress] = useState('');
   const [googleReviewUrl, setGoogleReviewUrl] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [startTime, setStartTime] = useState(() => roundToNearestFiveMinutes(new Date()));
   const [endTime, setEndTime] = useState(() => {
     const initialStart = roundToNearestFiveMinutes(new Date());
@@ -42,6 +46,13 @@ export function AdminMapPoster() {
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    requestJson(`/admin/tags?clerk_id=${encodeURIComponent(user.id)}`)
+      .then((data) => setAvailableTags(data.tags || []))
+      .catch((error) => console.error('Failed to load tag suggestions', error));
+  }, [user?.id]);
 
   const updateDatePart = (nextValue: Date) => {
     setStartTime((current) => {
@@ -137,6 +148,7 @@ export function AdminMapPoster() {
           end_time: endTime.toISOString(),
           google_review_url: normalizedReviewUrl,
           image_url: uploadedImageUrl,
+          tags: selectedTags,
         })
       });
 
@@ -146,6 +158,7 @@ export function AdminMapPoster() {
       setAddress('');
       setGoogleReviewUrl('');
       setImageUri(null);
+      setSelectedTags([]);
       const nextStart = roundToNearestFiveMinutes(new Date());
       setStartTime(nextStart);
       setEndTime(new Date(nextStart.getTime() + 2 * 60 * 60 * 1000));
@@ -453,6 +466,9 @@ export function AdminMapPoster() {
             <View>
               <Text style={styles.heroEyebrow}>Featured Event Studio</Text>
               <Text style={styles.heroHeadline}>{title.trim() || 'Make your next event impossible to ignore.'}</Text>
+              <View style={{ marginTop: 12 }}>
+                <TagChips tags={selectedTags} />
+              </View>
             </View>
             <View style={styles.heroBadgeRow}>
               <View style={styles.heroBadge}>
@@ -553,6 +569,15 @@ export function AdminMapPoster() {
         <Text style={[styles.helperText, { marginTop: 6 }]}>
           Paste the full review URL. If you leave off `https://`, we’ll add it automatically.
         </Text>
+
+        <TagSelector
+          label="Audience Tags"
+          helperText="Students with matching user tags will see this event alongside public campus events."
+          selectedTags={selectedTags}
+          availableTags={availableTags}
+          placeholder="Add audience tag"
+          onChange={setSelectedTags}
+        />
 
         <Text style={styles.label}>Date</Text>
         <View style={styles.pickerWrap}>

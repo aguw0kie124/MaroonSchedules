@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import html
 import json
@@ -12,9 +12,15 @@ from urllib.request import Request, urlopen
 import psycopg
 
 from db_config import CONNECTION_PARAMS
-from repositories import course_repository, user_repository
+from repositories import course_repository, tag_repository, user_repository
 from routers.traffic import tracker
-from services import cache_service, campus_events_service, place_registry_service, campus_places_service
+from services import (
+    cache_service,
+    campus_events_service,
+    place_registry_service,
+    campus_places_service,
+    tag_access_service,
+)
 
 HOWDY_URL = "https://howdy.tamu.edu/main/home/card-view"
 DINING_URL = "https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx"
@@ -50,6 +56,48 @@ REC_PAGE_CACHE_TTL_SECONDS = 60 * 60 * 6
 REC_PAGE_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
 REC_NOTICES_CACHE_TTL_SECONDS = 60 * 30
 REC_NOTICES_CACHE: tuple[float, List[Dict[str, Any]]] | None = None
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _parse_event_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    elif isinstance(value, str):
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if normalized.endswith("Z"):
+            normalized = f"{normalized[:-1]}+00:00"
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            return None
+    else:
+        return None
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _is_event_upcoming(event: Dict[str, Any], now: datetime | None = None) -> bool:
+    reference_time = now or datetime.now(timezone.utc)
+    relevant_time = _parse_event_datetime(event.get("end_time")) or _parse_event_datetime(event.get("start_time"))
+    if relevant_time is None:
+        return True
+    return relevant_time >= reference_time
+
+
+def _event_start_sort_key(event: Dict[str, Any]) -> tuple[int, float]:
+    start_time = _parse_event_datetime(event.get("start_time"))
+    if start_time is None:
+        return (1, float("inf"))
+    return (0, start_time.timestamp())
 
 
 def _safe_db_fetchone(query: str, params: tuple = (), conn: psycopg.Connection | None = None) -> Dict[str, Any] | None:
@@ -822,7 +870,7 @@ def get_academic_snapshot(clerk_id: str, conn: psycopg.Connection | None = None)
     derived_courses = howdy_snapshot.get("course_codes") if isinstance(howdy_snapshot.get("course_codes"), list) else []
 
     return {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": _utc_now_iso(),
         "stale_after": ACADEMIC_SNAPSHOT_TTL_SECONDS,
         "source_status": "live" if courses or howdy_snapshot else "preview",
         "status": "live" if courses or howdy_snapshot else "preview",
@@ -849,7 +897,7 @@ def get_dining_snapshot(clerk_id: str, conn: psycopg.Connection | None = None) -
 
     if transact_snapshot:
         return {
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": _utc_now_iso(),
             "stale_after": DINING_SNAPSHOT_TTL_SECONDS,
             "source_status": "live",
             "status": "live",
@@ -868,7 +916,7 @@ def get_dining_snapshot(clerk_id: str, conn: psycopg.Connection | None = None) -
 
     if profile:
         return {
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": _utc_now_iso(),
             "stale_after": DINING_SNAPSHOT_TTL_SECONDS,
             "source_status": "preview",
             "status": "preview",
@@ -886,7 +934,7 @@ def get_dining_snapshot(clerk_id: str, conn: psycopg.Connection | None = None) -
         }
 
     return {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": _utc_now_iso(),
         "stale_after": DINING_SNAPSHOT_TTL_SECONDS,
         "source_status": "link",
         "status": "link",
@@ -947,7 +995,7 @@ def discover_network(clerk_id: str, query: str | None = None, major: str | None 
     )
 
     return {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": _utc_now_iso(),
         "stale_after": 300,
         "source_status": "live" if suggestions else "preview",
         "status": "live" if suggestions else "preview",
@@ -995,7 +1043,12 @@ def get_events_snapshot(
     rsvp_lookup: Dict[str, str] = {}
     blocked_ids: set[str] = set()
     muted_admin_ids: set[str] = set()
+    bypass_tag_restrictions = False
+    user_access_tags: list[str] = []
     if clerk_id:
+        user = user_repository.get_user(clerk_id) or {}
+        bypass_tag_restrictions = bool(user.get("is_admin"))
+        user_access_tags = tag_repository.get_user_tags(clerk_id)
         rows = _safe_db_fetchall(
             "SELECT event_id, response FROM campus_event_rsvps WHERE clerk_id = %s",
             (clerk_id,),
@@ -1044,6 +1097,15 @@ def get_events_snapshot(
             e.end_time,
             e.google_review_url,
             e.image_url,
+            COALESCE(
+                (
+                    SELECT json_agg(t.label ORDER BY t.label)
+                    FROM event_tags et
+                    JOIN tags t ON t.id = et.tag_id
+                    WHERE et.event_id = e.id::TEXT
+                ),
+                '[]'::json
+            ) AS access_tags,
             app.organization_name
         FROM admin_events e
         LEFT JOIN admin_applications app ON app.clerk_id = e.clerk_id
@@ -1068,6 +1130,7 @@ def get_events_snapshot(
             "description": ad_ev["description"],
             "google_review_url": ad_ev.get("google_review_url"),
             "image_url": ad_ev.get("image_url"),
+            "access_tags": ad_ev.get("access_tags") or [],
             "has_food": False,
             "source_name": "admin_portal",
             "host_name": organization_name,
@@ -1078,6 +1141,13 @@ def get_events_snapshot(
         })
 
     events = admin_events_list + events_copy
+    events = tag_access_service.filter_events_for_access_tags(
+        events,
+        user_tags=user_access_tags,
+        bypass_restrictions=bypass_tag_restrictions,
+    )
+    events = [event for event in events if _is_event_upcoming(event)]
+    events.sort(key=_event_start_sort_key)
 
     if events:
         if student_relevant_only:
@@ -1092,7 +1162,7 @@ def get_events_snapshot(
             ]
         limited = events[:limit] if limit else events
         return {
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": _utc_now_iso(),
             "stale_after": 300,
             "source_status": source_status,
             "events": [
@@ -1128,6 +1198,7 @@ def get_events_snapshot(
                 "host_name": None,
                 "source_name": "legacy_tracker",
                 "tags": [],
+                "access_tags": [],
                 "has_food": False,
                 "food_confidence": 0.0,
                 "food_type": "unknown",
@@ -1142,8 +1213,11 @@ def get_events_snapshot(
                 "place": place_registry_service.serialize_place(resolved_place),
             }
         )
+    events = [event for event in events if _is_event_upcoming(event)]
+    events.sort(key=_event_start_sort_key)
+    events = events[:limit] if limit else events
     return {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": _utc_now_iso(),
         "stale_after": 300,
         "source_status": "preview",
         "events": events,
@@ -1246,7 +1320,7 @@ def get_recreation_snapshot() -> Dict[str, Any]:
         })
 
     payload = {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": _utc_now_iso(),
         "stale_after": RECREATION_SNAPSHOT_TTL_SECONDS,
         "source_status": "live" if occupancy_rows else "preview",
         "status": "live" if occupancy_rows else "preview",
@@ -1266,7 +1340,7 @@ def get_place_detail_snapshot(place_id: str) -> Dict[str, Any]:
     place = place_registry_service.get_place_by_id(place_id)
     if not place:
         payload = {
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": _utc_now_iso(),
             "stale_after": 60,
             "source_status": "missing",
             "place": None,
@@ -1282,7 +1356,7 @@ def get_place_detail_snapshot(place_id: str) -> Dict[str, Any]:
         rec_facility = next((facility for facility in rec_snapshot.get("facilities", []) if facility.get("name") == location.get("location")), None)
 
     payload = {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": _utc_now_iso(),
         "stale_after": 60,
         "source_status": "live",
         "place": location or place_registry_service.serialize_place(place),
@@ -1303,7 +1377,7 @@ def get_place_detail_snapshot_by_identifier(place_identifier: str) -> Dict[str, 
         return get_place_detail_snapshot(resolved["place_id"])
 
     payload = {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": _utc_now_iso(),
         "stale_after": 60,
         "source_status": "missing",
         "place": None,
@@ -1313,7 +1387,7 @@ def get_place_detail_snapshot_by_identifier(place_identifier: str) -> Dict[str, 
 
 def get_transit_snapshot() -> Dict[str, Any]:
     return {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": _utc_now_iso(),
         "stale_after": TRANSIT_SNAPSHOT_TTL_SECONDS,
         "source_status": "live",
         "status": "live",
@@ -1326,7 +1400,7 @@ def get_transit_snapshot() -> Dict[str, Any]:
 
 def get_services_snapshot() -> Dict[str, Any]:
     return {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": _utc_now_iso(),
         "stale_after": SERVICES_SNAPSHOT_TTL_SECONDS,
         "source_status": "live",
         "services": [
@@ -1363,7 +1437,7 @@ def get_career_snapshot(clerk_id: str, conn: psycopg.Connection | None = None) -
     alumni_count = len([suggestion for suggestion in network.get("suggestions", []) if suggestion.get("relationship") == "alumni"])
     symplicity_snapshot = parse_connector_snapshot(clerk_id, "symplicity", conn=conn)
     return {
-        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "generated_at": _utc_now_iso(),
         "stale_after": CAREER_SNAPSHOT_TTL_SECONDS,
         "source_status": "live" if symplicity_snapshot else "preview",
         "status": "live" if symplicity_snapshot else "link",
@@ -1490,7 +1564,7 @@ def get_overview(clerk_id: str) -> Dict[str, Any]:
                 "recreation": recreation,
                 "services": services,
                 "connectors": connectors,
-                "generatedAt": datetime.utcnow().isoformat() + "Z",
+                "generatedAt": _utc_now_iso(),
             }
     except Exception as exc:
         print(f"[campus_hub] Critical overview failure for {clerk_id}: {exc}")

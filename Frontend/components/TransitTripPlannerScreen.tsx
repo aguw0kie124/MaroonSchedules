@@ -49,29 +49,16 @@ function formatPlannerTime(value: Date) {
 }
 
 function toPlannerLocation(result: CampusSearchResult): PlannerLocation | null {
-  if (result.building) {
+  if (result.location) {
     return {
-      id: `building:${result.building.id}`,
-      name: result.building.name,
-      subtitle: result.building.shortName,
+      id: `location:${result.location.placeId || result.id}`,
+      name: result.location.location,
+      subtitle: result.location.shortName || result.location.type,
       coordinate: {
-        latitude: result.building.latitude,
-        longitude: result.building.longitude,
+        latitude: result.location.coord.lat,
+        longitude: result.location.coord.lng,
       },
-      type: 'building',
-    };
-  }
-
-  if (result.amenity) {
-    return {
-      id: `amenity:${result.amenity.id}`,
-      name: result.amenity.name,
-      subtitle: result.amenity.type,
-      coordinate: {
-        latitude: result.amenity.latitude,
-        longitude: result.amenity.longitude,
-      },
-      type: 'amenity',
+      type: result.location.type,
     };
   }
 

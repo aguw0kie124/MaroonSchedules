@@ -72,6 +72,15 @@ def _ensure_user_schema(conn: psycopg.Connection) -> None:
             )
             """
         )
+        cur.execute("ALTER TABLE admin_applications ADD COLUMN IF NOT EXISTS clerk_id TEXT")
+        cur.execute("ALTER TABLE admin_applications ADD COLUMN IF NOT EXISTS email TEXT")
+        cur.execute("ALTER TABLE admin_applications ADD COLUMN IF NOT EXISTS organization_name TEXT")
+        cur.execute("ALTER TABLE admin_applications ADD COLUMN IF NOT EXISTS reason TEXT")
+        cur.execute("ALTER TABLE admin_applications ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending'")
+        cur.execute("ALTER TABLE admin_applications ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
+        cur.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS admin_applications_clerk_id_uidx ON admin_applications (clerk_id)"
+        )
 
         cur.execute(
             """
@@ -128,7 +137,11 @@ def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile
             )
             row = cur.fetchone()
         conn.commit()
-    return _row_to_dict(row)
+    result = _row_to_dict(row)
+    from repositories import tag_repository
+
+    result["tags"] = tag_repository.get_user_tags(clerk_id)
+    return result
 
 
 def get_user(clerk_id: str) -> dict | None:
@@ -146,7 +159,11 @@ def get_user(clerk_id: str) -> dict | None:
             row = cur.fetchone()
     if not row:
         return None
-    return _row_to_dict(row)
+    result = _row_to_dict(row)
+    from repositories import tag_repository
+
+    result["tags"] = tag_repository.get_user_tags(clerk_id)
+    return result
 
 
 def update_profile(clerk_id: str, fields: dict) -> dict | None:
@@ -182,7 +199,11 @@ def update_profile(clerk_id: str, fields: dict) -> dict | None:
         conn.commit()
     if not row:
         return None
-    return _row_to_dict(row)
+    result = _row_to_dict(row)
+    from repositories import tag_repository
+
+    result["tags"] = tag_repository.get_user_tags(clerk_id)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -254,6 +275,7 @@ def _row_to_dict(row) -> dict:
         "tos_accepted": row[18],
         "tour_completed": row[19],
         "is_admin": row[20] if len(row) > 20 else False,
+        "tags": [],
     }
 
 

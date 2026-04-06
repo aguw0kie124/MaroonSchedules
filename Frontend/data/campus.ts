@@ -30,7 +30,7 @@ export interface CampusAmenity {
   name: string;
   latitude: number;
   longitude: number;
-  type: LocationType;
+  type: 'restroom' | 'coffee' | 'dining' | 'study' | 'parking';
 }
 
 export interface CampusRegistryPlaceRecord {
@@ -86,15 +86,14 @@ const mapBuildingType = (t: string): CampusBuilding['type'] => {
   return mapping[t.toLowerCase()] || 'Academic' as any;
 };
 
-const mapAmenityType = (t: string): LocationType => {
-  const mapping: Record<string, LocationType> = {
-    'restroom': 'General',
-    'coffee': 'Dining',
-    'dining': 'Dining',
-    'study': 'Study',
-    'parking': 'Parking',
-  };
-  return mapping[t.toLowerCase()] || 'Dining';
+const mapAmenityType = (t: string): CampusAmenity['type'] => {
+  const normalized = t.toLowerCase();
+  if (normalized === 'restroom') return 'restroom';
+  if (normalized === 'coffee') return 'coffee';
+  if (normalized === 'dining') return 'dining';
+  if (normalized === 'study') return 'study';
+  if (normalized === 'parking') return 'parking';
+  return 'dining';
 };
 
 export const CAMPUS_REGISTRY_SNAPSHOT = REGISTRY_SNAPSHOT_JSON as CampusRegistrySnapshot;
@@ -156,10 +155,11 @@ export function getBuildingIcon(type: CampusBuilding['type']): ComponentType<{ s
 
 export function getAmenityIcon(type: CampusAmenity['type']): ComponentType<{ size?: number; color?: string; strokeWidth?: number }> {
   switch (type) {
-    case 'Dining': return Utensils;
-    case 'Study': return LibraryIcon;
-    case 'General': return MapPin;
-    case 'Parking': return MapPin;
+    case 'coffee': return Coffee;
+    case 'dining': return Utensils;
+    case 'study': return LibraryIcon;
+    case 'restroom': return MapPin;
+    case 'parking': return MapPin;
     default: return MapPin;
   }
 }

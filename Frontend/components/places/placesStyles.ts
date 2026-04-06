@@ -51,6 +51,11 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       width: "100%",
       marginRight: 6,
     },
+    floatingSearchInputWrap: {
+      flex: 1,
+      minWidth: 0,
+      flexShrink: 1,
+    },
     searchLeadingIcon: {
       width: 36,
       height: 36,
@@ -60,6 +65,7 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
     },
     floatingSearchPrompt: {
       flex: 1,
+      minWidth: 0,
       justifyContent: "center",
       paddingVertical: 12,
     },
@@ -70,6 +76,8 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
     },
     floatingSearchInput: {
       flex: 1,
+      minWidth: 0,
+      flexShrink: 1,
       color: COLORS.textPrimary,
       fontSize: 13,
       fontWeight: "600",
@@ -139,6 +147,7 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       elevation: 10,
       zIndex: 100,
       maxHeight: "60%",
+      overflow: "hidden",
     },
     viewDropdownItem: {
       flexDirection: "row",
@@ -153,7 +162,7 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       paddingHorizontal: 14,
       paddingVertical: 13,
       borderBottomWidth: 1,
-      borderBottomColor: "rgba(255,255,255,0.06)",
+      borderBottomColor: isDark ? "rgba(255,255,255,0.06)" : "#ECEFF3",
       gap: 12,
     },
     searchItemName: { fontSize: 15, fontWeight: "600" },

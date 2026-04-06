@@ -121,7 +121,7 @@ interface LocationBottomSheetProps {
   // Bus state — to know when not to show
   selectedStop: any;
   selectedBus: any;
-  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "bus") => void;
+  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "drive" | "bus") => void;
 }
 
 export function LocationBottomSheet({
@@ -460,7 +460,11 @@ export function LocationBottomSheet({
 
                 <TouchableOpacity
                   style={styles.circularActionBtn}
-                  onPress={() =>
+                  onPress={() => {
+                    if (openNavigationToLocation && selectedLoc) {
+                      openNavigationToLocation(selectedLoc);
+                      return;
+                    }
                     navigation.navigate("CampusNavigation", {
                       initialDestination: {
                         id: selectedLoc.location,
@@ -481,10 +485,12 @@ export function LocationBottomSheet({
                                     ? "housing"
                                     : selectedLoc.type === "Athletics"
                                       ? "athletics"
-                                      : "landmark",
+                                      : selectedLoc.type === "General"
+                                        ? "general"
+                                        : "landmark",
                       },
-                    })
-                  }
+                    });
+                  }}
                 >
                   <Navigation size={20} fill="#FFF" color="#FFF" />
                 </TouchableOpacity>

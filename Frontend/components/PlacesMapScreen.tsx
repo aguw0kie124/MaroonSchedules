@@ -60,7 +60,7 @@ import AnimatedReanimated, {
   withTiming,
   runOnJS,
 } from "react-native-reanimated";
-import MapView, { Marker, Circle, Polyline } from "react-native-maps";
+import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -127,6 +127,14 @@ import {
   fetchCampusPulseMap,
   type CampusHotspot,
 } from "../services/campusPulse";
+import {
+  CAMPUS_MAP_STYLE_URL,
+  MapLibreCircleOverlay,
+  MapLibreMarker,
+  MapLibrePolylineOverlay,
+  useMapLibreCamera,
+} from "./map/mapLibreUtils";
+import { searchGlobalPlaces } from "../services/globalMap";
 
 // ── Transitional: still uses inline hooks from original file
 //    (replace with useLocationData / useScheduleMap / useBusTransit
@@ -190,12 +198,22 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // ── Map ref ───────────────────────────────────────────────
   const mapRef = useRef<any>(null);
+  const { cameraRef, defaultCamera, animateToRegion, animateCamera, fitToCoordinates } =
+    useMapLibreCamera(TAMU_CENTER);
   const currentBusRouteFetchId = useRef<string | null>(null);
   const lastPlacesFitKey = useRef<string | null>(null);
   const [isListDroppedDown, setIsListDroppedDown] = useState(false);
   const { activeTargetName, advanceStep } = useTour();
 
   // Onboarding: Force expand list when targeting items inside it
+  useEffect(() => {
+    mapRef.current = {
+      animateToRegion,
+      animateCamera,
+      fitToCoordinates,
+    };
+  }, [animateCamera, animateToRegion, fitToCoordinates]);
+
   useEffect(() => {
     if (activeTargetName === "rec-center-item") {
       setIsListDroppedDown(true);
@@ -209,6 +227,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
   );
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [dynamicSearchLocations, setDynamicSearchLocations] = useState<CampusLocation[]>([]);
+  const [isSearchingGlobal, setIsSearchingGlobal] = useState(false);
+  const [globalSearchError, setGlobalSearchError] = useState<string | null>(null);
   const [isTimetableSheetOpen, setIsTimetableSheetOpen] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [isEditorVisible, setIsEditorVisible] = useState(false);
@@ -237,6 +258,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const pulsePlacesRef = useRef<CampusLocation[]>([]);
   const selectedHotspotIdRef = useRef<string | null>(null);
   const [isLoadingPulse, setIsLoadingPulse] = useState(false);
+  const lastGlobalSearchQueryRef = useRef('');
+  const globalSearchRequestIdRef = useRef(0);
 
   // ── Schedule state ────────────────────────────────────────
   const [activeScheduleId, setActiveScheduleId] = useState<string | null>(null);
@@ -443,8 +466,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
     return mergeCampusLocations(
       locations,
       scheduleLocations as CampusLocation[],
+      dynamicSearchLocations,
     );
-  }, [locations, scheduleLocations]);
+  }, [dynamicSearchLocations, locations, scheduleLocations]);
 
   const pulsePlaces = useMemo(() => {
     return mergeCampusLocations(fullCampusIndex, locations);
@@ -507,8 +531,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
-    return searchCampusLocations(allMapLocations, searchQuery, 8);
-  }, [allMapLocations, searchQuery]);
+    return searchCampusLocations(allMapLocations, searchQuery, 10, {
+      referenceCoord: userCoord ?? null,
+    });
+  }, [allMapLocations, searchQuery, userCoord]);
 
   const busRouteSearchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
@@ -521,6 +547,26 @@ export function PlacesMapScreen({ route, navigation }: any) {
       })
       .slice(0, 4);
   }, [busRoutes, searchQuery]);
+
+  useEffect(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) {
+      globalSearchRequestIdRef.current += 1;
+      setGlobalSearchError(null);
+      setIsSearchingGlobal(false);
+      lastGlobalSearchQueryRef.current = '';
+      return;
+    }
+
+    if (
+      lastGlobalSearchQueryRef.current &&
+      lastGlobalSearchQueryRef.current !== normalizedQuery
+    ) {
+      globalSearchRequestIdRef.current += 1;
+      setGlobalSearchError(null);
+      setIsSearchingGlobal(false);
+    }
+  }, [searchQuery]);
 
   const busPulseAnim = useRef(new Animated.Value(1)).current;
 
@@ -725,6 +771,49 @@ export function PlacesMapScreen({ route, navigation }: any) {
   }, [activeLayer, busStops, busVehicles, selectedRoute, userCoord]);
 
   // ── Callbacks ─────────────────────────────────────────────
+  const runGlobalSearch = useCallback(
+    async (queryOverride?: string) => {
+      const normalizedQuery = (queryOverride ?? searchQuery).trim();
+      if (normalizedQuery.length < 2) return;
+
+      const requestId = globalSearchRequestIdRef.current + 1;
+      globalSearchRequestIdRef.current = requestId;
+      setIsSearchingGlobal(true);
+      setGlobalSearchError(null);
+      try {
+        const results = await searchGlobalPlaces(normalizedQuery, { limit: 6 });
+        if (requestId !== globalSearchRequestIdRef.current) return;
+        lastGlobalSearchQueryRef.current = normalizedQuery.toLowerCase();
+        setDynamicSearchLocations((current) => mergeCampusLocations(current, results));
+        if (results.length === 0) {
+          setGlobalSearchError(`No matches found for "${normalizedQuery}".`);
+        }
+      } catch (error: any) {
+        if (requestId !== globalSearchRequestIdRef.current) return;
+        setGlobalSearchError(
+          error?.message || "Search is unavailable right now.",
+        );
+      } finally {
+        if (requestId === globalSearchRequestIdRef.current) {
+          setIsSearchingGlobal(false);
+        }
+      }
+    },
+    [searchQuery],
+  );
+
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (trimmed.length < 2) return;
+    if (lastGlobalSearchQueryRef.current === trimmed.toLowerCase()) return;
+
+    const timeoutId = setTimeout(() => {
+      runGlobalSearch(trimmed);
+    }, 450);
+
+    return () => clearTimeout(timeoutId);
+  }, [runGlobalSearch, searchQuery]);
+
   const getPlaceExternalLink = useCallback(
     (loc: CampusLocation) => {
       const rec =
@@ -738,6 +827,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
         return { label: "Library Site", url: "https://library.tamu.edu/" };
       if (loc.type === "Parking")
         return { label: "Parking Guide", url: PARKING_INFO_URL };
+      if (loc.source === "global") {
+        return {
+          label: "Open in Maps",
+          url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+            loc.address ? `${loc.location}, ${loc.address}` : loc.location,
+          )}`,
+        };
+      }
       return {
         label: "Open in Maps",
         url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${loc.location} Texas A&M University`)}`,
@@ -815,11 +912,26 @@ export function PlacesMapScreen({ route, navigation }: any) {
   ]);
 
   const openNavigationToLocation = useCallback(
-    (loc: CampusLocation, mode: "walk" | "bus" = "walk") => {
+    (loc: CampusLocation, mode: "walk" | "drive" | "bus" = "walk") => {
       const rootNav =
         navigation.getParent?.("RootStack") || navigation.getParent?.();
+      const distanceFromUser = userCoord
+        ? haversineDistanceMeters(
+            userCoord.latitude,
+            userCoord.longitude,
+            loc.coord.lat,
+            loc.coord.lng,
+          )
+        : null;
+      const resolvedMode =
+        mode === "walk" &&
+        loc.source === "global" &&
+        distanceFromUser != null &&
+        distanceFromUser > 5000
+          ? "drive"
+          : mode;
       const params = {
-        initialTravelMode: mode,
+        initialTravelMode: resolvedMode,
         initialDestination: {
           id: loc.location,
           name: loc.location,
@@ -831,7 +943,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       };
       (rootNav?.navigate || navigation.navigate)("CampusNavigation", params);
     },
-    [navigation],
+    [navigation, userCoord],
   );
 
   const fetchReviews = useCallback(async (placeId: string, limit = 5) => {
@@ -1629,30 +1741,30 @@ export function PlacesMapScreen({ route, navigation }: any) {
   return (
     <View style={styles.container}>
       <MapView
-        ref={mapRef}
         style={StyleSheet.absoluteFillObject}
-        initialRegion={TAMU_CENTER}
-        showsUserLocation
-        showsMyLocationButton={false}
-        showsCompass={false}
-        toolbarEnabled={false}
+        mapStyle={CAMPUS_MAP_STYLE_URL}
+        compassEnabled={false}
+        logoEnabled={false}
+        attributionEnabled={false}
+        rotateEnabled={false}
+        pitchEnabled
       >
-        {/* Heatmap circles */}
+        <Camera ref={cameraRef} defaultSettings={defaultCamera} />
+        <UserLocation visible renderMode="normal" />
+
         {activeLayer === "Heatmap" &&
           CAMPUS_ZONES.map((zone) => {
             const density = getZoneDensity(zone);
             return (
-              <Circle
+              <MapLibreCircleOverlay
                 key={zone.name}
+                id={`heatmap-${zone.name}`}
                 center={{ latitude: zone.lat, longitude: zone.lng }}
-                radius={zone.radius}
+                radiusMeters={zone.radius}
                 fillColor={
-                  density >= 70
-                    ? "rgba(255,59,48,0.22)"
-                    : density >= 40
-                      ? "rgba(255,149,0,0.18)"
-                      : "rgba(50,215,75,0.14)"
+                  density >= 70 ? "#FF3B30" : density >= 40 ? "#FF9500" : "#32D74B"
                 }
+                fillOpacity={density >= 70 ? 0.22 : density >= 40 ? 0.18 : 0.14}
                 strokeColor={
                   density >= 70
                     ? "rgba(255,59,48,0.5)"
@@ -1667,20 +1779,21 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
         {activeLayer === "Pulse" &&
           pulseHotspots.map((hotspot) => (
-            <Circle
+            <MapLibreCircleOverlay
               key={`pulse-radius-${hotspot.id}`}
+              id={`pulse-radius-${hotspot.id}`}
               center={{
                 latitude: hotspot.coord.lat,
                 longitude: hotspot.coord.lng,
               }}
-              radius={hotspot.radius}
-              fillColor={`${hotspot.pulseColor}22`}
+              radiusMeters={hotspot.radius}
+              fillColor={hotspot.pulseColor}
+              fillOpacity={0.13}
               strokeColor={`${hotspot.pulseColor}66`}
               strokeWidth={1.5}
             />
           ))}
 
-        {/* Bus route polylines */}
         {activeLayer === "Bus" &&
           !isAllBusRoutesSelected &&
           (routePaths && routePaths.length > 0
@@ -1691,24 +1804,25 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     .toLowerCase()
                     .includes((selectedDirection || "All").toLowerCase());
                 return (path.points || []).length > 0 ? (
-                  <Polyline
+                  <MapLibrePolylineOverlay
                     key={`path-${idx}`}
+                    id={`path-${idx}`}
                     coordinates={path.points}
-                    strokeColor={
+                    color={
                       isSelected
                         ? getNeonColor(selectedRoute?.Color || "#007AFF")
                         : getNeonColor(selectedRoute?.Color || "#007AFF") + "40"
                     }
-                    strokeWidth={isSelected ? 4 : 2}
-                    zIndex={isSelected ? 10 : 5}
+                    width={isSelected ? 4 : 2}
                   />
                 ) : null;
               })
             : routePatterns.length > 0 && (
-                <Polyline
+                <MapLibrePolylineOverlay
+                  id="bus-route-pattern"
                   coordinates={routePatterns}
-                  strokeColor={getNeonColor(selectedRoute?.Color || "#007AFF")}
-                  strokeWidth={4}
+                  color={getNeonColor(selectedRoute?.Color || "#007AFF")}
+                  width={4}
                 />
               ))}
         {activeLayer === "Bus" &&
@@ -1716,16 +1830,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
           Object.entries(allRoutePatternsById).map(([routeKey, pattern]) => {
             const route = busRoutes.find((r) => r.Key === routeKey);
             return pattern?.points?.length > 0 ? (
-              <Polyline
+              <MapLibrePolylineOverlay
                 key={routeKey}
+                id={`all-route-${routeKey}`}
                 coordinates={pattern.points}
-                strokeColor={getNeonColor(route?.Color || "#007AFF")}
-                strokeWidth={4}
+                color={getNeonColor(route?.Color || "#007AFF")}
+                width={4}
               />
             ) : null;
           })}
 
-        {/* Bus stops */}
         {activeLayer === "Bus" &&
           busStops.map((stop) => {
             const sLat = stop.Latitude !== undefined ? stop.Latitude : stop.lat;
@@ -1742,15 +1856,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 .includes((selectedDirection || "All").toLowerCase());
 
             return (
-              <Marker
+              <MapLibreMarker
                 key={`stop-${stop.StopCode || stop.Name || sLat}`}
+                id={`stop-${stop.StopCode || stop.Name || sLat}`}
                 coordinate={{
                   latitude: sLat,
                   longitude: sLng,
                 }}
                 onPress={() => handleStopPress(stop)}
                 anchor={{ x: 0.5, y: 0.5 }}
-                zIndex={stopSelected ? 50 : 10}
               >
                 <View
                   style={[
@@ -1760,14 +1874,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 >
                   <View style={styles.busStopMarkerInner} />
                 </View>
-              </Marker>
+              </MapLibreMarker>
             );
           })}
 
-        {/* Bus vehicles */}
         {activeLayer === "Bus" &&
           !isAllBusRoutesSelected &&
-          busVehicles.map((bus, i) => {
+          busVehicles.map((bus) => {
             const isTrackedBus =
               selectedBus?.Key && bus.Key
                 ? selectedBus.Key === bus.Key
@@ -1783,12 +1896,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
               selectedRoute?.Color ||
               "#007AFF";
             const heading = bus.heading || bus.Heading || 0;
-            const busSpeedMs = bus.Speed || bus.speed || 0;
-            const busSpeedMph = Math.round(busSpeedMs * 2.23694); // Convert m/s to mph if it is in m/s, or just leave it. Assuming it's some raw unit. Let's just say Math.round(busSpeedMs).
             const busDir =
               bus.direction || bus.DirectionName || "Unknown Direction";
 
-            // Determine opacity based on selectedDirection
             const matchesDirection =
               selectedDirection === "All" ||
               (busDir || "")
@@ -1796,10 +1906,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 .includes((selectedDirection || "All").toLowerCase());
             const opacity = matchesDirection ? (isTrackedBus ? 1 : 0.9) : 0.3;
 
-            const hasDash = routeShortName.includes("-");
             return (
-              <Marker
+              <MapLibreMarker
                 key={`bus-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`}
+                id={`bus-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`}
                 coordinate={{
                   latitude: bus.Latitude || bus.lat,
                   longitude: bus.Longitude || bus.lng,
@@ -1823,11 +1933,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   }
                 }}
                 anchor={{ x: 0.5, y: 0.5 }}
-                zIndex={isTrackedBus ? 501 : 500}
               >
                 <View
                   style={{
-                    opacity: opacity,
+                    opacity,
                     alignItems: "center",
                     justifyContent: "center",
                     transform: [{ rotate: `${heading}deg` }],
@@ -1837,7 +1946,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     shadowOffset: { width: 0, height: 2 },
                   }}
                 >
-                  {/* Pointer / Triangle facing Up directly toward the heading direction */}
                   <View
                     style={{
                       width: 0,
@@ -1853,7 +1961,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     }}
                   />
 
-                  {/* Core Bubble with shadow & board */}
                   <View
                     style={{
                       width: 32,
@@ -1867,7 +1974,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
                       zIndex: 1,
                     }}
                   >
-                    {/* Bus Icon from Lucide - reversed rotation to keep it upright */}
                     <View style={{ transform: [{ rotate: `-${heading}deg` }] }}>
                       <Bus
                         size={16}
@@ -1876,17 +1982,17 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     </View>
                   </View>
                 </View>
-              </Marker>
+              </MapLibreMarker>
             );
           })}
 
-        {/* Walking Route Polyline */}
         {activeLayer === "Today" && activeWalkingRoute && (
-          <Polyline
+          <MapLibrePolylineOverlay
+            id="walking-route"
             coordinates={activeWalkingRoute.polyline}
-            strokeColor="#500000"
-            strokeWidth={4}
-            lineDashPattern={[5, 10]}
+            color="#500000"
+            width={4}
+            lineDasharray={[1.5, 2.5]}
           />
         )}
 
@@ -1894,15 +2000,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
           pulseHotspots.map((hotspot) => {
             const isSelected = hotspot.id === selectedHotspotId;
             return (
-              <Marker
+              <MapLibreMarker
                 key={hotspot.id}
+                id={`pulse-hotspot-${hotspot.id}`}
                 coordinate={{
                   latitude: hotspot.coord.lat,
                   longitude: hotspot.coord.lng,
                 }}
                 onPress={() => handleSelectHotspot(hotspot)}
                 anchor={{ x: 0.5, y: 0.66 }}
-                zIndex={isSelected ? 1100 : 900}
               >
                 <View
                   style={[
@@ -1934,11 +2040,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     </Text>
                   </View>
                 </View>
-              </Marker>
+              </MapLibreMarker>
             );
           })}
 
-        {/* Campus location markers */}
         {activeLayer !== "Bus" &&
           markerLocations.map((loc) => {
             const isSelected = getLocationSelectionId(loc) === selectedId;
@@ -1955,8 +2060,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 : null;
 
             return (
-              <Marker
+              <MapLibreMarker
                 key={`loc-${getLocationSelectionId(loc)}`}
+                id={`loc-${getLocationSelectionId(loc)}`}
                 coordinate={{
                   latitude: loc.coord.lat,
                   longitude: loc.coord.lng,
@@ -2012,7 +2118,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     />
                   </View>
                 )}
-              </Marker>
+              </MapLibreMarker>
             );
           })}
       </MapView>
@@ -2038,6 +2144,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
               url: "https://maroonschedules.tamu.edu/places",
             })
           }
+          onSubmitSearch={() => runGlobalSearch()}
         />
 
         {!isSearchExpanded && (
@@ -2368,6 +2475,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
         busRouteResults={busRouteSearchResults}
         isSearchExpanded={isSearchExpanded}
         showSearchResults={showSearchResults}
+        searchQuery={searchQuery}
+        isSearchingGlobal={isSearchingGlobal}
+        globalSearchError={globalSearchError}
         onSelectLocation={(loc) => {
           handleSelectLocation(loc);
           setIsSearchExpanded(false);

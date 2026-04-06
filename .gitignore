@@ -1,7 +1,18 @@
 node_modules
+.expo
+.expo/
+/.expo/*
 __pycache__/
 *.py[cod]
 *$py.class
+
+# iOS generated files
+ios/
+ios/Pods/
+ios/build/
+ios/.xcode.env.local
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/project.xcworkspace/
 
 # Environment variables
 .env

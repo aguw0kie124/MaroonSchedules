@@ -61,6 +61,7 @@ import { AdminApplicationScreen } from './components/admin/AdminApplicationScree
 import { AdminPortal } from './components/admin/AdminPortal';
 import { PendingReviewInterceptor } from './components/events/PendingReviewInterceptor';
 import { API_URL } from './config';
+import { ClubAccessScreen } from './components/ClubAccessScreen';
 
 function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
@@ -367,6 +368,7 @@ function RootNavigator() {
             <Stack.Screen name="AnnexHub" component={AnnexHubScreen} options={{ headerShown: false }} />
             <Stack.Screen name="AnnexLibraryDetail" component={AnnexLibraryDetailScreen} options={{ headerShown: false }} />
             <Stack.Screen name="AnnexRentalDetail" component={AnnexRentalDetailScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="ClubAccess" component={ClubAccessScreen} options={{ headerShown: true, title: 'Club Access' }} />
             <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
             <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
             <Stack.Screen

@@ -2,8 +2,9 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { AdminMapPoster } from './AdminMapPoster';
 import { AdminAnalyticsScreen } from './AdminAnalyticsScreen';
+import { AdminTagManagementScreen } from './AdminTagManagementScreen';
 import { useTheme } from '../SharedUI';
-import { MapPin, LayoutDashboard } from 'lucide-react-native';
+import { MapPin, LayoutDashboard, UsersRound } from 'lucide-react-native';
 
 const Tab = createBottomTabNavigator();
 
@@ -43,6 +44,13 @@ export function AdminPortal() {
         component={AdminAnalyticsScreen} 
         options={{
           tabBarIcon: ({ color }) => <LayoutDashboard color={color} size={24} />
+        }}
+      />
+      <Tab.Screen
+        name="Manage Access"
+        component={AdminTagManagementScreen}
+        options={{
+          tabBarIcon: ({ color }) => <UsersRound color={color} size={24} />
         }}
       />
     </Tab.Navigator>
