@@ -6,6 +6,7 @@ import {
   Alert,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -1204,7 +1205,7 @@ export function CampusPingsScreen() {
                   behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                   style={{ width: '100%' }}
                 >
-                  <TouchableWithoutFeedback>
+                  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                     <View style={styles.modalCard}>
                       <View style={styles.modalHeader}>
                         <Text style={styles.modalTitle}>Create a ping</Text>
@@ -1232,6 +1233,7 @@ export function CampusPingsScreen() {
                         contentContainerStyle={styles.modalScrollContent}
                         showsVerticalScrollIndicator={false}
                         keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode="on-drag"
                       >
                         <Text style={styles.modalLabel}>Category</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
@@ -1368,7 +1370,7 @@ export function CampusPingsScreen() {
                           />
                         </View>
                         
-                        <View style={{ height: 100 }} />
+                        <View style={{ height: 160 }} />
                       </ScrollView>
 
                       <View style={styles.modalFooter}>
@@ -2047,7 +2049,7 @@ const getStyles = (COLORS: any) =>
       maxHeight: '88%',
     },
     modalScroll: {
-      flexGrow: 0,
+      flex: 1,
     },
     modalScrollContent: {
       paddingBottom: 12,
