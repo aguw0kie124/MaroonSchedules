@@ -1,43 +1,51 @@
 import { API_URL } from '../config';
 
 const DEFAULT_TIMEOUT_MS = 10000;
+let authTokenProvider: null | (() => Promise<string | null>) = null;
 
-async function requestJson(path: string, init: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
+export function setApiAuthTokenProvider(provider: null | (() => Promise<string | null>)) {
+    authTokenProvider = provider;
+}
+
+function headersToObject(headers?: HeadersInit): Record<string, string> {
+    if (!headers) return {};
+    if (headers instanceof Headers) {
+        const result: Record<string, string> = {};
+        headers.forEach((value, key) => {
+            result[key] = value;
+        });
+        return result;
+    }
+    if (Array.isArray(headers)) {
+        return Object.fromEntries(headers);
+    }
+    return { ...headers };
+}
+
+async function buildHeaders(init: RequestInit = {}): Promise<Record<string, string>> {
+    const headers = headersToObject(init.headers);
+    const token = authTokenProvider ? await authTokenProvider() : null;
+    if (token && !headers.Authorization && !headers.authorization) {
+        headers.Authorization = `Bearer ${token}`;
+    }
+    if (init.body && !(init.body instanceof FormData) && !headers['Content-Type'] && !headers['content-type']) {
+        headers['Content-Type'] = 'application/json';
+    }
+    return headers;
+}
+
+export async function apiFetch(path: string, init: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
         console.debug(`[API] ${init.method || 'GET'} ${path}`);
-        const response = await fetch(`${API_URL}${path}`, {
+        const headers = await buildHeaders(init);
+        return await fetch(`${API_URL}${path}`, {
             ...init,
             signal: controller.signal,
-            headers: {
-                'Content-Type': 'application/json',
-                ...(init.headers || {}),
-            },
+            headers,
         });
-
-        const rawBody = await response.text();
-        let data = null;
-        try {
-            data = rawBody ? JSON.parse(rawBody) : null;
-        } catch (err) {
-            if (!response.ok) {
-                const preview = rawBody.slice(0, 100).replace(/\n/g, ' ');
-                throw new Error(`${init.method || 'GET'} ${path} failed with status ${response.status}: ${preview}`);
-            }
-            throw new Error(`Failed to parse response as JSON: ${err}`);
-        }
-
-        if (!response.ok) {
-            const message =
-                data?.detail ||
-                data?.message ||
-                `${init.method || 'GET'} ${path} failed with status ${response.status}`;
-            throw new Error(message);
-        }
-
-        return data;
     } catch (error: any) {
         if (error?.name === 'AbortError') {
             throw new Error(`Request timed out for ${path}`);
@@ -46,6 +54,31 @@ async function requestJson(path: string, init: RequestInit = {}, timeoutMs = DEF
     } finally {
         clearTimeout(timeoutId);
     }
+}
+
+export async function requestJson(path: string, init: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
+    const response = await apiFetch(path, init, timeoutMs);
+    const rawBody = await response.text();
+    let data = null;
+    try {
+        data = rawBody ? JSON.parse(rawBody) : null;
+    } catch (err) {
+        if (!response.ok) {
+            const preview = rawBody.slice(0, 100).replace(/\n/g, ' ');
+            throw new Error(`${init.method || 'GET'} ${path} failed with status ${response.status}: ${preview}`);
+        }
+        throw new Error(`Failed to parse response as JSON: ${err}`);
+    }
+
+    if (!response.ok) {
+        const message =
+            data?.detail ||
+            data?.message ||
+            `${init.method || 'GET'} ${path} failed with status ${response.status}`;
+        throw new Error(message);
+    }
+
+    return data;
 }
 
 // ============================================================

@@ -1,28 +1,24 @@
 import { useEffect, useState } from 'react';
 import { useUser } from '@clerk/clerk-expo';
-import { useCreateChatClient } from 'stream-chat-react-native';
+import { StreamChat } from 'stream-chat';
 
-import { API_URL } from '../config';
+import { requestJson } from '../api/client';
 
 export function useChatClient() {
   const { user, isLoaded } = useUser();
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [userToken, setUserToken] = useState<string | null>(null);
+  const [client, setClient] = useState<StreamChat | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoaded || !user) return;
 
-    fetch(`${API_URL}/chat/token`, {
+    requestJson('/chat/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clerk_user_id: user.id }),
     })
-      .then((response) => {
-        if (!response.ok) throw new Error(`Token fetch failed: ${response.status}`);
-        return response.json();
-      })
       .then((data) => {
         setApiKey(data.stream_api_key);
         setUserId(data.stream_user_id);
@@ -31,15 +27,39 @@ export function useChatClient() {
       .catch((err) => setError(err.message));
   }, [isLoaded, user]);
 
-  const client = useCreateChatClient({
-    apiKey: apiKey || '',
-    userData: {
-      id: userId || 'placeholder',
-      name: user?.fullName || 'Aggie',
-      image: user?.imageUrl || undefined,
-    },
-    tokenOrProvider: userToken || '',
-  });
+  useEffect(() => {
+    if (!apiKey || !userId || !userToken) return;
+
+    let isCancelled = false;
+
+    const connectClient = async () => {
+      try {
+        const nextClient = StreamChat.getInstance(apiKey);
+        await nextClient.connectUser(
+          {
+            id: userId,
+            name: user?.fullName || 'Aggie',
+            image: user?.imageUrl || undefined,
+          },
+          userToken,
+        );
+
+        if (!isCancelled) {
+          setClient(nextClient);
+        }
+      } catch (err: any) {
+        if (!isCancelled) {
+          setError(err?.message || 'Failed to connect chat client');
+        }
+      }
+    };
+
+    connectClient();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [apiKey, user?.fullName, user?.imageUrl, userId, userToken]);
 
   return { client, userId, error, isReady: !!client && !!userId };
 }

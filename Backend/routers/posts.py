@@ -1,19 +1,20 @@
-from fastapi import APIRouter, HTTPException, Query, Body
-from pydantic import BaseModel
-from typing import Optional, List
+from fastapi import APIRouter, HTTPException, Query, Depends
+from pydantic import BaseModel, Field
+from typing import Optional
 import psycopg
 from db_config import CONNECTION_PARAMS
+from auth.clerk_middleware import require_auth, ensure_matching_user
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
 class CreatePostRequest(BaseModel):
     user_id: str
-    user_name: str
+    user_name: str = Field(..., min_length=1, max_length=120)
     user_image: Optional[str] = None
-    caption: Optional[str] = None
+    caption: Optional[str] = Field(default=None, max_length=2000)
     media_url: Optional[str] = None
-    media_type: Optional[str] = None
-    location_tag: Optional[str] = None
+    media_type: Optional[str] = Field(default=None, max_length=40)
+    location_tag: Optional[str] = Field(default=None, max_length=120)
 
 class LikePostRequest(BaseModel):
     user_id: str
@@ -53,7 +54,8 @@ def get_posts(limit: int = 20, offset: int = 0):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/")
-def create_post(req: CreatePostRequest):
+def create_post(req: CreatePostRequest, auth_user_id: str = Depends(require_auth)):
+    ensure_matching_user(auth_user_id, req.user_id, detail="You can only create posts as yourself")
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
             with conn.cursor() as cur:
@@ -74,7 +76,8 @@ def create_post(req: CreatePostRequest):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/{post_id}/like")
-def toggle_like(post_id: str, req: LikePostRequest):
+def toggle_like(post_id: str, req: LikePostRequest, auth_user_id: str = Depends(require_auth)):
+    ensure_matching_user(auth_user_id, req.user_id, detail="You can only like posts as yourself")
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
             with conn.cursor() as cur:
@@ -119,7 +122,8 @@ def toggle_like(post_id: str, req: LikePostRequest):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.delete("/{post_id}")
-def delete_post(post_id: str, user_id: str = Query(...)):
+def delete_post(post_id: str, user_id: str = Query(...), auth_user_id: str = Depends(require_auth)):
+    ensure_matching_user(auth_user_id, user_id, detail="You can only delete your own posts")
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
             with conn.cursor() as cur:
@@ -144,10 +148,10 @@ def delete_post(post_id: str, user_id: str = Query(...)):
 
 class CreateReelRequest(BaseModel):
     user_id: str
-    user_name: str
+    user_name: str = Field(..., min_length=1, max_length=120)
     user_image: Optional[str] = None
-    caption: Optional[str] = None
-    video_url: str
+    caption: Optional[str] = Field(default=None, max_length=2000)
+    video_url: str = Field(..., min_length=1, max_length=2048)
 
 @router.get("/reels")
 def get_reels(limit: int = 30, offset: int = 0):
@@ -197,7 +201,8 @@ def get_reels(limit: int = 30, offset: int = 0):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/reels")
-def create_reel(req: CreateReelRequest):
+def create_reel(req: CreateReelRequest, auth_user_id: str = Depends(require_auth)):
+    ensure_matching_user(auth_user_id, req.user_id, detail="You can only create reels as yourself")
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
             with conn.cursor() as cur:
@@ -227,4 +232,3 @@ def create_reel(req: CreateReelRequest):
     except Exception as e:
         print(f"Error creating reel: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-

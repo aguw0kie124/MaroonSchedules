@@ -17,7 +17,11 @@ import { PARKING_INFO_URL, ROOM_RESERVATION_URL, EVENTS_URL } from "./types";
 import { ParkingPermit } from "../../store/appShellStore";
 
 // ── Icon helpers ──────────────────────────────────────────────
-export const getCategoryIcon = (type: LocationType, color = "#FFFFFF", size = 24) => {
+export const getCategoryIcon = (
+  type: LocationType,
+  color = "#FFFFFF",
+  size = 24,
+) => {
   switch (type) {
     case "Library":
       return <Library color={color} size={size} />;
@@ -42,27 +46,35 @@ export const getCategoryIcon = (type: LocationType, color = "#FFFFFF", size = 24
 export const getCategoryColor = (type: string | undefined): string => {
   if (!type) return "#500000";
   const t = type.toLowerCase();
-  
+
   if (t.includes("engineering")) return "#007AFF"; // Blue
-  if (t.includes("business")) return "#FF9500";    // Orange
-  if (t.includes("science")) return "#32D74B";      // Green
-  if (t.includes("social")) return "#FF2D55";       // Pink
-  if (t.includes("dining")) return "#FF3B30";       // Red
-  if (t.includes("library")) return "#5856D6";      // Purple
-  if (t.includes("rec")) return "#00C7BE";          // Teal
-  if (t.includes("study")) return "#AF52DE";        // Indigo
-  if (t.includes("parking")) return "#8E8E93";      // Grey
-  if (t.includes("bus")) return "#007AFF";          // Blue
-  
+  if (t.includes("business")) return "#FF9500"; // Orange
+  if (t.includes("science")) return "#32D74B"; // Green
+  if (t.includes("social")) return "#FF2D55"; // Pink
+  if (t.includes("dining")) return "#FF3B30"; // Red
+  if (t.includes("library")) return "#5856D6"; // Purple
+  if (t.includes("rec")) return "#00C7BE"; // Teal
+  if (t.includes("study")) return "#AF52DE"; // Indigo
+  if (t.includes("parking")) return "#8E8E93"; // Grey
+  if (t.includes("bus")) return "#007AFF"; // Blue
+
   switch (type) {
-    case "Academic": return "#500000"; // Maroon
-    case "Dining": return "#FF3B30";   // Red
-    case "Library": return "#5856D6";  // Purple
-    case "Rec": return "#32D74B";      // Green
-    case "Study": return "#FF9500";    // Orange
-    case "Parking": return "#8E8E93";  // Grey
-    case "Bus": return "#007AFF";      // Blue
-    default: return "#500000";
+    case "Academic":
+      return "#500000"; // Maroon
+    case "Dining":
+      return "#FF3B30"; // Red
+    case "Library":
+      return "#5856D6"; // Purple
+    case "Rec":
+      return "#32D74B"; // Green
+    case "Study":
+      return "#FF9500"; // Orange
+    case "Parking":
+      return "#8E8E93"; // Grey
+    case "Bus":
+      return "#007AFF"; // Blue
+    default:
+      return "#500000";
   }
 };
 
@@ -114,7 +126,13 @@ export function formatScheduleDays(days: string[]) {
 }
 
 export function getStopLabel(stop: any) {
-  return stop?.Name || stop?.StopName || stop?.Description || stop?.StopCode || "Transit Stop";
+  return (
+    stop?.Name ||
+    stop?.StopName ||
+    stop?.Description ||
+    stop?.StopCode ||
+    "Transit Stop"
+  );
 }
 
 // ── Parking recommendation ────────────────────────────────────
@@ -125,35 +143,76 @@ export function getParkingRecommendation(
   const lower = locationName.toLowerCase();
   const isGarage = lower.includes("garage");
   const isWestCampus = lower.includes("west campus");
-  const isResidentAdjacent = lower.includes("lot 30") || lower.includes("lot 61");
+  const isResidentAdjacent =
+    lower.includes("lot 30") || lower.includes("lot 61");
 
   if (permit === "visitor") {
     return isGarage
-      ? { score: 0, badge: "Best Match", detail: "Visitor-friendly garages are prioritized first." }
-      : { score: 2, badge: "Check Access", detail: "Visitor access is usually easier in campus garages." };
+      ? {
+          score: 0,
+          badge: "Best Match",
+          detail: "Visitor-friendly garages are prioritized first.",
+        }
+      : {
+          score: 2,
+          badge: "Check Access",
+          detail: "Visitor access is usually easier in campus garages.",
+        };
   }
 
   if (permit === "garage") {
     return isGarage
-      ? { score: 0, badge: "Garage Fit", detail: "This matches a garage-first parking setup." }
-      : { score: 3, badge: "Secondary", detail: "A garage may be a cleaner match for this permit preference." };
+      ? {
+          score: 0,
+          badge: "Garage Fit",
+          detail: "This matches a garage-first parking setup.",
+        }
+      : {
+          score: 3,
+          badge: "Secondary",
+          detail: "A garage may be a cleaner match for this permit preference.",
+        };
   }
 
   if (permit === "west_campus") {
     return isWestCampus
-      ? { score: 0, badge: "West Campus", detail: "This is aligned with west campus parking." }
-      : { score: isGarage ? 1 : 3, badge: "Secondary", detail: "Useful, but west campus options rank higher." };
+      ? {
+          score: 0,
+          badge: "West Campus",
+          detail: "This is aligned with west campus parking.",
+        }
+      : {
+          score: isGarage ? 1 : 3,
+          badge: "Secondary",
+          detail: "Useful, but west campus options rank higher.",
+        };
   }
 
   if (permit === "resident") {
     return isResidentAdjacent
-      ? { score: 0, badge: "Resident Fit", detail: "This lot is surfaced first for residential access." }
-      : { score: isGarage ? 2 : 1, badge: "Check Access", detail: "Verify housing access before relying on this option." };
+      ? {
+          score: 0,
+          badge: "Resident Fit",
+          detail: "This lot is surfaced first for residential access.",
+        }
+      : {
+          score: isGarage ? 2 : 1,
+          badge: "Check Access",
+          detail: "Verify housing access before relying on this option.",
+        };
   }
 
   return isGarage
-    ? { score: 0, badge: "Recommended", detail: "A strong all-around option for most valid permits." }
-    : { score: 1, badge: "Available", detail: "Keep this as a fallback if your primary lots are full." };
+    ? {
+        score: 0,
+        badge: "Recommended",
+        detail: "A strong all-around option for most valid permits.",
+      }
+    : {
+        score: 1,
+        badge: "Available",
+        detail: "Keep this as a fallback if your primary lots are full.",
+      };
 }
 
 // ── Context links ─────────────────────────────────────────────
@@ -162,11 +221,19 @@ export function getLocationContextLink(location: CampusLocation) {
     return { label: "Parking Guide", url: PARKING_INFO_URL };
   }
 
-  if (location.type === "Library" || location.type === "Study" || location.type === "Academic") {
+  if (
+    location.type === "Library" ||
+    location.type === "Study" ||
+    location.type === "Academic"
+  ) {
     return { label: "Reserve Room", url: ROOM_RESERVATION_URL };
   }
 
-  if (location.current_event || location.type === "Landmark" || location.type === "Hub") {
+  if (
+    location.current_event ||
+    location.type === "Landmark" ||
+    location.type === "Hub"
+  ) {
     return { label: "View Events", url: EVENTS_URL };
   }
 
@@ -214,7 +281,11 @@ export function haversineDistanceMeters(
   return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export function toLocalXY(latitude: number, longitude: number, originLat: number) {
+export function toLocalXY(
+  latitude: number,
+  longitude: number,
+  originLat: number,
+) {
   const metersPerLat = 111320;
   const metersPerLng = Math.cos((originLat * Math.PI) / 180) * 111320;
   return {
@@ -293,22 +364,26 @@ export function getApproximateEtaMinutes(
   stop: any,
   bus: any,
 ) {
+  const sLat = stop.Latitude !== undefined ? stop.Latitude : stop.lat;
+  const sLng = stop.Longitude !== undefined ? stop.Longitude : stop.lng;
+  const bLat = bus.Latitude !== undefined ? bus.Latitude : bus.lat;
+  const bLng = bus.Longitude !== undefined ? bus.Longitude : bus.lng;
+
+  if (sLat == null || sLng == null || bLat == null || bLng == null) {
+    return Infinity;
+  }
+
   const stopProgress = getClosestProgressMeters(routePoints, {
-    latitude: stop.Latitude,
-    longitude: stop.Longitude,
+    latitude: sLat,
+    longitude: sLng,
   });
   const busProgress = getClosestProgressMeters(routePoints, {
-    latitude: bus.Latitude,
-    longitude: bus.Longitude,
+    latitude: bLat,
+    longitude: bLng,
   });
 
   if (!stopProgress || !busProgress) {
-    const fallbackDistance = haversineDistanceMeters(
-      bus.Latitude,
-      bus.Longitude,
-      stop.Latitude,
-      stop.Longitude,
-    );
+    const fallbackDistance = haversineDistanceMeters(bLat, bLng, sLat, sLng);
     return Math.max(1, Math.round(fallbackDistance / 220));
   }
 
@@ -341,7 +416,7 @@ export function isVehicleOnRoute(bus: any, route: any) {
 // ── Time helper ───────────────────────────────────────────────
 export function parseTimeToMinutes(timeStr: string | null | undefined): number {
   if (!timeStr) return 0;
-  
+
   // Handle formats like "8:30 AM", "10:20 PM", "08:30"
   const clean = timeStr.trim().toUpperCase();
   const parts = clean.split(/[:\s]+/);
@@ -349,7 +424,7 @@ export function parseTimeToMinutes(timeStr: string | null | undefined): number {
 
   let hours = parseInt(parts[0], 10);
   const minutes = parseInt(parts[1], 10);
-  
+
   const isPM = clean.includes("PM");
   const isAM = clean.includes("AM");
 

@@ -28,6 +28,7 @@ export function useBusTransit(
   const [routeSearchQuery, setRouteSearchQuery] = useState("");
   const [selectedStop, setSelectedStop] = useState<any | null>(null);
   const [selectedBus, setSelectedBus] = useState<any | null>(null);
+  const [selectedDirection, setSelectedDirection] = useState<'inbound' | 'outbound' | 'All'>('All');
   const [nearestBusInfo, setNearestBusInfo] = useState<string | null>(null);
 
   const busPollInterval = useRef<any>(null);
@@ -113,6 +114,7 @@ export function useBusTransit(
     async (routeId: string, availableRoutes: any[] = busRoutes) => {
       console.log("[Transit] Selecting route:", routeId);
       setSelectedBusRouteId(routeId);
+      setBusVehicles([]); 
       setSelectedStop(null);
       setSelectedBus(null);
 
@@ -298,6 +300,12 @@ export function useBusTransit(
   useEffect(() => {
     if (activeLayer === "Bus") {
       fetchBusData();
+    } else {
+      setSelectedBusRouteId(ALL_BUS_ROUTES_KEY);
+      setSelectedDirection("All");
+      setRouteSearchQuery("");
+      setSelectedBus(null);
+      setSelectedStop(null);
     }
   }, [activeLayer]);
 
@@ -495,6 +503,8 @@ export function useBusTransit(
     setIsRouteDropdownOpen,
     routeSearchQuery,
     setRouteSearchQuery,
+    selectedDirection,
+    setSelectedDirection,
     selectedStop,
     setSelectedStop,
     selectedBus,

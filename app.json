@@ -1,5 +1,79 @@
 {
-  "plugins": [
-    "@react-native-community/datetimepicker"
-  ]
+  "expo": {
+    "name": "MaroonLife",
+    "slug": "maroonlife",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon-v2.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "scheme": "maroonlife",
+    "splash": {
+      "image": "./assets/splash-icon-v2.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#500000"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.maroonlife.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "MaroonLife uses your location to show nearby campus places, transit options, and directions.",
+        "NSPhotoLibraryUsageDescription": "MaroonLife uses your photo library so you can choose a profile photo or attach an image to your campus posts.",
+        "NSCameraUsageDescription": "MaroonLife uses the camera when you choose to capture a photo for your profile or a campus post.",
+        "NSMicrophoneUsageDescription": "MaroonLife uses the microphone for optional voice commands during campus navigation."
+      }
+    },
+    "android": {
+      "package": "com.maroonlife.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon-v2.png",
+        "backgroundColor": "#500000"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon-v2.png"
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker",
+      "expo-apple-authentication",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "MaroonLife uses your photo library so you can choose a profile photo or attach an image to your campus posts.",
+          "cameraPermission": "MaroonLife uses the camera when you choose to capture a photo for your profile or a campus post."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "MaroonLife uses your location to show nearby campus places, transit options, and directions."
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "MaroonLife uses the microphone for optional voice commands during campus navigation."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/adaptive-icon-v2.png",
+          "color": "#500000"
+        }
+      ]
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    }
+  }
 }

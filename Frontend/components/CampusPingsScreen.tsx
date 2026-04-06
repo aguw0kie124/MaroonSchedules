@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import {
   ActivityIndicator,
@@ -13,17 +14,13 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withRepeat, 
-  withTiming, 
-  interpolateColor,
   FadeIn,
   FadeOut,
   SlideInDown,
@@ -33,6 +30,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import {
+  ArrowBigDown,
+  ArrowBigUp,
   CalendarDays,
   ExternalLink,
   Flame,
@@ -41,30 +40,44 @@ import {
   Megaphone,
   MessageCircle,
   Pizza,
+  Flag,
+  MoreVertical,
   Plus,
   Search,
+  Share2,
+  Shield,
   Sparkles,
   Trash2,
   Users,
   X,
   Image as ImageIcon,
+  Camera,
 } from 'lucide-react-native';
 
 import { API_URL } from '../config';
+import { requestJson, saveCampusEventRsvp } from '../api/client';
 import { useTheme } from './SharedUI';
+import { useAppShellStore } from '../store/appShellStore';
+import { useShareStore } from '../store/shareStore';
 import { useEventStore } from '../store/eventStore';
 import {
   addComment,
   addPing,
   connectFeedsUser,
   deletePing,
+  reportContent,
+  blockUser,
   getComments,
   getPingFeed,
   toggleLike,
+  toggleVote,
   uploadStreamImage,
 } from '../services/streamFeeds';
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
 import { TourTarget, useTour } from './onboarding/TourProvider';
+import { getPremiumName, getPremiumImage } from '../utils/userUtils';
+import { scheduleAdminEventReviewNotification } from '../services/notificationService';
+import { normalizeExternalUrl, normalizeImageUrl } from '../services/url';
 
 type PingCategory =
   | 'Free Food'
@@ -87,9 +100,12 @@ interface FeaturedEvent {
   startTime: string;
   endTime?: string | null;
   link?: string | null;
+  googleReviewUrl?: string | null;
   locationLat?: number | null;
   locationLng?: number | null;
   categories?: Record<string, number>;
+  isAdminEvent?: boolean;
+  rsvpStatus?: string;
 }
 
 interface PingCard {
@@ -106,10 +122,10 @@ interface PingCard {
   userId?: string;
   userName: string;
   userImage?: string | null;
-  likeCount: number;
-  commentCount: number;
-  boostedByCurrentUser: boolean;
+  score: number;
+  ownVote: 'upvote' | 'downvote' | null;
   activityId?: string;
+  isAnonymous: boolean;
   sourceUrl?: string | null;
   locationLat?: number | null;
   locationLng?: number | null;
@@ -239,15 +255,15 @@ function mapActivityToPing(activity: any): PingCard {
     startAt: custom.start_at || activity.time || new Date().toISOString(),
     endAt: custom.end_at || null,
     createdAt: activity.time || activity.created_at || new Date().toISOString(),
-    userId: actor.id || activity.actor || '',
-    userName: actor.data?.name || custom.user_name || 'Aggie',
-    userImage: actor.data?.image || custom.user_image || null,
-    likeCount: activity.reaction_counts?.like || activity.reaction_count || 0,
-    commentCount: activity.reaction_counts?.comment || 0,
-    boostedByCurrentUser: (activity.own_reactions?.like || []).length > 0,
+    userId: (actor.id || activity.actor || '').replace('SU:', ''),
+    userName: custom.is_anonymous ? 'Aggie User' : (actor.name || actor.data?.name || custom.user_name || 'Aggie User'),
+    userImage: custom.is_anonymous ? null : (actor.image || actor.data?.image || custom.user_image || null),
+    score: activity.reaction_counts?.score || 0,
+    ownVote: (activity.own_reactions?.upvote || []).length > 0 ? 'upvote' : ((activity.own_reactions?.downvote || []).length > 0 ? 'downvote' : null),
     activityId: activity.id,
+    isAnonymous: !!custom.is_anonymous,
     sourceUrl: null,
-    imageUrl: media.image_url || media.asset_url || null,
+    imageUrl: normalizeImageUrl(media.image_url || media.asset_url || null),
   };
 }
 
@@ -258,7 +274,9 @@ export function CampusPingsScreen() {
   const navigation = useNavigation<any>();
   const { user } = useUser();
   const scheduleEvent = useEventStore((state) => state.scheduleEvent);
+  const removeScheduledEvent = useEventStore((state) => state.removeScheduledEvent);
   const saveEvent = useEventStore((state) => state.saveEvent);
+  const unsaveEvent = useEventStore((state) => state.unsaveEvent);
 
   const directory = useMemo(() => buildCampusDirectory(), []);
   const locationLookup = useMemo(
@@ -276,7 +294,6 @@ export function CampusPingsScreen() {
 
   const [composerVisible, setComposerVisible] = useState(false);
 
-  const pulseValue = useSharedValue(0);
   // Onboarding logic: automatically advance if the tour is on the CTA step handled in the open composer call
   // We added a 1s delay so the instructions and highlight appear AFTER the animation finishes
   useEffect(() => {
@@ -288,40 +305,13 @@ export function CampusPingsScreen() {
     }
   }, [activeTargetName, composerVisible, advanceStep]);
 
-  // Onboarding: Fallback idle timers (10 seconds)
+  // Removed onboarding idle timer that was auto-advancing the tour
   useEffect(() => {
-    if (activeTargetName === 'crowdping-cta' || activeTargetName === 'crowdping-close') {
-      const timer = setTimeout(() => {
-        if (activeTargetName === 'crowdping-close') {
-          setComposerVisible(false);
-          resetComposer();
-          advanceStep('crowdping-close');
-          navigation.navigate('Main', { screen: 'Settings' });
-        } else {
-          // If they haven't clicked 'Tell people' but are just sitting there
-          // We can't easily force open the composer without a ref, but we can advance
-          // the tour step to the next one if they are truly stuck
-          advanceStep('crowdping-cta');
-          setComposerVisible(true); // Force open for them
-        }
-      }, 10000);
-      return () => clearTimeout(timer);
+    if (activeTargetName === 'crowdping-cta' && !composerVisible) {
+      // Optional: Pulse or hint if they are just sitting there, but no forced advancement
     }
-  }, [activeTargetName, advanceStep, navigation]);
+  }, [activeTargetName, composerVisible]);
 
-  const pulseStyle = useAnimatedStyle(() => {
-    return {
-      borderWidth: 2,
-      borderColor: interpolateColor(
-        pulseValue.value,
-        [0, 1],
-        ['transparent', COLORS.primary]
-      ),
-      transform: [{ scale: 1 + pulseValue.value * 0.02 }],
-      borderRadius: 16,
-      margin: -2,
-    };
-  });
   const [composerTitle, setComposerTitle] = useState('');
   const [composerBody, setComposerBody] = useState('');
   const [composerCategory, setComposerCategory] = useState<PingCategory>('Popup');
@@ -329,15 +319,11 @@ export function CampusPingsScreen() {
   const [locationQuery, setLocationQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [composerImageUri, setComposerImageUri] = useState<string | null>(null);
+  const [composerAnonymous, setComposerAnonymous] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
 
-  const [commentModalVisible, setCommentModalVisible] = useState(false);
-  const [activeCommentPing, setActiveCommentPing] = useState<PingCard | null>(null);
-  const [comments, setComments] = useState<any[]>([]);
-  const [commentText, setCommentText] = useState('');
-  const [loadingComments, setLoadingComments] = useState(false);
-  const [sendingComment, setSendingComment] = useState(false);
   const [activeFeaturedEvent, setActiveFeaturedEvent] = useState<FeaturedEvent | null>(null);
+  const [rsvpBanner, setRsvpBanner] = useState<string | null>(null);
 
   const locationSuggestions = useMemo(() => {
     const query = locationQuery.trim().toLowerCase();
@@ -394,9 +380,12 @@ export function CampusPingsScreen() {
 
   const loadFeaturedEvents = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/campus/events?limit=12`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const params = new URLSearchParams({ limit: '12' });
+      if (user?.id) {
+        params.set('clerk_id', user.id);
+      }
+
+      const data = await requestJson(`/campus/events?${params.toString()}`);
       const events = Array.isArray(data) ? data : Array.isArray(data?.events) ? data.events : [];
       const nextEvents = events.map((event: any) => ({
         id: String(event.event_id),
@@ -407,16 +396,19 @@ export function CampusPingsScreen() {
         startTime: event.start_time,
         endTime: event.end_time,
         link: event.link || event.source_url || null,
+        googleReviewUrl: event.google_review_url || null,
         locationLat: event.location_lat ?? null,
         locationLng: event.location_lng ?? null,
         categories: event.categories || undefined,
+        isAdminEvent: !!event.is_admin_event,
+        rsvpStatus: event.rsvp_status ?? 'none',
       }));
       setFeaturedEvents(nextEvents);
     } catch (error) {
       console.warn('[Pings] Failed to load featured events', error);
       setFeaturedEvents([]);
     }
-  }, []);
+  }, [user?.id]);
 
   const loadUserPings = useCallback(async () => {
     try {
@@ -440,19 +432,13 @@ export function CampusPingsScreen() {
       return;
     }
 
+    connectFeedsUser(user);
+    setFeedConnected(true);
     try {
-      const displayName =
-        user.username ||
-        user.fullName ||
-        user.primaryEmailAddress?.emailAddress?.split('@')[0] ||
-        'Aggie';
-      await connectFeedsUser(user.id, displayName, user.imageUrl);
-      setFeedConnected(true);
       await loadUserPings();
     } catch (error) {
       console.warn('[Pings] Stream connection failed', error);
-      setFeedConnected(false);
-      setStreamError('Live pings are unavailable until the feed connection is restored.');
+      setStreamError('Could not load live pings right now.');
       setUserPings([]);
     } finally {
       setLoading(false);
@@ -480,6 +466,7 @@ export function CampusPingsScreen() {
     setLocationQuery('');
     setSelectedLocation(null);
     setComposerImageUri(null);
+    setComposerAnonymous(false);
   }, []);
 
   const handleRefresh = useCallback(() => {
@@ -511,6 +498,26 @@ export function CampusPingsScreen() {
     }
   }, []);
 
+  const handleCapturePingImage = useCallback(async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Camera unavailable', 'Allow camera access to take a photo for your ping.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      quality: 0.82,
+      aspect: [4, 3],
+      cameraType: ImagePicker.CameraType.back,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setComposerImageUri(result.assets[0].uri);
+    }
+  }, []);
+
   const handleCreatePing = useCallback(async () => {
     if (!user || !feedConnected) {
       Alert.alert('Live pings unavailable', 'Feed connection is required before posting a ping.');
@@ -525,10 +532,7 @@ export function CampusPingsScreen() {
       return;
     }
 
-    const displayName =
-      user.firstName && user.lastName
-        ? `${user.firstName} ${user.lastName}`.trim()
-        : user.firstName || user.fullName || user.username || 'Aggie';
+    const displayName = getPremiumName(user);
 
     const { startAt, endAt } = buildPresetWindow(composerTimePreset);
     setIsPosting(true);
@@ -540,8 +544,8 @@ export function CampusPingsScreen() {
 
       await addPing({
         userId: user.id,
-        userName: displayName,
-        userImage: user.imageUrl,
+        userName: composerAnonymous ? 'Aggie User' : displayName,
+        userImage: composerAnonymous ? undefined : user.imageUrl,
         title: composerTitle.trim(),
         body: composerBody.trim(),
         category: composerCategory,
@@ -556,6 +560,7 @@ export function CampusPingsScreen() {
       setComposerVisible(false);
       resetComposer();
       await loadUserPings();
+
     } catch (error: any) {
       console.error('[Pings] create failed', error);
       Alert.alert('Could not post ping', error?.message || 'Something went wrong while posting your ping.');
@@ -575,23 +580,39 @@ export function CampusPingsScreen() {
     user,
   ]);
 
-  const handleBoostPing = useCallback(
-    async (ping: PingCard) => {
+  const handleVotePing = useCallback(
+    async (ping: PingCard, kind: 'upvote' | 'downvote') => {
       if (!user || !feedConnected || !ping.activityId || ping.source !== 'user') return;
-      if (ping.boostedByCurrentUser) return;
 
+      // Optimistic update
       setUserPings((current) =>
-        current.map((entry) =>
-          entry.id === ping.id
-            ? { ...entry, boostedByCurrentUser: true, likeCount: entry.likeCount + 1 }
-            : entry,
-        ),
+        current.map((entry) => {
+          if (entry.id !== ping.id) return entry;
+          
+          let newScore = entry.score;
+          let newOwnVote: 'upvote' | 'downvote' | null = kind;
+
+          if (entry.ownVote === kind) {
+            // Toggle off
+            newScore = kind === 'upvote' ? entry.score - 1 : entry.score + 1;
+            newOwnVote = null;
+          } else if (entry.ownVote === null) {
+            // First time vote
+            newScore = kind === 'upvote' ? entry.score + 1 : entry.score - 1;
+          } else {
+            // Switching votes
+            newScore = kind === 'upvote' ? entry.score + 2 : entry.score - 2;
+          }
+
+          return { ...entry, score: newScore, ownVote: newOwnVote };
+        }),
       );
 
       try {
-        await toggleLike(ping.activityId, user.id);
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        await toggleVote(ping.activityId, kind);
       } catch (error) {
-        console.warn('[Pings] boost failed', error);
+        console.warn('[Pings] vote failed', error);
         loadUserPings();
       }
     },
@@ -610,6 +631,7 @@ export function CampusPingsScreen() {
             try {
               await deletePing(ping.activityId!);
               setUserPings((current) => current.filter((entry) => entry.id !== ping.id));
+              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             } catch (error) {
               console.warn('[Pings] delete failed', error);
               Alert.alert('Delete failed', 'This ping could not be removed right now.');
@@ -622,43 +644,13 @@ export function CampusPingsScreen() {
   );
 
   const openComments = useCallback(async (ping: PingCard) => {
-    if (ping.source !== 'user' || !ping.activityId) return;
-    setActiveCommentPing(ping);
-    setCommentModalVisible(true);
-    setLoadingComments(true);
-    try {
-      const nextComments = await getComments(ping.activityId);
-      setComments(nextComments);
-    } catch (error) {
-      console.warn('[Pings] comment fetch failed', error);
-      setComments([]);
-    } finally {
-      setLoadingComments(false);
-    }
+    // Replies removed for pings
   }, []);
 
+  // Replies removed from pings
   const handleSendComment = useCallback(async () => {
-    if (!user || !activeCommentPing?.activityId || !commentText.trim()) return;
-    setSendingComment(true);
-    try {
-      await addComment(activeCommentPing.activityId, user, commentText.trim());
-      const nextComments = await getComments(activeCommentPing.activityId);
-      setComments(nextComments);
-      setCommentText('');
-      setUserPings((current) =>
-        current.map((entry) =>
-          entry.id === activeCommentPing.id
-            ? { ...entry, commentCount: entry.commentCount + 1 }
-            : entry,
-        ),
-      );
-    } catch (error) {
-      console.warn('[Pings] comment send failed', error);
-      Alert.alert('Comment failed', 'Could not post this reply right now.');
-    } finally {
-      setSendingComment(false);
-    }
-  }, [activeCommentPing, commentText, user]);
+    // No-op for pings
+  }, []);
 
   const openPingOnMap = useCallback(
     (ping: PingCard) => {
@@ -732,47 +724,208 @@ export function CampusPingsScreen() {
     [locationLookup, saveEvent, scheduleEvent],
   );
 
+  const removeFeaturedEventFromPlans = useCallback(
+    (event: FeaturedEvent) => {
+      removeScheduledEvent(`featured-${event.id}`);
+      unsaveEvent(`featured-${event.id}`);
+    },
+    [removeScheduledEvent, unsaveEvent],
+  );
+
+  const handleFeaturedEventRsvp = useCallback(
+    async (event: FeaturedEvent) => {
+      if (!user?.id) {
+        Alert.alert('Sign in required', 'Sign in to RSVP for featured events.');
+        return;
+      }
+
+      try {
+        const isRemoving = event.rsvpStatus === 'going';
+        await saveCampusEventRsvp({
+          clerk_id: user.id,
+          event_id: event.id,
+          response: isRemoving ? 'none' : 'going',
+        });
+
+        const prefs = useAppShellStore.getState();
+        if (!isRemoving && prefs.notificationsEnabled && prefs.eventNotifications && event.isAdminEvent && event.endTime) {
+          await scheduleAdminEventReviewNotification(
+            event.title,
+            event.location,
+            new Date(event.endTime),
+            event.googleReviewUrl,
+            event.id,
+          );
+        }
+
+        if (isRemoving) {
+          removeFeaturedEventFromPlans(event);
+        } else {
+          saveFeaturedEventToPlans(event);
+        }
+        setFeaturedEvents((current) =>
+          current.map((entry) =>
+            entry.id === event.id ? { ...entry, rsvpStatus: isRemoving ? 'none' : 'going' } : entry,
+          ),
+        );
+        setActiveFeaturedEvent((current) =>
+          current?.id === event.id ? { ...current, rsvpStatus: isRemoving ? 'none' : 'going' } : current,
+        );
+        const successMessage = isRemoving
+          ? `${event.title} was removed from your plans.`
+          : `${event.title} is in your plans now.`;
+        setRsvpBanner(successMessage);
+        Alert.alert(isRemoving ? 'RSVP removed' : 'RSVP saved', successMessage);
+      } catch (error) {
+        console.warn('[Pings] Failed to RSVP for featured event', error);
+        Alert.alert('RSVP failed', 'We could not update your RSVP right now.');
+      }
+    },
+    [removeFeaturedEventFromPlans, saveFeaturedEventToPlans, user?.id],
+  );
+
+  const handleFeaturedEventShare = useCallback((event: FeaturedEvent) => {
+    useShareStore.getState().openShare({
+      title: event.title,
+      message: `Check out this featured event: ${event.title} at ${getCanonicalLocationName(event.location)}!`,
+      url: event.link || 'https://maroonschedules.tamu.edu',
+    });
+
+    if (event.isAdminEvent) {
+      fetch(`${API_URL}/admin/events/${event.id}/share`, { method: 'POST' }).catch((error) =>
+        console.error('[Pings] Failed to track featured event share', error),
+      );
+    }
+  }, []);
+
   const openFeaturedEventLink = useCallback(async (event: FeaturedEvent) => {
-    if (!event.link) return;
+    const normalizedUrl = normalizeExternalUrl(event.link);
+    if (!normalizedUrl) return;
     try {
-      await Linking.openURL(event.link);
+      await Linking.openURL(normalizedUrl);
     } catch (error) {
       console.warn('[Pings] Failed to open featured event link', error);
+      Alert.alert('Link unavailable', 'We could not open the event link. Please ask the organizer to verify it.');
     }
   }, []);
 
   const renderFeaturedEvent = ({ item }: { item: FeaturedEvent }) => {
     const meta = categoryMeta(mapOfficialEventCategory(item));
     const FeaturedIcon = meta.Icon;
+    const isRsvped = item.rsvpStatus === 'going';
     return (
-      <Pressable
-        style={[styles.featuredCard, { borderColor: `${meta.accent}30` }]}
-        onPress={() => setActiveFeaturedEvent(item)}
-      >
-        <LinearGradient
-          colors={[`${meta.accent}F2`, `${meta.accent}99`]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.featuredVisual}
-        >
-          <View style={styles.featuredCardTopRow}>
-            <View style={styles.featuredVisualChip}>
-              <Text style={styles.featuredVisualChipText}>{mapOfficialEventCategory(item)}</Text>
+      <View style={[styles.featuredCard, { borderColor: `${meta.accent}30` }]}>
+        <Pressable onPress={() => setActiveFeaturedEvent(item)}>
+          <LinearGradient
+            colors={[`${meta.accent}F2`, `${meta.accent}99`]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.featuredVisual}
+          >
+            <View style={styles.featuredCardTopRow}>
+              <View style={styles.featuredVisualChip}>
+                <Text style={styles.featuredVisualChipText}>{mapOfficialEventCategory(item)}</Text>
+              </View>
+              <FeaturedIcon size={20} color="#FFFFFF" />
             </View>
-            <FeaturedIcon size={20} color="#FFFFFF" />
-          </View>
-        </LinearGradient>
+          </LinearGradient>
 
-        <View style={styles.featuredContent}>
-          <Text style={styles.featuredTitle} numberOfLines={2}>
-            {item.title}
-          </Text>
-          <Text style={styles.featuredMeta}>{formatStartLabel(item.startTime)}</Text>
-          <Text style={styles.featuredMeta} numberOfLines={1}>
-            {getCanonicalLocationName(item.location)}
-          </Text>
+          <View style={styles.featuredContent}>
+            <Text style={styles.featuredTitle} numberOfLines={2}>
+              {item.title}
+            </Text>
+            <Text style={styles.featuredMeta}>{formatStartLabel(item.startTime)}</Text>
+            <Text style={styles.featuredMeta} numberOfLines={1}>
+              {getCanonicalLocationName(item.location)}
+            </Text>
+          </View>
+        </Pressable>
+
+        <View style={styles.featuredFooter}>
+          <Pressable
+            style={[styles.featuredRsvpButton, isRsvped && styles.featuredRsvpButtonSaved]}
+            onPress={() => handleFeaturedEventRsvp(item)}
+          >
+            <CalendarDays size={14} color={isRsvped ? COLORS.textPrimary : '#FFFFFF'} />
+            <Text
+              style={[styles.featuredRsvpButtonText, isRsvped && styles.featuredRsvpButtonTextSaved]}
+              numberOfLines={!item.isAdminEvent && !isRsvped ? 2 : 1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+            >
+              {item.isAdminEvent
+                ? isRsvped
+                  ? "You're in"
+                  : 'RSVP'
+                : isRsvped
+                  ? 'Added'
+                  : 'Add'}
+            </Text>
+          </Pressable>
+          <Pressable
+            style={styles.featuredDetailsButton}
+            onPress={() => setActiveFeaturedEvent(item)}
+          >
+            <Text style={styles.featuredDetailsButtonText}>Details</Text>
+          </Pressable>
         </View>
-      </Pressable>
+      </View>
+    );
+  };
+
+  useEffect(() => {
+    if (!rsvpBanner) return undefined;
+    const timeout = setTimeout(() => setRsvpBanner(null), 2800);
+    return () => clearTimeout(timeout);
+  }, [rsvpBanner]);
+  
+  const handleReportPing = (item: any) => {
+    Alert.alert(
+      'Report Content',
+      'Why are you reporting this ping?',
+      [
+        { text: 'Inappropriate', onPress: () => submitReport(item, 'inappropriate') },
+        { text: 'Spam', onPress: () => submitReport(item, 'spam') },
+        { text: 'Harassment', onPress: () => submitReport(item, 'harassment') },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const submitReport = async (item: any, reason: string) => {
+    try {
+      await reportContent({
+        reporteeId: item.userId,
+        postType: 'crowdping',
+        postId: item.id,
+        reason: reason
+      });
+      Alert.alert('Report Received', 'Thank you for keeping our community safe.');
+    } catch (err) {
+      Alert.alert('Error', 'Failed to submit report.');
+    }
+  };
+
+  const handleBlockPingAuthor = (item: any) => {
+    Alert.alert(
+      'Block User',
+      `Block ${item.userName}? You won't see their posts.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Block User', 
+          style: 'destructive',
+          onPress: async () => {
+             try {
+                await blockUser(item.userId);
+                handleRefresh();
+                Alert.alert('User Blocked');
+             } catch (err) {
+                Alert.alert('Error', 'Failed to block user.');
+             }
+          }
+        },
+      ]
     );
   };
 
@@ -784,6 +937,7 @@ export function CampusPingsScreen() {
     const isActive = isPingActiveNow(item.startAt, item.endAt);
     const initials = getInitials(item.userName);
     const AccentIcon = meta.Icon;
+    const isOwnPing = item.userId === user?.id;
 
     return (
       <View style={styles.pingCard}>
@@ -852,34 +1006,57 @@ export function CampusPingsScreen() {
         </View>
 
         <View style={styles.actionRow}>
-          <Pressable style={styles.actionButton} onPress={() => openComments(item)}>
-            <MessageCircle size={16} color={COLORS.textPrimary} />
-            <Text style={styles.actionLabel}>{item.commentCount}</Text>
+          <Pressable
+            style={styles.actionButton}
+            onPress={() => handleVotePing(item, 'upvote')}
+          >
+            <ArrowBigUp
+              size={22}
+              color={item.ownVote === 'upvote' ? '#FF4500' : COLORS.textPrimary}
+              fill={item.ownVote === 'upvote' ? '#FF4500' : 'none'}
+            />
           </Pressable>
+
+          <Text style={[
+            styles.actionLabel, 
+            { fontSize: 15, minWidth: 20, textAlign: 'center' },
+            item.ownVote === 'upvote' && { color: '#FF4500' },
+            item.ownVote === 'downvote' && { color: '#7193FF' }
+          ]}>
+            {item.score}
+          </Text>
 
           <Pressable
-            style={[styles.actionButton, item.boostedByCurrentUser && styles.actionButtonActive]}
-            onPress={() => handleBoostPing(item)}
+            style={styles.actionButton}
+            onPress={() => handleVotePing(item, 'downvote')}
           >
-            <Heart
-              size={16}
-              color={item.boostedByCurrentUser ? '#FF647F' : COLORS.textPrimary}
-              fill={item.boostedByCurrentUser ? '#FF647F' : 'none'}
+            <ArrowBigDown
+              size={22}
+              color={item.ownVote === 'downvote' ? '#7193FF' : COLORS.textPrimary}
+              fill={item.ownVote === 'downvote' ? '#7193FF' : 'none'}
             />
-            <Text style={styles.actionLabel}>{item.likeCount}</Text>
           </Pressable>
 
-          <Pressable style={styles.actionButton} onPress={() => savePingToPlans(item)}>
-            <CalendarDays size={16} color={COLORS.textPrimary} />
+          <Pressable style={[styles.actionButton, { marginLeft: 8 }]} onPress={() => savePingToPlans(item)}>
+            <CalendarDays size={18} color={COLORS.textPrimary} />
           </Pressable>
 
           <View style={{ flex: 1 }} />
 
-          {canDelete ? (
+          {!isOwnPing ? (
+            <>
+              <Pressable style={styles.actionButton} onPress={() => handleReportPing(item)}>
+                <Flag size={18} color={COLORS.textTertiary} />
+              </Pressable>
+              <Pressable style={styles.actionButton} onPress={() => handleBlockPingAuthor(item)}>
+                <Shield size={18} color={COLORS.textTertiary} />
+              </Pressable>
+            </>
+          ) : (
             <Pressable style={styles.actionButton} onPress={() => handleDeletePing(item)}>
-              <Trash2 size={16} color="#E56B6B" />
+              <Trash2 size={18} color="#E56B6B" />
             </Pressable>
-          ) : null}
+          )}
         </View>
       </View>
     );
@@ -895,7 +1072,16 @@ export function CampusPingsScreen() {
       </View>
 
       <TourTarget name="crowdping-cta">
-        <Animated.View style={pulseStyle}>
+        <View
+          style={[
+            activeTargetName === 'crowdping-cta' && {
+              borderWidth: 2,
+              borderColor: COLORS.primary,
+              borderRadius: 16,
+              padding: 2,
+            },
+          ]}
+        >
           <Pressable 
             style={styles.quickPostBar} 
             onPress={() => {
@@ -910,7 +1096,7 @@ export function CampusPingsScreen() {
             </View>
             <Text style={styles.quickPostText}>What's happening at...</Text>
           </Pressable>
-        </Animated.View>
+        </View>
       </TourTarget>
 
       {streamError ? (
@@ -945,6 +1131,11 @@ export function CampusPingsScreen() {
           <View style={styles.sectionRow}>
             <Text style={styles.sectionTitle}>Featured</Text>
           </View>
+          {rsvpBanner ? (
+            <View style={styles.rsvpBanner}>
+              <Text style={styles.rsvpBannerText}>{rsvpBanner}</Text>
+            </View>
+          ) : null}
           <FlatList
             horizontal
             data={featuredCards}
@@ -1005,9 +1196,9 @@ export function CampusPingsScreen() {
           >
             <View style={styles.modalBackdrop}>
                <Animated.View
-                entering={SlideInDown.springify().damping(20)}
-                exiting={SlideOutDown}
-                style={styles.modalKeyboardWrap}
+                entering={SlideInDown.duration(220)}
+                exiting={SlideOutDown.duration(180)}
+                 style={styles.modalKeyboardWrap}
               >
                 <KeyboardAvoidingView
                   behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -1024,7 +1215,6 @@ export function CampusPingsScreen() {
                               resetComposer();
                               if (activeTargetName === 'crowdping-close') {
                                 advanceStep('crowdping-close');
-                                navigation.navigate('Main', { screen: 'Settings' });
                               }
                             }}
                             style={[
@@ -1078,27 +1268,39 @@ export function CampusPingsScreen() {
                           multiline
                         />
 
-                        <Text style={styles.modalLabel}>Photo</Text>
+                        <Text style={styles.modalLabel}>Photo (Optional)</Text>
                         <View style={styles.imageComposerRow}>
-                          <Pressable style={styles.imagePickerButton} onPress={handlePickPingImage}>
-                            <ImageIcon size={16} color={COLORS.textPrimary} />
-                            <Text style={styles.imagePickerButtonText}>
-                              {composerImageUri ? 'Change photo' : 'Add photo'}
-                            </Text>
-                          </Pressable>
+                          <View style={styles.imagePickerActions}>
+                            <Pressable style={styles.imagePickerButton} onPress={handlePickPingImage}>
+                              <ImageIcon size={16} color={COLORS.textPrimary} />
+                              <Text style={styles.imagePickerButtonText}>
+                                {composerImageUri ? 'Choose another' : 'Choose photo'}
+                              </Text>
+                            </Pressable>
+                            <Pressable style={styles.imagePickerButton} onPress={handleCapturePingImage}>
+                              <Camera size={16} color={COLORS.textPrimary} />
+                              <Text style={styles.imagePickerButtonText}>Take photo</Text>
+                            </Pressable>
+                          </View>
                           {composerImageUri ? (
                             <Pressable style={styles.imagePreviewWrap} onPress={handlePickPingImage}>
                               <Image source={{ uri: composerImageUri }} style={styles.imagePreview} />
                               <View style={styles.imagePreviewRemoveHint}>
-                                <Text style={styles.imagePreviewRemoveHintText}>Tap to edit</Text>
+                                <Text style={styles.imagePreviewRemoveHintText}>Tap to replace</Text>
                               </View>
                             </Pressable>
                           ) : (
                             <View style={styles.imageEmptyState}>
-                              <Text style={styles.imageEmptyStateText}>Optional</Text>
+                              <Text style={styles.imageEmptyStateText}>No photo attached</Text>
                             </View>
                           )}
                         </View>
+                        <Text style={styles.optionalHelperText}>You can post a CrowdPing without adding an image.</Text>
+                        {composerImageUri ? (
+                          <Pressable style={styles.removeImageButton} onPress={() => setComposerImageUri(null)}>
+                            <Text style={styles.removeImageButtonText}>Remove photo</Text>
+                          </Pressable>
+                        ) : null}
 
                         <Text style={styles.modalLabel}>When</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
@@ -1152,6 +1354,19 @@ export function CampusPingsScreen() {
                             </Pressable>
                           </View>
                         )}
+
+                        <View style={{ marginTop: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <View>
+                            <Text style={styles.modalLabel}>Post Anonymously</Text>
+                            <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>Hides your name and profile photo</Text>
+                          </View>
+                          <Switch
+                            value={composerAnonymous}
+                            onValueChange={setComposerAnonymous}
+                            trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                            thumbColor={Platform.OS === 'ios' ? undefined : (composerAnonymous ? COLORS.background : '#f4f3f4')}
+                          />
+                        </View>
                         
                         <View style={{ height: 100 }} />
                       </ScrollView>
@@ -1209,17 +1424,49 @@ export function CampusPingsScreen() {
                   <View style={styles.featuredModalActions}>
                     <Pressable
                       style={styles.primaryActionButton}
-                      onPress={() => activeFeaturedEvent && openFeaturedEventOnMap(activeFeaturedEvent)}
+                      onPress={() =>
+                        activeFeaturedEvent && handleFeaturedEventRsvp(activeFeaturedEvent)
+                      }
                     >
-                      <MapPin size={16} color="#FFFFFF" />
-                      <Text style={styles.primaryActionLabel}>Open on map</Text>
+                      <CalendarDays size={16} color="#FFFFFF" />
+                      <Text
+                        style={styles.primaryActionLabel}
+                        numberOfLines={
+                          activeFeaturedEvent?.isAdminEvent
+                            ? 1
+                            : activeFeaturedEvent?.rsvpStatus === 'going'
+                              ? 1
+                              : 2
+                        }
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.75}
+                      >
+                        {activeFeaturedEvent?.isAdminEvent
+                          ? activeFeaturedEvent?.rsvpStatus === 'going'
+                            ? 'Remove RSVP'
+                            : 'RSVP'
+                          : activeFeaturedEvent?.rsvpStatus === 'going'
+                            ? 'Remove from Schedule'
+                            : 'Add'}
+                      </Text>
                     </Pressable>
                     <Pressable
                       style={styles.actionButton}
-                      onPress={() => activeFeaturedEvent && saveFeaturedEventToPlans(activeFeaturedEvent)}
+                      onPress={() =>
+                        activeFeaturedEvent && handleFeaturedEventShare(activeFeaturedEvent)
+                      }
                     >
-                      <CalendarDays size={16} color={COLORS.textPrimary} />
-                      <Text style={styles.actionLabel}>Save</Text>
+                      <Share2 size={16} color={COLORS.textPrimary} />
+                      <Text style={styles.actionLabel}>Share</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.actionButton}
+                      onPress={() =>
+                        activeFeaturedEvent && openFeaturedEventOnMap(activeFeaturedEvent)
+                      }
+                    >
+                      <MapPin size={16} color={COLORS.textPrimary} />
+                      <Text style={styles.actionLabel}>Open on map</Text>
                     </Pressable>
                     {activeFeaturedEvent?.link ? (
                       <Pressable
@@ -1230,88 +1477,6 @@ export function CampusPingsScreen() {
                         <Text style={styles.actionLabel}>Details</Text>
                       </Pressable>
                     ) : null}
-                  </View>
-                </View>
-              </TouchableWithoutFeedback>
-            </KeyboardAvoidingView>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      {/* ── Comments Modal ── */}
-      <Modal visible={commentModalVisible} animationType="fade" transparent>
-        <TouchableWithoutFeedback
-          onPress={() => {
-            setCommentModalVisible(false);
-            setActiveCommentPing(null);
-            setCommentText('');
-          }}
-        >
-          <View style={styles.modalBackdrop}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={styles.modalKeyboardWrap}
-            >
-              <TouchableWithoutFeedback>
-                <View style={styles.commentModalCard}>
-                  <View style={styles.modalHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.modalTitle}>Replies</Text>
-                      <Text style={styles.commentModalSubtitle} numberOfLines={2}>
-                        {activeCommentPing?.title}
-                      </Text>
-                    </View>
-                    <Pressable
-                      onPress={() => {
-                        setCommentModalVisible(false);
-                        setActiveCommentPing(null);
-                        setCommentText('');
-                      }}
-                    >
-                      <X size={20} color={COLORS.textPrimary} />
-                    </Pressable>
-                  </View>
-
-                  {loadingComments ? (
-                    <View style={styles.commentsLoadingWrap}>
-                      <ActivityIndicator color={COLORS.primary} />
-                    </View>
-                  ) : (
-                    <ScrollView style={styles.commentList} showsVerticalScrollIndicator={false}>
-                      {comments.length ? (
-                        comments.map((comment: any, index: number) => (
-                          <View key={`${comment.id || index}`} style={styles.commentRow}>
-                            <Text style={styles.commentName}>
-                              {comment.data?.name || comment.user?.data?.name || 'Aggie'}
-                            </Text>
-                            <Text style={styles.commentBody}>
-                              {comment.data?.text || comment.data?.comment || ''}
-                            </Text>
-                          </View>
-                        ))
-                      ) : (
-                        <View style={styles.emptyCommentsWrap}>
-                          <Text style={styles.emptyCommentsText}>No replies yet.</Text>
-                        </View>
-                      )}
-                    </ScrollView>
-                  )}
-
-                  <View style={styles.commentComposer}>
-                    <TextInput
-                      value={commentText}
-                      onChangeText={setCommentText}
-                      placeholder="Add a quick reply"
-                      placeholderTextColor={COLORS.textTertiary}
-                      style={styles.commentInput}
-                    />
-                    <Pressable style={styles.commentSendButton} onPress={handleSendComment} disabled={sendingComment}>
-                      {sendingComment ? (
-                        <ActivityIndicator color="#FFFFFF" size="small" />
-                      ) : (
-                        <MessageCircle size={16} color="#FFFFFF" />
-                      )}
-                    </Pressable>
                   </View>
                 </View>
               </TouchableWithoutFeedback>
@@ -1530,6 +1695,53 @@ const getStyles = (COLORS: any) =>
       paddingHorizontal: 12,
       paddingVertical: 12,
     },
+    featuredFooter: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingHorizontal: 12,
+      paddingBottom: 12,
+      paddingTop: 2,
+    },
+    featuredRsvpButton: {
+      flex: 1,
+      minHeight: 40,
+      borderRadius: 12,
+      backgroundColor: COLORS.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+      gap: 6,
+      paddingHorizontal: 12,
+    },
+    featuredRsvpButtonSaved: {
+      backgroundColor: `${COLORS.primary}14`,
+      borderWidth: 1,
+      borderColor: `${COLORS.primary}26`,
+    },
+    featuredRsvpButtonText: {
+      color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '800',
+    },
+    featuredRsvpButtonTextSaved: {
+      color: COLORS.textPrimary,
+    },
+    featuredDetailsButton: {
+      minHeight: 40,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.background,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 12,
+    },
+    featuredDetailsButtonText: {
+      color: COLORS.textSecondary,
+      fontSize: 13,
+      fontWeight: '700',
+    },
     featuredTitle: {
       color: COLORS.textPrimary,
       fontSize: 15,
@@ -1541,6 +1753,22 @@ const getStyles = (COLORS: any) =>
       color: COLORS.textSecondary,
       fontSize: 11,
       fontWeight: '600',
+    },
+    rsvpBanner: {
+      marginLeft: 18,
+      marginBottom: 10,
+      alignSelf: 'flex-start',
+      borderRadius: 999,
+      backgroundColor: '#EAF8EE',
+      borderWidth: 1,
+      borderColor: '#B9E8C4',
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    rsvpBannerText: {
+      color: '#17663A',
+      fontSize: 12,
+      fontWeight: '800',
     },
     pingCard: {
       marginTop: 16,
@@ -1963,6 +2191,10 @@ const getStyles = (COLORS: any) =>
       gap: 12,
       marginBottom: 4,
     },
+    imagePickerActions: {
+      flex: 1,
+      gap: 12,
+    },
     imagePickerButton: {
       flex: 1,
       minHeight: 96,
@@ -2021,6 +2253,27 @@ const getStyles = (COLORS: any) =>
     },
     imageEmptyStateText: {
       color: COLORS.textTertiary,
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    optionalHelperText: {
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      lineHeight: 18,
+      marginTop: 2,
+    },
+    removeImageButton: {
+      alignSelf: 'flex-start',
+      marginTop: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surface,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    removeImageButtonText: {
+      color: COLORS.textPrimary,
       fontSize: 12,
       fontWeight: '700',
     },

@@ -49,7 +49,7 @@ export const DEFAULT_PLACES_PILLS: ToggleLayoutItem<PlacesPillId>[] = [
   { id: 'Parking', label: 'Parking', visible: false, order: 5 },
   { id: 'Library', label: 'Libraries', visible: true, order: 6 },
   { id: 'Academic', label: 'Academic', visible: false, order: 7 },
-  { id: 'Rec', label: 'Gyms', visible: true, order: 8 },
+  { id: 'Rec', label: 'Gyms', visible: false, order: 8 },
 ];
 
 function sortItems<T extends string>(items: ToggleLayoutItem<T>[]) {
@@ -132,6 +132,13 @@ type AppShellState = {
   selectedScheduleId: string | null;
   isTOSAccepted: boolean;
   isTourCompleted: boolean;
+  isNotificationPrompted: boolean;
+  adminAccessStatus: boolean | null;
+  notificationsEnabled: boolean;
+  eventNotifications: boolean;
+  placeNotifications: boolean;
+  pingNotifications: boolean;
+  notificationLeadTime: number;
   setParkingPermit: (permit: ParkingPermit) => void;
   togglePlacesPill: (id: PlacesPillId) => void;
   movePlacesPill: (id: PlacesPillId, direction: -1 | 1) => void;
@@ -143,6 +150,11 @@ type AppShellState = {
   setSelectedScheduleId: (id: string | null) => void;
   setTOSAccepted: (accepted: boolean) => void;
   setTourCompleted: (completed: boolean) => void;
+  setNotificationPrompted: (prompted: boolean) => void;
+  setAdminAccessStatus: (status: boolean | null) => void;
+  setNotificationsEnabled: (enabled: boolean) => void;
+  setNotificationPreference: (key: 'event' | 'place' | 'ping', value: boolean) => void;
+  setNotificationLeadTime: (time: number) => void;
 };
 
 export const useAppShellStore = create<AppShellState>()(
@@ -157,6 +169,13 @@ export const useAppShellStore = create<AppShellState>()(
       selectedScheduleId: null,
       isTOSAccepted: false,
       isTourCompleted: false,
+      isNotificationPrompted: false,
+      adminAccessStatus: null,
+      notificationsEnabled: false,
+      eventNotifications: true,
+      placeNotifications: true,
+      pingNotifications: true,
+      notificationLeadTime: 5,
       setParkingPermit: (parkingPermit) => set({ parkingPermit }),
       togglePlacesPill: (id) =>
         set((state) => ({
@@ -180,10 +199,17 @@ export const useAppShellStore = create<AppShellState>()(
       setSelectedScheduleId: (selectedScheduleId) => set({ selectedScheduleId }),
       setTOSAccepted: (isTOSAccepted) => set({ isTOSAccepted }),
       setTourCompleted: (isTourCompleted) => set({ isTourCompleted }),
+      setNotificationPrompted: (isNotificationPrompted) => set({ isNotificationPrompted }),
+      setAdminAccessStatus: (adminAccessStatus) => set({ adminAccessStatus }),
+      setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
+      setNotificationPreference: (key, value) => set((state) => ({
+        [`${key}Notifications`]: value,
+      })),
+      setNotificationLeadTime: (notificationLeadTime) => set({ notificationLeadTime }),
     }),
     {
       name: 'app-shell-store',
-      version: 2,
+      version: 4,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         parkingPermit: state.parkingPermit,
@@ -194,6 +220,12 @@ export const useAppShellStore = create<AppShellState>()(
         selectedScheduleId: state.selectedScheduleId,
         isTOSAccepted: state.isTOSAccepted,
         isTourCompleted: state.isTourCompleted,
+        isNotificationPrompted: state.isNotificationPrompted,
+        notificationsEnabled: state.notificationsEnabled,
+        eventNotifications: state.eventNotifications,
+        placeNotifications: state.placeNotifications,
+        pingNotifications: state.pingNotifications,
+        notificationLeadTime: state.notificationLeadTime,
       }),
       merge: (persistedState, currentState) => {
         const persisted = (persistedState as Partial<AppShellState>) || {};
@@ -220,7 +252,47 @@ export const useAppShellStore = create<AppShellState>()(
           isTourCompleted: typeof persisted.isTourCompleted === 'boolean'
             ? persisted.isTourCompleted
             : currentState.isTourCompleted,
+          isNotificationPrompted: typeof persisted.isNotificationPrompted === 'boolean'
+            ? persisted.isNotificationPrompted
+            : currentState.isNotificationPrompted,
+          notificationsEnabled: typeof persisted.notificationsEnabled === 'boolean'
+            ? persisted.notificationsEnabled
+            : currentState.notificationsEnabled,
+          eventNotifications: typeof persisted.eventNotifications === 'boolean'
+            ? persisted.eventNotifications
+            : currentState.eventNotifications,
+          placeNotifications: typeof persisted.placeNotifications === 'boolean'
+            ? persisted.placeNotifications
+            : currentState.placeNotifications,
+          pingNotifications: typeof persisted.pingNotifications === 'boolean'
+            ? persisted.pingNotifications
+            : currentState.pingNotifications,
+          notificationLeadTime: typeof persisted.notificationLeadTime === 'number'
+            ? persisted.notificationLeadTime
+            : currentState.notificationLeadTime,
         };
+      },
+      migrate: (persistedState: any, version: number) => {
+        if (version < 4) {
+          const state = persistedState as Partial<AppShellState>;
+          const newState = { ...state };
+          
+          // 1. Reset Nav Defaults (Events, Places, Pings on; Dining off)
+          newState.navItems = DEFAULT_NAV_ITEMS;
+
+          // 2. Set Default Tab Bar Mode to 'floating'
+          newState.tabBarMode = 'floating';
+
+          // 3. Adjust Places Pills (Gyms off)
+          if (state.placesPills && Array.isArray(state.placesPills)) {
+            newState.placesPills = state.placesPills.map(p => 
+              p.id === 'Rec' ? { ...p, visible: false } : p
+            );
+          }
+          
+          return newState;
+        }
+        return persistedState;
       },
     },
   ),

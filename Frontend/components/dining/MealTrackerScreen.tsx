@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, ScrollView, SafeAreaView, StatusBar, ImageBackground } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { useFocusEffect } from '@react-navigation/native';
-import { API_URL } from '../../config';
+import { requestJson } from '../../api/client';
 import { Card, SectionLabel, MacroBar, Divider } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
@@ -35,8 +35,8 @@ export default function MealTrackerScreen({ navigation, embedded = false }: any)
     setLoading(true);
     try {
       const [tRes, pRes] = await Promise.all([
-        fetch(`${API_URL}/dining/tracker/${user.id}?date=${date}`).then(r => r.json()),
-        fetch(`${API_URL}/dining/profile/${user.id}`).then(r => r.json()),
+        requestJson(`/dining/tracker/${encodeURIComponent(user.id)}?date=${encodeURIComponent(date)}`),
+        requestJson(`/dining/profile/${encodeURIComponent(user.id)}`),
       ]);
       setTracker(tRes);
       setProfile(pRes);
@@ -57,7 +57,7 @@ export default function MealTrackerScreen({ navigation, embedded = false }: any)
     { text: 'Cancel' },
     { text: 'Remove', style: 'destructive', onPress: async () => {
       try { 
-          await fetch(`${API_URL}/dining/tracker/${user?.id}/${id}`, { method: 'DELETE' });
+          await requestJson(`/dining/tracker/${encodeURIComponent(user?.id || '')}/${id}`, { method: 'DELETE' });
           load(); 
       } catch {}
     }},

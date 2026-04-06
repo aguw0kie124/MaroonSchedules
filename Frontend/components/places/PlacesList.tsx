@@ -19,13 +19,14 @@ import {
   getParkingRecommendation,
   haversineDistanceMeters,
 } from "./utils";
-import { getCanonicalLocationName } from "./campusData";
+import { getCanonicalLocationName, getLocationSelectionId } from "./campusData";
 import { TodayTimeline } from "./TodayTimeline";
 import { TourTarget, useTour } from "../onboarding/TourProvider";
 
 interface PlacesListProps {
   styles: any;
   COLORS: any;
+  isDark: boolean;
   activeLayer: string;
   selectedId: string | null;
   sortedFilteredLocations: CampusLocation[];
@@ -54,6 +55,7 @@ interface PlacesListProps {
 export function PlacesList({
   styles,
   COLORS,
+  isDark,
   activeLayer,
   selectedId,
   sortedFilteredLocations,
@@ -302,6 +304,7 @@ export function PlacesList({
       <TodayTimeline
         styles={styles}
         COLORS={COLORS}
+        isDark={isDark}
         activeScheduleOption={activeScheduleOption}
         onGetDirections={handleTimelineGetDirections}
       />
@@ -360,7 +363,7 @@ export function PlacesList({
     }
 
     return (
-      <Card key={`list-${loc.location}`} style={[styles.placesSheetItemCard, compact && styles.placesSheetItemCardCompact]}>
+      <Card key={`list-${getLocationSelectionId(loc)}`} style={[styles.placesSheetItemCard, compact && styles.placesSheetItemCardCompact]}>
         {loc.location === "Student Recreation Center" ? (
           <TourTarget name="rec-center-item" style={{ flex: 1 }}>
             <TouchableOpacity
@@ -406,7 +409,7 @@ export function PlacesList({
                 {statusChips.length ? (
                   <View style={styles.placesSheetItemStatusRow}>
                     {statusChips.slice(0, 3).map((chip) => (
-                      <View key={`${loc.location}-${chip}`} style={styles.placesSheetItemStatusChip}>
+                      <View key={`${getLocationSelectionId(loc)}-${chip}`} style={styles.placesSheetItemStatusChip}>
                         <Text style={styles.placesSheetItemStatusChipText}>{chip}</Text>
                       </View>
                     ))}
@@ -463,7 +466,7 @@ export function PlacesList({
               {statusChips.length ? (
                 <View style={styles.placesSheetItemStatusRow}>
                   {statusChips.slice(0, 3).map((chip) => (
-                    <View key={`${loc.location}-${chip}`} style={styles.placesSheetItemStatusChip}>
+                    <View key={`${getLocationSelectionId(loc)}-${chip}`} style={styles.placesSheetItemStatusChip}>
                       <Text style={styles.placesSheetItemStatusChipText}>{chip}</Text>
                     </View>
                   ))}

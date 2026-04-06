@@ -6,6 +6,7 @@ import {
   ImageBackground,
   PanResponder,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Switch,
@@ -25,6 +26,7 @@ import {
   GraduationCap,
   LayoutGrid,
   LibraryBig,
+  LogIn,
   LogOut,
   Palette,
   Search,
@@ -34,6 +36,12 @@ import {
   Wallet,
   Compass,
   Sparkles,
+  Trash2,
+  Shield,
+  Scale,
+  UserX,
+  Bell,
+  LifeBuoy,
 } from 'lucide-react-native';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
@@ -41,9 +49,14 @@ import * as Linking from 'expo-linking';
 
 import { fetchCampusOverview } from '../api/client';
 import { PARKING_PERMIT_OPTIONS, useAppShellStore } from '../store/appShellStore';
+import { useSessionStore } from '../store/sessionStore';
+import { deleteAccount, getBlockedUsers, unblockUser } from '../services/streamFeeds';
 import { useTour, TourTarget } from './onboarding/TourProvider';
 import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme } from './SharedUI';
+import { navigateToLogin } from '../utils/guestAccess';
+
+const SUPPORT_CONTACT_URL = 'mailto:tejtalluri1@gmail.com?subject=MaroonLife%20Support';
 
 const SETTINGS_TABS = [
   { key: 'personal', label: 'Personal', icon: UserRound },
@@ -128,6 +141,8 @@ export function Profile() {
   const isFocused = useIsFocused();
   const { user } = useUser();
   const { signOut } = useClerk();
+  const isGuest = useSessionStore((state) => state.isGuest);
+  const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
   const {
     COLORS,
     theme,
@@ -142,17 +157,28 @@ export function Profile() {
     setApplyAccentToText,
   } = useTheme();
   const isDark = theme === 'dark';
-  const styles = getStyles(COLORS, isDark);
+  const styles = getStyles(COLORS, isDark, accentColor);
   const { startTour, endTour, activeTargetName } = useTour();
 
   const [academicStatus, setAcademicStatus] = useState<any | null>(null);
   const [loadingAcademicStatus, setLoadingAcademicStatus] = useState(true);
   const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
   const [accentSliderWidth, setAccentSliderWidth] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const activeTab = useAppShellStore((state) => state.settingsTab) as SettingsTabKey;
   const setActiveTab = useAppShellStore((state) => state.setSettingsTab);
   const tabBarMode = useAppShellStore((state) => state.tabBarMode);
   const setTabBarMode = useAppShellStore((state) => state.setTabBarMode);
+  const eventNotifications = useAppShellStore((state) => state.eventNotifications);
+  const placeNotifications = useAppShellStore((state) => state.placeNotifications);
+  const pingNotifications = useAppShellStore((state) => state.pingNotifications);
+  const notificationLeadTime = useAppShellStore((state) => state.notificationLeadTime);
+  const setNotificationPreference = useAppShellStore((state) => state.setNotificationPreference);
+  const setNotificationLeadTime = useAppShellStore((state) => state.setNotificationLeadTime);
+  const notificationsEnabled = useAppShellStore((state) => state.notificationsEnabled);
+  const setNotificationsEnabled = useAppShellStore((state) => state.setNotificationsEnabled);
+  const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+  const [loadingBlocked, setLoadingBlocked] = useState(false);
 
   const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
   const accentRatio = useMemo(() => getRatioFromColor(accentColor), [accentColor]);
@@ -177,7 +203,7 @@ export function Profile() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!user || !isFocused) return;
+    if (!user || !isFocused || isGuest) return;
 
     setLoadingAcademicStatus(true);
     fetchCampusOverview(user.id)
@@ -196,7 +222,58 @@ export function Profile() {
     return () => {
       cancelled = true;
     };
-  }, [isFocused, user]);
+  }, [isFocused, isGuest, user]);
+
+  useEffect(() => {
+    if (activeTab === 'personal' && user && !isGuest) {
+        loadBlockedUsers();
+    }
+  }, [activeTab, isGuest, user]);
+
+  const loadBlockedUsers = async () => {
+    if (!user || isGuest) return;
+    setLoadingBlocked(true);
+    try {
+        const data = await getBlockedUsers(user.id);
+        setBlockedUsers(data);
+    } catch (err) {
+        console.error('Failed to load blocked users', err);
+    } finally {
+        setLoadingBlocked(false);
+    }
+  };
+
+  const handleUnblock = async (targetId: string) => {
+    if (!user?.id) {
+      Alert.alert('Error', 'You must be signed in to unblock a user.');
+      return;
+    }
+    try {
+        await unblockUser(targetId, user.id);
+        setBlockedUsers((current) => current.filter((item) => item.id !== targetId));
+        await loadBlockedUsers();
+        Alert.alert('Success', 'User unblocked.');
+    } catch (err) {
+        console.error('Failed to unblock user', err);
+        Alert.alert('Error', 'Failed to unblock user.');
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (!user || isGuest) return;
+    setRefreshing(true);
+    try {
+      const data = await fetchCampusOverview(user.id);
+      setAcademicStatus(data?.academic || null);
+      if (activeTab === 'personal') {
+        await loadBlockedUsers();
+      }
+    } catch (error) {
+      console.warn('Failed to refresh settings:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const handleAvatarPress = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -270,7 +347,49 @@ export function Profile() {
   };
 
   const handleLogout = async () => {
+    resetSessionMode();
     await signOut();
+  };
+
+  const handleLogin = () => {
+    navigateToLogin(navigation);
+  };
+
+  const openGuestRecCapacity = () => {
+    const rootNav =
+      navigation.getParent?.('RootStack') || navigation.getParent?.() || navigation;
+    rootNav.navigate('Main', {
+      screen: 'Places',
+      params: {
+        initialLayer: 'Rec',
+        focusToken: 'guest-rec',
+      },
+    });
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account?',
+      'This will permanently delete your profile, posts, reviews, and all social data. This action CANNOT be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete Everything', 
+          style: 'destructive',
+          onPress: async () => {
+            if (!user) return;
+            try {
+              await deleteAccount(user.id);
+              resetSessionMode();
+              await signOut();
+              Alert.alert('Account Deleted', 'Your data has been permanently removed.');
+            } catch (err) {
+              Alert.alert('Error', 'Failed to delete account. Please contact support.');
+            }
+          }
+        },
+      ]
+    );
   };
 
   const renderPersonalTab = () => (
@@ -282,7 +401,7 @@ export function Profile() {
             <Text style={styles.title}>Personal</Text>
           </View>
           <View style={styles.heroBadge}>
-            <UserRound size={18} color="#FFFFFF" />
+            <UserRound size={18} color={COLORS.textPrimary} />
           </View>
         </View>
 
@@ -296,7 +415,7 @@ export function Profile() {
               )}
             </View>
             <View style={styles.cameraBadge}>
-              <Camera size={14} color="#FFFFFF" />
+              <Camera size={14} color={COLORS.textPrimary} />
             </View>
           </Pressable>
           <View style={{ flex: 1 }}>
@@ -308,28 +427,6 @@ export function Profile() {
         </View>
       </View>
 
-      <Pressable 
-        style={[styles.heroCard, { 
-          padding: 16, 
-          backgroundColor: isDark ? COLORS.surface : '#F8FAFC', 
-          borderColor: COLORS.primary, 
-          borderWidth: 1.5,
-          flexDirection: 'row', 
-          alignItems: 'center', 
-          gap: 12,
-          marginTop: 8
-        }]} 
-        onPress={() => startTour()}
-      >
-        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary + '15', alignItems: 'center', justifyContent: 'center' }}>
-          <Compass size={24} color={COLORS.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Restart Interactive Tour</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Replay the guided onboarding tutorial.</Text>
-        </View>
-        <ChevronRight size={20} color={COLORS.textTertiary} />
-      </Pressable>
 
       {activeTargetName === 'tour-finish' && (
         <LinearGradient
@@ -386,29 +483,9 @@ export function Profile() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Academics</Text>
 
-        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('Leaderboard')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(212,175,55,0.15)' }]}>
-            <Trophy size={20} color="#D4AF37" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Campus Rankings & Podium</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
-
-        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('NewCourseSearch')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-            <Search size={20} color="#F3F1ED" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Major & Course Preferences</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
-
         <Pressable style={styles.toolRow} onPress={() => navigation.navigate('GradesScreen')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-            <GraduationCap size={20} color="#F3F1ED" />
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(16,185,129,0.15)' }]}>
+            <GraduationCap size={20} color="#10B981" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.toolTitle}>Grades & Distributions</Text>
@@ -416,9 +493,9 @@ export function Profile() {
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
 
-        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('ScheduleList')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-            <Settings2 size={20} color="#F3F1ED" />
+        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('ScheduleList')}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(139,92,246,0.15)' }]}>
+            <Settings2 size={20} color="#8B5CF6" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.toolTitle}>Manage Academic Schedules</Text>
@@ -426,15 +503,7 @@ export function Profile() {
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
 
-        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('GPACalculator')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-            <GraduationCap size={20} color="#F3F1ED" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>GPA Calculator</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
+        
       </View>
 
       <View style={styles.section}>
@@ -450,10 +519,45 @@ export function Profile() {
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
       </View>
+      
+      {renderNotificationsTab()}
+      {renderBlockedTab()}
+
+
+      <Pressable 
+        style={[styles.heroCard, { 
+          padding: 16, 
+          backgroundColor: isDark ? COLORS.surface : '#F8FAFC', 
+          borderColor: COLORS.primary, 
+          borderWidth: 1.5,
+          flexDirection: 'row', 
+          alignItems: 'center', 
+          gap: 12,
+          marginTop: 8
+        }]} 
+        onPress={() => startTour()}
+      >
+        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary + '15', alignItems: 'center', justifyContent: 'center' }}>
+          <Compass size={24} color={COLORS.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Restart Interactive Tour</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Replay the guided onboarding tutorial.</Text>
+        </View>
+        <ChevronRight size={20} color={COLORS.textTertiary} />
+      </Pressable>
 
       <Pressable style={styles.logoutButton} onPress={handleLogout}>
-        <LogOut size={18} color="#F3F1ED" />
+        <LogOut size={18} color={COLORS.textPrimary} />
         <Text style={styles.logoutText}>Log Out</Text>
+      </Pressable>
+
+      <Pressable 
+        style={[styles.logoutButton, { backgroundColor: isDark ? '#441111' : '#FFF0F0', marginTop: 8, borderColor: isDark ? '#772222' : '#FFCCCC', borderWidth: 1 }]} 
+        onPress={handleDeleteAccount}
+      >
+        <Trash2 size={18} color={isDark ? '#E56B6B' : '#CC0000'} />
+        <Text style={[styles.logoutText, { color: isDark ? '#E56B6B' : '#CC0000' }]}>Delete Account</Text>
       </Pressable>
     </>
   );
@@ -619,40 +723,173 @@ export function Profile() {
     </>
   );
 
+  const renderNotificationsTab = () => (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Notifications</Text>
+      
+      <View style={{ marginTop: 8 }}>
+        <View style={styles.inlineSwitchRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inlineSwitchTitle}>Event Reminders</Text>
+          </View>
+          <Switch
+            value={eventNotifications}
+            onValueChange={(v) => setNotificationPreference('event', v)}
+            trackColor={{ false: COLORS.border, true: COLORS.primary }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
+
+        <View style={[styles.inlineSwitchRow, { marginTop: 12 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inlineSwitchTitle}>Transit Alerts</Text>
+          </View>
+          <Switch
+            value={placeNotifications}
+            onValueChange={(v) => setNotificationPreference('place', v)}
+            trackColor={{ false: COLORS.border, true: COLORS.primary }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
+
+        <View style={[styles.inlineSwitchRow, { marginTop: 12 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.inlineSwitchTitle}>Social Pings</Text>
+          </View>
+          <Switch
+            value={pingNotifications}
+            onValueChange={(v) => setNotificationPreference('ping', v)}
+            trackColor={{ false: COLORS.border, true: COLORS.primary }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
+      </View>
+
+      <Text style={[styles.preferenceLabel, { marginTop: 24, marginBottom: 12, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 }]}>
+        Alert Lead Time
+      </Text>
+      <View style={styles.segmentedRow}>
+        {[
+          { id: 5, label: '5m' },
+          { id: 10, label: '10m' },
+          { id: 15, label: '15m' },
+          { id: 30, label: '30m' },
+          { id: 60, label: '1h' },
+        ].map((option) => {
+          const selected = notificationLeadTime === option.id;
+          return (
+            <Pressable
+              key={option.id}
+              style={[styles.segmentButton, selected && styles.segmentButtonActive]}
+              onPress={() => setNotificationLeadTime(option.id)}
+            >
+              <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+
+  const renderBlockedTab = () => (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>Blocked Users</Text>
+      <Text style={styles.sectionSubtitle}>
+        People and organizers you've blocked will be hidden only for this account.
+      </Text>
+
+      {loadingBlocked ? (
+        <ActivityIndicator color={COLORS.primary} style={{ marginTop: 24 }} />
+      ) : blockedUsers.length > 0 ? (
+        blockedUsers.map((item, index) => (
+          <View 
+            key={item.id} 
+            style={[
+                styles.toolRow, 
+                index === blockedUsers.length - 1 && styles.toolRowLast,
+                { paddingVertical: 12 }
+            ]}
+          >
+            <View style={styles.avatar}>
+              {item.profile_image_url ? (
+                <Image source={{ uri: item.profile_image_url }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatarText}>{item.name?.[0] || 'U'}</Text>
+              )}
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.toolTitle}>{item.name}</Text>
+                <Text style={styles.email} numberOfLines={1}>{item.id}</Text>
+            </View>
+            <Pressable 
+                style={{ 
+                    padding: 8, 
+                    backgroundColor: COLORS.surface + '20', 
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: COLORS.border
+                }}
+                onPress={() => handleUnblock(item.id)}
+            >
+                <UserX size={18} color={COLORS.danger || '#FF4444'} />
+            </Pressable>
+          </View>
+        ))
+      ) : (
+        <View style={{ alignItems: 'center', padding: 40, opacity: 0.5 }}>
+            <Shield size={48} color={COLORS.textTertiary} strokeWidth={1} />
+            <Text style={{ color: COLORS.textTertiary, marginTop: 12, fontSize: 15 }}>No blocked users</Text>
+        </View>
+      )}
+    </View>
+  );
+
   const renderResourcesTab = () => (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Campus Resources</Text>
 
       {[
         {
+          key: 'annex',
+          title: 'Library Services',
+          icon: LibraryBig,
+          iconColor: '#00CFC7',
+          iconBg: 'rgba(0, 207, 199, 0.14)',
+          action: () => navigation.navigate('AnnexHub'),
+          internal: true,
+        },
+        {
           key: 'howdy',
           title: 'Howdy Portal',
           icon: GraduationCap,
+          iconColor: COLORS.primary,
+          iconBg: 'rgba(80,0,0,0.12)',
           action: () => openExternal('https://howdy.tamu.edu/main/home/card-view'),
         },
         {
           key: 'hire',
           title: 'Hire Aggies',
           icon: BriefcaseBusiness,
+          iconColor: '#3B82F6',
+          iconBg: 'rgba(59,130,246,0.12)',
           action: () => openExternal('https://tamu-csm.symplicity.com/students/index.php?signin_tab=0'),
-        },
-        {
-          key: 'annex',
-          title: 'The Annex',
-          icon: Building2,
-          action: () => navigation.navigate('AnnexHub'),
-          internal: true,
         },
         {
           key: 'transact',
           title: 'Transact eAccounts',
           icon: Wallet,
+          iconColor: '#F59E0B',
+          iconBg: 'rgba(245, 158, 11, 0.15)',
           action: () => openExternal('https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx'),
         },
         {
           key: 'rec',
           title: 'Rec Center Hours',
           icon: Dumbbell,
+          iconColor: '#10B981',
+          iconBg: 'rgba(16,185,129,0.15)',
           action: () => navigation.navigate('RecreationFacilities'),
         },
       ].map((resource, index, array) => {
@@ -663,8 +900,8 @@ export function Profile() {
             style={[styles.toolRow, index === array.length - 1 && styles.toolRowLast]}
             onPress={resource.action}
           >
-            <View style={[styles.toolIconBg, { backgroundColor: 'rgba(243,241,237,0.12)' }]}>
-              <Icon size={20} color="#F3F1ED" />
+            <View style={[styles.toolIconBg, { backgroundColor: resource.iconBg || 'rgba(243,241,237,0.12)' }]}>
+              <Icon size={20} color={resource.iconColor || COLORS.textPrimary} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.toolTitle}>{resource.title}</Text>
@@ -677,7 +914,138 @@ export function Profile() {
           </Pressable>
         );
       })}
+
+      <Pressable
+        style={[styles.toolRow, { marginTop: 12 }]}
+        onPress={() => openExternal('https://www.termsfeed.com/live/2fc33440-a5a9-4943-a1da-d3c5d5abc1e5')}
+      >
+        <View style={[styles.toolIconBg, { backgroundColor: 'rgba(0, 122, 255, 0.15)' }]}>
+          <Scale size={20} color="#007AFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.toolTitle}>Terms of Service</Text>
+        </View>
+        <ExternalLink size={18} color={COLORS.textTertiary} />
+      </Pressable>
+
+      <Pressable
+        style={[styles.toolRow, styles.toolRowLast, { marginTop: 4 }]}
+        onPress={() => openExternal('https://www.termsfeed.com/live/4889a318-ae78-48e2-975d-2eddfe043866')}
+      >
+        <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 199, 89, 0.15)' }]}>
+          <Shield size={20} color="#34C759" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.toolTitle}>Privacy Policy</Text>
+        </View>
+        <ExternalLink size={18} color={COLORS.textTertiary} />
+      </Pressable>
+
+      <Pressable
+        style={[styles.toolRow, styles.toolRowLast, { marginTop: 12 }]}
+        onPress={() => openExternal(SUPPORT_CONTACT_URL)}
+      >
+        <View style={[styles.toolIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+          <LifeBuoy size={20} color="#F59E0B" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.toolTitle}>Contact Support</Text>
+        </View>
+        <ExternalLink size={18} color={COLORS.textTertiary} />
+      </Pressable>
     </View>
+  );
+
+  const renderGuestView = () => (
+    <>
+      <View style={styles.heroCard}>
+        <View style={styles.heroHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.eyebrow}>Guest Mode</Text>
+            <Text style={styles.title}>Browse Campus Fast</Text>
+          </View>
+          <View style={styles.heroBadge}>
+            <UserRound size={18} color={COLORS.textPrimary} />
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>What You Can Do</Text>
+
+        <View style={styles.toolRow}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(80,0,0,0.12)' }]}>
+            <GraduationCap size={20} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Browse campus events</Text>
+          </View>
+        </View>
+
+        <View style={styles.toolRow}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(59,130,246,0.12)' }]}>
+            <Compass size={20} color="#3B82F6" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Use Places and view Rec capacity</Text>
+          </View>
+        </View>
+
+        <View style={[styles.toolRow, styles.toolRowLast]}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(249,115,22,0.12)' }]}>
+            <ExternalLink size={20} color="#F97316" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Share events with other people</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Log In For More</Text>
+
+        <Pressable style={styles.toolRow} onPress={openGuestRecCapacity}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(34,197,94,0.14)' }]}>
+            <Dumbbell size={20} color="#22C55E" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Open Rec Capacity in Places</Text>
+          </View>
+          <ChevronRight size={18} color={COLORS.textTertiary} />
+        </Pressable>
+
+        <Pressable
+          style={[styles.toolRow, styles.toolRowLast]}
+          onPress={() => openExternal('https://www.termsfeed.com/live/4889a318-ae78-48e2-975d-2eddfe043866')}
+        >
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 199, 89, 0.15)' }]}>
+            <Shield size={20} color="#34C759" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Privacy Policy</Text>
+          </View>
+          <ExternalLink size={18} color={COLORS.textTertiary} />
+        </Pressable>
+
+        <Pressable
+          style={[styles.toolRow, styles.toolRowLast, { marginTop: 12 }]}
+          onPress={() => openExternal(SUPPORT_CONTACT_URL)}
+        >
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+            <LifeBuoy size={20} color="#F59E0B" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Contact Support</Text>
+          </View>
+          <ExternalLink size={18} color={COLORS.textTertiary} />
+        </Pressable>
+      </View>
+
+      <Pressable style={styles.logoutButton} onPress={handleLogin}>
+        <LogIn size={18} color={COLORS.textPrimary} />
+        <Text style={styles.logoutText}>Log In</Text>
+      </Pressable>
+    </>
   );
 
   return (
@@ -697,22 +1065,29 @@ export function Profile() {
         style={[styles.container, useWallpaper && styles.transparentContainer]}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
       >
-        <View style={styles.tabShell}>
-          <PillTabs
-            items={SETTINGS_TABS.map((tab) => ({ key: tab.key, label: tab.label, icon: tab.icon }))}
-            activeKey={activeTab}
-            onChange={(key) => setActiveTab(key as SettingsTabKey)}
-            floating={false}
-            compact={false}
-            activeTextMode="always"
-            layout="stacked"
-          />
-        </View>
+        {isGuest ? (
+          renderGuestView()
+        ) : (
+          <>
+            <View style={styles.tabShell}>
+              <PillTabs
+                items={SETTINGS_TABS.map((tab) => ({ key: tab.key, label: tab.label, icon: tab.icon }))}
+                activeKey={activeTab}
+                onChange={(key) => setActiveTab(key as SettingsTabKey)}
+                floating={false}
+                compact={false}
+                activeTextMode="always"
+                layout="stacked"
+              />
+            </View>
 
-        {activeTab === 'personal' ? renderPersonalTab() : null}
-        {activeTab === 'layout' ? renderLayoutTab() : null}
-        {activeTab === 'resources' ? renderResourcesTab() : null}
+            {activeTab === 'personal' ? renderPersonalTab() : null}
+            {activeTab === 'layout' ? renderLayoutTab() : null}
+            {activeTab === 'resources' ? renderResourcesTab() : null}
+          </>
+        )}
 
         <View style={{ height: 120 }} />
       </ScrollView>
@@ -720,7 +1095,7 @@ export function Profile() {
   );
 }
 
-const getStyles = (COLORS: any, isDark: boolean) =>
+const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
   StyleSheet.create({
     container: {
       flex: 1,
@@ -768,9 +1143,9 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       borderRadius: 16,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(12,12,14,0.9)',
+      backgroundColor: isDark ? 'rgba(12,12,14,0.9)' : 'rgba(80,0,0,0.06)',
       borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.08)',
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'transparent',
     },
     tabShell: {
       marginTop: 2,
@@ -790,7 +1165,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       width: 74,
       height: 74,
       borderRadius: 37,
-      backgroundColor: 'rgba(12,12,14,0.9)',
+      backgroundColor: isDark ? 'rgba(12,12,14,0.9)' : 'rgba(80,0,0,0.06)',
       alignItems: 'center',
       justifyContent: 'center',
       overflow: 'hidden',
@@ -802,7 +1177,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     avatarText: {
       fontSize: 26,
       fontWeight: '800',
-      color: '#FFFFFF',
+      color: COLORS.textPrimary,
     },
     cameraBadge: {
       position: 'absolute',
@@ -813,7 +1188,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: 'rgba(12,12,14,0.95)',
+      backgroundColor: isDark ? 'rgba(12,12,14,0.95)' : 'rgba(255,255,255,0.9)',
       borderWidth: 2,
       borderColor: COLORS.background,
     },
@@ -878,7 +1253,8 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     segmentButtonActive: {
       backgroundColor: 'rgba(12,12,14,0.92)',
-      borderColor: 'rgba(243,241,237,0.26)',
+      borderColor: accentColor,
+      borderWidth: 2,
     },
     segmentText: {
       fontSize: 13,

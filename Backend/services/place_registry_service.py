@@ -6,6 +6,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
+from services import osm_places_service
+
 
 FRONTEND_BUILDINGS_JSON = (
     Path(__file__).resolve().parents[2]
@@ -224,16 +226,47 @@ def _load_building_records() -> Iterable[Dict[str, Any]]:
     return records
 
 
+def _records_overlap(first: Dict[str, Any], second: Dict[str, Any], max_coord_delta: float = 0.0015) -> bool:
+    return (
+        abs(float(first["lat"]) - float(second["lat"]))
+        + abs(float(first["lng"]) - float(second["lng"]))
+        <= max_coord_delta
+    )
+
+
 def _dedupe_preserving_latest(records: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    deduped: Dict[str, Dict[str, Any]] = {}
+    deduped: Dict[str, List[Dict[str, Any]]] = {}
     for record in records:
-        deduped[_normalize_key(record["name"])] = record
-    return list(deduped.values())
+        normalized_name = _normalize_key(record["name"])
+        existing_records = deduped.setdefault(normalized_name, [])
+        overlapping_index = next(
+            (
+                index
+                for index, existing in enumerate(existing_records)
+                if _records_overlap(existing, record)
+            ),
+            None,
+        )
+        if overlapping_index is None:
+            existing_records.append(record)
+        else:
+            existing_records[overlapping_index] = record
+
+    flattened: List[Dict[str, Any]] = []
+    for records_for_name in deduped.values():
+        flattened.extend(records_for_name)
+    return flattened
 
 
 @lru_cache(maxsize=1)
 def _build_registry() -> Dict[str, Any]:
-    records = _dedupe_preserving_latest([*_load_building_records(), *SPECIAL_PLACES])
+    records = _dedupe_preserving_latest(
+        [
+            *osm_places_service.get_osm_places(),
+            *_load_building_records(),
+            *SPECIAL_PLACES,
+        ]
+    )
     by_id: Dict[str, Dict[str, Any]] = {}
     by_name: Dict[str, Dict[str, Any]] = {}
     alias_lookup: Dict[str, Dict[str, Any]] = {}
@@ -273,13 +306,27 @@ def get_place_by_id(place_id: str | None) -> Dict[str, Any] | None:
 def serialize_place(place: Dict[str, Any] | None) -> Dict[str, Any] | None:
     if not place:
         return None
+    excluded_aliases = {
+        _normalize_key(place["name"]),
+        _normalize_key(place.get("short_name")),
+        _normalize_key(place["place_id"]),
+    }
+    aliases = [
+        alias
+        for alias in list(place.get("aliases") or [])
+        if _normalize_key(alias) not in excluded_aliases
+    ]
     return {
         "place_id": place["place_id"],
         "name": place["name"],
         "short_name": place.get("short_name"),
         "type": place["type"],
-        "aliases": list(place.get("aliases") or []),
+        "aliases": aliases,
         "coord": {"lat": place["lat"], "lng": place["lng"]},
+        "description": place.get("description"),
+        "address": place.get("address"),
+        "search_only": bool(place.get("search_only")),
+        "source": place.get("source"),
     }
 
 
@@ -315,4 +362,3 @@ def resolve_place(
     if nearest and nearest_delta <= max_coord_delta:
         return nearest
     return None
-

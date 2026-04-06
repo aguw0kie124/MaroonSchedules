@@ -2,29 +2,36 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useUser } from "@clerk/clerk-expo";
 import { fetchSchedules } from "../../api/client";
 import { useCampusHubStore } from "../../store/campusHubStore";
+import { useSessionStore } from "../../store/sessionStore";
 import { BUILDINGS } from "../../data/campus";
 import { useEventStore } from "../../store/eventStore";
 import type { CampusLocation, LocationType, ScheduleMeetingEntry, ScheduleMapOption } from "./types";
 import { resolveScheduleBuilding, getCanonicalLocationName, getBuildingCategory } from "./campusData";
 
-export function useScheduleMap(fullCampusIndex: CampusLocation[], selectedDate: Date = new Date()) {
+export function useScheduleMap(
+  fullCampusIndex: CampusLocation[],
+  selectedDate: Date = new Date(),
+  options: { skipInitialLoad?: boolean } = {}
+) {
   const { user } = useUser();
+  const isGuest = useSessionStore((state) => state.isGuest);
   const campusHubSnapshot = useCampusHubStore((state) => state.snapshot);
-  const scheduledEvents = useEventStore((state) => state.scheduledEvents);
+  const persistedScheduledEvents = useEventStore((state) => state.scheduledEvents);
+  const scheduledEvents = isGuest ? [] : persistedScheduledEvents;
 
   const [savedSchedules, setSavedSchedules] = useState<any[]>([]);
   const [isLoadingSchedules, setIsLoadingSchedules] = useState(false);
   const [activeScheduleId, setActiveScheduleId] = useState<string | null>(null);
 
-  const loadSchedules = useCallback(() => {
-    if (!user?.id) {
+  const loadSchedules = useCallback(async () => {
+    if (!user?.id || isGuest) {
       setSavedSchedules([]);
       setIsLoadingSchedules(false);
       return;
     }
 
     setIsLoadingSchedules(true);
-    fetchSchedules(user.id)
+    return fetchSchedules(user.id)
       .then((data) => {
         setSavedSchedules(Array.isArray(data) ? data : []);
       })
@@ -35,14 +42,15 @@ export function useScheduleMap(fullCampusIndex: CampusLocation[], selectedDate: 
       .finally(() => {
         setIsLoadingSchedules(false);
       });
-  }, [user?.id]);
+  }, [isGuest, user?.id]);
 
   useEffect(() => {
+    if (options.skipInitialLoad) return;
     loadSchedules();
-  }, [loadSchedules]);
+  }, [loadSchedules, options.skipInitialLoad]);
 
   const refreshSchedules = useCallback(() => {
-    loadSchedules();
+    return loadSchedules();
   }, [loadSchedules]);
 
   function parseTimeToMinutes(timeStr: string): number {
@@ -69,7 +77,7 @@ export function useScheduleMap(fullCampusIndex: CampusLocation[], selectedDate: 
 
   const scheduleOptions = useMemo(() => {
     const options: ScheduleMapOption[] = [];
-    const uploadedCourses = campusHubSnapshot?.academic?.courses || [];
+    const uploadedCourses = isGuest ? [] : campusHubSnapshot?.academic?.courses || [];
     
     const dayMap: Record<number, string> = { 1: "M", 2: "T", 3: "W", 4: "R", 5: "F" };
     const currentDayChar = dayMap[selectedDate.getDay()];
@@ -192,7 +200,7 @@ export function useScheduleMap(fullCampusIndex: CampusLocation[], selectedDate: 
     });
 
     return options;
-  }, [campusHubSnapshot?.academic?.courses, campusHubSnapshot?.academic?.scheduleName, savedSchedules, scheduledEvents, selectedDate]);
+  }, [campusHubSnapshot?.academic?.courses, campusHubSnapshot?.academic?.scheduleName, isGuest, savedSchedules, scheduledEvents, selectedDate]);
 
   useEffect(() => {
     if (scheduleOptions.length === 0) {

@@ -204,7 +204,11 @@ export default function TransitTripPlannerScreen({ navigation }: any) {
         translucent
       />
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="always"
+      >
         <View style={styles.header}>
           <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
             <ChevronLeft size={18} color={COLORS.textPrimary} />

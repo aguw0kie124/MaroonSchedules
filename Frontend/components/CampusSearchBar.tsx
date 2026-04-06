@@ -34,6 +34,7 @@ export function CampusSearchBar({
   const [results, setResults] = useState<CampusSearchResult[]>([]);
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
+  const selectingResultRef = useRef(false);
 
   const handleChangeText = useCallback(
     (text: string) => {
@@ -48,11 +49,15 @@ export function CampusSearchBar({
   );
 
   const handleSelect = (item: CampusSearchResult) => {
+    selectingResultRef.current = true;
     Keyboard.dismiss();
     setQuery('');
     setResults([]);
     setIsFocused(false);
     onSelect(item);
+    setTimeout(() => {
+      selectingResultRef.current = false;
+    }, 0);
   };
 
   const handleClear = () => {
@@ -67,6 +72,13 @@ export function CampusSearchBar({
       setResults(searchCampus(displayValue, userCoord));
     }
     setIsFocused(true);
+  };
+
+  const handleBlur = () => {
+    setTimeout(() => {
+      if (selectingResultRef.current) return;
+      setIsFocused(false);
+    }, 150);
   };
 
   const pinnedItems = getPinnedItems();
@@ -101,7 +113,7 @@ export function CampusSearchBar({
           value={inputValue}
           onChangeText={handleChangeText}
           onFocus={handleFocus}
-          onBlur={() => setTimeout(() => setIsFocused(false), 200)}
+          onBlur={handleBlur}
           returnKeyType="search"
           autoCorrect={false}
           selectTextOnFocus
@@ -128,6 +140,7 @@ export function CampusSearchBar({
                       key={item.id}
                       style={({ pressed }) => [styles.resultRow, pressed && styles.resultRowPressed]}
                       onPress={() => handleSelect(item)}
+                      hitSlop={8}
                     >
                       <View style={styles.resultIconWrap}>
                         <Icon size={18} color="#F3F1ED" />
@@ -156,6 +169,7 @@ export function CampusSearchBar({
                       key={item.id}
                       style={({ pressed }) => [styles.resultRow, pressed && styles.resultRowPressed]}
                       onPress={() => handleSelect(item)}
+                      hitSlop={8}
                     >
                       <View style={styles.resultIconWrap}>
                         <Icon size={18} color="#F3F1ED" />

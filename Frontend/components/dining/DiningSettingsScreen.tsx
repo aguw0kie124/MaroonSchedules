@@ -13,7 +13,7 @@ import {
 import { ArrowLeft } from 'lucide-react-native';
 import { useUser } from '@clerk/clerk-expo';
 
-import { API_URL } from '../../config';
+import { requestJson } from '../../api/client';
 import { useTheme } from '../SharedUI';
 
 const ACTIVITY = [
@@ -70,8 +70,7 @@ export default function DiningSettingsScreen({ navigation }: any) {
     if (!user) return;
 
     let cancelled = false;
-    fetch(`${API_URL}/dining/profile/${user.id}`)
-      .then((response) => response.json())
+    requestJson(`/dining/profile/${encodeURIComponent(user.id)}`)
       .then((data) => {
         if (cancelled || !data || data.detail) return;
         setForm((current) => ({
@@ -113,9 +112,8 @@ export default function DiningSettingsScreen({ navigation }: any) {
     if (!user) return;
     setSaving(true);
     try {
-      await fetch(`${API_URL}/dining/profile/${user.id}`, {
+      await requestJson(`/dining/profile/${encodeURIComponent(user.id)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
       Alert.alert('Saved', 'Advanced nutrition settings updated.');

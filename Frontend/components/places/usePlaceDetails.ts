@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useUser } from "@clerk/clerk-expo";
 import { 
   isDiningHallMenuLocation, 
   getDiningMenuCandidates, 
@@ -8,6 +9,7 @@ import {
 import type { CampusLocation } from "./types";
 
 export function usePlaceDetails(selectedId: string | null, locations: CampusLocation[]) {
+  const { user } = useUser();
   const [streamReviews, setStreamReviews] = useState<any[]>([]);
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
   const [newRating, setNewRating] = useState(5);
@@ -41,7 +43,14 @@ export function usePlaceDetails(selectedId: string | null, locations: CampusLoca
     setIsPostingReview(true);
     try {
       const { postPlaceReview } = require("../../services/streamFeeds");
-      await postPlaceReview(selectedId, newRating, newReviewText.trim());
+      await postPlaceReview({
+        userId: user?.id || "anonymous",
+        userName: user?.fullName || user?.username || "Aggie User",
+        userImage: user?.imageUrl || "",
+        placeId: selectedId,
+        rating: newRating,
+        text: newReviewText.trim()
+      });
       setReviewModalVisible(false);
       setNewReviewText("");
       setNewRating(5);

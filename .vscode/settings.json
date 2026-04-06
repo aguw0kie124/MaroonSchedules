@@ -9,5 +9,6 @@
     "python.analysis.diagnosticMode": "workspace",
     "python.analysis.typeCheckingMode": "basic",
     "python.languageServer": "Pylance",
-    "python.analysis.indexing": true
+    "python.analysis.indexing": true,
+    "python-envs.defaultEnvManager": "ms-python.python:system"
 }

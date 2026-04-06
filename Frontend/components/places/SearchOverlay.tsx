@@ -2,6 +2,7 @@ import React from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { MapPin, ChevronRight, Bus } from "lucide-react-native";
 import type { CampusLocation } from "./types";
+import { getLocationSelectionId } from "./campusData";
 
 interface SearchOverlayProps {
   styles: any;
@@ -24,6 +25,14 @@ export function SearchOverlay({
   onSelectLocation,
   onSelectBusRoute,
 }: SearchOverlayProps) {
+  const getLocationSubtitle = (loc: CampusLocation) => {
+    if (loc.address) return `${loc.address} • ${loc.type}`;
+    if (loc.shortName && loc.shortName !== loc.location) {
+      return `${loc.shortName} • ${loc.type}`;
+    }
+    return loc.type;
+  };
+
   const visiblePlaceResults = searchResults.slice(0, 6);
   const visibleRouteResults = busRouteResults.slice(0, 4);
   const hasPlaceResults = visiblePlaceResults.length > 0;
@@ -40,7 +49,7 @@ export function SearchOverlay({
           <Text style={styles.searchSectionLabel}>Places</Text>
           {visiblePlaceResults.map((loc) => (
             <TouchableOpacity
-              key={loc.location}
+              key={getLocationSelectionId(loc)}
               style={styles.searchItem}
               onPress={() => onSelectLocation(loc)}
             >
@@ -54,12 +63,7 @@ export function SearchOverlay({
                 >
                   {loc.location}
                 </Text>
-                <Text style={styles.searchItemSub}>
-                  {loc.shortName && loc.shortName !== loc.location
-                    ? `${loc.shortName} • `
-                    : ""}
-                  {loc.type}
-                </Text>
+                <Text style={styles.searchItemSub}>{getLocationSubtitle(loc)}</Text>
               </View>
               <ChevronRight size={16} color={COLORS.textTertiary} />
             </TouchableOpacity>

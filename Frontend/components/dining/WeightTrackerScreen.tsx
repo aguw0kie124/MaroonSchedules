@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Dimensions, ActivityIndicator, ScrollView, SafeAreaView, StatusBar, ImageBackground } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { useUser } from '@clerk/clerk-expo';
-import { API_URL } from '../../config';
+import { requestJson } from '../../api/client';
 import { Card, SectionLabel, StatPill, ActionButton } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
@@ -27,8 +27,8 @@ export default function WeightTrackerScreen({ navigation }: any) {
     setLoading(true);
     try {
       const [wRes, sRes] = await Promise.all([
-        fetch(`${API_URL}/dining/weights/${user.id}`).then(r => r.json()),
-        fetch(`${API_URL}/dining/weight-stats/${user.id}`).then(r => r.json()),
+        requestJson(`/dining/weights/${encodeURIComponent(user.id)}`),
+        requestJson(`/dining/weight-stats/${encodeURIComponent(user.id)}`),
       ]);
       setWeights(Array.isArray(wRes) ? wRes : []);
       setStats(sRes);
@@ -42,9 +42,8 @@ export default function WeightTrackerScreen({ navigation }: any) {
     if (!user || !newWt || isNaN(+newWt)) { Alert.alert('Enter a valid weight'); return; }
     setSaving(true);
     try {
-      await fetch(`${API_URL}/dining/weights/${user.id}`, {
+      await requestJson(`/dining/weights/${encodeURIComponent(user.id)}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date: newDate, weight_lbs: +newWt }),
       });
       setNewWt(''); 
@@ -60,7 +59,7 @@ export default function WeightTrackerScreen({ navigation }: any) {
     { text: 'Cancel' },
     { text: 'Delete', style: 'destructive', onPress: async () => {
       try { 
-        await fetch(`${API_URL}/dining/weights/${user?.id}/${date}`, { method: 'DELETE' });
+        await requestJson(`/dining/weights/${encodeURIComponent(user?.id || '')}/${encodeURIComponent(date)}`, { method: 'DELETE' });
         load(); 
       } catch {}
     }},

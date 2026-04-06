@@ -2,43 +2,109 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   SafeAreaView,
   Pressable,
   ScrollView,
   Alert,
+  Platform,
 } from 'react-native';
-import { useSignIn, useOAuth } from '@clerk/clerk-expo';
+import { useOAuth } from '@clerk/clerk-expo';
 import { COLORS, TYPOGRAPHY, SPACING } from '../constants';
 import { Button } from './Button';
 import * as Linking from 'expo-linking';
+import { useSessionStore } from '../store/sessionStore';
+import { GoogleIcon } from './common/CustomIcons';
+
+const APPLE_LABEL = '\uF8FF';
 
 interface LoginScreenProps {
   onBack?: () => void;
 }
 
 export function LoginScreen({ onBack }: LoginScreenProps) {
-  const { signIn, setActive, isLoaded } = useSignIn();
-  const { startOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
+  const { startOAuthFlow: startGoogleOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
+  const { startOAuthFlow: startAppleOAuthFlow } = useOAuth({ strategy: 'oauth_apple' });
+  const enterGuestMode = useSessionStore((state) => state.enterGuestMode);
+  const exitGuestMode = useSessionStore((state) => state.exitGuestMode);
+  const setAuthMode = useSessionStore((state) => state.setAuthMode);
+  const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
   const [isLoading, setIsLoading] = useState(false);
+  const [activeFlow, setActiveFlow] = useState<'tamu' | 'admin' | 'apple' | 'adminApple' | null>(null);
 
-  const onGooglePress = async () => {
+  const getAuthErrorMessage = (flow: 'tamu' | 'admin' | 'apple' | 'adminApple', err: any) => {
+    return (
+      err?.errors?.[0]?.longMessage ||
+      err?.errors?.[0]?.message ||
+      err?.message ||
+      (flow === 'admin' || flow === 'adminApple'
+        ? 'Admin sign in failed'
+        : flow === 'apple'
+          ? 'Apple sign in failed'
+          : 'Google sign in failed')
+    );
+  };
+
+  const onOAuthPress = async (flow: 'tamu' | 'admin' | 'apple' | 'adminApple') => {
     try {
+      exitGuestMode();
+      setAuthMode(flow === 'admin' || flow === 'adminApple' ? 'admin' : 'user');
       setIsLoading(true);
-      const { createdSessionId, setActive } = await startOAuthFlow({
-        redirectUrl: Linking.createURL('/'),
-      });
-      if (createdSessionId) {
-        await setActive!({ session: createdSessionId });
+      setActiveFlow(flow);
+      const authResult =
+        flow === 'apple' || flow === 'adminApple'
+          ? await startAppleOAuthFlow({
+              redirectUrl: Linking.createURL('/'),
+            })
+          : await startGoogleOAuthFlow({
+              redirectUrl: Linking.createURL('/'),
+            });
+      const { createdSessionId, setActive } = authResult;
+      if (createdSessionId && setActive) {
+        await setActive({ session: createdSessionId });
+      } else {
+        resetSessionMode();
+        Alert.alert('Error', 'Clerk did not return a valid session for this sign-in attempt.');
       }
     } catch (err: any) {
-      Alert.alert('Error', err.errors?.[0]?.message || 'TAMU SSO sign in failed');
+      resetSessionMode();
+      console.error('Sign in failed', flow, JSON.stringify(err, null, 2));
+      Alert.alert('Error', getAuthErrorMessage(flow, err));
     } finally {
       setIsLoading(false);
+      setActiveFlow(null);
     }
   };
 
+  const handleGuestContinue = () => {
+    resetSessionMode();
+    enterGuestMode();
+  };
+
+  const renderGoogleLabel = (prefix: string, variant: 'primary' | 'secondary') => (
+    <View style={styles.oauthLabel}>
+      <Text
+        style={[
+          styles.providerButtonText,
+          variant === 'primary' ? styles.oauthLabelTextPrimary : styles.oauthLabelTextSecondary,
+        ]}
+      >
+        {prefix}
+      </Text>
+      <GoogleIcon size={18} />
+    </View>
+  );
+
+  const renderAppleLabel = (prefix: string, variant: 'primary' | 'secondary') => (
+    <Text
+      style={[
+        styles.providerButtonText,
+        variant === 'primary' ? styles.oauthLabelTextPrimary : styles.oauthLabelTextSecondary,
+      ]}
+    >
+      {prefix} {APPLE_LABEL}
+    </Text>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -52,21 +118,81 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
               ]}
               onPress={onBack}
             >
-              <Text style={styles.backButtonText}>← Back</Text>
+              <Text style={styles.backButtonText}>{'\u2190'} Back</Text>
             </Pressable>
           )}
 
-          <Text style={styles.title}>Log In</Text>
-          <Text style={styles.subtitle}>Welcome back to MaroonLife</Text>
+          <Text style={styles.title}>Choose How To Continue</Text>
+          <Text style={styles.subtitle}>Pick the experience that fits how you want to use MaroonLife.</Text>
 
-          {/* Setup for TAMU account context */}
+          <View style={styles.accountCard}>
+            <View style={styles.accountHeader}>
+              <Text style={styles.accountTitle}>Student</Text>
+              <Text style={styles.accountSubtitle}>Full campus experience</Text>
+            </View>
+            <View style={styles.providerRow}>
+              <Button
+                variant="primary"
+                style={styles.providerButton}
+                onPress={() => onOAuthPress('tamu')}
+                disabled={isLoading}
+              >
+                {isLoading && activeFlow === 'tamu' ? 'Loading...' : renderGoogleLabel('With', 'primary')}
+              </Button>
+
+              {Platform.OS === 'ios' && (
+                <Button
+                  variant="secondary"
+                  style={styles.providerButton}
+                  onPress={() => onOAuthPress('apple')}
+                  disabled={isLoading}
+                >
+                  {isLoading && activeFlow === 'apple' ? 'Loading...' : renderAppleLabel('With', 'secondary')}
+                </Button>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.accountCard}>
+            <View style={styles.accountHeader}>
+              <Text style={styles.accountTitle}>Admin</Text>
+              <Text style={styles.accountSubtitle}>Event posting and management</Text>
+            </View>
+            <View style={styles.providerRow}>
+              <Button
+                variant="secondary"
+                style={styles.providerButton}
+                onPress={() => onOAuthPress('admin')}
+                disabled={isLoading}
+              >
+                {isLoading && activeFlow === 'admin' ? 'Loading...' : renderGoogleLabel('Admin', 'secondary')}
+              </Button>
+
+              {Platform.OS === 'ios' && (
+                <Button
+                  variant="secondary"
+                  style={styles.providerButton}
+                  onPress={() => onOAuthPress('adminApple')}
+                  disabled={isLoading}
+                >
+                  {isLoading && activeFlow === 'adminApple' ? 'Loading...' : renderAppleLabel('Admin', 'secondary')}
+                </Button>
+              )}
+            </View>
+          </View>
+
           <Button
             variant="secondary"
-            style={styles.googleButton}
-            onPress={onGooglePress}
+            style={styles.guestButton}
+            onPress={handleGuestContinue}
+            disabled={isLoading}
           >
-            {isLoading ? 'Loading...' : 'Continue with TAMU Account'}
+            Continue as Guest
           </Button>
+
+          <Text style={styles.helperText}>
+            Guest mode keeps Events sharing and Places browsing available, but account-based tools like RSVP, saved schedules, and Pings stay locked until you log in.
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -112,80 +238,68 @@ const styles = StyleSheet.create({
   subtitle: {
     ...TYPOGRAPHY.body,
     color: COLORS.textSecondary,
-    marginBottom: SPACING.xl,
+    marginBottom: SPACING.lg,
+    lineHeight: 22,
   },
-  toggleContainer: {
-    flexDirection: 'row',
-    marginBottom: SPACING.md,
-    backgroundColor: COLORS.gray50,
-    borderRadius: 10,
-    padding: 4,
+  accountCard: {
+    width: '100%',
+    backgroundColor: COLORS.white,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: COLORS.border,
-  },
-  toggleButton: {
-    flex: 1,
-    paddingVertical: SPACING.sm,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  toggleButtonActive: {
-    backgroundColor: COLORS.white,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
-    elevation: 1,
-  },
-  toggleButtonPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.97 }],
-  },
-  toggleText: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
-  },
-  toggleTextActive: {
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  input: {
-    ...TYPOGRAPHY.body,
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 10,
     padding: SPACING.md,
-    marginBottom: SPACING.md,
-    color: COLORS.text,
-  },
-  primaryButton: {
-    width: '100%',
-    marginTop: SPACING.md,
+    gap: SPACING.sm,
     marginBottom: SPACING.md,
   },
-  secondaryButton: {
-    marginTop: SPACING.md,
+  accountHeader: {
+    gap: 4,
   },
-  divider: {
+  accountTitle: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.primary,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  accountSubtitle: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  providerRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  providerButton: {
+    flex: 1,
+  },
+  oauthLabel: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: SPACING.lg,
+    justifyContent: 'center',
+    gap: 8,
   },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: COLORS.border,
-  },
-  dividerText: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.textSecondary,
-    marginHorizontal: SPACING.md,
+  providerButtonText: {
     fontWeight: '600',
-    fontSize: 12,
+    fontSize: 15,
   },
-  googleButton: {
+  oauthLabelTextPrimary: {
+    color: '#FFFFFF',
+  },
+  oauthLabelTextSecondary: {
+    color: COLORS.primary,
+  },
+  guestButton: {
     width: '100%',
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  helperText: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: SPACING.lg,
   },
 });

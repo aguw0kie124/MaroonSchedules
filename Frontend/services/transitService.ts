@@ -147,7 +147,7 @@ export const transitService = {
     /**
      * Fetches route patterns (polylines) and stops. Uses TTL caching.
      */
-    async getRoutePattern(routeId: string): Promise<{ points: any[], stops: any[] }> {
+    async getRoutePattern(routeId: string): Promise<{ points: any[], stops: any[], paths?: any[] }> {
         const now = Date.now();
         const cached = this.patternCache.get(routeId);
         if (cached && (now - cached.timestamp < PATTERN_TTL)) {
@@ -164,6 +164,14 @@ export const transitService = {
                 longitude: pt.longitude
             }));
             
+            const paths = (data.paths || []).map((path: any) => ({
+                DirectionName: path.DirectionName,
+                points: (path.points || []).map((p: any) => ({
+                    latitude: p.latitude,
+                    longitude: p.longitude
+                }))
+            }));
+            
             const stops: any[] = [];
             const seenStops = new Set();
             (data.stops || []).forEach((stop: any) => {
@@ -173,12 +181,12 @@ export const transitService = {
                 }
             });
 
-            const result = { points, stops };
+            const result = { points, stops, paths };
             this.patternCache.set(routeId, { data: result, timestamp: now });
             return result;
         } catch (error) {
             console.error('[TransitService] Error fetching patterns:', error);
-            return cached?.data || { points: [], stops: [] };
+            return cached?.data || { points: [], stops: [], paths: [] };
         }
     },
 

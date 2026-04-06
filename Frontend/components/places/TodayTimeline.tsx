@@ -14,6 +14,7 @@ import type { ScheduleMeetingEntry, ScheduleMapOption } from "./types";
 interface TodayTimelineProps {
   styles: any;
   COLORS: any;
+  isDark: boolean;
   activeScheduleOption: ScheduleMapOption | null;
   onGetDirections?: (building: string) => void;
 }
@@ -21,6 +22,7 @@ interface TodayTimelineProps {
 export function TodayTimeline({
   styles,
   COLORS,
+  isDark,
   activeScheduleOption,
   onGetDirections,
 }: TodayTimelineProps) {
@@ -59,7 +61,14 @@ export function TodayTimeline({
   if (!activeScheduleOption || !sortedEntries.length) {
     return (
       <View style={localStyles.emptyContainer}>
-        <Text style={localStyles.emptyText}>No events scheduled for Today.</Text>
+        <Text
+          style={[
+            localStyles.emptyText,
+            { color: isDark ? "rgba(255,255,255,0.68)" : COLORS.textSecondary },
+          ]}
+        >
+          No events scheduled for Today.
+        </Text>
       </View>
     );
   }
@@ -78,10 +87,26 @@ export function TodayTimeline({
     return type === "event" ? "#FF9500" : "#500000"; // Orange for events, Maroon for classes
   };
 
+  const palette = React.useMemo(
+    () => ({
+      timeline: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.12)",
+      time: isDark ? "#FFFFFF" : COLORS.textPrimary,
+      timeMuted: isDark ? "#AAA" : COLORS.textSecondary,
+      cardBg: isDark ? "rgba(255,255,255,0.04)" : "#FFFFFF",
+      cardBorder: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,12,14,0.09)",
+      title: isDark ? "#FFFFFF" : COLORS.textPrimary,
+      location: isDark ? "#AAA" : COLORS.textSecondary,
+      classBadgeBg: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,12,14,0.06)",
+      classBadgeText: isDark ? "#AAA" : COLORS.textSecondary,
+      dotBorder: isDark ? "rgba(12,12,14,1)" : "#FFFFFF",
+    }),
+    [COLORS.textPrimary, COLORS.textSecondary, isDark],
+  );
+
   return (
     <TourTarget name="schedule-preview">
       <View style={localStyles.container}>
-        <View style={localStyles.timelineLine} />
+        <View style={[localStyles.timelineLine, { backgroundColor: palette.timeline }]} />
         
         {sortedEntries.map((entry, index) => {
           const dotColor = getDotColor(entry.type);
@@ -90,30 +115,64 @@ export function TodayTimeline({
           return (
             <View key={`${entry.id}-${index}`} style={localStyles.timelineItem}>
               <View style={localStyles.timeContainer}>
-                <Text style={localStyles.timeText}>
+                <Text style={[localStyles.timeText, { color: palette.time }]}>
                   {entry.timeLabel.split("-")[0].trim().replace(/^0/, '')}
                 </Text>
               </View>
 
               {/* Middle: Dot */}
               <View style={localStyles.dotContainer}>
-                <View style={[localStyles.dot, { backgroundColor: dotColor }]} />
+                <View
+                  style={[
+                    localStyles.dot,
+                    { backgroundColor: dotColor, borderColor: palette.dotBorder },
+                  ]}
+                />
               </View>
 
               {/* Right side: Content */}
               <View style={localStyles.contentContainer}>
-                <View style={localStyles.eventCard}>
+                <View
+                  style={[
+                    localStyles.eventCard,
+                    {
+                      backgroundColor: palette.cardBg,
+                      borderColor: palette.cardBorder,
+                      shadowOpacity: isDark ? 0 : 0.08,
+                      shadowRadius: isDark ? 0 : 12,
+                      shadowOffset: isDark ? undefined : { width: 0, height: 4 },
+                      elevation: isDark ? 0 : 2,
+                    },
+                  ]}
+                >
                   <View style={localStyles.eventHeaderRow}>
                     <View style={{ flex: 1 }}>
-                      <Text style={localStyles.eventTitle} numberOfLines={2}>
+                      <Text
+                        style={[localStyles.eventTitle, { color: palette.title }]}
+                        numberOfLines={2}
+                      >
                         {entry.code} {entry.name}
                       </Text>
-                      <Text style={localStyles.eventLocation}>
+                      <Text style={[localStyles.eventLocation, { color: palette.location }]}>
                         {entry.locationLabel || "On Campus"}
                       </Text>
                     </View>
-                    <View style={[localStyles.badge, { backgroundColor: isEvent ? "rgba(255,149,0,0.1)" : "rgba(255,255,255,0.06)" }]}>
-                      <Text style={[localStyles.badgeText, { color: isEvent ? "#FF9500" : "#AAA" }]}>
+                    <View
+                      style={[
+                        localStyles.badge,
+                        {
+                          backgroundColor: isEvent
+                            ? (isDark ? "rgba(255,149,0,0.1)" : "rgba(255,149,0,0.14)")
+                            : palette.classBadgeBg,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          localStyles.badgeText,
+                          { color: isEvent ? "#FF9500" : palette.classBadgeText },
+                        ]}
+                      >
                         {isEvent ? "EVENT" : "CLASS"}
                       </Text>
                     </View>
@@ -164,7 +223,6 @@ const localStyles = StyleSheet.create({
     paddingTop: 1,
   },
   timeText: {
-    color: "#FFF",
     fontSize: 14, // Decreased as requested
     fontWeight: "900",
     opacity: 1.0,
@@ -189,11 +247,9 @@ const localStyles = StyleSheet.create({
     paddingLeft: 4,
   },
   eventCard: {
-    backgroundColor: "rgba(255,255,255,0.04)",
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
   },
   eventHeaderRow: {
     flexDirection: "row",
@@ -202,14 +258,12 @@ const localStyles = StyleSheet.create({
     marginBottom: 8,
   },
   eventTitle: {
-    color: "#FFF",
     fontSize: 13.5, // Slightly smaller
     fontWeight: "800",
     marginBottom: 2,
     lineHeight: 18,
   },
   eventLocation: {
-    color: "#AAA",
     fontSize: 13,
     fontWeight: "600",
   },

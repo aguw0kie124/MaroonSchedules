@@ -7,6 +7,7 @@ interface ButtonProps {
     onPress?: () => void;
     style?: StyleProp<ViewStyle>;
     textStyle?: StyleProp<TextStyle>;
+    disabled?: boolean;
 }
 
 // Colors from Dashboard.tsx
@@ -18,7 +19,7 @@ const COLORS = {
     textSecondary: '#666',
 };
 
-export function Button({ variant = 'primary', children, onPress, style, textStyle }: ButtonProps) {
+export function Button({ variant = 'primary', children, onPress, style, textStyle, disabled }: ButtonProps) {
     const getContainerStyle = (pressed: boolean) => [
         styles.base,
         variant === 'primary' && styles.primary,
@@ -36,11 +37,17 @@ export function Button({ variant = 'primary', children, onPress, style, textStyl
     ];
 
     return (
-        <Pressable style={({ pressed }) => getContainerStyle(pressed)} onPress={onPress}>
+        <Pressable 
+            style={({ pressed }) => [getContainerStyle(pressed), disabled && { opacity: 0.5 }]} 
+            onPress={onPress}
+            disabled={disabled}
+        >
             {variant === 'icon' ? (
                 children
-            ) : (
+            ) : typeof children === 'string' || typeof children === 'number' ? (
                 <Text style={getTextStyle()}>{children}</Text>
+            ) : (
+                children
             )}
         </Pressable>
     );

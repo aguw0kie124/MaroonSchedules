@@ -1,6 +1,7 @@
 import React, { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Dimensions,
   FlatList,
@@ -9,6 +10,7 @@ import {
   PanResponder,
   Platform,
   Pressable,
+  RefreshControl,
   Image,
   ScrollView,
   StyleSheet,
@@ -16,11 +18,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import {
   ArrowRight,
   BadgeCheck,
+  BellOff,
+  CircleAlert,
   Calendar as CalendarIcon,
   CalendarDays,
   Check,
@@ -38,21 +42,33 @@ import {
   Settings,
   Share2,
   Ticket,
+  Trash2,
   Trophy,
   Users,
+  UserX,
   X as XIcon,
 } from 'lucide-react-native';
 
+
 import { API_URL } from '../config';
+import { requestJson, saveCampusEventRsvp } from '../api/client';
+import { normalizeImageUrl } from '../services/url';
 import { TourTarget, useTour } from './onboarding/TourProvider';
 import { useShareStore } from '../store/shareStore';
 import { useEventStore } from '../store/eventStore';
 import type { MajorOption, ScheduledEvent } from '../store/eventStore';
 import { useTheme } from './SharedUI';
+import { useAppShellStore } from '../store/appShellStore';
+import { useSessionStore } from '../store/sessionStore';
+import { scheduleAdminEventReviewNotification, scheduleEventNotification } from '../services/notificationService';
+import { promptGuestLogin } from '../utils/guestAccess';
+import { blockUser, reportContent } from '../services/streamFeeds';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.24;
-const TAMU_EVENTS_API = `${API_URL}/campus/events?limit=1000`;
+const HERO_CARD_WIDTH = SCREEN_WIDTH - 52;
+const HERO_CARD_GAP = 14;
+const HERO_CARD_SNAP_INTERVAL = HERO_CARD_WIDTH + HERO_CARD_GAP;
 
 interface CampusEventResponse {
   event_id: string;
@@ -74,6 +90,10 @@ interface CampusEventResponse {
   food_type?: string | null;
   categories?: Record<string, number>;
   image_url?: string | null;
+  is_admin_event?: boolean;
+  google_review_url?: string | null;
+  admin_clerk_id?: string | null;
+  organization_name?: string | null;
 }
 
 interface TAMUEvent {
@@ -96,12 +116,16 @@ interface TAMUEvent {
   food_type?: string | null;
   categories?: Record<string, number>;
   imageUrl?: string | null;
+  is_admin_event?: boolean;
+  google_review_url?: string | null;
+  admin_clerk_id?: string | null;
   _searchBlob?: string;
   _category?: ExploreCategory;
   _socialMode?: SocialMode;
 }
 
 type ExploreCategory =
+  | 'Featured'
   | 'Food'
   | 'Sports'
   | 'Social'
@@ -115,6 +139,7 @@ type SocialMode = 'casual' | 'professional';
 type EventsView = 'discover' | 'list' | 'swipe' | 'inbox';
 
 const ALL_CATEGORIES: ExploreCategory[] = [
+  'Featured',
   'Sports',
   'Academic',
   'Food',
@@ -148,6 +173,13 @@ export const CATEGORY_META: Record<
     icon: React.ComponentType<any>;
   }
 > = {
+  Featured: {
+    accent: '#FFD700',
+    chipBg: '#FFF9C4',
+    chipText: '#F57F17',
+    cardTint: '#FBC02D',
+    icon: BadgeCheck,
+  },
   Sports: {
     accent: '#71B7FF',
     chipBg: '#CFE7FF',
@@ -235,13 +267,12 @@ function getSearchBlob(event: TAMUEvent) {
 }
 
 function resolveEventImageUrl(value?: string | null) {
-  if (!value) return null;
-  if (value.startsWith('http://') || value.startsWith('https://')) return value;
-  if (value.startsWith('/')) return `${API_URL}${value}`;
-  return value;
+  return normalizeImageUrl(value);
 }
 
 function classifyCategory(event: TAMUEvent): ExploreCategory {
+  if (event.is_admin_event || event.categories?.featured) return 'Featured';
+
   if (event.categories) {
     if (event.categories.food) return 'Food';
     if (event.categories.sports) return 'Sports';
@@ -349,13 +380,15 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const isDark = theme === 'dark';
   const navigation = useNavigation<any>();
   const { user } = useUser();
+  const isGuest = useSessionStore((state) => state.isGuest);
   const s = useMemo(() => getStyles(COLORS, isDark, embedded), [COLORS, isDark, embedded]);
 
   const { advanceStep, activeTargetName } = useTour();
 
   const [events, setEvents] = useState<TAMUEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<EventsView>('discover');
+  const [view, setView] = useState<EventsView>(isGuest ? 'list' : 'discover');
+
   const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set());
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [searchQuery, setSearchQuery] = useState('');
@@ -363,6 +396,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [swipeIndex, setSwipeIndex] = useState(0);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const {
@@ -370,82 +404,113 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     selectedMajor,
     setMajorSpecific,
     setSelectedMajor,
-    scheduledEvents,
+    scheduledEvents: persistedScheduledEvents,
     scheduleEvent,
-    savedEventIds,
+    savedEventIds: persistedSavedEventIds,
+    removeScheduledEvent,
     saveEvent,
     unsaveEvent,
-    dislikedEventIds,
+    dislikedEventIds: persistedDislikedEventIds,
     dislikeEvent,
     removeIdsFromDisliked,
     clearDisliked,
-    receivedInvites,
+    receivedInvites: persistedReceivedInvites,
     acceptInvite,
     rejectInvite,
   } = useEventStore();
+  const scheduledEvents = isGuest ? [] : persistedScheduledEvents;
+  const savedEventIds = isGuest ? [] : persistedSavedEventIds;
+  const dislikedEventIds = isGuest ? [] : persistedDislikedEventIds;
+  const receivedInvites = isGuest ? [] : persistedReceivedInvites;
 
   const pan = useRef(new Animated.ValueXY()).current;
   const opacity = useRef(new Animated.Value(1)).current;
   const nowTs = Math.floor(Date.now() / 1000);
 
-  useEffect(() => {
-    const fetchEvents = async () => {
-      try {
-        setLoading(true);
-        const res = await fetch(TAMU_EVENTS_API);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const payload = (await res.json()) as { events?: CampusEventResponse[] } | CampusEventResponse[];
-        const raw = Array.isArray(payload) ? payload : payload.events || [];
-        const parsed: TAMUEvent[] = raw
-          .filter((event) => event && event.event_id && event.title && event.start_time)
-          .map((event) => {
-            const startTs = Math.floor(new Date(event.start_time).getTime() / 1000);
-            const endTs = event.end_time ? Math.floor(new Date(event.end_time).getTime() / 1000) : null;
-            return {
-              id: event.event_id,
-              title: stripHtml(event.title),
-              date_ts: Number.isFinite(startTs) ? startTs : 0,
-              date_iso: event.start_time,
-              date2_ts: Number.isFinite(endTs as number) ? endTs : null,
-              location: event.location ? stripHtml(event.location) : null,
-              location_title: event.location ? stripHtml(event.location) : null,
-              description: event.description || event.summary || null,
-              url: event.link || event.source_url || '',
-              tags: event.tags || null,
-              event_types: event.has_food ? ['Free Food'] : null,
-              group_title: event.host_name || event.source_name || '',
-              location_lat: event.location_lat ?? null,
-              location_lng: event.location_lng ?? null,
-              has_food: !!event.has_food,
-              food_confidence: event.food_confidence ?? 0,
-              food_type: event.food_type ?? null,
-              categories: event.categories || undefined,
-              imageUrl: resolveEventImageUrl(event.image_url ?? null),
-            };
-          })
-          .map((event) => {
-            const searchBlob = getSearchBlob(event);
-            return {
-              ...event,
-              _searchBlob: searchBlob,
-              _category: classifyCategory(event),
-              _socialMode: getSocialMode({ ...event, _searchBlob: searchBlob }),
-            };
-          })
-          .sort((a, b) => a.date_ts - b.date_ts);
-        setEvents(parsed);
-      } catch (error) {
-        console.error('[Events] Fetch error:', error);
-      } finally {
-        setLoading(false);
+  const fetchEvents = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        limit: '1000',
+        student_relevant_only: 'false',
+      });
+      if (user?.id) {
+        params.set('clerk_id', user.id);
       }
-    };
+      const payload = (await requestJson(
+        `/campus/events?${params.toString()}`,
+      )) as { events?: CampusEventResponse[] } | CampusEventResponse[];
+      const raw = Array.isArray(payload) ? payload : payload.events || [];
+      const parsed: TAMUEvent[] = raw
+        .filter((event) => event && event.event_id && event.title && event.start_time)
+        .map((event) => {
+          const startTs = Math.floor(new Date(event.start_time).getTime() / 1000);
+          const endTs = event.end_time ? Math.floor(new Date(event.end_time).getTime() / 1000) : null;
+          return {
+            id: event.event_id,
+            title: stripHtml(event.title),
+            date_ts: Number.isFinite(startTs) ? startTs : 0,
+            date_iso: event.start_time,
+            date2_ts: Number.isFinite(endTs as number) ? endTs : null,
+            location: event.location ? stripHtml(event.location) : null,
+            location_title: event.location ? stripHtml(event.location) : null,
+            description: event.description || event.summary || null,
+            url: event.link || event.source_url || '',
+            tags: event.tags || null,
+            event_types: event.has_food ? ['Free Food'] : null,
+            group_title: event.organization_name || event.host_name || event.source_name || '',
+            location_lat: event.location_lat ?? null,
+            location_lng: event.location_lng ?? null,
+            has_food: !!event.has_food,
+            food_confidence: event.food_confidence ?? 0,
+            food_type: event.food_type ?? null,
+            categories: event.categories || undefined,
+            imageUrl: resolveEventImageUrl(event.image_url ?? null),
+            is_admin_event: !!event.is_admin_event,
+            google_review_url: event.google_review_url ?? null,
+            admin_clerk_id: event.admin_clerk_id ?? null,
+          };
+        })
+        .map((event) => {
+          const searchBlob = getSearchBlob(event);
+          return {
+            ...event,
+            _searchBlob: searchBlob,
+            _category: classifyCategory(event),
+            _socialMode: getSocialMode({ ...event, _searchBlob: searchBlob }),
+          };
+        })
+        .sort((a, b) => a.date_ts - b.date_ts);
+      setEvents(parsed);
+    } catch (error) {
+      console.error('[Events] Fetch error:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
 
+  useEffect(() => {
     fetchEvents();
-  }, []);
+  }, [fetchEvents]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchEvents();
+    }, [fetchEvents]),
+  );
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchEvents();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchEvents]);
 
   const categoryCounts = useMemo(() => {
     const counts: Record<ExploreCategory, number> = {
+      Featured: 0,
       Sports: 0,
       Academic: 0,
       Food: 0,
@@ -457,7 +522,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     };
 
     events.forEach((event) => {
-      if (event.date_ts < nowTs) return;
+      const isOngoing = (event.date2_ts != null && event.date2_ts > nowTs) || (event.date_ts >= nowTs - 7200);
+      if (!isOngoing) return;
       if (isMajorSpecific && !matchesMajor(event, selectedMajor)) return;
       const category = event._category || classifyCategory(event);
       counts[category] += 1;
@@ -467,7 +533,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   }, [events, isMajorSpecific, nowTs, selectedMajor]);
 
   const filteredUpcomingEvents = useMemo(() => {
-    let next = events.filter((event) => event.date_ts >= nowTs);
+    let next = events.filter((event) => {
+      return (event.date2_ts != null && event.date2_ts > nowTs) || (event.date_ts >= nowTs - 7200);
+    });
 
     if (deferredSearchQuery.trim()) {
       const q = deferredSearchQuery.toLowerCase();
@@ -516,6 +584,12 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     setSwipeIndex(0);
   }, [selectedCategories, socialMode, deferredSearchQuery, isMajorSpecific, selectedMajor]);
 
+  useEffect(() => {
+    if (isGuest) {
+      setView('list');
+    }
+  }, [isGuest]);
+
   const changeView = useCallback((nextView: EventsView) => {
     startTransition(() => {
       setView(nextView);
@@ -533,8 +607,35 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const handleSchedule = useCallback(
     async (event: TAMUEvent) => {
+      if (isGuest) {
+        promptGuestLogin(
+          navigation,
+          event.is_admin_event
+            ? 'RSVPs require a signed-in account.'
+            : 'Saving events to your schedule requires a signed-in account.',
+        );
+        return;
+      }
+      const eventId = String(event.id);
+      const isScheduled = scheduledEvents.some((scheduled) => String(scheduled.id) === eventId);
+
+      if (isScheduled) {
+        removeScheduledEvent(eventId);
+        if (user?.id) {
+          try {
+            await saveCampusEventRsvp({
+              clerk_id: user.id,
+              event_id: eventId,
+              response: 'none',
+            });
+          } catch (error) {
+            console.error('[Events] RSVP remove error:', error);
+          }
+        }
+        return;
+      }
       const scheduled: ScheduledEvent = {
-        id: String(event.id),
+        id: eventId,
         title: event.title,
         location: event.location,
         description: event.description,
@@ -548,37 +649,49 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       };
       scheduleEvent(scheduled);
 
+      // Notification logic
+      const prefs = useAppShellStore.getState();
+      const leadTime = prefs.notificationLeadTime;
+        if (prefs.eventNotifications) {
+          scheduleEventNotification(
+            event.title,
+            `Starting at ${event.location || 'TAMU'} in ${leadTime} minutes.`,
+            new Date(event.date_ts * 1000),
+            leadTime
+          );
+
+          if (event.is_admin_event && event.date2_ts) {
+            scheduleAdminEventReviewNotification(
+              event.title,
+              event.location,
+              new Date(event.date2_ts * 1000),
+              event.google_review_url,
+              String(event.id),
+            );
+          }
+        }
+
       if (user?.id) {
         try {
-          await fetch(`${API_URL}/campus/events/rsvp`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              clerk_id: user.id,
-              event_id: String(event.id),
-              response: 'going',
-            }),
+          await saveCampusEventRsvp({
+            clerk_id: user.id,
+            event_id: String(event.id),
+            response: 'going',
           });
           
-          // Onboarding: Navigate to today list on map after RSVP
+          // Onboarding: The tour now requires the user to manually navigate to the Places tab
           if (activeTargetName === 'event-rsvp') {
             // Optimistic update for local store so it shows up in TodayTimeline instantly
             scheduleEvent(event as any);
             advanceStep('event-rsvp');
-            navigation.navigate('Main', { 
-              screen: 'Places',
-              params: { 
-                isToday: true,
-                eventDate: event.date_iso // Pass the event date so map can switch to it
-              }
-            });
           }
         } catch (error) {
           console.error('[Events] RSVP error:', error);
         }
       }
+      Alert.alert('Successfully RSVPed', `${event.title} is now in your schedule.`);
     },
-    [scheduleEvent, user, activeTargetName, advanceStep, navigation],
+    [activeTargetName, advanceStep, isGuest, navigation, removeScheduledEvent, scheduleEvent, scheduledEvents, user],
   );
 
   const handleShare = useCallback((event: TAMUEvent) => {
@@ -587,6 +700,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       message: `Check out this event: ${event.title} at ${event.location || 'TAMU'}!`,
       url: event.url || 'https://maroonschedules.tamu.edu',
     });
+
+    if (event.is_admin_event) {
+      fetch(`${API_URL}/admin/events/${event.id}/share`, { method: 'POST' }).catch(e => console.error(e));
+    }
   }, []);
 
   const handleMapOpen = useCallback(
@@ -607,6 +724,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               link: event.url || null,
               hasFood: !!event.has_food,
             },
+            initialLocation: event.location || undefined,
           },
         });
       }
@@ -616,12 +734,122 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const handleSaveToggle = useCallback(
     (event: TAMUEvent) => {
+      if (isGuest) {
+        promptGuestLogin(
+          navigation,
+          'Saving events requires a signed-in account.',
+        );
+        return;
+      }
       const id = String(event.id);
       if (savedEventIds.includes(id)) unsaveEvent(id);
       else saveEvent(id);
     },
-    [savedEventIds, saveEvent, unsaveEvent],
+    [isGuest, navigation, saveEvent, savedEventIds, unsaveEvent],
   );
+
+  const removeOrganizerEvents = useCallback((adminClerkId: string) => {
+    setEvents((current) => current.filter((event) => event.admin_clerk_id !== adminClerkId));
+    setDetailEvent((current) => (current?.admin_clerk_id === adminClerkId ? null : current));
+  }, []);
+
+  const handleUnsubscribeOrganizer = useCallback(
+    (event: TAMUEvent) => {
+      if (!user?.id || !event.admin_clerk_id) {
+        Alert.alert('Sign in required', 'Sign in to manage organizer preferences.');
+        return;
+      }
+
+      const organizerName = event.group_title || 'this organizer';
+      Alert.alert(
+        'Unsubscribe from organizer?',
+        `You will stop seeing future featured events from ${organizerName}.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Unsubscribe',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await requestJson(`/admin/admins/${event.admin_clerk_id}/unsubscribe`, {
+                  method: 'POST',
+                  body: JSON.stringify({ clerk_id: user.id }),
+                });
+                removeOrganizerEvents(event.admin_clerk_id as string);
+                Alert.alert('Organizer muted', `You will no longer see events from ${organizerName}.`);
+              } catch (error) {
+                console.error('[Events] Unsubscribe organizer error:', error);
+                Alert.alert('Unable to update', 'We could not unsubscribe you from this organizer right now.');
+              }
+            },
+          },
+        ],
+      );
+    },
+    [removeOrganizerEvents, user?.id],
+  );
+
+  const handleBlockOrganizer = useCallback(
+    (event: TAMUEvent) => {
+      if (!user?.id || !event.admin_clerk_id) {
+        Alert.alert('Sign in required', 'Sign in to block organizers.');
+        return;
+      }
+
+      const organizerName = event.group_title || 'this organizer';
+      Alert.alert(
+        'Block organizer?',
+        `You will stop seeing events and social content from ${organizerName}.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Block organizer',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await blockUser(event.admin_clerk_id as string, user.id);
+                removeOrganizerEvents(event.admin_clerk_id as string);
+                Alert.alert('Organizer blocked', `${organizerName} has been blocked.`);
+              } catch (error) {
+                console.error('[Events] Block organizer error:', error);
+                Alert.alert('Unable to block', 'We could not block this organizer right now.');
+              }
+            },
+          },
+        ],
+      );
+    },
+    [removeOrganizerEvents, user?.id],
+  );
+
+  const handleReportOrganizer = useCallback((event: TAMUEvent) => {
+    if (!user?.id || !event.admin_clerk_id) {
+      Alert.alert('Sign in required', 'Sign in to report events.');
+      return;
+    }
+
+    const submitReport = async (reason: string) => {
+      try {
+        await reportContent({
+          reporteeId: event.admin_clerk_id as string,
+          postType: 'post',
+          postId: String(event.id),
+          reason,
+        });
+        Alert.alert('Report received', 'Thank you for helping keep the community safe.');
+      } catch (error) {
+        console.error('[Events] Report organizer error:', error);
+        Alert.alert('Unable to submit report', 'We could not send that report right now.');
+      }
+    };
+
+    Alert.alert('Report event', 'What is the issue with this event?', [
+      { text: 'Spam', onPress: () => submitReport('spam') },
+      { text: 'Inappropriate', onPress: () => submitReport('inappropriate') },
+      { text: 'Harassment', onPress: () => submitReport('harassment') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [user?.id]);
 
   const handleSwipeAdvance = useCallback(() => {
     pan.setValue({ x: 0, y: 0 });
@@ -631,10 +859,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const handleSwipeLeft = useCallback(
     (event: TAMUEvent) => {
+      if (isGuest) {
+        handleSwipeAdvance();
+        return;
+      }
       dislikeEvent(String(event.id));
       handleSwipeAdvance();
     },
-    [dislikeEvent, handleSwipeAdvance],
+    [dislikeEvent, handleSwipeAdvance, isGuest],
   );
 
   const handleSwipeRight = useCallback(
@@ -665,21 +897,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     [clearDisliked, dislikedEventIds, events, removeIdsFromDisliked],
   );
 
-  const renderHeader = (title: string, subtitle?: string) => (
+  const renderHeader = (title: string) => (
+
       <View style={s.headerBlock}>
         <View style={s.headerTopRow}>
           <View style={{ flex: 1 }}>
             <Text style={s.pageTitle}>{title}</Text>
-            {!!subtitle && <Text style={s.pageSubtitle}>{subtitle}</Text>}
+
         </View>
-        <Pressable style={s.headerIconButton} onPress={() => setView('inbox')}>
-          <Inbox size={18} color={COLORS.textPrimary} />
-          {receivedInvites.length > 0 ? (
-            <View style={s.headerBadge}>
-              <Text style={s.headerBadgeText}>{receivedInvites.length}</Text>
-            </View>
-          ) : null}
-        </Pressable>
         <Pressable style={s.headerIconButton} onPress={() => setSettingsVisible(true)}>
           <Settings size={18} color={COLORS.textPrimary} />
         </Pressable>
@@ -692,16 +917,30 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           { id: 'swipe', label: 'Swipe' },
         ] as const).map((tab) => {
           const active = view === tab.id;
-          return (
+          const tabItem = (
             <Pressable
               key={tab.id}
               style={[s.modeTab, active && s.modeTabActive]}
-              onPress={() => changeView(tab.id)}
+              onPress={() => {
+                changeView(tab.id);
+                if (tab.id === 'list' && activeTargetName === 'switch-to-list') {
+                  advanceStep('switch-to-list');
+                }
+              }}
             >
               <Text style={[s.modeTabText, active && s.modeTabTextActive]}>{tab.label}</Text>
               {active ? <View style={s.modeTabUnderline} /> : null}
             </Pressable>
           );
+
+          if (tab.id === 'list') {
+            return (
+              <TourTarget key={tab.id} name="switch-to-list">
+                {tabItem}
+              </TourTarget>
+            );
+          }
+          return tabItem;
         })}
       </View>
     </View>
@@ -711,7 +950,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     <View style={s.container}>
       {view === 'discover' && (
         <>
-          {renderHeader('Events', 'Campus plans that are actually worth opening.')}
+          {renderHeader('Events')}
+
 
           {loading ? (
             <View style={s.loadingWrap}>
@@ -722,6 +962,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             <ScrollView
               contentContainerStyle={s.scrollContent}
               showsVerticalScrollIndicator={false}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
             >
               <View style={s.categoryWrap}>
                 {categoriesExpanded ? (
@@ -815,17 +1056,25 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={s.heroRail}
-                snapToInterval={SCREEN_WIDTH - 52}
+                snapToOffsets={discoverEvents.map((_, index) => index * HERO_CARD_SNAP_INTERVAL)}
+                snapToAlignment="start"
+                disableIntervalMomentum
                 decelerationRate="fast"
               >
                 {discoverEvents.map((event, i) => {
                   const card = (
-                    <HeroEventCard
+                    <View
                       key={String(event.id)}
-                      event={event}
-                      onPress={() => setDetailEvent(event)}
-                      onMap={() => handleMapOpen(event)}
-                    />
+                      style={{ marginRight: i === discoverEvents.length - 1 ? 0 : HERO_CARD_GAP }}
+                    >
+                      <HeroEventCard
+                        event={event}
+                        scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
+                        onSchedule={() => handleSchedule(event)}
+                        onPress={() => setDetailEvent(event)}
+                        onMap={() => handleMapOpen(event)}
+                      />
+                    </View>
                   );
                   return card;
                 })}
@@ -848,7 +1097,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
       {view === 'list' && (
         <>
-          {renderHeader('Events', 'Search, save, and share what is happening next.')}
+          {renderHeader('Events')}
+
           <View style={s.listSearchRow}>
             <View style={s.searchShell}>
               <Search size={18} color={COLORS.textTertiary} />
@@ -866,6 +1116,25 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             </Pressable>
           </View>
 
+          <View style={[s.categoryWrap, { marginBottom: 16, marginTop: 4 }]}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.categoryCollapsedRow}
+            >
+              {ALL_CATEGORIES.map((category) => (
+                <CategoryChip
+                  key={category}
+                  category={category}
+                  count={categoryCounts[category] || 0}
+                  active={selectedCategories.has(category)}
+                  onPress={() => toggleCategory(category)}
+                />
+              ))}
+            </ScrollView>
+          </View>
+
+
           {loading ? (
             <View style={s.loadingWrap}>
               <ActivityIndicator size="large" color={COLORS.primary} />
@@ -877,6 +1146,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               keyExtractor={(event) => String(event.id)}
               contentContainerStyle={s.listScroll}
               showsVerticalScrollIndicator={false}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
               initialNumToRender={10}
               maxToRenderPerBatch={12}
               windowSize={7}
@@ -885,6 +1155,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 const row = (
                   <ListEventRow
                     event={item}
+                    isGuest={isGuest}
                     saved={savedEventIds.includes(String(item.id))}
                     scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(item.id))}
                     onPress={() => {
@@ -893,9 +1164,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                       }
                       setDetailEvent(item);
                     }}
-                    onSave={() => handleSaveToggle(item)}
+                    onDelete={() => dislikeEvent(String(item.id))}
                     onShare={() => handleShare(item)}
                     onSchedule={() => handleSchedule(item)}
+
                   />
                 );
                 return index === 0 ? (
@@ -1088,15 +1360,20 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         onRestoreCategory={handleRestoreCategory}
       />
 
-      <DetailModal
-        event={detailEvent}
-        onClose={() => setDetailEvent(null)}
-        onSaveToggle={handleSaveToggle}
-        onSchedule={handleSchedule}
-        onShare={handleShare}
-        onMap={handleMapOpen}
-        saved={detailEvent ? savedEventIds.includes(String(detailEvent.id)) : false}
-      />
+        <DetailModal
+          event={detailEvent}
+          onClose={() => setDetailEvent(null)}
+          isGuest={isGuest}
+          onSaveToggle={handleSaveToggle}
+          onSchedule={handleSchedule}
+          onShare={handleShare}
+          onMap={handleMapOpen}
+          onUnsubscribeOrganizer={handleUnsubscribeOrganizer}
+          onBlockOrganizer={handleBlockOrganizer}
+          onReportOrganizer={handleReportOrganizer}
+          saved={detailEvent ? savedEventIds.includes(String(detailEvent.id)) : false}
+          scheduled={detailEvent ? scheduledEvents.some((scheduled) => String(scheduled.id) === String(detailEvent.id)) : false}
+        />
     </View>
   );
 }
@@ -1118,7 +1395,12 @@ function CategoryChip({
       onPress={onPress}
       style={[
         stylesStatic.categoryChip,
-        { backgroundColor: active ? accent : chipBg, opacity: count ? 1 : 0.48 },
+        {
+          backgroundColor: active ? accent : chipBg,
+          opacity: count ? 1 : 0.48,
+          borderWidth: active ? 2 : 1,
+          borderColor: active ? '#FFFFFF' : `${chipText}26`,
+        },
       ]}
     >
       <Icon size={17} color={active ? '#FFFFFF' : chipText} />
@@ -1139,10 +1421,14 @@ function CategoryChip({
 
 function HeroEventCard({
   event,
+  scheduled,
+  onSchedule,
   onPress,
   onMap,
 }: {
   event: TAMUEvent;
+  scheduled: boolean;
+  onSchedule: () => void;
   onPress: () => void;
   onMap: () => void;
 }) {
@@ -1178,6 +1464,14 @@ function HeroEventCard({
 
       <View style={stylesStatic.heroBottom}>
         <Text style={stylesStatic.heroTitle}>{event.title}</Text>
+        {event.group_title ? (
+          <View style={stylesStatic.heroOrganizerPill}>
+            <BadgeCheck size={13} color="#FFFFFF" />
+            <Text style={stylesStatic.heroOrganizerText} numberOfLines={1}>
+              {event.group_title}
+            </Text>
+          </View>
+        ) : null}
         <View style={stylesStatic.heroMetaRow}>
           <CalendarIcon size={17} color="#FFFFFF" />
           <Text style={stylesStatic.heroMetaText}>
@@ -1191,11 +1485,37 @@ function HeroEventCard({
         {event.location_lat != null && event.location_lng != null ? (
           <Pressable style={stylesStatic.heroMapButton} onPress={onMap}>
             <Map size={15} color={COLORS.textPrimary} />
-            <Text style={[stylesStatic.heroMapButtonText, { color: COLORS.textPrimary }]}>
+            <Text style={stylesStatic.heroMapButtonText}>
               Open in Places
             </Text>
           </Pressable>
         ) : null}
+        <Pressable
+          style={[
+            stylesStatic.heroRsvpButton,
+            { backgroundColor: scheduled ? '#FFF1EA' : '#FFFFFF' },
+          ]}
+          onPress={onSchedule}
+        >
+          {scheduled ? <XIcon size={15} color="#E06A3E" /> : <CalendarDays size={15} color="#2A6F3E" />}
+          <Text
+            style={[
+              stylesStatic.heroRsvpButtonText,
+              { color: scheduled ? '#C65A28' : '#174F2E' },
+            ]}
+            numberOfLines={!event.is_admin_event && !scheduled ? 2 : 1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+          >
+            {event.is_admin_event
+              ? scheduled
+                ? 'Remove RSVP'
+                : 'RSVP'
+              : scheduled
+                ? 'Remove from Schedule'
+                : 'Add'}
+          </Text>
+        </Pressable>
       </View>
     </Pressable>
   );
@@ -1203,20 +1523,24 @@ function HeroEventCard({
 
 function ListEventRow({
   event,
+  isGuest,
   saved,
   scheduled,
   onPress,
-  onSave,
+  onDelete,
   onShare,
   onSchedule,
 }: {
+
   event: TAMUEvent;
+  isGuest: boolean;
   saved: boolean;
   scheduled: boolean;
   onPress: () => void;
-  onSave: () => void;
+  onDelete: () => void;
   onShare: () => void;
   onSchedule: () => void;
+
 }) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
@@ -1251,14 +1575,22 @@ function ListEventRow({
         <Text style={[stylesStatic.listMeta, { color: COLORS.textSecondary }]}>
           {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
         </Text>
+        {event.group_title ? (
+          <Text style={[stylesStatic.listMeta, stylesStatic.listOrganizer, { color: COLORS.primary }]} numberOfLines={1}>
+            {event.group_title}
+          </Text>
+        ) : null}
         <Text style={[stylesStatic.listMeta, { color: COLORS.textTertiary }]} numberOfLines={1}>
           {event.location || 'Campus'}
         </Text>
       </View>
       <View style={stylesStatic.listActions}>
-        <Pressable onPress={onSave} style={stylesStatic.listActionButton}>
-          <Heart size={20} color={saved ? '#FF4D6D' : COLORS.textSecondary} fill={saved ? '#FF4D6D' : 'none'} />
-        </Pressable>
+        {!isGuest ? (
+          <Pressable onPress={onDelete} style={stylesStatic.listActionButton}>
+            <Trash2 size={20} color={COLORS.textSecondary} />
+          </Pressable>
+        ) : null}
+
         <Pressable onPress={onShare} style={stylesStatic.listActionButton}>
           <Share2 size={20} color={COLORS.textSecondary} />
         </Pressable>
@@ -1268,14 +1600,14 @@ function ListEventRow({
             stylesStatic.listActionButton,
             {
               backgroundColor: scheduled
-                ? '#3CCB6C'
+                ? '#FFEEE5'
                 : isDark
                   ? 'rgba(255,255,255,0.06)'
                   : 'rgba(15,23,42,0.06)',
             },
           ]}
         >
-          <Check size={20} color={scheduled ? '#FFFFFF' : '#3CCB6C'} />
+          {scheduled ? <XIcon size={20} color="#E06A3E" /> : <Check size={20} color="#3CCB6C" />}
         </Pressable>
       </View>
     </Pressable>
@@ -1556,24 +1888,32 @@ function SettingsModal({
 function DetailModal({
   event,
   onClose,
+  isGuest,
   onSaveToggle,
   onSchedule,
   onShare,
   onMap,
+  onUnsubscribeOrganizer,
+  onBlockOrganizer,
+  onReportOrganizer,
   saved,
+  scheduled,
 }: {
   event: TAMUEvent | null;
   onClose: () => void;
+  isGuest: boolean;
   onSaveToggle: (event: TAMUEvent) => void;
   onSchedule: (event: TAMUEvent) => void;
   onShare: (event: TAMUEvent) => void;
   onMap: (event: TAMUEvent) => void;
+  onUnsubscribeOrganizer: (event: TAMUEvent) => void;
+  onBlockOrganizer: (event: TAMUEvent) => void;
+  onReportOrganizer: (event: TAMUEvent) => void;
   saved: boolean;
+  scheduled: boolean;
 }) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
-  const tour = useTour();
-  const navigation = useNavigation<any>();
 
   if (!event) return null;
 
@@ -1608,9 +1948,11 @@ function DetailModal({
                   {classifyCategory(event)}
                 </Text>
               </View>
-              <Pressable onPress={() => onSaveToggle(event)} style={stylesStatic.detailSaveButton}>
-                <Heart size={18} color={saved ? '#FF4D6D' : COLORS.textSecondary} fill={saved ? '#FF4D6D' : 'none'} />
-              </Pressable>
+              {!isGuest ? (
+                <Pressable onPress={() => onSaveToggle(event)} style={stylesStatic.detailSaveButton}>
+                  <Heart size={18} color={saved ? '#FF4D6D' : COLORS.textSecondary} fill={saved ? '#FF4D6D' : 'none'} />
+                </Pressable>
+              ) : null}
             </View>
 
             <Text style={[stylesStatic.detailTitle, { color: COLORS.textPrimary }]}>{event.title}</Text>
@@ -1646,14 +1988,24 @@ function DetailModal({
 
             <TourTarget name="event-rsvp">
               <Pressable
-                style={[stylesStatic.primaryDetailButton, { backgroundColor: '#3CCB6C' }]}
+                style={[stylesStatic.primaryDetailButton, { backgroundColor: scheduled ? '#E06A3E' : '#3CCB6C' }]}
                 onPress={() => {
                   onSchedule(event);
                   onClose();
                 }}
               >
-                <Check size={18} color="#FFFFFF" strokeWidth={3} />
-                <Text style={stylesStatic.primaryDetailButtonText}>Add to current schedule</Text>
+                {scheduled ? (
+                  <XIcon size={18} color="#FFFFFF" strokeWidth={3} />
+                ) : (
+                  <Check size={18} color="#FFFFFF" strokeWidth={3} />
+                )}
+                <Text style={stylesStatic.primaryDetailButtonText}>
+                  {isGuest
+                    ? 'Log in to RSVP or save'
+                    : event.is_admin_event
+                      ? (scheduled ? 'Remove RSVP' : 'RSVP to Featured Event')
+                      : (scheduled ? 'Remove from current schedule' : 'Add')}
+                </Text>
               </Pressable>
             </TourTarget>
 
@@ -1711,6 +2063,62 @@ function DetailModal({
                 </Pressable>
               )}
             </View>
+            {event.is_admin_event && event.admin_clerk_id ? (
+              <View
+                style={[
+                  stylesStatic.organizerSafetyCard,
+                  {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC',
+                    borderColor: COLORS.border,
+                  },
+                ]}
+              >
+                <Text style={[stylesStatic.organizerSafetyTitle, { color: COLORS.textPrimary }]}>
+                  Organizer controls
+                </Text>
+                <Text style={[stylesStatic.organizerSafetyText, { color: COLORS.textSecondary }]}>
+                  Manage {event.group_title || 'this organizer'} directly from this event.
+                </Text>
+                <View style={stylesStatic.organizerSafetyActions}>
+                  <Pressable
+                    style={[
+                      stylesStatic.organizerSafetyButton,
+                      { borderColor: COLORS.border, backgroundColor: COLORS.surface },
+                    ]}
+                    onPress={() => onUnsubscribeOrganizer(event)}
+                  >
+                    <BellOff size={16} color={COLORS.textPrimary} />
+                    <Text style={[stylesStatic.organizerSafetyButtonText, { color: COLORS.textPrimary }]}>
+                      Unsubscribe
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      stylesStatic.organizerSafetyButton,
+                      { borderColor: COLORS.border, backgroundColor: COLORS.surface },
+                    ]}
+                    onPress={() => onReportOrganizer(event)}
+                  >
+                    <CircleAlert size={16} color={COLORS.textPrimary} />
+                    <Text style={[stylesStatic.organizerSafetyButtonText, { color: COLORS.textPrimary }]}>
+                      Report
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={[
+                      stylesStatic.organizerSafetyButton,
+                      { borderColor: '#FFD2BE', backgroundColor: '#FFF4EE' },
+                    ]}
+                    onPress={() => onBlockOrganizer(event)}
+                  >
+                    <UserX size={16} color="#C65A28" />
+                    <Text style={[stylesStatic.organizerSafetyButtonText, { color: '#C65A28' }]}>
+                      Block
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
           </ScrollView>
         </View>
     </Animated.View>
@@ -1883,10 +2291,10 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     socialModeTextActive: {
       color: COLORS.textPrimary,
     },
-    heroRail: {
+  heroRail: {
       paddingTop: 18,
-      paddingRight: 20,
-      gap: 14,
+      paddingLeft: 0,
+      paddingRight: 0,
     },
     swipeCta: {
       marginTop: 16,
@@ -2100,7 +2508,7 @@ const stylesStatic = StyleSheet.create({
     marginLeft: 2,
   },
   heroCard: {
-    width: SCREEN_WIDTH - 52,
+    width: HERO_CARD_WIDTH,
     height: 372,
     borderRadius: 34,
     overflow: 'hidden',
@@ -2184,6 +2592,22 @@ const stylesStatic = StyleSheet.create({
     letterSpacing: -0.8,
     maxWidth: '92%',
   },
+  heroOrganizerPill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  heroOrganizerText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+    maxWidth: 240,
+  },
   heroMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2201,12 +2625,31 @@ const stylesStatic = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.12)',
     paddingHorizontal: 11,
     paddingVertical: 8,
     borderRadius: 999,
   },
   heroMapButtonText: {
+    color: '#0F172A',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  heroRsvpButton: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 999,
+  },
+  heroRsvpButtonText: {
     fontSize: 13,
     fontWeight: '800',
   },
@@ -2257,6 +2700,9 @@ const stylesStatic = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
     fontWeight: '500',
+  },
+  listOrganizer: {
+    fontWeight: '700',
   },
   listActions: {
     justifyContent: 'center',
@@ -2514,5 +2960,36 @@ const stylesStatic = StyleSheet.create({
   secondaryDetailButtonText: {
     fontSize: 14,
     fontWeight: '800',
+  },
+  organizerSafetyCard: {
+    marginTop: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+    gap: 10,
+  },
+  organizerSafetyTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  organizerSafetyText: {
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  organizerSafetyActions: {
+    gap: 10,
+  },
+  organizerSafetyButton: {
+    minHeight: 48,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  organizerSafetyButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

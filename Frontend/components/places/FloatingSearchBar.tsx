@@ -51,7 +51,7 @@ export function FloatingSearchBar({
         {isSearchExpanded ? (
           <TextInput
             style={styles.floatingSearchInput}
-            placeholder="Search campus places..."
+            placeholder="Search Texas A&M area places..."
             placeholderTextColor={COLORS.textTertiary}
             value={searchQuery}
             onFocus={() => {

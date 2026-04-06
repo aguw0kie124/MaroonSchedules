@@ -4,10 +4,10 @@ const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 // ── Snap points for bottom sheet ──────────────────────────────
 export const SNAP_PEEK = SCREEN_HEIGHT * 0.45;
-export const SNAP_FULL = SCREEN_HEIGHT * 0.08;
+export const SNAP_FULL = SCREEN_HEIGHT * 0.25;
 export const SNAP_HIDDEN = SCREEN_HEIGHT;
 export const SHEET_BOTTOM_OFFSET = 0;
-export const FLOATING_CARD_BOTTOM_OFFSET = 124;
+export const FLOATING_CARD_BOTTOM_OFFSET = 64; // lowered for better map centering visibility
 export { SCREEN_HEIGHT };
 
 // ── Sentinel values ───────────────────────────────────────────
@@ -30,6 +30,7 @@ export const TAMU_CENTER = {
 export type LocationType =
   | "Rec"
   | "Library"
+  | "Study"
   | "Dining"
   | "Hub"
   | "General"
@@ -37,7 +38,7 @@ export type LocationType =
   | "Parking"
   | "Landmark"
   | "Housing"
-  | "Athletics";
+  | "Athletics" | "Study";
 
 export type ParkingPermit = "visitor" | "garage" | "any_valid" | "west_campus" | "resident";
 
@@ -75,7 +76,9 @@ export interface CampusLocation {
   available_seats: number | null;
   coord: { lat: number; lng: number };
   current_event?: string;
+  aliases?: string[];
   hours?: string;
+  address?: string;
   reviews?: Array<{ user: string; rating: number; comment: string }>;
   traffic_history?: number[];
   restaurants?: string[];
@@ -83,7 +86,8 @@ export interface CampusLocation {
   shortName?: string;
   description?: string;
   features?: string[];
-  source?: "traffic" | "directory" | "schedule" | "snapshot";
+  source?: "traffic" | "directory" | "schedule" | "snapshot" | "osm";
+  searchOnly?: boolean;
   classMeetings?: ScheduleMeetingEntry[];
   scheduleLabel?: string;
   sequenceIndex?: number;

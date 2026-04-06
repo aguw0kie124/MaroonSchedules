@@ -14,6 +14,7 @@ import {
   Flame,
 } from "lucide-react-native";
 import { BUILDINGS, AMENITIES } from "../../data/campus";
+import LOCAL_OSM_PLACES_PAYLOAD from "../../data/osm_places_tamu_10mi.json";
 import type { CampusLocation, LocationType } from "./types";
 
 // ── Canonical naming ──────────────────────────────────────────
@@ -364,6 +365,118 @@ export function buildCampusDirectory(): CampusLocation[] {
     merged.set(location.location, location);
   });
   return Array.from(merged.values());
+}
+
+type LocalOSMPlaceRecord = {
+  place_id: string;
+  name: string;
+  short_name?: string | null;
+  type: string;
+  lat: number;
+  lng: number;
+  aliases?: string[];
+  description?: string | null;
+  address?: string | null;
+  source?: string | null;
+  search_only?: boolean;
+};
+
+function normalizeLocationKey(value?: string | null) {
+  return (value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function areLocationCoordsClose(first: CampusLocation, second: CampusLocation, maxDelta = 0.0015) {
+  return (
+    Math.abs((first.coord?.lat || 0) - (second.coord?.lat || 0)) +
+      Math.abs((first.coord?.lng || 0) - (second.coord?.lng || 0)) <=
+    maxDelta
+  );
+}
+
+function shouldPreserveExistingType(existing: CampusLocation, incoming: CampusLocation) {
+  if (incoming.source !== "osm") return false;
+
+  const strongTypes = new Set(["Dining", "Hub", "Rec", "Library", "Parking"]);
+  const weakIncomingTypes = new Set(["Academic", "Landmark", "General"]);
+
+  return strongTypes.has(existing.type) && weakIncomingTypes.has(incoming.type);
+}
+
+export function getLocationSelectionId(location: Pick<CampusLocation, "placeId" | "location" | "coord">) {
+  if (location.placeId) return location.placeId;
+  const lat = Number.isFinite(location.coord?.lat) ? location.coord.lat.toFixed(6) : "na";
+  const lng = Number.isFinite(location.coord?.lng) ? location.coord.lng.toFixed(6) : "na";
+  return `${normalizeLocationKey(location.location)}::${lat},${lng}`;
+}
+
+function toLocalOSMLocations(): CampusLocation[] {
+  const payload = LOCAL_OSM_PLACES_PAYLOAD as {
+    places?: LocalOSMPlaceRecord[];
+  };
+
+  const places = Array.isArray(payload?.places) ? payload.places : [];
+  return places.map((place) => ({
+    placeId: place.place_id,
+    location: place.name,
+    shortName: place.short_name || place.name,
+    percent_full: 0,
+    type: (place.type as LocationType) || "General",
+    is_live: false,
+    available_seats: null,
+    coord: { lat: place.lat, lng: place.lng },
+    aliases: Array.isArray(place.aliases) ? place.aliases : [],
+    description: place.description || undefined,
+    address: place.address || undefined,
+    source: (place.source as CampusLocation["source"]) || "osm",
+    searchOnly: place.search_only !== false,
+  }));
+}
+
+export function mergeCampusLocations(...groups: CampusLocation[][]): CampusLocation[] {
+  const merged = new Map<string, CampusLocation>();
+  const normalizedNameToKeys = new Map<string, string[]>();
+
+  groups.flat().forEach((location) => {
+    const explicitKey = getLocationSelectionId(location);
+    const normalizedName = normalizeLocationKey(location.location);
+    const explicitExisting = merged.get(explicitKey);
+    const candidateKeys = normalizedNameToKeys.get(normalizedName) || [];
+    const matchingNameKey =
+      candidateKeys.find((key) => {
+        const existing = merged.get(key);
+        return existing ? areLocationCoordsClose(existing, location) : false;
+      }) || null;
+    const existingKey = explicitExisting ? explicitKey : matchingNameKey || explicitKey;
+    const existing = merged.get(existingKey);
+    const nextAliases = Array.from(
+      new Set([...(existing?.aliases || []), ...(location.aliases || [])].filter(Boolean)),
+    );
+
+    const next: CampusLocation = existing
+      ? {
+          ...existing,
+          ...location,
+          type: shouldPreserveExistingType(existing, location) ? existing.type : location.type,
+          aliases: nextAliases,
+        }
+      : {
+          ...location,
+          aliases: nextAliases,
+        };
+
+    merged.set(existingKey, next);
+    if (normalizedName) {
+      const nextKeys = normalizedNameToKeys.get(normalizedName) || [];
+      if (!nextKeys.includes(existingKey)) nextKeys.push(existingKey);
+      normalizedNameToKeys.set(normalizedName, nextKeys);
+    }
+  });
+
+  return Array.from(merged.values());
+}
+
+export function buildExpandedPlacesDirectory(): CampusLocation[] {
+  return mergeCampusLocations(buildCampusDirectory(), toLocalOSMLocations());
 }
 
 // ── Category definitions ──────────────────────────────────────

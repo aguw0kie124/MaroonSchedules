@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { ChevronDown, ChevronUp, Cog, X } from 'lucide-react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { ToggleLayoutItem } from '../store/appShellStore';
 import { useTheme } from './SharedUI';
@@ -63,8 +64,14 @@ export function PageModuleEditor<T extends string>({
   const styles = getStyles(COLORS, isDark);
   const { activeTargetName, advanceStep } = useTour();
 
+  if (!visible) return null;
+
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Animated.View 
+      entering={FadeIn.duration(200)} 
+      exiting={FadeOut.duration(200)} 
+      style={[StyleSheet.absoluteFill, { zIndex: 9900 }]}
+    >
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
         <View style={styles.sheet}>
@@ -73,9 +80,19 @@ export function PageModuleEditor<T extends string>({
               <Text style={styles.sheetEyebrow}>Page Modularity</Text>
               <Text style={styles.sheetTitle}>{title}</Text>
             </View>
-            <Pressable style={styles.closeButton} onPress={onClose}>
-              <X size={18} color={COLORS.textPrimary} />
-            </Pressable>
+            <TourTarget name="add-gyms-close">
+              <Pressable 
+                style={styles.closeButton} 
+                onPress={() => {
+                  onClose();
+                  if (activeTargetName === 'add-gyms-close') {
+                    advanceStep('add-gyms-close');
+                  }
+                }}
+              >
+                <X size={18} color={COLORS.textPrimary} />
+              </Pressable>
+            </TourTarget>
           </View>
 
           <ScrollView
@@ -89,7 +106,10 @@ export function PageModuleEditor<T extends string>({
               const isTop = index === 0;
               const isBottom = index === items.length - 1;
               const row = (
-                <View key={item.id} style={styles.row}>
+                <View 
+                  key={item.id} 
+                  style={styles.row}
+                >
                   <View style={{ flex: 1 }}>
                     <Text style={styles.rowTitle}>{item.label}</Text>
                   </View>
@@ -142,7 +162,7 @@ export function PageModuleEditor<T extends string>({
           ) : null}
         </View>
       </View>
-    </Modal>
+    </Animated.View>
   );
 }
 

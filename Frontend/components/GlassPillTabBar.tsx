@@ -12,6 +12,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 
 import { useTheme } from './SharedUI';
 import { useAppShellStore } from '../store/appShellStore';
+import { TourTarget, useTour } from './onboarding/TourProvider';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -23,6 +24,7 @@ export function GlassPillTabBar({
   navigation,
 }: BottomTabBarProps) {
   const { COLORS, theme } = useTheme();
+  const { activeTargetName, advanceStep } = useTour();
   const isBottomBarHidden = useAppShellStore((store) => store.isBottomBarHidden);
   const tabBarMode = useAppShellStore((store) => store.tabBarMode);
 
@@ -69,6 +71,17 @@ export function GlassPillTabBar({
               canPreventDefault: true,
             });
 
+            // Advance Tour if this tab is the target
+            if (route.name === 'Places' && activeTargetName === 'places-tab') {
+              advanceStep('places-tab');
+            }
+            if (route.name === 'Social' && activeTargetName === 'social-tab') {
+              advanceStep('social-tab');
+            }
+            if (route.name === 'Settings' && activeTargetName === 'settings-tab') {
+              advanceStep('settings-tab');
+            }
+
             if (tabBarMode === 'floating' && collapsedRouteKey && isFocused && isCollapsedItem) {
               setCollapsedRouteKey(null);
               return;
@@ -97,7 +110,32 @@ export function GlassPillTabBar({
             return null;
           }
 
-          return (
+          const getTargetName = () => {
+            if (route.name === 'Places') return 'places-tab';
+            if (route.name === 'Social') return 'social-tab';
+            if (route.name === 'Settings') return 'settings-tab';
+            return null;
+          };
+          const targetName = getTargetName();
+
+          const itemContent = (
+            <>
+              {targetName ? (
+                <TourTarget name={targetName}>
+                  <View style={styles.iconWrap}>{icon}</View>
+                </TourTarget>
+              ) : (
+                <View style={styles.iconWrap}>{icon}</View>
+              )}
+              {!collapsedRouteKey ? (
+                <Text style={[styles.label, isFocused && styles.labelFocused]}>
+                  {label}
+                </Text>
+              ) : null}
+            </>
+          );
+
+          const item = (
             <Pressable
               key={route.key}
               onPress={onPress}
@@ -109,14 +147,11 @@ export function GlassPillTabBar({
                 collapsedRouteKey && isFocused ? styles.itemFocusedCollapsed : null,
               ]}
             >
-              <View style={styles.iconWrap}>{icon}</View>
-              {!collapsedRouteKey ? (
-                <Text style={[styles.label, isFocused && styles.labelFocused]}>
-                  {label}
-                </Text>
-              ) : null}
+              {itemContent}
             </Pressable>
           );
+
+          return item;
         })}
       </View>
     </View>

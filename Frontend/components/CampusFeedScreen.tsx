@@ -22,10 +22,14 @@ import {
     uploadStreamFile,
     uploadStreamImage,
     deletePost,
-    updatePost
+    updatePost,
+    blockUser,
+    reportContent
 } from '../services/streamFeeds';
+import { normalizeImageUrl } from '../services/url';
 
 import { Trash2 } from 'lucide-react-native';
+import { getPremiumName, getPremiumImage } from '../utils/userUtils';
 
 interface Post {
     id: string;
@@ -53,10 +57,10 @@ function mapActivityToPost(activity: any): Post {
     return {
         id: activity.id || Date.now().toString(),
         user_id: actor.id || activity.actor || '',
-        user_name: actor.data?.name || custom.user_name || actor.id || 'Aggie',
-        user_image: actor.data?.image || custom.user_image || null,
+        user_name: actor.data?.name || actor.name || custom.user_name || actor.id || 'Aggie User',
+        user_image: actor.data?.image || actor.image || custom.user_image || null,
         caption: activity.text || null,
-        media_url: media.image_url || media.asset_url || null,
+        media_url: normalizeImageUrl(media.image_url || media.asset_url || null),
         media_type: media.type === 'video' ? 'video' : (media.type === 'image' ? 'image' : null),
         location_tag: custom.location_tag || null,
         likes: activity.reaction_counts?.like || activity.reaction_count || 0,
@@ -128,18 +132,10 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
 
     useEffect(() => {
         if (user) {
-            const displayName = user.username || user.fullName || user.primaryEmailAddress?.emailAddress?.split('@')[0] || 'Aggie';
-            connectFeedsUser(user.id, displayName, user.imageUrl)
-                .then(() => {
-                    setFeedConnected(true);
-                    setStreamError(null);
-                    fetchPosts();
-                })
-                .catch((e) => {
-                    console.warn('[CampusFeed] Stream connection failed:', e);
-                    setStreamError('Could not connect to Stream Feeds.');
-                    setLoading(false);
-                });
+            connectFeedsUser(user);
+            setFeedConnected(true);
+            setStreamError(null);
+            fetchPosts();
 
             // Real-time effect: poll every 10 seconds
             const interval = setInterval(() => {
@@ -406,7 +402,80 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
                             </Pressable>
                         </View>
                     ) : (
-                        <Pressable style={styles.moreBtn}>
+                        <Pressable 
+                            style={styles.moreBtn} 
+                            onPress={() => {
+                                Alert.alert(
+                                    'Moderation',
+                                    'What would you like to do?',
+                                    [
+                                        { 
+                                            text: 'Report Post', 
+                                            onPress: () => {
+                                                Alert.alert('Report', 'Why are you reporting this?', [
+                                                    { 
+                                                      text: 'Inappropriate', 
+                                                      onPress: async () => {
+                                                        try {
+                                                          await reportContent({
+                                                            reporteeId: item.user_id,
+                                                            postType: 'post',
+                                                            postId: item.id,
+                                                            reason: 'inappropriate'
+                                                          });
+                                                          Alert.alert('Thank you', 'We will review this content.');
+                                                        } catch (err) {
+                                                          Alert.alert('Thank you', 'Report received.');
+                                                        }
+                                                      } 
+                                                    },
+                                                    { 
+                                                      text: 'Spam', 
+                                                      onPress: async () => {
+                                                        try {
+                                                          await reportContent({
+                                                            reporteeId: item.user_id,
+                                                            postType: 'post',
+                                                            postId: item.id,
+                                                            reason: 'spam'
+                                                          });
+                                                          Alert.alert('Thank you', 'We will review this content.');
+                                                        } catch (err) {
+                                                          Alert.alert('Thank you', 'Report received.');
+                                                        }
+                                                      } 
+                                                    },
+                                                    { text: 'Cancel', style: 'cancel' }
+                                                ]);
+                                            } 
+                                        },
+                                        { 
+                                            text: 'Block User', 
+                                            style: 'destructive',
+                                            onPress: () => {
+                                                Alert.alert('Block User', `Are you sure you want to block ${item.user_name}?`, [
+                                                    { text: 'Cancel', style: 'cancel' },
+                                                    { 
+                                                      text: 'Block', 
+                                                      style: 'destructive', 
+                                                      onPress: async () => {
+                                                        try {
+                                                          await blockUser(item.user_id);
+                                                          handleRefresh();
+                                                          Alert.alert('User Blocked');
+                                                        } catch (err) {
+                                                          Alert.alert('Error', 'Failed to block user.');
+                                                        }
+                                                      } 
+                                                    }
+                                                ]);
+                                            } 
+                                        },
+                                        { text: 'Cancel', style: 'cancel' }
+                                    ]
+                                );
+                            }}
+                        >
                             <MoreHorizontal color={T.text2} size={20} />
                         </Pressable>
                     )}
@@ -469,11 +538,9 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
                         onPress={() => {
                             if (user) {
                                 setLoading(true);
-                                connectFeedsUser(user.id, user.fullName || 'Aggie', user.imageUrl, true).then(() => {
-                                    setFeedConnected(true);
-                                    fetchPosts();
-                                }).catch(() => setLoading(false));
-
+                                connectFeedsUser(user, true);
+                                setFeedConnected(true);
+                                fetchPosts();
                             }
                         }}
                     >

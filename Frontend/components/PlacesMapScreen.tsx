@@ -22,13 +22,13 @@ import {
   View,
   Text,
   StyleSheet,
-  ActivityIndicator,
   TouchableOpacity,
   Animated,
   Platform,
   Dimensions,
   ScrollView,
   InteractionManager,
+  ActivityIndicator,
 } from "react-native";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
@@ -54,12 +54,13 @@ import {
 import type { WalkingRoute } from "../services/campusDirections";
 import { useTheme } from "./SharedUI";
 import { PageModuleEditor } from "./PageModuleEditor";
-import AnimatedReanimated, { useSharedValue, useAnimatedStyle, withTiming, runOnJS } from "react-native-reanimated";
-import MapView, {
-  Marker,
-  Circle,
-  Polyline,
-} from "react-native-maps";
+import AnimatedReanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  runOnJS,
+} from "react-native-reanimated";
+import MapView, { Marker, Circle, Polyline } from "react-native-maps";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -67,12 +68,11 @@ import * as Haptics from "expo-haptics";
 import { connectFeedsUser } from "../services/streamFeeds";
 import { API_URL } from "../config";
 import { useCampusHubStore } from "../store/campusHubStore";
-import {
-  getOrderedItems,
-  useAppShellStore,
-} from "../store/appShellStore";
+import { getOrderedItems, useAppShellStore } from "../store/appShellStore";
+import { useSessionStore } from "../store/sessionStore";
 import { useShareStore } from "../store/shareStore";
 import { fetchCampusPlaceDetail, fetchCampusPlacesMap } from "../api/client";
+import { promptGuestLogin } from "../utils/guestAccess";
 import {
   DiningMealPeriod,
   fetchDiningFullMenuCached,
@@ -86,11 +86,13 @@ import {
 import { FloatingSearchBar } from "./places/FloatingSearchBar";
 import { LayerPillScroller } from "./places/LayerPillScroller";
 import { SearchOverlay } from "./places/SearchOverlay";
+import { searchCampusLocations } from "./places/searchUtils";
 import {
   BusRouteSelector,
   BusStopInfoCard,
   BusVehicleInfoCard,
 } from "./places/BusLayerUI";
+import { BusTimetableSheet } from "./places/BusTimetableSheet";
 import { PulseHotspotSheet } from "./places/PulseHotspotSheet";
 import { LocationBottomSheet } from "./places/LocationBottomSheet";
 import { ScheduleHeader } from "./places/ScheduleHeader";
@@ -110,9 +112,11 @@ import {
 import {
   CAMPUS_ZONES,
   CATEGORIES,
-  buildCampusDirectory,
+  buildExpandedPlacesDirectory,
+  getLocationSelectionId,
   getCanonicalLocationName,
   getZoneDensity,
+  mergeCampusLocations,
 } from "./places/campusData";
 import {
   getStatusColor,
@@ -132,13 +136,41 @@ import {
 //    (replace with useLocationData / useScheduleMap / useBusTransit
 //     in the follow-on cleanup pass)
 
-export function PlacesMapScreen() {
+// Make map colors "neon" and bright
+const getNeonColor = (hex: string) => {
+  if (!hex || !hex.startsWith("#")) return "#00FFFF";
+  let r = parseInt(hex.slice(1, 3), 16);
+  let g = parseInt(hex.slice(3, 5), 16);
+  let b = parseInt(hex.slice(5, 7), 16);
+
+  if (hex.toUpperCase() === "#500000") return "#FF0055"; // Maroon -> Neon Pink
+
+  const max = Math.max(r, g, b);
+  if (max === 0) return "#00FFFF";
+
+  // Normalize so highest channel is 255
+  const m = 255 / max;
+  r = Math.round(r * m);
+  g = Math.round(g * m);
+  b = Math.round(b * m);
+
+  // Add neon pop
+  const thr = 60;
+  if (r < thr) r += thr;
+  if (g < thr) g += thr;
+  if (b < thr) b += thr;
+
+  return `#${[r, g, b]
+    .map((c) => Math.min(255, c).toString(16).padStart(2, "0"))
+    .join("")}`;
+};
+
+export function PlacesMapScreen({ route, navigation }: any) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === "dark";
   const styles = getStyles(COLORS, isDark);
-  const route = useRoute<any>();
-  const navigation = useNavigation<any>();
   const { user } = useUser();
+  const isGuest = useSessionStore((state) => state.isGuest);
   const insets = useSafeAreaInsets();
   const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -162,14 +194,14 @@ export function PlacesMapScreen() {
 
   // ── Map ref ───────────────────────────────────────────────
   const mapRef = useRef<any>(null);
+  const currentBusRouteFetchId = useRef<string | null>(null);
   const lastPlacesFitKey = useRef<string | null>(null);
   const [isListDroppedDown, setIsListDroppedDown] = useState(false);
   const { activeTargetName, advanceStep } = useTour();
 
-
   // Onboarding: Force expand list when targeting items inside it
   useEffect(() => {
-    if (activeTargetName === 'rec-center-item') {
+    if (activeTargetName === "rec-center-item") {
       setIsListDroppedDown(true);
     }
   }, [activeTargetName]);
@@ -177,24 +209,36 @@ export function PlacesMapScreen() {
   // ── UI state ──────────────────────────────────────────────
   const [activeLayer, setActiveLayer] = useState<string>("Pulse");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
+  const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(
+    null,
+  );
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isTimetableSheetOpen, setIsTimetableSheetOpen] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [isEditorVisible, setIsEditorVisible] = useState(false);
-  const [userCoord, setUserCoord] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [userCoord, setUserCoord] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [isMapTilted, setIsMapTilted] = useState(false);
-  const [pendingInitialLocation, setPendingInitialLocation] = useState<string | null>(null);
+  const [pendingInitialLocation, setPendingInitialLocation] = useState<
+    string | null
+  >(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
-  const [activeWalkingRoute, setActiveWalkingRoute] = useState<WalkingRoute | null>(null);
+  const [activeWalkingRoute, setActiveWalkingRoute] =
+    useState<WalkingRoute | null>(null);
   const [isTodayExpanded, setIsTodayExpanded] = useState(false);
   const timelineHeight = useSharedValue(0);
 
   // ── Location data ─────────────────────────────────────────
-  const fullCampusIndex = useMemo(() => buildCampusDirectory(), []);
-  const [locations, setLocations] = useState<CampusLocation[]>([]);
-  const [loading, setLoading] = useState(true);
+  const fullCampusIndex = useMemo(() => buildExpandedPlacesDirectory(), []);
+  const [locations, setLocations] = useState<CampusLocation[]>(fullCampusIndex);
+  const [loading, setLoading] = useState(false);
   const [pulseHotspots, setPulseHotspots] = useState<CampusHotspot[]>([]);
+  const pulseHotspotsRef = useRef<CampusHotspot[]>([]);
+  const pulsePlacesRef = useRef<CampusLocation[]>([]);
+  const selectedHotspotIdRef = useRef<string | null>(null);
   const [isLoadingPulse, setIsLoadingPulse] = useState(false);
 
   const fetchData = useCallback(async () => {
@@ -203,18 +247,16 @@ export function PlacesMapScreen() {
       const nextLocations = Array.isArray(payload?.locations)
         ? (payload.locations as CampusLocation[])
         : [];
-      setLocations(nextLocations.length ? nextLocations : fullCampusIndex);
+      setLocations(
+        nextLocations.length
+          ? mergeCampusLocations(fullCampusIndex, nextLocations)
+          : fullCampusIndex,
+      );
     } catch (err) {
       console.warn("Failed to fetch places map snapshot", err);
       setLocations(fullCampusIndex);
-    } finally {
-      setLoading(false);
     }
   }, [fullCampusIndex]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
 
   // ── Schedule state ────────────────────────────────────────
   const [activeScheduleId, setActiveScheduleId] = useState<string | null>(null);
@@ -227,7 +269,7 @@ export function PlacesMapScreen() {
     scheduleSummaryLabel,
     isLoadingSchedules,
     nextEntry,
-    refreshSchedules
+    refreshSchedules,
   } = useScheduleMap(locations, selectedDate);
 
   // Onboarding: Automatically expand Today timeline if navigated from RSVP with delay for smoothness
@@ -248,60 +290,95 @@ export function PlacesMapScreen() {
       }, 400); // Wait for tab transition to complete
       return () => clearTimeout(timer);
     }
-  }, [route.params?.isToday, route.params?.eventDate, navigation, refreshSchedules]);
+  }, [
+    route.params?.isToday,
+    route.params?.eventDate,
+    navigation,
+    refreshSchedules,
+  ]);
 
   useEffect(() => {
-    timelineHeight.value = withTiming(isTodayExpanded ? 1 : 0, { duration: 400 });
+    timelineHeight.value = withTiming(isTodayExpanded ? 1 : 0, {
+      duration: 400,
+    });
   }, [isTodayExpanded]);
 
   const animatedTimelineStyle = useAnimatedStyle(() => ({
     height: withTiming(isTodayExpanded ? 400 : 0, { duration: 400 }),
     opacity: withTiming(isTodayExpanded ? 1 : 0, { duration: 300 }),
-    overflow: 'hidden'
+    overflow: "hidden",
   }));
 
   // Onboarding: Fallback idle timers (10 seconds) to prevent users from getting stuck
-  
+
   // Onboarding: Force-collapse if stuck or moved away from Today
   useEffect(() => {
-    if (activeTargetName === 'places-settings') {
+    if (activeTargetName === "places-settings") {
       setIsTodayExpanded(false);
     }
   }, [activeTargetName]);
 
-  // Onboarding: Master Persistent Timer for the Schedule Preview step
+  // Onboarding: The schedule-preview step is now informational only until the user taps 'Edit'
+  // which is correctly handled by the next target 'places-settings' in LayerPillScroller.
   useEffect(() => {
-    if (activeTargetName === 'schedule-preview') {
-      const timer = setTimeout(() => {
-        advanceStep('schedule-preview');
-        setIsTodayExpanded(false);
-      }, 1500);
-      return () => clearTimeout(timer);
+    if (activeTargetName === "places-settings" && isTodayExpanded) {
+      setIsTodayExpanded(false);
     }
-  }, [activeTargetName, advanceStep]);
+  }, [activeTargetName, isTodayExpanded]);
 
-  useEffect(() => {
-    const mapSteps = ['places-settings', 'add-gyms-toggle', 'gyms-pill', 'rec-center-item'];
-    if (mapSteps.includes(activeTargetName || '')) {
-      const timer = setTimeout(() => {
-        // If user hasn't acted in 10s, advance to keep movement
-        advanceStep(activeTargetName!);
-      }, 10000);
-      return () => clearTimeout(timer);
-    }
-  }, [activeTargetName, advanceStep]);
+  // Onboarding: Fallback idle timers removed to enforce distinct user actions.
 
   // ── Bus state ─────────────────────────────────────────────
   const [busRoutes, setBusRoutes] = useState<any[]>([]);
   const [busVehicles, setBusVehicles] = useState<any[]>([]);
   const [busStops, setBusStops] = useState<any[]>([]);
-  const [selectedBusRouteId, setSelectedBusRouteId] = useState<string | null>(ALL_BUS_ROUTES_KEY);
+  const [selectedBusRouteId, setSelectedBusRouteId] = useState<string | null>(
+    ALL_BUS_ROUTES_KEY,
+  );
   const [routePatterns, setRoutePatterns] = useState<any[]>([]);
-  const [allRoutePatternsById, setAllRoutePatternsById] = useState<Record<string, { points: any[]; stops: any[] }>>({});
+  const [routePaths, setRoutePaths] = useState<any[]>([]);
+  const [allRoutePatternsById, setAllRoutePatternsById] = useState<
+    Record<string, { points: any[]; stops: any[]; paths?: any[] }>
+  >({});
   const [isFetchingBus, setIsFetchingBus] = useState(false);
   const [isRouteDropdownOpen, setIsRouteDropdownOpen] = useState(false);
   const [selectedStop, setSelectedStop] = useState<any | null>(null);
   const [selectedBus, setSelectedBus] = useState<any | null>(null);
+  const [selectedDirection, setSelectedDirection] = useState<string>("All");
+
+  const isAllBusRoutesSelected =
+    !selectedBusRouteId ||
+    selectedBusRouteId === ALL_BUS_ROUTES_KEY ||
+    selectedBusRouteId === "all";
+
+  const availableDirections = useMemo(() => {
+    if (isAllBusRoutesSelected) return ["All"];
+    const dirs = new Set<string>();
+    busVehicles.forEach((bus) => {
+      const dir = bus.direction || bus.DirectionName;
+      if (dir && typeof dir === "string") dirs.add(dir.trim());
+    });
+    // Add any missing directions from the stops just in case vehicles are offline
+    busStops.forEach((stop) => {
+      const dir = stop.DirectionName || stop.direction;
+      if (dir && typeof dir === "string") dirs.add(dir.trim());
+    });
+    return Array.from(dirs).filter(Boolean);
+  }, [busVehicles, busStops, isAllBusRoutesSelected]);
+
+  useEffect(() => {
+    if (!isAllBusRoutesSelected && availableDirections.length > 0) {
+      if (
+        !availableDirections.includes(selectedDirection) ||
+        selectedDirection === "All"
+      ) {
+        setSelectedDirection(availableDirections[0]);
+      }
+    } else {
+      setSelectedDirection("All");
+    }
+  }, [availableDirections, isAllBusRoutesSelected]);
+
   const [nearestBusInfo, setNearestBusInfo] = useState<string | null>(null);
   const busPollInterval = useRef<any>(null);
 
@@ -310,7 +387,6 @@ export function PlacesMapScreen() {
   }, [activeLayer]);
 
   const isFetchingRef = useRef(false);
-  const isAllBusRoutesSelected = !selectedBusRouteId || selectedBusRouteId === ALL_BUS_ROUTES_KEY;
 
   // ── Review / dining state ─────────────────────────────────
   const [streamReviews, setStreamReviews] = useState<any[]>([]);
@@ -324,18 +400,36 @@ export function PlacesMapScreen() {
   const [isFetchingDining, setIsFetchingDining] = useState(false);
   const [diningMenuOptions, setDiningMenuOptions] = useState<string[]>([]);
   const [activeDiningMenu, setActiveDiningMenu] = useState<string | null>(null);
-  const [activeDiningMealPeriod, setActiveDiningMealPeriod] = useState<DiningMealPeriod>("lunch");
+  const [activeDiningMealPeriod, setActiveDiningMealPeriod] =
+    useState<DiningMealPeriod>("lunch");
   const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
-  const [selectedPlaceDetail, setSelectedPlaceDetail] = useState<any | null>(null);
+  const [selectedPlaceDetail, setSelectedPlaceDetail] = useState<any | null>(
+    null,
+  );
 
   // ── Recreation facility map ───────────────────────────────
   const recreationFacilityMap = useMemo(() => {
     const facilities = campusHubSnapshot?.recreation.facilities || [];
-    return new Map(facilities.map((f: any) => [getCanonicalLocationName(f.name), f]));
+    return new Map(
+      facilities.map((f: any) => [getCanonicalLocationName(f.name), f]),
+    );
   }, [campusHubSnapshot?.recreation.facilities]);
 
   const formatDate = (date: Date) => {
-    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const months = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
     return `${months[date.getMonth()]} ${date.getDate()}`;
   };
 
@@ -359,8 +453,7 @@ export function PlacesMapScreen() {
       .filter((c) => c != null);
     if (!ordered.length) {
       return CATEGORIES.filter(
-        (category) =>
-          category.id !== "Academic" && category.id !== "Heatmap",
+        (category) => category.id !== "Academic" && category.id !== "Heatmap",
       );
     }
     const active = CATEGORIES.find((c) => c.id === activeLayer);
@@ -377,33 +470,59 @@ export function PlacesMapScreen() {
 
   // ── Derived map locations ─────────────────────────────────
   const allMapLocations = useMemo(() => {
-    const merged = new Map<string, CampusLocation>();
-    locations.forEach((l) => merged.set(l.location, l));
-    scheduleLocations.forEach((l: any) => merged.set(l.location, { ...(merged.get(l.location) || {}), ...l }));
-    return Array.from(merged.values());
+    return mergeCampusLocations(
+      locations,
+      scheduleLocations as CampusLocation[],
+    );
   }, [locations, scheduleLocations]);
 
   const pulsePlaces = useMemo(() => {
-    const merged = new Map<string, CampusLocation>();
-    fullCampusIndex.forEach((location) => merged.set(location.location, location));
-    locations.forEach((location) => merged.set(location.location, location));
-    return Array.from(merged.values());
+    return mergeCampusLocations(fullCampusIndex, locations);
   }, [fullCampusIndex, locations]);
 
+  // Keep refs in sync for stable callbacks
+  pulsePlacesRef.current = pulsePlaces;
+  selectedHotspotIdRef.current = selectedHotspotId;
+
   const filteredLocations = useMemo(() => {
+    const browsableLocations = allMapLocations.filter((l) => !l.searchOnly);
     if (activeLayer === "Pulse") return [];
     if (activeLayer === "Heatmap") return [];
     if (activeLayer === "Today") return scheduleLocations;
-    if (activeLayer === "Dining") return allMapLocations.filter((l) => l.type === "Dining" || l.type === "Hub");
-    if (activeLayer === "Academic") return allMapLocations.filter((l) => l.type === "Academic" || l.type === "Landmark");
-    if (activeLayer === "Rec") return allMapLocations.filter((l) => l.type === "Rec" || l.type === "Hub" && l.location.includes("Rec"));
-    return allMapLocations.filter((l) => l.type === activeLayer);
+    if (activeLayer === "Dining")
+      return browsableLocations.filter(
+        (l) => l.type === "Dining" || l.type === "Hub",
+      );
+    if (activeLayer === "Academic")
+      return browsableLocations.filter(
+        (l) => l.type === "Academic" || l.type === "Landmark",
+      );
+    if (activeLayer === "Rec")
+      return browsableLocations.filter(
+        (l) =>
+          l.type === "Rec" || (l.type === "Hub" && l.location.includes("Rec")),
+      );
+    return browsableLocations.filter((l) => l.type === activeLayer);
   }, [activeLayer, allMapLocations, scheduleLocations]);
 
   const sortedFilteredLocations = useMemo(() => {
     return [...filteredLocations].sort((a, b) => {
-      const aD = userCoord ? haversineDistanceMeters(userCoord.latitude, userCoord.longitude, a.coord.lat, a.coord.lng) : null;
-      const bD = userCoord ? haversineDistanceMeters(userCoord.latitude, userCoord.longitude, b.coord.lat, b.coord.lng) : null;
+      const aD = userCoord
+        ? haversineDistanceMeters(
+            userCoord.latitude,
+            userCoord.longitude,
+            a.coord.lat,
+            a.coord.lng,
+          )
+        : null;
+      const bD = userCoord
+        ? haversineDistanceMeters(
+            userCoord.latitude,
+            userCoord.longitude,
+            b.coord.lat,
+            b.coord.lng,
+          )
+        : null;
       if (activeLayer === "Parking") {
         const aP = getParkingRecommendation(a.location, parkingPermit);
         const bP = getParkingRecommendation(b.location, parkingPermit);
@@ -416,16 +535,7 @@ export function PlacesMapScreen() {
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
-    const q = searchQuery.toLowerCase();
-    return allMapLocations
-      .filter((l) => l.location.toLowerCase().includes(q) || (l.shortName || "").toLowerCase().includes(q) || (l.description || "").toLowerCase().includes(q))
-      .sort((a, b) => {
-        const aS = a.location.toLowerCase().startsWith(q) ? 0 : 1;
-        const bS = b.location.toLowerCase().startsWith(q) ? 0 : 1;
-        if (aS !== bS) return aS - bS;
-        return a.location.localeCompare(b.location);
-      })
-      .slice(0, 8);
+    return searchCampusLocations(allMapLocations, searchQuery, 8);
   }, [allMapLocations, searchQuery]);
 
   const busRouteSearchResults = useMemo(() => {
@@ -442,9 +552,13 @@ export function PlacesMapScreen() {
 
   const busPulseAnim = useRef(new Animated.Value(1)).current;
 
-  const selectedLoc = useMemo(() => allMapLocations.find((l) => l.location === selectedId), [allMapLocations, selectedId]);
+  const selectedLoc = useMemo(
+    () => allMapLocations.find((l) => getLocationSelectionId(l) === selectedId),
+    [allMapLocations, selectedId],
+  );
   const selectedHotspot = useMemo(
-    () => pulseHotspots.find((hotspot) => hotspot.id === selectedHotspotId) || null,
+    () =>
+      pulseHotspots.find((hotspot) => hotspot.id === selectedHotspotId) || null,
     [pulseHotspots, selectedHotspotId],
   );
   const pulseTotals = useMemo(() => {
@@ -459,116 +573,278 @@ export function PlacesMapScreen() {
   }, [pulseHotspots]);
   const hottestHotspot = pulseHotspots[0] || null;
   const markerLocations = useMemo(() => {
-    if (activeLayer === "Heatmap" || activeLayer === "Bus") return selectedLoc ? [selectedLoc] : [];
+    if (activeLayer === "Heatmap" || activeLayer === "Bus")
+      return selectedLoc ? [selectedLoc] : [];
     const merged = new Map<string, CampusLocation>();
-    filteredLocations.forEach((l) => merged.set(l.location, l));
-    if (selectedLoc) merged.set(selectedLoc.location, selectedLoc);
+    filteredLocations.forEach((l) => merged.set(getLocationSelectionId(l), l));
+    if (selectedLoc)
+      merged.set(getLocationSelectionId(selectedLoc), selectedLoc);
     return Array.from(merged.values());
   }, [activeLayer, filteredLocations, selectedLoc]);
 
   const selectedRoute = useMemo(
-    () => isAllBusRoutesSelected ? null : busRoutes.find((r) => r.Key === selectedBusRouteId) ?? null,
+    () =>
+      isAllBusRoutesSelected
+        ? null
+        : (busRoutes.find((r) => r.Key === selectedBusRouteId) ?? null),
     [busRoutes, isAllBusRoutesSelected, selectedBusRouteId],
   );
-  const busRouteOptions = useMemo(() => [{ Key: ALL_BUS_ROUTES_KEY, ShortName: "ALL", Name: "All Routes", Color: "#1E1E1E" }, ...busRoutes], [busRoutes]);
+  const busRouteOptions = useMemo(
+    () => [
+      {
+        Key: ALL_BUS_ROUTES_KEY,
+        ShortName: "ALL",
+        Name: "All Routes",
+        Color: "#1E1E1E",
+      },
+      ...busRoutes,
+    ],
+    [busRoutes],
+  );
   const filteredBusRoutes = busRouteOptions;
 
   const selectedRecreationFacility = useMemo(() => {
     if (!selectedLoc) return null;
     return (
       selectedPlaceDetail?.recreation ||
-      recreationFacilityMap.get(getCanonicalLocationName(selectedLoc.location)) ||
+      recreationFacilityMap.get(
+        getCanonicalLocationName(selectedLoc.location),
+      ) ||
       null
     );
   }, [recreationFacilityMap, selectedLoc, selectedPlaceDetail?.recreation]);
 
   const isPrimaryDiningHallSelection = useMemo(() => {
     const ref = (activeDiningMenu || selectedLoc?.location || "").toLowerCase();
-    return ref.includes("sbisa") || ref.includes("commons") || ref.includes("duncan");
+    return (
+      ref.includes("sbisa") || ref.includes("commons") || ref.includes("duncan")
+    );
   }, [activeDiningMenu, selectedLoc?.location]);
 
   const stopTimetable = useMemo(() => {
-    if (activeLayer !== "Bus" || !selectedRoute || busStops.length === 0) return [];
+    if (activeLayer !== "Bus" || !selectedRoute || busStops.length === 0)
+      return [];
     return busStops.slice(0, 12).map((stop, i) => {
-      if (busVehicles.length === 0) return { stop, sequence: i + 1, etaLabel: "Route loaded", detail: "ETA pending" };
+      if (busVehicles.length === 0)
+        return {
+          stop,
+          sequence: i + 1,
+          etaLabel: "Route loaded",
+          detail: "ETA pending",
+        };
       const { getApproximateEtaMinutes } = require("./places/utils");
-      const ranked = busVehicles.map((bus) => ({ bus, etaMinutes: getApproximateEtaMinutes(routePatterns, stop, bus) })).sort((a, b) => a.etaMinutes - b.etaMinutes);
+      const ranked = busVehicles
+        .map((bus) => ({
+          bus,
+          etaMinutes: getApproximateEtaMinutes(routePatterns, stop, bus),
+        }))
+        .sort((a, b) => a.etaMinutes - b.etaMinutes);
       const next = ranked[0];
-      if (!next) return { stop, sequence: i + 1, etaLabel: "No estimate", detail: "Live feed unavailable" };
-      return { stop, sequence: i + 1, etaLabel: next.etaMinutes <= 1 ? "Now" : `${next.etaMinutes} min`, detail: next.bus.RouteShortName ? `Route ${next.bus.RouteShortName}` : next.bus.Name || "Live bus" };
+      if (!next)
+        return {
+          stop,
+          sequence: i + 1,
+          etaLabel: "No estimate",
+          detail: "Live feed unavailable",
+        };
+      return {
+        stop,
+        sequence: i + 1,
+        etaLabel: next.etaMinutes <= 1 ? "Now" : `${next.etaMinutes} min`,
+        detail: next.bus.RouteShortName
+          ? `Route ${next.bus.RouteShortName}`
+          : next.bus.Name || "Live bus",
+      };
     });
   }, [activeLayer, busStops, busVehicles, routePatterns, selectedRoute]);
 
   const allRouteBoards = useMemo(() => {
     if (!isAllBusRoutesSelected) return [];
-    const { getApproximateEtaMinutes, isVehicleOnRoute } = require("./places/utils");
-    return busRoutes.map((route) => {
-      const pattern = allRoutePatternsById[route.Key];
-      const routePoints = pattern?.points || [];
-      const routeStops = pattern?.stops || [];
-      const routeVehicles = busVehicles.filter((bus) => isVehicleOnRoute(bus, route));
-      const entries = routeStops.slice(0, 4).map((stop: any, i: number) => {
-        const ranked = routeVehicles.map((bus) => ({ bus, etaMinutes: getApproximateEtaMinutes(routePoints, stop, bus) })).sort((a: any, b: any) => a.etaMinutes - b.etaMinutes);
-        const next = ranked[0];
-        return { stop, sequence: i + 1, etaLabel: next ? (next.etaMinutes <= 1 ? "Now" : `${next.etaMinutes} min`) : "Route loaded", detail: next?.bus?.RouteShortName ? `Route ${next.bus.RouteShortName}` : route.Name || "Transit route" };
-      });
-      return { route, liveCount: routeVehicles.length, entries };
-    }).filter((b: any) => b.entries.length > 0 || b.liveCount > 0);
+    const {
+      getApproximateEtaMinutes,
+      isVehicleOnRoute,
+    } = require("./places/utils");
+    return busRoutes
+      .map((route) => {
+        const pattern = allRoutePatternsById[route.Key];
+        const routePoints = pattern?.points || [];
+        const routeStops = pattern?.stops || [];
+        const routeVehicles = busVehicles.filter((bus) =>
+          isVehicleOnRoute(bus, route),
+        );
+        const entries = routeStops.slice(0, 4).map((stop: any, i: number) => {
+          const ranked = routeVehicles
+            .map((bus) => ({
+              bus,
+              etaMinutes: getApproximateEtaMinutes(routePoints, stop, bus),
+            }))
+            .sort((a: any, b: any) => a.etaMinutes - b.etaMinutes);
+          const next = ranked[0];
+          return {
+            stop,
+            sequence: i + 1,
+            etaLabel: next
+              ? next.etaMinutes <= 1
+                ? "Now"
+                : `${next.etaMinutes} min`
+              : "Route loaded",
+            detail: next?.bus?.RouteShortName
+              ? `Route ${next.bus.RouteShortName}`
+              : route.Name || "Transit route",
+          };
+        });
+        return { route, liveCount: routeVehicles.length, entries };
+      })
+      .filter((b: any) => b.entries.length > 0 || b.liveCount > 0);
   }, [allRoutePatternsById, busRoutes, busVehicles, isAllBusRoutesSelected]);
 
   const nearbyTransitInsight = useMemo(() => {
     if (!userCoord || activeLayer !== "Bus" || !selectedRoute) return null;
     const nearestStop = busStops.reduce((best: any, stop) => {
-      const d = haversineDistanceMeters(userCoord.latitude, userCoord.longitude, stop.Latitude, stop.Longitude);
-      return !best || d < best.distanceMeters ? { stop, distanceMeters: d } : best;
+      const sLat = stop.Latitude !== undefined ? stop.Latitude : stop.lat;
+      const sLng = stop.Longitude !== undefined ? stop.Longitude : stop.lng;
+      if (sLat == null || sLng == null) return best;
+      const d = haversineDistanceMeters(
+        userCoord.latitude,
+        userCoord.longitude,
+        sLat,
+        sLng,
+      );
+      return !best || d < best.distanceMeters
+        ? { stop, distanceMeters: d }
+        : best;
     }, null as any);
     const nearestVehicle = busVehicles.reduce((best: any, v) => {
-      const d = haversineDistanceMeters(userCoord.latitude, userCoord.longitude, v.Latitude, v.Longitude);
-      return !best || d < best.distanceMeters ? { vehicle: v, distanceMeters: d } : best;
+      const vLat = v.Latitude !== undefined ? v.Latitude : v.lat;
+      const vLng = v.Longitude !== undefined ? v.Longitude : v.lng;
+      if (vLat == null || vLng == null) return best;
+      const d = haversineDistanceMeters(
+        userCoord.latitude,
+        userCoord.longitude,
+        vLat,
+        vLng,
+      );
+      return !best || d < best.distanceMeters
+        ? { vehicle: v, distanceMeters: d }
+        : best;
     }, null as any);
-    if ((!nearestStop || nearestStop.distanceMeters > 320) && (!nearestVehicle || nearestVehicle.distanceMeters > 380)) return null;
+    if (
+      (!nearestStop || nearestStop.distanceMeters > 320) &&
+      (!nearestVehicle || nearestVehicle.distanceMeters > 380)
+    )
+      return null;
     return { nearestStop, nearestVehicle };
   }, [activeLayer, busStops, busVehicles, selectedRoute, userCoord]);
 
   // ── Callbacks ─────────────────────────────────────────────
-  const getPlaceExternalLink = useCallback((loc: CampusLocation) => {
-    const rec = recreationFacilityMap.get(getCanonicalLocationName(loc.location)) || null;
-    if (rec?.source_url) return { label: "Open Official Page", url: rec.source_url };
-    if (loc.type === "Dining" || loc.type === "Hub") return { label: "Dining Site", url: "https://dineoncampus.com/tamu" };
-    if (loc.type === "Library") return { label: "Library Site", url: "https://library.tamu.edu/" };
-    if (loc.type === "Parking") return { label: "Parking Guide", url: PARKING_INFO_URL };
-    return { label: "Open in Maps", url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${loc.location} Texas A&M University`)}` };
-  }, [recreationFacilityMap]);
+  const getPlaceExternalLink = useCallback(
+    (loc: CampusLocation) => {
+      const rec =
+        recreationFacilityMap.get(getCanonicalLocationName(loc.location)) ||
+        null;
+      if (rec?.source_url)
+        return { label: "Open Official Page", url: rec.source_url };
+      if (loc.type === "Dining" || loc.type === "Hub")
+        return { label: "Dining Site", url: "https://dineoncampus.com/tamu" };
+      if (loc.type === "Library")
+        return { label: "Library Site", url: "https://library.tamu.edu/" };
+      if (loc.type === "Parking")
+        return { label: "Parking Guide", url: PARKING_INFO_URL };
+      return {
+        label: "Open in Maps",
+        url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${loc.location} Texas A&M University`)}`,
+      };
+    },
+    [recreationFacilityMap],
+  );
 
-  const openFullMenu = useCallback((locationName: string) => {
-    const rootNav = navigation.getParent?.("RootStack") || navigation.getParent?.();
-    const params = { location: locationName, mealPeriod: getDiningMealPeriodForLocation(locationName), title: `${locationName} Menu`, sourceHint: "cached" };
-    (rootNav?.navigate || navigation.navigate)("FullMenu", params);
-  }, [navigation]);
+  const openFullMenu = useCallback(
+    (locationName: string) => {
+      const rootNav =
+        navigation.getParent?.("RootStack") || navigation.getParent?.();
+      const params = {
+        location: locationName,
+        mealPeriod: getDiningMealPeriodForLocation(locationName),
+        title: `${locationName} Menu`,
+        sourceHint: "cached",
+      };
+      (rootNav?.navigate || navigation.navigate)("FullMenu", params);
+    },
+    [navigation],
+  );
 
   const openScheduleList = useCallback(() => {
-    const rootNav = navigation.getParent?.("RootStack") || navigation.getParent?.();
+    if (isGuest) {
+      promptGuestLogin(
+        navigation,
+        "Saved schedules are only available once you log in.",
+      );
+      return;
+    }
+    const rootNav =
+      navigation.getParent?.("RootStack") || navigation.getParent?.();
     (rootNav?.navigate || navigation.navigate)("ScheduleList");
-  }, [navigation]);
+  }, [isGuest, navigation]);
 
   const openNewCourseSearch = useCallback(() => {
-    const rootNav = navigation.getParent?.("RootStack") || navigation.getParent?.();
+    if (isGuest) {
+      promptGuestLogin(
+        navigation,
+        "Adding classes to your map requires a signed-in account.",
+      );
+      return;
+    }
+    const rootNav =
+      navigation.getParent?.("RootStack") || navigation.getParent?.();
     (rootNav?.navigate || navigation.navigate)("NewCourseSearch");
-  }, [navigation]);
+  }, [isGuest, navigation]);
 
   const openBusTimetable = useCallback(() => {
     const params = isAllBusRoutesSelected
-      ? { mode: "all", boards: allRouteBoards, liveBusCount: busVehicles.length }
-      : { mode: "single", route: selectedRoute, entries: stopTimetable, liveBusCount: busVehicles.length, nearbyTransitInsight };
-    const rootNav = navigation.getParent?.("RootStack") || navigation.getParent?.();
+      ? {
+          mode: "all",
+          boards: allRouteBoards,
+          liveBusCount: busVehicles.length,
+        }
+      : {
+          mode: "single",
+          route: selectedRoute,
+          entries: stopTimetable,
+          liveBusCount: busVehicles.length,
+          nearbyTransitInsight,
+        };
+    const rootNav =
+      navigation.getParent?.("RootStack") || navigation.getParent?.();
     (rootNav?.navigate || navigation.navigate)("BusTimetable", params);
-  }, [allRouteBoards, busVehicles.length, isAllBusRoutesSelected, navigation, nearbyTransitInsight, selectedRoute, stopTimetable]);
+  }, [
+    allRouteBoards,
+    busVehicles.length,
+    isAllBusRoutesSelected,
+    navigation,
+    nearbyTransitInsight,
+    selectedRoute,
+    stopTimetable,
+  ]);
 
-  const openNavigationToLocation = useCallback((loc: CampusLocation, mode: "walk" | "bus" = "walk") => {
-    const rootNav = navigation.getParent?.("RootStack") || navigation.getParent?.();
-    const params = { initialTravelMode: mode, initialDestination: { id: loc.location, name: loc.location, shortName: loc.shortName || loc.location, latitude: loc.coord.lat, longitude: loc.coord.lng, type: loc.type.toLowerCase() } };
-    (rootNav?.navigate || navigation.navigate)("CampusNavigation", params);
-  }, [navigation]);
+  const openNavigationToLocation = useCallback(
+    (loc: CampusLocation, mode: "walk" | "bus" = "walk") => {
+      const rootNav =
+        navigation.getParent?.("RootStack") || navigation.getParent?.();
+      const params = {
+        initialTravelMode: mode,
+        initialDestination: {
+          id: loc.location,
+          name: loc.location,
+          shortName: loc.shortName || loc.location,
+          latitude: loc.coord.lat,
+          longitude: loc.coord.lng,
+          type: loc.type.toLowerCase(),
+        },
+      };
+      (rootNav?.navigate || navigation.navigate)("CampusNavigation", params);
+    },
+    [navigation],
+  );
 
   const fetchReviews = useCallback(async (placeId: string, limit = 5) => {
     if (limit > 5) setIsFetchingReviews(true);
@@ -576,36 +852,75 @@ export function PlacesMapScreen() {
       const { getPlaceReviews } = require("../services/streamFeeds");
       const revs = await getPlaceReviews(placeId, limit);
       setStreamReviews(revs);
-    } catch (e) { console.warn("Failed to fetch stream reviews", e); }
-    finally { setIsFetchingReviews(false); }
+    } catch (e) {
+      console.warn("Failed to fetch stream reviews", e);
+    } finally {
+      setIsFetchingReviews(false);
+    }
   }, []);
 
   const handlePostReview = useCallback(async () => {
-    if (!selectedId || !newReviewText.trim() || newRating === 0) return;
+    if (isGuest) {
+      promptGuestLogin(
+        navigation,
+        "Guest mode can browse reviews, but posting one needs a signed-in account.",
+      );
+      return;
+    }
+    const selectedReviewId =
+      selectedLoc?.placeId || selectedLoc?.location || null;
+    if (!selectedReviewId || !newReviewText.trim() || newRating === 0) return;
     setIsPostingReview(true);
     try {
       const { postPlaceReview } = require("../services/streamFeeds");
-      await postPlaceReview(selectedId, newRating, newReviewText.trim());
+      await postPlaceReview(selectedReviewId, newRating, newReviewText.trim());
       setReviewModalVisible(false);
       setNewReviewText("");
       setNewRating(5);
-      fetchReviews(selectedId);
-    } catch (e) { console.warn("Failed to post review", e); }
-    finally { setIsPostingReview(false); }
-  }, [fetchReviews, newRating, newReviewText, selectedId]);
-
-  const loadBestDiningPreview = useCallback(async (locationName: string, preferredMeal: DiningMealPeriod) => {
-    const mealOptions = getDiningMealOptionsForLocation(locationName);
-    const firstMeal = mealOptions.find((m) => m === preferredMeal) || mealOptions[0] || preferredMeal;
-    const orderedMeals: DiningMealPeriod[] = [firstMeal, ...mealOptions.filter((m) => m !== firstMeal)];
-    let fallbackPreview: any = null, fallbackMeal = firstMeal;
-    for (const meal of orderedMeals) {
-      const preview = await fetchDiningFullMenuCached({ location: locationName, mealPeriod: meal }).catch(() => null);
-      if (!fallbackPreview) { fallbackPreview = preview; fallbackMeal = meal; }
-      if (preview?.success && preview?.categories?.length) return { preview, meal };
+      fetchReviews(selectedReviewId);
+    } catch (e) {
+      console.warn("Failed to post review", e);
+    } finally {
+      setIsPostingReview(false);
     }
-    return { preview: fallbackPreview, meal: fallbackMeal };
-  }, []);
+  }, [
+    fetchReviews,
+    isGuest,
+    navigation,
+    newRating,
+    newReviewText,
+    selectedLoc,
+  ]);
+
+  const loadBestDiningPreview = useCallback(
+    async (locationName: string, preferredMeal: DiningMealPeriod) => {
+      const mealOptions = getDiningMealOptionsForLocation(locationName);
+      const firstMeal =
+        mealOptions.find((m) => m === preferredMeal) ||
+        mealOptions[0] ||
+        preferredMeal;
+      const orderedMeals: DiningMealPeriod[] = [
+        firstMeal,
+        ...mealOptions.filter((m) => m !== firstMeal),
+      ];
+      let fallbackPreview: any = null,
+        fallbackMeal = firstMeal;
+      for (const meal of orderedMeals) {
+        const preview = await fetchDiningFullMenuCached({
+          location: locationName,
+          mealPeriod: meal,
+        }).catch(() => null);
+        if (!fallbackPreview) {
+          fallbackPreview = preview;
+          fallbackMeal = meal;
+        }
+        if (preview?.success && preview?.categories?.length)
+          return { preview, meal };
+      }
+      return { preview: fallbackPreview, meal: fallbackMeal };
+    },
+    [],
+  );
 
   const fetchDiningData = useCallback(async (loc: CampusLocation) => {
     setIsFetchingDining(true);
@@ -624,15 +939,31 @@ export function PlacesMapScreen() {
       setDiningMenuOptions(menuCandidates);
       const nextMenu = loc.location;
       setActiveDiningMenu(nextMenu);
-      setActiveDiningMealPeriod(getDiningMealPeriodForLocation(nextMenu) as DiningMealPeriod);
+      setActiveDiningMealPeriod(
+        getDiningMealPeriodForLocation(nextMenu) as DiningMealPeriod,
+      );
       setDiningMenuPreview(null);
-    } catch (e) { console.warn("Failed to fetch dining data", e); }
-    finally { setIsFetchingDining(false); }
+    } catch (e) {
+      console.warn("Failed to fetch dining data", e);
+    } finally {
+      setIsFetchingDining(false);
+    }
   }, []);
 
   const handleSelectLocation = useCallback((loc: CampusLocation) => {
+    const nextLayer =
+      loc.type === "Dining" || loc.type === "Hub"
+        ? "Dining"
+        : loc.type === "Rec"
+          ? "Rec"
+          : loc.type === "Library"
+            ? "Library"
+            : loc.type === "Parking"
+              ? "Parking"
+              : "Academic";
+    setActiveLayer(nextLayer);
     setSelectedHotspotId(null);
-    setSelectedId(loc.location);
+    setSelectedId(getLocationSelectionId(loc));
     setSelectedStop(null);
     setSelectedBus(null);
     setIsSearchExpanded(false);
@@ -640,25 +971,32 @@ export function PlacesMapScreen() {
     setShowSearchResults(false);
   }, []);
 
-  const handleGetDirections = useCallback((building: string) => {
-    // Find building in directory (e.g. "MSC", "ZEC")
-    const code = building.split(/\s+/)[0]?.toUpperCase();
-    const loc = locations.find(l => 
-      l.location.toUpperCase() === code || 
-      (l.shortName && l.shortName.toUpperCase().includes(code))
-    );
-    if (loc) {
-      setSelectedId(loc.location);
-      setIsTodayExpanded(false);
-      // Center map
-      mapRef.current?.animateToRegion({
-        latitude: loc.coord.lat - 0.0015,
-        longitude: loc.coord.lng,
-        latitudeDelta: 0.005,
-        longitudeDelta: 0.005,
-      }, 600);
-    }
-  }, [locations]);
+  const handleGetDirections = useCallback(
+    (building: string) => {
+      // Find building in directory (e.g. "MSC", "ZEC")
+      const code = building.split(/\s+/)[0]?.toUpperCase();
+      const loc = locations.find(
+        (l) =>
+          l.location.toUpperCase() === code ||
+          (l.shortName && l.shortName.toUpperCase().includes(code)),
+      );
+      if (loc) {
+        setSelectedId(getLocationSelectionId(loc));
+        setIsTodayExpanded(false);
+        // Center map
+        mapRef.current?.animateToRegion(
+          {
+            latitude: loc.coord.lat - 0.0015,
+            longitude: loc.coord.lng,
+            latitudeDelta: 0.005,
+            longitudeDelta: 0.005,
+          },
+          600,
+        );
+      }
+    },
+    [locations],
+  );
 
   const getLayerForPlace = useCallback((loc: CampusLocation) => {
     if (loc.type === "Dining" || loc.type === "Hub") return "Dining";
@@ -677,76 +1015,83 @@ export function PlacesMapScreen() {
     return "Academic";
   }, []);
 
-  const handleSelectHotspot = useCallback((hotspot: CampusHotspot) => {
-    setSelectedHotspotId(hotspot.id);
-    setSelectedId(null);
-    setSelectedStop(null);
-    setSelectedBus(null);
-    setNearestBusInfo(null);
-    setIsRouteDropdownOpen(false);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (!mapRef.current) return;
-    mapRef.current.animateCamera(
-      {
-        center: {
-          latitude: hotspot.coord.lat,
-          longitude: hotspot.coord.lng,
-        },
-        zoom: 16.2,
-        pitch: isMapTilted ? 55 : 0,
-        heading: 0,
-      },
-      { duration: 700 },
-    );
-  }, [isMapTilted]);
-
-  const openHotspotPlace = useCallback((hotspot: CampusHotspot) => {
-    if (!hotspot.place) {
-      if (mapRef.current) {
-        mapRef.current.animateCamera(
-          {
-            center: {
-              latitude: hotspot.coord.lat,
-              longitude: hotspot.coord.lng,
-            },
-            zoom: 16.4,
-            pitch: isMapTilted ? 55 : 0,
-            heading: 0,
+  const handleSelectHotspot = useCallback(
+    (hotspot: CampusHotspot) => {
+      setSelectedHotspotId(hotspot.id);
+      setSelectedId(null);
+      setSelectedStop(null);
+      setSelectedBus(null);
+      setNearestBusInfo(null);
+      setIsRouteDropdownOpen(false);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      if (!mapRef.current) return;
+      mapRef.current.animateCamera(
+        {
+          center: {
+            latitude: hotspot.coord.lat,
+            longitude: hotspot.coord.lng,
           },
-          { duration: 650 },
-        );
-      }
-      return;
-    }
+          zoom: 16.2,
+          pitch: isMapTilted ? 55 : 0,
+          heading: 0,
+        },
+        { duration: 700 },
+      );
+    },
+    [isMapTilted],
+  );
 
-    setActiveLayer(getLayerForPlace(hotspot.place));
-    handleSelectLocation(hotspot.place);
-  }, [getLayerForPlace, handleSelectLocation, isMapTilted]);
-
-  const openHotspotItem = useCallback(async (
-    hotspot: CampusHotspot,
-    item: CampusHotspot["items"][number],
-  ) => {
-    if (item.source === "event" && item.link) {
-      try {
-        await Linking.openURL(item.link);
+  const openHotspotPlace = useCallback(
+    (hotspot: CampusHotspot) => {
+      if (!hotspot.place) {
+        if (mapRef.current) {
+          mapRef.current.animateCamera(
+            {
+              center: {
+                latitude: hotspot.coord.lat,
+                longitude: hotspot.coord.lng,
+              },
+              zoom: 16.4,
+              pitch: isMapTilted ? 55 : 0,
+              heading: 0,
+            },
+            { duration: 650 },
+          );
+        }
         return;
-      } catch (error) {
-        console.warn("Failed to open event link", error);
       }
-    }
 
-    openHotspotPlace(hotspot);
-  }, [openHotspotPlace]);
+      setActiveLayer(getLayerForPlace(hotspot.place));
+      handleSelectLocation(hotspot.place);
+    },
+    [getLayerForPlace, handleSelectLocation, isMapTilted],
+  );
+
+  const openHotspotItem = useCallback(
+    async (hotspot: CampusHotspot, item: CampusHotspot["items"][number]) => {
+      if (item.source === "event" && item.link) {
+        try {
+          await Linking.openURL(item.link);
+          return;
+        } catch (error) {
+          console.warn("Failed to open event link", error);
+        }
+      }
+
+      openHotspotPlace(hotspot);
+    },
+    [openHotspotPlace],
+  );
 
   const fetchPulseHotspots = useCallback(async () => {
-    if (!pulseHotspots.length) {
+    if (!pulseHotspotsRef.current.length) {
       setIsLoadingPulse(true);
     }
     try {
       const rawHotspots = await fetchCampusPulseMap(12);
+      const currentPulsePlaces = pulsePlacesRef.current;
       const placeLookup = new Map(
-        pulsePlaces.flatMap((place) => {
+        currentPulsePlaces.flatMap((place) => {
           const keys = [place.location];
           if (place.placeId) keys.push(place.placeId);
           return keys.map((key) => [key, place] as const);
@@ -760,17 +1105,23 @@ export function PlacesMapScreen() {
           null,
       }));
 
+      pulseHotspotsRef.current = hotspots;
       setPulseHotspots(hotspots);
-      if (selectedHotspotId && !hotspots.some((hotspot) => hotspot.id === selectedHotspotId)) {
+      const currentSelectedId = selectedHotspotIdRef.current;
+      if (
+        currentSelectedId &&
+        !hotspots.some((hotspot) => hotspot.id === currentSelectedId)
+      ) {
         setSelectedHotspotId(null);
       }
     } catch (error) {
       console.warn("Failed to build pulse hotspots", error);
-      if (!selectedHotspotId) setPulseHotspots([]);
+      if (!selectedHotspotIdRef.current) setPulseHotspots([]);
     } finally {
       setIsLoadingPulse(false);
     }
-  }, [pulseHotspots.length, pulsePlaces, selectedHotspotId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const centerOnUserLocation = useCallback(async () => {
     try {
@@ -820,9 +1171,24 @@ export function PlacesMapScreen() {
   const { transitService } = require("../services/transitService");
 
   const loadAllBusRoutes = useCallback(async (routesToLoad: any[]) => {
-    if (!routesToLoad.length) { setAllRoutePatternsById({}); setBusVehicles([]); return; }
-    const patternEntries = await Promise.all(routesToLoad.map(async (r) => [r.Key, await transitService.getRoutePattern(r.Key)] as const));
-    const nextPatterns = patternEntries.reduce((acc, [k, p]) => { acc[k] = p; return acc; }, {} as any);
+    setBusVehicles([]);
+    setBusStops([]);
+    setRoutePatterns([]);
+    setRoutePaths([]);
+    if (!routesToLoad.length) {
+      setAllRoutePatternsById({});
+      return;
+    }
+    const patternEntries = await Promise.all(
+      routesToLoad.map(
+        async (r) =>
+          [r.Key, await transitService.getRoutePattern(r.Key)] as const,
+      ),
+    );
+    const nextPatterns = patternEntries.reduce((acc, [k, p]) => {
+      acc[k] = p;
+      return acc;
+    }, {} as any);
     setAllRoutePatternsById(nextPatterns);
     const vehicles = await transitService.getVehicles();
     setBusVehicles(vehicles || []);
@@ -836,39 +1202,32 @@ export function PlacesMapScreen() {
     let coords: { latitude: number; longitude: number }[] = [];
 
     if (activeLayer === "Bus") {
-      // Fit to all active vehicles OR the selected route pattern
-      if (isAllBusRoutesSelected) {
-        if (busVehicles.length > 0) {
-          coords = busVehicles.map((bv: any) => ({
-            latitude: bv.Latitude || bv.lat,
-            longitude: bv.Longitude || bv.lng,
-          }));
-        }
-      } else if (routePatterns.length > 0) {
-        coords = routePatterns;
-      }
+      // Intentionally bypassed: We no longer auto-fit based on the live vehicle positions or routes globally
+      // every single time the timer fires because it aggressively resets user zoom.
+      // Route fittings are handled manually on route selection instead inside handleSelectBusRoute!
     } else if (activeLayer === "Pulse") {
-      coords = pulseHotspots.map((hotspot) => ({
-        latitude: hotspot.coord.lat,
-        longitude: hotspot.coord.lng,
-      }));
+      // Bypassed: Let the map stay at the campus-wide TAMU_CENTER initialRegion when on the Pulse tab.
+      // Auto-zooming to hotspots bounds the camera incorrectly and breaks the intended overview.
     } else if (activeLayer === "Today") {
       // Only fit when there are multiple scheduled locations to show.
       coords = sortedFilteredLocations
-        .filter(loc => loc.coord)
-        .map(loc => ({ latitude: loc.coord.lat, longitude: loc.coord.lng }));
+        .filter((loc) => loc.coord)
+        .map((loc) => ({ latitude: loc.coord.lat, longitude: loc.coord.lng }));
     } else {
       // General map fit for other layers (Dining, Parking, Places)
       if (filteredLocations.length > 0 && filteredLocations.length < 50) {
         // Only fit to filtered list if it's manageable.
         coords = filteredLocations
-          .filter(loc => loc.coord)
-          .map(loc => ({ latitude: loc.coord.lat, longitude: loc.coord.lng }));
+          .filter((loc) => loc.coord)
+          .map((loc) => ({
+            latitude: loc.coord.lat,
+            longitude: loc.coord.lng,
+          }));
       }
     }
 
     if (coords.length > 0) {
-      const { width, height } = Dimensions.get('window');
+      const { width, height } = Dimensions.get("window");
       const isToday = activeLayer === "Today";
       const isPulse = activeLayer === "Pulse";
 
@@ -891,7 +1250,10 @@ export function PlacesMapScreen() {
       // Force 2D view (0 pitch) for Today to ensure padding logic is pixel-accurate
       if (isToday && isMapTilted) {
         setIsMapTilted(false);
-        mapRef.current.animateCamera({ pitch: 0, heading: 0 }, { duration: 400 });
+        mapRef.current.animateCamera(
+          { pitch: 0, heading: 0 },
+          { duration: 400 },
+        );
       }
 
       mapRef.current.fitToCoordinates(coords, {
@@ -899,7 +1261,7 @@ export function PlacesMapScreen() {
           top: topPadding,
           right: sidePadding,
           bottom: bottomPadding,
-          left: sidePadding
+          left: sidePadding,
         },
         animated: true,
       });
@@ -918,73 +1280,200 @@ export function PlacesMapScreen() {
     pulseHotspots,
   ]);
 
-  const handleSelectBusRoute = useCallback(async (routeId: string, availableRoutes: any[] = busRoutes) => {
-    setSelectedBusRouteId(routeId); setSelectedStop(null); setSelectedBus(null);
-    if (routeId === ALL_BUS_ROUTES_KEY) { await loadAllBusRoutes(availableRoutes); return; }
-    try {
-      const { points, stops } = await transitService.getRoutePattern(routeId);
-      setRoutePatterns(points?.length ? points : []);
-      setBusStops(stops?.length ? stops : []);
-      if (mapRef.current && points?.length) mapRef.current.fitToCoordinates(points, { edgePadding: { top: 220, right: 60, bottom: 80, left: 60 }, animated: true });
-      setBusVehicles(await transitService.getVehicles(routeId));
-    } catch (e) { console.warn("Failed to select bus route", e); }
-  }, [busRoutes, loadAllBusRoutes]);
+  const handleSelectBusRoute = useCallback(
+    async (routeId: string, availableRoutes: any[] = busRoutes) => {
+      setSelectedBusRouteId(routeId);
+      currentBusRouteFetchId.current = routeId;
+      setBusVehicles([]);
+      setSelectedStop(null);
+      setSelectedBus(null);
+      setRoutePatterns([]); // Clear previous traces
+      setRoutePaths([]);
+      setBusStops([]);
 
-  const handleSelectBusRouteFromSearch = useCallback(async (route: any) => {
-    setActiveLayer("Bus");
-    setIsSearchExpanded(false);
-    setSearchQuery("");
-    setShowSearchResults(false);
-    setSelectedId(null);
-    setSelectedStop(null);
-    setSelectedBus(null);
-    setIsRouteDropdownOpen(false);
-    await handleSelectBusRoute(route.Key);
-  }, [handleSelectBusRoute]);
+      if (routeId === ALL_BUS_ROUTES_KEY) {
+        await loadAllBusRoutes(availableRoutes);
+        return;
+      }
+      try {
+        const { points, stops, paths } =
+          await transitService.getRoutePattern(routeId);
+          
+        if (currentBusRouteFetchId.current !== routeId) return; // Prevent race condition crashes
 
-  const { getClosestProgressMeters, haversineDistanceMeters: hav, formatBusDistance } = require("./places/utils");
-  const resolveNearestBusForStop = useCallback((stop: any, vehicles: any[]) => {
-    if (!stop || vehicles.length === 0) { setNearestBusInfo(selectedRoute ? "Route loaded" : "Transit route loaded"); return; }
-    const stopProgress = getClosestProgressMeters(routePatterns, { latitude: stop.Latitude, longitude: stop.Longitude });
-    const ranked = vehicles.map((bus) => {
-      const direct = hav(bus.Latitude, bus.Longitude, stop.Latitude, stop.Longitude);
-      if (!stopProgress) return { bus, distanceMeters: direct };
-      const busProgress = getClosestProgressMeters(routePatterns, { latitude: bus.Latitude, longitude: bus.Longitude });
-      if (!busProgress) return { bus, distanceMeters: direct };
-      const delta = Math.abs(stopProgress.progressMeters - busProgress.progressMeters);
-      const wrapped = stopProgress.totalRouteMeters > 0 ? Math.min(delta, stopProgress.totalRouteMeters - delta) : delta;
-      return { bus, distanceMeters: Math.min(direct, wrapped + stopProgress.offsetMeters + busProgress.offsetMeters) };
-    }).sort((a, b) => a.distanceMeters - b.distanceMeters);
-    const nearest = ranked[0];
-    if (!nearest) { setNearestBusInfo(selectedRoute ? "Route loaded" : "Transit route loaded"); return; }
-    setSelectedBus(nearest.bus);
-    const eta = Math.max(1, Math.round(nearest.distanceMeters / 220));
-    const label = nearest.bus.RouteShortName ? `Route ${nearest.bus.RouteShortName}` : nearest.bus.Name ? `Bus ${nearest.bus.Name}` : undefined;
-    setNearestBusInfo(formatBusDistance(nearest.distanceMeters, eta, label));
-  }, [routePatterns, selectedRoute]);
+        setRoutePatterns(points?.length ? points : []);
+        setRoutePaths(paths?.length ? paths : []);
+        setBusStops(stops?.length ? stops : []);
+        if (mapRef.current && points?.length)
+          mapRef.current.fitToCoordinates(points, {
+            edgePadding: { top: 220, right: 60, bottom: 80, left: 60 },
+            animated: true,
+          });
+        
+        const vehicles = await transitService.getVehicles(routeId);
+        if (currentBusRouteFetchId.current === routeId) {
+          setBusVehicles(vehicles);
+        }
+      } catch (e) {
+        console.warn("Failed to select bus route", e);
+      }
+    },
+    [busRoutes, loadAllBusRoutes],
+  );
 
-  const handleStopPress = useCallback((stop: any) => {
-    setSelectedStop(stop); setSelectedBus(null); setNearestBusInfo("Finding closest bus...");
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    resolveNearestBusForStop(stop, busVehicles);
-  }, [busVehicles, resolveNearestBusForStop]);
+  const handleSelectBusRouteFromSearch = useCallback(
+    async (route: any) => {
+      setActiveLayer("Bus");
+      setIsSearchExpanded(false);
+      setSearchQuery("");
+      setShowSearchResults(false);
+      setSelectedId(null);
+      setSelectedStop(null);
+      setSelectedBus(null);
+      setIsRouteDropdownOpen(false);
+      await handleSelectBusRoute(route.Key);
+    },
+    [handleSelectBusRoute],
+  );
+
+  const {
+    getClosestProgressMeters,
+    haversineDistanceMeters: hav,
+    formatBusDistance,
+  } = require("./places/utils");
+  const resolveNearestBusForStop = useCallback(
+    (stop: any, vehicles: any[]) => {
+      if (!stop || vehicles.length === 0) {
+        setNearestBusInfo(
+          selectedRoute ? "Route loaded" : "Transit route loaded",
+        );
+        return;
+      }
+      const sLatP = stop.Latitude !== undefined ? stop.Latitude : stop.lat;
+      const sLngP = stop.Longitude !== undefined ? stop.Longitude : stop.lng;
+      if (sLatP == null || sLngP == null) return;
+
+      const stopProgress = getClosestProgressMeters(routePatterns, {
+        latitude: sLatP,
+        longitude: sLngP,
+      });
+      const ranked = vehicles
+        .map((bus) => {
+          const busLat = bus.Latitude !== undefined ? bus.Latitude : bus.lat;
+          const busLng = bus.Longitude !== undefined ? bus.Longitude : bus.lng;
+          const stopLat =
+            stop.Latitude !== undefined ? stop.Latitude : stop.lat;
+          const stopLng =
+            stop.Longitude !== undefined ? stop.Longitude : stop.lng;
+
+          if (!busLat || !busLng || !stopLat || !stopLng) {
+            return { bus, distanceMeters: Infinity };
+          }
+
+          const direct = hav(busLat, busLng, stopLat, stopLng);
+          if (!stopProgress) return { bus, distanceMeters: direct };
+          const busProgress = getClosestProgressMeters(routePatterns, {
+            latitude: busLat,
+            longitude: busLng,
+          });
+          if (!busProgress) return { bus, distanceMeters: direct };
+          const delta = Math.abs(
+            stopProgress.progressMeters - busProgress.progressMeters,
+          );
+          const wrapped =
+            stopProgress.totalRouteMeters > 0
+              ? Math.min(delta, stopProgress.totalRouteMeters - delta)
+              : delta;
+          return {
+            bus,
+            distanceMeters: Math.min(
+              direct,
+              wrapped + stopProgress.offsetMeters + busProgress.offsetMeters,
+            ),
+          };
+        })
+        .sort((a, b) => a.distanceMeters - b.distanceMeters);
+      const nearest = ranked[0];
+      if (!nearest) {
+        setNearestBusInfo(
+          selectedRoute ? "Route loaded" : "Transit route loaded",
+        );
+        return;
+      }
+      setSelectedBus(nearest.bus);
+      const eta = Math.max(1, Math.round(nearest.distanceMeters / 220));
+      const label = nearest.bus.RouteShortName
+        ? `Route ${nearest.bus.RouteShortName}`
+        : nearest.bus.Name
+          ? `Bus ${nearest.bus.Name}`
+          : undefined;
+      setNearestBusInfo(formatBusDistance(nearest.distanceMeters, eta, label));
+    },
+    [routePatterns, selectedRoute],
+  );
+
+  const handleStopPress = useCallback(
+    (stop: any) => {
+      setSelectedStop(stop);
+      setSelectedBus(null);
+      setNearestBusInfo("Finding closest bus...");
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const sLat = stop.Latitude !== undefined ? stop.Latitude : stop.lat;
+      const sLng = stop.Longitude !== undefined ? stop.Longitude : stop.lng;
+      if (sLat != null && sLng != null && mapRef.current) {
+        mapRef.current.animateCamera(
+          {
+            center: { latitude: sLat - 0.0018, longitude: sLng },
+            zoom: 16.5,
+          },
+          { duration: 600 },
+        );
+      }
+
+      resolveNearestBusForStop(stop, busVehicles);
+    },
+    [busVehicles, mapRef, resolveNearestBusForStop],
+  );
 
   // ── Effects ───────────────────────────────────────────────
   // Location permissions + GPS watch
   useEffect(() => {
-    let mounted = true, watcher: Location.LocationSubscription | null = null;
+    let mounted = true,
+      watcher: Location.LocationSubscription | null = null;
     (async () => {
       try {
         const perm = await Location.requestForegroundPermissionsAsync();
         if (!mounted || perm.status !== "granted") return;
-        const cur = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        setUserCoord({ latitude: cur.coords.latitude, longitude: cur.coords.longitude });
-        if (!mounted || !mapRef.current) return;
-        mapRef.current.animateToRegion({ latitude: cur.coords.latitude, longitude: cur.coords.longitude, latitudeDelta: 0.018, longitudeDelta: 0.018 }, 700);
-        watcher = await Location.watchPositionAsync({ accuracy: Location.Accuracy.Balanced, distanceInterval: 25, timeInterval: 15000 }, (pos) => { if (mounted) setUserCoord({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }); });
-      } catch (e) { console.warn("Unable to center on current location", e); }
+        const cur = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        setUserCoord({
+          latitude: cur.coords.latitude,
+          longitude: cur.coords.longitude,
+        });
+        watcher = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.Balanced,
+            distanceInterval: 25,
+            timeInterval: 15000,
+          },
+          (pos) => {
+            if (mounted)
+              setUserCoord({
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude,
+              });
+          },
+        );
+      } catch (e) {
+        console.warn("Unable to center on current location", e);
+      }
     })();
-    return () => { mounted = false; watcher?.remove(); };
+    return () => {
+      mounted = false;
+      watcher?.remove();
+    };
   }, []);
 
   // Keep active layer valid
@@ -1009,15 +1498,23 @@ export function PlacesMapScreen() {
     setIsSearchExpanded(false);
     setSearchQuery("");
     setShowSearchResults(false);
-    setPendingInitialLocation(typeof nextLocation === "string" ? nextLocation : null);
-  }, [route.params?.focusToken, route.params?.initialLayer, route.params?.initialLocation]);
+    setPendingInitialLocation(
+      typeof nextLocation === "string" ? nextLocation : null,
+    );
+  }, [
+    route.params?.focusToken,
+    route.params?.initialLayer,
+    route.params?.initialLocation,
+  ]);
 
   useEffect(() => {
     if (!pendingInitialLocation) return;
     const targetName = getCanonicalLocationName(pendingInitialLocation);
-    const match = allMapLocations.find((loc) => getCanonicalLocationName(loc.location) === targetName);
+    const match = allMapLocations.find(
+      (loc) => getCanonicalLocationName(loc.location) === targetName,
+    );
     if (!match) return;
-    setSelectedId(match.location);
+    setSelectedId(getLocationSelectionId(match));
     setPendingInitialLocation(null);
   }, [allMapLocations, pendingInitialLocation]);
 
@@ -1029,33 +1526,59 @@ export function PlacesMapScreen() {
 
   // Hydrate hub when tab needs it
   useEffect(() => {
-    if (user?.id && (activeLayer === "Rec" || activeLayer === "Library" || activeLayer === "Schedule")) {
-      hydrateCampusHub(user.id).catch(() => { });
+    if (
+      !isGuest &&
+      user?.id &&
+      (activeLayer === "Rec" ||
+        activeLayer === "Library" ||
+        activeLayer === "Schedule")
+    ) {
+      hydrateCampusHub(user.id).catch(() => {});
     }
-  }, [activeLayer, hydrateCampusHub, user?.id]);
+  }, [activeLayer, hydrateCampusHub, isGuest, user?.id]);
 
+  const hasFetchedInit = useRef(false);
   useEffect(() => {
+    if (hasFetchedInit.current) return;
+
     const task = InteractionManager.runAfterInteractions(() => {
-      fetchPulseHotspots();
+      hasFetchedInit.current = true;
+      Promise.allSettled([
+        fetchData(),
+        fetchPulseHotspots(),
+        Promise.resolve(refreshSchedules()),
+      ]).catch(() => {});
     });
     return () => task.cancel();
-  }, [fetchPulseHotspots]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (activeLayer !== "Pulse") return;
     const interval = setInterval(() => {
       fetchPulseHotspots();
-    }, 25000);
+    }, 60000);
     return () => clearInterval(interval);
-  }, [activeLayer, fetchPulseHotspots]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeLayer]);
 
   // Pulse animation for Bus layer
   useEffect(() => {
     if (activeLayer === "Bus") {
-      Animated.loop(Animated.sequence([
-        Animated.timing(busPulseAnim, { toValue: 1.2, duration: 1000, useNativeDriver: true }),
-        Animated.timing(busPulseAnim, { toValue: 1.0, duration: 1000, useNativeDriver: true }),
-      ])).start();
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(busPulseAnim, {
+            toValue: 1.2,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(busPulseAnim, {
+            toValue: 1.0,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ]),
+      ).start();
     }
   }, [activeLayer, busPulseAnim]);
 
@@ -1063,8 +1586,15 @@ export function PlacesMapScreen() {
 
   // Sync active schedule
   useEffect(() => {
-    if (scheduleOptions.length === 0) { if (activeScheduleId !== null) setActiveScheduleId(null); return; }
-    if (!activeScheduleId || !scheduleOptions.some((o: any) => o.id === activeScheduleId)) setActiveScheduleId(scheduleOptions[0].id);
+    if (scheduleOptions.length === 0) {
+      if (activeScheduleId !== null) setActiveScheduleId(null);
+      return;
+    }
+    if (
+      !activeScheduleId ||
+      !scheduleOptions.some((o: any) => o.id === activeScheduleId)
+    )
+      setActiveScheduleId(scheduleOptions[0].id);
   }, [activeScheduleId, scheduleOptions]);
 
   // Bus fetch on layer switch
@@ -1072,17 +1602,31 @@ export function PlacesMapScreen() {
     if (activeLayer === "Bus") {
       (async () => {
         if (isFetchingRef.current) return;
-        isFetchingRef.current = true; setIsFetchingBus(true);
+        isFetchingRef.current = true;
+        setIsFetchingBus(true);
         try {
           const metadata = await transitService.getRoutesMetadata();
           const activeIds = await transitService.getActiveRoutes();
-          const active = metadata.filter((m: any) => activeIds.includes(m.ShortName) || activeIds.includes(m.Key) || activeIds.includes(m.Name));
+          const active = metadata.filter(
+            (m: any) =>
+              activeIds.includes(m.ShortName) ||
+              activeIds.includes(m.Key) ||
+              activeIds.includes(m.Name),
+          );
           const final = active.length ? active : metadata;
           setBusRoutes(final);
           const valid = final.some((r: any) => r.Key === selectedBusRouteId);
-          if (final.length && (isAllBusRoutesSelected || !selectedBusRouteId || !valid)) handleSelectBusRoute(ALL_BUS_ROUTES_KEY, final);
-        } catch (e) { console.warn("Failed to fetch bus routes", e); }
-        finally { setIsFetchingBus(false); isFetchingRef.current = false; }
+          if (
+            final.length &&
+            (isAllBusRoutesSelected || !selectedBusRouteId || !valid)
+          )
+            handleSelectBusRoute(ALL_BUS_ROUTES_KEY, final);
+        } catch (e) {
+          console.warn("Failed to fetch bus routes", e);
+        } finally {
+          setIsFetchingBus(false);
+          isFetchingRef.current = false;
+        }
       })();
     }
   }, [activeLayer]);
@@ -1091,11 +1635,17 @@ export function PlacesMapScreen() {
   useEffect(() => {
     if (activeLayer === "Bus" && selectedBusRouteId) {
       busPollInterval.current = setInterval(async () => {
-        const updated = isAllBusRoutesSelected ? await transitService.getVehicles() : await transitService.getVehicles(selectedBusRouteId);
+        const updated = isAllBusRoutesSelected
+          ? await transitService.getVehicles()
+          : await transitService.getVehicles(selectedBusRouteId);
         setBusVehicles(updated);
       }, 5000);
-    } else { if (busPollInterval.current) clearInterval(busPollInterval.current); }
-    return () => { if (busPollInterval.current) clearInterval(busPollInterval.current); };
+    } else {
+      if (busPollInterval.current) clearInterval(busPollInterval.current);
+    }
+    return () => {
+      if (busPollInterval.current) clearInterval(busPollInterval.current);
+    };
   }, [activeLayer, isAllBusRoutesSelected, selectedBusRouteId]);
 
   // Today selection should not auto-generate directions.
@@ -1105,28 +1655,68 @@ export function PlacesMapScreen() {
 
   // Update nearest bus when vehicles change
   useEffect(() => {
-    if (activeLayer === "Bus" && selectedStop) resolveNearestBusForStop(selectedStop, busVehicles);
-  }, [activeLayer, busVehicles, routePatterns, selectedStop, resolveNearestBusForStop]);
+    if (activeLayer === "Bus" && selectedStop)
+      resolveNearestBusForStop(selectedStop, busVehicles);
+  }, [
+    activeLayer,
+    busVehicles,
+    routePatterns,
+    selectedStop,
+    resolveNearestBusForStop,
+  ]);
 
   // Auto-fit map to filtered locations
   useEffect(() => {
-    if (!mapRef.current || activeLayer === "Bus" || activeLayer === "Heatmap" || activeLayer === "Today" || activeLayer === "Pulse" || selectedId || sortedFilteredLocations.length === 0) return;
+    if (
+      !mapRef.current ||
+      activeLayer === "Bus" ||
+      activeLayer === "Heatmap" ||
+      activeLayer === "Today" ||
+      activeLayer === "Pulse" ||
+      selectedId ||
+      sortedFilteredLocations.length === 0
+    )
+      return;
     const fitKey = `${activeLayer}:${sortedFilteredLocations.length}:${sortedFilteredLocations[0]?.location || ""}`;
     if (lastPlacesFitKey.current === fitKey) return;
     lastPlacesFitKey.current = fitKey;
-    const points = sortedFilteredLocations.slice(0, 18).map((l) => ({ latitude: l.coord.lat, longitude: l.coord.lng }));
-    if (points.length === 1) { mapRef.current.animateToRegion({ latitude: points[0].latitude - 0.0018, longitude: points[0].longitude, latitudeDelta: 0.008, longitudeDelta: 0.008 }, 650); return; }
-    mapRef.current.fitToCoordinates(points, { edgePadding: { top: 210, right: 48, bottom: 250, left: 48 }, animated: true });
+    const points = sortedFilteredLocations
+      .slice(0, 18)
+      .map((l) => ({ latitude: l.coord.lat, longitude: l.coord.lng }));
+    if (points.length === 1) {
+      mapRef.current.animateToRegion(
+        {
+          latitude: points[0].latitude - 0.0018,
+          longitude: points[0].longitude,
+          latitudeDelta: 0.008,
+          longitudeDelta: 0.008,
+        },
+        650,
+      );
+      return;
+    }
+    mapRef.current.fitToCoordinates(points, {
+      edgePadding: { top: 210, right: 48, bottom: 250, left: 48 },
+      animated: true,
+    });
   }, [activeLayer, selectedId, sortedFilteredLocations]);
 
   // Sheet selection - fetch reviews + dining on select
   useEffect(() => {
-    if (selectedId) {
-      fetchReviews(selectedId);
+    const selectedReviewId =
+      selectedLoc?.placeId || selectedLoc?.location || null;
+    if (selectedId && selectedReviewId) {
+      fetchReviews(selectedReviewId);
     } else {
-      setStreamReviews([]); setHubRestaurants([]); setDiningMenuOptions([]); setActiveDiningMenu(null); setActiveDiningMealPeriod("lunch"); setDiningMenuPreview(null); setSelectedPlaceDetail(null);
+      setStreamReviews([]);
+      setHubRestaurants([]);
+      setDiningMenuOptions([]);
+      setActiveDiningMenu(null);
+      setActiveDiningMealPeriod("lunch");
+      setDiningMenuPreview(null);
+      setSelectedPlaceDetail(null);
     }
-  }, [selectedId, fetchReviews]);
+  }, [selectedId, selectedLoc, fetchReviews]);
 
   useEffect(() => {
     if (!selectedLoc) {
@@ -1151,7 +1741,26 @@ export function PlacesMapScreen() {
   }, [selectedLoc?.location, selectedLoc?.placeId]);
 
   useEffect(() => {
-    if (!selectedLoc || !isDiningHallMenuLocation(selectedLoc.location)) { setHubRestaurants([]); setDiningMenuOptions([]); setActiveDiningMenu(null); setDiningMenuPreview(null); return; }
+    if (!selectedLoc || !mapRef.current) return;
+    mapRef.current.animateToRegion(
+      {
+        latitude: selectedLoc.coord.lat - 0.0015,
+        longitude: selectedLoc.coord.lng,
+        latitudeDelta: 0.008,
+        longitudeDelta: 0.008,
+      },
+      650,
+    );
+  }, [selectedLoc?.location, selectedLoc?.coord.lat, selectedLoc?.coord.lng]);
+
+  useEffect(() => {
+    if (!selectedLoc || !isDiningHallMenuLocation(selectedLoc.location)) {
+      setHubRestaurants([]);
+      setDiningMenuOptions([]);
+      setActiveDiningMenu(null);
+      setDiningMenuPreview(null);
+      return;
+    }
     fetchDiningData(selectedLoc);
   }, [selectedLoc, fetchDiningData]);
 
@@ -1159,25 +1768,32 @@ export function PlacesMapScreen() {
     if (!activeDiningMenu) return;
     let cancelled = false;
     setIsFetchingDining(true);
-    loadBestDiningPreview(activeDiningMenu, activeDiningMealPeriod).then(({ preview, meal }) => {
-      if (!cancelled) { if (meal !== activeDiningMealPeriod) setActiveDiningMealPeriod(meal); setDiningMenuPreview(preview); }
-    }).catch((e) => console.warn("Failed to load dining menu preview", e)).finally(() => { if (!cancelled) setIsFetchingDining(false); });
-    return () => { cancelled = true; };
+    loadBestDiningPreview(activeDiningMenu, activeDiningMealPeriod)
+      .then(({ preview, meal }) => {
+        if (!cancelled) {
+          if (meal !== activeDiningMealPeriod) setActiveDiningMealPeriod(meal);
+          setDiningMenuPreview(preview);
+        }
+      })
+      .catch((e) => console.warn("Failed to load dining menu preview", e))
+      .finally(() => {
+        if (!cancelled) setIsFetchingDining(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [activeDiningMealPeriod, activeDiningMenu, loadBestDiningPreview]);
 
-  // Connect Stream feeds user
+  // Connect native social client for compatibility across feed surfaces
   useEffect(() => {
-    if (user?.id) connectFeedsUser(user.id).catch(() => { });
-  }, [user]);
+    if (!isGuest && user?.id) {
+      try {
+        connectFeedsUser(user);
+      } catch (_) {}
+    }
+  }, [isGuest, user]);
 
   // ── Render ────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>
@@ -1200,14 +1816,18 @@ export function PlacesMapScreen() {
                 center={{ latitude: zone.lat, longitude: zone.lng }}
                 radius={zone.radius}
                 fillColor={
-                  density >= 70 ? "rgba(255,59,48,0.22)" :
-                    density >= 40 ? "rgba(255,149,0,0.18)" :
-                      "rgba(50,215,75,0.14)"
+                  density >= 70
+                    ? "rgba(255,59,48,0.22)"
+                    : density >= 40
+                      ? "rgba(255,149,0,0.18)"
+                      : "rgba(50,215,75,0.14)"
                 }
                 strokeColor={
-                  density >= 70 ? "rgba(255,59,48,0.5)" :
-                    density >= 40 ? "rgba(255,149,0,0.45)" :
-                      "rgba(50,215,75,0.4)"
+                  density >= 70
+                    ? "rgba(255,59,48,0.5)"
+                    : density >= 40
+                      ? "rgba(255,149,0,0.45)"
+                      : "rgba(50,215,75,0.4)"
                 }
                 strokeWidth={1.5}
               />
@@ -1230,78 +1850,204 @@ export function PlacesMapScreen() {
           ))}
 
         {/* Bus route polylines */}
-        {activeLayer === "Bus" && !isAllBusRoutesSelected && routePatterns.length > 0 && (
-          <Polyline coordinates={routePatterns} strokeColor={selectedRoute?.Color || "#007AFF"} strokeWidth={6} />
-        )}
-        {activeLayer === "Bus" && isAllBusRoutesSelected &&
+        {activeLayer === "Bus" &&
+          !isAllBusRoutesSelected &&
+          (routePaths && routePaths.length > 0
+            ? routePaths.map((path, idx) => {
+                const isSelected =
+                  selectedDirection === "All" ||
+                  (path.DirectionName || "")
+                    .toLowerCase()
+                    .includes((selectedDirection || "All").toLowerCase());
+                return (path.points || []).length > 0 ? (
+                  <Polyline
+                    key={`path-${idx}`}
+                    coordinates={path.points}
+                    strokeColor={
+                      isSelected
+                        ? getNeonColor(selectedRoute?.Color || "#007AFF")
+                        : getNeonColor(selectedRoute?.Color || "#007AFF") + "40"
+                    }
+                    strokeWidth={isSelected ? 4 : 2}
+                    zIndex={isSelected ? 10 : 5}
+                  />
+                ) : null;
+              })
+            : routePatterns.length > 0 && (
+                <Polyline
+                  coordinates={routePatterns}
+                  strokeColor={getNeonColor(selectedRoute?.Color || "#007AFF")}
+                  strokeWidth={4}
+                />
+              ))}
+        {activeLayer === "Bus" &&
+          isAllBusRoutesSelected &&
           Object.entries(allRoutePatternsById).map(([routeKey, pattern]) => {
             const route = busRoutes.find((r) => r.Key === routeKey);
-            return pattern.points.length > 0 ? (
-              <Polyline key={routeKey} coordinates={pattern.points} strokeColor={route?.Color || "#007AFF"} strokeWidth={6} />
+            return pattern?.points?.length > 0 ? (
+              <Polyline
+                key={routeKey}
+                coordinates={pattern.points}
+                strokeColor={getNeonColor(route?.Color || "#007AFF")}
+                strokeWidth={4}
+              />
             ) : null;
           })}
 
         {/* Bus stops */}
-        {activeLayer === "Bus" && busStops.map((stop) => (
-          <Marker
-            key={`stop-${stop.StopCode || stop.Name}`}
-            coordinate={{ latitude: stop.Latitude, longitude: stop.Longitude }}
-            onPress={() => handleStopPress(stop)}
-            anchor={{ x: 0.5, y: 0.5 }}
-          >
-            <View style={styles.busStopMarker}>
-              <View style={styles.busStopMarkerInner} />
-            </View>
-          </Marker>
-        ))}
+        {activeLayer === "Bus" &&
+          busStops.map((stop) => {
+            const sLat = stop.Latitude !== undefined ? stop.Latitude : stop.lat;
+            const sLng =
+              stop.Longitude !== undefined ? stop.Longitude : stop.lng;
+            if (sLat == null || sLng == null) return null;
+
+            const stopDir = stop.DirectionName || stop.direction || "Unknown";
+            const stopSelected =
+              selectedDirection === "All" ||
+              isAllBusRoutesSelected ||
+              (stopDir || "")
+                .toLowerCase()
+                .includes((selectedDirection || "All").toLowerCase());
+
+            return (
+              <Marker
+                key={`stop-${stop.StopCode || stop.Name || sLat}`}
+                coordinate={{
+                  latitude: sLat,
+                  longitude: sLng,
+                }}
+                onPress={() => handleStopPress(stop)}
+                anchor={{ x: 0.5, y: 0.5 }}
+                zIndex={stopSelected ? 50 : 10}
+              >
+                <View
+                  style={[
+                    styles.busStopMarker,
+                    { opacity: stopSelected ? 1 : 0.3 },
+                  ]}
+                >
+                  <View style={styles.busStopMarkerInner} />
+                </View>
+              </Marker>
+            );
+          })}
 
         {/* Bus vehicles */}
-        {activeLayer === "Bus" && busVehicles.map((bus, i) => {
-          const isTrackedBus = selectedBus?.Name === bus.Name;
-          const routeShortName = bus.routeShortName || bus.RouteShortName || selectedRoute?.ShortName || "";
-          const routeColor = bus.routeColor || bus.RouteColor || selectedRoute?.Color || "#007AFF";
+        {activeLayer === "Bus" &&
+          !isAllBusRoutesSelected &&
+          busVehicles.map((bus, i) => {
+            const isTrackedBus =
+              selectedBus?.Key && bus.Key
+                ? selectedBus.Key === bus.Key
+                : selectedBus?.Name === bus.Name;
+            const routeShortName =
+              bus.routeShortName ||
+              bus.RouteShortName ||
+              selectedRoute?.ShortName ||
+              "";
+            const routeColor =
+              bus.routeColor ||
+              bus.RouteColor ||
+              selectedRoute?.Color ||
+              "#007AFF";
+            const heading = bus.heading || bus.Heading || 0;
+            const busSpeedMs = bus.Speed || bus.speed || 0;
+            const busSpeedMph = Math.round(busSpeedMs * 2.23694); // Convert m/s to mph if it is in m/s, or just leave it. Assuming it's some raw unit. Let's just say Math.round(busSpeedMs).
+            const busDir =
+              bus.direction || bus.DirectionName || "Unknown Direction";
 
-          const hasDash = routeShortName.includes("-");
-          return (
-            <Marker
-              key={`bus-${bus.Id || bus.Name || i}`}
-              coordinate={{ latitude: bus.Latitude || bus.lat, longitude: bus.Longitude || bus.lng }}
-              onPress={() => { setSelectedBus(bus); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); }}
-              anchor={{ x: 0.5, y: 0.5 }}
-              zIndex={isTrackedBus ? 1000 : 500}
-            >
-              <View style={[
-                styles.busMarker,
-                {
-                  backgroundColor: routeColor,
-                  transform: [
-                    { rotate: `${bus.heading || bus.Heading || 0}deg` },
-                    { scale: isTrackedBus ? 1.15 : 1 }
-                  ]
-                }
-              ]}>
-                <View style={{ 
-                  transform: [{ rotate: `-${bus.heading || bus.Heading || 0}deg` }],
-                  width: '100%',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  paddingHorizontal: 2
-                }}>
-                  <Text 
-                    style={[
-                      styles.busMarkerText, 
-                      hasDash && { fontSize: 11, letterSpacing: -0.5 }
-                    ]} 
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
+            // Determine opacity based on selectedDirection
+            const matchesDirection =
+              selectedDirection === "All" ||
+              (busDir || "")
+                .toLowerCase()
+                .includes((selectedDirection || "All").toLowerCase());
+            const opacity = matchesDirection ? (isTrackedBus ? 1 : 0.9) : 0.3;
+
+            const hasDash = routeShortName.includes("-");
+            return (
+              <Marker
+                key={`bus-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`}
+                coordinate={{
+                  latitude: bus.Latitude || bus.lat,
+                  longitude: bus.Longitude || bus.lng,
+                }}
+                onPress={() => {
+                  setSelectedBus(bus);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+                  const bLat =
+                    bus.Latitude !== undefined ? bus.Latitude : bus.lat;
+                  const bLng =
+                    bus.Longitude !== undefined ? bus.Longitude : bus.lng;
+                  if (bLat != null && bLng != null && mapRef.current) {
+                    mapRef.current.animateCamera(
+                      {
+                        center: { latitude: bLat - 0.0018, longitude: bLng },
+                        zoom: 16.5,
+                      },
+                      { duration: 600 },
+                    );
+                  }
+                }}
+                anchor={{ x: 0.5, y: 0.5 }}
+                zIndex={isTrackedBus ? 501 : 500}
+              >
+                <View
+                  style={{
+                    opacity: opacity,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    transform: [{ rotate: `${heading}deg` }],
+                    shadowColor: "#000",
+                    shadowOpacity: 0.3,
+                    shadowRadius: 3,
+                    shadowOffset: { width: 0, height: 2 },
+                  }}
+                >
+                  {/* Pointer / Triangle facing Up directly toward the heading direction */}
+                  <View
+                    style={{
+                      width: 0,
+                      height: 0,
+                      borderLeftWidth: 8,
+                      borderRightWidth: 8,
+                      borderBottomWidth: 14,
+                      borderLeftColor: "transparent",
+                      borderRightColor: "transparent",
+                      borderBottomColor: routeColor,
+                      marginBottom: -4,
+                      zIndex: 2,
+                    }}
+                  />
+
+                  {/* Core Bubble with shadow & board */}
+                  <View
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      backgroundColor: routeColor,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderWidth: isTrackedBus ? 3 : 2,
+                      borderColor: isTrackedBus ? "#FFD700" : "white",
+                      zIndex: 1,
+                    }}
                   >
-                    {routeShortName}
-                  </Text>
+                    {/* Bus Icon from Lucide - reversed rotation to keep it upright */}
+                    <View style={{ transform: [{ rotate: `-${heading}deg` }] }}>
+                      <Bus
+                        size={16}
+                        color={isTrackedBus ? "#FFD700" : "white"}
+                      />
+                    </View>
+                  </View>
                 </View>
-              </View>
-            </Marker>
-          );
-        })}
+              </Marker>
+            );
+          })}
 
         {/* Walking Route Polyline */}
         {activeLayer === "Today" && activeWalkingRoute && (
@@ -1362,44 +2108,89 @@ export function PlacesMapScreen() {
           })}
 
         {/* Campus location markers */}
-        {activeLayer !== "Bus" && markerLocations.map((loc) => {
-          const isSelected = loc.location === selectedId;
-          const isTodayLayer = activeLayer === "Today";
-          const isCapacityType = loc.type === "Library" || loc.type === "Rec";
-          const pinColor = isTodayLayer
-            ? getCategoryColor(loc.classMeetings?.[0]?.category)
-            : isCapacityType ? getStatusColor(loc.percent_full) : COLORS.primary;
-          const pinText = isTodayLayer && loc.sequenceIndex ? loc.sequenceIndex.toString() : null;
+        {activeLayer !== "Bus" &&
+          markerLocations.map((loc) => {
+            const isSelected = getLocationSelectionId(loc) === selectedId;
+            const isTodayLayer = activeLayer === "Today";
+            const isCapacityType = loc.type === "Library" || loc.type === "Rec";
+            const pinColor = isTodayLayer
+              ? getCategoryColor(loc.classMeetings?.[0]?.category)
+              : isCapacityType
+                ? getStatusColor(loc.percent_full)
+                : COLORS.primary;
+            const pinText =
+              isTodayLayer && loc.sequenceIndex
+                ? loc.sequenceIndex.toString()
+                : null;
 
-          return (
-            <Marker
-              key={`loc-${loc.location}`}
-              coordinate={{ latitude: loc.coord.lat, longitude: loc.coord.lng }}
-              onPress={() => handleSelectLocation(loc)}
-              anchor={{ x: 0.5, y: 1 }}
-            >
-              {isTodayLayer ? (
-                <View style={[(styles as any).numberedPinContainer, { transform: [{ scale: isSelected ? 1.2 : 1.0 }] }]}>
-                  <View style={[(styles as any).numberedPinHead, { backgroundColor: pinColor }]}>
-                    <Text style={(styles as any).numberedPinNumber}>{pinText || "•"}</Text>
+            return (
+              <Marker
+                key={`loc-${getLocationSelectionId(loc)}`}
+                coordinate={{
+                  latitude: loc.coord.lat,
+                  longitude: loc.coord.lng,
+                }}
+                onPress={() => handleSelectLocation(loc)}
+                anchor={{ x: 0.5, y: 1 }}
+              >
+                {isTodayLayer ? (
+                  <View
+                    style={[
+                      (styles as any).numberedPinContainer,
+                      { transform: [{ scale: isSelected ? 1.2 : 1.0 }] },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        (styles as any).numberedPinHead,
+                        { backgroundColor: pinColor },
+                      ]}
+                    >
+                      <Text style={(styles as any).numberedPinNumber}>
+                        {pinText || "•"}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        (styles as any).numberedPinTail,
+                        { borderTopColor: pinColor },
+                      ]}
+                    />
                   </View>
-                  <View style={[(styles as any).numberedPinTail, { borderTopColor: pinColor }]} />
-                </View>
-              ) : (
-                <View style={{ alignItems: "center", transform: [{ scale: isSelected ? 1.2 : 1.0 }] }}>
-                  <View style={[styles.markerPin, { backgroundColor: pinColor }]}>
-                    {getCategoryIcon(loc.type, "#FFFFFF", isSelected ? 18 : 16)}
+                ) : (
+                  <View
+                    style={{
+                      alignItems: "center",
+                      transform: [{ scale: isSelected ? 1.2 : 1.0 }],
+                    }}
+                  >
+                    <View
+                      style={[styles.markerPin, { backgroundColor: pinColor }]}
+                    >
+                      {getCategoryIcon(
+                        loc.type,
+                        "#FFFFFF",
+                        isSelected ? 18 : 16,
+                      )}
+                    </View>
+                    <View
+                      style={[
+                        styles.markerPinLeg,
+                        { borderTopColor: pinColor },
+                      ]}
+                    />
                   </View>
-                  <View style={[styles.markerPinLeg, { borderTopColor: pinColor }]} />
-                </View>
-              )}
-            </Marker>
-          );
-        })}
+                )}
+              </Marker>
+            );
+          })}
       </MapView>
 
       {/* Top UI Floating Elements */}
-      <View style={[styles.topContainer, { top: 54, alignItems: "center" }]}>
+      <View
+        pointerEvents="box-none"
+        style={[styles.topContainer, { top: 54, alignItems: "center" }]}
+      >
         <FloatingSearchBar
           styles={styles}
           COLORS={COLORS}
@@ -1409,11 +2200,13 @@ export function PlacesMapScreen() {
           setSearchQuery={setSearchQuery}
           setShowSearchResults={setShowSearchResults}
           onOpenSettings={() => setIsEditorVisible(true)}
-          onShare={() => useShareStore.getState().openShare({
-            title: "Campus Map",
-            message: "Check out the live campus map on MaroonSchedules!",
-            url: "https://maroonschedules.tamu.edu/places"
-          })}
+          onShare={() =>
+            useShareStore.getState().openShare({
+              title: "Campus Map",
+              message: "Check out the live campus map on MaroonSchedules!",
+              url: "https://maroonschedules.tamu.edu/places",
+            })
+          }
         />
 
         {!isSearchExpanded && (
@@ -1443,17 +2236,25 @@ export function PlacesMapScreen() {
                 <View style={styles.nextUpCard}>
                   {/* Card Header: Date Nav */}
                   <View style={styles.nextUpCardHeader}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 12,
+                      }}
+                    >
                       <TouchableOpacity onPress={handlePrevDay}>
                         <ChevronLeft size={18} color={COLORS.textPrimary} />
                       </TouchableOpacity>
-                      <Text style={styles.dateNavTitle}>{formatDate(selectedDate)}</Text>
+                      <Text style={styles.dateNavTitle}>
+                        {formatDate(selectedDate)}
+                      </Text>
                       <TouchableOpacity onPress={handleNextDay}>
                         <ChevronRight size={18} color={COLORS.textPrimary} />
                       </TouchableOpacity>
                     </View>
-                    
-                    <TouchableOpacity 
+
+                    <TouchableOpacity
                       onPress={() => setIsTodayExpanded(!isTodayExpanded)}
                       style={{ padding: 4 }}
                     >
@@ -1469,32 +2270,39 @@ export function PlacesMapScreen() {
 
                   {/* Card Body: Summary or Timeline */}
                   <AnimatedReanimated.View style={animatedTimelineStyle}>
-                    <ScrollView 
-                      style={{ height: 400 }} 
+                    <ScrollView
+                      style={{ height: 400 }}
                       showsVerticalScrollIndicator={false}
                     >
                       <View style={styles.nextUpCardBody}>
                         <TodayTimeline
                           styles={styles}
                           COLORS={COLORS}
+                          isDark={isDark}
                           activeScheduleOption={activeScheduleOption}
                           onGetDirections={handleGetDirections}
                         />
                       </View>
                     </ScrollView>
                   </AnimatedReanimated.View>
-                  
+
                   {!isTodayExpanded && nextEntry && (
                     <View style={styles.nextUpCardBody}>
-                        <View style={styles.nextUpMainRow}>
-                          <View style={styles.nextUpTimeBox}>
-                            <Text style={styles.nextUpTimeText}>{nextEntry.timeLabel}</Text>
-                          </View>
-                          <View style={styles.nextUpContent}>
-                            <Text style={styles.nextUpTitle} numberOfLines={1}>{nextEntry.name}</Text>
-                            <Text style={styles.nextUpLocation} numberOfLines={1}>{nextEntry.locationLabel}</Text>
-                          </View>
+                      <View style={styles.nextUpMainRow}>
+                        <View style={styles.nextUpTimeBox}>
+                          <Text style={styles.nextUpTimeText}>
+                            {nextEntry.timeLabel}
+                          </Text>
                         </View>
+                        <View style={styles.nextUpContent}>
+                          <Text style={styles.nextUpTitle} numberOfLines={1}>
+                            {nextEntry.name}
+                          </Text>
+                          <Text style={styles.nextUpLocation} numberOfLines={1}>
+                            {nextEntry.locationLabel}
+                          </Text>
+                        </View>
+                      </View>
                     </View>
                   )}
                 </View>
@@ -1514,8 +2322,13 @@ export function PlacesMapScreen() {
                   setIsRouteDropdownOpen={setIsRouteDropdownOpen}
                   filteredBusRoutes={filteredBusRoutes}
                   handleSelectBusRoute={handleSelectBusRoute}
-                  openBusTimetable={() => navigation.navigate("BusTimetable")}
-                  openTransitTripPlanner={() => navigation.navigate("TransitTripPlanner")}
+                  openBusTimetable={() => setIsTimetableSheetOpen(true)}
+                  openTransitTripPlanner={() =>
+                    navigation.navigate("TransitTripPlanner")
+                  }
+                  selectedDirection={selectedDirection}
+                  setSelectedDirection={setSelectedDirection}
+                  availableDirections={availableDirections}
                   selectedStop={selectedStop}
                   setSelectedStop={setSelectedStop}
                   selectedBus={selectedBus}
@@ -1526,72 +2339,109 @@ export function PlacesMapScreen() {
               </View>
             )}
 
-            {activeLayer !== "Today" && activeLayer !== "Bus" && activeLayer !== "Pulse" && (
-              <View style={{ marginTop: 12, width: "100%", alignItems: "flex-start" }}>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  style={[(styles as any).listDropdownHeader, isListDroppedDown && (styles as any).listDropdownHeaderOpen]}
-                  onPress={() => setIsListDroppedDown(!isListDroppedDown)}
+            {activeLayer !== "Today" &&
+              activeLayer !== "Bus" &&
+              activeLayer !== "Pulse" && (
+                <View
+                  style={{
+                    marginTop: 12,
+                    width: "100%",
+                    alignItems: "flex-start",
+                  }}
                 >
-                  <Text style={(styles as any).listDropdownLabel}>List View</Text>
-                  <ChevronDown 
-                    size={18} 
-                    color={COLORS.textPrimary} 
-                    style={{ marginLeft: 8, transform: [{ rotate: isListDroppedDown ? "180deg" : "0deg" }] }}
-                  />
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={[
+                      (styles as any).listDropdownHeader,
+                      isListDroppedDown &&
+                        (styles as any).listDropdownHeaderOpen,
+                    ]}
+                    onPress={() => setIsListDroppedDown(!isListDroppedDown)}
+                  >
+                    <Text style={(styles as any).listDropdownLabel}>
+                      List View
+                    </Text>
+                    <ChevronDown
+                      size={18}
+                      color={COLORS.textPrimary}
+                      style={{
+                        marginLeft: 8,
+                        transform: [
+                          { rotate: isListDroppedDown ? "180deg" : "0deg" },
+                        ],
+                      }}
+                    />
+                  </TouchableOpacity>
 
-                {isListDroppedDown && (
-                  <View style={[(styles as any).listDropdownContent, { width: SCREEN_WIDTH - 32 }]}>
-                    <ScrollView 
-                      style={{ maxHeight: 320 }}
-                      showsVerticalScrollIndicator={false}
+                  {isListDroppedDown && (
+                    <View
+                      style={[
+                        (styles as any).listDropdownContent,
+                        { width: SCREEN_WIDTH - 32 },
+                      ]}
                     >
-                      {sortedFilteredLocations.map((loc) => (
-                        <TouchableOpacity
-                          key={loc.location}
-                          style={(styles as any).listDropdownItem}
-                          onPress={() => {
-                            handleSelectLocation(loc);
-                            setIsListDroppedDown(false);
-                          }}
-                        >
-                          <View style={{ flex: 1 }}>
-                            <Text style={(styles as any).listDropdownItemTitle} numberOfLines={1}>{loc.location}</Text>
-                            <Text style={(styles as any).listDropdownItemSub} numberOfLines={1}>
-                              {(loc.type === "Library" || loc.type === "Rec") && loc.percent_full != null ? `${loc.percent_full}% full · ` : ""}
-                              {loc.type !== "Dining" && loc.type !== "Hub" ? loc.type : ""}
-                            </Text>
-                          </View>
-                          <ChevronRight size={16} color={COLORS.textTertiary} />
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-              </View>
-            )}
+                      <ScrollView
+                        style={{ maxHeight: 320 }}
+                        showsVerticalScrollIndicator={false}
+                      >
+                        {sortedFilteredLocations.map((loc) => (
+                          <TouchableOpacity
+                            key={loc.location}
+                            style={(styles as any).listDropdownItem}
+                            onPress={() => {
+                              handleSelectLocation(loc);
+                              setIsListDroppedDown(false);
+                            }}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <Text
+                                style={(styles as any).listDropdownItemTitle}
+                                numberOfLines={1}
+                              >
+                                {loc.location}
+                              </Text>
+                              <Text
+                                style={(styles as any).listDropdownItemSub}
+                                numberOfLines={1}
+                              >
+                                {(loc.type === "Library" ||
+                                  loc.type === "Rec") &&
+                                loc.percent_full != null
+                                  ? `${loc.percent_full}% full · `
+                                  : ""}
+                                {loc.type !== "Dining" && loc.type !== "Hub"
+                                  ? loc.type
+                                  : ""}
+                              </Text>
+                            </View>
+                            <ChevronRight
+                              size={16}
+                              color={COLORS.textTertiary}
+                            />
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+                </View>
+              )}
           </>
         )}
       </View>
 
       {/* Map control buttons removed per user request for all screens */}
 
-
       {/* Global Search Results Overlay moved to bottom for z-index priority */}
 
       <View style={styles.mapFabStack} pointerEvents="box-none">
-        <TouchableOpacity
-          style={styles.mapFab}
-          onPress={centerOnUserLocation}
-        >
+        <TouchableOpacity style={styles.mapFab} onPress={centerOnUserLocation}>
           <LocateFixed size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.mapFab}
-          onPress={toggleMapPitch}
-        >
-          <Orbit size={22} color={isMapTilted ? COLORS.primary : COLORS.textPrimary} />
+        <TouchableOpacity style={styles.mapFab} onPress={toggleMapPitch}>
+          <Orbit
+            size={22}
+            color={isMapTilted ? COLORS.primary : COLORS.textPrimary}
+          />
         </TouchableOpacity>
       </View>
 
@@ -1620,7 +2470,6 @@ export function PlacesMapScreen() {
         onOpenPlace={openHotspotPlace}
         onOpenItem={openHotspotItem}
       />
-
 
       {/* Slidable lists / Dropdowns removed per user request - handled by Top Dropdown */}
 
@@ -1671,7 +2520,10 @@ export function PlacesMapScreen() {
           onClose={() => setIsEditorVisible(false)}
           title="Places"
           items={getOrderedItems(placesPills).filter(
-            (item) => item.id !== "Academic" && item.id !== "Heatmap" && (item as any).id !== "Study",
+            (item) =>
+              item.id !== "Academic" &&
+              item.id !== "Heatmap" &&
+              (item as any).id !== "Study",
           )}
           onToggle={togglePlacesPill}
           onMove={movePlacesPill}
@@ -1681,14 +2533,8 @@ export function PlacesMapScreen() {
       <SearchOverlay
         styles={styles}
         COLORS={COLORS}
-        searchResults={fullCampusIndex.filter(loc =>
-          loc.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          loc.shortName?.toLowerCase().includes(searchQuery.toLowerCase())
-        )}
-        busRouteResults={busRoutes.filter(route =>
-          route.Name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          route.ShortName?.toLowerCase().includes(searchQuery.toLowerCase())
-        )}
+        searchResults={searchResults}
+        busRouteResults={busRouteSearchResults}
         isSearchExpanded={isSearchExpanded}
         showSearchResults={showSearchResults}
         onSelectLocation={(loc) => {
@@ -1697,12 +2543,41 @@ export function PlacesMapScreen() {
           setShowSearchResults(false);
         }}
         onSelectBusRoute={(route) => {
-          setActiveLayer("Bus");
-          handleSelectBusRoute(route.Key);
+          handleSelectBusRouteFromSearch(route);
           setIsSearchExpanded(false);
           setShowSearchResults(false);
         }}
       />
+
+      {activeLayer === "Bus" && (
+        <BusTimetableSheet
+          visible={isTimetableSheetOpen}
+          mode={selectedRoute ? "single" : "all"}
+          onClose={() => setIsTimetableSheetOpen(false)}
+          COLORS={COLORS}
+          isDark={isDark}
+          selectedRoute={selectedRoute}
+          liveBusCount={busVehicles.length}
+          stopTimetable={stopTimetable}
+          onStopPress={(stop) => {
+            const sLat =
+              stop?.Latitude !== undefined ? stop.Latitude : stop?.lat;
+            const sLng =
+              stop?.Longitude !== undefined ? stop.Longitude : stop?.lng;
+            if (mapRef.current && sLat && sLng) {
+              mapRef.current.animateToRegion(
+                {
+                  latitude: sLat - 0.0018,
+                  longitude: sLng,
+                  latitudeDelta: 0.005,
+                  longitudeDelta: 0.005,
+                },
+                600,
+              );
+            }
+          }}
+        />
+      )}
     </View>
   );
 }
