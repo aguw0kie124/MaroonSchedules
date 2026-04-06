@@ -13,8 +13,12 @@ import {
   GraduationCap,
   Flame,
 } from "lucide-react-native";
-import { BUILDINGS, AMENITIES } from "../../data/campus";
-import LOCAL_OSM_PLACES_PAYLOAD from "../../data/osm_places_tamu_10mi.json";
+import {
+  BUILDINGS,
+  AMENITIES,
+  CAMPUS_REGISTRY_PLACES,
+  type CampusRegistryPlaceRecord,
+} from "../../data/campus";
 import type { CampusLocation, LocationType } from "./types";
 
 // ── Canonical naming ──────────────────────────────────────────
@@ -239,13 +243,52 @@ export const STATIC_LOCATION_META: Record<string, Partial<CampusLocation>> = {
 };
 
 // ── Type mapping helpers ──────────────────────────────────────
+export function normalizeLocationType(type?: string | null): LocationType {
+  const normalized = (type || "").trim().toLowerCase();
+
+  if (normalized === "hub") return "Hub";
+  if (["dining", "coffee", "cafe", "restaurant", "food"].includes(normalized))
+    return "Dining";
+  if (normalized === "library") return "Library";
+  if (["recreation", "rec", "gym", "fitness"].includes(normalized)) return "Rec";
+  if (["academic", "building"].includes(normalized)) return "Academic";
+  if (["parking", "garage"].includes(normalized)) return "Parking";
+  if (normalized === "landmark") return "Landmark";
+  if (normalized === "housing") return "Housing";
+  if (normalized === "athletics") return "Athletics";
+  if (["study", "restroom", "general", ""].includes(normalized)) return "General";
+
+  if (
+    [
+      "Rec",
+      "Library",
+      "Study",
+      "Dining",
+      "Hub",
+      "General",
+      "Academic",
+      "Parking",
+      "Landmark",
+      "Housing",
+      "Athletics",
+    ].includes(type || "")
+  ) {
+    return type as LocationType;
+  }
+
+  return "General";
+}
+
 export function mapBuildingType(type: string): LocationType {
-  switch (type) {
+  const norm = type.toLowerCase();
+  switch (norm) {
     case "library":
       return "Library";
     case "recreation":
+    case "rec":
       return "Rec";
     case "dining":
+    case "hub":
       return "Dining";
     case "academic":
       return "Academic";
@@ -256,12 +299,12 @@ export function mapBuildingType(type: string): LocationType {
     case "landmark":
       return "Landmark";
     default:
-      return "General";
+      return normalizeLocationType(type);
   }
 }
 
 export function mapAmenityType(type: string): LocationType {
-  switch (type) {
+  switch (type.toLowerCase()) {
     case "dining":
       return "Dining";
     case "study":
@@ -269,7 +312,7 @@ export function mapAmenityType(type: string): LocationType {
     case "parking":
       return "Parking";
     default:
-      return "General";
+      return normalizeLocationType(type);
   }
 }
 
@@ -309,60 +352,59 @@ export function getBuildingCategory(buildingName?: string | null): string {
 
   // Check lookup type
   const building = BUILDING_LOOKUP.get(norm);
-  if (building?.type === "recreation") return "rec";
-  if (building?.type === "library") return "library";
-  if (building?.type === "dining") return "dining";
+  const bType = building?.type?.toLowerCase() || "";
+  if (bType === "recreation" || bType === "rec") return "rec";
+  if (bType === "library") return "library";
+  if (bType === "dining" || bType === "hub") return "dining";
   
   return "academic";
 }
 
 // ── Build the full campus directory ───────────────────────────
-export function buildCampusDirectory(): CampusLocation[] {
-  const buildingLocations = BUILDINGS.map((building) => ({
-    placeId: building.id,
-    location: building.name,
-    shortName: building.shortName,
-    percent_full: 0,
-    type: mapBuildingType(building.type),
-    is_live: false,
-    available_seats: null,
-    coord: { lat: building.latitude, lng: building.longitude },
-    source: "directory" as const,
-    ...STATIC_LOCATION_META[building.name],
-  }));
+function parseFeatureList(features?: CampusRegistryPlaceRecord["features"]): string[] | undefined {
+  if (Array.isArray(features)) {
+    return features.filter((feature): feature is string => typeof feature === "string" && feature.trim().length > 0);
+  }
 
-  const amenityLocations = AMENITIES.map((amenity) => ({
-    placeId: amenity.id,
-    location: amenity.name,
-    shortName: amenity.name,
-    percent_full: 0,
-    type: mapAmenityType(amenity.type),
-    is_live: false,
-    available_seats: null,
-    coord: { lat: amenity.latitude, lng: amenity.longitude },
-    source: "directory" as const,
-  }));
+  if (typeof features !== "string" || !features.trim()) {
+    return undefined;
+  }
 
-  const merged = new Map<string, CampusLocation>();
-  [...buildingLocations, ...amenityLocations].forEach((location) => {
-    merged.set(location.location, location);
-  });
-  return Array.from(merged.values());
+  try {
+    const parsed = JSON.parse(features);
+    return Array.isArray(parsed)
+      ? parsed.filter((feature): feature is string => typeof feature === "string" && feature.trim().length > 0)
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
-type LocalOSMPlaceRecord = {
-  place_id: string;
-  name: string;
-  short_name?: string | null;
-  type: string;
-  lat: number;
-  lng: number;
-  aliases?: string[];
-  description?: string | null;
-  address?: string | null;
-  source?: string | null;
-  search_only?: boolean;
-};
+function toRegistryCampusLocation(place: CampusRegistryPlaceRecord): CampusLocation {
+  const staticMeta = STATIC_LOCATION_META[place.name] || {};
+
+  return {
+    placeId: place.place_id,
+    location: place.name,
+    shortName: place.short_name || place.name,
+    percent_full: 0,
+    type: normalizeLocationType(staticMeta.type || place.type),
+    is_live: false,
+    available_seats: null,
+    coord: { lat: place.lat, lng: place.lng },
+    aliases: Array.isArray(place.aliases) ? place.aliases : [],
+    hours: staticMeta.hours || place.hours || undefined,
+    address: place.address || undefined,
+    description: staticMeta.description || place.description || undefined,
+    features: staticMeta.features || parseFeatureList(place.features),
+    source: (place.source as CampusLocation["source"]) || "snapshot",
+    searchOnly: place.search_only !== false,
+  };
+}
+
+export function buildCampusDirectory(): CampusLocation[] {
+  return CAMPUS_REGISTRY_PLACES.map(toRegistryCampusLocation);
+}
 
 function normalizeLocationKey(value?: string | null) {
   return (value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -377,8 +419,6 @@ function areLocationCoordsClose(first: CampusLocation, second: CampusLocation, m
 }
 
 function shouldPreserveExistingType(existing: CampusLocation, incoming: CampusLocation) {
-  if (incoming.source !== "osm") return false;
-
   const strongTypes = new Set(["Dining", "Hub", "Rec", "Library", "Parking"]);
   const weakIncomingTypes = new Set(["Academic", "Landmark", "General"]);
 
@@ -390,29 +430,6 @@ export function getLocationSelectionId(location: Pick<CampusLocation, "placeId" 
   const lat = Number.isFinite(location.coord?.lat) ? location.coord.lat.toFixed(6) : "na";
   const lng = Number.isFinite(location.coord?.lng) ? location.coord.lng.toFixed(6) : "na";
   return `${normalizeLocationKey(location.location)}::${lat},${lng}`;
-}
-
-function toLocalOSMLocations(): CampusLocation[] {
-  const payload = LOCAL_OSM_PLACES_PAYLOAD as {
-    places?: LocalOSMPlaceRecord[];
-  };
-
-  const places = Array.isArray(payload?.places) ? payload.places : [];
-  return places.map((place) => ({
-    placeId: place.place_id,
-    location: place.name,
-    shortName: place.short_name || place.name,
-    percent_full: 0,
-    type: (place.type as LocationType) || "General",
-    is_live: false,
-    available_seats: null,
-    coord: { lat: place.lat, lng: place.lng },
-    aliases: Array.isArray(place.aliases) ? place.aliases : [],
-    description: place.description || undefined,
-    address: place.address || undefined,
-    source: (place.source as CampusLocation["source"]) || "osm",
-    searchOnly: place.search_only !== false,
-  }));
 }
 
 export function mergeCampusLocations(...groups: CampusLocation[][]): CampusLocation[] {
@@ -459,7 +476,7 @@ export function mergeCampusLocations(...groups: CampusLocation[][]): CampusLocat
 }
 
 export function buildExpandedPlacesDirectory(): CampusLocation[] {
-  return mergeCampusLocations(buildCampusDirectory(), toLocalOSMLocations());
+  return buildCampusDirectory();
 }
 
 // ── Category definitions ──────────────────────────────────────

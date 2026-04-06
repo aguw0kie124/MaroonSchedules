@@ -30,6 +30,7 @@ import {
   CampusBuilding,
   CampusAmenity,
 } from '../data/campus';
+import { normalizeLocationType } from './places/campusData';
 import {
   createRoute,
   computeDistanceMeters,
@@ -95,7 +96,7 @@ function getSeededDestination(initialDestination?: SeededLocationParams) {
       shortName: initialDestination.shortName || initialDestination.name,
       latitude: initialDestination.latitude,
       longitude: initialDestination.longitude,
-      type: (initialDestination.type as CampusBuilding['type']) || 'landmark',
+      type: normalizeLocationType(initialDestination.type) as CampusBuilding['type'],
     },
   };
 }
@@ -440,7 +441,7 @@ export function CampusNavigationScreen() {
         shortName: initialDestination.shortName || initialDestination.name,
         latitude: initialDestination.latitude,
         longitude: initialDestination.longitude,
-        type: (initialDestination.type as CampusBuilding['type']) || 'landmark',
+        type: normalizeLocationType(initialDestination.type) as CampusBuilding['type'],
       },
     });
   }, [route.params?.initialDestination]);
@@ -477,16 +478,16 @@ export function CampusNavigationScreen() {
     // Commands
     if (result.kind === 'command' && result.commandType) {
       const typeMap: Record<string, CampusAmenity['type']> = {
-        'nearest-restroom': 'restroom',
-        'nearest-coffee': 'coffee',
-        'nearest-library': 'study', // use study rooms for library
-        'nearest-dining': 'dining',
+        'nearest-restroom': 'General',
+        'nearest-coffee': 'Dining',
+        'nearest-library': 'Study', // use study rooms for library
+        'nearest-dining': 'Dining',
       };
       const amenityType = typeMap[result.commandType];
       if (amenityType) {
         // For library command, find nearest library building instead
         if (result.commandType === 'nearest-library') {
-          const libs = BUILDINGS.filter((b) => b.type === 'library');
+          const libs = BUILDINGS.filter((b) => b.type === 'Library');
           let nearest = libs[0];
           let minD = Infinity;
           for (const lib of libs) {
@@ -521,13 +522,13 @@ export function CampusNavigationScreen() {
   const handleOriginSelect = (result: CampusSearchResult) => {
     if (result.kind === 'command' && result.commandType) {
       const typeMap: Record<string, CampusAmenity['type']> = {
-        'nearest-restroom': 'restroom',
-        'nearest-coffee': 'coffee',
-        'nearest-library': 'study',
-        'nearest-dining': 'dining',
+        'nearest-restroom': 'General',
+        'nearest-coffee': 'Dining',
+        'nearest-library': 'Study',
+        'nearest-dining': 'Dining',
       };
       if (result.commandType === 'nearest-library') {
-        const libs = BUILDINGS.filter((b) => b.type === 'library');
+        const libs = BUILDINGS.filter((b) => b.type === 'Library');
         let nearest = libs[0];
         let minD = Infinity;
         for (const lib of libs) {
@@ -667,16 +668,16 @@ export function CampusNavigationScreen() {
       }
       case 'NEAREST': {
         const typeMap: Record<string, CampusAmenity['type']> = {
-          restroom: 'restroom',
-          coffee: 'coffee',
-          dining: 'dining',
-          library: 'study',
-          study: 'study',
-          parking: 'parking',
+          restroom: 'General',
+          coffee: 'Dining',
+          dining: 'Dining',
+          library: 'Study',
+          study: 'Study',
+          parking: 'Parking',
         };
         const amenityType = typeMap[intent.category];
         if (intent.category === 'library') {
-          const libs = BUILDINGS.filter((b) => b.type === 'library');
+          const libs = BUILDINGS.filter((b) => b.type === 'Library');
           let nearest = libs[0];
           let minD = Infinity;
           for (const lib of libs) {

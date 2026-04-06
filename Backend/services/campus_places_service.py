@@ -5,14 +5,17 @@ from typing import Any, Dict, List
 
 from routers.traffic import tracker
 from services import cache_service, place_registry_service
+from services.place_type_service import normalize_place_type
 
 PLACE_SNAPSHOT_TTL_SECONDS = 60
 
 
 def _prefer_place_type(base_type: str, live_type: str | None) -> str:
+    base_type = normalize_place_type(base_type)
+    live_type = normalize_place_type(live_type)
     if base_type == "Hub":
         return "Hub"
-    if live_type and live_type not in {"General", "Landmark", "Building"}:
+    if live_type and live_type not in {"General", "Landmark", "Academic"}:
         return live_type
     return base_type or live_type or "General"
 

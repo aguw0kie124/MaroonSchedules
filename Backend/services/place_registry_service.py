@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Any, Dict, List
 import json
 
+from services.place_type_service import normalize_place_type
+
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BACKEND_DIR / "Data" / "campus_registry.db"
@@ -41,6 +43,7 @@ def _build_registry() -> Dict[str, Any]:
         # Ensure lat/lng are floats
         record["lat"] = float(record["lat"])
         record["lng"] = float(record["lng"])
+        record["type"] = normalize_place_type(record.get("type"))
         record["hours"] = record.get("hours")
         record["features"] = json.loads(record["features"]) if record.get("features") else []
         record["aliases"] = [] # To be filled next
@@ -98,7 +101,7 @@ def serialize_place(place: Dict[str, Any] | None) -> Dict[str, Any] | None:
         "place_id": place["place_id"],
         "name": place["name"],
         "short_name": place.get("short_name"),
-        "type": place["type"],
+        "type": normalize_place_type(place.get("type")),
         "aliases": aliases,
         "coord": {"lat": place["lat"], "lng": place["lng"]},
         "description": place.get("description"),

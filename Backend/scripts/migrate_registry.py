@@ -50,22 +50,22 @@ SPECIAL_PLACES = [
         "description": "Historical and special collections library."
     },
     {
-        "place_id": "rec", "name": "Student Recreation Center", "short_name": "SREC", "type": "Rec", "lat": 30.607369543290172, "lng": -96.34287943254921, 
-        "aliases": ["Student Rec Center", "Rec Center", "The Rec", "Rec"],
+        "place_id": "rec", "name": "Student Recreation Center", "short_name": "REC", "type": "Rec", "lat": 30.607369543290172, "lng": -96.34287943254921, 
+        "aliases": ["Student Rec Center", "Rec Center", "The Rec", "Rec", "osm:way:206530669", "srec"],
         "hours": "6:00 AM – 11:45 PM",
         "description": "Primary rec center with fitness, courts, pools, and climbing.",
         "features": ["Strength & Conditioning", "Indoor Track", "Pools", "Climbing Wall"]
     },
     {
-        "place_id": "southside-rec", "name": "Southside Recreation Center", "short_name": "SSRC", "type": "Rec", "lat": 30.615858627009548, "lng": -96.33350512942744, 
-        "aliases": ["Southside Rec Center"],
+        "place_id": "southside-rec", "name": "Southside Recreation Center", "short_name": "SSRC", "type": "Rec", "lat": 30.6157837, "lng": -96.3335135, 
+        "aliases": ["Southside Rec Center", "osm:way:1367436238"],
         "hours": "5:30 AM – 11:59 PM",
         "description": "Southside rec center near the Commons with indoor and outdoor space.",
         "features": ["Strength & Conditioning", "Cardio Equipment", "Locker Rooms", "Sand Volleyball"]
     },
     {
-        "place_id": "polo-rec", "name": "Polo Road Recreation Center", "short_name": "POLO REC", "type": "Rec", "lat": 30.62322838512405, "lng": -96.33752363659374, 
-        "aliases": ["Polo Road Rec Center"],
+        "place_id": "polo-rec", "name": "Polo Road Recreation Center", "short_name": "POLO REC", "type": "Rec", "lat": 30.6229681, "lng": -96.3383515, 
+        "aliases": ["Polo Road Rec Center", "osm:way:904033099"],
         "hours": "6:00 AM – 10:00 PM",
         "description": "North campus rec center focused on cardio and strength training.",
         "features": ["Strength & Conditioning", "Cardio Equipment", "Indoor Track"]
@@ -78,13 +78,13 @@ SPECIAL_PLACES = [
     },
     {
         "place_id": "sbisa", "name": "Sbisa Dining Hall", "short_name": "SBISA", "type": "Dining", "lat": 30.617135, "lng": -96.343777, 
-        "aliases": ["Sbisa"],
+        "aliases": ["Sbisa Dining Hall", "Sbisa", "osm:way:720954602"],
         "hours": "Breakfast, lunch, and dinner service",
         "description": "Northside all-you-care-to-eat dining hall."
     },
     {
-        "place_id": "commons", "name": "The Commons Dining Hall", "short_name": "COMMONS", "type": "Dining", "lat": 30.6153804, "lng": -96.3360119, 
-        "aliases": ["Commons Dining Hall", "The Commons", "Commons"],
+        "place_id": "commons", "name": "The Commons Dining Hall", "short_name": "COMMONS", "type": "Dining", "lat": 30.6156816097444, "lng": -96.3362674766492, 
+        "aliases": ["The Commons", "Commons Dining Hall", "Commons", "osm:node:8223259463"],
         "hours": "Breakfast, lunch, and dinner service",
         "description": "Southside dining hall near the Commons."
     },
@@ -199,18 +199,8 @@ FRONTEND_AMENITIES = [
 
 # 4. Traffic Overrides (from traffic.py)
 TRAFFIC_DATA = {
-    "Student Rec Center":   {"lat": 30.607369543290172, "lng": -96.34287943254921, "type": "Rec"},
-    "Southside Rec Center": {"lat": 30.615858627009548, "lng": -96.33350512942744, "type": "Rec"},
-    "Polo Road Rec Center": {"lat": 30.62322838512405, "lng": -96.33752363659374, "type": "Rec"},
-    "Evans Library":                          {"lat": 30.616607, "lng": -96.339047, "type": "Library"},
-    "Evans Library Annex":                    {"lat": 30.616300, "lng": -96.338340, "type": "Library"},
-    "West Campus Library":                    {"lat": 30.611570, "lng": -96.350164, "type": "Library"},
-    "Cushing Memorial Library":               {"lat": 30.616360, "lng": -96.339900, "type": "Library"},
-    "Medical Sciences Library":               {"lat": 30.61182, "lng": -96.35161, "type": "Library"},
-    "Policy Sciences & Economics Library":    {"lat": 30.59744, "lng": -96.35355, "type": "Library"},
-    "Sbisa Dining Hall":              {"lat": 30.61700, "lng": -96.34350, "type": "Dining"},
-    "The Commons Dining Hall":        {"lat": 30.6153804, "lng": -96.3360119, "type": "Dining"},
-    "Duncan Dining Hall":             {"lat": 30.61180, "lng": -96.33529, "type": "Dining"},
+    "Sbisa Dining Hall":              {"lat": 30.617135, "lng": -96.343777, "type": "Dining"},
+    "Duncan Dining Hall":             {"lat": 30.612072, "lng": -96.335505, "type": "Dining"},
     "West Campus Dining Facility":    {"lat": 30.61020, "lng": -96.34863, "type": "Dining"},
     "Memorial Student Center (MSC)":  {"lat": 30.61223, "lng": -96.34137, "type": "Dining"},
     "Polo Road Garage":               {"lat": 30.62313, "lng": -96.33749, "type": "Dining"},

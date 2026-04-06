@@ -38,7 +38,7 @@ export type LocationType =
   | "Parking"
   | "Landmark"
   | "Housing"
-  | "Athletics" | "Study";
+  | "Athletics";
 
 export type ParkingPermit = "visitor" | "garage" | "any_valid" | "west_campus" | "resident";
 
@@ -86,7 +86,15 @@ export interface CampusLocation {
   shortName?: string;
   description?: string;
   features?: string[];
-  source?: "traffic" | "directory" | "schedule" | "snapshot" | "osm";
+  source?:
+    | "traffic"
+    | "directory"
+    | "schedule"
+    | "snapshot"
+    | "osm"
+    | "amenity"
+    | "frontend"
+    | "special";
   searchOnly?: boolean;
   classMeetings?: ScheduleMeetingEntry[];
   scheduleLabel?: string;

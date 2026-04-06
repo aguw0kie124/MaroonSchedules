@@ -13,7 +13,8 @@ import {
   Utensils,
 } from 'lucide-react-native';
 import type { ComponentType } from 'react';
-import LOCAL_OSM_PLACES_PAYLOAD from './osm_places_tamu_10mi.json';
+import REGISTRY_SNAPSHOT_JSON from './osm_places_tamu_10mi.json';
+import type { LocationType } from '../components/places/types';
 
 export interface CampusBuilding {
   id: string;
@@ -21,7 +22,7 @@ export interface CampusBuilding {
   shortName: string;
   latitude: number;
   longitude: number;
-  type: 'academic' | 'athletics' | 'library' | 'dining' | 'recreation' | 'landmark' | 'housing';
+  type: LocationType;
 }
 
 export interface CampusAmenity {
@@ -29,8 +30,31 @@ export interface CampusAmenity {
   name: string;
   latitude: number;
   longitude: number;
-  type: 'restroom' | 'coffee' | 'dining' | 'study' | 'parking';
+  type: LocationType;
 }
+
+export interface CampusRegistryPlaceRecord {
+  place_id: string;
+  name: string;
+  short_name?: string | null;
+  type: string;
+  lat: number;
+  lng: number;
+  aliases?: string[];
+  description?: string | null;
+  hours?: string | null;
+  features?: string[] | string | null;
+  address?: string | null;
+  search_only?: boolean;
+  source?: string | null;
+}
+
+type CampusRegistrySnapshot = {
+  generated_at?: string;
+  count?: number;
+  attribution?: string;
+  places?: CampusRegistryPlaceRecord[];
+};
 
 export const TAMU_CENTER = {
   latitude: 30.6153,
@@ -49,32 +73,45 @@ export const TAMU_BBOX = {
 // --- Helper to map string types to union types ---
 const mapBuildingType = (t: string): CampusBuilding['type'] => {
   const mapping: Record<string, CampusBuilding['type']> = {
-    'academic': 'academic',
-    'athletics': 'athletics',
-    'library': 'library',
-    'dining': 'dining',
-    'recreation': 'recreation',
-    'rec': 'recreation',
-    'landmark': 'landmark',
-    'housing': 'housing',
-    'hub': 'dining', // MSC is a hub/dining
+    'academic': 'Academic',
+    'athletics': 'Athletics',
+    'library': 'Library',
+    'dining': 'Dining',
+    'recreation': 'Rec',
+    'rec': 'Rec',
+    'landmark': 'Landmark',
+    'housing': 'Housing',
+    'hub': 'Dining', // MSC is a hub/dining
   };
-  return mapping[t.toLowerCase()] || 'academic';
+  return mapping[t.toLowerCase()] || 'Academic' as any;
 };
 
-const mapAmenityType = (t: string): CampusAmenity['type'] => {
-  const mapping: Record<string, CampusAmenity['type']> = {
-    'restroom': 'restroom',
-    'coffee': 'coffee',
-    'dining': 'dining',
-    'study': 'study',
-    'parking': 'parking',
+const mapAmenityType = (t: string): LocationType => {
+  const mapping: Record<string, LocationType> = {
+    'restroom': 'General',
+    'coffee': 'Dining',
+    'dining': 'Dining',
+    'study': 'Study',
+    'parking': 'Parking',
   };
-  return mapping[t.toLowerCase()] || 'dining';
+  return mapping[t.toLowerCase()] || 'Dining';
 };
 
-// ─── Buildings (Filtered from Master JSON) ───────────────────
-export const BUILDINGS: CampusBuilding[] = LOCAL_OSM_PLACES_PAYLOAD.places
+export const CAMPUS_REGISTRY_SNAPSHOT = REGISTRY_SNAPSHOT_JSON as CampusRegistrySnapshot;
+
+export const CAMPUS_REGISTRY_PLACES: CampusRegistryPlaceRecord[] = Array.isArray(CAMPUS_REGISTRY_SNAPSHOT?.places)
+  ? CAMPUS_REGISTRY_SNAPSHOT.places.filter(
+      (place): place is CampusRegistryPlaceRecord =>
+        !!place &&
+        Number.isFinite(place.lat) &&
+        Number.isFinite(place.lng) &&
+        typeof place.name === 'string' &&
+        typeof place.place_id === 'string',
+    )
+  : [];
+
+// ─── Buildings (Filtered from DB-synced registry snapshot) ───
+export const BUILDINGS: CampusBuilding[] = CAMPUS_REGISTRY_PLACES
   .filter(p => ['academic', 'athletics', 'library', 'dining', 'recreation', 'rec', 'landmark', 'housing', 'hub'].includes(p.type.toLowerCase()))
   .map(p => ({
     id: p.place_id,
@@ -85,8 +122,8 @@ export const BUILDINGS: CampusBuilding[] = LOCAL_OSM_PLACES_PAYLOAD.places
     type: mapBuildingType(p.type)
   }));
 
-// ─── Amenities (Filtered from Master JSON) ───────────────────
-export const AMENITIES: CampusAmenity[] = LOCAL_OSM_PLACES_PAYLOAD.places
+// ─── Amenities (Filtered from DB-synced registry snapshot) ───
+export const AMENITIES: CampusAmenity[] = CAMPUS_REGISTRY_PLACES
   .filter(p => ['restroom', 'coffee', 'dining', 'study', 'parking'].includes(p.type.toLowerCase()))
   .map(p => ({
     id: p.place_id,
@@ -106,24 +143,23 @@ export const DEFAULT_USER_LOCATION = {
 
 export function getBuildingIcon(type: CampusBuilding['type']): ComponentType<{ size?: number; color?: string; strokeWidth?: number }> {
   switch (type) {
-    case 'academic': return GraduationCap;
-    case 'athletics': return Star;
-    case 'library': return LibraryIcon;
-    case 'dining': return Utensils;
-    case 'recreation': return Dumbbell;
-    case 'landmark': return Star;
-    case 'housing': return Home;
+    case 'Academic': return GraduationCap;
+    case 'Athletics': return Star;
+    case 'Library': return LibraryIcon;
+    case 'Dining': return Utensils;
+    case 'Rec': return Dumbbell;
+    case 'Landmark': return Star;
+    case 'Housing': return Home;
     default: return MapPin;
   }
 }
 
 export function getAmenityIcon(type: CampusAmenity['type']): ComponentType<{ size?: number; color?: string; strokeWidth?: number }> {
   switch (type) {
-    case 'coffee': return Coffee;
-    case 'dining': return Utensils;
-    case 'study': return LibraryIcon;
-    case 'restroom': return MapPin;
-    case 'parking': return MapPin;
+    case 'Dining': return Utensils;
+    case 'Study': return LibraryIcon;
+    case 'General': return MapPin;
+    case 'Parking': return MapPin;
     default: return MapPin;
   }
 }

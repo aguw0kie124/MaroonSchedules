@@ -1,22 +1,30 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { fetchCampusPlacesMap } from "../../api/client";
 import type { CampusLocation } from "./types";
-import { buildExpandedPlacesDirectory, mergeCampusLocations } from "./campusData";
+import {
+  buildExpandedPlacesDirectory,
+  mergeCampusLocations,
+  normalizeLocationType,
+} from "./campusData";
 
-export function useLocationData() {
+function normalizeCampusLocation(location: CampusLocation): CampusLocation {
+  return {
+    ...location,
+    type: normalizeLocationType(location.type),
+  };
+}
+
+export function useLocationData({ autoFetch = true }: { autoFetch?: boolean } = {}) {
   const fullCampusIndex = useMemo(() => buildExpandedPlacesDirectory(), []);
-  const [locations, setLocations] = useState<CampusLocation[]>([]);
+  const [locations, setLocations] = useState<CampusLocation[]>(fullCampusIndex);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
+  const refreshLocations = useCallback(async () => {
+    setLoading(true);
     try {
       const payload = await fetchCampusPlacesMap();
       const nextLocations = Array.isArray(payload?.locations)
-        ? (payload.locations as CampusLocation[])
+        ? (payload.locations as CampusLocation[]).map(normalizeCampusLocation)
         : [];
       setLocations(
         nextLocations.length
@@ -29,7 +37,15 @@ export function useLocationData() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fullCampusIndex]);
 
-  return { locations, loading, fullCampusIndex };
+  useEffect(() => {
+    if (!autoFetch) {
+      setLoading(false);
+      return;
+    }
+    refreshLocations();
+  }, [autoFetch, refreshLocations]);
+
+  return { locations, loading, fullCampusIndex, refreshLocations };
 }

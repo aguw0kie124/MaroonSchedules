@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-06T18:15:27.484560+00:00",
+  "generated_at": "2026-04-06T20:09:50.256091+00:00",
   "count": 2133,
   "attribution": "\u00a9 OpenStreetMap contributors, MaroonSchedules Registry",
   "places": [
@@ -37376,7 +37376,7 @@
     {
       "place_id": "rec",
       "name": "Student Recreation Center",
-      "short_name": "SREC",
+      "short_name": "REC",
       "type": "Rec",
       "lat": 30.607369543290172,
       "lng": -96.34287943254921,
@@ -37387,8 +37387,10 @@
       "search_only": false,
       "source": "special",
       "aliases": [
+        "osm way 206530669",
         "rec",
         "rec center",
+        "srec",
         "student rec center",
         "student recreation center",
         "the rec"
@@ -38105,8 +38107,8 @@
       "name": "Sterling C. Evans Library",
       "short_name": "LIBR",
       "type": "Library",
-      "lat": 30.616607,
-      "lng": -96.339047,
+      "lat": 30.616332,
+      "lng": -96.338571,
       "description": "Main research library near the Academic Plaza.",
       "hours": "Open daily \u00b7 check library schedule",
       "features": null,
@@ -38124,8 +38126,8 @@
       "name": "Evans Library Annex",
       "short_name": "ANNEX",
       "type": "Library",
-      "lat": 30.6163,
-      "lng": -96.33834,
+      "lat": 30.616531,
+      "lng": -96.338456,
       "description": "Annex study and overflow library space.",
       "hours": "Open daily \u00b7 check library schedule",
       "features": null,
@@ -38177,8 +38179,8 @@
       "name": "West Campus Library",
       "short_name": "WCL",
       "type": "Library",
-      "lat": 30.61157,
-      "lng": -96.350164,
+      "lat": 30.611581,
+      "lng": -96.350275,
       "description": "Business and west campus study hub.",
       "hours": "Open daily \u00b7 check library schedule",
       "features": null,
@@ -38214,8 +38216,8 @@
       "name": "Southside Recreation Center",
       "short_name": "SSRC",
       "type": "Rec",
-      "lat": 30.615858627009548,
-      "lng": -96.33350512942744,
+      "lat": 30.6157837,
+      "lng": -96.3335135,
       "description": "Southside rec center near the Commons with indoor and outdoor space.",
       "hours": "5:30 AM \u2013 11:59 PM",
       "features": "[\"Strength & Conditioning\", \"Cardio Equipment\", \"Locker Rooms\", \"Sand Volleyball\"]",
@@ -38223,6 +38225,7 @@
       "search_only": false,
       "source": "special",
       "aliases": [
+        "osm way 1367436238",
         "southside rec center",
         "southside recreation center"
       ]
@@ -38232,8 +38235,8 @@
       "name": "Polo Road Recreation Center",
       "short_name": "POLO REC",
       "type": "Rec",
-      "lat": 30.62322838512405,
-      "lng": -96.33752363659374,
+      "lat": 30.6229681,
+      "lng": -96.3383515,
       "description": "North campus rec center focused on cardio and strength training.",
       "hours": "6:00 AM \u2013 10:00 PM",
       "features": "[\"Strength & Conditioning\", \"Cardio Equipment\", \"Indoor Track\"]",
@@ -38241,6 +38244,7 @@
       "search_only": false,
       "source": "special",
       "aliases": [
+        "osm way 904033099",
         "polo road rec center",
         "polo road recreation center"
       ]
@@ -38269,8 +38273,8 @@
       "name": "Sbisa Dining Hall",
       "short_name": "SBISA",
       "type": "Dining",
-      "lat": 30.617,
-      "lng": -96.3435,
+      "lat": 30.617135,
+      "lng": -96.343777,
       "description": "Northside all-you-care-to-eat dining hall.",
       "hours": "Breakfast, lunch, and dinner service",
       "features": null,
@@ -38278,6 +38282,7 @@
       "search_only": false,
       "source": "special",
       "aliases": [
+        "osm way 720954602",
         "sbisa",
         "sbisa dining hall"
       ]
@@ -38287,8 +38292,8 @@
       "name": "The Commons Dining Hall",
       "short_name": "COMMONS",
       "type": "Dining",
-      "lat": 30.6153804,
-      "lng": -96.3360119,
+      "lat": 30.6156816097444,
+      "lng": -96.3362674766492,
       "description": "Southside dining hall near the Commons.",
       "hours": "Breakfast, lunch, and dinner service",
       "features": null,
@@ -38298,6 +38303,7 @@
       "aliases": [
         "commons",
         "commons dining hall",
+        "osm node 8223259463",
         "the commons",
         "the commons dining hall"
       ]
@@ -38326,8 +38332,8 @@
       "name": "Duncan Dining Hall",
       "short_name": "DUNCAN",
       "type": "Dining",
-      "lat": 30.6118,
-      "lng": -96.33529,
+      "lat": 30.612072,
+      "lng": -96.335505,
       "description": "Dining hall near the Corps Quad.",
       "hours": "Check dining schedule",
       "features": null,

@@ -71,15 +71,9 @@ import { useCampusHubStore } from "../store/campusHubStore";
 import { getOrderedItems, useAppShellStore } from "../store/appShellStore";
 import { useSessionStore } from "../store/sessionStore";
 import { useShareStore } from "../store/shareStore";
-import { fetchCampusPlaceDetail, fetchCampusPlacesMap } from "../api/client";
 import { promptGuestLogin } from "../utils/guestAccess";
 import {
-  DiningMealPeriod,
-  fetchDiningFullMenuCached,
-  getDiningMealOptionsForLocation,
   getDiningMealPeriodForLocation,
-  isDiningHallMenuLocation,
-  getDiningMenuCandidates,
 } from "../services/diningMenuCache";
 
 // ── Sub-components ────────────────────────────────────────────
@@ -98,6 +92,8 @@ import { LocationBottomSheet } from "./places/LocationBottomSheet";
 import { ScheduleHeader } from "./places/ScheduleHeader";
 import { PlacesList } from "./places/PlacesList";
 import { TodayTimeline } from "./places/TodayTimeline";
+import { useLocationData } from "./places/useLocationData";
+import { usePlacesSelection } from "./places/usePlacesSelection";
 import { useScheduleMap } from "./places/useScheduleMap";
 
 // ── Shared data / utilities ───────────────────────────────────
@@ -112,7 +108,6 @@ import {
 import {
   CAMPUS_ZONES,
   CATEGORIES,
-  buildExpandedPlacesDirectory,
   getLocationSelectionId,
   getCanonicalLocationName,
   getZoneDensity,
@@ -208,7 +203,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // ── UI state ──────────────────────────────────────────────
   const [activeLayer, setActiveLayer] = useState<string>("Pulse");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(
     null,
   );
@@ -232,31 +226,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const timelineHeight = useSharedValue(0);
 
   // ── Location data ─────────────────────────────────────────
-  const fullCampusIndex = useMemo(() => buildExpandedPlacesDirectory(), []);
-  const [locations, setLocations] = useState<CampusLocation[]>(fullCampusIndex);
-  const [loading, setLoading] = useState(false);
+  const {
+    fullCampusIndex,
+    locations,
+    refreshLocations,
+  } = useLocationData({ autoFetch: false });
   const [pulseHotspots, setPulseHotspots] = useState<CampusHotspot[]>([]);
   const pulseHotspotsRef = useRef<CampusHotspot[]>([]);
   const pulsePlacesRef = useRef<CampusLocation[]>([]);
   const selectedHotspotIdRef = useRef<string | null>(null);
   const [isLoadingPulse, setIsLoadingPulse] = useState(false);
-
-  const fetchData = useCallback(async () => {
-    try {
-      const payload = await fetchCampusPlacesMap();
-      const nextLocations = Array.isArray(payload?.locations)
-        ? (payload.locations as CampusLocation[])
-        : [];
-      setLocations(
-        nextLocations.length
-          ? mergeCampusLocations(fullCampusIndex, nextLocations)
-          : fullCampusIndex,
-      );
-    } catch (err) {
-      console.warn("Failed to fetch places map snapshot", err);
-      setLocations(fullCampusIndex);
-    }
-  }, [fullCampusIndex]);
 
   // ── Schedule state ────────────────────────────────────────
   const [activeScheduleId, setActiveScheduleId] = useState<string | null>(null);
@@ -396,16 +375,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const [isPostingReview, setIsPostingReview] = useState(false);
   const [allReviewsModalVisible, setAllReviewsModalVisible] = useState(false);
   const [isFetchingReviews, setIsFetchingReviews] = useState(false);
-  const [hubRestaurants, setHubRestaurants] = useState<string[]>([]);
-  const [isFetchingDining, setIsFetchingDining] = useState(false);
-  const [diningMenuOptions, setDiningMenuOptions] = useState<string[]>([]);
-  const [activeDiningMenu, setActiveDiningMenu] = useState<string | null>(null);
-  const [activeDiningMealPeriod, setActiveDiningMealPeriod] =
-    useState<DiningMealPeriod>("lunch");
-  const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
-  const [selectedPlaceDetail, setSelectedPlaceDetail] = useState<any | null>(
-    null,
-  );
 
   // ── Recreation facility map ───────────────────────────────
   const recreationFacilityMap = useMemo(() => {
@@ -552,10 +521,33 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   const busPulseAnim = useRef(new Animated.Value(1)).current;
 
-  const selectedLoc = useMemo(
-    () => allMapLocations.find((l) => getLocationSelectionId(l) === selectedId),
-    [allMapLocations, selectedId],
-  );
+  const {
+    selectedId,
+    setSelectedId,
+    selectedLoc,
+    selectedPlaceDetail,
+    hubRestaurants,
+    isFetchingDining,
+    diningMenuOptions,
+    activeDiningMenu,
+    setActiveDiningMenu,
+    activeDiningMealPeriod,
+    setActiveDiningMealPeriod,
+    diningMenuPreview,
+    isPrimaryDiningHallSelection,
+    handleSelectLocation,
+  } = usePlacesSelection({
+    allMapLocations,
+    setActiveLayer,
+    onAfterSelectLocation: () => {
+      setSelectedHotspotId(null);
+      setSelectedStop(null);
+      setSelectedBus(null);
+      setIsSearchExpanded(false);
+      setSearchQuery("");
+      setShowSearchResults(false);
+    },
+  });
   const selectedHotspot = useMemo(
     () =>
       pulseHotspots.find((hotspot) => hotspot.id === selectedHotspotId) || null,
@@ -613,13 +605,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
       null
     );
   }, [recreationFacilityMap, selectedLoc, selectedPlaceDetail?.recreation]);
-
-  const isPrimaryDiningHallSelection = useMemo(() => {
-    const ref = (activeDiningMenu || selectedLoc?.location || "").toLowerCase();
-    return (
-      ref.includes("sbisa") || ref.includes("commons") || ref.includes("duncan")
-    );
-  }, [activeDiningMenu, selectedLoc?.location]);
 
   const stopTimetable = useMemo(() => {
     if (activeLayer !== "Bus" || !selectedRoute || busStops.length === 0)
@@ -892,85 +877,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
     selectedLoc,
   ]);
 
-  const loadBestDiningPreview = useCallback(
-    async (locationName: string, preferredMeal: DiningMealPeriod) => {
-      const mealOptions = getDiningMealOptionsForLocation(locationName);
-      const firstMeal =
-        mealOptions.find((m) => m === preferredMeal) ||
-        mealOptions[0] ||
-        preferredMeal;
-      const orderedMeals: DiningMealPeriod[] = [
-        firstMeal,
-        ...mealOptions.filter((m) => m !== firstMeal),
-      ];
-      let fallbackPreview: any = null,
-        fallbackMeal = firstMeal;
-      for (const meal of orderedMeals) {
-        const preview = await fetchDiningFullMenuCached({
-          location: locationName,
-          mealPeriod: meal,
-        }).catch(() => null);
-        if (!fallbackPreview) {
-          fallbackPreview = preview;
-          fallbackMeal = meal;
-        }
-        if (preview?.success && preview?.categories?.length)
-          return { preview, meal };
-      }
-      return { preview: fallbackPreview, meal: fallbackMeal };
-    },
-    [],
-  );
-
-  const fetchDiningData = useCallback(async (loc: CampusLocation) => {
-    setIsFetchingDining(true);
-    try {
-      if (!isDiningHallMenuLocation(loc.location)) {
-        setHubRestaurants([]);
-        setDiningMenuOptions([]);
-        setActiveDiningMenu(null);
-        setActiveDiningMealPeriod("lunch");
-        setDiningMenuPreview(null);
-        return;
-      }
-
-      const menuCandidates = getDiningMenuCandidates(loc.location, []);
-      setHubRestaurants([]);
-      setDiningMenuOptions(menuCandidates);
-      const nextMenu = loc.location;
-      setActiveDiningMenu(nextMenu);
-      setActiveDiningMealPeriod(
-        getDiningMealPeriodForLocation(nextMenu) as DiningMealPeriod,
-      );
-      setDiningMenuPreview(null);
-    } catch (e) {
-      console.warn("Failed to fetch dining data", e);
-    } finally {
-      setIsFetchingDining(false);
-    }
-  }, []);
-
-  const handleSelectLocation = useCallback((loc: CampusLocation) => {
-    const nextLayer =
-      loc.type === "Dining" || loc.type === "Hub"
-        ? "Dining"
-        : loc.type === "Rec"
-          ? "Rec"
-          : loc.type === "Library"
-            ? "Library"
-            : loc.type === "Parking"
-              ? "Parking"
-              : "Academic";
-    setActiveLayer(nextLayer);
-    setSelectedHotspotId(null);
-    setSelectedId(getLocationSelectionId(loc));
-    setSelectedStop(null);
-    setSelectedBus(null);
-    setIsSearchExpanded(false);
-    setSearchQuery("");
-    setShowSearchResults(false);
-  }, []);
-
   const handleGetDirections = useCallback(
     (building: string) => {
       // Find building in directory (e.g. "MSC", "ZEC")
@@ -997,23 +903,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
     },
     [locations],
   );
-
-  const getLayerForPlace = useCallback((loc: CampusLocation) => {
-    if (loc.type === "Dining" || loc.type === "Hub") return "Dining";
-    if (loc.type === "Rec") return "Rec";
-    if (loc.type === "Library") return "Library";
-    if (loc.type === "Parking") return "Parking";
-    if (
-      loc.type === "Academic" ||
-      loc.type === "Landmark" ||
-      loc.type === "Athletics" ||
-      loc.type === "Housing" ||
-      loc.type === "General"
-    ) {
-      return "Academic";
-    }
-    return "Academic";
-  }, []);
 
   const handleSelectHotspot = useCallback(
     (hotspot: CampusHotspot) => {
@@ -1061,10 +950,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
         return;
       }
 
-      setActiveLayer(getLayerForPlace(hotspot.place));
       handleSelectLocation(hotspot.place);
     },
-    [getLayerForPlace, handleSelectLocation, isMapTilted],
+    [handleSelectLocation, isMapTilted],
   );
 
   const openHotspotItem = useCallback(
@@ -1544,14 +1432,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
     const task = InteractionManager.runAfterInteractions(() => {
       hasFetchedInit.current = true;
       Promise.allSettled([
-        fetchData(),
+        refreshLocations(),
         fetchPulseHotspots(),
         Promise.resolve(refreshSchedules()),
       ]).catch(() => {});
     });
     return () => task.cancel();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchPulseHotspots, refreshLocations, refreshSchedules]);
 
   useEffect(() => {
     if (activeLayer !== "Pulse") return;
@@ -1709,36 +1596,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
       fetchReviews(selectedReviewId);
     } else {
       setStreamReviews([]);
-      setHubRestaurants([]);
-      setDiningMenuOptions([]);
-      setActiveDiningMenu(null);
-      setActiveDiningMealPeriod("lunch");
-      setDiningMenuPreview(null);
-      setSelectedPlaceDetail(null);
     }
   }, [selectedId, selectedLoc, fetchReviews]);
-
-  useEffect(() => {
-    if (!selectedLoc) {
-      setSelectedPlaceDetail(null);
-      return;
-    }
-    let cancelled = false;
-    const identifier = selectedLoc.placeId || selectedLoc.location;
-    fetchCampusPlaceDetail(identifier)
-      .then((detail) => {
-        if (!cancelled) setSelectedPlaceDetail(detail);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setSelectedPlaceDetail(null);
-          console.warn("Failed to fetch place detail snapshot", error);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedLoc?.location, selectedLoc?.placeId]);
 
   useEffect(() => {
     if (!selectedLoc || !mapRef.current) return;
@@ -1752,37 +1611,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
       650,
     );
   }, [selectedLoc?.location, selectedLoc?.coord.lat, selectedLoc?.coord.lng]);
-
-  useEffect(() => {
-    if (!selectedLoc || !isDiningHallMenuLocation(selectedLoc.location)) {
-      setHubRestaurants([]);
-      setDiningMenuOptions([]);
-      setActiveDiningMenu(null);
-      setDiningMenuPreview(null);
-      return;
-    }
-    fetchDiningData(selectedLoc);
-  }, [selectedLoc, fetchDiningData]);
-
-  useEffect(() => {
-    if (!activeDiningMenu) return;
-    let cancelled = false;
-    setIsFetchingDining(true);
-    loadBestDiningPreview(activeDiningMenu, activeDiningMealPeriod)
-      .then(({ preview, meal }) => {
-        if (!cancelled) {
-          if (meal !== activeDiningMealPeriod) setActiveDiningMealPeriod(meal);
-          setDiningMenuPreview(preview);
-        }
-      })
-      .catch((e) => console.warn("Failed to load dining menu preview", e))
-      .finally(() => {
-        if (!cancelled) setIsFetchingDining(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeDiningMealPeriod, activeDiningMenu, loadBestDiningPreview]);
 
   // Connect native social client for compatibility across feed surfaces
   useEffect(() => {
