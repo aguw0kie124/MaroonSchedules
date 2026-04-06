@@ -1154,8 +1154,8 @@
       "name": "Commons Dining Hall",
       "short_name": "Fast Food",
       "type": "Dining",
-      "lat": 30.6155193,
-      "lng": -96.3361609,
+      "lat": 30.615787327676124,
+      "lng": -96.33632240064732,
       "aliases": [],
       "search_only": true,
       "source": "osm",
@@ -8026,8 +8026,8 @@
       "name": "Polo Road Rec Center",
       "short_name": "Fitness Centre",
       "type": "Rec",
-      "lat": 30.6231846,
-      "lng": -96.338575,
+      "lat": 30.62322838512405,
+      "lng": -96.33752363659374,
       "aliases": [
         "Texas A&M University"
       ],

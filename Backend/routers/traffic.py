@@ -24,8 +24,8 @@ except ImportError:
 LOCATION_DATA = {
     # Rec Centers  (matched by GoBoard FacilityName)
     "Student Rec Center":   {"lat": 30.607120, "lng": -96.345403, "type": "Rec"},
-    "Southside Rec Center": {"lat": 30.615185, "lng": -96.334412, "type": "Rec"},
-    "Polo Road Rec Center": {"lat": 30.622968, "lng": -96.340926, "type": "Rec"},
+    "Southside Rec Center": {"lat": 30.615858627009548, "lng": -96.33350512942744, "type": "Rec"},
+    "Polo Road Rec Center": {"lat": 30.62322838512405, "lng": -96.33752363659374, "type": "Rec"},
 
     # Libraries  (matched by LIBRARY_KEY_MAP below)
     "Evans Library":                          {"lat": 30.616607, "lng": -96.339047, "type": "Library"},
@@ -37,7 +37,7 @@ LOCATION_DATA = {
 
     # Dining (AI-estimated, no live API)
     "Sbisa Dining Hall":              {"lat": 30.61700, "lng": -96.34350, "type": "Dining"},
-    "The Commons Dining Hall":        {"lat": 30.61534, "lng": -96.33601, "type": "Dining"},
+    "The Commons Dining Hall":        {"lat": 30.615787327676124, "lng": -96.33632240064732, "type": "Dining"},
     "Duncan Dining Hall":             {"lat": 30.61180, "lng": -96.33529, "type": "Dining"},
     "West Campus Dining Facility":    {"lat": 30.61020, "lng": -96.34863, "type": "Dining"},
     "Memorial Student Center (MSC)":  {"lat": 30.61223, "lng": -96.34137, "type": "Dining"},

@@ -68,8 +68,8 @@ SPECIAL_PLACES: List[Dict[str, Any]] = [
         "name": "Southside Recreation Center",
         "short_name": "SSRC",
         "type": "Rec",
-        "lat": 30.615185,
-        "lng": -96.334412,
+        "lat": 30.615858627009548,
+        "lng": -96.33350512942744,
         "aliases": ["Southside Rec Center"],
     },
     {
@@ -77,8 +77,8 @@ SPECIAL_PLACES: List[Dict[str, Any]] = [
         "name": "Polo Road Recreation Center",
         "short_name": "POLO REC",
         "type": "Rec",
-        "lat": 30.622968,
-        "lng": -96.340926,
+        "lat": 30.62322838512405,
+        "lng": -96.33752363659374,
         "aliases": ["Polo Road Rec Center"],
     },
     {
@@ -104,8 +104,8 @@ SPECIAL_PLACES: List[Dict[str, Any]] = [
         "name": "The Commons Dining Hall",
         "short_name": "COMMONS",
         "type": "Dining",
-        "lat": 30.61045,
-        "lng": -96.33495,
+        "lat": 30.615787327676124,
+        "lng": -96.33632240064732,
         "aliases": ["Commons Dining Hall", "The Commons"],
     },
     {
