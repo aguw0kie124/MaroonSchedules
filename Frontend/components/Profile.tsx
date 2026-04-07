@@ -159,7 +159,7 @@ export function Profile() {
   } = useTheme();
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark, accentColor);
-  const { startTour, endTour, activeTargetName } = useTour();
+  const { startTour, advanceStep, activeTargetName } = useTour();
 
   const [academicStatus, setAcademicStatus] = useState<any | null>(null);
   const [loadingAcademicStatus, setLoadingAcademicStatus] = useState(true);
@@ -484,7 +484,7 @@ export function Profile() {
                 opacity: pressed ? 0.9 : 1,
                 transform: [{ scale: pressed ? 0.98 : 1 }]
               })}
-              onPress={() => endTour()}
+              onPress={() => advanceStep('tour-finish')}
             >
               <Text style={{ color: COLORS.primary, fontWeight: '900', fontSize: 17, letterSpacing: -0.2 }}>Launch MaroonLife</Text>
               <ChevronRight size={20} color={COLORS.primary} strokeWidth={3} />
