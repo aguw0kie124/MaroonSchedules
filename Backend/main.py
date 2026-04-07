@@ -191,6 +191,9 @@ class UpdateProfileRequest(BaseModel):
     major: Optional[str] = None
     graduation_year: Optional[str] = None
     preferred_time: Optional[str] = None
+    preferred_event_categories: Optional[list[str]] = None
+    preferred_social_mode: Optional[str] = None
+    event_preferences_completed: Optional[bool] = None
     max_credits: Optional[str] = None
     avoid_friday: Optional[bool] = None
     show_online_first: Optional[bool] = None
