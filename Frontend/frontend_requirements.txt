@@ -25,4 +25,3 @@ react-native-worklets-core
 stream-chat
 zustand
 react-native-maps
-expo-dev-client
