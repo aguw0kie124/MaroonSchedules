@@ -232,6 +232,106 @@ function PreferenceCelebration({
   );
 }
 
+function QuestionOptionCard({
+  option,
+  selected,
+  onPress,
+  index,
+  isDark,
+  colors,
+}: {
+  option: { id: string; label: string; description: string };
+  selected: boolean;
+  onPress: () => void;
+  index: number;
+  isDark: boolean;
+  colors: {
+    primary: string;
+    border: string;
+    textPrimary: string;
+    textSecondary: string;
+  };
+}) {
+  const opacity = React.useRef(new Animated.Value(0)).current;
+  const translateY = React.useRef(new Animated.Value(18)).current;
+  const scale = React.useRef(new Animated.Value(0.98)).current;
+
+  React.useEffect(() => {
+    const delay = Math.min(index * 70, 280);
+    const animation = Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 260,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 320,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scale, {
+        toValue: 1,
+        duration: 300,
+        delay,
+        useNativeDriver: true,
+      }),
+    ]);
+    animation.start();
+    return () => animation.stop();
+  }, [index, opacity, scale, translateY]);
+
+  return (
+    <Animated.View
+      style={{
+        opacity,
+        transform: [{ translateY }, { scale }],
+      }}
+    >
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.optionCard,
+          {
+            backgroundColor: selected
+              ? `${colors.primary}15`
+              : isDark
+                ? 'rgba(255,255,255,0.04)'
+                : 'rgba(255,255,255,0.78)',
+            borderColor: selected ? colors.primary : colors.border,
+            opacity: pressed ? 0.94 : 1,
+            transform: [{ scale: pressed ? 0.985 : 1 }],
+          },
+        ]}
+      >
+        <View style={styles.optionTextWrap}>
+          <View style={styles.optionLabelRow}>
+            <Text style={[styles.optionLabel, { color: colors.textPrimary }]}>{option.label}</Text>
+            {selected ? (
+              <View style={[styles.selectedBadge, { backgroundColor: colors.primary }]}>
+                <Text style={styles.selectedBadgeText}>Selected</Text>
+              </View>
+            ) : null}
+          </View>
+          <Text style={[styles.optionDescription, { color: colors.textSecondary }]}>
+            {option.description}
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.radio,
+            {
+              borderColor: selected ? colors.primary : colors.border,
+              backgroundColor: selected ? colors.primary : 'transparent',
+            },
+          ]}
+        />
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
@@ -251,6 +351,7 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
   const [loading, setLoading] = React.useState(false);
   const [celebration, setCelebration] = React.useState<{ title: string; body: string } | null>(null);
   const celebrationTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoAdvanceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [categorySelection, setCategorySelection] = React.useState<string[]>(
     getInitialCategories(preferredEventCategories),
   );
@@ -266,6 +367,7 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
 
   const question = QUESTIONS[questionIndex];
   const progress = (questionIndex + 1) / QUESTIONS.length;
+  const nextQuestion = QUESTIONS[questionIndex + 1] || null;
 
   const canContinue =
     (question.id === 'categories' && categorySelection.length > 0) ||
@@ -287,6 +389,21 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
   );
   const normalizedTimeSelection = timeSelection === NO_PREFERENCE_ID ? null : timeSelection;
   const normalizedSocialSelection = socialSelection === NO_PREFERENCE_ID ? null : socialSelection;
+  const singleChoiceReady =
+    (question.id === 'time' && !!timeSelection) ||
+    (question.id === 'major' && !!majorSelection) ||
+    (question.id === 'social' && !!socialSelection);
+
+  React.useEffect(() => {
+    return () => {
+      if (celebrationTimerRef.current) {
+        clearTimeout(celebrationTimerRef.current);
+      }
+      if (autoAdvanceTimerRef.current) {
+        clearTimeout(autoAdvanceTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleSelect = (optionId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -320,7 +437,7 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
     }
   };
 
-  const handleContinue = async () => {
+  const handleContinue = React.useCallback(async () => {
     if (!canContinue || loading) return;
 
     if (questionIndex < QUESTIONS.length - 1) {
@@ -387,7 +504,49 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    canContinue,
+    categorySelection,
+    loading,
+    majorSelection,
+    normalizedCategorySelection,
+    normalizedSocialSelection,
+    normalizedTimeSelection,
+    onDone,
+    question.id,
+    questionIndex,
+    setMajorSpecific,
+    setPreferredEventCategories,
+    setPreferredSocialMode,
+    setPreferredTime,
+    setSelectedMajor,
+    socialSelection,
+    timeSelection,
+    clerkId,
+  ]);
+
+  React.useEffect(() => {
+    if (question.id === 'categories' || !singleChoiceReady || loading) {
+      if (autoAdvanceTimerRef.current) {
+        clearTimeout(autoAdvanceTimerRef.current);
+      }
+      return;
+    }
+
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+    }
+
+    autoAdvanceTimerRef.current = setTimeout(() => {
+      handleContinue();
+    }, 420);
+
+    return () => {
+      if (autoAdvanceTimerRef.current) {
+        clearTimeout(autoAdvanceTimerRef.current);
+      }
+    };
+  }, [handleContinue, loading, question.id, singleChoiceReady]);
 
   const selectionHint =
     question.id === 'categories'
@@ -443,7 +602,7 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
         <View style={{ flex: 1 }}>
           <Text style={[styles.coachLabel, { color: COLORS.textPrimary }]}>Maroon Coach</Text>
           <Text style={[styles.coachMessage, { color: COLORS.textSecondary }]}>
-            Answer with your gut. You can always retune this later in Settings.
+            Answer with your gut. We will tune the Events page around this, and you can always retune it later in Settings.
           </Text>
         </View>
       </View>
@@ -509,10 +668,19 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
           <View style={styles.helperRow}>
             <Text style={[styles.selectionHint, { color: COLORS.primary }]}>{selectionHint}</Text>
             <Text style={[styles.helperText, { color: COLORS.textSecondary }]}>{question.helper}</Text>
+            {nextQuestion ? (
+              <Text style={[styles.nextQuestionHint, { color: COLORS.textSecondary }]}>
+                Up next: {nextQuestion.title}
+              </Text>
+            ) : (
+              <Text style={[styles.nextQuestionHint, { color: COLORS.textSecondary }]}>
+                Final step. We will save this and tailor Events for you right away.
+              </Text>
+            )}
           </View>
 
           <ScrollView contentContainerStyle={styles.optionsWrap} showsVerticalScrollIndicator={false}>
-            {question.options.map((option) => {
+            {question.options.map((option, index) => {
               const selected =
                 (question.id === 'categories' && categorySelection.includes(option.id)) ||
                 (question.id === 'time' && timeSelection === option.id) ||
@@ -520,46 +688,15 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
                 (question.id === 'social' && socialSelection === option.id);
 
               return (
-                <Pressable
+                <QuestionOptionCard
                   key={option.id}
+                  option={option}
+                  index={index}
+                  selected={selected}
                   onPress={() => handleSelect(option.id)}
-                  style={({ pressed }) => [
-                    styles.optionCard,
-                    {
-                      backgroundColor: selected
-                        ? `${COLORS.primary}15`
-                        : isDark
-                          ? 'rgba(255,255,255,0.04)'
-                          : 'rgba(255,255,255,0.78)',
-                      borderColor: selected ? COLORS.primary : COLORS.border,
-                      opacity: pressed ? 0.94 : 1,
-                      transform: [{ scale: pressed ? 0.985 : 1 }],
-                    },
-                  ]}
-                >
-                  <View style={styles.optionTextWrap}>
-                    <View style={styles.optionLabelRow}>
-                      <Text style={[styles.optionLabel, { color: COLORS.textPrimary }]}>{option.label}</Text>
-                      {selected ? (
-                        <View style={[styles.selectedBadge, { backgroundColor: COLORS.primary }]}>
-                          <Text style={styles.selectedBadgeText}>Selected</Text>
-                        </View>
-                      ) : null}
-                    </View>
-                    <Text style={[styles.optionDescription, { color: COLORS.textSecondary }]}>
-                      {option.description}
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.radio,
-                      {
-                        borderColor: selected ? COLORS.primary : COLORS.border,
-                        backgroundColor: selected ? COLORS.primary : 'transparent',
-                      },
-                    ]}
-                  />
-                </Pressable>
+                  isDark={isDark}
+                  colors={COLORS}
+                />
               );
             })}
           </ScrollView>
@@ -580,7 +717,11 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
             ) : (
               <>
                 <Text style={styles.continueText}>
-                  {questionIndex === QUESTIONS.length - 1 ? 'Save preferences' : 'Continue'}
+                  {questionIndex === QUESTIONS.length - 1
+                    ? 'Save preferences'
+                    : question.id === 'categories'
+                      ? 'Continue'
+                      : 'Saving and moving on'}
                 </Text>
                 <ChevronRight size={18} color="#FFFFFF" strokeWidth={3} />
               </>
@@ -815,6 +956,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     fontWeight: '600',
+  },
+  nextQuestionHint: {
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
   },
   optionsWrap: {
     gap: 12,

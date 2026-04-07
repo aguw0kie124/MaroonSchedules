@@ -233,6 +233,52 @@ function getPersonalizationScore(
   return score;
 }
 
+function getEventPersonalizationReasons(
+  event: TAMUEvent,
+  preferredCategories: ExploreCategory[],
+  preferredSocialMode: SocialMode | null,
+  preferredTime: string | null,
+  selectedMajor: MajorOption,
+  useMajorSignal: boolean,
+) {
+  const reasons: string[] = [];
+  const category = event._category || classifyCategory(event);
+
+  if (preferredCategories.includes(category)) {
+    reasons.push(`Matches your ${category.toLowerCase()} interests`);
+  }
+
+  if (preferredTime && preferredTime !== 'Anytime' && getTimePreferenceScore(event, preferredTime) >= 10) {
+    reasons.push(`Great for your ${preferredTime.toLowerCase()} plans`);
+  }
+
+  if (category === 'Social' && preferredSocialMode && (event._socialMode || getSocialMode(event)) === preferredSocialMode) {
+    reasons.push(
+      preferredSocialMode === 'casual'
+        ? 'Fits your casual social vibe'
+        : 'Fits your professional networking vibe',
+    );
+  }
+
+  if (useMajorSignal && matchesMajor(event, selectedMajor)) {
+    reasons.push(`Relevant for ${selectedMajor}`);
+  }
+
+  if (event.has_food && !reasons.some((reason) => reason.includes('food'))) {
+    reasons.push('Includes food');
+  }
+
+  if ((event.is_admin_event || category === 'Featured') && reasons.length < 2) {
+    reasons.push('Popular across campus');
+  }
+
+  if (reasons.length === 0) {
+    reasons.push(`Strong ${category.toLowerCase()} pick`);
+  }
+
+  return reasons.slice(0, 3);
+}
+
 export const CATEGORY_META: Record<
   ExploreCategory,
   {
@@ -568,6 +614,46 @@ function StaggeredReveal({
     >
       {children}
     </Animated.View>
+  );
+}
+
+function WhyItFitsRow({
+  reasons,
+  compact = false,
+  light = false,
+}: {
+  reasons: string[];
+  compact?: boolean;
+  light?: boolean;
+}) {
+  if (!reasons.length) return null;
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={compact ? stylesStatic.reasonRowCompact : stylesStatic.reasonRow}
+    >
+      {reasons.map((reason) => (
+        <View
+          key={reason}
+          style={[
+            compact ? stylesStatic.reasonChipCompact : stylesStatic.reasonChip,
+            light ? stylesStatic.reasonChipLight : null,
+          ]}
+        >
+          <Sparkles size={compact ? 12 : 13} color={light ? '#FFFFFF' : '#7A0B1C'} />
+          <Text
+            style={[
+              compact ? stylesStatic.reasonChipTextCompact : stylesStatic.reasonChipText,
+              light ? stylesStatic.reasonChipTextLight : null,
+            ]}
+          >
+            {reason}
+          </Text>
+        </View>
+      ))}
+    </ScrollView>
   );
 }
 
@@ -929,6 +1015,28 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     }
     return chips.slice(0, 5);
   }, [isMajorSpecific, normalizedPreferenceCategories, preferredSocialMode, preferredTime, selectedMajor]);
+
+  const personalizationReasonMap = useMemo(() => {
+    const next: Record<string, string[]> = {};
+    filteredUpcomingEvents.forEach((event) => {
+      next[String(event.id)] = getEventPersonalizationReasons(
+        event,
+        normalizedPreferenceCategories,
+        preferredSocialMode,
+        preferredTime,
+        selectedMajor,
+        isMajorSpecific,
+      );
+    });
+    return next;
+  }, [
+    filteredUpcomingEvents,
+    isMajorSpecific,
+    normalizedPreferenceCategories,
+    preferredSocialMode,
+    preferredTime,
+    selectedMajor,
+  ]);
 
   const changeView = useCallback((nextView: EventsView) => {
     startTransition(() => {
@@ -1344,6 +1452,12 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 <Text style={s.forYouBody}>
                   {pageSubtitle}
                 </Text>
+                {discoverEvents[0] ? (
+                  <WhyItFitsRow
+                    reasons={personalizationReasonMap[String(discoverEvents[0].id)] || []}
+                    light
+                  />
+                ) : null}
                 {personalizationChips.length > 0 ? (
                   <ScrollView
                     horizontal
@@ -1478,6 +1592,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                       >
                         <HeroEventCard
                           event={event}
+                          reasons={personalizationReasonMap[String(event.id)] || []}
                           scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
                           onSchedule={() => handleSchedule(event)}
                           onPress={() => setDetailEvent(event)}
@@ -1567,6 +1682,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                     <ListEventRow
                       event={item}
                       isGuest={isGuest}
+                      reasons={personalizationReasonMap[String(item.id)] || []}
                       saved={savedEventIds.includes(String(item.id))}
                       scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(item.id))}
                       onPress={() => {
@@ -1790,6 +1906,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           onUnsubscribeOrganizer={handleUnsubscribeOrganizer}
           onBlockOrganizer={handleBlockOrganizer}
           onReportOrganizer={handleReportOrganizer}
+          reasons={detailEvent ? personalizationReasonMap[String(detailEvent.id)] || [] : []}
           saved={detailEvent ? savedEventIds.includes(String(detailEvent.id)) : false}
           scheduled={detailEvent ? scheduledEvents.some((scheduled) => String(scheduled.id) === String(detailEvent.id)) : false}
         />
@@ -1840,12 +1957,14 @@ function CategoryChip({
 
 function HeroEventCard({
   event,
+  reasons,
   scheduled,
   onSchedule,
   onPress,
   onMap,
 }: {
   event: TAMUEvent;
+  reasons: string[];
   scheduled: boolean;
   onSchedule: () => void;
   onPress: () => void;
@@ -1883,6 +2002,7 @@ function HeroEventCard({
 
       <View style={stylesStatic.heroBottom}>
         <Text style={stylesStatic.heroTitle}>{event.title}</Text>
+        <WhyItFitsRow reasons={reasons} light />
         {event.group_title ? (
           <View style={stylesStatic.heroOrganizerPill}>
             <BadgeCheck size={13} color="#FFFFFF" />
@@ -1943,6 +2063,7 @@ function HeroEventCard({
 function ListEventRow({
   event,
   isGuest,
+  reasons,
   saved,
   scheduled,
   onPress,
@@ -1953,6 +2074,7 @@ function ListEventRow({
 
   event: TAMUEvent;
   isGuest: boolean;
+  reasons: string[];
   saved: boolean;
   scheduled: boolean;
   onPress: () => void;
@@ -1999,6 +2121,7 @@ function ListEventRow({
             {event.group_title}
           </Text>
         ) : null}
+        <WhyItFitsRow reasons={reasons} compact />
         <Text style={[stylesStatic.listMeta, { color: COLORS.textTertiary }]} numberOfLines={1}>
           {event.location || 'Campus'}
         </Text>
@@ -2315,6 +2438,7 @@ function DetailModal({
   onUnsubscribeOrganizer,
   onBlockOrganizer,
   onReportOrganizer,
+  reasons,
   saved,
   scheduled,
 }: {
@@ -2328,6 +2452,7 @@ function DetailModal({
   onUnsubscribeOrganizer: (event: TAMUEvent) => void;
   onBlockOrganizer: (event: TAMUEvent) => void;
   onReportOrganizer: (event: TAMUEvent) => void;
+  reasons: string[];
   saved: boolean;
   scheduled: boolean;
 }) {
@@ -2375,6 +2500,7 @@ function DetailModal({
             </View>
 
             <Text style={[stylesStatic.detailTitle, { color: COLORS.textPrimary }]}>{event.title}</Text>
+            <WhyItFitsRow reasons={reasons} />
 
             <View style={stylesStatic.detailMetaBlock}>
               <View style={stylesStatic.detailMetaRow}>
@@ -3054,6 +3180,57 @@ const stylesStatic = StyleSheet.create({
     width: 8,
     height: 14,
     borderRadius: 3,
+  },
+  reasonRow: {
+    gap: 8,
+    paddingTop: 10,
+    paddingBottom: 2,
+    paddingRight: 8,
+  },
+  reasonRowCompact: {
+    gap: 6,
+    paddingTop: 6,
+    paddingBottom: 4,
+    paddingRight: 8,
+  },
+  reasonChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(122,11,28,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(122,11,28,0.12)',
+  },
+  reasonChipCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(122,11,28,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(122,11,28,0.12)',
+  },
+  reasonChipLight: {
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  reasonChipText: {
+    color: '#7A0B1C',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  reasonChipTextCompact: {
+    color: '#7A0B1C',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  reasonChipTextLight: {
+    color: '#FFFFFF',
   },
   categoryChip: {
     flexDirection: 'row',

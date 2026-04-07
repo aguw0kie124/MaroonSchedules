@@ -701,6 +701,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   }));
 
   const stepLabel = currentDef ? `Step ${currentStep + 1} of ${TOUR_SEQUENCE.length}` : '';
+  const nextDef = currentStep < TOUR_SEQUENCE.length - 1 ? TOUR_SEQUENCE[currentStep + 1] : null;
   const regionHint = targetRect && currentDef ? `Highlighted in the ${getTargetRegion(targetRect, width, height)}.` : '';
   const encouragement = ENCOURAGEMENTS[currentStep % ENCOURAGEMENTS.length];
 
@@ -1018,6 +1019,15 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
               </View>
             </View>
 
+            {nextDef ? (
+              <View style={[styles.nextStepCard, { backgroundColor: 'rgba(255,255,255,0.5)', borderColor: `${COLORS.primary}18` }]}>
+                <Text style={[styles.coachLabel, { color: COLORS.primary }]}>Up next</Text>
+                <Text style={[styles.nextStepText, { color: COLORS.textPrimary }]}>
+                  After this, we will help you {nextDef.title.toLowerCase()}.
+                </Text>
+              </View>
+            ) : null}
+
             <View style={[styles.coachBlock, { backgroundColor: `${COLORS.primary}10` }]}>
               <Text style={[styles.coachLabel, { color: COLORS.primary }]}>Where to look</Text>
               <Text style={[styles.coachText, { color: COLORS.textSecondary }]}>
@@ -1289,6 +1299,17 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: 0.5,
     textTransform: 'uppercase',
+  },
+  nextStepCard: {
+    borderRadius: 18,
+    padding: 14,
+    gap: 6,
+    borderWidth: 1,
+  },
+  nextStepText: {
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: '700',
   },
   coachBlock: {
     borderRadius: 18,
