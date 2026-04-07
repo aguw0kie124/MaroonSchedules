@@ -153,6 +153,8 @@ const ALL_CATEGORIES: ExploreCategory[] = [
   'Miscellaneous',
 ];
 
+const PERSONALIZATION_CATEGORY_LIMIT = 3;
+
 const MAJOR_OPTIONS: MajorOption[] = [
   'Engineering',
   'Business',
@@ -165,6 +167,68 @@ const MAJOR_OPTIONS: MajorOption[] = [
   'Law',
   'Medicine',
 ];
+
+function isExploreCategory(value: string): value is ExploreCategory {
+  return ALL_CATEGORIES.includes(value as ExploreCategory);
+}
+
+function normalizePreferredCategories(categories: string[] | undefined) {
+  return (categories || []).filter(isExploreCategory).slice(0, PERSONALIZATION_CATEGORY_LIMIT);
+}
+
+function timeBucketLabel(preference: string | null) {
+  if (preference === 'Morning') return 'morning plans';
+  if (preference === 'Afternoon') return 'afternoon events';
+  if (preference === 'Evening') return 'evening picks';
+  if (preference === 'Anytime') return 'all-day plans';
+  return null;
+}
+
+function getTimePreferenceScore(event: TAMUEvent, preference: string | null) {
+  if (!preference || preference === 'Anytime') return 0;
+  const hour = new Date(event.date_ts * 1000).getHours();
+  if (preference === 'Morning') {
+    return hour >= 5 && hour < 12 ? 14 : hour >= 12 && hour < 17 ? 4 : 0;
+  }
+  if (preference === 'Afternoon') {
+    return hour >= 12 && hour < 17 ? 14 : hour >= 17 && hour < 22 ? 4 : 0;
+  }
+  if (preference === 'Evening') {
+    return hour >= 17 && hour < 24 ? 14 : hour >= 12 && hour < 17 ? 4 : 0;
+  }
+  return 0;
+}
+
+function getPersonalizationScore(
+  event: TAMUEvent,
+  preferredCategories: ExploreCategory[],
+  preferredSocialMode: SocialMode | null,
+  preferredTime: string | null,
+  selectedMajor: MajorOption,
+  useMajorSignal: boolean,
+) {
+  let score = 0;
+  const category = event._category || classifyCategory(event);
+  const categoryIndex = preferredCategories.indexOf(category);
+  if (categoryIndex >= 0) {
+    score += 34 - categoryIndex * 6;
+  }
+  if (category === 'Social' && preferredSocialMode) {
+    if ((event._socialMode || getSocialMode(event)) === preferredSocialMode) {
+      score += 16;
+    }
+  }
+  if (useMajorSignal && matchesMajor(event, selectedMajor)) {
+    score += 10;
+  }
+  score += getTimePreferenceScore(event, preferredTime);
+  if (event.is_admin_event || category === 'Featured') {
+    score += 6;
+  }
+  const hoursAway = Math.max(0, (event.date_ts - Math.floor(Date.now() / 1000)) / 3600);
+  score += Math.max(0, 10 - Math.min(hoursAway / 12, 10));
+  return score;
+}
 
 export const CATEGORY_META: Record<
   ExploreCategory,
@@ -385,6 +449,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const navigation = useNavigation<any>();
   const { user } = useUser();
   const isGuest = useSessionStore((state) => state.isGuest);
+  const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
+  const preferredTime = useAppShellStore((state) => state.preferredTime);
+  const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
+  const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
   const s = useMemo(() => getStyles(COLORS, isDark, embedded), [COLORS, isDark, embedded]);
 
   const { advanceStep, activeTargetName } = useTour();
@@ -429,7 +497,12 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const pan = useRef(new Animated.ValueXY()).current;
   const opacity = useRef(new Animated.Value(1)).current;
+  const lastAppliedPreferenceKey = useRef<string | null>(null);
   const nowTs = Math.floor(Date.now() / 1000);
+  const normalizedPreferenceCategories = useMemo(
+    () => normalizePreferredCategories(preferredEventCategories),
+    [preferredEventCategories],
+  );
 
   const fetchEvents = useCallback(async () => {
     try {
@@ -563,13 +636,37 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     }
 
     next = next.filter((event) => !dislikedEventIds.includes(String(event.id)));
-    return next;
+    return [...next].sort((left, right) => {
+      const leftScore = getPersonalizationScore(
+        left,
+        normalizedPreferenceCategories,
+        preferredSocialMode,
+        preferredTime,
+        selectedMajor,
+        isMajorSpecific,
+      );
+      const rightScore = getPersonalizationScore(
+        right,
+        normalizedPreferenceCategories,
+        preferredSocialMode,
+        preferredTime,
+        selectedMajor,
+        isMajorSpecific,
+      );
+      if (rightScore !== leftScore) {
+        return rightScore - leftScore;
+      }
+      return left.date_ts - right.date_ts;
+    });
   }, [
     dislikedEventIds,
     events,
     isMajorSpecific,
     nowTs,
+    normalizedPreferenceCategories,
     deferredSearchQuery,
+    preferredSocialMode,
+    preferredTime,
     selectedCategories,
     selectedMajor,
     socialMode,
@@ -594,6 +691,65 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       setView('list');
     }
   }, [isGuest]);
+
+  useEffect(() => {
+    if (isGuest || !isEventPreferencesCompleted) {
+      return;
+    }
+    const preferenceKey = JSON.stringify({
+      categories: normalizedPreferenceCategories,
+      socialMode: preferredSocialMode,
+      preferredTime,
+    });
+    if (lastAppliedPreferenceKey.current === preferenceKey) {
+      return;
+    }
+    lastAppliedPreferenceKey.current = preferenceKey;
+    setSelectedCategories(new Set(normalizedPreferenceCategories));
+    if (preferredSocialMode) {
+      setSocialMode(preferredSocialMode);
+    }
+    if (!embedded) {
+      setView('discover');
+    }
+  }, [embedded, isEventPreferencesCompleted, isGuest, normalizedPreferenceCategories, preferredSocialMode, preferredTime]);
+
+  const pageSubtitle = useMemo(() => {
+    if (isGuest) {
+      return 'Browse what is happening on campus right now.';
+    }
+    if (!isEventPreferencesCompleted) {
+      return 'Discover events tailored to your campus life.';
+    }
+
+    const detailParts: string[] = [];
+    if (normalizedPreferenceCategories.length > 0) {
+      detailParts.push(normalizedPreferenceCategories.join(', '));
+    }
+    const timeLabel = timeBucketLabel(preferredTime);
+    if (timeLabel) {
+      detailParts.push(timeLabel);
+    }
+    if (preferredSocialMode) {
+      detailParts.push(preferredSocialMode === 'casual' ? 'casual social picks' : 'professional social picks');
+    }
+    if (isMajorSpecific) {
+      detailParts.push(`${selectedMajor} relevance`);
+    }
+
+    if (detailParts.length === 0) {
+      return 'Your Events feed is personalized and ready to learn from what you explore.';
+    }
+    return `For you: ${detailParts.join(' • ')}.`;
+  }, [
+    isEventPreferencesCompleted,
+    isGuest,
+    isMajorSpecific,
+    normalizedPreferenceCategories,
+    preferredSocialMode,
+    preferredTime,
+    selectedMajor,
+  ]);
 
   const changeView = useCallback((nextView: EventsView) => {
     startTransition(() => {
@@ -903,12 +1059,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   );
 
   const renderHeader = (title: string) => (
-
-      <View style={s.headerBlock}>
-        <View style={s.headerTopRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={s.pageTitle}>{title}</Text>
-
+    <View style={s.headerBlock}>
+      <View style={s.headerTopRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.pageTitle}>{title}</Text>
+          <Text style={s.pageSubtitle}>{pageSubtitle}</Text>
         </View>
         <Pressable style={s.headerIconButton} onPress={() => setSettingsVisible(true)}>
           <Settings size={18} color={COLORS.textPrimary} />

@@ -53,7 +53,7 @@ import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './sto
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
 
-import { syncUser, fetchUserProfile, requestJson, setApiAuthTokenProvider } from './api/client';
+import { syncUser, requestJson, setApiAuthTokenProvider } from './api/client';
 import { TOSScreen } from './components/TOSScreen';
 import { NotificationPromptScreen } from './components/onboarding/NotificationPromptScreen';
 import { EventPreferenceOnboardingScreen } from './components/onboarding/EventPreferenceOnboardingScreen';
@@ -70,6 +70,9 @@ function UserSync({ children }: { children: React.ReactNode }) {
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const setTourCompleted = useAppShellStore((state) => state.setTourCompleted);
   const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
+  const setPreferredEventCategories = useAppShellStore((state) => state.setPreferredEventCategories);
+  const setPreferredTime = useAppShellStore((state) => state.setPreferredTime);
+  const setPreferredSocialMode = useAppShellStore((state) => state.setPreferredSocialMode);
   const setSelectedMajor = useEventStore((state) => state.setSelectedMajor);
   const setMajorSpecific = useEventStore((state) => state.setMajorSpecific);
   const lastSyncedUserId = React.useRef<string | null>(null);
@@ -93,14 +96,38 @@ function UserSync({ children }: { children: React.ReactNode }) {
           if (typeof data.event_preferences_completed === 'boolean') {
             setEventPreferencesCompleted(data.event_preferences_completed);
           }
+          if (Array.isArray(data.preferred_event_categories)) {
+            setPreferredEventCategories(
+              data.preferred_event_categories.filter((entry: unknown): entry is string => typeof entry === 'string'),
+            );
+          } else {
+            setPreferredEventCategories([]);
+          }
+          if (
+            data.preferred_time === 'Morning' ||
+            data.preferred_time === 'Afternoon' ||
+            data.preferred_time === 'Evening' ||
+            data.preferred_time === 'Anytime'
+          ) {
+            setPreferredTime(data.preferred_time);
+          } else {
+            setPreferredTime(null);
+          }
+          if (data.preferred_social_mode === 'casual' || data.preferred_social_mode === 'professional') {
+            setPreferredSocialMode(data.preferred_social_mode);
+          } else {
+            setPreferredSocialMode(null);
+          }
           if (typeof data.major === 'string' && data.major) {
             setSelectedMajor(data.major as any);
             setMajorSpecific(true);
+          } else {
+            setMajorSpecific(false);
           }
         }
       }).catch((err: any) => console.warn('UserSync failed:', err));
     }
-  }, [setEventPreferencesCompleted, setMajorSpecific, setSelectedMajor, setTOSAccepted, setTourCompleted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
+  }, [setEventPreferencesCompleted, setMajorSpecific, setPreferredEventCategories, setPreferredSocialMode, setPreferredTime, setSelectedMajor, setTOSAccepted, setTourCompleted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
 
   return <>{children}</>;
 }
@@ -298,6 +325,7 @@ function RootNavigator() {
   const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
   const isAdmin = useAppShellStore((state) => state.adminAccessStatus);
   const setIsAdmin = useAppShellStore((state) => state.setAdminAccessStatus);
+  const isRegularUserFlow = isSignedIn && authMode !== 'admin';
 
   React.useEffect(() => {
     if (isSignedIn && user?.id) {
@@ -332,7 +360,16 @@ function RootNavigator() {
         onDone={() => setNotificationPrompted(true)} 
       />
     );
-  } else if (isSignedIn && isTOSAccepted && isNotificationPrompted && (!isEventPreferencesCompleted || showEventPreferencesOnboarding) && user?.id) {
+  } else if (isRegularUserFlow && isTOSAccepted && isNotificationPrompted && isAdmin === null) {
+    content = <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  } else if (
+    isRegularUserFlow &&
+    isTOSAccepted &&
+    isNotificationPrompted &&
+    isAdmin === false &&
+    (!isEventPreferencesCompleted || showEventPreferencesOnboarding) &&
+    user?.id
+  ) {
     content = (
       <EventPreferenceOnboardingScreen
         clerkId={user.id}
