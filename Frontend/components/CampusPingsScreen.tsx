@@ -534,6 +534,7 @@ export function CampusPingsScreen() {
     }
 
     const displayName = getPremiumName(user);
+    const selectedPlace = locationLookup.get(getCanonicalLocationName(selectedLocation));
 
     const { startAt, endAt } = buildPresetWindow(composerTimePreset);
     setIsPosting(true);
@@ -551,8 +552,9 @@ export function CampusPingsScreen() {
         body: composerBody.trim(),
         category: composerCategory,
         locationTag: selectedLocation,
-        placeId:
-          locationLookup.get(getCanonicalLocationName(selectedLocation))?.placeId || undefined,
+        placeId: selectedPlace?.placeId || undefined,
+        placeLat: selectedPlace?.coord.lat,
+        placeLng: selectedPlace?.coord.lng,
         startAt,
         endAt,
         mediaUrl: uploadedImageUrl,

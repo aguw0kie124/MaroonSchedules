@@ -1,5 +1,6 @@
 import { getPremiumName, getPremiumImage } from '../utils/userUtils';
 import { apiFetch } from '../api/client';
+import { invalidateCampusPulseCache } from './campusPulse';
 
 let connectedUserId: string | null = null;
 let currentFullUser: any | null = null;
@@ -121,6 +122,8 @@ export async function addPing(params: {
   category: string;
   locationTag: string;
   placeId?: string;
+  placeLat?: number;
+  placeLng?: number;
   startAt: string;
   endAt?: string;
   mediaUrl?: string;
@@ -147,6 +150,8 @@ export async function addPing(params: {
       ping_category: params.category,
       location_tag: params.locationTag,
       place_id: params.placeId || '',
+      place_lat: params.placeLat ?? null,
+      place_lng: params.placeLng ?? null,
       start_at: params.startAt,
       end_at: params.endAt || '',
       content_type: 'ping',
@@ -164,6 +169,8 @@ export async function addPing(params: {
     console.error(`[NativeFeeds] addPing error: ${err}`);
     throw new Error(`Proxy Ping Error: ${err}`);
   }
+
+  invalidateCampusPulseCache();
 }
 
 export async function deletePing(activityId: string) {
@@ -175,6 +182,8 @@ export async function deletePing(activityId: string) {
     console.error(`[NativeFeeds] deletePing error: ${err}`);
     throw new Error('Failed to delete ping.');
   }
+
+  invalidateCampusPulseCache();
 }
 
 export async function addPost(params: {
@@ -241,7 +250,9 @@ export async function toggleVote(activityId: string, kind: 'upvote' | 'downvote'
         console.error('[NativeFeeds] toggleVote error:', err);
         throw new Error('Vote Proxy Error: ' + err);
     }
-    return res.json();
+    const payload = await res.json();
+    invalidateCampusPulseCache();
+    return payload;
 }
 
 export async function toggleLike(activityId: string, userId: string): Promise<any> {

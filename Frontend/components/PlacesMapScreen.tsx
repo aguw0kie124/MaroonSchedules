@@ -125,6 +125,7 @@ import {
 import { getStyles } from "./places/placesStyles";
 import {
   fetchCampusPulseMap,
+  invalidateCampusPulseCache,
   type CampusHotspot,
 } from "../services/campusPulse";
 
@@ -1007,7 +1008,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
       }
     } catch (error) {
       console.warn("Failed to build pulse hotspots", error);
-      if (!selectedHotspotIdRef.current) setPulseHotspots([]);
     } finally {
       setIsLoadingPulse(false);
     }
@@ -1445,12 +1445,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   useEffect(() => {
     if (activeLayer !== "Pulse") return;
+    invalidateCampusPulseCache();
+    fetchPulseHotspots();
     const interval = setInterval(() => {
       fetchPulseHotspots();
     }, 60000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeLayer]);
+  }, [activeLayer, fetchPulseHotspots]);
 
   // Pulse animation for Bus layer
   useEffect(() => {

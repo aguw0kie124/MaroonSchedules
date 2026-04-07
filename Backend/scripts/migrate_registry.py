@@ -57,15 +57,15 @@ SPECIAL_PLACES = [
         "features": ["Strength & Conditioning", "Indoor Track", "Pools", "Climbing Wall"]
     },
     {
-        "place_id": "southside-rec", "name": "Southside Recreation Center", "short_name": "SSRC", "type": "Rec", "lat": 30.6157837, "lng": -96.3335135, 
-        "aliases": ["Southside Rec Center", "osm:way:1367436238"],
+        "place_id": "southside-rec", "name": "Southside Recreation Center", "short_name": "SSRC", "type": "Rec", "lat": 30.615858627009548, "lng": -96.33350512942744,
+        "aliases": ["Southside Rec Center", "osm:way:1099383188"],
         "hours": "5:30 AM – 11:59 PM",
         "description": "Southside rec center near the Commons with indoor and outdoor space.",
         "features": ["Strength & Conditioning", "Cardio Equipment", "Locker Rooms", "Sand Volleyball"]
     },
     {
-        "place_id": "polo-rec", "name": "Polo Road Recreation Center", "short_name": "POLO REC", "type": "Rec", "lat": 30.6229681, "lng": -96.3383515, 
-        "aliases": ["Polo Road Rec Center", "osm:way:904033099"],
+        "place_id": "polo-rec", "name": "Polo Road Recreation Center", "short_name": "POLO REC", "type": "Rec", "lat": 30.62322838512405, "lng": -96.33752363659374,
+        "aliases": ["Polo Road Rec Center", "osm:way:916117346"],
         "hours": "6:00 AM – 10:00 PM",
         "description": "North campus rec center focused on cardio and strength training.",
         "features": ["Strength & Conditioning", "Cardio Equipment", "Indoor Track"]

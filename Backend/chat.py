@@ -272,6 +272,8 @@ async def proxy_add_activity(feed_group: str, feed_id: str, body: FeedActivity, 
             )
         
         cache_service.delete(f"feed:backbone:{feed_group}:{feed_id}")
+        if feed_group == "flat" and feed_id == "campus_pings":
+            pulse_service.invalidate_pulse_map_cache()
         return {"status": "success", "message": "Activity recorded natively"}
     except Exception as e:
         print(f"Native Write Error: {e}\n{traceback.format_exc()}")
@@ -302,6 +304,8 @@ async def proxy_delete_activity(
             deleted = feed_repository.delete_crowdping_post(activity_id, final_user_id)
         if deleted:
             cache_service.delete(f"feed:backbone:{feed_group}:{feed_id}")
+            if feed_group == "flat" and feed_id == "campus_pings":
+                pulse_service.invalidate_pulse_map_cache()
             return {"status": "success"}
         else:
             raise HTTPException(status_code=404, detail="Activity not found or unauthorized")
@@ -331,6 +335,7 @@ async def proxy_add_reaction(body: ReactionPayload, auth_user_id: str = Depends(
             user_name=final_name,
             user_image=final_image
         )
+        pulse_service.invalidate_pulse_map_cache()
         
         if res.get("status") in ["unliked", "removed"]:
             return {"removed": True, "reaction_id": res.get("id") or "toggle"}

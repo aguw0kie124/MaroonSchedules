@@ -50,7 +50,10 @@ def _refresh_places() -> object:
 
 
 def _refresh_pulse() -> object:
-    return _delete_and_rebuild(f"campus:pulse:map:v1:{PULSE_LIMIT}", lambda: pulse_service.get_pulse_map(limit=PULSE_LIMIT))
+    return _delete_and_rebuild(
+        f"campus:pulse:map:{pulse_service.PULSE_CACHE_VERSION}:{PULSE_LIMIT}",
+        lambda: pulse_service.get_pulse_map(limit=PULSE_LIMIT),
+    )
 
 
 def _refresh_events() -> object:

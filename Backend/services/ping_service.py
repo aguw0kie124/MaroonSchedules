@@ -42,9 +42,13 @@ def normalize_ping_activity_payload(activity: Dict[str, Any]) -> Dict[str, Any]:
     custom = dict(activity.get("custom") or {})
     attachments = list(activity.get("attachments") or [])
     now = datetime.now(timezone.utc)
+    custom_lat = custom.get("place_lat") or custom.get("lat")
+    custom_lng = custom.get("place_lng") or custom.get("lng")
 
     resolved_place = place_registry_service.get_place_by_id(custom.get("place_id")) or place_registry_service.resolve_place(
-        custom.get("location_tag")
+        custom.get("location_tag"),
+        custom_lat,
+        custom_lng,
     )
 
     canonical_location = resolved_place["name"] if resolved_place else str(custom.get("location_tag") or "Campus")
@@ -59,8 +63,8 @@ def normalize_ping_activity_payload(activity: Dict[str, Any]) -> Dict[str, Any]:
         "location_tag": canonical_location,
         "place_id": resolved_place["place_id"] if resolved_place else custom.get("place_id"),
         "place_name": canonical_location,
-        "place_lat": resolved_place["lat"] if resolved_place else custom.get("place_lat"),
-        "place_lng": resolved_place["lng"] if resolved_place else custom.get("place_lng"),
+        "place_lat": resolved_place["lat"] if resolved_place else custom_lat,
+        "place_lng": resolved_place["lng"] if resolved_place else custom_lng,
         "start_at": start_at,
         "end_at": end_at,
         "content_type": "ping",

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 import psycopg
 
 from routers.traffic import tracker
@@ -15,6 +15,18 @@ ACTIVE_COLOR = "#FFB347"
 BUBBLING_COLOR = "#5ACD7C"
 BOOSTED_GOLD_COLOR = "#F5B301"
 PULSE_SNAPSHOT_TTL_SECONDS = 60
+PULSE_CACHE_LIMITS = (8, 12, 25)
+PULSE_CACHE_VERSION = "v4"
+PULSE_LOOKBACK_HOURS = 18
+PULSE_LOOKAHEAD_HOURS = 72
+
+
+def invalidate_pulse_map_cache(limit: int | None = None) -> None:
+    keys = {limit} if limit is not None else set(PULSE_CACHE_LIMITS)
+    for cache_limit in keys:
+        if cache_limit is None:
+            continue
+        cache_service.delete(f"campus:pulse:map:{PULSE_CACHE_VERSION}:{cache_limit}")
 
 
 def _parse_iso(iso_value: str | None) -> datetime | None:
@@ -37,19 +49,18 @@ def _format_time_label(iso_value: str) -> str:
     now = datetime.now(timezone.utc)
     diff_hours = (target - now).total_seconds() / 3600
     local_time = target.astimezone()
+    clock_label = local_time.strftime("%I:%M %p").lstrip("0")
 
     if -1.5 <= diff_hours <= 1:
         return "Now"
     if local_time.date() == now.astimezone().date():
-        return local_time.strftime("Today · %I:%M %p").replace("· 0", "· ")
+        return f"Today · {clock_label}"
 
     tomorrow = now.astimezone().date() + timedelta(days=1)
     if local_time.date() == tomorrow:
-        return local_time.strftime("Tomorrow · %#I:%M %p")
-        return local_time.strftime("Tomorrow · %#I:%M %p")
+        return f"Tomorrow · {clock_label}"
 
-    return local_time.strftime("%b %#d · %#I:%M %p")
-    return local_time.strftime("%b %#d · %#I:%M %p")
+    return f"{local_time.strftime('%b')} {local_time.day} · {clock_label}"
 
 
 def _recency_weight(iso_value: str) -> float:
@@ -68,6 +79,20 @@ def _recency_weight(iso_value: str) -> float:
     if -18 <= diff_hours <= 36:
         return 0.42
     return 0.18
+
+
+def _hours_from_now(iso_value: str | None) -> float | None:
+    target = _parse_iso(iso_value)
+    if not target:
+        return None
+    return (target - datetime.now(timezone.utc)).total_seconds() / 3600
+
+
+def _within_pulse_window(iso_value: str | None) -> bool:
+    diff_hours = _hours_from_now(iso_value)
+    if diff_hours is None:
+        return False
+    return -PULSE_LOOKBACK_HOURS <= diff_hours <= PULSE_LOOKAHEAD_HOURS
 
 
 def _ping_category_boost(category: str) -> int:
@@ -110,6 +135,21 @@ def _build_summary(location_name: str, ping_count: int, event_count: int, percen
     return f"{location_name} has {' · '.join(parts)}."
 
 
+def _preview_label_for_group(group: Dict[str, Any]) -> str:
+    ping_count = int(group.get("pingCount") or 0)
+    event_count = int(group.get("eventCount") or 0)
+
+    if ping_count > 0 and event_count > 0:
+        ping_label = f"{ping_count} ping{'s' if ping_count != 1 else ''}"
+        event_label = f"{event_count} event{'s' if event_count != 1 else ''}"
+        return f"{ping_label} · {event_label}"
+
+    if ping_count > 0:
+        return f"{ping_count} live ping{'s' if ping_count != 1 else ''}"
+
+    return f"{event_count} featured event{'s' if event_count != 1 else ''}"
+
+
 def _load_admin_events() -> List[Dict[str, Any]]:
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
@@ -128,9 +168,10 @@ def _load_admin_events() -> List[Dict[str, Any]]:
                         app.organization_name
                     FROM admin_events e
                     LEFT JOIN admin_applications app ON app.clerk_id = e.clerk_id
-                    WHERE COALESCE(e.end_time, e.start_time + interval '6 hours') >= NOW() - interval '18 hours'
+                    WHERE COALESCE(e.end_time, e.start_time + interval '6 hours') >= NOW() - (%s * interval '1 hour')
                     ORDER BY e.start_time ASC
-                    """
+                    """,
+                    (PULSE_LOOKBACK_HOURS,),
                 )
                 return cur.fetchall()
     except Exception as exc:
@@ -162,13 +203,13 @@ def _load_occupancy_by_place() -> Dict[str, int]:
 
 
 def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
-    cache_key = f"campus:pulse:map:v2:{limit}"
+    cache_key = f"campus:pulse:map:{PULSE_CACHE_VERSION}:{limit}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
         return cached
 
     try:
-        pings = feed_repository.get_crowdping_feed(limit=80)
+        pings = feed_repository.get_crowdping_feed(post_types=["ping"], limit=80)
     except Exception as exc:
         print(f"[pulse_service] DB query failed for crowdping feed: {exc}")
         pings = []
@@ -213,27 +254,19 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
         lat = ping.get("lat")
         lng = ping.get("lng")
 
-        if not place_id and location_tag:
-            resolved = place_registry_service.resolve_place(location_tag, lat, lng)
-            if resolved:
-                place_id = resolved["place_id"]
-
-        if not place_id:
-            continue
-
         place = place_registry_service.get_place_by_id(place_id)
+        if not place and location_tag:
+            place = place_registry_service.resolve_place(location_tag, lat, lng)
+            if place:
+                place_id = place["place_id"]
         if not place:
             continue
 
         category = str(custom.get("ping_category") or ping.get("post_type") or "Popup")
         start_at = str(custom.get("start_at") or ping.get("created_at") or datetime.now(timezone.utc).isoformat())
-
-        target_time = _parse_iso(start_at)
-        if target_time:
-            dh = (target_time - datetime.now(timezone.utc)).total_seconds() / 3600
-            if dh < -18 or dh > 72:
-                continue
-        else:
+        if not _within_pulse_window(start_at):
+            continue
+        if not _parse_iso(start_at):
             print(f"[pulse_service] Warning: Failed to parse start_at for ping {ping_id} ({start_at})")
             continue  # Don't show pings with invalid dates!
 
@@ -269,11 +302,8 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
 
     for event in _load_admin_events():
         start_at = event["start_time"].isoformat() if event.get("start_time") else datetime.now(timezone.utc).isoformat()
-        target_time = _parse_iso(start_at)
-        if target_time:
-            dh = (target_time - datetime.now(timezone.utc)).total_seconds() / 3600
-            if dh < -18 or dh > 72:
-                continue
+        if not _within_pulse_window(start_at):
+            continue
 
         resolved_place = place_registry_service.resolve_place(
             event.get("location_name"),
@@ -341,20 +371,14 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
                 "eventCount": group["eventCount"],
                 "percentFull": percent_full,
                 "dominantCategory": dominant_category,
-                "previewLabel": (
-                    f"{group['pingCount']} pings · {group['eventCount']} events"
-                    if group["pingCount"] > 0 and group["eventCount"] > 0
-                    else f"{group['pingCount']} live pings"
-                    if group["pingCount"] > 0
-                    else f"{group['eventCount']} featured events"
-                ),
+                "previewLabel": _preview_label_for_group(group),
                 "summary": _build_summary(
                     group["locationName"],
                     group["pingCount"],
                     group["eventCount"],
                     percent_full,
                 ),
-                "items": sorted(group["items"], key=lambda item: item["startAt"])[:6],
+                "items": sorted(group["items"], key=lambda item: item["startAt"], reverse=True)[:6],
                 "place": place_registry_service.serialize_place(place_registry_service.get_place_by_id(place_id)),
             }
         )
