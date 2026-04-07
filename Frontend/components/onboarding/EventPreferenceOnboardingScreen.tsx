@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { ChevronRight, Clock3, GraduationCap, HeartHandshake, Shapes, Sparkles } from 'lucide-react-native';
 
 import { updateUserProfile } from '../../api/client';
@@ -124,6 +125,113 @@ function getInitialSocialChoice(preferredSocialMode: EventSocialPreference | nul
   return preferredSocialMode ?? NO_PREFERENCE_ID;
 }
 
+function PreferenceCelebration({
+  visible,
+  title,
+  body,
+}: {
+  visible: boolean;
+  title: string;
+  body: string;
+}) {
+  const progress = React.useRef(new Animated.Value(0)).current;
+  const pieces = React.useMemo(
+    () =>
+      Array.from({ length: 14 }, (_, index) => ({
+        id: index,
+        left: 20 + index * 18,
+        color: ['#F9C74F', '#43AA8B', '#F9844A', '#577590', '#F94144'][index % 5],
+      })),
+    [],
+  );
+
+  React.useEffect(() => {
+    if (!visible) {
+      progress.setValue(0);
+      return;
+    }
+    const animation = Animated.timing(progress, {
+      toValue: 1,
+      duration: 900,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [progress, visible]);
+
+  if (!visible) return null;
+
+  return (
+    <View pointerEvents="none" style={styles.celebrationWrap}>
+      {pieces.map((piece, index) => (
+        <Animated.View
+          key={`${piece.id}-${title}`}
+          style={[
+            styles.confettiPiece,
+            {
+              left: piece.left,
+              backgroundColor: piece.color,
+              opacity: progress.interpolate({
+                inputRange: [0, 0.85, 1],
+                outputRange: [0, 1, 0],
+              }),
+              transform: [
+                {
+                  translateY: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-10, 140 + (index % 3) * 18],
+                  }),
+                },
+                {
+                  translateX: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, ((index % 5) - 2) * 15],
+                  }),
+                },
+                {
+                  rotate: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0deg', `${160 + index * 14}deg`],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      ))}
+      <Animated.View
+        style={[
+          styles.celebrationCard,
+          {
+            opacity: progress.interpolate({
+              inputRange: [0, 0.1, 0.85, 1],
+              outputRange: [0, 1, 1, 0],
+            }),
+            transform: [
+              {
+                translateY: progress.interpolate({
+                  inputRange: [0, 0.12, 1],
+                  outputRange: [16, 0, -8],
+                }),
+              },
+              {
+                scale: progress.interpolate({
+                  inputRange: [0, 0.2, 1],
+                  outputRange: [0.92, 1, 0.98],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <Text style={styles.celebrationEyebrow}>Nice choice</Text>
+        <Text style={styles.celebrationTitle}>{title}</Text>
+        <Text style={styles.celebrationBody}>{body}</Text>
+      </Animated.View>
+    </View>
+  );
+}
+
 export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
@@ -141,6 +249,8 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
 
   const [questionIndex, setQuestionIndex] = React.useState(0);
   const [loading, setLoading] = React.useState(false);
+  const [celebration, setCelebration] = React.useState<{ title: string; body: string } | null>(null);
+  const celebrationTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [categorySelection, setCategorySelection] = React.useState<string[]>(
     getInitialCategories(preferredEventCategories),
   );
@@ -179,6 +289,7 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
   const normalizedSocialSelection = socialSelection === NO_PREFERENCE_ID ? null : socialSelection;
 
   const handleSelect = (optionId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     if (question.id === 'categories') {
       setCategorySelection((current) => {
         if (optionId === NO_PREFERENCE_ID) {
@@ -213,6 +324,33 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
     if (!canContinue || loading) return;
 
     if (questionIndex < QUESTIONS.length - 1) {
+      const selectedOptionLabel =
+        question.id === 'categories'
+          ? categorySelection.includes(NO_PREFERENCE_ID)
+            ? 'Keeping it broad'
+            : `${normalizedCategorySelection.length} interests saved`
+          : question.id === 'time'
+            ? timeSelection === NO_PREFERENCE_ID
+              ? 'Any time works'
+              : timeSelection
+            : question.id === 'major'
+              ? majorSelection === NO_PREFERENCE_ID
+                ? 'No major filter'
+                : majorSelection
+              : socialSelection === NO_PREFERENCE_ID
+                ? 'No social filter'
+                : socialSelection === 'casual'
+                  ? 'Casual vibe'
+                  : 'Professional vibe';
+      if (celebrationTimerRef.current) {
+        clearTimeout(celebrationTimerRef.current);
+      }
+      setCelebration({
+        title: selectedOptionLabel,
+        body: 'Perfect. We will use that to make the next screen feel smarter.',
+      });
+      celebrationTimerRef.current = setTimeout(() => setCelebration(null), 850);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       animateToNext(() => setQuestionIndex((current) => current + 1));
       return;
     }
@@ -238,6 +376,11 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
         setMajorSpecific(false);
       }
 
+      setCelebration({
+        title: 'You are all set',
+        body: 'Your Events feed now has a much better starting point.',
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       onDone();
     } catch (error) {
       console.warn('Failed to save event preferences', error);
@@ -307,6 +450,12 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
           );
         })}
       </View>
+
+      <PreferenceCelebration
+        visible={!!celebration}
+        title={celebration?.title || ''}
+        body={celebration?.body || ''}
+      />
 
       <Animated.View style={[styles.cardShell, { opacity: fade }]}>
         <LinearGradient
@@ -501,6 +650,56 @@ const styles = StyleSheet.create({
   progressDot: {
     height: 10,
     borderRadius: 999,
+  },
+  celebrationWrap: {
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    top: 154,
+    alignItems: 'center',
+    zIndex: 20,
+    pointerEvents: 'none',
+  },
+  celebrationCard: {
+    minWidth: 220,
+    maxWidth: 300,
+    borderRadius: 24,
+    backgroundColor: 'rgba(20,20,24,0.92)',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  celebrationEyebrow: {
+    color: '#F9C74F',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  celebrationTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  celebrationBody: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  confettiPiece: {
+    position: 'absolute',
+    top: 8,
+    width: 8,
+    height: 14,
+    borderRadius: 3,
   },
   cardShell: {
     flex: 1,

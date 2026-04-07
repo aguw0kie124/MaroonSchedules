@@ -20,6 +20,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
+import * as Haptics from 'expo-haptics';
 import {
   ArrowRight,
   BadgeCheck,
@@ -417,6 +418,107 @@ function shortDescription(text?: string | null) {
   return `${clean.slice(0, 157).trim()}...`;
 }
 
+function EventRewardToast({
+  visible,
+  title,
+  body,
+}: {
+  visible: boolean;
+  title: string;
+  body: string;
+}) {
+  const progress = React.useRef(new Animated.Value(0)).current;
+  const confetti = React.useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, index) => ({
+        id: index,
+        left: 24 + index * 20,
+        color: ['#F9C74F', '#43AA8B', '#F94144', '#577590'][index % 4],
+      })),
+    [],
+  );
+
+  useEffect(() => {
+    if (!visible) {
+      progress.setValue(0);
+      return;
+    }
+    const animation = Animated.timing(progress, {
+      toValue: 1,
+      duration: 950,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [progress, visible]);
+
+  if (!visible) return null;
+
+  return (
+    <View pointerEvents="none" style={stylesStatic.rewardToastWrap}>
+      {confetti.map((piece, index) => (
+        <Animated.View
+          key={`${piece.id}-${title}`}
+          style={[
+            stylesStatic.rewardConfetti,
+            {
+              left: piece.left,
+              backgroundColor: piece.color,
+              opacity: progress.interpolate({
+                inputRange: [0, 0.8, 1],
+                outputRange: [0, 1, 0],
+              }),
+              transform: [
+                {
+                  translateY: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-8, 120 + (index % 3) * 14],
+                  }),
+                },
+                {
+                  translateX: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, ((index % 5) - 2) * 12],
+                  }),
+                },
+                {
+                  rotate: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0deg', `${150 + index * 15}deg`],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      ))}
+      <Animated.View
+        style={[
+          stylesStatic.rewardToastCard,
+          {
+            opacity: progress.interpolate({
+              inputRange: [0, 0.1, 0.86, 1],
+              outputRange: [0, 1, 1, 0],
+            }),
+            transform: [
+              {
+                translateY: progress.interpolate({
+                  inputRange: [0, 0.12, 1],
+                  outputRange: [12, 0, -8],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <Text style={stylesStatic.rewardToastEyebrow}>Yay</Text>
+        <Text style={stylesStatic.rewardToastTitle}>{title}</Text>
+        <Text style={stylesStatic.rewardToastBody}>{body}</Text>
+      </Animated.View>
+    </View>
+  );
+}
+
 function handleGoogleCalendar(event: TAMUEvent) {
   const formatGCalDate = (ts: number) =>
     new Date(ts * 1000).toISOString().replace(/-|:|\.\d\d\d/g, '');
@@ -469,6 +571,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [swipeIndex, setSwipeIndex] = useState(0);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [rewardToast, setRewardToast] = useState<{ title: string; body: string } | null>(null);
+  const rewardToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const {
@@ -585,6 +689,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       setRefreshing(false);
     }
   }, [fetchEvents]);
+
+  const triggerRewardToast = useCallback((title: string, body: string) => {
+    if (rewardToastTimerRef.current) {
+      clearTimeout(rewardToastTimerRef.current);
+    }
+    setRewardToast({ title, body });
+    rewardToastTimerRef.current = setTimeout(() => setRewardToast(null), 980);
+  }, []);
 
   const categoryCounts = useMemo(() => {
     const counts: Record<ExploreCategory, number> = {
@@ -796,6 +908,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       const isScheduled = scheduledEvents.some((scheduled) => String(scheduled.id) === eventId);
 
       if (isScheduled) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         removeScheduledEvent(eventId);
         if (user?.id) {
           try {
@@ -808,6 +921,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             console.error('[Events] RSVP remove error:', error);
           }
         }
+        triggerRewardToast('Removed from your plans', 'No problem. You can always add it back later.');
         return;
       }
       const scheduled: ScheduledEvent = {
@@ -824,6 +938,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         categories: event.categories,
       };
       scheduleEvent(scheduled);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
       // Notification logic
       const prefs = useAppShellStore.getState();
@@ -865,9 +980,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           console.error('[Events] RSVP error:', error);
         }
       }
+      triggerRewardToast('Added to your schedule', 'Nice. We will keep this one easy to come back to.');
       Alert.alert('Successfully RSVPed', `${event.title} is now in your schedule.`);
     },
-    [activeTargetName, advanceStep, isGuest, navigation, removeScheduledEvent, scheduleEvent, scheduledEvents, user],
+    [activeTargetName, advanceStep, isGuest, navigation, removeScheduledEvent, scheduleEvent, scheduledEvents, triggerRewardToast, user],
   );
 
   const handleShare = useCallback((event: TAMUEvent) => {
@@ -918,10 +1034,17 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         return;
       }
       const id = String(event.id);
-      if (savedEventIds.includes(id)) unsaveEvent(id);
-      else saveEvent(id);
+      if (savedEventIds.includes(id)) {
+        unsaveEvent(id);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        triggerRewardToast('Saved event removed', 'Your shortlist just got a little cleaner.');
+      } else {
+        saveEvent(id);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        triggerRewardToast('Saved for later', 'Good pick. This one is waiting for you.');
+      }
     },
-    [isGuest, navigation, saveEvent, savedEventIds, unsaveEvent],
+    [isGuest, navigation, saveEvent, savedEventIds, triggerRewardToast, unsaveEvent],
   );
 
   const removeOrganizerEvents = useCallback((adminClerkId: string) => {
@@ -1130,6 +1253,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   return (
     <View style={s.container}>
+      <EventRewardToast
+        visible={!!rewardToast}
+        title={rewardToast?.title || ''}
+        body={rewardToast?.body || ''}
+      />
       {view === 'discover' && (
         <>
           {renderHeader('Events')}
@@ -2720,6 +2848,57 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
   });
 
 const stylesStatic = StyleSheet.create({
+  rewardToastWrap: {
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    top: 92,
+    alignItems: 'center',
+    zIndex: 200,
+    pointerEvents: 'none',
+  },
+  rewardToastCard: {
+    minWidth: 220,
+    maxWidth: 310,
+    borderRadius: 22,
+    backgroundColor: 'rgba(20,20,24,0.94)',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  rewardToastEyebrow: {
+    color: '#F9C74F',
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    marginBottom: 4,
+  },
+  rewardToastTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  rewardToastBody: {
+    color: 'rgba(255,255,255,0.84)',
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  rewardConfetti: {
+    position: 'absolute',
+    top: 6,
+    width: 8,
+    height: 14,
+    borderRadius: 3,
+  },
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
