@@ -521,6 +521,56 @@ function EventRewardToast({
   );
 }
 
+function StaggeredReveal({
+  children,
+  index,
+}: {
+  children: React.ReactNode;
+  index: number;
+}) {
+  const opacity = React.useRef(new Animated.Value(0)).current;
+  const translateY = React.useRef(new Animated.Value(18)).current;
+  const scale = React.useRef(new Animated.Value(0.98)).current;
+
+  useEffect(() => {
+    const delay = Math.min(index * 70, 420);
+    const animation = Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 360,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 420,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scale, {
+        toValue: 1,
+        duration: 380,
+        delay,
+        useNativeDriver: true,
+      }),
+    ]);
+
+    animation.start();
+    return () => animation.stop();
+  }, [index, opacity, scale, translateY]);
+
+  return (
+    <Animated.View
+      style={{
+        opacity,
+        transform: [{ translateY }, { scale }],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
 function handleGoogleCalendar(event: TAMUEvent) {
   const formatGCalDate = (ts: number) =>
     new Date(ts * 1000).toISOString().replace(/-|:|\.\d\d\d/g, '');
@@ -1422,18 +1472,19 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               >
                 {discoverEvents.map((event, i) => {
                   const card = (
-                    <View
-                      key={String(event.id)}
-                      style={{ marginRight: i === discoverEvents.length - 1 ? 0 : HERO_CARD_GAP }}
-                    >
-                      <HeroEventCard
-                        event={event}
-                        scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
-                        onSchedule={() => handleSchedule(event)}
-                        onPress={() => setDetailEvent(event)}
-                        onMap={() => handleMapOpen(event)}
-                      />
-                    </View>
+                    <StaggeredReveal key={String(event.id)} index={i}>
+                      <View
+                        style={{ marginRight: i === discoverEvents.length - 1 ? 0 : HERO_CARD_GAP }}
+                      >
+                        <HeroEventCard
+                          event={event}
+                          scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
+                          onSchedule={() => handleSchedule(event)}
+                          onPress={() => setDetailEvent(event)}
+                          onMap={() => handleMapOpen(event)}
+                        />
+                      </View>
+                    </StaggeredReveal>
                   );
                   return card;
                 })}
@@ -1512,22 +1563,23 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               removeClippedSubviews
               renderItem={({ item, index }) => {
                 const row = (
-                  <ListEventRow
-                    event={item}
-                    isGuest={isGuest}
-                    saved={savedEventIds.includes(String(item.id))}
-                    scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(item.id))}
-                    onPress={() => {
-                      if (index === 0 && activeTargetName === 'first-event-card') {
-                        advanceStep('first-event-card');
-                      }
-                      setDetailEvent(item);
-                    }}
-                    onDelete={() => dislikeEvent(String(item.id))}
-                    onShare={() => handleShare(item)}
-                    onSchedule={() => handleSchedule(item)}
-
-                  />
+                  <StaggeredReveal index={index}>
+                    <ListEventRow
+                      event={item}
+                      isGuest={isGuest}
+                      saved={savedEventIds.includes(String(item.id))}
+                      scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(item.id))}
+                      onPress={() => {
+                        if (index === 0 && activeTargetName === 'first-event-card') {
+                          advanceStep('first-event-card');
+                        }
+                        setDetailEvent(item);
+                      }}
+                      onDelete={() => dislikeEvent(String(item.id))}
+                      onShare={() => handleShare(item)}
+                      onSchedule={() => handleSchedule(item)}
+                    />
+                  </StaggeredReveal>
                 );
                 return index === 0 ? (
                   <TourTarget
