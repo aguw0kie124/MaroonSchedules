@@ -434,7 +434,7 @@ function matchesMajor(event: TAMUEvent, major: MajorOption) {
     Law: ['law', 'legal', 'pre-law'],
     Medicine: ['medicine', 'medical', 'premed', 'nursing', 'clinical'],
   };
-  return aliases[major].some((term) => blob.includes(term));
+  return aliases[major]?.some((term) => blob.includes(term)) ?? false;
 }
 
 function formatTime(ts: number) {
@@ -732,10 +732,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     acceptInvite,
     rejectInvite,
   } = useEventStore();
-  const scheduledEvents = isGuest ? [] : persistedScheduledEvents;
-  const savedEventIds = isGuest ? [] : persistedSavedEventIds;
-  const dislikedEventIds = isGuest ? [] : persistedDislikedEventIds;
-  const receivedInvites = isGuest ? [] : persistedReceivedInvites;
+  const scheduledEvents = isGuest ? [] : Array.isArray(persistedScheduledEvents) ? persistedScheduledEvents : [];
+  const savedEventIds = isGuest ? [] : Array.isArray(persistedSavedEventIds) ? persistedSavedEventIds : [];
+  const dislikedEventIds = isGuest ? [] : Array.isArray(persistedDislikedEventIds) ? persistedDislikedEventIds : [];
+  const receivedInvites = isGuest ? [] : Array.isArray(persistedReceivedInvites) ? persistedReceivedInvites : [];
 
   const pan = useRef(new Animated.ValueXY()).current;
   const opacity = useRef(new Animated.Value(1)).current;

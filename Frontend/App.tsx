@@ -63,7 +63,24 @@ import { AdminPortal } from './components/admin/AdminPortal';
 import { PendingReviewInterceptor } from './components/events/PendingReviewInterceptor';
 import { API_URL } from './config';
 import { ClubAccessScreen } from './components/ClubAccessScreen';
-import { useEventStore } from './store/eventStore';
+import { useEventStore, type MajorOption } from './store/eventStore';
+
+const VALID_EVENT_MAJORS: MajorOption[] = [
+  'Engineering',
+  'Business',
+  'Liberal Arts',
+  'Agriculture',
+  'Science',
+  'Architecture',
+  'Education',
+  'Public Health',
+  'Law',
+  'Medicine',
+];
+
+function isMajorOption(value: unknown): value is MajorOption {
+  return typeof value === 'string' && VALID_EVENT_MAJORS.includes(value as MajorOption);
+}
 
 function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
@@ -93,9 +110,17 @@ function UserSync({ children }: { children: React.ReactNode }) {
           if (typeof data.tour_completed === 'boolean') {
             setTourCompleted(data.tour_completed);
           }
-          if (typeof data.event_preferences_completed === 'boolean') {
-            setEventPreferencesCompleted(data.event_preferences_completed);
-          }
+          const hasLegacyPreferenceShape =
+            !('event_preferences_completed' in data) ||
+            (!Array.isArray(data.preferred_event_categories) &&
+              data.preferred_time == null &&
+              data.preferred_social_mode == null &&
+              !isMajorOption(data.major));
+          setEventPreferencesCompleted(
+            typeof data.event_preferences_completed === 'boolean'
+              ? data.event_preferences_completed
+              : hasLegacyPreferenceShape,
+          );
           if (Array.isArray(data.preferred_event_categories)) {
             setPreferredEventCategories(
               data.preferred_event_categories.filter((entry: unknown): entry is string => typeof entry === 'string'),
@@ -118,8 +143,8 @@ function UserSync({ children }: { children: React.ReactNode }) {
           } else {
             setPreferredSocialMode(null);
           }
-          if (typeof data.major === 'string' && data.major) {
-            setSelectedMajor(data.major as any);
+          if (isMajorOption(data.major)) {
+            setSelectedMajor(data.major);
             setMajorSpecific(true);
           } else {
             setMajorSpecific(false);
