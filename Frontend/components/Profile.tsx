@@ -179,6 +179,9 @@ export function Profile() {
   const notificationsEnabled = useAppShellStore((state) => state.notificationsEnabled);
   const setNotificationsEnabled = useAppShellStore((state) => state.setNotificationsEnabled);
   const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
+  const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
+  const preferredTime = useAppShellStore((state) => state.preferredTime);
+  const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
   const [profileTags, setProfileTags] = useState<string[]>([]);
@@ -186,6 +189,19 @@ export function Profile() {
   const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
   const accentRatio = useMemo(() => getRatioFromColor(accentColor), [accentColor]);
   const accentPreviewColor = useMemo(() => getSpectrumColorFromRatio(accentRatio), [accentRatio]);
+  const preferenceSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (preferredEventCategories.length > 0) {
+      parts.push(preferredEventCategories.join(', '));
+    }
+    if (preferredTime) {
+      parts.push(preferredTime);
+    }
+    if (preferredSocialMode) {
+      parts.push(preferredSocialMode === 'casual' ? 'Casual social vibe' : 'Professional social vibe');
+    }
+    return parts.length > 0 ? parts.join(' • ') : 'Currently broad and open-ended.';
+  }, [preferredEventCategories, preferredSocialMode, preferredTime]);
 
   const updateAccentFromPosition = React.useCallback((locationX: number) => {
     if (!accentSliderWidth) return;
@@ -595,6 +611,7 @@ export function Profile() {
         <View style={{ flex: 1 }}>
           <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Redo Preference Questions</Text>
           <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Retune your Events feed preferences and discovery setup.</Text>
+          <Text style={{ color: COLORS.textTertiary, fontSize: 12, marginTop: 6, lineHeight: 17 }}>{preferenceSummary}</Text>
         </View>
         <ChevronRight size={20} color={COLORS.textTertiary} />
       </Pressable>

@@ -1,13 +1,13 @@
 import React, { useMemo, useRef } from 'react';
-import { Dimensions, Pressable } from 'react-native';
-import {
-  Camera,
-  type CameraRef,
-  FillLayer,
-  LineLayer,
-  MarkerView,
-  ShapeSource,
-} from '@maplibre/maplibre-react-native';
+import type { ReactElement } from 'react';
+import MapView, {
+  Circle,
+  Marker,
+  Polyline,
+  type Camera,
+  type EdgePadding,
+  type LatLng,
+} from 'react-native-maps';
 
 export type MapCoordinate = {
   latitude: number;
@@ -19,28 +19,7 @@ export type MapRegion = MapCoordinate & {
   longitudeDelta: number;
 };
 
-export const CAMPUS_MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
-
-const EARTH_RADIUS_METERS = 6371008.8;
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function degToRad(value: number) {
-  return (value * Math.PI) / 180;
-}
-
-function radToDeg(value: number) {
-  return (value * 180) / Math.PI;
-}
-
-function regionToZoomLevel(region: MapRegion) {
-  const { width } = Dimensions.get('window');
-  const safeLongitudeDelta = Math.max(region.longitudeDelta, 0.0001);
-  const zoom = Math.log2((360 * ((width || 1) / 256)) / safeLongitudeDelta);
-  return clamp(zoom, 2, 20);
-}
+export const CAMPUS_MAP_STYLE_URL = null;
 
 function normalizePadding(
   padding?:
@@ -48,98 +27,64 @@ function normalizePadding(
     | [number, number]
     | [number, number, number, number]
     | { top?: number; right?: number; bottom?: number; left?: number },
-) {
+): EdgePadding | undefined {
   if (padding == null) return undefined;
-  if (typeof padding === 'number') return padding;
-  if (Array.isArray(padding)) return padding;
-  return [
-    padding.top ?? 0,
-    padding.right ?? 0,
-    padding.bottom ?? 0,
-    padding.left ?? 0,
-  ] as [number, number, number, number];
-}
-
-export function toMapLibrePosition(coordinate: MapCoordinate): [number, number] {
-  return [coordinate.longitude, coordinate.latitude];
-}
-
-export function getCameraStopFromRegion(region: MapRegion, extras: Partial<{
-  pitch: number;
-  heading: number;
-  animationDuration: number;
-  animationMode: 'flyTo' | 'easeTo' | 'linearTo' | 'moveTo';
-}> = {}) {
-  return {
-    centerCoordinate: toMapLibrePosition(region),
-    zoomLevel: regionToZoomLevel(region),
-    pitch: extras.pitch ?? 0,
-    heading: extras.heading ?? 0,
-    animationDuration: extras.animationDuration,
-    animationMode: extras.animationMode,
-  };
-}
-
-export function createCirclePolygon(center: MapCoordinate, radiusMeters: number, steps = 48) {
-  const angularDistance = radiusMeters / EARTH_RADIUS_METERS;
-  const latitudeRad = degToRad(center.latitude);
-  const longitudeRad = degToRad(center.longitude);
-  const coordinates: number[][] = [];
-
-  for (let step = 0; step <= steps; step += 1) {
-    const bearing = (step / steps) * Math.PI * 2;
-    const lat = Math.asin(
-      Math.sin(latitudeRad) * Math.cos(angularDistance) +
-        Math.cos(latitudeRad) * Math.sin(angularDistance) * Math.cos(bearing),
-    );
-    const lng =
-      longitudeRad +
-      Math.atan2(
-        Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(latitudeRad),
-        Math.cos(angularDistance) - Math.sin(latitudeRad) * Math.sin(lat),
-      );
-
-    coordinates.push([radToDeg(lng), radToDeg(lat)]);
+  if (typeof padding === 'number') {
+    return { top: padding, right: padding, bottom: padding, left: padding };
   }
-
+  if (Array.isArray(padding)) {
+    if (padding.length === 2) {
+      const [vertical, horizontal] = padding;
+      return { top: vertical, bottom: vertical, left: horizontal, right: horizontal };
+    }
+    const [top, right, bottom, left] = padding;
+    return { top, right, bottom, left };
+  }
   return {
-    type: 'Feature' as const,
-    geometry: {
-      type: 'Polygon' as const,
-      coordinates: [coordinates],
-    },
-    properties: {},
+    top: padding.top ?? 0,
+    right: padding.right ?? 0,
+    bottom: padding.bottom ?? 0,
+    left: padding.left ?? 0,
   };
 }
 
-export function createLineFeature(coordinates: MapCoordinate[]) {
+function toLatLng(coordinate: MapCoordinate): LatLng {
   return {
-    type: 'Feature' as const,
-    geometry: {
-      type: 'LineString' as const,
-      coordinates: coordinates.map(toMapLibrePosition),
-    },
-    properties: {},
+    latitude: coordinate.latitude,
+    longitude: coordinate.longitude,
   };
 }
 
-function isValidCoordinate(coordinate: MapCoordinate | null | undefined): coordinate is MapCoordinate {
-  return (
-    coordinate != null &&
-    Number.isFinite(coordinate.latitude) &&
-    Number.isFinite(coordinate.longitude)
+function getCenterFromCoordinates(coordinates: MapCoordinate[]) {
+  const total = coordinates.reduce(
+    (acc, coordinate) => {
+      acc.latitude += coordinate.latitude;
+      acc.longitude += coordinate.longitude;
+      return acc;
+    },
+    { latitude: 0, longitude: 0 },
   );
+
+  return {
+    latitude: total.latitude / coordinates.length,
+    longitude: total.longitude / coordinates.length,
+  };
+}
+
+function regionDeltaFromZoom(zoom = 16) {
+  const normalizedZoom = Math.max(2, Math.min(zoom, 20));
+  const latitudeDelta = Math.max(0.0008, 360 / Math.pow(2, normalizedZoom));
+  return {
+    latitudeDelta,
+    longitudeDelta: latitudeDelta,
+  };
 }
 
 export function useMapLibreCamera(initialRegion: MapRegion) {
-  const cameraRef = useRef<CameraRef>(null);
+  const cameraRef = useRef<MapView>(null);
 
   const animateToRegion = (region: MapRegion, duration = 800) => {
-    cameraRef.current?.setCamera({
-      ...getCameraStopFromRegion(region),
-      animationDuration: duration,
-      animationMode: 'easeTo',
-    });
+    cameraRef.current?.animateToRegion(region, duration);
   };
 
   const animateCamera = (
@@ -151,14 +96,20 @@ export function useMapLibreCamera(initialRegion: MapRegion) {
     },
     options?: { duration?: number },
   ) => {
-    cameraRef.current?.setCamera({
-      centerCoordinate: config.center ? toMapLibrePosition(config.center) : undefined,
-      zoomLevel: config.zoom,
-      pitch: config.pitch,
-      heading: config.heading,
-      animationDuration: options?.duration ?? 700,
-      animationMode: 'easeTo',
-    });
+    const camera: Partial<Camera> = {};
+    if (config.center) {
+      camera.center = toLatLng(config.center);
+    }
+    if (typeof config.pitch === 'number') {
+      camera.pitch = config.pitch;
+    }
+    if (typeof config.heading === 'number') {
+      camera.heading = config.heading;
+    }
+    if (typeof config.zoom === 'number') {
+      camera.altitude = Math.max(150, 800000 / Math.pow(2, Math.max(0, config.zoom - 2)));
+    }
+    cameraRef.current?.animateCamera(camera, { duration: options?.duration ?? 700 });
   };
 
   const fitToCoordinates = (
@@ -169,41 +120,40 @@ export function useMapLibreCamera(initialRegion: MapRegion) {
       duration?: number;
     },
   ) => {
-    if (!coordinates.length) return;
-    if (coordinates.length === 1) {
-      animateCamera(
+    const validCoordinates = coordinates.filter(
+      (coordinate) =>
+        Number.isFinite(coordinate.latitude) && Number.isFinite(coordinate.longitude),
+    );
+    if (!validCoordinates.length) return;
+    if (validCoordinates.length === 1) {
+      const center = validCoordinates[0];
+      const delta = regionDeltaFromZoom(16);
+      cameraRef.current?.animateToRegion(
         {
-          center: coordinates[0],
-          zoom: 16,
+          latitude: center.latitude,
+          longitude: center.longitude,
+          latitudeDelta: delta.latitudeDelta,
+          longitudeDelta: delta.longitudeDelta,
         },
-        { duration: options?.duration ?? 700 },
+        options?.duration ?? 700,
       );
       return;
     }
 
-    let minLat = Number.POSITIVE_INFINITY;
-    let maxLat = Number.NEGATIVE_INFINITY;
-    let minLng = Number.POSITIVE_INFINITY;
-    let maxLng = Number.NEGATIVE_INFINITY;
-
-    coordinates.forEach((coordinate) => {
-      minLat = Math.min(minLat, coordinate.latitude);
-      maxLat = Math.max(maxLat, coordinate.latitude);
-      minLng = Math.min(minLng, coordinate.longitude);
-      maxLng = Math.max(maxLng, coordinate.longitude);
+    cameraRef.current?.fitToCoordinates(validCoordinates.map(toLatLng), {
+      edgePadding: normalizePadding(options?.edgePadding),
+      animated: options?.animated !== false,
     });
-
-    cameraRef.current?.fitBounds(
-      [maxLng, maxLat],
-      [minLng, minLat],
-      normalizePadding(options?.edgePadding),
-      options?.animated === false ? 0 : (options?.duration ?? 700),
-    );
   };
 
   const defaultCamera = useMemo(
-    () => getCameraStopFromRegion(initialRegion),
-    [initialRegion.latitude, initialRegion.longitude, initialRegion.latitudeDelta, initialRegion.longitudeDelta],
+    () => initialRegion,
+    [
+      initialRegion.latitude,
+      initialRegion.longitude,
+      initialRegion.latitudeDelta,
+      initialRegion.longitudeDelta,
+    ],
   );
 
   return {
@@ -216,7 +166,6 @@ export function useMapLibreCamera(initialRegion: MapRegion) {
 }
 
 export function MapLibreCircleOverlay({
-  id,
   center,
   radiusMeters,
   fillColor,
@@ -232,33 +181,19 @@ export function MapLibreCircleOverlay({
   strokeColor: string;
   strokeWidth?: number;
 }) {
-  const shape = useMemo(
-    () => createCirclePolygon(center, radiusMeters),
-    [center.latitude, center.longitude, radiusMeters],
-  );
-
   return (
-    <ShapeSource id={`${id}-source`} shape={shape}>
-      <FillLayer
-        id={`${id}-fill`}
-        style={{
-          fillColor,
-          fillOpacity,
-        }}
-      />
-      <LineLayer
-        id={`${id}-stroke`}
-        style={{
-          lineColor: strokeColor,
-          lineWidth: strokeWidth,
-        }}
-      />
-    </ShapeSource>
+    <Circle
+      center={toLatLng(center)}
+      radius={radiusMeters}
+      fillColor={fillColor}
+      strokeColor={strokeColor}
+      strokeWidth={strokeWidth}
+      zIndex={1}
+    />
   );
 }
 
 export function MapLibrePolylineOverlay({
-  id,
   coordinates,
   color,
   width = 4,
@@ -271,48 +206,31 @@ export function MapLibrePolylineOverlay({
   lineDasharray?: number[];
 }) {
   const sanitizedCoordinates = useMemo(
-    () => coordinates.filter(isValidCoordinate),
+    () =>
+      coordinates.filter(
+        (coordinate) =>
+          Number.isFinite(coordinate.latitude) && Number.isFinite(coordinate.longitude),
+      ),
     [coordinates],
   );
-  const shape = useMemo(
-    () => createLineFeature(sanitizedCoordinates),
-    [sanitizedCoordinates],
-  );
-  const lineStyle = useMemo(() => {
-    const style: {
-      lineColor: string;
-      lineWidth: number;
-      lineDasharray?: number[];
-    } = {
-      lineColor: color,
-      lineWidth: width,
-    };
-
-    if (Array.isArray(lineDasharray) && lineDasharray.length > 0) {
-      style.lineDasharray = lineDasharray;
-    }
-
-    return style;
-  }, [color, lineDasharray, width]);
 
   if (sanitizedCoordinates.length < 2) return null;
 
   return (
-    <ShapeSource id={`${id}-source`} shape={shape}>
-      <LineLayer
-        id={`${id}-line`}
-        style={lineStyle}
-      />
-    </ShapeSource>
+    <Polyline
+      coordinates={sanitizedCoordinates.map(toLatLng)}
+      strokeColor={color}
+      strokeWidth={width}
+      lineDashPattern={lineDasharray}
+      zIndex={2}
+    />
   );
 }
 
 export function MapLibreMarker({
-  id,
   coordinate,
   anchor,
   onPress,
-  allowOverlap = true,
   children,
 }: {
   id: string;
@@ -320,19 +238,40 @@ export function MapLibreMarker({
   anchor?: { x: number; y: number };
   onPress?: () => void;
   allowOverlap?: boolean;
-  children: React.ReactElement;
+  children: ReactElement;
 }) {
   return (
-    <MarkerView
-      coordinate={toMapLibrePosition(coordinate)}
-      anchor={anchor}
-      allowOverlap={allowOverlap}
-    >
-      {onPress ? (
-        <Pressable onPress={onPress} hitSlop={8}>
-          {children}
-        </Pressable>
-      ) : children}
-    </MarkerView>
+    <Marker coordinate={toLatLng(coordinate)} anchor={anchor} onPress={onPress}>
+      {children}
+    </Marker>
   );
+}
+
+export function getMapRegionFromCoordinates(
+  coordinates: MapCoordinate[],
+  fallbackRegion: MapRegion,
+): MapRegion {
+  const validCoordinates = coordinates.filter(
+    (coordinate) => Number.isFinite(coordinate.latitude) && Number.isFinite(coordinate.longitude),
+  );
+  if (!validCoordinates.length) return fallbackRegion;
+  if (validCoordinates.length === 1) {
+    const delta = regionDeltaFromZoom(16);
+    return {
+      latitude: validCoordinates[0].latitude,
+      longitude: validCoordinates[0].longitude,
+      latitudeDelta: delta.latitudeDelta,
+      longitudeDelta: delta.longitudeDelta,
+    };
+  }
+
+  const center = getCenterFromCoordinates(validCoordinates);
+  const latitudes = validCoordinates.map((coordinate) => coordinate.latitude);
+  const longitudes = validCoordinates.map((coordinate) => coordinate.longitude);
+  return {
+    latitude: center.latitude,
+    longitude: center.longitude,
+    latitudeDelta: Math.max(0.01, (Math.max(...latitudes) - Math.min(...latitudes)) * 1.5),
+    longitudeDelta: Math.max(0.01, (Math.max(...longitudes) - Math.min(...longitudes)) * 1.5),
+  };
 }

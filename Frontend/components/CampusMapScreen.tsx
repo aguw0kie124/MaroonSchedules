@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
-import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
+import MapView from "react-native-maps";
 import { useTheme } from "./SharedUI";
 import { fetchCampusPlacesMap } from "../api/client";
 import {
-  CAMPUS_MAP_STYLE_URL,
   MapLibreCircleOverlay,
   MapLibreMarker,
   useMapLibreCamera,
@@ -84,16 +83,14 @@ export function CampusMapScreen() {
         <Text style={styles.subtitle}>Live Facility and Event Occupancy</Text>
       </View>
       <MapView
+        ref={cameraRef}
         style={styles.map}
-        mapStyle={CAMPUS_MAP_STYLE_URL}
-        compassEnabled
-        logoEnabled={false}
-        attributionEnabled={false}
+        initialRegion={defaultCamera}
+        showsCompass
+        showsUserLocation
         rotateEnabled={false}
         pitchEnabled={false}
       >
-        <Camera ref={cameraRef} defaultSettings={defaultCamera} />
-        <UserLocation visible renderMode="normal" />
         {locations.map((loc, idx) => {
           const radius = getRadius(loc.percent_full);
           const fill = getCapacityColor(loc.percent_full);

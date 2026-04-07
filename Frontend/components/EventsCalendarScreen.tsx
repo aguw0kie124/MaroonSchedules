@@ -751,6 +751,21 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     selectedMajor,
   ]);
 
+  const personalizationChips = useMemo(() => {
+    const chips: string[] = [];
+    normalizedPreferenceCategories.forEach((category) => chips.push(category));
+    if (preferredTime && preferredTime !== 'Anytime') {
+      chips.push(preferredTime);
+    }
+    if (preferredSocialMode) {
+      chips.push(preferredSocialMode === 'casual' ? 'Casual' : 'Professional');
+    }
+    if (isMajorSpecific) {
+      chips.push(selectedMajor);
+    }
+    return chips.slice(0, 5);
+  }, [isMajorSpecific, normalizedPreferenceCategories, preferredSocialMode, preferredTime, selectedMajor]);
+
   const changeView = useCallback((nextView: EventsView) => {
     startTransition(() => {
       setView(nextView);
@@ -1131,6 +1146,20 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               showsVerticalScrollIndicator={false}
               refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
             >
+              {personalizationChips.length > 0 ? (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={s.personalizationRow}
+                >
+                  {personalizationChips.map((chip) => (
+                    <View key={chip} style={s.personalizationChip}>
+                      <Text style={s.personalizationChipText}>{chip}</Text>
+                    </View>
+                  ))}
+                </ScrollView>
+              ) : null}
+
               <View style={s.categoryWrap}>
                 {categoriesExpanded ? (
                   <>
@@ -2391,6 +2420,25 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     scrollContent: {
       paddingHorizontal: 20,
       paddingBottom: 118,
+    },
+    personalizationRow: {
+      gap: 8,
+      paddingTop: 6,
+      paddingBottom: 14,
+      paddingRight: 8,
+    },
+    personalizationChip: {
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
+    },
+    personalizationChipText: {
+      color: COLORS.textPrimary,
+      fontSize: 12,
+      fontWeight: '800',
     },
     categoryWrap: {
       gap: 12,

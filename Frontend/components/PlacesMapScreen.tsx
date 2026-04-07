@@ -60,7 +60,7 @@ import AnimatedReanimated, {
   withTiming,
   runOnJS,
 } from "react-native-reanimated";
-import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
+import MapView from "react-native-maps";
 import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -129,7 +129,6 @@ import {
   type CampusHotspot,
 } from "../services/campusPulse";
 import {
-  CAMPUS_MAP_STYLE_URL,
   MapLibreCircleOverlay,
   MapLibreMarker,
   MapLibrePolylineOverlay,
@@ -1764,17 +1763,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
   return (
     <View style={styles.container}>
       <MapView
+        ref={cameraRef}
         style={StyleSheet.absoluteFillObject}
-        mapStyle={CAMPUS_MAP_STYLE_URL}
-        compassEnabled={false}
-        logoEnabled={false}
-        attributionEnabled={false}
+        initialRegion={defaultCamera}
+        showsCompass={false}
+        showsUserLocation
         rotateEnabled={false}
         pitchEnabled
       >
-        <Camera ref={cameraRef} defaultSettings={defaultCamera} />
-        <UserLocation visible renderMode="normal" />
-
         {activeLayer === "Heatmap" &&
           CAMPUS_ZONES.map((zone) => {
             const density = getZoneDensity(zone);
