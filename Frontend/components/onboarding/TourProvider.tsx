@@ -35,6 +35,10 @@ type CelebrationState = {
   title: string;
   body: string;
 };
+type BlockedHintState = {
+  key: number;
+  message: string;
+};
 
 type TourStep = {
   id: string;
@@ -335,6 +339,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const [celebration, setCelebration] = useState<CelebrationState | null>(null);
   const [assistVisible, setAssistVisible] = useState(false);
   const [isAssisting, setIsAssisting] = useState(false);
+  const [blockedHint, setBlockedHint] = useState<BlockedHintState | null>(null);
 
   const targetsRef = useRef<Record<string, () => Promise<TargetRect | null>>>({});
   const assistActionsRef = useRef<Record<string, (() => void | Promise<void>) | null>>({});
@@ -342,7 +347,9 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const shouldSkipTourForEmail = primaryEmail.endsWith('@gmail.com');
   const celebrationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blockedHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assistPointerProgress = useRef(new RNAnimated.Value(0)).current;
+  const blockedTapCountRef = useRef(0);
 
   const activeTargetName = isTourActive && currentStep < TOUR_SEQUENCE.length ? TOUR_SEQUENCE[currentStep].id : null;
   const currentDef = isTourActive && currentStep < TOUR_SEQUENCE.length ? TOUR_SEQUENCE[currentStep] : null;
@@ -380,6 +387,9 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       if (assistTimerRef.current) {
         clearTimeout(assistTimerRef.current);
       }
+      if (blockedHintTimerRef.current) {
+        clearTimeout(blockedHintTimerRef.current);
+      }
     };
   }, []);
 
@@ -390,6 +400,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
     setAssistVisible(false);
     setIsAssisting(false);
+    setBlockedHint(null);
+    blockedTapCountRef.current = 0;
     assistPointerProgress.stopAnimation();
     assistPointerProgress.setValue(0);
 
@@ -429,6 +441,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setCelebration(null);
     setAssistVisible(false);
     setIsAssisting(false);
+    setBlockedHint(null);
+    blockedTapCountRef.current = 0;
     setIsTourActive(true);
 
     setTimeout(() => {
@@ -449,6 +463,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setCelebration(null);
     setAssistVisible(false);
     setIsAssisting(false);
+    setBlockedHint(null);
+    blockedTapCountRef.current = 0;
 
     setTimeout(() => {
       if (navigationRef.isReady()) {
@@ -475,6 +491,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
         setCelebration(null);
         setAssistVisible(false);
         setIsAssisting(false);
+        setBlockedHint(null);
+        blockedTapCountRef.current = 0;
       }
       if (!isTourCompleted) {
         setTourCompleted(true);
@@ -614,13 +632,43 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const stepLabel = currentDef ? `Step ${currentStep + 1} of ${TOUR_SEQUENCE.length}` : '';
   const regionHint = targetRect && currentDef ? `Highlighted in the ${getTargetRegion(targetRect, width, height)}.` : '';
 
+  const showBlockedHint = useCallback((message?: string) => {
+    if (!currentDef) {
+      return;
+    }
+
+    blockedTapCountRef.current += 1;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+
+    if (blockedHintTimerRef.current) {
+      clearTimeout(blockedHintTimerRef.current);
+    }
+
+    setBlockedHint({
+      key: Date.now(),
+      message:
+        message ||
+        `Only the highlighted step is active right now. ${currentDef.cue}`,
+    });
+
+    blockedHintTimerRef.current = setTimeout(() => {
+      setBlockedHint(null);
+    }, 1800);
+
+    if (blockedTapCountRef.current >= 2) {
+      setAssistVisible(true);
+    }
+  }, [currentDef]);
+
   const runAssist = useCallback(async () => {
     if (!currentDef || isAssisting) {
       return;
     }
 
+    blockedTapCountRef.current = 0;
     setAssistVisible(false);
     setIsAssisting(true);
+    setBlockedHint(null);
     await updateTargetRect();
     assistPointerProgress.setValue(0);
 
@@ -642,6 +690,15 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
     setIsAssisting(false);
   }, [advanceStep, assistPointerProgress, currentDef, isAssisting, updateTargetRect]);
+
+  const overlayTargetRect = targetRect
+    ? {
+        left: Math.max(0, targetRect.x - 12),
+        top: Math.max(0, targetRect.y - 12),
+        width: Math.min(width, targetRect.w + 24),
+        height: Math.min(height, targetRect.h + 24),
+      }
+    : null;
 
   const assistPointerStyle: any = React.useMemo(() => {
     if (!targetRect) {
@@ -720,6 +777,53 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
       {isTourActive && currentDef ? (
         <View style={styles.overlayWrapper} pointerEvents="box-none">
+          {overlayTargetRect ? (
+            <>
+              <Pressable
+                style={[styles.blocker, { left: 0, top: 0, width, height: overlayTargetRect.top }]}
+                onPress={() => showBlockedHint()}
+              />
+              <Pressable
+                style={[
+                  styles.blocker,
+                  {
+                    left: 0,
+                    top: overlayTargetRect.top + overlayTargetRect.height,
+                    width,
+                    height: Math.max(0, height - (overlayTargetRect.top + overlayTargetRect.height)),
+                  },
+                ]}
+                onPress={() => showBlockedHint()}
+              />
+              <Pressable
+                style={[
+                  styles.blocker,
+                  {
+                    left: 0,
+                    top: overlayTargetRect.top,
+                    width: overlayTargetRect.left,
+                    height: overlayTargetRect.height,
+                  },
+                ]}
+                onPress={() => showBlockedHint()}
+              />
+              <Pressable
+                style={[
+                  styles.blocker,
+                  {
+                    left: overlayTargetRect.left + overlayTargetRect.width,
+                    top: overlayTargetRect.top,
+                    width: Math.max(0, width - (overlayTargetRect.left + overlayTargetRect.width)),
+                    height: overlayTargetRect.height,
+                  },
+                ]}
+                onPress={() => showBlockedHint()}
+              />
+            </>
+          ) : (
+            <Pressable style={[styles.blocker, styles.blockerFull]} onPress={() => showBlockedHint('Setting up this step for you. Use End tour if you want to leave onboarding.')} />
+          )}
+
           {targetRect ? (
             <Animated.View entering={FadeIn} exiting={FadeOut} style={StyleSheet.absoluteFill} pointerEvents="none">
               <Animated.View style={pulseStyle} />
@@ -864,6 +968,12 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
                 </Text>
               </Pressable>
             ) : null}
+
+            {blockedHint ? (
+              <Animated.View entering={FadeIn.duration(140)} exiting={FadeOut.duration(180)} style={styles.blockedHintBubble}>
+                <Text style={[styles.blockedHintText, { color: COLORS.textPrimary }]}>{blockedHint.message}</Text>
+              </Animated.View>
+            ) : null}
           </Animated.View>
 
           <CelebrationBurst
@@ -929,6 +1039,13 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     alignItems: 'center',
     zIndex: 10000,
+  },
+  blocker: {
+    position: 'absolute',
+    zIndex: 9998,
+  },
+  blockerFull: {
+    ...StyleSheet.absoluteFillObject,
   },
   tourBox: {
     position: 'absolute',
@@ -1095,6 +1212,19 @@ const styles = StyleSheet.create({
   assistButtonBody: {
     fontSize: 12,
     fontWeight: '600',
+    lineHeight: 17,
+  },
+  blockedHintBubble: {
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.08)',
+  },
+  blockedHintText: {
+    fontSize: 12,
+    fontWeight: '700',
     lineHeight: 17,
   },
   assistPointer: {
