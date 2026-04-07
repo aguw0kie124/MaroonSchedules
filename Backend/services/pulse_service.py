@@ -82,6 +82,20 @@ def _ping_category_boost(category: str) -> int:
     return 3
 
 
+def _is_pulse_ping_post(ping: Dict[str, Any]) -> bool:
+    custom = ping.get("custom_data") or {}
+    post_type = str(ping.get("post_type") or "").strip().lower()
+    content_type = str(custom.get("content_type") or "").strip().lower()
+
+    if post_type == "ping":
+        return True
+    if content_type == "ping":
+        return True
+    if custom.get("ping_title") or custom.get("ping_category"):
+        return True
+    return False
+
+
 def _pulse_label_for(score: int) -> str:
     if score >= 60:
         return "Hot"
@@ -181,7 +195,8 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
         print(f"[pulse_service] failed to ensure social tables: {exc}")
 
     try:
-        pings = feed_repository.get_crowdping_feed(post_types=["ping"], limit=80)
+        raw_pings = feed_repository.get_crowdping_feed(post_types=["ping", "post"], limit=80)
+        pings = [ping for ping in raw_pings if _is_pulse_ping_post(ping)]
     except Exception as exc:
         print(f"[pulse_service] DB query failed for crowdping feed: {exc}")
         pings = []
