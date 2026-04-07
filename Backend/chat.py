@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Optional
 import uuid
 import traceback
 
-from services import ping_service, cache_service
+from services import ping_service, cache_service, campus_hub_service, pulse_service
 from repositories import feed_repository, user_repository
 from db_config import CONNECTION_PARAMS
 from auth.clerk_middleware import require_auth, optional_auth, ensure_matching_user
@@ -40,6 +40,21 @@ class ReportRequest(BaseModel):
     reason: str
     comment: Optional[str] = None
     place_id: Optional[str] = None
+
+
+def _ensure_social_schema() -> None:
+    campus_hub_service._ensure_social_tables()
+
+
+def _invalidate_feed_cache(feed_group: str, feed_id: str) -> None:
+    cache_service.delete(f"feed:backbone:{feed_group}:{feed_id}")
+
+
+def _invalidate_ping_related_caches(feed_group: str, feed_id: str) -> None:
+    _invalidate_feed_cache(feed_group, feed_id)
+    if feed_group == "flat" and feed_id == "campus_pings":
+        _invalidate_feed_cache("flat", "campus_global")
+        pulse_service.invalidate_pulse_map_cache()
 
 # --- User Management (Clerk) ---
 
@@ -106,6 +121,7 @@ async def proxy_get_feed(
 ):
     """Fetch feed activities natively (Postgres) with Redis Backbone caching."""
     try:
+        _ensure_social_schema()
         if auth_user_id and clerk_id:
             ensure_matching_user(auth_user_id, clerk_id, detail="Feed identity header does not match the signed-in user")
         resolved_user_id = auth_user_id or clerk_id
@@ -231,6 +247,7 @@ def _transform_post_to_activity(p: Dict[str, Any], counts: Dict[str, Any], own_r
 async def proxy_add_activity(feed_group: str, feed_id: str, body: FeedActivity, auth_user_id: str = Depends(require_auth)):
     """Add an activity to the feed (100% Native Postgres)."""
     try:
+        _ensure_social_schema()
         activity = body.activity
         user_id = activity["actor"].replace("SU:", "")
         ensure_matching_user(auth_user_id, user_id, detail="You can only create activity as yourself")
@@ -268,10 +285,11 @@ async def proxy_add_activity(feed_group: str, feed_id: str, body: FeedActivity, 
                 lng=custom.get("lng") or custom.get("place_lng"),
                 location_tag=custom.get("location_tag", ""),
                 images=images,
+                is_anonymous=bool(custom.get("is_anonymous", False)),
                 custom_data=custom
             )
         
-        cache_service.delete(f"feed:backbone:{feed_group}:{feed_id}")
+        _invalidate_ping_related_caches(feed_group, feed_id)
         return {"status": "success", "message": "Activity recorded natively"}
     except Exception as e:
         print(f"Native Write Error: {e}\n{traceback.format_exc()}")
@@ -288,6 +306,7 @@ async def proxy_delete_activity(
 ):
     """Delete activity from native storage (Postgres)."""
     try:
+        _ensure_social_schema()
         if clerk_id:
             ensure_matching_user(auth_user_id, clerk_id, detail="Delete identity header does not match the signed-in user")
         if user_id:
@@ -301,7 +320,7 @@ async def proxy_delete_activity(
         else:
             deleted = feed_repository.delete_crowdping_post(activity_id, final_user_id)
         if deleted:
-            cache_service.delete(f"feed:backbone:{feed_group}:{feed_id}")
+            _invalidate_ping_related_caches(feed_group, feed_id)
             return {"status": "success"}
         else:
             raise HTTPException(status_code=404, detail="Activity not found or unauthorized")
@@ -315,6 +334,7 @@ async def proxy_delete_activity(
 async def proxy_add_reaction(body: ReactionPayload, auth_user_id: str = Depends(require_auth)):
     """Add a reaction (Like/Comment/Upvote/Downvote) natively with toggle support."""
     try:
+        _ensure_social_schema()
         ensure_matching_user(auth_user_id, body.user_id, detail="You can only react as yourself")
         # 1. Resolve naming/image from DB if possible to fix "Aggie" bug
         user_profile = user_repository.get_user(body.user_id)
@@ -355,6 +375,7 @@ async def proxy_add_reaction(body: ReactionPayload, auth_user_id: str = Depends(
 async def proxy_get_reactions(activity_id: str, kind: str):
     """Fetch reactions natively from Postgres."""
     try:
+        _ensure_social_schema()
         interactions = feed_repository.get_post_interactions(activity_id, "crowdping", interaction_type=kind)
         # Transform to Stream reaction format for frontend compatibility
         results = []

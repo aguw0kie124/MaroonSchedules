@@ -79,6 +79,7 @@ import { TourTarget, useTour } from './onboarding/TourProvider';
 import { getPremiumName, getPremiumImage } from '../utils/userUtils';
 import { scheduleAdminEventReviewNotification } from '../services/notificationService';
 import { normalizeExternalUrl, normalizeImageUrl } from '../services/url';
+import { invalidateCampusPulseCache } from '../services/campusPulse';
 
 type PingCategory =
   | 'Free Food'
@@ -569,8 +570,10 @@ export function CampusPingsScreen() {
         startAt,
         endAt,
         mediaUrl: uploadedImageUrl,
+        isAnonymous: composerAnonymous,
       });
 
+      invalidateCampusPulseCache();
       setComposerVisible(false);
       resetComposer();
       await loadUserPings();
@@ -584,11 +587,13 @@ export function CampusPingsScreen() {
   }, [
     composerBody,
     composerCategory,
+    composerAnonymous,
     composerImageUri,
     composerTimePreset,
     composerTitle,
     feedConnected,
     loadUserPings,
+    locationLookup,
     resetComposer,
     selectedLocation,
     user,
@@ -644,6 +649,7 @@ export function CampusPingsScreen() {
           onPress: async () => {
             try {
               await deletePing(ping.activityId!);
+              invalidateCampusPulseCache();
               setUserPings((current) => current.filter((entry) => entry.id !== ping.id));
               await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             } catch (error) {
@@ -2051,6 +2057,7 @@ const getStyles = (COLORS: any) =>
     modalKeyboardWrap: {
       width: '100%',
       justifyContent: 'flex-end',
+      height: '100%',
     },
     modalCard: {
       backgroundColor: COLORS.background,
@@ -2059,7 +2066,8 @@ const getStyles = (COLORS: any) =>
       paddingHorizontal: 18,
       paddingTop: 18,
       paddingBottom: 16,
-      maxHeight: '88%',
+      height: '88%',
+      overflow: 'hidden',
     },
     modalScroll: {
       flex: 1,

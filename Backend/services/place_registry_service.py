@@ -62,7 +62,7 @@ def _build_registry() -> Dict[str, Any]:
         alias = row["alias"]
         if pid in by_id:
             by_id[pid]["aliases"].append(alias)
-            alias_lookup[alias] = by_id[pid]
+            alias_lookup[_normalize_key(alias)] = by_id[pid]
 
     conn.close()
 
@@ -123,7 +123,11 @@ def resolve_place(
 
     normalized_name = _normalize_key(location_name)
     if normalized_name:
-        place = registry["alias_lookup"].get(normalized_name) or registry["by_name"].get(normalized_name)
+        place = (
+            registry["by_id"].get(location_name)
+            or registry["alias_lookup"].get(normalized_name)
+            or registry["by_name"].get(normalized_name)
+        )
         if place:
             return place
 

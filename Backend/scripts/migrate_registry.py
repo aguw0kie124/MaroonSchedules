@@ -14,13 +14,16 @@ DB_PATH = BACKEND_DIR / "Data" / "campus_registry.db"
 # 1. Specialty Overrides (High priority name/alias mapping + Metadata)
 SPECIAL_PLACES = [
     {
-        "place_id": "libr", "name": "Sterling C. Evans Library", "short_name": "LIBR", "type": "Library", "lat": 30.616332, "lng": -96.338571, 
+        "place_id": "libr", "name": "Sterling C. Evans Library", "short_name": "LIBR", "type": "Library",
+        "coord_lookup_names": ["Sterling C. Evans Library"],
         "aliases": ["Evans Library", "Evans"],
         "hours": "Open daily · check library schedule",
         "description": "Main research library near the Academic Plaza."
     },
     {
-        "place_id": "annex", "name": "Evans Library Annex", "short_name": "ANNEX", "type": "Library", "lat": 30.616531, "lng": -96.338456, "aliases": [],
+        "place_id": "annex", "name": "Evans Library Annex", "short_name": "ANNEX", "type": "Library",
+        "coord_lookup_names": ["Sterling C. Evans Library Annex", "Evans Library Annex"],
+        "aliases": [],
         "hours": "Open daily · check library schedule",
         "description": "Annex study and overflow library space."
     },
@@ -40,7 +43,8 @@ SPECIAL_PLACES = [
         "description": "Primary library for medical and veterinary sciences."
     },
     {
-        "place_id": "wcl", "name": "West Campus Library", "short_name": "WCL", "type": "Library", "lat": 30.611581, "lng": -96.350275, 
+        "place_id": "wcl", "name": "West Campus Library", "short_name": "WCL", "type": "Library",
+        "coord_lookup_names": ["West Campus Library"],
         "aliases": ["BLCC", "West Campus Library and Business Learning Complex"],
         "hours": "Open daily · check library schedule",
         "description": "Business and west campus study hub."
@@ -50,57 +54,67 @@ SPECIAL_PLACES = [
         "description": "Historical and special collections library."
     },
     {
-        "place_id": "rec", "name": "Student Recreation Center", "short_name": "REC", "type": "Rec", "lat": 30.607369543290172, "lng": -96.34287943254921, 
+        "place_id": "rec", "name": "Student Recreation Center", "short_name": "REC", "type": "Rec",
+        "coord_lookup_names": ["Student Recreation Center"],
         "aliases": ["Student Rec Center", "Rec Center", "The Rec", "Rec", "osm:way:206530669", "srec"],
         "hours": "6:00 AM – 11:45 PM",
         "description": "Primary rec center with fitness, courts, pools, and climbing.",
         "features": ["Strength & Conditioning", "Indoor Track", "Pools", "Climbing Wall"]
     },
     {
-        "place_id": "southside-rec", "name": "Southside Recreation Center", "short_name": "SSRC", "type": "Rec", "lat": 30.6157837, "lng": -96.3335135, 
+        "place_id": "southside-rec", "name": "Southside Recreation Center", "short_name": "SSRC", "type": "Rec",
+        "coord_lookup_names": ["Southside Rec Center", "Southside Recreation Center"],
         "aliases": ["Southside Rec Center", "osm:way:1367436238"],
         "hours": "5:30 AM – 11:59 PM",
         "description": "Southside rec center near the Commons with indoor and outdoor space.",
         "features": ["Strength & Conditioning", "Cardio Equipment", "Locker Rooms", "Sand Volleyball"]
     },
     {
-        "place_id": "polo-rec", "name": "Polo Road Recreation Center", "short_name": "POLO REC", "type": "Rec", "lat": 30.6229681, "lng": -96.3383515, 
+        "place_id": "polo-rec", "name": "Polo Road Recreation Center", "short_name": "POLO REC", "type": "Rec",
+        "coord_lookup_names": ["Polo Road Rec Center", "Polo Road Recreation Center"],
         "aliases": ["Polo Road Rec Center", "osm:way:904033099"],
         "hours": "6:00 AM – 10:00 PM",
         "description": "North campus rec center focused on cardio and strength training.",
         "features": ["Strength & Conditioning", "Cardio Equipment", "Indoor Track"]
     },
     {
-        "place_id": "msc", "name": "Memorial Student Center", "short_name": "MSC", "type": "Hub", "lat": 30.61225, "lng": -96.341242, 
+        "place_id": "msc", "name": "Memorial Student Center", "short_name": "MSC", "type": "Hub",
+        "coord_lookup_names": ["Memorial Student Center"],
         "aliases": ["Memorial Student Center (MSC)", "MSC", "Memorial Student Center"],
         "hours": "Open daily",
         "description": "Central student hub, dining, lounges, and events."
     },
     {
-        "place_id": "sbisa", "name": "Sbisa Dining Hall", "short_name": "SBISA", "type": "Dining", "lat": 30.617135, "lng": -96.343777, 
+        "place_id": "sbisa", "name": "Sbisa Dining Hall", "short_name": "SBISA", "type": "Dining",
+        "coord_lookup_names": ["Sbisa Dining Hall"],
         "aliases": ["Sbisa Dining Hall", "Sbisa", "osm:way:720954602"],
         "hours": "Breakfast, lunch, and dinner service",
         "description": "Northside all-you-care-to-eat dining hall."
     },
     {
-        "place_id": "commons", "name": "The Commons Dining Hall", "short_name": "COMMONS", "type": "Dining", "lat": 30.6156816097444, "lng": -96.3362674766492, 
+        "place_id": "commons", "name": "The Commons Dining Hall", "short_name": "COMMONS", "type": "Dining",
+        "coord_lookup_names": ["Commons Dining Hall", "The Commons Dining Hall", "Commons"],
         "aliases": ["The Commons", "Commons Dining Hall", "Commons", "osm:node:8223259463"],
         "hours": "Breakfast, lunch, and dinner service",
         "description": "Southside dining hall near the Commons."
     },
     {
-        "place_id": "west-campus-dining", "name": "West Campus Dining Facility", "short_name": "WCD", "type": "Dining", "lat": 30.61020, "lng": -96.34863, 
+        "place_id": "west-campus-dining", "name": "West Campus Dining Facility", "short_name": "WCD", "type": "Dining",
+        "coord_lookup_names": ["West Campus Dining Facility"],
         "aliases": ["West Campus Dining", "WCD"],
         "hours": "Check dining schedule",
         "description": "Modern dining facility located on West Campus."
     },
     {
-        "place_id": "duncan", "name": "Duncan Dining Hall", "short_name": "DUNCAN", "type": "Dining", "lat": 30.612072, "lng": -96.335505, "aliases": [],
+        "place_id": "duncan", "name": "Duncan Dining Hall", "short_name": "DUNCAN", "type": "Dining",
+        "coord_lookup_names": ["Duncan Dining Hall"],
+        "aliases": [],
         "hours": "Check dining schedule",
         "description": "Dining hall near the Corps Quad."
     },
     {
-        "place_id": "polo-garage-food", "name": "Polo Road Garage Dining", "short_name": "POLO DINING", "type": "Dining", "lat": 30.622723, "lng": -96.337939, 
+        "place_id": "polo-garage-food", "name": "Polo Road Garage Dining", "short_name": "POLO DINING", "type": "Dining",
+        "coord_lookup_names": ["Polo Road Garage", "Polo Road Garage Dining"],
         "aliases": ["Polo Road Garage", "Polo Dining", "Polo Road Garage Food"],
         "hours": "Check dining schedule",
         "description": "Dining hub inside the Polo Road Garage complex."
@@ -196,12 +210,12 @@ FRONTEND_AMENITIES = [
 
 # 4. Traffic Overrides (from traffic.py)
 TRAFFIC_DATA = {
-    "Sbisa Dining Hall":              {"lat": 30.617135, "lng": -96.343777, "type": "Dining"},
-    "Duncan Dining Hall":             {"lat": 30.612072, "lng": -96.335505, "type": "Dining"},
-    "West Campus Dining Facility":    {"lat": 30.61020, "lng": -96.34863, "type": "Dining"},
-    "Memorial Student Center (MSC)":  {"lat": 30.61223, "lng": -96.34137, "type": "Dining"},
-    "Polo Road Garage":               {"lat": 30.62313, "lng": -96.33749, "type": "Dining"},
-    "Creekside Market":               {"lat": 30.60756, "lng": -96.35381, "type": "Dining"},
+    "Sbisa Dining Hall":              {"type": "Dining"},
+    "Duncan Dining Hall":             {"type": "Dining"},
+    "West Campus Dining Facility":    {"type": "Dining"},
+    "Memorial Student Center (MSC)":  {"type": "Dining"},
+    "Polo Road Garage":               {"type": "Dining"},
+    "Creekside Market":               {"type": "Dining"},
 }
 
 def normalize_key(value: str) -> str:
@@ -213,6 +227,54 @@ EXCLUDED_PLACE_NAMES = {
     normalize_key("Sweet Eugene's Coffee"),
     normalize_key("Sweet Eugene's Java House"),
 }
+
+
+def _score_osm_coordinate_match(record: dict, candidate_names: list[str], desired_type: str | None) -> int:
+    normalized_name = normalize_key(record.get("name", ""))
+    normalized_aliases = {normalize_key(alias) for alias in record.get("aliases", [])}
+    normalized_candidates = [normalize_key(value) for value in candidate_names if normalize_key(value)]
+    normalized_type = normalize_key(record.get("type", ""))
+    desired_type_key = normalize_key(desired_type or "")
+
+    score = -1
+    for candidate in normalized_candidates:
+        if not candidate:
+            continue
+        if normalized_name == candidate:
+            score = max(score, 300)
+        elif candidate in normalized_aliases:
+            score = max(score, 260)
+
+    if score < 0:
+        return score
+
+    if desired_type_key and normalized_type == desired_type_key:
+        score += 25
+    return score
+
+
+def resolve_special_place_coordinates(place: dict, osm_records: list[dict]) -> tuple[float, float]:
+    candidate_names = [
+        place.get("name"),
+        *(place.get("coord_lookup_names") or []),
+    ]
+
+    best_match = None
+    best_score = -1
+    for record in osm_records:
+        score = _score_osm_coordinate_match(record, candidate_names, place.get("type"))
+        if score > best_score:
+            best_match = record
+            best_score = score
+
+    if best_match is not None and best_score >= 0:
+        return best_match["lat"], best_match["lng"]
+
+    lat = place.get("lat")
+    lng = place.get("lng")
+    if lat is None or lng is None:
+        raise ValueError(f"No OSM coordinate match found for special place {place['place_id']} ({place['name']})")
+    return lat, lng
 
 def run_migration():
     print(f"--- Starting Full Consolidation to {DB_PATH.name} ---")
@@ -249,6 +311,12 @@ def run_migration():
             FOREIGN KEY (place_id) REFERENCES places(place_id)
         )
     """)
+
+    osm_data = []
+    if OSM_DATA_PATH.exists():
+        with open(OSM_DATA_PATH, "r", encoding="utf-8") as f:
+            osm_root = json.load(f)
+        osm_data = osm_root.get("places", [])
     
     # --- PHASE 0: Collect all "Premium" names to block OSM/Legacy duplicates ---
     PREMIUM_NAMES = set()
@@ -266,10 +334,7 @@ def run_migration():
     print(f"Blocking {len(PREMIUM_NAMES)} unique premium locations from OSM/Legacy source records...")
 
     # 1. Load Base OSM Data (with Duplicate Blocking)
-    if OSM_DATA_PATH.exists():
-        with open(OSM_DATA_PATH, "r", encoding="utf-8") as f:
-            osm_root = json.load(f)
-        osm_data = osm_root.get("places", [])
+    if osm_data:
         print(f"Checking {len(osm_data)} OSM points for premium conflicts...")
         skipped = 0
         for row in osm_data:
@@ -317,6 +382,7 @@ def run_migration():
     # 5. Apply Specialty Overrides (High priority aliases + Metadata)
     print(f"Applying {len(SPECIAL_PLACES)} Specialty Aliases (WINS)...")
     for sp in SPECIAL_PLACES:
+        lat, lng = resolve_special_place_coordinates(sp, osm_data)
         features_json = json.dumps(sp.get("features", [])) if sp.get("features") else None
         cur.execute("""
             INSERT INTO places (place_id, name, short_name, type, lat, lng, description, hours, features, source)
@@ -326,19 +392,19 @@ def run_migration():
                 lat=excluded.lat, lng=excluded.lng, 
                 description=excluded.description, hours=excluded.hours, features=excluded.features,
                 source='special'
-        """, (sp["place_id"], sp["name"], sp["short_name"], sp["type"], sp["lat"], sp["lng"], sp.get("description"), sp.get("hours"), features_json))
+        """, (sp["place_id"], sp["name"], sp["short_name"], sp["type"], lat, lng, sp.get("description"), sp.get("hours"), features_json))
         cur.execute("INSERT OR IGNORE INTO aliases (place_id, alias) VALUES (?, ?)", (sp["place_id"], normalize_key(sp["name"])))
         for alias in sp.get("aliases", []):
             cur.execute("INSERT OR IGNORE INTO aliases (place_id, alias) VALUES (?, ?)", (sp["place_id"], normalize_key(alias)))
 
-    # 6. Apply Traffic Sync (Last word on Coordinates)
-    print(f"Applying {len(TRAFFIC_DATA)} Traffic Coordinate Syncs (MASTER COORDS)...")
+    # 6. Apply Traffic-derived type sync without overriding map coordinates
+    print(f"Applying {len(TRAFFIC_DATA)} Traffic Type Syncs...")
     for name, data in TRAFFIC_DATA.items():
         # Update EVERY record that matches this alias (broad update)
         cur.execute("SELECT DISTINCT place_id FROM aliases WHERE alias = ?", (normalize_key(name),))
         ids = cur.fetchall()
         for res in ids:
-            cur.execute("UPDATE places SET lat=?, lng=?, type=COALESCE(?, type) WHERE place_id=?", (data["lat"], data["lng"], data.get("type"), res[0]))
+            cur.execute("UPDATE places SET type=COALESCE(?, type) WHERE place_id=?", (data.get("type"), res[0]))
 
     conn.commit()
     conn.close()

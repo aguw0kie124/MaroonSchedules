@@ -135,7 +135,7 @@ def _place_ids_to_warm() -> list[str]:
 def _refresh_place_details() -> object:
     warmed = []
     for place_id in _place_ids_to_warm():
-        cache_key = f"campus:place-detail:v1:{place_id}"
+        cache_key = f"campus:place-detail:{campus_hub_service.PLACE_DETAIL_CACHE_VERSION}:{place_id}"
         _delete_and_rebuild(cache_key, lambda place_id=place_id: campus_hub_service.get_place_detail_snapshot(place_id))
         warmed.append(place_id)
     return {"placeIds": warmed}

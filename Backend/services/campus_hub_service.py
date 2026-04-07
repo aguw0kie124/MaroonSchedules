@@ -50,6 +50,7 @@ CAREER_SNAPSHOT_TTL_SECONDS = 300
 RECREATION_SNAPSHOT_TTL_SECONDS = 120
 TRANSIT_SNAPSHOT_TTL_SECONDS = 30
 SERVICES_SNAPSHOT_TTL_SECONDS = 86400
+PLACE_DETAIL_CACHE_VERSION = "v2"
 
 # (Removed hardcoded REC_FACILITIES and FALL_SPRING_HOURS_BY_FACILITY - now in DB registry)
 REC_PAGE_CACHE_TTL_SECONDS = 60 * 60 * 6
@@ -1332,9 +1333,11 @@ def get_recreation_snapshot() -> Dict[str, Any]:
 
 
 def get_place_detail_snapshot(place_id: str) -> Dict[str, Any]:
-    cache_key = f"campus:place-detail:v1:{place_id}"
+    cache_key = f"campus:place-detail:{PLACE_DETAIL_CACHE_VERSION}:{place_id}"
     cached = cache_service.get_json(cache_key)
-    if cached is not None:
+    if cached is not None and (
+        cached.get("source_status") == "missing" or cached.get("place") is not None
+    ):
         return cached
 
     place = place_registry_service.get_place_by_id(place_id)

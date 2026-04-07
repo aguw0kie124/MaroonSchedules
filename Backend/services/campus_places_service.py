@@ -8,6 +8,7 @@ from services import cache_service, place_registry_service
 from services.place_type_service import normalize_place_type
 
 PLACE_SNAPSHOT_TTL_SECONDS = 60
+PLACE_SNAPSHOT_CACHE_VERSION = "v2"
 
 
 def _prefer_place_type(base_type: str, live_type: str | None) -> str:
@@ -84,7 +85,7 @@ def _merge_operational_state(locations: Dict[str, Dict[str, Any]]) -> None:
 
 
 def get_places_map_snapshot() -> Dict[str, Any]:
-    cache_key = "campus:places:map:v1"
+    cache_key = f"campus:places:map:{PLACE_SNAPSHOT_CACHE_VERSION}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
         return cached

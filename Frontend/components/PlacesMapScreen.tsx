@@ -61,7 +61,7 @@ import AnimatedReanimated, {
   runOnJS,
 } from "react-native-reanimated";
 import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
@@ -125,6 +125,7 @@ import {
 import { getStyles } from "./places/placesStyles";
 import {
   fetchCampusPulseMap,
+  invalidateCampusPulseCache,
   type CampusHotspot,
 } from "../services/campusPulse";
 import {
@@ -1086,12 +1087,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
     [openHotspotPlace],
   );
 
-  const fetchPulseHotspots = useCallback(async () => {
+  const fetchPulseHotspots = useCallback(async (options: { force?: boolean } = {}) => {
+    const forceRefresh = options.force === true;
     if (!pulseHotspotsRef.current.length) {
       setIsLoadingPulse(true);
     }
     try {
-      const rawHotspots = await fetchCampusPulseMap(12);
+      if (forceRefresh) {
+        invalidateCampusPulseCache();
+      }
+      const rawHotspots = await fetchCampusPulseMap(12, { force: forceRefresh });
       const currentPulsePlaces = pulsePlacesRef.current;
       const placeLookup = new Map(
         currentPulsePlaces.flatMap((place) => {
@@ -1125,6 +1130,24 @@ export function PlacesMapScreen({ route, navigation }: any) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const hasSeenPulseLayer = useRef(false);
+  useEffect(() => {
+    if (activeLayer !== "Pulse") return;
+    if (!hasSeenPulseLayer.current) {
+      hasSeenPulseLayer.current = true;
+      return;
+    }
+    fetchPulseHotspots({ force: true });
+  }, [activeLayer, fetchPulseHotspots]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (activeLayer !== "Pulse") return undefined;
+      fetchPulseHotspots({ force: true });
+      return undefined;
+    }, [activeLayer, fetchPulseHotspots]),
+  );
 
   const centerOnUserLocation = useCallback(async () => {
     try {

@@ -36,9 +36,17 @@ const PULSE_CACHE_TTL_MS = 30_000;
 let _cachedHotspots: CampusHotspot[] | null = null;
 let _cachedAt = 0;
 
-export async function fetchCampusPulseMap(limit = 12): Promise<CampusHotspot[]> {
+export function invalidateCampusPulseCache() {
+  _cachedHotspots = null;
+  _cachedAt = 0;
+}
+
+export async function fetchCampusPulseMap(
+  limit = 12,
+  options: { force?: boolean } = {},
+): Promise<CampusHotspot[]> {
   const now = Date.now();
-  if (_cachedHotspots && now - _cachedAt < PULSE_CACHE_TTL_MS) {
+  if (!options.force && _cachedHotspots && now - _cachedAt < PULSE_CACHE_TTL_MS) {
     return _cachedHotspots;
   }
 
