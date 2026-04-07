@@ -787,16 +787,51 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
             pointerEvents="box-none"
           >
             <View style={styles.tourHeader}>
-              <View style={styles.progressPill}>
-                <Text style={[styles.stepIndicator, { color: COLORS.primary }]}>{stepLabel}</Text>
+              <View style={styles.headerLeft}>
+                <View style={styles.coachAvatar}>
+                  <Text style={styles.coachAvatarText}>M</Text>
+                </View>
+                <View>
+                  <Text style={[styles.coachName, { color: COLORS.textPrimary }]}>Maroon Coach</Text>
+                  <View style={styles.progressPill}>
+                    <Text style={[styles.stepIndicator, { color: COLORS.primary }]}>{stepLabel}</Text>
+                  </View>
+                </View>
               </View>
               <TouchableOpacity onPress={endTour}>
                 <Text style={[styles.skipText, { color: COLORS.textSecondary }]}>End tour</Text>
               </TouchableOpacity>
             </View>
 
+            <View style={styles.progressDotsRow}>
+              {TOUR_SEQUENCE.map((step, index) => {
+                const isDone = index < currentStep;
+                const isCurrent = index === currentStep;
+                return (
+                  <View
+                    key={step.id}
+                    style={[
+                      styles.progressDot,
+                      isDone && { backgroundColor: COLORS.primary, opacity: 0.92 },
+                      isCurrent && { backgroundColor: COLORS.primary, width: 24, opacity: 1 },
+                      !isDone && !isCurrent && { backgroundColor: COLORS.border, opacity: 0.9 },
+                    ]}
+                  />
+                );
+              })}
+            </View>
+
             <Text style={[styles.tourTitle, { color: COLORS.textPrimary }]}>{currentDef.title}</Text>
             <Text style={[styles.tourDescription, { color: COLORS.textPrimary }]}>{currentDef.instruction}</Text>
+
+            <View style={styles.rewardStrip}>
+              <View style={[styles.rewardChip, { backgroundColor: `${COLORS.primary}12` }]}>
+                <Text style={[styles.rewardChipText, { color: COLORS.primary }]}>XP +5</Text>
+              </View>
+              <View style={[styles.rewardChip, { backgroundColor: 'rgba(19,138,91,0.12)' }]}>
+                <Text style={[styles.rewardChipText, { color: '#138A5B' }]}>Keep going</Text>
+              </View>
+            </View>
 
             <View style={[styles.coachBlock, { backgroundColor: `${COLORS.primary}10` }]}>
               <Text style={[styles.coachLabel, { color: COLORS.primary }]}>Where to look</Text>
@@ -912,11 +947,50 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  coachAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#7A0B1C',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#7A0B1C',
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 8,
+  },
+  coachAvatarText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  coachName: {
+    fontSize: 14,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
   progressPill: {
+    alignSelf: 'flex-start',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: 'rgba(80,0,0,0.08)',
+  },
+  progressDotsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  progressDot: {
+    height: 8,
+    width: 8,
+    borderRadius: 999,
   },
   stepIndicator: {
     fontWeight: '800',
@@ -937,6 +1011,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     lineHeight: 22,
+  },
+  rewardStrip: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  rewardChip: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  rewardChipText: {
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   coachBlock: {
     borderRadius: 18,
