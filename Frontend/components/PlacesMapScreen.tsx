@@ -1,14 +1,9 @@
 /**
- * PlacesMapScreen — thin orchestrator
+ * PlacesMapScreen — map feature surface
  *
- * This component owns shared state and composes sub-components.
- * All logic has been decomposed into:
- *   hooks/     → useLocationData, useScheduleMap, useBusTransit
- *   places/    → CategoryPillBar, SearchOverlay, BusLayerUI,
- *                ScheduleHeader, LocationBottomSheet, PlacesList
- *   utils.ts   → pure functions
- *   campusData.ts → static data & directory
- *   types.ts   → shared interfaces & constants
+ * Shared data helpers and sub-components live under `components/places/`.
+ * This screen still contains some legacy inline logic that will be extracted
+ * in follow-on cleanup passes.
  */
 
 import React, {
@@ -128,10 +123,6 @@ import {
   invalidateCampusPulseCache,
   type CampusHotspot,
 } from "../services/campusPulse";
-
-// ── Transitional: still uses inline hooks from original file
-//    (replace with useLocationData / useScheduleMap / useBusTransit
-//     in the follow-on cleanup pass)
 
 // Make map colors "neon" and bright
 const getNeonColor = (hex: string) => {

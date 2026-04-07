@@ -1,5 +1,5 @@
 import type { CampusLocation } from "../components/places/types";
-import { API_URL } from "../config";
+import { fetchCampusPulseMap as fetchCampusPulseMapRequest } from "../api/client";
 
 export interface CampusHotspotItem {
   id: string;
@@ -35,10 +35,12 @@ const PULSE_CACHE_TTL_MS = 30_000;
 
 let _cachedHotspots: CampusHotspot[] | null = null;
 let _cachedAt = 0;
+let _inFlightHotspotsPromise: Promise<CampusHotspot[]> | null = null;
 
 export function invalidateCampusPulseCache() {
   _cachedHotspots = null;
   _cachedAt = 0;
+  _inFlightHotspotsPromise = null;
 }
 
 export async function fetchCampusPulseMap(limit = 12): Promise<CampusHotspot[]> {
@@ -47,38 +49,49 @@ export async function fetchCampusPulseMap(limit = 12): Promise<CampusHotspot[]> 
     return _cachedHotspots;
   }
 
-  const response = await fetch(`${API_URL}/campus/pulse/map?limit=${limit}`);
-  if (!response.ok) {
-    throw new Error(`Pulse map failed with status ${response.status}`);
+  if (_inFlightHotspotsPromise) {
+    return _inFlightHotspotsPromise;
   }
 
-  const data = await response.json();
-  const hotspots = Array.isArray(data) ? data : Array.isArray(data?.hotspots) ? data.hotspots : [];
-  if (!Array.isArray(hotspots)) {
-    return [];
+  _inFlightHotspotsPromise = (async () => {
+    const data = await fetchCampusPulseMapRequest(limit);
+    const hotspots = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.hotspots)
+        ? data.hotspots
+        : [];
+    if (!Array.isArray(hotspots)) {
+      return [];
+    }
+
+    const mapped = hotspots.map((hotspot: any) => ({
+      id: hotspot.id,
+      placeId: hotspot.placeId ?? hotspot.place_id ?? hotspot.place?.place_id ?? null,
+      locationName: hotspot.locationName,
+      coord: hotspot.coord,
+      score: hotspot.score,
+      pulseLabel: hotspot.pulseLabel,
+      pulseColor: hotspot.pulseColor,
+      radius: hotspot.radius,
+      pingCount: hotspot.pingCount,
+      eventCount: hotspot.eventCount,
+      percentFull: hotspot.percentFull ?? null,
+      dominantCategory: hotspot.dominantCategory,
+      previewLabel: hotspot.previewLabel,
+      summary: hotspot.summary,
+      items: Array.isArray(hotspot.items) ? hotspot.items : [],
+      place: null,
+    }));
+
+    _cachedHotspots = mapped;
+    _cachedAt = Date.now();
+
+    return mapped;
+  })();
+
+  try {
+    return await _inFlightHotspotsPromise;
+  } finally {
+    _inFlightHotspotsPromise = null;
   }
-
-  const mapped = hotspots.map((hotspot: any) => ({
-    id: hotspot.id,
-    placeId: hotspot.placeId ?? hotspot.place_id ?? hotspot.place?.place_id ?? null,
-    locationName: hotspot.locationName,
-    coord: hotspot.coord,
-    score: hotspot.score,
-    pulseLabel: hotspot.pulseLabel,
-    pulseColor: hotspot.pulseColor,
-    radius: hotspot.radius,
-    pingCount: hotspot.pingCount,
-    eventCount: hotspot.eventCount,
-    percentFull: hotspot.percentFull ?? null,
-    dominantCategory: hotspot.dominantCategory,
-    previewLabel: hotspot.previewLabel,
-    summary: hotspot.summary,
-    items: Array.isArray(hotspot.items) ? hotspot.items : [],
-    place: null,
-  }));
-
-  _cachedHotspots = mapped;
-  _cachedAt = now;
-
-  return mapped;
 }

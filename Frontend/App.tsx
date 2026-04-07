@@ -30,6 +30,10 @@ import { TransitTripResultsScreen } from './components/TransitTripResultsScreen'
 import { PlacesMapScreen } from './components/PlacesMapScreen';
 import { EventsCalendarScreen } from './components/EventsCalendarScreen';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { CanvasDashboardScreen } from './components/canvas/CanvasDashboardScreen';
+import { CanvasCoursesScreen } from './components/canvas/CanvasCoursesScreen';
+import { CanvasAssignmentsScreen } from './components/canvas/CanvasAssignmentsScreen';
+import { CanvasGradesScreen } from './components/canvas/CanvasGradesScreen';
 
 import { SocialHubScreen } from './components/SocialHubScreen';
 import { GradesScreen } from './components/GradesScreen';
@@ -368,6 +372,10 @@ function RootNavigator() {
             <Stack.Screen name="AnnexLibraryDetail" component={AnnexLibraryDetailScreen} options={{ headerShown: false }} />
             <Stack.Screen name="AnnexRentalDetail" component={AnnexRentalDetailScreen} options={{ headerShown: false }} />
             <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="CanvasDashboard" component={CanvasDashboardScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="CanvasCourses" component={CanvasCoursesScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="CanvasAssignments" component={CanvasAssignmentsScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="CanvasGrades" component={CanvasGradesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
             <Stack.Screen
               name="FullMenu"
