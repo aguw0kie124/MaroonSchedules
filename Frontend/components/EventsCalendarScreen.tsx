@@ -1,4 +1,5 @@
 import React, { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   ActivityIndicator,
   Alert,
@@ -42,6 +43,7 @@ import {
   Search,
   Settings,
   Share2,
+  Sparkles,
   Ticket,
   Trash2,
   Trophy,
@@ -852,7 +854,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     if (detailParts.length === 0) {
       return 'Your Events feed is personalized and ready to learn from what you explore.';
     }
-    return `For you: ${detailParts.join(' • ')}.`;
+    return `For you: ${detailParts.join(' | ')}.`;
   }, [
     isEventPreferencesCompleted,
     isGuest,
@@ -1274,6 +1276,39 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               showsVerticalScrollIndicator={false}
               refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
             >
+              <LinearGradient
+                colors={isDark ? ['rgba(80,0,0,0.92)', 'rgba(28,18,24,0.94)'] : ['#FFF2EA', '#F7F0FF']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={s.forYouHero}
+              >
+                <View style={s.forYouHeroTop}>
+                  <View>
+                    <Text style={s.forYouEyebrow}>For You</Text>
+                    <Text style={s.forYouTitle}>A feed shaped around your campus rhythm.</Text>
+                  </View>
+                  <View style={s.forYouSparkle}>
+                    <Sparkles size={20} color={isDark ? '#FFFFFF' : COLORS.primary} />
+                  </View>
+                </View>
+                <Text style={s.forYouBody}>
+                  {pageSubtitle}
+                </Text>
+                {personalizationChips.length > 0 ? (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={s.forYouChipRow}
+                  >
+                    {personalizationChips.map((chip) => (
+                      <View key={`hero-${chip}`} style={s.forYouChip}>
+                        <Text style={s.forYouChipText}>{chip}</Text>
+                      </View>
+                    ))}
+                  </ScrollView>
+                ) : null}
+              </LinearGradient>
+
               {personalizationChips.length > 0 ? (
                 <ScrollView
                   horizontal
@@ -2548,6 +2583,75 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     scrollContent: {
       paddingHorizontal: 20,
       paddingBottom: 118,
+    },
+    forYouHero: {
+      borderRadius: 28,
+      paddingHorizontal: 18,
+      paddingVertical: 18,
+      marginTop: 6,
+      marginBottom: 14,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.06)',
+      shadowColor: '#000000',
+      shadowOpacity: isDark ? 0.18 : 0.08,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 10 },
+      elevation: 6,
+    },
+    forYouHeroTop: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 12,
+      marginBottom: 10,
+    },
+    forYouEyebrow: {
+      color: isDark ? 'rgba(255,255,255,0.76)' : COLORS.primary,
+      fontSize: 11,
+      fontWeight: '900',
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+      marginBottom: 6,
+    },
+    forYouTitle: {
+      color: isDark ? '#FFFFFF' : COLORS.textPrimary,
+      fontSize: 24,
+      lineHeight: 28,
+      fontWeight: '900',
+      letterSpacing: -0.7,
+      maxWidth: 250,
+    },
+    forYouBody: {
+      color: isDark ? 'rgba(255,255,255,0.82)' : COLORS.textSecondary,
+      fontSize: 14,
+      lineHeight: 20,
+      fontWeight: '600',
+    },
+    forYouSparkle: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.72)',
+    },
+    forYouChipRow: {
+      gap: 8,
+      paddingTop: 14,
+      paddingRight: 8,
+    },
+    forYouChip: {
+      borderRadius: 999,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.84)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.06)',
+    },
+    forYouChipText: {
+      color: isDark ? '#FFFFFF' : COLORS.textPrimary,
+      fontSize: 12,
+      fontWeight: '800',
     },
     personalizationRow: {
       gap: 8,

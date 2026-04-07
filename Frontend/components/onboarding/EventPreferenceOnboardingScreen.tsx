@@ -428,6 +428,26 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
         </View>
       </View>
 
+      <View
+        style={[
+          styles.coachBanner,
+          {
+            backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.72)',
+            borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.06)',
+          },
+        ]}
+      >
+        <View style={[styles.coachAvatar, { backgroundColor: `${COLORS.primary}16` }]}>
+          <Text style={[styles.coachAvatarText, { color: COLORS.primary }]}>M</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.coachLabel, { color: COLORS.textPrimary }]}>Maroon Coach</Text>
+          <Text style={[styles.coachMessage, { color: COLORS.textSecondary }]}>
+            Answer with your gut. You can always retune this later in Settings.
+          </Text>
+        </View>
+      </View>
+
       <View style={[styles.progressTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.08)' }]}>
         <View style={[styles.progressFill, { width: `${progress * 100}%`, backgroundColor: COLORS.primary }]} />
       </View>
@@ -637,6 +657,37 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: 'hidden',
     marginBottom: 12,
+  },
+  coachBanner: {
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 14,
+  },
+  coachAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coachAvatarText: {
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  coachLabel: {
+    fontSize: 13,
+    fontWeight: '900',
+    marginBottom: 3,
+  },
+  coachMessage: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
   },
   progressFill: {
     height: '100%',
