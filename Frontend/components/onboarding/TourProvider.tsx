@@ -207,6 +207,13 @@ export const TOUR_SEQUENCE: TourStep[] = [
   },
 ];
 
+const ENCOURAGEMENTS = [
+  'You are doing great.',
+  'One clear step at a time.',
+  'We will guide you through this.',
+  'You are almost there.',
+];
+
 function getTargetRegion(rect: TargetRect, width: number, height: number) {
   const horizontal = rect.x + rect.w / 2 < width / 3
     ? 'left side'
@@ -466,16 +473,6 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setBlockedHint(null);
     blockedTapCountRef.current = 0;
 
-    setTimeout(() => {
-      if (navigationRef.isReady()) {
-        try {
-          (navigationRef as any).navigate('Main', { screen: 'Dashboard' });
-        } catch (error) {
-          console.warn("TourProvider couldn't navigate to Dashboard on end", error);
-        }
-      }
-    }, 100);
-
     if (userId) {
       setTourCompleted(true);
       completeTour(userId).catch((error) => console.warn('Failed to persist tour completion:', error));
@@ -631,6 +628,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
   const stepLabel = currentDef ? `Step ${currentStep + 1} of ${TOUR_SEQUENCE.length}` : '';
   const regionHint = targetRect && currentDef ? `Highlighted in the ${getTargetRegion(targetRect, width, height)}.` : '';
+  const encouragement = ENCOURAGEMENTS[currentStep % ENCOURAGEMENTS.length];
 
   const showBlockedHint = useCallback((message?: string) => {
     if (!currentDef) {
@@ -890,6 +888,9 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
             ]}
             pointerEvents="box-none"
           >
+            <View style={[styles.cardGlow, styles.cardGlowPrimary, { backgroundColor: `${COLORS.primary}12` }]} />
+            <View style={[styles.cardGlow, styles.cardGlowSuccess]} />
+
             <View style={styles.tourHeader}>
               <View style={styles.headerLeft}>
                 <View style={styles.coachAvatar}>
@@ -927,6 +928,11 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
             <Text style={[styles.tourTitle, { color: COLORS.textPrimary }]}>{currentDef.title}</Text>
             <Text style={[styles.tourDescription, { color: COLORS.textPrimary }]}>{currentDef.instruction}</Text>
+
+            <View style={[styles.encouragementRow, { backgroundColor: 'rgba(255,255,255,0.56)' }]}>
+              <View style={[styles.encouragementDot, { backgroundColor: COLORS.primary }]} />
+              <Text style={[styles.encouragementText, { color: COLORS.textSecondary }]}>{encouragement}</Text>
+            </View>
 
             <View style={styles.rewardStrip}>
               <View style={[styles.rewardChip, { backgroundColor: `${COLORS.primary}12` }]}>
@@ -1051,6 +1057,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     borderRadius: 26,
     padding: 18,
+    overflow: 'hidden',
     elevation: 20,
     shadowOpacity: 0.18,
     shadowRadius: 18,
@@ -1058,6 +1065,23 @@ const styles = StyleSheet.create({
     zIndex: 10000,
     borderWidth: 1,
     gap: 12,
+  },
+  cardGlow: {
+    position: 'absolute',
+    borderRadius: 999,
+  },
+  cardGlowPrimary: {
+    width: 180,
+    height: 180,
+    top: -70,
+    right: -40,
+  },
+  cardGlowSuccess: {
+    width: 120,
+    height: 120,
+    bottom: -45,
+    left: -20,
+    backgroundColor: 'rgba(19,138,91,0.10)',
   },
   tourHeader: {
     flexDirection: 'row',
@@ -1128,6 +1152,26 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     lineHeight: 22,
+  },
+  encouragementRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: 'rgba(17,24,39,0.06)',
+  },
+  encouragementDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  encouragementText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   rewardStrip: {
     flexDirection: 'row',
