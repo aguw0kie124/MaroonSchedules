@@ -3,7 +3,7 @@
   "scripts": {
     "start": "expo start",
     "start:dev-client": "expo start --dev-client",
-    "backend": "cd Backend && ../.venv/bin/python3 -m uvicorn main:app --reload --host 0.0.0.0 --port 8000",
+    "backend": "cd Backend && python3 -m uvicorn main:app --reload --host 0.0.0.0 --port 8005",
     "android": "expo run:android",
     "ios": "expo run:ios"
   },
