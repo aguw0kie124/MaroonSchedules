@@ -67,7 +67,8 @@
           "icon": "./assets/adaptive-icon-v2.png",
           "color": "#500000"
         }
-      ]
+      ],
+      "@maplibre/maplibre-react-native"
     ],
     "runtimeVersion": {
       "policy": "appVersion"

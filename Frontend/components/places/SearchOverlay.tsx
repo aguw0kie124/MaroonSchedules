@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView } from "react-native";
 import { MapPin, ChevronRight, Bus } from "lucide-react-native";
 import type { CampusLocation } from "./types";
 import { getLocationSelectionId } from "./campusData";
@@ -11,6 +11,9 @@ interface SearchOverlayProps {
   busRouteResults: any[];
   isSearchExpanded: boolean;
   showSearchResults: boolean;
+  searchQuery: string;
+  isSearchingGlobal?: boolean;
+  globalSearchError?: string | null;
   onSelectLocation: (loc: CampusLocation) => void;
   onSelectBusRoute: (route: any) => void;
 }
@@ -22,6 +25,9 @@ export function SearchOverlay({
   busRouteResults,
   isSearchExpanded,
   showSearchResults,
+  searchQuery,
+  isSearchingGlobal = false,
+  globalSearchError = null,
   onSelectLocation,
   onSelectBusRoute,
 }: SearchOverlayProps) {
@@ -33,65 +39,105 @@ export function SearchOverlay({
     return loc.type;
   };
 
-  const visiblePlaceResults = searchResults.slice(0, 6);
+  const visiblePlaceResults = searchResults.slice(0, 10);
   const visibleRouteResults = busRouteResults.slice(0, 4);
   const hasPlaceResults = visiblePlaceResults.length > 0;
   const hasRouteResults = visibleRouteResults.length > 0;
+  const normalizedQuery = searchQuery.trim();
+  const hasQuery = normalizedQuery.length >= 2;
+  const showEmptyState =
+    hasQuery &&
+    !hasPlaceResults &&
+    !hasRouteResults &&
+    !isSearchingGlobal &&
+    !globalSearchError;
 
-  if (!isSearchExpanded || !showSearchResults || (!hasPlaceResults && !hasRouteResults)) {
+  if (
+    !isSearchExpanded ||
+    !showSearchResults ||
+    (!hasPlaceResults && !hasRouteResults && !isSearchingGlobal && !globalSearchError && !showEmptyState)
+  ) {
     return null;
   }
 
   return (
     <View style={styles.searchResults}>
-      {hasPlaceResults ? (
-        <>
-          <Text style={styles.searchSectionLabel}>Places</Text>
-          {visiblePlaceResults.map((loc) => (
-            <TouchableOpacity
-              key={getLocationSelectionId(loc)}
-              style={styles.searchItem}
-              onPress={() => onSelectLocation(loc)}
-            >
-              <MapPin size={15} color={COLORS.primary} />
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.searchItemName,
-                    { color: COLORS.textPrimary },
-                  ]}
-                >
-                  {loc.location}
-                </Text>
-                <Text style={styles.searchItemSub}>{getLocationSubtitle(loc)}</Text>
-              </View>
-              <ChevronRight size={16} color={COLORS.textTertiary} />
-            </TouchableOpacity>
-          ))}
-        </>
-      ) : null}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: 4 }}
+      >
+        {hasPlaceResults ? (
+          <>
+            <Text style={styles.searchSectionLabel}>Results</Text>
+            {visiblePlaceResults.map((loc) => (
+              <TouchableOpacity
+                key={getLocationSelectionId(loc)}
+                style={styles.searchItem}
+                onPress={() => onSelectLocation(loc)}
+              >
+                <MapPin size={15} color={COLORS.primary} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.searchItemName,
+                      { color: COLORS.textPrimary },
+                    ]}
+                  >
+                    {loc.location}
+                  </Text>
+                  <Text numberOfLines={2} style={styles.searchItemSub}>
+                    {getLocationSubtitle(loc)}
+                  </Text>
+                </View>
+                <ChevronRight size={16} color={COLORS.textTertiary} />
+              </TouchableOpacity>
+            ))}
+          </>
+        ) : null}
 
-      {hasRouteResults ? (
-        <>
-          <Text style={styles.searchSectionLabel}>Bus routes</Text>
-          {visibleRouteResults.map((route) => (
-            <TouchableOpacity
-              key={route.Key}
-              style={styles.searchItem}
-              onPress={() => onSelectBusRoute(route)}
-            >
-              <Bus size={15} color={COLORS.primary} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.searchItemName, { color: COLORS.textPrimary }]}>
-                  {route.ShortName ? `Route ${route.ShortName}` : route.Name}
-                </Text>
-                <Text style={styles.searchItemSub}>{route.Name}</Text>
-              </View>
-              <ChevronRight size={16} color={COLORS.textTertiary} />
-            </TouchableOpacity>
-          ))}
-        </>
-      ) : null}
+        {isSearchingGlobal ? (
+          <Text style={styles.searchSectionLabel}>Searching for more matches…</Text>
+        ) : null}
+
+        {globalSearchError ? (
+          <Text style={styles.searchSectionLabel}>{globalSearchError}</Text>
+        ) : null}
+
+        {showEmptyState ? (
+          <Text style={styles.searchSectionLabel}>
+            {`No matches found for "${normalizedQuery}".`}
+          </Text>
+        ) : null}
+
+        {hasRouteResults ? (
+          <>
+            <Text style={styles.searchSectionLabel}>Bus Routes</Text>
+            {visibleRouteResults.map((route) => (
+              <TouchableOpacity
+                key={route.Key}
+                style={styles.searchItem}
+                onPress={() => onSelectBusRoute(route)}
+              >
+                <Bus size={15} color={COLORS.primary} />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.searchItemName, { color: COLORS.textPrimary }]}
+                  >
+                    {route.ShortName ? `Route ${route.ShortName}` : route.Name}
+                  </Text>
+                  <Text numberOfLines={2} style={styles.searchItemSub}>
+                    {route.Name}
+                  </Text>
+                </View>
+                <ChevronRight size={16} color={COLORS.textTertiary} />
+              </TouchableOpacity>
+            ))}
+          </>
+        ) : null}
+      </ScrollView>
     </View>
   );
 }

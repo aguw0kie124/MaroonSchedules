@@ -34,6 +34,42 @@ async function buildHeaders(init: RequestInit = {}): Promise<Record<string, stri
     return headers;
 }
 
+function formatApiErrorMessage(value: unknown): string | null {
+    if (value == null) return null;
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+
+    if (Array.isArray(value)) {
+        const parts = value
+            .map((entry) => formatApiErrorMessage(entry))
+            .filter((entry): entry is string => !!entry);
+        return parts.length > 0 ? parts.join('\n') : null;
+    }
+
+    if (typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        if (typeof record.msg === 'string') {
+            const location = Array.isArray(record.loc)
+                ? record.loc
+                    .map((entry) => String(entry))
+                    .filter((entry) => entry !== 'body')
+                    .join(' > ')
+                : '';
+            return location ? `${location}: ${record.msg}` : record.msg;
+        }
+        if ('detail' in record) return formatApiErrorMessage(record.detail);
+        if ('message' in record) return formatApiErrorMessage(record.message);
+        if ('error' in record) return formatApiErrorMessage(record.error);
+        try {
+            return JSON.stringify(value);
+        } catch (_error) {
+            return String(value);
+        }
+    }
+
+    return String(value);
+}
+
 export async function apiFetch(path: string, init: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -72,8 +108,9 @@ export async function requestJson(path: string, init: RequestInit = {}, timeoutM
 
     if (!response.ok) {
         const message =
-            data?.detail ||
-            data?.message ||
+            formatApiErrorMessage(data?.detail) ||
+            formatApiErrorMessage(data?.message) ||
+            formatApiErrorMessage(data) ||
             `${init.method || 'GET'} ${path} failed with status ${response.status}`;
         throw new Error(message);
     }
@@ -261,4 +298,29 @@ export const deleteCampusConnector = async (clerkId: string, systemId: string) =
     return requestJson(`/campus/connectors/${encodeURIComponent(systemId)}?clerk_id=${encodeURIComponent(clerkId)}`, {
         method: 'DELETE',
     });
+};
+
+// ============================================================
+// Global Maps endpoints
+// ============================================================
+
+export const searchGlobalMapPlaces = async (query: string, limit = 8) => {
+    const params = new URLSearchParams({
+        query,
+        limit: String(limit),
+    });
+    return requestJson(`/maps/search?${params.toString()}`);
+};
+
+export const fetchGlobalMapRoute = async (payload: {
+    origin: { latitude: number; longitude: number };
+    destination: { latitude: number; longitude: number };
+    mode: 'walk' | 'drive' | 'bike';
+    origin_name?: string;
+    destination_name?: string;
+}) => {
+    return requestJson('/maps/route', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    }, 20000);
 };

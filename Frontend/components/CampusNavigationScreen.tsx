@@ -13,7 +13,7 @@ import {
   Dimensions,
 } from 'react-native';
 import * as Location from 'expo-location';
-import MapView, { Marker, Polyline, Region, PROVIDER_GOOGLE } from 'react-native-maps';
+import { Camera, MapView } from '@maplibre/maplibre-react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from './SharedUI';
 import { CampusSearchBar } from './CampusSearchBar';
@@ -22,13 +22,8 @@ import { CampusBottomSheet } from './CampusBottomSheet';
 import { MapPin } from 'lucide-react-native';
 import {
   BUILDINGS,
-  AMENITIES,
   TAMU_CENTER,
   DEFAULT_USER_LOCATION,
-  getBuildingIcon,
-  getAmenityIcon,
-  CampusBuilding,
-  CampusAmenity,
 } from '../data/campus';
 import {
   createRoute,
@@ -36,10 +31,10 @@ import {
   formatDistance,
   formatTime,
   buildDirectionSteps,
-  findNearestAmenity,
   WalkingRoute,
   DirectionStep,
   Coordinate,
+  findNearestAmenity,
 } from '../services/campusDirections';
 import {
   CampusSearchResult,
@@ -61,9 +56,19 @@ import {
   VoiceIntent,
 } from '../services/campusVoice';
 import { buildTransitPlan, CampusTransitPlan } from '../services/campusTransitRouting';
+import type { CampusLocation } from './places/types';
+import { buildExpandedPlacesDirectory, getLocationSelectionId } from './places/campusData';
+import { getCategoryColor, getCategoryIcon } from './places/utils';
+import { buildGlobalRoute, isCoordinateNearTexasAM, searchGlobalPlaces } from '../services/globalMap';
+import {
+  CAMPUS_MAP_STYLE_URL,
+  MapLibreMarker,
+  MapLibrePolylineOverlay,
+  useMapLibreCamera,
+} from './map/mapLibreUtils';
 
 type NavMode = 'idle' | 'selected' | 'navigating';
-type TravelMode = 'walk' | 'bus';
+type TravelMode = 'walk' | 'drive' | 'bus';
 
 type ManualOrigin = {
   name: string;
@@ -79,7 +84,41 @@ type SeededLocationParams = {
   type?: string;
 };
 
+type NavigationDestination = {
+  type: 'location';
+  location: CampusLocation;
+  name: string;
+};
+
 const SCREEN_HEIGHT = Dimensions.get('window').height;
+const CAMPUS_DISCOVERY_RADIUS_METERS = 20000;
+const AUTO_DRIVE_DISTANCE_METERS = 5000;
+
+function coerceSeededLocationType(type?: string): CampusLocation['type'] {
+  switch ((type || '').toLowerCase()) {
+    case 'library':
+      return 'Library';
+    case 'rec':
+    case 'recreation':
+      return 'Rec';
+    case 'dining':
+      return 'Dining';
+    case 'hub':
+      return 'Hub';
+    case 'parking':
+      return 'Parking';
+    case 'landmark':
+      return 'Landmark';
+    case 'housing':
+      return 'Housing';
+    case 'athletics':
+      return 'Athletics';
+    case 'general':
+      return 'General';
+    default:
+      return 'Academic';
+  }
+}
 
 function getSeededDestination(initialDestination?: SeededLocationParams) {
   if (!initialDestination?.name || initialDestination.latitude == null || initialDestination.longitude == null) {
@@ -87,15 +126,21 @@ function getSeededDestination(initialDestination?: SeededLocationParams) {
   }
 
   return {
-    type: 'building' as const,
+    type: 'location' as const,
     name: initialDestination.name,
-    building: {
-      id: initialDestination.id || `custom-${initialDestination.name}`,
-      name: initialDestination.name,
+    location: {
+      placeId: initialDestination.id || `custom-${initialDestination.name}`,
+      location: initialDestination.name,
       shortName: initialDestination.shortName || initialDestination.name,
-      latitude: initialDestination.latitude,
-      longitude: initialDestination.longitude,
-      type: (initialDestination.type as CampusBuilding['type']) || 'landmark',
+      coord: {
+        lat: initialDestination.latitude,
+        lng: initialDestination.longitude,
+      },
+      type: coerceSeededLocationType(initialDestination.type),
+      percent_full: 0,
+      is_live: false,
+      available_seats: null,
+      source: 'directory' as const,
     },
   };
 }
@@ -114,22 +159,146 @@ function getSeededOrigin(initialOrigin?: SeededLocationParams): ManualOrigin | n
   };
 }
 
+function normalizeCampusLabel(value?: string | null) {
+  return (value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function toCoordinateFromLocation(location: CampusLocation): Coordinate {
+  return {
+    latitude: location.coord.lat,
+    longitude: location.coord.lng,
+  };
+}
+
+function toNavigationDestination(location: CampusLocation): NavigationDestination {
+  return {
+    type: 'location',
+    location,
+    name: location.location,
+  };
+}
+
+function buildFallbackLocation(input: {
+  placeId?: string;
+  name: string;
+  shortName?: string;
+  latitude: number;
+  longitude: number;
+  type: CampusLocation['type'];
+}): CampusLocation {
+  return {
+    placeId: input.placeId || `fallback-${normalizeCampusLabel(input.name)}`,
+    location: input.name,
+    shortName: input.shortName || input.name,
+    coord: {
+      lat: input.latitude,
+      lng: input.longitude,
+    },
+    type: input.type,
+    percent_full: 0,
+    is_live: false,
+    available_seats: null,
+    source: 'directory',
+  };
+}
+
+function resolveLocationMatch(
+  locations: CampusLocation[],
+  input: {
+    placeId?: string;
+    name: string;
+    shortName?: string;
+    latitude: number;
+    longitude: number;
+    type: CampusLocation['type'];
+  },
+) {
+  const normalizedName = normalizeCampusLabel(input.name);
+  const normalizedShortName = normalizeCampusLabel(input.shortName);
+  const matched = locations.find((location) => {
+    const selectionId = getLocationSelectionId(location);
+    return (
+      (input.placeId && (location.placeId === input.placeId || selectionId === input.placeId)) ||
+      normalizeCampusLabel(location.location) === normalizedName ||
+      (!!normalizedShortName && normalizeCampusLabel(location.shortName) === normalizedShortName)
+    );
+  });
+
+  return matched || buildFallbackLocation(input);
+}
+
+function findNearestLibraryLocation(userCoordinate: Coordinate, locations: CampusLocation[]) {
+  const libraries = BUILDINGS.filter((building) => building.type === 'Library');
+  if (!libraries.length) return null;
+
+  let nearest = libraries[0];
+  let minDistance = computeDistanceMeters(userCoordinate, {
+    latitude: nearest.latitude,
+    longitude: nearest.longitude,
+  });
+
+  for (const library of libraries.slice(1)) {
+    const distance = computeDistanceMeters(userCoordinate, {
+      latitude: library.latitude,
+      longitude: library.longitude,
+    });
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearest = library;
+    }
+  }
+
+  return resolveLocationMatch(locations, {
+    placeId: nearest.id,
+    name: nearest.name,
+    shortName: nearest.shortName,
+    latitude: nearest.latitude,
+    longitude: nearest.longitude,
+    type: 'Library',
+  });
+}
+
+function resolveNearestAmenityLocation(
+  userCoordinate: Coordinate,
+  amenityType: 'restroom' | 'coffee' | 'dining' | 'study' | 'parking',
+  locations: CampusLocation[],
+) {
+  const amenity = findNearestAmenity(userCoordinate, amenityType);
+  if (!amenity) return null;
+
+  const typeByAmenity: Record<typeof amenityType, CampusLocation['type']> = {
+    restroom: 'General',
+    coffee: 'Dining',
+    dining: 'Dining',
+    study: 'Study',
+    parking: 'Parking',
+  };
+
+  return resolveLocationMatch(locations, {
+    placeId: amenity.id,
+    name: amenity.name,
+    shortName: amenity.name,
+    latitude: amenity.latitude,
+    longitude: amenity.longitude,
+    type: typeByAmenity[amenityType],
+  });
+}
+
 export function CampusNavigationScreen() {
-    const { COLORS, theme } = useTheme();
-    const styles = getStyles(COLORS, theme === 'dark');
+  const { COLORS, theme } = useTheme();
+  const styles = getStyles(COLORS, theme === 'dark');
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const initialDestinationParam = route.params?.initialDestination as SeededLocationParams | undefined;
   const initialOriginParam = route.params?.initialOrigin as SeededLocationParams | undefined;
   const initialTravelModeParam = route.params?.initialTravelMode as TravelMode | undefined;
+  const navigationLocations = useMemo(
+    () => buildExpandedPlacesDirectory().filter((location) => !location.searchOnly),
+    [],
+  );
   // ─── State ──────────────────────────────────────────────────
   const [navMode, setNavMode] = useState<NavMode>(initialDestinationParam ? 'selected' : 'idle');
-  const [destination, setDestination] = useState<{
-    type: 'building' | 'amenity';
-    building?: CampusBuilding;
-    amenity?: CampusAmenity;
-    name: string;
-  } | null>(() => getSeededDestination(initialDestinationParam));
+  const [destination, setDestination] = useState<NavigationDestination | null>(() => getSeededDestination(initialDestinationParam));
   const [manualOrigin, setManualOrigin] = useState<ManualOrigin | null>(() => getSeededOrigin(initialOriginParam));
   const [activeRoute, setActiveRoute] = useState<WalkingRoute | null>(null);
   const [transitPlan, setTransitPlan] = useState<CampusTransitPlan | null>(null);
@@ -144,33 +313,42 @@ export function CampusNavigationScreen() {
     latitude: DEFAULT_USER_LOCATION.latitude,
     longitude: DEFAULT_USER_LOCATION.longitude,
   });
-
-  const mapRef = useRef<MapView>(null);
+  const { cameraRef, defaultCamera, animateToRegion, animateCamera, fitToCoordinates } = useMapLibreCamera(TAMU_CENTER);
+  const mapRef = useRef<{
+    animateToRegion: typeof animateToRegion;
+    animateCamera: typeof animateCamera;
+    fitToCoordinates: typeof fitToCoordinates;
+  } | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
   const routeGenerationRef = useRef(0);
-  const seededOriginRef = useRef(false);
-  const seededTravelModeRef = useRef(false);
+  const seededDestinationKeyRef = useRef<string | null>(null);
+  const seededOriginKeyRef = useRef<string | null>(null);
+  const seededTravelModeRef = useRef<TravelMode | null>(null);
+  const didAutoCenterOnUserRef = useRef(false);
 
-  const initialRegion: Region = {
-    ...TAMU_CENTER,
-  };
+  const initialRegion = TAMU_CENTER;
 
-  const pinnedItems = useMemo(() => getPinnedItems(), []);
-  const seededDestinationRef = useRef(false);
   const preferredRouteKey = route.params?.preferredRouteKey as string | null | undefined;
   const tripPreference = route.params?.tripPreference as 'best' | 'fewer_transfers' | 'less_walking' | undefined;
   const routeStartCoord = manualOrigin?.coordinate || userCoord;
   const routeStartName = manualOrigin?.name || 'Current Location';
+  const isUserNearCampus = isCoordinateNearTexasAM(userCoord, CAMPUS_DISCOVERY_RADIUS_METERS);
+  const pinnedItems = useMemo(
+    () => (isUserNearCampus ? getPinnedItems() : []),
+    [isUserNearCampus],
+  );
   const destinationCoord: Coordinate | null = useMemo(() => (
-    destination?.building
-      ? { latitude: destination.building.latitude, longitude: destination.building.longitude }
-      : destination?.amenity
-        ? { latitude: destination.amenity.latitude, longitude: destination.amenity.longitude }
-        : null
+    destination?.location
+      ? { latitude: destination.location.coord.lat, longitude: destination.location.coord.lng }
+      : null
   ), [destination]);
+  const busModeAvailable = !destinationCoord || (
+    isCoordinateNearTexasAM(routeStartCoord, CAMPUS_DISCOVERY_RADIUS_METERS) &&
+    isCoordinateNearTexasAM(destinationCoord, CAMPUS_DISCOVERY_RADIUS_METERS)
+  );
   const activeTransitPlan = travelMode === 'bus' ? transitPlan : null;
-  const effectiveMode: TravelMode = activeTransitPlan ? 'bus' : 'walk';
+  const effectiveMode: TravelMode = activeTransitPlan ? 'bus' : travelMode === 'bus' ? 'walk' : travelMode;
   const hasActiveRoute = !!destination && (!!activeRoute || !!activeTransitPlan);
   const summaryMode: TravelMode = travelMode === 'bus' && (activeTransitPlan || routeLoading) ? 'bus' : effectiveMode;
   const displayedDistanceLabel = activeTransitPlan
@@ -188,7 +366,9 @@ export function CampusNavigationScreen() {
       ? `Ride ${activeTransitPlan.routeShortName || 'Bus'} to ${destination.name}`
       : travelMode === 'bus'
         ? `Plan a bus trip to ${destination.name}`
-        : `Walk to ${destination.name}`
+        : travelMode === 'drive'
+          ? `Drive to ${destination.name}`
+          : `Walk to ${destination.name}`
     : undefined;
   const displayedRouteMeta = activeTransitPlan
     ? `Board at ${activeTransitPlan.originStop.Name} • Exit at ${activeTransitPlan.destinationStop.Name}`
@@ -223,6 +403,57 @@ export function CampusNavigationScreen() {
       },
     ];
   }, [activeTransitPlan]);
+  const discoveryMarkers = useMemo(
+    () => (
+      destination
+        ? []
+        : isCoordinateNearTexasAM(routeStartCoord, CAMPUS_DISCOVERY_RADIUS_METERS)
+          ? navigationLocations.filter((location) => Number.isFinite(location.coord?.lat) && Number.isFinite(location.coord?.lng))
+          : []
+    ),
+    [destination, navigationLocations, routeStartCoord],
+  );
+  const selectDestination = (location: CampusLocation) => {
+    const nextCoord = toCoordinateFromLocation(location);
+    const distanceFromStart = computeDistanceMeters(routeStartCoord, nextCoord);
+    const originSupportsCampusTransit = isCoordinateNearTexasAM(routeStartCoord, CAMPUS_DISCOVERY_RADIUS_METERS);
+    const destinationSupportsCampusTransit = isCoordinateNearTexasAM(nextCoord, CAMPUS_DISCOVERY_RADIUS_METERS);
+    setDestination(toNavigationDestination(location));
+    setNavMode('selected');
+    if (travelMode === 'bus' && (!originSupportsCampusTransit || !destinationSupportsCampusTransit)) {
+      setTravelMode('drive');
+      setRouteNotice('Campus buses only operate near Texas A&M, so this trip switched to driving directions.');
+      return;
+    }
+    if (travelMode === 'walk' && distanceFromStart > AUTO_DRIVE_DISTANCE_METERS) {
+      setTravelMode('drive');
+      setRouteNotice('This is a longer trip, so driving directions are selected by default.');
+      return;
+    }
+    setRouteNotice(null);
+  };
+
+  const resolveQuickActionLocation = (
+    commandType: string,
+    originCoordinate: Coordinate,
+  ) => {
+    if (commandType === 'nearest-library') {
+      return findNearestLibraryLocation(originCoordinate, navigationLocations);
+    }
+
+    const amenityTypeMap: Record<string, 'restroom' | 'coffee' | 'dining' | 'study' | 'parking'> = {
+      'nearest-restroom': 'restroom',
+      'nearest-coffee': 'coffee',
+      'nearest-dining': 'dining',
+      'nearest-study': 'study',
+      'nearest-parking': 'parking',
+    };
+    const amenityType = amenityTypeMap[commandType];
+
+    return amenityType
+      ? resolveNearestAmenityLocation(originCoordinate, amenityType, navigationLocations)
+      : null;
+  };
 
   const fitMapToCoordinates = (
     coordinates: Coordinate[],
@@ -244,12 +475,13 @@ export function CampusNavigationScreen() {
           left: 56,
         };
 
-    if (coordinates.length > 1 && mapRef.current.fitToCoordinates) {
+    if (coordinates.length > 1) {
       Keyboard.dismiss();
       setTimeout(() => {
         mapRef.current?.fitToCoordinates(coordinates, {
           edgePadding,
           animated: true,
+          duration: 800,
         });
       }, 150);
       return;
@@ -262,7 +494,7 @@ export function CampusNavigationScreen() {
     const minLon = Math.min(...longitudes);
     const maxLon = Math.max(...longitudes);
 
-    const fitRegion: Region = {
+    const fitRegion = {
       latitude: (minLat + maxLat) / 2,
       longitude: (minLon + maxLon) / 2,
       latitudeDelta: Math.max((maxLat - minLat) * 1.6, 0.005),
@@ -273,6 +505,14 @@ export function CampusNavigationScreen() {
   };
 
   // ─── Effects ────────────────────────────────────────────────
+
+  useEffect(() => {
+    mapRef.current = {
+      animateToRegion,
+      animateCamera,
+      fitToCoordinates,
+    };
+  }, [animateCamera, animateToRegion, fitToCoordinates]);
 
   // Request location permission and start watching GPS
   useEffect(() => {
@@ -322,8 +562,29 @@ export function CampusNavigationScreen() {
 
   // Update nearby items when location changes
   useEffect(() => {
-    setNearbyItems(getNearbyItems(userCoord, 10));
-  }, [userCoord]);
+    setNearbyItems(isUserNearCampus ? getNearbyItems(userCoord, 10) : []);
+  }, [isUserNearCampus, userCoord]);
+
+  useEffect(() => {
+    if (didAutoCenterOnUserRef.current || destination || manualOrigin || !mapRef.current) return;
+    if (
+      userCoord.latitude === DEFAULT_USER_LOCATION.latitude &&
+      userCoord.longitude === DEFAULT_USER_LOCATION.longitude
+    ) {
+      return;
+    }
+
+    didAutoCenterOnUserRef.current = true;
+    mapRef.current.animateCamera(
+      {
+        center: userCoord,
+        zoom: isUserNearCampus ? 15 : 11,
+        pitch: 0,
+        heading: 0,
+      },
+      { duration: 900 },
+    );
+  }, [destination, isUserNearCampus, manualOrigin, userCoord]);
 
   // Pulse animation for user marker
   useEffect(() => {
@@ -351,64 +612,92 @@ export function CampusNavigationScreen() {
 
     if (!destCoord) return;
 
-    const walkingRoute = createRoute(routeStartCoord, destCoord);
-    const walkingSteps = buildDirectionSteps(
+    const fallbackRoute = createRoute(routeStartCoord, destCoord);
+    const fallbackSteps = buildDirectionSteps(
       routeStartName,
       destination.name,
       routeStartCoord,
       destCoord,
-      walkingRoute.distanceMeters,
-      walkingRoute.estimatedTimeMinutes,
+      fallbackRoute.distanceMeters,
+      fallbackRoute.estimatedTimeMinutes,
     );
-    setActiveRoute(walkingRoute);
-    setSteps(walkingSteps);
+    setActiveRoute(fallbackRoute);
+    setSteps(fallbackSteps);
 
     if (navMode === 'idle') setNavMode('selected');
     const generationId = routeGenerationRef.current + 1;
     routeGenerationRef.current = generationId;
 
-    if (travelMode === 'walk') {
-      setTransitPlan(null);
-      setRouteLoading(false);
-      setRouteNotice(null);
-      fitMapToCoordinates(walkingRoute.polyline);
-      if (Platform.OS !== 'web') Vibration.vibrate(50);
-      return;
-    }
-
     let cancelled = false;
     setRouteLoading(true);
-    setRouteNotice('Finding the best bus connection...');
-    fitMapToCoordinates(walkingRoute.polyline);
+    fitMapToCoordinates(fallbackRoute.polyline);
 
     (async () => {
-      try {
-        const plan = await buildTransitPlan(routeStartCoord, destCoord, routeStartName, destination.name, {
-          preferredRouteKey,
-          preference: tripPreference || 'best',
-        });
-        if (cancelled || generationId !== routeGenerationRef.current) return;
-
-        if (plan) {
-          setTransitPlan(plan);
-          setSteps(plan.steps);
-          setRouteNotice(
-            plan.nearestVehicleLabel
-              ? `${plan.nearestVehicleLabel} near ${plan.originStop.Name}.`
-              : `Walk to ${plan.originStop.Name} and ride route ${plan.routeShortName}.`,
-          );
-          fitMapToCoordinates(plan.polyline);
-        } else {
+      if (travelMode === 'bus') {
+        if (!busModeAvailable) {
           setTransitPlan(null);
-          setSteps(walkingSteps);
-          setRouteNotice('No active bus trip is available right now. Walking directions are ready instead.');
+          setSteps(fallbackSteps);
+          setRouteNotice('Campus buses only operate near Texas A&M. Choose Drive or Walk for this trip.');
+          setRouteLoading(false);
+          return;
+        }
+        setRouteNotice('Finding the best bus connection...');
+      } else {
+        setTransitPlan(null);
+        setRouteNotice(travelMode === 'drive' ? 'Finding the best driving route...' : 'Finding the best walking route...');
+      }
+
+      try {
+        if (travelMode === 'bus') {
+          const plan = await buildTransitPlan(routeStartCoord, destCoord, routeStartName, destination.name, {
+            preferredRouteKey,
+            preference: tripPreference || 'best',
+          });
+          if (cancelled || generationId !== routeGenerationRef.current) return;
+
+          if (plan) {
+            setTransitPlan(plan);
+            setSteps(plan.steps);
+            setRouteNotice(
+              plan.nearestVehicleLabel
+                ? `${plan.nearestVehicleLabel} near ${plan.originStop.Name}.`
+                : `Walk to ${plan.originStop.Name} and ride route ${plan.routeShortName}.`,
+            );
+            fitMapToCoordinates(plan.polyline);
+          } else {
+            setTransitPlan(null);
+            setSteps(fallbackSteps);
+            setRouteNotice('No active bus trip is available right now. Walking directions are ready instead.');
+          }
+        } else {
+          const routedTrip = await buildGlobalRoute({
+            origin: routeStartCoord,
+            destination: destCoord,
+            mode: travelMode === 'drive' ? 'drive' : 'walk',
+            originName: routeStartName,
+            destinationName: destination.name,
+          });
+          if (cancelled || generationId !== routeGenerationRef.current) return;
+
+          setTransitPlan(null);
+          setActiveRoute(routedTrip.route);
+          setSteps(routedTrip.steps.length > 0 ? routedTrip.steps : fallbackSteps);
+          setRouteNotice(null);
+          fitMapToCoordinates(routedTrip.route.polyline);
         }
       } catch (error) {
-        console.error('[CampusNav] Transit planning error:', error);
+        console.error('[CampusNav] Route planning error:', error);
         if (!cancelled && generationId === routeGenerationRef.current) {
           setTransitPlan(null);
-          setSteps(walkingSteps);
-          setRouteNotice('Bus directions are temporarily unavailable. Walking directions are ready instead.');
+          setActiveRoute(fallbackRoute);
+          setSteps(fallbackSteps);
+          setRouteNotice(
+            travelMode === 'bus'
+              ? 'Bus directions are temporarily unavailable. Walking directions are ready instead.'
+              : travelMode === 'drive'
+                ? 'Live driving directions are temporarily unavailable. Showing a direct route estimate instead.'
+                : 'Walking directions are temporarily unavailable. Showing a direct route estimate instead.',
+          );
         }
       } finally {
         if (!cancelled && generationId === routeGenerationRef.current) {
@@ -421,152 +710,106 @@ export function CampusNavigationScreen() {
     return () => {
       cancelled = true;
     };
-  }, [destination, destinationCoord, routeStartCoord.latitude, routeStartCoord.longitude, routeStartName, travelMode]);
+  }, [
+    busModeAvailable,
+    destination,
+    destinationCoord,
+    preferredRouteKey,
+    routeStartCoord.latitude,
+    routeStartCoord.longitude,
+    routeStartName,
+    travelMode,
+    tripPreference,
+  ]);
 
   useEffect(() => {
-    if (seededDestinationRef.current) return;
-    const initialDestination = route.params?.initialDestination as SeededLocationParams | undefined;
-    if (!initialDestination?.name || initialDestination?.latitude == null || initialDestination?.longitude == null) {
-      return;
-    }
+    const seededDestination = getSeededDestination(initialDestinationParam);
+    if (!seededDestination) return;
 
-    seededDestinationRef.current = true;
-    setDestination({
-      type: 'building',
-      name: initialDestination.name,
-      building: {
-        id: initialDestination.id || `custom-${initialDestination.name}`,
-        name: initialDestination.name,
-        shortName: initialDestination.shortName || initialDestination.name,
-        latitude: initialDestination.latitude,
-        longitude: initialDestination.longitude,
-        type: (initialDestination.type as CampusBuilding['type']) || 'landmark',
-      },
-    });
-  }, [route.params?.initialDestination]);
+    const key = [
+      seededDestination.location.placeId,
+      seededDestination.location.coord.lat,
+      seededDestination.location.coord.lng,
+    ].join(':');
+    if (seededDestinationKeyRef.current === key) return;
 
-  useEffect(() => {
-    if (seededOriginRef.current) return;
-    const initialOrigin = route.params?.initialOrigin as SeededLocationParams | undefined;
-    if (!initialOrigin?.name || initialOrigin?.latitude == null || initialOrigin?.longitude == null) {
-      return;
-    }
-
-    seededOriginRef.current = true;
-    setManualOrigin({
-      name: initialOrigin.name,
-      coordinate: {
-        latitude: initialOrigin.latitude,
-        longitude: initialOrigin.longitude,
-      },
-    });
-  }, [route.params?.initialOrigin]);
+    seededDestinationKeyRef.current = key;
+    setDestination(seededDestination);
+    setNavMode('selected');
+  }, [
+    initialDestinationParam?.id,
+    initialDestinationParam?.latitude,
+    initialDestinationParam?.longitude,
+    initialDestinationParam?.name,
+    initialDestinationParam?.shortName,
+    initialDestinationParam?.type,
+  ]);
 
   useEffect(() => {
-    if (seededTravelModeRef.current) return;
-    const initialTravelMode = route.params?.initialTravelMode as TravelMode | undefined;
-    if (!initialTravelMode) return;
-    seededTravelModeRef.current = true;
-    setTravelMode(initialTravelMode);
-  }, [route.params?.initialTravelMode]);
+    const seededOrigin = getSeededOrigin(initialOriginParam);
+    if (!seededOrigin) return;
+
+    const key = [
+      seededOrigin.name,
+      seededOrigin.coordinate.latitude,
+      seededOrigin.coordinate.longitude,
+    ].join(':');
+    if (seededOriginKeyRef.current === key) return;
+
+    seededOriginKeyRef.current = key;
+    setManualOrigin(seededOrigin);
+  }, [
+    initialOriginParam?.id,
+    initialOriginParam?.latitude,
+    initialOriginParam?.longitude,
+    initialOriginParam?.name,
+    initialOriginParam?.shortName,
+  ]);
+
+  useEffect(() => {
+    if (!initialTravelModeParam || seededTravelModeRef.current === initialTravelModeParam) return;
+    seededTravelModeRef.current = initialTravelModeParam;
+    setTravelMode(initialTravelModeParam);
+  }, [initialTravelModeParam]);
+
+  useEffect(() => {
+    if (travelMode !== 'bus' || !destinationCoord || busModeAvailable) return;
+    setTravelMode('drive');
+    setRouteNotice('Campus buses only operate near Texas A&M, so this trip switched to driving directions.');
+  }, [busModeAvailable, destinationCoord, travelMode]);
 
   // ─── Handlers ───────────────────────────────────────────────
   const handleSearchSelect = (result: CampusSearchResult) => {
     Keyboard.dismiss();
 
-    // Commands
     if (result.kind === 'command' && result.commandType) {
-      const typeMap: Record<string, CampusAmenity['type']> = {
-        'nearest-restroom': 'restroom',
-        'nearest-coffee': 'coffee',
-        'nearest-library': 'study', // use study rooms for library
-        'nearest-dining': 'dining',
-      };
-      const amenityType = typeMap[result.commandType];
-      if (amenityType) {
-        // For library command, find nearest library building instead
-        if (result.commandType === 'nearest-library') {
-          const libs = BUILDINGS.filter((b) => b.type === 'library');
-          let nearest = libs[0];
-          let minD = Infinity;
-          for (const lib of libs) {
-            const d = computeDistanceMeters(userCoord, { latitude: lib.latitude, longitude: lib.longitude });
-            if (d < minD) { minD = d; nearest = lib; }
-          }
-          if (nearest) {
-            setDestination({ type: 'building', building: nearest, name: nearest.name });
-          }
-        } else {
-          const amenity = findNearestAmenity(userCoord, amenityType);
-          if (amenity) {
-            setDestination({ type: 'amenity', amenity, name: amenity.name });
-          }
-        }
-      }
+      const location = resolveQuickActionLocation(result.commandType, routeStartCoord);
+      if (location) selectDestination(location);
       return;
     }
 
-    // Building
-    if (result.building) {
-      setDestination({ type: 'building', building: result.building, name: result.building.name });
+    if (result.location) {
+      selectDestination(result.location);
       return;
-    }
-
-    // Amenity
-    if (result.amenity) {
-      setDestination({ type: 'amenity', amenity: result.amenity, name: result.amenity.name });
     }
   };
 
   const handleOriginSelect = (result: CampusSearchResult) => {
     if (result.kind === 'command' && result.commandType) {
-      const typeMap: Record<string, CampusAmenity['type']> = {
-        'nearest-restroom': 'restroom',
-        'nearest-coffee': 'coffee',
-        'nearest-library': 'study',
-        'nearest-dining': 'dining',
-      };
-      if (result.commandType === 'nearest-library') {
-        const libs = BUILDINGS.filter((b) => b.type === 'library');
-        let nearest = libs[0];
-        let minD = Infinity;
-        for (const lib of libs) {
-          const d = computeDistanceMeters(userCoord, { latitude: lib.latitude, longitude: lib.longitude });
-          if (d < minD) { minD = d; nearest = lib; }
-        }
-        if (nearest) {
-          setManualOrigin({
-            name: nearest.name,
-            coordinate: { latitude: nearest.latitude, longitude: nearest.longitude },
-          });
-        }
-        return;
-      }
-      const amenityType = typeMap[result.commandType];
-      if (amenityType) {
-        const amenity = findNearestAmenity(userCoord, amenityType);
-        if (amenity) {
-          setManualOrigin({
-            name: amenity.name,
-            coordinate: { latitude: amenity.latitude, longitude: amenity.longitude },
-          });
-        }
+      const location = resolveQuickActionLocation(result.commandType, userCoord);
+      if (location) {
+        setManualOrigin({
+          name: location.location,
+          coordinate: toCoordinateFromLocation(location),
+        });
       }
       return;
     }
 
-    if (result.building) {
+    if (result.location) {
       setManualOrigin({
-        name: result.building.name,
-        coordinate: { latitude: result.building.latitude, longitude: result.building.longitude },
-      });
-      return;
-    }
-
-    if (result.amenity) {
-      setManualOrigin({
-        name: result.amenity.name,
-        coordinate: { latitude: result.amenity.latitude, longitude: result.amenity.longitude },
+        name: result.location.location,
+        coordinate: toCoordinateFromLocation(result.location),
       });
     }
   };
@@ -657,37 +900,31 @@ export function CampusNavigationScreen() {
   const executeVoiceIntent = (intent: VoiceIntent) => {
     switch (intent.type) {
       case 'BUILDING': {
-        const building = BUILDINGS.find((b) => b.id === intent.buildingId);
-        if (building) {
-          setDestination({ type: 'building', building, name: building.name });
+        const matchedLocation = navigationLocations.find((location) => (
+          location.placeId === intent.buildingId || getLocationSelectionId(location) === intent.buildingId
+        ));
+        if (matchedLocation) {
+          selectDestination(matchedLocation);
         } else {
           setVoiceBanner({ error: `Building "${intent.raw}" not found` });
         }
         break;
       }
       case 'NEAREST': {
-        const typeMap: Record<string, CampusAmenity['type']> = {
-          restroom: 'restroom',
-          coffee: 'coffee',
-          dining: 'dining',
-          library: 'study',
-          study: 'study',
-          parking: 'parking',
+        const commandByCategory: Record<string, string> = {
+          restroom: 'nearest-restroom',
+          coffee: 'nearest-coffee',
+          dining: 'nearest-dining',
+          library: 'nearest-library',
+          study: 'nearest-study',
+          parking: 'nearest-parking',
         };
-        const amenityType = typeMap[intent.category];
-        if (intent.category === 'library') {
-          const libs = BUILDINGS.filter((b) => b.type === 'library');
-          let nearest = libs[0];
-          let minD = Infinity;
-          for (const lib of libs) {
-            const d = computeDistanceMeters(userCoord, { latitude: lib.latitude, longitude: lib.longitude });
-            if (d < minD) { minD = d; nearest = lib; }
-          }
-          if (nearest) setDestination({ type: 'building', building: nearest, name: nearest.name });
-        } else if (amenityType) {
-          const amenity = findNearestAmenity(userCoord, amenityType);
-          if (amenity) setDestination({ type: 'amenity', amenity, name: amenity.name });
-          else setVoiceBanner({ error: `No ${intent.category} found nearby` });
+        const commandType = commandByCategory[intent.category];
+        const location = commandType ? resolveQuickActionLocation(commandType, userCoord) : null;
+        if (location) {
+          selectDestination(location);
+        } else {
+          setVoiceBanner({ error: `No ${intent.category} found nearby` });
         }
         break;
       }
@@ -696,7 +933,17 @@ export function CampusNavigationScreen() {
         if (results.length > 0) {
           handleSearchSelect(results[0]);
         } else {
-          setVoiceBanner({ error: `Could not find "${intent.query}"` });
+          searchGlobalPlaces(intent.query, { limit: 1 })
+            .then((matches) => {
+              if (matches.length > 0) {
+                selectDestination(matches[0]);
+              } else {
+                setVoiceBanner({ error: `Could not find "${intent.query}"` });
+              }
+            })
+            .catch(() => {
+              setVoiceBanner({ error: `Could not find "${intent.query}"` });
+            });
         }
         break;
       }
@@ -714,53 +961,54 @@ export function CampusNavigationScreen() {
       {/* Map */}
       <View style={styles.mapContainer}>
         <MapView
-          ref={mapRef}
           style={styles.map}
-          initialRegion={initialRegion}
-          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-          showsUserLocation={false}
-          showsCompass={true}
-          scrollEnabled={true}
+          mapStyle={CAMPUS_MAP_STYLE_URL}
+          compassEnabled
+          logoEnabled={false}
+          attributionEnabled={false}
           zoomEnabled={true}
           pitchEnabled={false}
           rotateEnabled={false}
         >
+          <Camera ref={cameraRef} defaultSettings={defaultCamera} />
+
           {/* Route polyline */}
           {(activeTransitPlan || activeRoute) && (
-            <Polyline
+            <MapLibrePolylineOverlay
+              id="campus-navigation-route"
               coordinates={activeTransitPlan?.polyline || activeRoute?.polyline || []}
-              strokeColor={activeTransitPlan?.routeColor || COLORS.primary}
-              strokeWidth={4}
-              lineDashPattern={activeTransitPlan ? undefined : [6, 4]}
+              color={activeTransitPlan?.routeColor || COLORS.primary}
+              width={4}
+              lineDasharray={activeTransitPlan ? undefined : [2, 2]}
             />
           )}
 
           {/* User location marker */}
-          <Marker
+          <MapLibreMarker
+            id="campus-navigation-user"
             coordinate={userCoord}
-            title="You are here"
             anchor={{ x: 0.5, y: 0.5 }}
           >
             <Animated.View style={[styles.userMarker, { transform: [{ scale: pulseAnim }] }]}>
               <MapPin size={18} color="#FFFFFF" />
             </Animated.View>
-          </Marker>
+          </MapLibreMarker>
           {manualOrigin && (
-            <Marker
+            <MapLibreMarker
+              id="campus-navigation-origin"
               coordinate={manualOrigin.coordinate}
-              title={`Start: ${manualOrigin.name}`}
               anchor={{ x: 0.5, y: 0.5 }}
             >
               <View style={styles.startMarker}>
                 <Text style={styles.startMarkerText}>S</Text>
               </View>
-            </Marker>
+            </MapLibreMarker>
           )}
           {transitStopMarkers.map((stop) => (
-            <Marker
+            <MapLibreMarker
               key={stop.key}
+              id={`campus-navigation-stop-${stop.key}`}
               coordinate={stop.coordinate}
-              title={`${stop.badge}: ${stop.title}`}
               anchor={{ x: 0.5, y: 1 }}
             >
               <View style={styles.transitStopMarkerWrap}>
@@ -778,66 +1026,52 @@ export function CampusNavigationScreen() {
                   stop.badge === 'Board' ? styles.transitStopPinBoard : styles.transitStopPinExit,
                 ]} />
               </View>
-            </Marker>
+            </MapLibreMarker>
           ))}
           {destinationCoord ? (
-            <Marker
+            <MapLibreMarker
+              id="campus-navigation-destination"
               coordinate={destinationCoord}
-              title={`Destination: ${destination.name}`}
               anchor={{ x: 0.5, y: 0.5 }}
             >
               <View style={styles.destinationMarker}>
                 <Text style={styles.destinationMarkerText}>E</Text>
               </View>
-            </Marker>
+            </MapLibreMarker>
           ) : null}
-          <Marker
+          <MapLibreMarker
+            id="campus-navigation-user-label"
             coordinate={{ latitude: userCoord.latitude + 0.00012, longitude: userCoord.longitude }}
             anchor={{ x: 0.5, y: 1 }}
           >
             <View style={styles.youBadge}>
               <Text style={styles.youBadgeText}>You are here</Text>
             </View>
-          </Marker>
+          </MapLibreMarker>
 
-          {/* Building markers */}
-          {!destination && BUILDINGS.map((b) => {
-            const isDestination = destination?.building?.id === b.id;
-            const Icon = getBuildingIcon(b.type);
+          {/* Discovery markers */}
+          {discoveryMarkers.map((location) => {
+            const markerColor = getCategoryColor(location.type);
             return (
-              <Marker
-                key={b.id}
-                coordinate={{ latitude: b.latitude, longitude: b.longitude }}
-                title={b.name}
-                description={b.shortName}
-                onPress={() => {
-                  setDestination({ type: 'building', building: b, name: b.name });
-                }}
+              <MapLibreMarker
+                key={getLocationSelectionId(location)}
+                id={`campus-navigation-discovery-${getLocationSelectionId(location)}`}
+                coordinate={toCoordinateFromLocation(location)}
+                onPress={() => selectDestination(location)}
+                anchor={{ x: 0.5, y: 0.5 }}
               >
-                <View style={[styles.buildingMarker, isDestination && styles.destMarker]}>
-                  <Icon size={18} color="#FFFFFF" />
+                <View
+                  style={[
+                    styles.buildingMarker,
+                    {
+                      backgroundColor: markerColor,
+                      borderColor: 'rgba(255,255,255,0.9)',
+                    },
+                  ]}
+                >
+                  {getCategoryIcon(location.type, '#FFFFFF', 18)}
                 </View>
-              </Marker>
-            );
-          })}
-
-          {/* Amenity markers */}
-          {!destination && AMENITIES.map((a) => {
-            const isDestination = destination?.amenity?.id === a.id;
-            const Icon = getAmenityIcon(a.type);
-            return (
-              <Marker
-                key={a.id}
-                coordinate={{ latitude: a.latitude, longitude: a.longitude }}
-                title={a.name}
-                onPress={() => {
-                  setDestination({ type: 'amenity', amenity: a, name: a.name });
-                }}
-              >
-                <View style={[styles.amenityMarker, isDestination && styles.destAmenityMarker]}>
-                  <Icon size={18} color="#FFFFFF" />
-                </View>
-              </Marker>
+              </MapLibreMarker>
             );
           })}
         </MapView>
@@ -869,6 +1103,7 @@ export function CampusNavigationScreen() {
                   placeholder="Choose a starting point"
                   showPinnedItems={false}
                   displayValue={manualOrigin?.name}
+                  enableGlobalSearch
                 />
               </View>
               <View style={[styles.searchFieldWrap, styles.destinationSearchFieldWrap]}>
@@ -877,6 +1112,7 @@ export function CampusNavigationScreen() {
                   onSelect={handleSearchSelect}
                   placeholder="Search destination"
                   displayValue={destination?.name}
+                  enableGlobalSearch
                 />
               </View>
             </View>
@@ -897,10 +1133,29 @@ export function CampusNavigationScreen() {
                 <Pressable
                   style={({ pressed }) => [
                     styles.modePill,
-                    travelMode === 'bus' && styles.modePillActive,
+                    travelMode === 'drive' && styles.modePillActive,
                     pressed && styles.btnPressed,
                   ]}
-                  onPress={() => setTravelMode('bus')}
+                  onPress={() => setTravelMode('drive')}
+                >
+                  <Text style={[styles.modePillText, travelMode === 'drive' && styles.modePillTextActive]}>
+                    Drive
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.modePill,
+                    travelMode === 'bus' && styles.modePillActive,
+                    !busModeAvailable && destinationCoord && styles.modePillDisabled,
+                    pressed && styles.btnPressed,
+                  ]}
+                  onPress={() => {
+                    if (!busModeAvailable && destinationCoord) {
+                      setRouteNotice('Campus buses only operate near Texas A&M. Use Drive or Walk for this trip.');
+                      return;
+                    }
+                    setTravelMode('bus');
+                  }}
                 >
                   <Text style={[styles.modePillText, travelMode === 'bus' && styles.modePillTextActive]}>
                     Bus
@@ -938,7 +1193,13 @@ export function CampusNavigationScreen() {
             distanceLabel={displayedDistanceLabel || ''}
             etaLabel={displayedEtaLabel || ''}
             steps={steps}
-            modeLabel={effectiveMode === 'bus' ? 'Bus Trip' : 'Walking'}
+            modeLabel={
+              effectiveMode === 'bus'
+                ? 'Bus Trip'
+                : effectiveMode === 'drive'
+                  ? 'Driving'
+                  : 'Walking'
+            }
             routeNote={displayedRouteNote}
             onEnd={handleEndDirections}
           />
@@ -1087,6 +1348,9 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   },
   modePillActive: {
     backgroundColor: COLORS.primary,
+  },
+  modePillDisabled: {
+    opacity: 0.45,
   },
   modePillText: {
     color: COLORS.textSecondary,

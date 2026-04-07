@@ -6,6 +6,7 @@ import {
   Alert,
   FlatList,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -78,6 +79,7 @@ import { TourTarget, useTour } from './onboarding/TourProvider';
 import { getPremiumName, getPremiumImage } from '../utils/userUtils';
 import { scheduleAdminEventReviewNotification } from '../services/notificationService';
 import { normalizeExternalUrl, normalizeImageUrl } from '../services/url';
+import { invalidateCampusPulseCache } from '../services/campusPulse';
 
 type PingCategory =
   | 'Free Food'
@@ -106,6 +108,18 @@ interface FeaturedEvent {
   categories?: Record<string, number>;
   isAdminEvent?: boolean;
   rsvpStatus?: string;
+}
+
+function parseFeaturedEventTime(value?: string | null): number | null {
+  if (!value) return null;
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function isFeaturedEventUpcoming(event: FeaturedEvent): boolean {
+  const relevantTime = parseFeaturedEventTime(event.endTime) ?? parseFeaturedEventTime(event.startTime);
+  if (relevantTime == null) return true;
+  return relevantTime >= Date.now();
 }
 
 interface PingCard {
@@ -339,6 +353,7 @@ export function CampusPingsScreen() {
 
   const featuredCards = useMemo(() => {
     return featuredEvents
+      .filter((event) => isFeaturedEventUpcoming(event))
       .filter((event) => categoryFilter === 'All' || mapOfficialEventCategory(event) === categoryFilter)
       .map((event) => {
         const canonicalLocation = getCanonicalLocationName(event.location);
@@ -402,7 +417,7 @@ export function CampusPingsScreen() {
         categories: event.categories || undefined,
         isAdminEvent: !!event.is_admin_event,
         rsvpStatus: event.rsvp_status ?? 'none',
-      }));
+      })).filter((event) => isFeaturedEventUpcoming(event));
       setFeaturedEvents(nextEvents);
     } catch (error) {
       console.warn('[Pings] Failed to load featured events', error);
@@ -555,8 +570,10 @@ export function CampusPingsScreen() {
         startAt,
         endAt,
         mediaUrl: uploadedImageUrl,
+        isAnonymous: composerAnonymous,
       });
 
+      invalidateCampusPulseCache();
       setComposerVisible(false);
       resetComposer();
       await loadUserPings();
@@ -570,11 +587,13 @@ export function CampusPingsScreen() {
   }, [
     composerBody,
     composerCategory,
+    composerAnonymous,
     composerImageUri,
     composerTimePreset,
     composerTitle,
     feedConnected,
     loadUserPings,
+    locationLookup,
     resetComposer,
     selectedLocation,
     user,
@@ -630,6 +649,7 @@ export function CampusPingsScreen() {
           onPress: async () => {
             try {
               await deletePing(ping.activityId!);
+              invalidateCampusPulseCache();
               setUserPings((current) => current.filter((entry) => entry.id !== ping.id));
               await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             } catch (error) {
@@ -1204,7 +1224,7 @@ export function CampusPingsScreen() {
                   behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                   style={{ width: '100%' }}
                 >
-                  <TouchableWithoutFeedback>
+                  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                     <View style={styles.modalCard}>
                       <View style={styles.modalHeader}>
                         <Text style={styles.modalTitle}>Create a ping</Text>
@@ -1232,6 +1252,7 @@ export function CampusPingsScreen() {
                         contentContainerStyle={styles.modalScrollContent}
                         showsVerticalScrollIndicator={false}
                         keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode="on-drag"
                       >
                         <Text style={styles.modalLabel}>Category</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
@@ -1368,7 +1389,7 @@ export function CampusPingsScreen() {
                           />
                         </View>
                         
-                        <View style={{ height: 100 }} />
+                        <View style={{ height: 160 }} />
                       </ScrollView>
 
                       <View style={styles.modalFooter}>
@@ -2036,6 +2057,7 @@ const getStyles = (COLORS: any) =>
     modalKeyboardWrap: {
       width: '100%',
       justifyContent: 'flex-end',
+      height: '100%',
     },
     modalCard: {
       backgroundColor: COLORS.background,
@@ -2044,10 +2066,11 @@ const getStyles = (COLORS: any) =>
       paddingHorizontal: 18,
       paddingTop: 18,
       paddingBottom: 16,
-      maxHeight: '88%',
+      height: '88%',
+      overflow: 'hidden',
     },
     modalScroll: {
-      flexGrow: 0,
+      flex: 1,
     },
     modalScrollContent: {
       paddingBottom: 12,

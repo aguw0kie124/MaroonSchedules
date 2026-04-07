@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Tuple
 import psycopg
 
 from routers.traffic import tracker
-from services import cache_service, place_registry_service
+from services import cache_service, campus_hub_service, place_registry_service
 from repositories import feed_repository
 from db_config import CONNECTION_PARAMS
 
@@ -15,6 +15,7 @@ ACTIVE_COLOR = "#FFB347"
 BUBBLING_COLOR = "#5ACD7C"
 BOOSTED_GOLD_COLOR = "#F5B301"
 PULSE_SNAPSHOT_TTL_SECONDS = 60
+PULSE_CACHE_LIMITS: Tuple[int, ...] = (8, 12, 25)
 
 
 def _parse_iso(iso_value: str | None) -> datetime | None:
@@ -81,6 +82,20 @@ def _ping_category_boost(category: str) -> int:
     return 3
 
 
+def _is_pulse_ping_post(ping: Dict[str, Any]) -> bool:
+    custom = ping.get("custom_data") or {}
+    post_type = str(ping.get("post_type") or "").strip().lower()
+    content_type = str(custom.get("content_type") or "").strip().lower()
+
+    if post_type == "ping":
+        return True
+    if content_type == "ping":
+        return True
+    if custom.get("ping_title") or custom.get("ping_category"):
+        return True
+    return False
+
+
 def _pulse_label_for(score: int) -> str:
     if score >= 60:
         return "Hot"
@@ -134,6 +149,8 @@ def _load_admin_events() -> List[Dict[str, Any]]:
                 )
                 return cur.fetchall()
     except Exception as exc:
+        if isinstance(exc, psycopg.errors.UndefinedTable):
+            return []
         print(f"[pulse_service] failed to load admin events: {exc}")
         return []
 
@@ -161,6 +178,11 @@ def _load_occupancy_by_place() -> Dict[str, int]:
     return occupancy
 
 
+def invalidate_pulse_map_cache() -> None:
+    for limit in PULSE_CACHE_LIMITS:
+        cache_service.delete(f"campus:pulse:map:v2:{limit}")
+
+
 def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
     cache_key = f"campus:pulse:map:v2:{limit}"
     cached = cache_service.get_json(cache_key)
@@ -168,7 +190,13 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
         return cached
 
     try:
-        pings = feed_repository.get_crowdping_feed(limit=80)
+        campus_hub_service._ensure_social_tables()
+    except Exception as exc:
+        print(f"[pulse_service] failed to ensure social tables: {exc}")
+
+    try:
+        raw_pings = feed_repository.get_crowdping_feed(post_types=["ping", "post"], limit=80)
+        pings = [ping for ping in raw_pings if _is_pulse_ping_post(ping)]
     except Exception as exc:
         print(f"[pulse_service] DB query failed for crowdping feed: {exc}")
         pings = []

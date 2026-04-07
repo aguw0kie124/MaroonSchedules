@@ -4,6 +4,7 @@ import { Calendar as CalendarIcon, MapPin, BadgeCheck, Heart, Share2, Map } from
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { TAMUEvent, CATEGORY_META, classifyCategory, formatDate, formatTime, stripHtml, handleGoogleCalendar, openNativeMaps } from './EventUtils';
 import { useTheme } from '../SharedUI';
+import { TagChips } from '../common/TagChips';
 
 const styles = StyleSheet.create({
   modalOverlay: {
@@ -193,6 +194,7 @@ export function EventDetailModal({
                 {stripHtml(event.description)}
               </Text>
             ) : null}
+            <TagChips tags={event.access_tags} label="Audience tags" />
 
             <Pressable
               style={[styles.primaryDetailButton, { backgroundColor: COLORS.primary }]}

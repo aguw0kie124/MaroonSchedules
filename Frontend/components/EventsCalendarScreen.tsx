@@ -63,6 +63,7 @@ import { useSessionStore } from '../store/sessionStore';
 import { scheduleAdminEventReviewNotification, scheduleEventNotification } from '../services/notificationService';
 import { promptGuestLogin } from '../utils/guestAccess';
 import { blockUser, reportContent } from '../services/streamFeeds';
+import { TagChips } from './common/TagChips';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.24;
@@ -85,6 +86,7 @@ interface CampusEventResponse {
   host_name?: string | null;
   source_name?: string | null;
   tags?: string[] | null;
+  access_tags?: string[] | null;
   has_food?: boolean;
   food_confidence?: number;
   food_type?: string | null;
@@ -107,6 +109,7 @@ interface TAMUEvent {
   description?: string | null;
   url?: string;
   tags?: string[] | null;
+  access_tags?: string[] | null;
   event_types?: string[] | null;
   group_title?: string;
   location_lat?: number | null;
@@ -259,6 +262,7 @@ function getSearchBlob(event: TAMUEvent) {
     event.location_title,
     event.group_title,
     ...(event.tags || []),
+    ...(event.access_tags || []),
     ...(event.event_types || []),
   ]
     .filter(Boolean)
@@ -457,6 +461,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             description: event.description || event.summary || null,
             url: event.link || event.source_url || '',
             tags: event.tags || null,
+            access_tags: event.access_tags || null,
             event_types: event.has_food ? ['Free Food'] : null,
             group_title: event.organization_name || event.host_name || event.source_name || '',
             location_lat: event.location_lat ?? null,
@@ -1985,6 +1990,7 @@ function DetailModal({
                 {stripHtml(event.description)}
               </Text>
             ) : null}
+            <TagChips tags={event.access_tags} label="Audience tags" />
 
             <TourTarget name="event-rsvp">
               <Pressable

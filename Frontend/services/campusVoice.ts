@@ -5,8 +5,8 @@
 
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
-import { BUILDINGS, AMENITIES } from '../data/campus';
 import { API_URL } from '../config';
+import { buildExpandedPlacesDirectory, getLocationSelectionId } from '../components/places/campusData';
 
 export type VoiceIntent =
   | { type: 'BUILDING'; buildingId: string; raw: string }
@@ -16,6 +16,7 @@ export type VoiceIntent =
 
 // ─── Recording ──────────────────────────────────────────────
 let recording: Audio.Recording | null = null;
+const VOICE_LOCATIONS = buildExpandedPlacesDirectory();
 
 export async function requestMicPermission(): Promise<boolean> {
   const { status } = await Audio.requestPermissionsAsync();
@@ -68,9 +69,15 @@ function extractLocalIntent(text: string): VoiceIntent {
   }
 
   // Check building names
-  for (const b of BUILDINGS) {
-    if (t.includes(b.shortName.toLowerCase()) || t.includes(b.name.toLowerCase())) {
-      return { type: 'BUILDING', buildingId: b.id, raw };
+  for (const location of VOICE_LOCATIONS) {
+    const shortName = location.shortName?.toLowerCase() || '';
+    const locationName = location.location.toLowerCase();
+    if ((shortName && t.includes(shortName)) || t.includes(locationName)) {
+      return {
+        type: 'BUILDING',
+        buildingId: location.placeId || getLocationSelectionId(location),
+        raw,
+      };
     }
   }
 

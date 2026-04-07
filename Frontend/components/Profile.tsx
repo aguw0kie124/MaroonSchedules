@@ -47,7 +47,7 @@ import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
 
-import { fetchCampusOverview } from '../api/client';
+import { fetchCampusOverview, fetchUserProfile } from '../api/client';
 import { PARKING_PERMIT_OPTIONS, useAppShellStore } from '../store/appShellStore';
 import { useSessionStore } from '../store/sessionStore';
 import { deleteAccount, getBlockedUsers, unblockUser } from '../services/streamFeeds';
@@ -55,6 +55,7 @@ import { useTour, TourTarget } from './onboarding/TourProvider';
 import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme } from './SharedUI';
 import { navigateToLogin } from '../utils/guestAccess';
+import { TagChips } from './common/TagChips';
 
 const SUPPORT_CONTACT_URL = 'mailto:tejtalluri1@gmail.com?subject=MaroonLife%20Support';
 
@@ -179,6 +180,7 @@ export function Profile() {
   const setNotificationsEnabled = useAppShellStore((state) => state.setNotificationsEnabled);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
+  const [profileTags, setProfileTags] = useState<string[]>([]);
 
   const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
   const accentRatio = useMemo(() => getRatioFromColor(accentColor), [accentColor]);
@@ -218,6 +220,14 @@ export function Profile() {
           setLoadingAcademicStatus(false);
         }
       });
+
+    fetchUserProfile(user.id)
+      .then((data) => {
+        if (!cancelled) {
+          setProfileTags(Array.isArray(data?.tags) ? data.tags : []);
+        }
+      })
+      .catch((error) => console.warn('Failed to load profile tags:', error));
 
     return () => {
       cancelled = true;
@@ -265,6 +275,8 @@ export function Profile() {
     try {
       const data = await fetchCampusOverview(user.id);
       setAcademicStatus(data?.academic || null);
+      const profile = await fetchUserProfile(user.id);
+      setProfileTags(Array.isArray(profile?.tags) ? profile.tags : []);
       if (activeTab === 'personal') {
         await loadBlockedUsers();
       }
@@ -425,6 +437,7 @@ export function Profile() {
             </Text>
           </View>
         </View>
+        <TagChips tags={profileTags} label="Your access tags" />
       </View>
 
 
@@ -504,6 +517,21 @@ export function Profile() {
         </Pressable>
 
         
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Club Access</Text>
+
+        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('ClubAccess')}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(80, 0, 0, 0.12)' }]}>
+            <Shield size={20} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Request club event access</Text>
+            <Text style={styles.toolSubtitle}>Join organization access groups and review your active tags.</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
       </View>
 
       <View style={styles.section}>
@@ -1288,6 +1316,11 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       fontWeight: '700',
       color: COLORS.textPrimary,
       marginBottom: 4,
+    },
+    toolSubtitle: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: COLORS.textSecondary,
     },
     accentSliderCard: {
       borderRadius: 22,

@@ -30,6 +30,7 @@ export function useEvents() {
             description: event.description || event.summary || null,
             url: event.link || event.source_url || '',
             tags: event.tags || null,
+            access_tags: event.access_tags || null,
             event_types: event.has_food ? ['Free Food'] : null,
             group_title: event.host_name || event.source_name || '',
             location_lat: event.location_lat ?? null,

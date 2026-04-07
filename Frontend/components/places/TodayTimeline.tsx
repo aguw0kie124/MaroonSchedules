@@ -6,9 +6,8 @@ import {
   TouchableOpacity,
   Linking,
 } from "react-native";
-import { Compass, Calendar } from "lucide-react-native";
+import { Compass } from "lucide-react-native";
 import { TourTarget, useTour } from "../onboarding/TourProvider";
-import { useNavigation } from "@react-navigation/native";
 import type { ScheduleMeetingEntry, ScheduleMapOption } from "./types";
 
 interface TodayTimelineProps {
@@ -27,7 +26,6 @@ export function TodayTimeline({
   onGetDirections,
 }: TodayTimelineProps) {
   const { advanceStep, activeTargetName } = useTour();
-  const navigation = useNavigation<any>();
 
   // No internal timer; relies on Parent's Master Timer in PlacesMapScreen.tsx 
   // for synchronization of list collapse and tour step advancement.
@@ -58,6 +56,22 @@ export function TodayTimeline({
     });
   }, [activeScheduleOption]);
 
+  const palette = React.useMemo(
+    () => ({
+      timeline: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.12)",
+      time: isDark ? "#FFFFFF" : COLORS.textPrimary,
+      timeMuted: isDark ? "#AAA" : COLORS.textSecondary,
+      cardBg: isDark ? "rgba(255,255,255,0.04)" : "#FFFFFF",
+      cardBorder: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,12,14,0.09)",
+      title: isDark ? "#FFFFFF" : COLORS.textPrimary,
+      location: isDark ? "#AAA" : COLORS.textSecondary,
+      classBadgeBg: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,12,14,0.06)",
+      classBadgeText: isDark ? "#AAA" : COLORS.textSecondary,
+      dotBorder: isDark ? "rgba(12,12,14,1)" : "#FFFFFF",
+    }),
+    [COLORS.textPrimary, COLORS.textSecondary, isDark],
+  );
+
   if (!activeScheduleOption || !sortedEntries.length) {
     return (
       <View style={localStyles.emptyContainer}>
@@ -86,22 +100,6 @@ export function TodayTimeline({
   const getDotColor = (type?: string) => {
     return type === "event" ? "#FF9500" : "#500000"; // Orange for events, Maroon for classes
   };
-
-  const palette = React.useMemo(
-    () => ({
-      timeline: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.12)",
-      time: isDark ? "#FFFFFF" : COLORS.textPrimary,
-      timeMuted: isDark ? "#AAA" : COLORS.textSecondary,
-      cardBg: isDark ? "rgba(255,255,255,0.04)" : "#FFFFFF",
-      cardBorder: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,12,14,0.09)",
-      title: isDark ? "#FFFFFF" : COLORS.textPrimary,
-      location: isDark ? "#AAA" : COLORS.textSecondary,
-      classBadgeBg: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,12,14,0.06)",
-      classBadgeText: isDark ? "#AAA" : COLORS.textSecondary,
-      dotBorder: isDark ? "rgba(12,12,14,1)" : "#FFFFFF",
-    }),
-    [COLORS.textPrimary, COLORS.textSecondary, isDark],
-  );
 
   return (
     <TourTarget name="schedule-preview">

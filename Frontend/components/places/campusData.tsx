@@ -13,8 +13,12 @@ import {
   GraduationCap,
   Flame,
 } from "lucide-react-native";
-import { BUILDINGS, AMENITIES } from "../../data/campus";
-import LOCAL_OSM_PLACES_PAYLOAD from "../../data/osm_places_tamu_10mi.json";
+import {
+  BUILDINGS,
+  AMENITIES,
+  CAMPUS_REGISTRY_PLACES,
+  type CampusRegistryPlaceRecord,
+} from "../../data/campus";
 import type { CampusLocation, LocationType } from "./types";
 
 // ── Canonical naming ──────────────────────────────────────────
@@ -27,6 +31,10 @@ export const CANONICAL_LOCATION_ALIASES: Record<string, string> = {
   "Southside Rec Center": "Southside Recreation Center",
   "Polo Road Rec Center": "Polo Road Recreation Center",
   "Evans Library": "Sterling C. Evans Library",
+  "Sterling C. Evans Library Annex": "Evans Library Annex",
+  "Commons Dining Hall": "The Commons Dining Hall",
+  "The Commons": "The Commons Dining Hall",
+  "Commons": "The Commons Dining Hall",
   "Memorial Student Center (MSC)": "Memorial Student Center",
 };
 
@@ -61,15 +69,16 @@ export function getCanonicalLocationName(name: string): string {
 }
 
 export function getCanonicalCoords(
-  name: string,
-  fallback: { lat: number; lng: number },
+  name: string
 ): { lat: number; lng: number } {
   const canonicalName = getCanonicalLocationName(name);
-  return (
-    BUILDING_COORDS.get(canonicalName) ||
-    AMENITY_COORDS.get(canonicalName) ||
-    fallback
-  );
+  const coords = BUILDING_COORDS.get(canonicalName) || AMENITY_COORDS.get(canonicalName);
+  
+  if (!coords) {
+    console.warn(`[campusData] No coordinates found for "${name}" (canonical: "${canonicalName}") in Master Registry.`);
+    return { lat: 30.6153, lng: -96.3410 }; // Default to campus center if absolutely missing
+  }
+  return coords;
 }
 
 // ── Campus density zones ──────────────────────────────────────
@@ -85,10 +94,7 @@ export const CAMPUS_ZONES: Array<{
 }> = [
   {
     name: "Student Recreation Center",
-    ...getCanonicalCoords("Student Recreation Center", {
-      lat: 30.6094,
-      lng: -96.34,
-    }),
+    ...getCanonicalCoords("Student Recreation Center"),
     peak: 70,
     off: 10,
     radius: 220,
@@ -97,10 +103,7 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "Southside Recreation Center",
-    ...getCanonicalCoords("Southside Recreation Center", {
-      lat: 30.6093,
-      lng: -96.339,
-    }),
+    ...getCanonicalCoords("Southside Recreation Center"),
     peak: 65,
     off: 10,
     radius: 200,
@@ -108,10 +111,7 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "Polo Road Recreation Center",
-    ...getCanonicalCoords("Polo Road Recreation Center", {
-      lat: 30.6237,
-      lng: -96.3395,
-    }),
+    ...getCanonicalCoords("Polo Road Recreation Center"),
     peak: 55,
     off: 8,
     radius: 200,
@@ -119,10 +119,7 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "Sterling C. Evans Library",
-    ...getCanonicalCoords("Sterling C. Evans Library", {
-      lat: 30.6171,
-      lng: -96.3387,
-    }),
+    ...getCanonicalCoords("Sterling C. Evans Library"),
     peak: 82,
     off: 18,
     radius: 160,
@@ -130,10 +127,7 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "Evans Library Annex",
-    ...getCanonicalCoords("Evans Library Annex", {
-      lat: 30.6168,
-      lng: -96.3383,
-    }),
+    ...getCanonicalCoords("Evans Library Annex"),
     peak: 70,
     off: 15,
     radius: 120,
@@ -141,10 +135,7 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "West Campus Library",
-    ...getCanonicalCoords("West Campus Library", {
-      lat: 30.6146,
-      lng: -96.344,
-    }),
+    ...getCanonicalCoords("West Campus Library"),
     peak: 60,
     off: 14,
     radius: 160,
@@ -152,10 +143,7 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "Memorial Student Center",
-    ...getCanonicalCoords("Memorial Student Center", {
-      lat: 30.6123,
-      lng: -96.3415,
-    }),
+    ...getCanonicalCoords("Memorial Student Center"),
     peak: 85,
     off: 15,
     radius: 180,
@@ -163,10 +151,7 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "Polo Road Garage Dining",
-    ...getCanonicalCoords("Polo Road Garage Dining", {
-      lat: 30.6235,
-      lng: -96.3388,
-    }),
+    ...getCanonicalCoords("Polo Road Garage Dining"),
     peak: 80,
     off: 10,
     radius: 180,
@@ -174,13 +159,18 @@ export const CAMPUS_ZONES: Array<{
   },
   {
     name: "Sbisa Dining Hall",
-    ...getCanonicalCoords("Sbisa Dining Hall", {
-      lat: 30.617135,
-      lng: -96.343777,
-    }),
+    ...getCanonicalCoords("Sbisa Dining Hall"),
     peak: 70,
     off: 5,
     radius: 150,
+    type: "Dining",
+  },
+  {
+    name: "The Commons Dining Hall",
+    ...getCanonicalCoords("The Commons Dining Hall"),
+    peak: 75,
+    off: 12,
+    radius: 170,
     type: "Dining",
   },
 ];
@@ -256,13 +246,52 @@ export const STATIC_LOCATION_META: Record<string, Partial<CampusLocation>> = {
 };
 
 // ── Type mapping helpers ──────────────────────────────────────
+export function normalizeLocationType(type?: string | null): LocationType {
+  const normalized = (type || "").trim().toLowerCase();
+
+  if (normalized === "hub") return "Hub";
+  if (["dining", "coffee", "cafe", "restaurant", "food"].includes(normalized))
+    return "Dining";
+  if (normalized === "library") return "Library";
+  if (["recreation", "rec", "gym", "fitness"].includes(normalized)) return "Rec";
+  if (["academic", "building"].includes(normalized)) return "Academic";
+  if (["parking", "garage"].includes(normalized)) return "Parking";
+  if (normalized === "landmark") return "Landmark";
+  if (normalized === "housing") return "Housing";
+  if (normalized === "athletics") return "Athletics";
+  if (["study", "restroom", "general", ""].includes(normalized)) return "General";
+
+  if (
+    [
+      "Rec",
+      "Library",
+      "Study",
+      "Dining",
+      "Hub",
+      "General",
+      "Academic",
+      "Parking",
+      "Landmark",
+      "Housing",
+      "Athletics",
+    ].includes(type || "")
+  ) {
+    return type as LocationType;
+  }
+
+  return "General";
+}
+
 export function mapBuildingType(type: string): LocationType {
-  switch (type) {
+  const norm = type.toLowerCase();
+  switch (norm) {
     case "library":
       return "Library";
     case "recreation":
+    case "rec":
       return "Rec";
     case "dining":
+    case "hub":
       return "Dining";
     case "academic":
       return "Academic";
@@ -273,20 +302,23 @@ export function mapBuildingType(type: string): LocationType {
     case "landmark":
       return "Landmark";
     default:
-      return "General";
+      return normalizeLocationType(type);
   }
 }
 
 export function mapAmenityType(type: string): LocationType {
-  switch (type) {
+  switch (type.toLowerCase()) {
+    case "coffee":
     case "dining":
       return "Dining";
     case "study":
       return "General";
+    case "restroom":
+      return "General";
     case "parking":
       return "Parking";
     default:
-      return "General";
+      return normalizeLocationType(type);
   }
 }
 
@@ -326,63 +358,207 @@ export function getBuildingCategory(buildingName?: string | null): string {
 
   // Check lookup type
   const building = BUILDING_LOOKUP.get(norm);
-  if (building?.type === "recreation") return "rec";
-  if (building?.type === "library") return "library";
-  if (building?.type === "dining") return "dining";
+  const bType = building?.type?.toLowerCase() || "";
+  if (bType === "recreation" || bType === "rec") return "rec";
+  if (bType === "library") return "library";
+  if (bType === "dining" || bType === "hub") return "dining";
   
   return "academic";
 }
 
 // ── Build the full campus directory ───────────────────────────
-export function buildCampusDirectory(): CampusLocation[] {
-  const buildingLocations = BUILDINGS.map((building) => ({
-    placeId: building.id,
-    location: building.name,
-    shortName: building.shortName,
-    percent_full: 0,
-    type: mapBuildingType(building.type),
-    is_live: false,
-    available_seats: null,
-    coord: { lat: building.latitude, lng: building.longitude },
-    source: "directory" as const,
-    ...STATIC_LOCATION_META[building.name],
-  }));
+function parseFeatureList(features?: CampusRegistryPlaceRecord["features"]): string[] | undefined {
+  if (Array.isArray(features)) {
+    return features.filter((feature): feature is string => typeof feature === "string" && feature.trim().length > 0);
+  }
 
-  const amenityLocations = AMENITIES.map((amenity) => ({
-    placeId: amenity.id,
-    location: amenity.name,
-    shortName: amenity.name,
-    percent_full: 0,
-    type: mapAmenityType(amenity.type),
-    is_live: false,
-    available_seats: null,
-    coord: { lat: amenity.latitude, lng: amenity.longitude },
-    source: "directory" as const,
-  }));
+  if (typeof features !== "string" || !features.trim()) {
+    return undefined;
+  }
 
-  const merged = new Map<string, CampusLocation>();
-  [...buildingLocations, ...amenityLocations].forEach((location) => {
-    merged.set(location.location, location);
-  });
-  return Array.from(merged.values());
+  try {
+    const parsed = JSON.parse(features);
+    return Array.isArray(parsed)
+      ? parsed.filter((feature): feature is string => typeof feature === "string" && feature.trim().length > 0)
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
-type LocalOSMPlaceRecord = {
-  place_id: string;
-  name: string;
-  short_name?: string | null;
-  type: string;
-  lat: number;
-  lng: number;
-  aliases?: string[];
-  description?: string | null;
-  address?: string | null;
-  source?: string | null;
-  search_only?: boolean;
+function toRegistryCampusLocation(place: CampusRegistryPlaceRecord): CampusLocation {
+  const staticMeta = STATIC_LOCATION_META[place.name] || {};
+
+  return {
+    placeId: place.place_id,
+    location: place.name,
+    shortName: place.short_name || place.name,
+    percent_full: 0,
+    type: normalizeLocationType(staticMeta.type || place.type),
+    is_live: false,
+    available_seats: null,
+    coord: { lat: place.lat, lng: place.lng },
+    aliases: Array.isArray(place.aliases) ? place.aliases : [],
+    hours: staticMeta.hours || place.hours || undefined,
+    address: place.address || undefined,
+    description: staticMeta.description || place.description || undefined,
+    features: staticMeta.features || parseFeatureList(place.features),
+    source: (place.source as CampusLocation["source"]) || "snapshot",
+    searchOnly: place.search_only !== false,
+  };
+}
+
+export function buildCampusDirectory(): CampusLocation[] {
+  return CAMPUS_REGISTRY_PLACES.map(toRegistryCampusLocation);
+}
+
+type FoodCourtGroupConfig = {
+  id: string;
+  canonicalParentPlaceId: string;
+  canonicalParentName: string;
+  aliasParentPlaceIds: string[];
+  aliasParentNames: string[];
+  childPlaceIds: string[];
+  childNamePatterns: RegExp[];
 };
 
+const FOOD_COURT_GROUPS: FoodCourtGroupConfig[] = [
+  {
+    id: "msc-food-court",
+    canonicalParentPlaceId: "msc",
+    canonicalParentName: "Memorial Student Center",
+    aliasParentPlaceIds: ["msc"],
+    aliasParentNames: ["Memorial Student Center", "Memorial Student Center (MSC)"],
+    childPlaceIds: [
+      "cfa",
+      "panda-msc",
+      "revs-msc-food",
+      "houston-msc",
+      "abu-omar-msc",
+      "starbucks-msc",
+    ],
+    childNamePatterns: [/\(msc\)\s*$/i, /\s-\s*msc\s*$/i],
+  },
+  {
+    id: "polo-food-court",
+    canonicalParentPlaceId: "polo-garage-food",
+    canonicalParentName: "Polo Road Garage Dining",
+    aliasParentPlaceIds: ["polo-garage-food", "garage-polo"],
+    aliasParentNames: ["Polo Road Garage Dining", "Polo Road Garage"],
+    childPlaceIds: ["panda-polo", "salata-polo", "shake-polo"],
+    childNamePatterns: [/\(polo\)\s*$/i, /\s-\s*polo(?:\s+garage)?\s*$/i],
+  },
+];
+
+function matchesFoodCourtParent(
+  group: FoodCourtGroupConfig,
+  location?: Pick<CampusLocation, "placeId" | "location"> | null,
+) {
+  if (!location) return false;
+  const normalizedLocation = normalizeLocationKey(location.location);
+  return (
+    (!!location.placeId && group.aliasParentPlaceIds.includes(location.placeId)) ||
+    group.aliasParentNames.some(
+      (name) => normalizeLocationKey(name) === normalizedLocation,
+    )
+  );
+}
+
+function matchesFoodCourtChild(
+  group: FoodCourtGroupConfig,
+  location?: Pick<CampusLocation, "placeId" | "location" | "type" | "shortName"> | null,
+) {
+  if (!location || matchesFoodCourtParent(group, location)) return false;
+  if (!!location.placeId && group.childPlaceIds.includes(location.placeId)) return true;
+  if (location.type !== "Dining" && location.type !== "Hub") return false;
+
+  const candidates = [location.location, location.shortName || ""];
+  return candidates.some((candidate) =>
+    group.childNamePatterns.some((pattern) => pattern.test(candidate)),
+  );
+}
+
+function findFoodCourtGroup(
+  location?: Pick<CampusLocation, "placeId" | "location" | "type" | "shortName"> | null,
+) {
+  if (!location) return null;
+  return (
+    FOOD_COURT_GROUPS.find(
+      (group) =>
+        matchesFoodCourtParent(group, location) || matchesFoodCourtChild(group, location),
+    ) || null
+  );
+}
+
+export function getFoodCourtVenueLabel(name: string) {
+  return name
+    .replace(/\s*\((MSC|Polo)\)\s*$/i, "")
+    .replace(/\s*-\s*(MSC|Polo(?:\s+Garage)?)\s*$/i, "")
+    .trim();
+}
+
+export function findFoodCourtParentLocation(
+  location: Pick<CampusLocation, "placeId" | "location" | "type" | "shortName"> | null,
+  allLocations: CampusLocation[],
+) {
+  const group = findFoodCourtGroup(location);
+  if (!group) return null;
+
+  return (
+    allLocations.find((candidate) => candidate.placeId === group.canonicalParentPlaceId) ||
+    allLocations.find(
+      (candidate) =>
+        normalizeLocationKey(candidate.location) ===
+        normalizeLocationKey(group.canonicalParentName),
+    ) ||
+    allLocations.find((candidate) => matchesFoodCourtParent(group, candidate)) ||
+    null
+  );
+}
+
+export function getFoodCourtVenueLocations(
+  location: Pick<CampusLocation, "placeId" | "location" | "type" | "shortName"> | null,
+  allLocations: CampusLocation[],
+) {
+  const group = findFoodCourtGroup(location);
+  if (!group) return [];
+
+  const canonicalParent = findFoodCourtParentLocation(location, allLocations);
+  const canonicalParentKey = canonicalParent
+    ? getLocationSelectionId(canonicalParent)
+    : null;
+
+  return allLocations
+    .filter((candidate) => matchesFoodCourtChild(group, candidate))
+    .filter((candidate) => getLocationSelectionId(candidate) !== canonicalParentKey)
+    .sort((first, second) =>
+      getFoodCourtVenueLabel(first.location).localeCompare(
+        getFoodCourtVenueLabel(second.location),
+      ),
+    );
+}
+
+export function shouldHideFoodCourtLocationInBrowse(
+  location: Pick<CampusLocation, "placeId" | "location" | "type" | "shortName" | "coord">,
+  allLocations: CampusLocation[],
+) {
+  const group = findFoodCourtGroup(location);
+  if (!group) return false;
+  if (matchesFoodCourtChild(group, location)) return true;
+
+  const canonicalParent = findFoodCourtParentLocation(location, allLocations);
+  return !!(
+    canonicalParent &&
+    matchesFoodCourtParent(group, location) &&
+    getLocationSelectionId(canonicalParent) !== getLocationSelectionId(location)
+  );
+}
+
 function normalizeLocationKey(value?: string | null) {
-  return (value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return getCanonicalLocationName(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function areLocationCoordsClose(first: CampusLocation, second: CampusLocation, maxDelta = 0.0015) {
@@ -394,12 +570,44 @@ function areLocationCoordsClose(first: CampusLocation, second: CampusLocation, m
 }
 
 function shouldPreserveExistingType(existing: CampusLocation, incoming: CampusLocation) {
-  if (incoming.source !== "osm") return false;
-
   const strongTypes = new Set(["Dining", "Hub", "Rec", "Library", "Parking"]);
   const weakIncomingTypes = new Set(["Academic", "Landmark", "General"]);
 
   return strongTypes.has(existing.type) && weakIncomingTypes.has(incoming.type);
+}
+
+function shouldMergeByCanonicalName(existing: CampusLocation, incoming: CampusLocation) {
+  if (normalizeLocationKey(existing.location) !== normalizeLocationKey(incoming.location)) {
+    return false;
+  }
+
+  return (
+    (existing.source === "directory" && incoming.source === "osm") ||
+    (existing.source === "osm" && incoming.source === "directory")
+  );
+}
+
+function shouldPreserveExistingCoordinate(existing: CampusLocation, incoming: CampusLocation) {
+  if (existing.source !== "directory" || incoming.source !== "osm") return false;
+
+  const protectedTypes = new Set<CampusLocation["type"]>([
+    "Dining",
+    "Hub",
+    "Library",
+    "Rec",
+  ]);
+
+  return protectedTypes.has(existing.type);
+}
+
+function mergeDefinedFields<T extends Record<string, any>>(base: T, incoming: Partial<T>) {
+  const next = { ...base };
+  Object.entries(incoming).forEach(([key, value]) => {
+    if (value !== undefined) {
+      (next as any)[key] = value;
+    }
+  });
+  return next;
 }
 
 export function getLocationSelectionId(location: Pick<CampusLocation, "placeId" | "location" | "coord">) {
@@ -407,29 +615,6 @@ export function getLocationSelectionId(location: Pick<CampusLocation, "placeId" 
   const lat = Number.isFinite(location.coord?.lat) ? location.coord.lat.toFixed(6) : "na";
   const lng = Number.isFinite(location.coord?.lng) ? location.coord.lng.toFixed(6) : "na";
   return `${normalizeLocationKey(location.location)}::${lat},${lng}`;
-}
-
-function toLocalOSMLocations(): CampusLocation[] {
-  const payload = LOCAL_OSM_PLACES_PAYLOAD as {
-    places?: LocalOSMPlaceRecord[];
-  };
-
-  const places = Array.isArray(payload?.places) ? payload.places : [];
-  return places.map((place) => ({
-    placeId: place.place_id,
-    location: place.name,
-    shortName: place.short_name || place.name,
-    percent_full: 0,
-    type: (place.type as LocationType) || "General",
-    is_live: false,
-    available_seats: null,
-    coord: { lat: place.lat, lng: place.lng },
-    aliases: Array.isArray(place.aliases) ? place.aliases : [],
-    description: place.description || undefined,
-    address: place.address || undefined,
-    source: (place.source as CampusLocation["source"]) || "osm",
-    searchOnly: place.search_only !== false,
-  }));
 }
 
 export function mergeCampusLocations(...groups: CampusLocation[][]): CampusLocation[] {
@@ -444,7 +629,10 @@ export function mergeCampusLocations(...groups: CampusLocation[][]): CampusLocat
     const matchingNameKey =
       candidateKeys.find((key) => {
         const existing = merged.get(key);
-        return existing ? areLocationCoordsClose(existing, location) : false;
+        return existing
+          ? areLocationCoordsClose(existing, location) ||
+              shouldMergeByCanonicalName(existing, location)
+          : false;
       }) || null;
     const existingKey = explicitExisting ? explicitKey : matchingNameKey || explicitKey;
     const existing = merged.get(existingKey);
@@ -454,9 +642,11 @@ export function mergeCampusLocations(...groups: CampusLocation[][]): CampusLocat
 
     const next: CampusLocation = existing
       ? {
-          ...existing,
-          ...location,
+          ...mergeDefinedFields(existing, location),
           type: shouldPreserveExistingType(existing, location) ? existing.type : location.type,
+          coord: shouldPreserveExistingCoordinate(existing, location)
+            ? existing.coord
+            : location.coord,
           aliases: nextAliases,
         }
       : {
@@ -476,7 +666,7 @@ export function mergeCampusLocations(...groups: CampusLocation[][]): CampusLocat
 }
 
 export function buildExpandedPlacesDirectory(): CampusLocation[] {
-  return mergeCampusLocations(buildCampusDirectory(), toLocalOSMLocations());
+  return buildCampusDirectory();
 }
 
 // ── Category definitions ──────────────────────────────────────

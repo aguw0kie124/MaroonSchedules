@@ -71,8 +71,19 @@ export function AdminApplicationScreen() {
   }, [navigation, user?.id]);
 
   const handleSubmit = async () => {
-    if (!orgName.trim() || !reason.trim()) {
-      Alert.alert('Incomplete', 'Please fill in all fields.');
+    const trimmedOrgName = orgName.trim();
+    const trimmedReason = reason.trim();
+
+    if (trimmedOrgName.length < 2) {
+      Alert.alert('Organization required', 'Enter an organization name with at least 2 characters.');
+      return;
+    }
+    if (trimmedReason.length < 10) {
+      Alert.alert('More detail needed', 'Tell us a little more about why you need admin access.');
+      return;
+    }
+    if (!user?.id) {
+      Alert.alert('Sign-in required', 'Please sign in again before applying for admin access.');
       return;
     }
     setLoading(true);
@@ -80,16 +91,17 @@ export function AdminApplicationScreen() {
       await requestJson('/admin/apply', {
         method: 'POST',
         body: JSON.stringify({
-          clerk_id: user?.id,
+          clerk_id: user.id,
           email: user?.primaryEmailAddress?.emailAddress,
-          organization_name: orgName.trim(),
-          reason: reason.trim(),
+          organization_name: trimmedOrgName,
+          reason: trimmedReason,
         }),
       });
       setStatus('pending');
       Alert.alert('Success', 'Your application has been submitted and is pending review.');
     } catch (error) {
-      Alert.alert('Error', 'Could not submit application.');
+      const message = error instanceof Error ? error.message : 'Could not submit application.';
+      Alert.alert('Error', message);
     } finally {
       setLoading(false);
     }

@@ -26,6 +26,8 @@ import { normalizeExternalUrl, normalizeImageUrl } from '../../services/url';
 import { getAdminLocationSuggestions, resolveAdminEventLocation } from '../../services/adminEventLocation';
 import { uploadStreamImage } from '../../services/streamFeeds';
 import { useSessionStore } from '../../store/sessionStore';
+import { TagSelector } from './TagSelector';
+import { TagChips } from '../common/TagChips';
 
 interface AdminEvent {
   id: string;
@@ -43,6 +45,7 @@ interface AdminEvent {
   created_at: string;
   avg_rating?: number;
   private_feedbacks?: { rating: number; feedback: string; created_at: string }[];
+  access_tags?: string[];
 }
 
 interface EventDraft {
@@ -53,6 +56,7 @@ interface EventDraft {
   image_url: string;
   start_time: Date;
   end_time: Date;
+  access_tags: string[];
 }
 
 function buildDraft(event: AdminEvent): EventDraft {
@@ -64,6 +68,7 @@ function buildDraft(event: AdminEvent): EventDraft {
     image_url: normalizeImageUrl(event.image_url) || '',
     start_time: new Date(event.start_time),
     end_time: new Date(event.end_time),
+    access_tags: event.access_tags || [],
   };
 }
 
@@ -80,6 +85,7 @@ export function AdminAnalyticsScreen() {
   const [saving, setSaving] = useState(false);
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
 
   const today = useMemo(() => {
     const now = new Date();
@@ -114,14 +120,26 @@ export function AdminAnalyticsScreen() {
     }
   }, [user?.id]);
 
+  const fetchTagLibrary = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const data = await requestJson(`/admin/tags?clerk_id=${encodeURIComponent(user.id)}`);
+      setAvailableTags(data.tags || []);
+    } catch (error) {
+      console.error(error);
+    }
+  }, [user?.id]);
+
   useEffect(() => {
     fetchEvents();
-  }, [fetchEvents]);
+    fetchTagLibrary();
+  }, [fetchEvents, fetchTagLibrary]);
 
   useFocusEffect(
     useCallback(() => {
       fetchEvents();
-    }, [fetchEvents]),
+      fetchTagLibrary();
+    }, [fetchEvents, fetchTagLibrary]),
   );
 
   const onRefresh = () => {
@@ -140,7 +158,7 @@ export function AdminAnalyticsScreen() {
     setSaving(false);
   };
 
-  const updateDraft = (key: keyof EventDraft, value: string | Date) => {
+  const updateDraft = <K extends keyof EventDraft>(key: K, value: EventDraft[K]) => {
     setDraft((current) => (current ? { ...current, [key]: value } : current));
   };
 
@@ -222,10 +240,11 @@ export function AdminAnalyticsScreen() {
           end_time: draft.end_time.toISOString(),
           google_review_url: normalizeExternalUrl(draft.google_review_url),
           image_url: draft.image_url || null,
+          tags: draft.access_tags,
         }),
       });
 
-      await fetchEvents();
+      await Promise.all([fetchEvents(), fetchTagLibrary()]);
       closeEditor();
       Alert.alert('Event updated', 'Your featured event is live with the new details.');
     } catch (error) {
@@ -667,6 +686,7 @@ export function AdminAnalyticsScreen() {
       <Text style={styles.eventMeta}>
         {new Date(item.start_time).toLocaleString()} to {new Date(item.end_time).toLocaleString()}
       </Text>
+      <TagChips tags={item.access_tags} label="Audience tags" />
 
       <View style={styles.adminActionRow}>
         <Pressable
@@ -884,6 +904,15 @@ export function AdminAnalyticsScreen() {
                   placeholderTextColor={COLORS.textTertiary}
                   autoCapitalize="none"
                   keyboardType="url"
+                />
+
+                <TagSelector
+                  label="Audience Tags"
+                  helperText="Students with at least one matching user tag can see this event even when access filtering is on."
+                  selectedTags={draft.access_tags}
+                  availableTags={availableTags}
+                  placeholder="Add audience tag"
+                  onChange={(value) => updateDraft('access_tags', value)}
                 />
 
                 <Text style={styles.label}>Date</Text>

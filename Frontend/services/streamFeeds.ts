@@ -124,7 +124,9 @@ export async function addPing(params: {
   startAt: string;
   endAt?: string;
   mediaUrl?: string;
+  isAnonymous?: boolean;
 }): Promise<any> {
+  const isAnonymous = params.isAnonymous === true;
   const attachments: any[] = [];
   if (params.mediaUrl) {
     attachments.push({
@@ -141,8 +143,8 @@ export async function addPing(params: {
     text: params.body,
     attachments,
     custom: {
-      user_name: params.userName || getPremiumName(currentFullUser),
-      user_image: params.userImage || getPremiumImage(currentFullUser),
+      user_name: isAnonymous ? 'Aggie User' : (params.userName || getPremiumName(currentFullUser)),
+      user_image: isAnonymous ? '' : (params.userImage ?? getPremiumImage(currentFullUser) ?? ''),
       ping_title: params.title,
       ping_category: params.category,
       location_tag: params.locationTag,
@@ -150,6 +152,7 @@ export async function addPing(params: {
       start_at: params.startAt,
       end_at: params.endAt || '',
       content_type: 'ping',
+      is_anonymous: isAnonymous,
     },
   };
 

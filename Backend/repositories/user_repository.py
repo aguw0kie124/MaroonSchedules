@@ -2,7 +2,9 @@
 PostgreSQL-backed repository for user data (profile + schedules).
 """
 import json
+from functools import lru_cache
 import psycopg
+from psycopg.rows import dict_row
 from db_config import CONNECTION_PARAMS
 
 
@@ -10,135 +12,222 @@ from db_config import CONNECTION_PARAMS
 # User CRUD
 # ---------------------------------------------------------------------------
 
+def _execute_optional_ddl(conn: psycopg.Connection, sql: str) -> None:
+    try:
+        with conn.transaction():
+            with conn.cursor() as cur:
+                cur.execute(sql)
+    except psycopg.errors.InsufficientPrivilege:
+        # Some deployments connect with a role that can read/write rows but cannot
+        # alter pre-existing tables. We skip opportunistic schema upgrades there.
+        return
+
+
+@lru_cache(maxsize=8)
+def _get_table_columns(table_name: str) -> tuple[str, ...]:
+    with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+                ORDER BY ordinal_position
+                """,
+                (table_name,),
+            )
+            return tuple(row[0] for row in cur.fetchall())
+
+
+def _user_columns() -> set[str]:
+    return set(_get_table_columns("users"))
+
+
+def _user_select_clause() -> str:
+    desired_columns = [
+        "id",
+        "clerk_id",
+        "email",
+        "full_name",
+        "profile_image_url",
+        "major",
+        "graduation_year",
+        "preferred_time",
+        "max_credits",
+        "avoid_friday",
+        "show_online_first",
+        "schedules",
+        "created_at",
+        "updated_at",
+        "canvas_access_token",
+        "canvas_refresh_token",
+        "canvas_expires_at",
+        "canvas_instance_url",
+        "tos_accepted",
+        "tour_completed",
+        "is_admin",
+    ]
+    existing = _user_columns()
+    return ", ".join(column for column in desired_columns if column in existing)
+
 def _ensure_user_schema(conn: psycopg.Connection) -> None:
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id BIGSERIAL PRIMARY KEY,
-                clerk_id TEXT NOT NULL UNIQUE,
-                email TEXT,
-                full_name TEXT,
-                profile_image_url TEXT,
-                major TEXT,
-                graduation_year TEXT,
-                preferred_time TEXT,
-                max_credits TEXT,
-                avoid_friday BOOLEAN DEFAULT FALSE,
-                show_online_first BOOLEAN DEFAULT FALSE,
-                schedules JSONB DEFAULT '[]'::jsonb,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                updated_at TIMESTAMPTZ DEFAULT NOW(),
-                canvas_access_token TEXT,
-                canvas_refresh_token TEXT,
-                canvas_expires_at TIMESTAMPTZ,
-                canvas_instance_url TEXT DEFAULT 'https://canvas.tamu.edu',
-                tos_accepted BOOLEAN DEFAULT FALSE,
-                tour_completed BOOLEAN DEFAULT FALSE
-            )
-            """
+    statements = [
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id BIGSERIAL PRIMARY KEY,
+            clerk_id TEXT NOT NULL UNIQUE,
+            email TEXT,
+            full_name TEXT,
+            profile_image_url TEXT,
+            major TEXT,
+            graduation_year TEXT,
+            preferred_time TEXT,
+            max_credits TEXT,
+            avoid_friday BOOLEAN DEFAULT FALSE,
+            show_online_first BOOLEAN DEFAULT FALSE,
+            schedules JSONB DEFAULT '[]'::jsonb,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+            canvas_access_token TEXT,
+            canvas_refresh_token TEXT,
+            canvas_expires_at TIMESTAMPTZ,
+            canvas_instance_url TEXT DEFAULT 'https://canvas.tamu.edu',
+            tos_accepted BOOLEAN DEFAULT FALSE,
+            tour_completed BOOLEAN DEFAULT FALSE
         )
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url TEXT")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS major TEXT")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS graduation_year TEXT")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_time TEXT")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS max_credits TEXT")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS avoid_friday BOOLEAN DEFAULT FALSE")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS show_online_first BOOLEAN DEFAULT FALSE")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS schedules JSONB DEFAULT '[]'::jsonb")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS canvas_access_token TEXT")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS canvas_refresh_token TEXT")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS canvas_expires_at TIMESTAMPTZ")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS canvas_instance_url TEXT DEFAULT 'https://canvas.tamu.edu'")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS tos_accepted BOOLEAN DEFAULT FALSE")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS tour_completed BOOLEAN DEFAULT FALSE")
-        cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE")
-
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS admin_applications (
-                id BIGSERIAL PRIMARY KEY,
-                clerk_id TEXT NOT NULL,
-                email TEXT NOT NULL,
-                organization_name TEXT,
-                reason TEXT,
-                status TEXT DEFAULT 'pending',
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                UNIQUE(clerk_id)
-            )
-            """
+        """,
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_url TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS major TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS graduation_year TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_time TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS max_credits TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS avoid_friday BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS show_online_first BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS schedules JSONB DEFAULT '[]'::jsonb",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS canvas_access_token TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS canvas_refresh_token TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS canvas_expires_at TIMESTAMPTZ",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS canvas_instance_url TEXT DEFAULT 'https://canvas.tamu.edu'",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS tos_accepted BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS tour_completed BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE",
+        """
+        CREATE TABLE IF NOT EXISTS admin_applications (
+            id BIGSERIAL PRIMARY KEY,
+            clerk_id TEXT NOT NULL,
+            email TEXT NOT NULL,
+            organization_name TEXT,
+            reason TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE(clerk_id)
         )
-
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS admin_events (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                clerk_id TEXT NOT NULL,
-                title TEXT NOT NULL,
-                description TEXT,
-                lat DOUBLE PRECISION,
-                lng DOUBLE PRECISION,
-                location_name TEXT,
-                start_time TIMESTAMPTZ NOT NULL,
-                end_time TIMESTAMPTZ,
-                shares_count INTEGER DEFAULT 0,
-                google_review_url TEXT,
-                created_at TIMESTAMPTZ DEFAULT NOW()
-            )
-            """
+        """,
+        "ALTER TABLE admin_applications ADD COLUMN IF NOT EXISTS clerk_id TEXT",
+        "ALTER TABLE admin_applications ADD COLUMN IF NOT EXISTS email TEXT",
+        "ALTER TABLE admin_applications ADD COLUMN IF NOT EXISTS organization_name TEXT",
+        "ALTER TABLE admin_applications ADD COLUMN IF NOT EXISTS reason TEXT",
+        "ALTER TABLE admin_applications ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending'",
+        "ALTER TABLE admin_applications ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        "CREATE UNIQUE INDEX IF NOT EXISTS admin_applications_clerk_id_uidx ON admin_applications (clerk_id)",
+        """
+        CREATE TABLE IF NOT EXISTS admin_events (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            clerk_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            lat DOUBLE PRECISION,
+            lng DOUBLE PRECISION,
+            location_name TEXT,
+            start_time TIMESTAMPTZ NOT NULL,
+            end_time TIMESTAMPTZ,
+            shares_count INTEGER DEFAULT 0,
+            google_review_url TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW()
         )
-        cur.execute("ALTER TABLE admin_events ADD COLUMN IF NOT EXISTS google_review_url TEXT")
-
-        cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS admin_event_reviews (
-                id BIGSERIAL PRIMARY KEY,
-                event_id UUID REFERENCES admin_events(id) ON DELETE CASCADE,
-                clerk_id TEXT NOT NULL,
-                rating INTEGER NOT NULL,
-                feedback TEXT,
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                UNIQUE(event_id, clerk_id)
-            )
-            """
+        """,
+        "ALTER TABLE admin_events ADD COLUMN IF NOT EXISTS google_review_url TEXT",
+        """
+        CREATE TABLE IF NOT EXISTS admin_event_reviews (
+            id BIGSERIAL PRIMARY KEY,
+            event_id UUID REFERENCES admin_events(id) ON DELETE CASCADE,
+            clerk_id TEXT NOT NULL,
+            rating INTEGER NOT NULL,
+            feedback TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE(event_id, clerk_id)
         )
+        """,
+    ]
+    for statement in statements:
+        _execute_optional_ddl(conn, statement)
 
 def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile_image_url: str = None) -> dict:
     """Insert a new user row or update email/full_name if the clerk_id already exists."""
     tour_completed_default = True if email and email.endswith("@gmail.com") else False
+    columns = _user_columns()
+    insert_columns = ["clerk_id"]
+    insert_values = [clerk_id]
+    if "email" in columns:
+        insert_columns.append("email")
+        insert_values.append(email)
+    if "full_name" in columns:
+        insert_columns.append("full_name")
+        insert_values.append(full_name)
+    if "profile_image_url" in columns:
+        insert_columns.append("profile_image_url")
+        insert_values.append(profile_image_url)
+    if "tour_completed" in columns:
+        insert_columns.append("tour_completed")
+        insert_values.append(tour_completed_default)
+
+    update_fields = []
+    if "email" in columns:
+        update_fields.append("email = COALESCE(EXCLUDED.email, users.email)")
+    if "full_name" in columns:
+        update_fields.append("full_name = COALESCE(EXCLUDED.full_name, users.full_name)")
+    if "profile_image_url" in columns:
+        update_fields.append("profile_image_url = COALESCE(EXCLUDED.profile_image_url, users.profile_image_url)")
+    if "updated_at" in columns:
+        update_fields.append("updated_at = NOW()")
+
+    select_clause = _user_select_clause()
+    placeholders = ", ".join(["%s"] * len(insert_columns))
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         _ensure_user_schema(conn)
-        with conn.cursor() as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                """
-                INSERT INTO users (clerk_id, email, full_name, profile_image_url, tour_completed)
-                VALUES (%s, %s, %s, %s, %s)
+                f"""
+                INSERT INTO users ({", ".join(insert_columns)})
+                VALUES ({placeholders})
                 ON CONFLICT (clerk_id) DO UPDATE
-                    SET email             = COALESCE(EXCLUDED.email, users.email),
-                        full_name         = COALESCE(EXCLUDED.full_name, users.full_name),
-                        profile_image_url = COALESCE(EXCLUDED.profile_image_url, users.profile_image_url),
-                        updated_at        = NOW()
-                RETURNING id, clerk_id, email, full_name, profile_image_url, major, graduation_year, preferred_time, max_credits, avoid_friday, show_online_first, schedules, created_at, updated_at, canvas_access_token, canvas_refresh_token, canvas_expires_at, canvas_instance_url, tos_accepted, tour_completed, is_admin
+                    SET {", ".join(update_fields) if update_fields else "clerk_id = users.clerk_id"}
+                RETURNING {select_clause}
                 """,
-                (clerk_id, email, full_name, profile_image_url, tour_completed_default),
+                tuple(insert_values),
             )
             row = cur.fetchone()
         conn.commit()
-    return _row_to_dict(row)
+    result = _row_to_dict(row)
+    from repositories import tag_repository
+
+    result["tags"] = tag_repository.get_user_tags(clerk_id)
+    return result
 
 
 def get_user(clerk_id: str) -> dict | None:
     """Return full user record by Clerk ID, or None."""
+    select_clause = _user_select_clause()
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         _ensure_user_schema(conn)
-        with conn.cursor() as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                """
-                SELECT id, clerk_id, email, full_name, profile_image_url, major, graduation_year, preferred_time, max_credits, avoid_friday, show_online_first, schedules, created_at, updated_at, canvas_access_token, canvas_refresh_token, canvas_expires_at, canvas_instance_url, tos_accepted, tour_completed, is_admin
+                f"""
+                SELECT {select_clause}
                 FROM users WHERE clerk_id = %s
                 """,
                 (clerk_id,),
@@ -146,7 +235,11 @@ def get_user(clerk_id: str) -> dict | None:
             row = cur.fetchone()
     if not row:
         return None
-    return _row_to_dict(row)
+    result = _row_to_dict(row)
+    from repositories import tag_repository
+
+    result["tags"] = tag_repository.get_user_tags(clerk_id)
+    return result
 
 
 def update_profile(clerk_id: str, fields: dict) -> dict | None:
@@ -156,25 +249,25 @@ def update_profile(clerk_id: str, fields: dict) -> dict | None:
         "max_credits", "avoid_friday", "show_online_first",
         "profile_image_url",
     }
-    updates = {k: v for k, v in fields.items() if k in allowed}
+    existing = _user_columns()
+    updates = {k: v for k, v in fields.items() if k in allowed and k in existing}
     if not updates:
         return get_user(clerk_id)
 
     set_clause = ", ".join(f"{col} = %s" for col in updates)
     values = list(updates.values()) + [clerk_id]
+    if "updated_at" in existing:
+        set_clause = f"{set_clause}, updated_at = NOW()"
+    select_clause = _user_select_clause()
 
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         _ensure_user_schema(conn)
-        with conn.cursor() as cur:
+        with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 f"""
-                UPDATE users SET {set_clause}, updated_at = NOW()
+                UPDATE users SET {set_clause}
                 WHERE clerk_id = %s
-                RETURNING id, clerk_id, email, full_name, profile_image_url, major, graduation_year,
-                          preferred_time, max_credits, avoid_friday, show_online_first,
-                          schedules, created_at, updated_at,
-                          canvas_access_token, canvas_refresh_token,
-                          canvas_expires_at, canvas_instance_url, tos_accepted, tour_completed, is_admin
+                RETURNING {select_clause}
                 """,
                 values,
             )
@@ -182,7 +275,11 @@ def update_profile(clerk_id: str, fields: dict) -> dict | None:
         conn.commit()
     if not row:
         return None
-    return _row_to_dict(row)
+    result = _row_to_dict(row)
+    from repositories import tag_repository
+
+    result["tags"] = tag_repository.get_user_tags(clerk_id)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +288,8 @@ def update_profile(clerk_id: str, fields: dict) -> dict | None:
 
 def get_schedules(clerk_id: str) -> list:
     """Return the schedules JSONB array for a user."""
+    if "schedules" not in _user_columns():
+        return []
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         _ensure_user_schema(conn)
         with conn.cursor() as cur:
@@ -206,17 +305,26 @@ def get_schedules(clerk_id: str) -> list:
 
 def save_schedules(clerk_id: str, schedules: list) -> None:
     """Overwrite the schedules JSONB column for a user (creates row if missing)."""
+    columns = _user_columns()
+    if "schedules" not in columns:
+        return
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         _ensure_user_schema(conn)
         with conn.cursor() as cur:
+            insert_columns = ["clerk_id", "schedules"]
+            values = [clerk_id, json.dumps(schedules)]
+            if "updated_at" in columns:
+                update_set = "schedules = EXCLUDED.schedules, updated_at = NOW()"
+            else:
+                update_set = "schedules = EXCLUDED.schedules"
             cur.execute(
-                """
-                INSERT INTO users (clerk_id, schedules)
+                f"""
+                INSERT INTO users ({", ".join(insert_columns)})
                 VALUES (%s, %s::jsonb)
                 ON CONFLICT (clerk_id) DO UPDATE
-                    SET schedules = EXCLUDED.schedules, updated_at = NOW()
+                    SET {update_set}
                 """,
-                (clerk_id, json.dumps(schedules)),
+                tuple(values),
             )
         conn.commit()
 
@@ -226,9 +334,38 @@ def save_schedules(clerk_id: str, schedules: list) -> None:
 # ---------------------------------------------------------------------------
 
 def _row_to_dict(row) -> dict:
-    """Map a SELECT row tuple to a dict."""
+    """Map a SELECT row to a dict."""
     if not row:
         return {}
+    if isinstance(row, dict):
+        schedules = row.get("schedules")
+        if isinstance(schedules, str):
+            schedules = json.loads(schedules)
+        return {
+            "id": row.get("id"),
+            "clerk_id": row.get("clerk_id"),
+            "email": row.get("email"),
+            "full_name": row.get("full_name"),
+            "profile_image_url": row.get("profile_image_url"),
+            "major": row.get("major"),
+            "graduation_year": row.get("graduation_year"),
+            "preferred_time": row.get("preferred_time"),
+            "max_credits": row.get("max_credits"),
+            "avoid_friday": row.get("avoid_friday", False),
+            "show_online_first": row.get("show_online_first", False),
+            "schedules": schedules or [],
+            "created_at": str(row.get("created_at")) if row.get("created_at") else None,
+            "updated_at": str(row.get("updated_at")) if row.get("updated_at") else None,
+            "canvas_access_token": row.get("canvas_access_token"),
+            "canvas_refresh_token": row.get("canvas_refresh_token"),
+            "canvas_expires_at": str(row.get("canvas_expires_at")) if row.get("canvas_expires_at") else None,
+            "canvas_instance_url": row.get("canvas_instance_url"),
+            "tos_accepted": row.get("tos_accepted", False),
+            "tour_completed": row.get("tour_completed", False),
+            "is_admin": row.get("is_admin", False),
+            "tags": [],
+        }
+
     schedules = row[11]
     if isinstance(schedules, str):
         schedules = json.loads(schedules)
@@ -254,18 +391,26 @@ def _row_to_dict(row) -> dict:
         "tos_accepted": row[18],
         "tour_completed": row[19],
         "is_admin": row[20] if len(row) > 20 else False,
+        "tags": [],
     }
 
 
 def save_canvas_tokens(clerk_id: str, access_token: str, refresh_token: str, expires_at, instance_url: str = 'https://canvas.tamu.edu') -> None:
     """Save Canvas OAuth tokens for a user."""
+    columns = _user_columns()
+    required = {"canvas_access_token", "canvas_refresh_token", "canvas_expires_at", "canvas_instance_url"}
+    if not required.issubset(columns):
+        return
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         _ensure_user_schema(conn)
         with conn.cursor() as cur:
+            update_clause = "canvas_access_token = %s, canvas_refresh_token = %s, canvas_expires_at = %s, canvas_instance_url = %s"
+            if "updated_at" in columns:
+                update_clause += ", updated_at = NOW()"
             cur.execute(
-                """
+                f"""
                 UPDATE users
-                SET canvas_access_token = %s, canvas_refresh_token = %s, canvas_expires_at = %s, canvas_instance_url = %s, updated_at = NOW()
+                SET {update_clause}
                 WHERE clerk_id = %s
                 """,
                 (access_token, refresh_token, expires_at, instance_url, clerk_id),
@@ -275,11 +420,17 @@ def save_canvas_tokens(clerk_id: str, access_token: str, refresh_token: str, exp
 
 def set_tour_completed(clerk_id: str) -> None:
     """Mark that the user has completed the interactive tour."""
+    columns = _user_columns()
+    if "tour_completed" not in columns:
+        return
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         _ensure_user_schema(conn)
         with conn.cursor() as cur:
+            update_clause = "tour_completed = TRUE"
+            if "updated_at" in columns:
+                update_clause += ", updated_at = NOW()"
             cur.execute(
-                "UPDATE users SET tour_completed = TRUE, updated_at = NOW() WHERE clerk_id = %s",
+                f"UPDATE users SET {update_clause} WHERE clerk_id = %s",
                 (clerk_id,),
             )
         conn.commit()
@@ -287,11 +438,17 @@ def set_tour_completed(clerk_id: str) -> None:
 
 def set_tos_accepted(clerk_id: str) -> None:
     """Mark that the user has accepted the Terms of Service."""
+    columns = _user_columns()
+    if "tos_accepted" not in columns:
+        return
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         _ensure_user_schema(conn)
         with conn.cursor() as cur:
+            update_clause = "tos_accepted = TRUE"
+            if "updated_at" in columns:
+                update_clause += ", updated_at = NOW()"
             cur.execute(
-                "UPDATE users SET tos_accepted = TRUE, updated_at = NOW() WHERE clerk_id = %s",
+                f"UPDATE users SET {update_clause} WHERE clerk_id = %s",
                 (clerk_id,),
             )
         conn.commit()

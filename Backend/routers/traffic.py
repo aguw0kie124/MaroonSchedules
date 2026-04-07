@@ -11,57 +11,14 @@ import re
 from threading import Lock
 from collections import defaultdict
 
-from services import cache_service
+from services import cache_service, place_registry_service
 
 try:
     from perplexity import Perplexity
 except ImportError:
     Perplexity = None
 
-# ── Canonical location registry ──────────────────────────────────────────────
-# Display names match exactly what the GoBoard FacilityName or Library API key resolves to.
-# All coordinates verified via Google Maps.
-LOCATION_DATA = {
-    # Rec Centers  (matched by GoBoard FacilityName)
-    "Student Rec Center":   {"lat": 30.607120, "lng": -96.345403, "type": "Rec"},
-    "Southside Rec Center": {"lat": 30.615185, "lng": -96.334412, "type": "Rec"},
-    "Polo Road Rec Center": {"lat": 30.622968, "lng": -96.340926, "type": "Rec"},
-
-    # Libraries  (matched by LIBRARY_KEY_MAP below)
-    "Evans Library":                          {"lat": 30.616607, "lng": -96.339047, "type": "Library"},
-    "Evans Library Annex":                    {"lat": 30.616300, "lng": -96.338340, "type": "Library"},
-    "West Campus Library":                    {"lat": 30.611570, "lng": -96.350164, "type": "Library"},
-    "Cushing Memorial Library":               {"lat": 30.616360, "lng": -96.339900, "type": "Library"},
-    "Medical Sciences Library":               {"lat": 30.61182, "lng": -96.35161, "type": "Library"},
-    "Policy Sciences & Economics Library":    {"lat": 30.59744, "lng": -96.35355, "type": "Library"},
-
-    # Dining (AI-estimated, no live API)
-    "Sbisa Dining Hall":              {"lat": 30.61700, "lng": -96.34350, "type": "Dining"},
-    "The Commons Dining Hall":        {"lat": 30.61534, "lng": -96.33601, "type": "Dining"},
-    "Duncan Dining Hall":             {"lat": 30.61180, "lng": -96.33529, "type": "Dining"},
-    "West Campus Dining Facility":    {"lat": 30.61020, "lng": -96.34863, "type": "Dining"},
-    "Memorial Student Center (MSC)":  {"lat": 30.61223, "lng": -96.34137, "type": "Dining"},
-    "Polo Road Garage":               {"lat": 30.62313, "lng": -96.33749, "type": "Dining"},
-    "Creekside Market":               {"lat": 30.60756, "lng": -96.35381, "type": "Dining"},
-}
-
-# Maps Library API abbreviation keys → canonical display name in LOCATION_DATA
-LIBRARY_KEY_MAP: Dict[str, str] = {
-    "evans":   "Evans Library",
-    "annex":   "Evans Library Annex",
-    "blcc":    "West Campus Library",       # API calls it WCL/BLCC
-    "cushing": "Cushing Memorial Library",
-    "msl":     "Medical Sciences Library",
-    "psel":    "Policy Sciences & Economics Library",
-}
-
-# GoBoard FacilityName → canonical display name (only needed where they differ)
-REC_FACILITY_MAP: Dict[str, str] = {
-    "Student Rec Center":   "Student Rec Center",
-    "Southside Rec Center": "Southside Rec Center",
-    "Polo Road Rec Center": "Polo Road Rec Center",
-    # Ignore: Penberthy, PEAP, Aquatics — not in our registry
-}
+router = APIRouter()
 
 router = APIRouter()
 
@@ -181,77 +138,80 @@ class TAMUFacilityTracker:
     def get_all_locations_with_events(self) -> List[Dict[str, Any]]:
         result = []
         live_percents = []
+        resolved_ids = set()
 
-        # ── 1. Rec Centers: aggregate sub-locations by FacilityName ──────────
+        # ── 1. Rec Centers ───────────────────────────────────────────────────
         rec_raw = self.fetch_rec_data()
-        facility_totals: Dict[str, Dict] = defaultdict(
-            lambda: {"count": 0, "capacity": 0})
+        facility_totals: Dict[str, Dict] = defaultdict(lambda: {"count": 0, "capacity": 0})
         for entry in rec_raw:
             fname = entry.get("FacilityName", "")
-            if fname not in REC_FACILITY_MAP:
-                continue  # skip Penberthy, PEAP, Aquatics
             facility_totals[fname]["count"] += entry.get("LastCount", 0)
             facility_totals[fname]["capacity"] += entry.get("TotalCapacity", 1)
 
-        for api_name, display_name in REC_FACILITY_MAP.items():
-            totals = facility_totals.get(api_name)
-            if not totals or totals["capacity"] == 0:
-                continue  # no data for this facility
+        for api_name, totals in facility_totals.items():
+            place = place_registry_service.resolve_place(api_name)
+            if not place or place["type"] != "Rec" or totals["capacity"] == 0:
+                continue
+                
             percent = round((totals["count"] / totals["capacity"]) * 100, 1)
             live_percents.append(percent)
-            info = LOCATION_DATA[display_name]
-            meta = self.get_mock_metadata(display_name, "Rec")
+            meta = self.get_mock_metadata(place["name"], "Rec")
+            resolved_ids.add(place["place_id"])
+            
             result.append({
-                "location": display_name,
+                "location": place["name"],
                 "percent_full": percent,
                 "type": "Rec",
                 "is_live": True,
                 "available_seats": totals["capacity"] - totals["count"],
-                "coord": info,
+                "coord": {"lat": place["lat"], "lng": place["lng"]},
                 **meta,
             })
 
-        # ── 2. Libraries: use API abbreviation → canonical name map ──────────
+        # ── 2. Libraries ─────────────────────────────────────────────────────
         lib_raw = self.fetch_library_data()
-        for api_key, display_name in LIBRARY_KEY_MAP.items():
-            entry = lib_raw.get(api_key)
-            if not entry or api_key == "lastupdate":
+        for api_key, entry in lib_raw.items():
+            if api_key == "lastupdate" or not isinstance(entry, dict):
                 continue
+                
+            place = place_registry_service.resolve_place(api_key)
+            if not place:
+                continue
+                
             percent = float(entry.get("percentfull", 0))
             remaining = int(entry.get("remaining", 0))
             live_percents.append(percent)
-            info = LOCATION_DATA[display_name]
-            meta = self.get_mock_metadata(display_name, "Library")
+            meta = self.get_mock_metadata(place["name"], "Library")
+            resolved_ids.add(place["place_id"])
+            
             result.append({
-                "location": display_name,
+                "location": place["name"],
                 "percent_full": percent,
                 "type": "Library",
                 "is_live": True,
                 "available_seats": remaining,
-                "coord": info,
+                "coord": {"lat": place["lat"], "lng": place["lng"]},
                 **meta,
             })
 
-        # ── 3. Dining: AI-estimated using live campus average ────────────────
-        avg_occupancy = sum(live_percents) / \
-            len(live_percents) if live_percents else 42.0
-        live_display_names = {r["location"] for r in result}
-
-        for loc_name, info in LOCATION_DATA.items():
-            if info["type"] != "Dining":
+        # ── 3. Dining (AI-estimated) ─────────────────────────────────────────
+        avg_occupancy = sum(live_percents) / len(live_percents) if live_percents else 42.0
+        
+        # Pull all Dining locations from global registry
+        for place in place_registry_service.get_all_places():
+            if place["type"] != "Dining" or place["place_id"] in resolved_ids:
                 continue
-            if loc_name in live_display_names:
-                continue
-            est = round(
-                min(95, max(5, avg_occupancy + random.uniform(-15, 20))), 1)
-            meta = self.get_mock_metadata(loc_name, "Dining")
+                
+            est = round(min(95, max(5, avg_occupancy + random.uniform(-15, 20))), 1)
+            meta = self.get_mock_metadata(place["name"], "Dining")
+            
             result.append({
-                "location": loc_name,
+                "location": place["name"],
                 "percent_full": est,
                 "type": "Dining",
                 "is_live": False,
                 "available_seats": None,
-                "coord": info,
+                "coord": place["coord"],
                 **meta,
             })
 

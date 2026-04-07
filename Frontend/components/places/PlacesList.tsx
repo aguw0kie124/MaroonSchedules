@@ -49,7 +49,7 @@ interface PlacesListProps {
   isTodayExpanded?: boolean;
   setIsTodayExpanded?: (expanded: boolean) => void;
   onShare?: (content: ShareContent) => void;
-  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "bus") => void;
+  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "drive" | "bus") => void;
 }
 
 export function PlacesList({
