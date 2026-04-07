@@ -940,7 +940,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
           if (tab.id === 'list') {
             return (
-              <TourTarget key={tab.id} name="switch-to-list">
+              <TourTarget
+                key={tab.id}
+                name="switch-to-list"
+                assistAction={() => {
+                  changeView('list');
+                  setTimeout(() => advanceStep('switch-to-list'), 250);
+                }}
+              >
                 {tabItem}
               </TourTarget>
             );
@@ -1176,7 +1183,15 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   />
                 );
                 return index === 0 ? (
-                  <TourTarget key={String(item.id)} name="first-event-card" style={{ width: '100%' }}>
+                  <TourTarget
+                    key={String(item.id)}
+                    name="first-event-card"
+                    style={{ width: '100%' }}
+                    assistAction={() => {
+                      setDetailEvent(item);
+                      setTimeout(() => advanceStep('first-event-card'), 220);
+                    }}
+                  >
                     {row}
                   </TourTarget>
                 ) : row;
@@ -1992,7 +2007,13 @@ function DetailModal({
             ) : null}
             <TagChips tags={event.access_tags} label="Audience tags" />
 
-            <TourTarget name="event-rsvp">
+            <TourTarget
+              name="event-rsvp"
+              assistAction={() => {
+                onSchedule(event);
+                onClose();
+              }}
+            >
               <Pressable
                 style={[stylesStatic.primaryDetailButton, { backgroundColor: scheduled ? '#E06A3E' : '#3CCB6C' }]}
                 onPress={() => {

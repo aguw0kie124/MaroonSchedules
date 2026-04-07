@@ -436,7 +436,14 @@ function TabButtonWrapper({ screenName, props }: { screenName: string; props: an
   };
 
   return (
-    <TourTarget name={targetName} style={{ flex: 1 }}>
+    <TourTarget
+      name={targetName}
+      style={{ flex: 1 }}
+      assistAction={() => {
+        (navigationRef as any).navigate('Main', { screen: screenName });
+        setTimeout(() => advanceStep(targetName), 350);
+      }}
+    >
       <View
         style={[
           { flex: 1, margin: 4, borderRadius: 12 },

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useRef, useEffect, useCallb
 import {
   Animated as RNAnimated,
   Easing as RNEasing,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -52,6 +53,7 @@ type TourContextType = {
   isTourActive: boolean;
   currentStep: number;
   registerTarget: (name: string, measureFn: () => Promise<TargetRect | null>) => void;
+  registerAssistAction: (name: string, assistFn?: (() => void | Promise<void>) | null) => void;
   advanceStep: (expectedStepName: string) => void;
   activeTargetName: string | null;
 };
@@ -62,6 +64,7 @@ const TourContext = createContext<TourContextType>({
   isTourActive: false,
   currentStep: 0,
   registerTarget: () => {},
+  registerAssistAction: () => {},
   advanceStep: () => {},
   activeTargetName: null,
 });
@@ -330,13 +333,19 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
   const [celebration, setCelebration] = useState<CelebrationState | null>(null);
+  const [assistVisible, setAssistVisible] = useState(false);
+  const [isAssisting, setIsAssisting] = useState(false);
 
   const targetsRef = useRef<Record<string, () => Promise<TargetRect | null>>>({});
+  const assistActionsRef = useRef<Record<string, (() => void | Promise<void>) | null>>({});
   const primaryEmail = user?.primaryEmailAddress?.emailAddress?.toLowerCase() || '';
   const shouldSkipTourForEmail = primaryEmail.endsWith('@gmail.com');
   const celebrationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const assistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const assistPointerProgress = useRef(new RNAnimated.Value(0)).current;
 
   const activeTargetName = isTourActive && currentStep < TOUR_SEQUENCE.length ? TOUR_SEQUENCE[currentStep].id : null;
+  const currentDef = isTourActive && currentStep < TOUR_SEQUENCE.length ? TOUR_SEQUENCE[currentStep] : null;
 
   const updateTargetRect = useCallback(async () => {
     if (!activeTargetName || !targetsRef.current[activeTargetName]) {
@@ -368,8 +377,36 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       if (celebrationTimerRef.current) {
         clearTimeout(celebrationTimerRef.current);
       }
+      if (assistTimerRef.current) {
+        clearTimeout(assistTimerRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (assistTimerRef.current) {
+      clearTimeout(assistTimerRef.current);
+    }
+
+    setAssistVisible(false);
+    setIsAssisting(false);
+    assistPointerProgress.stopAnimation();
+    assistPointerProgress.setValue(0);
+
+    if (!isTourActive || !currentDef) {
+      return undefined;
+    }
+
+    assistTimerRef.current = setTimeout(() => {
+      setAssistVisible(true);
+    }, 4000);
+
+    return () => {
+      if (assistTimerRef.current) {
+        clearTimeout(assistTimerRef.current);
+      }
+    };
+  }, [assistPointerProgress, currentStep, currentDef, isTourActive]);
 
   const triggerCelebration = useCallback((step: TourStep) => {
     if (celebrationTimerRef.current) {
@@ -390,6 +427,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setCurrentStep(0);
     setTargetRect(null);
     setCelebration(null);
+    setAssistVisible(false);
+    setIsAssisting(false);
     setIsTourActive(true);
 
     setTimeout(() => {
@@ -408,6 +447,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setCurrentStep(0);
     setTargetRect(null);
     setCelebration(null);
+    setAssistVisible(false);
+    setIsAssisting(false);
 
     setTimeout(() => {
       if (navigationRef.isReady()) {
@@ -432,6 +473,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
         setCurrentStep(0);
         setTargetRect(null);
         setCelebration(null);
+        setAssistVisible(false);
+        setIsAssisting(false);
       }
       if (!isTourCompleted) {
         setTourCompleted(true);
@@ -464,6 +507,14 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     targetsRef.current[name] = measureFn;
   }, []);
 
+  const registerAssistAction = useCallback((name: string, assistFn?: (() => void | Promise<void>) | null) => {
+    if (assistFn) {
+      assistActionsRef.current[name] = assistFn;
+      return;
+    }
+    delete assistActionsRef.current[name];
+  }, []);
+
   const advanceStep = useCallback((expectedStepName: string) => {
     if (!isTourActive || activeTargetName !== expectedStepName) {
       return;
@@ -483,8 +534,6 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       endTour();
     }, 900);
   }, [activeTargetName, currentStep, endTour, isTourActive, triggerCelebration]);
-
-  const currentDef = isTourActive && currentStep < TOUR_SEQUENCE.length ? TOUR_SEQUENCE[currentStep] : null;
 
   const haloScale = useSharedValue(1);
   const haloOpacity = useSharedValue(0.16);
@@ -565,6 +614,92 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const stepLabel = currentDef ? `Step ${currentStep + 1} of ${TOUR_SEQUENCE.length}` : '';
   const regionHint = targetRect && currentDef ? `Highlighted in the ${getTargetRegion(targetRect, width, height)}.` : '';
 
+  const runAssist = useCallback(async () => {
+    if (!currentDef || isAssisting) {
+      return;
+    }
+
+    setAssistVisible(false);
+    setIsAssisting(true);
+    await updateTargetRect();
+    assistPointerProgress.setValue(0);
+
+    await new Promise<void>((resolve) => {
+      RNAnimated.timing(assistPointerProgress, {
+        toValue: 1,
+        duration: 1250,
+        easing: RNEasing.inOut(RNEasing.cubic),
+        useNativeDriver: true,
+      }).start(() => resolve());
+    });
+
+    const assistAction = assistActionsRef.current[currentDef.id];
+    if (assistAction) {
+      await Promise.resolve(assistAction());
+    } else {
+      advanceStep(currentDef.id);
+    }
+
+    setIsAssisting(false);
+  }, [advanceStep, assistPointerProgress, currentDef, isAssisting, updateTargetRect]);
+
+  const assistPointerStyle: any = React.useMemo(() => {
+    if (!targetRect) {
+      return { opacity: 0 };
+    }
+
+    const endX = targetRect.x + targetRect.w / 2 - 18;
+    const endY = targetRect.y + targetRect.h / 2 - 18;
+    const startX = Math.max(20, endX - 84);
+    const startY = Math.max(20, endY - 84);
+
+    return {
+      opacity: isAssisting ? 1 : 0,
+      transform: [
+        {
+          translateX: assistPointerProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [startX, endX],
+          }),
+        },
+        {
+          translateY: assistPointerProgress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [startY, endY],
+          }),
+        },
+        {
+          scale: assistPointerProgress.interpolate({
+            inputRange: [0, 0.8, 1],
+            outputRange: [0.9, 1, 0.92],
+          }),
+        },
+      ],
+    };
+  }, [assistPointerProgress, isAssisting, targetRect]);
+
+  const assistRippleStyle: any = React.useMemo(() => {
+    if (!targetRect) {
+      return { opacity: 0 };
+    }
+
+    const centerX = targetRect.x + targetRect.w / 2 - 26;
+    const centerY = targetRect.y + targetRect.h / 2 - 26;
+    return {
+      opacity: isAssisting ? 1 : 0,
+      transform: [
+        { translateX: centerX },
+        { translateY: centerY },
+        {
+          scale: assistPointerProgress.interpolate({
+            inputRange: [0, 0.72, 0.9, 1],
+            outputRange: [0.25, 0.25, 1.2, 1.45],
+          }),
+        },
+      ],
+    };
+  }, [assistPointerProgress, isAssisting, targetRect]);
+
   const value = React.useMemo(
     () => ({
       startTour,
@@ -572,10 +707,11 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       isTourActive,
       currentStep,
       registerTarget,
+      registerAssistAction,
       advanceStep,
       activeTargetName,
     }),
-    [activeTargetName, advanceStep, currentStep, endTour, isTourActive, registerTarget, startTour],
+    [activeTargetName, advanceStep, currentStep, endTour, isTourActive, registerAssistAction, registerTarget, startTour],
   );
 
   return (
@@ -618,6 +754,14 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
                   <Text style={styles.targetTagText}>{currentDef.cue}</Text>
                 </View>
               </Animated.View>
+              {targetRect ? (
+                <>
+                  <RNAnimated.View pointerEvents="none" style={[styles.assistRipple, assistRippleStyle]} />
+                  <RNAnimated.View pointerEvents="none" style={[styles.assistPointer, assistPointerStyle]}>
+                    <View style={styles.assistPointerDot} />
+                  </RNAnimated.View>
+                </>
+              ) : null}
             </Animated.View>
           ) : null}
 
@@ -665,6 +809,26 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
               <Text style={[styles.coachLabel, { color: COLORS.textPrimary }]}>Do this now</Text>
               <Text style={[styles.actionText, { color: COLORS.textPrimary }]}>{currentDef.cue}</Text>
             </View>
+
+            {assistVisible ? (
+              <Pressable
+                onPress={runAssist}
+                style={({ pressed }) => [
+                  styles.assistButton,
+                  {
+                    backgroundColor: `${COLORS.primary}12`,
+                    borderColor: `${COLORS.primary}26`,
+                    opacity: pressed ? 0.88 : 1,
+                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                  },
+                ]}
+              >
+                <Text style={[styles.assistButtonTitle, { color: COLORS.primary }]}>Confused? Click here for extra guidance.</Text>
+                <Text style={[styles.assistButtonBody, { color: COLORS.textSecondary }]}>
+                  We will show the exact action, animate it on screen, and move you to the next step automatically.
+                </Text>
+              </Pressable>
+            ) : null}
           </Animated.View>
 
           <CelebrationBurst
@@ -679,8 +843,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function TourTarget({ name, children, style }: any) {
-  const { registerTarget, activeTargetName } = useTour();
+export function TourTarget({ name, children, style, assistAction }: any) {
+  const { registerTarget, registerAssistAction, activeTargetName } = useTour();
   const ref = useRef<View>(null);
 
   const isHighlighted = activeTargetName === name;
@@ -706,6 +870,11 @@ export function TourTarget({ name, children, style }: any) {
       if (interval) clearInterval(interval);
     };
   }, [isHighlighted, name, registerTarget]);
+
+  useEffect(() => {
+    registerAssistAction(name, assistAction ?? null);
+    return () => registerAssistAction(name, null);
+  }, [assistAction, name, registerAssistAction]);
 
   return (
     <View
@@ -822,6 +991,57 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: '700',
     color: '#151821',
+  },
+  assistButton: {
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderWidth: 1,
+    gap: 4,
+  },
+  assistButtonTitle: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  assistButtonBody: {
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
+  },
+  assistPointer: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 3,
+    borderColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 10,
+  },
+  assistPointerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#111827',
+  },
+  assistRipple: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
   },
   celebrationWrapper: {
     ...StyleSheet.absoluteFillObject,

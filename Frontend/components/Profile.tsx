@@ -471,7 +471,7 @@ export function Profile() {
             Welcome to MaroonLife. Your personalized campus experience is ready for you to explore.
           </Text>
 
-          <TourTarget name="tour-finish">
+          <TourTarget name="tour-finish" assistAction={() => advanceStep('tour-finish')}>
             <Pressable 
               style={({ pressed }) => ({ 
                 backgroundColor: '#FFF', 

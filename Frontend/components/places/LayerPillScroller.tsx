@@ -81,13 +81,32 @@ export function LayerPillScroller({
             </TouchableOpacity>
           );
 
-          if (layer.id === 'Rec') return <TourTarget key={layer.id} name="gyms-pill">{pill}</TourTarget>;
+          if (layer.id === 'Rec') {
+            return (
+              <TourTarget
+                key={layer.id}
+                name="gyms-pill"
+                assistAction={() => {
+                  onSelectLayer('Rec');
+                  setTimeout(() => advanceStep('gyms-pill'), 250);
+                }}
+              >
+                {pill}
+              </TourTarget>
+            );
+          }
           if (layer.id === 'Bus') return <TourTarget key={layer.id} name="bus-routes">{pill}</TourTarget>;
           
           return <React.Fragment key={layer.id}>{pill}</React.Fragment>;
         })}
 
-        <TourTarget name="places-settings">
+        <TourTarget
+          name="places-settings"
+          assistAction={() => {
+            onOpenSettings();
+            setTimeout(() => advanceStep('places-settings'), 250);
+          }}
+        >
           <TouchableOpacity
             style={styles.layerSettingsPill}
             onPress={() => {
