@@ -221,6 +221,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const [pendingInitialLocation, setPendingInitialLocation] = useState<
     string | null
   >(null);
+  const [pendingInitialPulseCoord, setPendingInitialPulseCoord] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [activeWalkingRoute, setActiveWalkingRoute] =
     useState<WalkingRoute | null>(null);
@@ -1379,7 +1383,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
     const nextLayer = route.params?.initialLayer;
     const token = route.params?.focusToken;
     const nextLocation = route.params?.initialLocation;
-    if (!nextLayer && !token && !nextLocation) return;
+    const nextPulseCoord = route.params?.initialPulseCoord;
+    if (!nextLayer && !token && !nextLocation && !nextPulseCoord) return;
     if (nextLayer) setActiveLayer(nextLayer);
     setSelectedId(null);
     setSelectedHotspotId(null);
@@ -1392,10 +1397,24 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setPendingInitialLocation(
       typeof nextLocation === "string" ? nextLocation : null,
     );
+    if (
+      nextPulseCoord &&
+      Number.isFinite(nextPulseCoord.latitude) &&
+      Number.isFinite(nextPulseCoord.longitude)
+    ) {
+      setPendingInitialPulseCoord({
+        latitude: nextPulseCoord.latitude,
+        longitude: nextPulseCoord.longitude,
+      });
+    } else {
+      setPendingInitialPulseCoord(null);
+    }
   }, [
     route.params?.focusToken,
     route.params?.initialLayer,
     route.params?.initialLocation,
+    route.params?.initialPulseCoord?.latitude,
+    route.params?.initialPulseCoord?.longitude,
   ]);
 
   useEffect(() => {
@@ -1414,6 +1433,48 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setSelectedHotspotId(null);
     }
   }, [activeLayer, selectedHotspotId]);
+
+  useEffect(() => {
+    if (
+      activeLayer !== "Pulse" ||
+      !pendingInitialPulseCoord ||
+      !mapRef.current
+    ) {
+      return;
+    }
+
+    mapRef.current.animateCamera(
+      {
+        center: pendingInitialPulseCoord,
+        zoom: 16.2,
+        pitch: isMapTilted ? 55 : 0,
+        heading: 0,
+      },
+      { duration: 700 },
+    );
+
+    if (!pulseHotspots.length) {
+      return;
+    }
+
+    const nearestHotspot = pulseHotspots
+      .map((candidate) => ({
+        hotspot: candidate,
+        distanceMeters: haversineDistanceMeters(
+          pendingInitialPulseCoord.latitude,
+          pendingInitialPulseCoord.longitude,
+          candidate.coord.lat,
+          candidate.coord.lng,
+        ),
+      }))
+      .sort((left, right) => left.distanceMeters - right.distanceMeters)[0];
+
+    if (nearestHotspot && nearestHotspot.distanceMeters <= 220) {
+      setSelectedHotspotId(nearestHotspot.hotspot.id);
+    }
+
+    setPendingInitialPulseCoord(null);
+  }, [activeLayer, isMapTilted, pendingInitialPulseCoord, pulseHotspots]);
 
   // Hydrate hub when tab needs it
   useEffect(() => {

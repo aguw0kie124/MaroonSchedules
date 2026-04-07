@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import {
   ActivityIndicator,
   Alert,
@@ -30,6 +31,7 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
+import MapView, { Marker } from 'react-native-maps';
 import {
   ArrowBigDown,
   ArrowBigUp,
@@ -42,6 +44,7 @@ import {
   MessageCircle,
   Pizza,
   Flag,
+  LocateFixed,
   MoreVertical,
   Plus,
   Search,
@@ -75,6 +78,8 @@ import {
   uploadStreamImage,
 } from '../services/streamFeeds';
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
+import { TAMU_CENTER } from './places/types';
+import { haversineDistanceMeters } from './places/utils';
 import { TourTarget, useTour } from './onboarding/TourProvider';
 import { getPremiumName, getPremiumImage } from '../utils/userUtils';
 import { scheduleAdminEventReviewNotification } from '../services/notificationService';
@@ -133,6 +138,11 @@ interface PingCard {
   imageUrl?: string | null;
 }
 
+type PingMapCoordinate = {
+  latitude: number;
+  longitude: number;
+};
+
 const PING_CATEGORIES: Array<{ id: PingCategory; accent: string; Icon: any }> = [
   { id: 'Free Food', accent: '#E48B3D', Icon: Pizza },
   { id: 'Hangout', accent: '#D85F8D', Icon: Users },
@@ -150,6 +160,51 @@ const TIME_PRESETS: Array<{ id: TimePreset; label: string }> = [
   { id: 'tonight', label: 'Tonight' },
   { id: 'tomorrow', label: 'Tomorrow' },
 ];
+
+const NEAREST_PLACE_SUGGESTION_RADIUS_METERS = 120;
+
+function parseOptionalNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function stripNearbyPrefix(value: string | null | undefined): string {
+  return (value || '').replace(/^near\s+/i, '').trim();
+}
+
+function findNearestCampusPlace(
+  coordinate: PingMapCoordinate,
+  directory: ReturnType<typeof buildCampusDirectory>,
+) {
+  let bestMatch: { location: ReturnType<typeof buildCampusDirectory>[number]; distanceMeters: number } | null =
+    null;
+
+  for (const location of directory) {
+    if (location.searchOnly) continue;
+
+    const distanceMeters = haversineDistanceMeters(
+      coordinate.latitude,
+      coordinate.longitude,
+      location.coord.lat,
+      location.coord.lng,
+    );
+
+    if (!bestMatch || distanceMeters < bestMatch.distanceMeters) {
+      bestMatch = { location, distanceMeters };
+    }
+  }
+
+  return bestMatch;
+}
+
+function getRegionForCoordinate(coordinate: PingMapCoordinate) {
+  return {
+    latitude: coordinate.latitude,
+    longitude: coordinate.longitude,
+    latitudeDelta: 0.008,
+    longitudeDelta: 0.008,
+  };
+}
 
 function categoryMeta(category: string) {
   return (
@@ -244,6 +299,8 @@ function mapActivityToPing(activity: any): PingCard {
   const actor = activity.actor || {};
   const attachments = activity.attachments || [];
   const media = attachments[0] || {};
+  const locationLat = parseOptionalNumber(custom.place_lat);
+  const locationLng = parseOptionalNumber(custom.place_lng);
 
   return {
     id: activity.id || `${Date.now()}`,
@@ -264,6 +321,8 @@ function mapActivityToPing(activity: any): PingCard {
     activityId: activity.id,
     isAnonymous: !!custom.is_anonymous,
     sourceUrl: null,
+    locationLat,
+    locationLng,
     imageUrl: normalizeImageUrl(media.image_url || media.asset_url || null),
   };
 }
@@ -319,9 +378,13 @@ export function CampusPingsScreen() {
   const [composerTimePreset, setComposerTimePreset] = useState<TimePreset>('now');
   const [locationQuery, setLocationQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+  const [composerPinnedCoord, setComposerPinnedCoord] = useState<PingMapCoordinate | null>(null);
+  const [isLocationMapVisible, setIsLocationMapVisible] = useState(false);
+  const [isResolvingCurrentLocation, setIsResolvingCurrentLocation] = useState(false);
   const [composerImageUri, setComposerImageUri] = useState<string | null>(null);
   const [composerAnonymous, setComposerAnonymous] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
+  const composerMapRef = useRef<MapView>(null);
 
   const [activeFeaturedEvent, setActiveFeaturedEvent] = useState<FeaturedEvent | null>(null);
   const [rsvpBanner, setRsvpBanner] = useState<string | null>(null);
@@ -337,6 +400,26 @@ export function CampusPingsScreen() {
       })
       .slice(0, 8);
   }, [directory, locationQuery]);
+
+  const selectedPlace = useMemo(
+    () =>
+      selectedLocation
+        ? locationLookup.get(getCanonicalLocationName(selectedLocation)) || null
+        : null,
+    [locationLookup, selectedLocation],
+  );
+
+  const nearestPinnedPlace = useMemo(() => {
+    if (!composerPinnedCoord) return null;
+    return findNearestCampusPlace(composerPinnedCoord, directory);
+  }, [composerPinnedCoord, directory]);
+
+  const nearestPinnedPlaceSuggestion = useMemo(() => {
+    if (!nearestPinnedPlace) return null;
+    return nearestPinnedPlace.distanceMeters <= NEAREST_PLACE_SUGGESTION_RADIUS_METERS
+      ? nearestPinnedPlace
+      : null;
+  }, [nearestPinnedPlace]);
 
   const featuredCards = useMemo(() => {
     return featuredEvents
@@ -359,11 +442,14 @@ export function CampusPingsScreen() {
     () =>
       userPings
         .map((ping) => {
-          const location = locationLookup.get(getCanonicalLocationName(ping.locationTag));
+          const lookupName = stripNearbyPrefix(ping.locationTag);
+          const location = lookupName
+            ? locationLookup.get(getCanonicalLocationName(lookupName))
+            : null;
           return {
             ...ping,
-            locationLat: location?.coord.lat ?? null,
-            locationLng: location?.coord.lng ?? null,
+            locationLat: ping.locationLat ?? location?.coord.lat ?? null,
+            locationLng: ping.locationLng ?? location?.coord.lng ?? null,
           };
         })
         .sort((left, right) => {
@@ -466,6 +552,9 @@ export function CampusPingsScreen() {
     setComposerTimePreset('now');
     setLocationQuery('');
     setSelectedLocation(null);
+    setComposerPinnedCoord(null);
+    setIsLocationMapVisible(false);
+    setIsResolvingCurrentLocation(false);
     setComposerImageUri(null);
     setComposerAnonymous(false);
   }, []);
@@ -478,6 +567,53 @@ export function CampusPingsScreen() {
   const handleSelectLocation = useCallback((locationName: string) => {
     setSelectedLocation(locationName);
     setLocationQuery(locationName);
+  }, []);
+
+  const handleUseNearestPlaceSuggestion = useCallback(() => {
+    if (!nearestPinnedPlaceSuggestion) return;
+    handleSelectLocation(nearestPinnedPlaceSuggestion.location.location);
+  }, [handleSelectLocation, nearestPinnedPlaceSuggestion]);
+
+  const handlePinCoordinateChange = useCallback((coordinate: PingMapCoordinate) => {
+    setComposerPinnedCoord(coordinate);
+    setIsLocationMapVisible(true);
+  }, []);
+
+  const handleUseCurrentLocation = useCallback(async () => {
+    try {
+      setIsResolvingCurrentLocation(true);
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert(
+          'Location unavailable',
+          'Allow location access if you want to drop a ping near your current spot.',
+        );
+        return;
+      }
+
+      const current = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const coordinate = {
+        latitude: current.coords.latitude,
+        longitude: current.coords.longitude,
+      };
+
+      setComposerPinnedCoord(coordinate);
+      setIsLocationMapVisible(true);
+      requestAnimationFrame(() => {
+        composerMapRef.current?.animateToRegion(getRegionForCoordinate(coordinate), 500);
+      });
+    } catch (error) {
+      console.warn('[Pings] current location failed', error);
+      Alert.alert(
+        'Location unavailable',
+        'We could not get your current location right now. You can still search for a place or drop a pin manually.',
+      );
+    } finally {
+      setIsResolvingCurrentLocation(false);
+    }
   }, []);
 
   const handlePickPingImage = useCallback(async () => {
@@ -528,13 +664,20 @@ export function CampusPingsScreen() {
       Alert.alert('Missing details', 'Add a title and a quick description so people know what is happening.');
       return;
     }
-    if (!selectedLocation) {
-      Alert.alert('Pick a location', 'Tag a campus location so this ping can connect back into the map.');
+    if (!selectedLocation && !composerPinnedCoord) {
+      Alert.alert(
+        'Add a location',
+        'Tag a campus place or drop a map pin so this ping can connect back into Pulse.',
+      );
       return;
     }
 
     const displayName = getPremiumName(user);
-    const selectedPlace = locationLookup.get(getCanonicalLocationName(selectedLocation));
+    const resolvedLocationTag =
+      selectedLocation ||
+      (nearestPinnedPlaceSuggestion
+        ? `Near ${nearestPinnedPlaceSuggestion.location.location}`
+        : 'Pinned location');
 
     const { startAt, endAt } = buildPresetWindow(composerTimePreset);
     setIsPosting(true);
@@ -551,10 +694,10 @@ export function CampusPingsScreen() {
         title: composerTitle.trim(),
         body: composerBody.trim(),
         category: composerCategory,
-        locationTag: selectedLocation,
+        locationTag: resolvedLocationTag,
         placeId: selectedPlace?.placeId || undefined,
-        placeLat: selectedPlace?.coord.lat,
-        placeLng: selectedPlace?.coord.lng,
+        placeLat: composerPinnedCoord?.latitude ?? selectedPlace?.coord.lat,
+        placeLng: composerPinnedCoord?.longitude ?? selectedPlace?.coord.lng,
         startAt,
         endAt,
         mediaUrl: uploadedImageUrl,
@@ -574,10 +717,13 @@ export function CampusPingsScreen() {
     composerBody,
     composerCategory,
     composerImageUri,
+    composerPinnedCoord,
     composerTimePreset,
     composerTitle,
     feedConnected,
     loadUserPings,
+    nearestPinnedPlaceSuggestion,
+    selectedPlace,
     resetComposer,
     selectedLocation,
     user,
@@ -657,11 +803,19 @@ export function CampusPingsScreen() {
 
   const openPingOnMap = useCallback(
     (ping: PingCard) => {
+      const locationSeed = stripNearbyPrefix(ping.locationTag) || null;
       navigation.navigate('Main', {
         screen: 'Places',
         params: {
           initialLayer: 'Pulse',
-          initialLocation: ping.locationTag,
+          initialLocation: locationSeed,
+          initialPulseCoord:
+            ping.locationLat != null && ping.locationLng != null
+              ? {
+                  latitude: ping.locationLat,
+                  longitude: ping.locationLng,
+                }
+              : undefined,
           focusToken: `ping:${ping.id}:${ping.startAt}`,
         },
       });
@@ -671,12 +825,15 @@ export function CampusPingsScreen() {
 
   const savePingToPlans = useCallback(
     (ping: PingCard) => {
-      const canonicalLocation = getCanonicalLocationName(ping.locationTag);
-      const location = locationLookup.get(canonicalLocation);
+      const locationSeed = stripNearbyPrefix(ping.locationTag);
+      const canonicalLocation = locationSeed
+        ? getCanonicalLocationName(locationSeed)
+        : ping.locationTag;
+      const location = locationSeed ? locationLookup.get(canonicalLocation) : null;
       scheduleEvent({
         id: `${ping.source}-${ping.id}`,
         title: ping.title,
-        location: canonicalLocation,
+        location: location?.location || ping.locationTag,
         description: ping.body,
         date_ts: Math.floor(new Date(ping.startAt).getTime() / 1000),
         date_iso: ping.startAt,
@@ -698,6 +855,13 @@ export function CampusPingsScreen() {
         params: {
           initialLayer: 'Pulse',
           initialLocation: event.location,
+          initialPulseCoord:
+            event.locationLat != null && event.locationLng != null
+              ? {
+                  latitude: event.locationLat,
+                  longitude: event.locationLng,
+                }
+              : undefined,
           focusToken: `featured:${event.id}:${event.startTime}`,
         },
       });
@@ -1191,24 +1355,29 @@ export function CampusPingsScreen() {
           exiting={FadeOut}
           style={StyleSheet.absoluteFill}
         >
-          <TouchableWithoutFeedback
+          <Pressable
+            style={styles.modalBackdrop}
             onPress={() => {
               setComposerVisible(false);
               resetComposer();
             }}
           >
-            <View style={styles.modalBackdrop}>
-               <Animated.View
+            <Animated.View
                 entering={SlideInDown.duration(220)}
                 exiting={SlideOutDown.duration(180)}
-                 style={styles.modalKeyboardWrap}
+                style={styles.modalKeyboardWrap}
               >
-                <KeyboardAvoidingView
-                  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                  style={{ width: '100%' }}
+              <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={styles.modalKeyboardWrap}
+              >
+                <Pressable
+                  style={styles.modalCard}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    Keyboard.dismiss();
+                  }}
                 >
-                  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                    <View style={styles.modalCard}>
                       <View style={styles.modalHeader}>
                         <Text style={styles.modalTitle}>Create a ping</Text>
                         <TourTarget name="crowdping-close">
@@ -1334,6 +1503,71 @@ export function CampusPingsScreen() {
                           />
                         </View>
 
+                        <View style={styles.locationActionRow}>
+                          <Pressable
+                            style={styles.locationActionButton}
+                            onPress={handleUseCurrentLocation}
+                          >
+                            {isResolvingCurrentLocation ? (
+                              <ActivityIndicator size="small" color={COLORS.primary} />
+                            ) : (
+                              <LocateFixed size={16} color={COLORS.primary} />
+                            )}
+                            <Text style={styles.locationActionText}>Use my location</Text>
+                          </Pressable>
+                          <Pressable
+                            style={[
+                              styles.locationActionButton,
+                              isLocationMapVisible && styles.locationActionButtonActive,
+                            ]}
+                            onPress={() => setIsLocationMapVisible((current) => !current)}
+                          >
+                            <MapPin
+                              size={16}
+                              color={isLocationMapVisible ? '#FFFFFF' : COLORS.primary}
+                            />
+                            <Text
+                              style={[
+                                styles.locationActionText,
+                                isLocationMapVisible && styles.locationActionTextActive,
+                              ]}
+                            >
+                              {isLocationMapVisible ? 'Hide map' : 'Drop pin'}
+                            </Text>
+                          </Pressable>
+                        </View>
+
+                        {(isLocationMapVisible || composerPinnedCoord) && (
+                          <View style={styles.pinMapCard}>
+                            <MapView
+                              ref={composerMapRef}
+                              style={styles.pinMap}
+                              initialRegion={
+                                composerPinnedCoord
+                                  ? getRegionForCoordinate(composerPinnedCoord)
+                                  : TAMU_CENTER
+                              }
+                              onLongPress={(event) =>
+                                handlePinCoordinateChange(event.nativeEvent.coordinate)
+                              }
+                            >
+                              {composerPinnedCoord ? (
+                                <Marker coordinate={composerPinnedCoord} />
+                              ) : null}
+                            </MapView>
+                            <View style={styles.pinMapFooter}>
+                              <Text style={styles.pinMapHint}>
+                                Long-press to place a pin exactly where the ping is happening.
+                              </Text>
+                              {composerPinnedCoord ? (
+                                <Pressable onPress={() => setComposerPinnedCoord(null)}>
+                                  <Text style={styles.pinMapClearText}>Clear pin</Text>
+                                </Pressable>
+                              ) : null}
+                            </View>
+                          </View>
+                        )}
+
                         {locationQuery.trim().length > 0 && !selectedLocation && (
                           <View style={styles.suggestionsWrap}>
                             {locationSuggestions.map((item) => (
@@ -1359,6 +1593,36 @@ export function CampusPingsScreen() {
                           </View>
                         )}
 
+                        {composerPinnedCoord ? (
+                          <View style={styles.pinSummaryCard}>
+                            <View style={styles.pinSummaryHeader}>
+                              <MapPin size={15} color={COLORS.primary} />
+                              <Text style={styles.pinSummaryTitle}>
+                                {selectedLocation
+                                  ? 'Dropped pin plus campus place tag'
+                                  : nearestPinnedPlaceSuggestion
+                                    ? `Pinned near ${nearestPinnedPlaceSuggestion.location.location}`
+                                    : 'Dropped pin ready'}
+                              </Text>
+                            </View>
+                            <Text style={styles.pinSummaryMeta}>
+                              {selectedLocation
+                                ? 'Your selected place will label the ping, and the dropped pin will set the exact map position.'
+                                : nearestPinnedPlaceSuggestion
+                                  ? `${Math.round(nearestPinnedPlaceSuggestion.distanceMeters)}m from the nearest campus place.`
+                                  : 'No nearby campus place matched automatically, so this will post as a map pin only.'}
+                            </Text>
+                            {!selectedLocation && nearestPinnedPlaceSuggestion ? (
+                              <Pressable
+                                style={styles.pinSummaryAction}
+                                onPress={handleUseNearestPlaceSuggestion}
+                              >
+                                <Text style={styles.pinSummaryActionText}>Use nearest place tag</Text>
+                              </Pressable>
+                            ) : null}
+                          </View>
+                        ) : null}
+
                         <View style={{ marginTop: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                           <View>
                             <Text style={styles.modalLabel}>Post Anonymously</Text>
@@ -1377,9 +1641,20 @@ export function CampusPingsScreen() {
 
                       <View style={styles.modalFooter}>
                         <Pressable
-                          style={[styles.postButton, (!composerTitle.trim() || !composerBody.trim() || !selectedLocation) && styles.postButtonDisabled]}
+                          style={[
+                            styles.postButton,
+                            (!composerTitle.trim() ||
+                              !composerBody.trim() ||
+                              (!selectedLocation && !composerPinnedCoord)) &&
+                              styles.postButtonDisabled,
+                          ]}
                           onPress={handleCreatePing}
-                          disabled={isPosting}
+                          disabled={
+                            isPosting ||
+                            !composerTitle.trim() ||
+                            !composerBody.trim() ||
+                            (!selectedLocation && !composerPinnedCoord)
+                          }
                         >
                           {isPosting ? (
                             <ActivityIndicator size="small" color="#FFFFFF" />
@@ -1388,12 +1663,10 @@ export function CampusPingsScreen() {
                           )}
                         </Pressable>
                       </View>
-                    </View>
-                  </TouchableWithoutFeedback>
-                </KeyboardAvoidingView>
-              </Animated.View>
-            </View>
-          </TouchableWithoutFeedback>
+                </Pressable>
+              </KeyboardAvoidingView>
+            </Animated.View>
+          </Pressable>
         </Animated.View>
       )}
 
@@ -2038,16 +2311,19 @@ const getStyles = (COLORS: any) =>
       justifyContent: 'flex-end',
     },
     modalKeyboardWrap: {
+      flex: 1,
       width: '100%',
       justifyContent: 'flex-end',
     },
     modalCard: {
+      width: '100%',
       backgroundColor: COLORS.background,
       borderTopLeftRadius: 28,
       borderTopRightRadius: 28,
       paddingHorizontal: 18,
       paddingTop: 18,
       paddingBottom: 16,
+      minHeight: '58%',
       maxHeight: '88%',
     },
     modalScroll: {
@@ -2161,6 +2437,68 @@ const getStyles = (COLORS: any) =>
       color: COLORS.textPrimary,
       paddingVertical: 12,
       fontSize: 15,
+    },
+    locationActionRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 12,
+    },
+    locationActionButton: {
+      flex: 1,
+      minHeight: 44,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surface,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+      paddingHorizontal: 12,
+    },
+    locationActionButtonActive: {
+      backgroundColor: COLORS.primary,
+      borderColor: COLORS.primary,
+    },
+    locationActionText: {
+      color: COLORS.textPrimary,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    locationActionTextActive: {
+      color: '#FFFFFF',
+    },
+    pinMapCard: {
+      marginTop: 12,
+      borderRadius: 18,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surface,
+    },
+    pinMap: {
+      width: '100%',
+      height: 190,
+    },
+    pinMapFooter: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    pinMapHint: {
+      flex: 1,
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      lineHeight: 17,
+      fontWeight: '600',
+    },
+    pinMapClearText: {
+      color: COLORS.primary,
+      fontSize: 12,
+      fontWeight: '800',
     },
     locationResults: {
       maxHeight: 210,
@@ -2401,6 +2739,45 @@ const getStyles = (COLORS: any) =>
       color: COLORS.textPrimary,
       fontSize: 14,
       fontWeight: '700',
+    },
+    pinSummaryCard: {
+      marginTop: 12,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: `${COLORS.primary}18`,
+      backgroundColor: `${COLORS.primary}0D`,
+      padding: 14,
+      gap: 8,
+    },
+    pinSummaryHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    pinSummaryTitle: {
+      flex: 1,
+      color: COLORS.textPrimary,
+      fontSize: 14,
+      fontWeight: '800',
+    },
+    pinSummaryMeta: {
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      lineHeight: 18,
+      fontWeight: '600',
+    },
+    pinSummaryAction: {
+      alignSelf: 'flex-start',
+      marginTop: 2,
+      borderRadius: 999,
+      backgroundColor: COLORS.primary,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    pinSummaryActionText: {
+      color: '#FFFFFF',
+      fontSize: 12,
+      fontWeight: '800',
     },
     postButton: {
       height: 56,
