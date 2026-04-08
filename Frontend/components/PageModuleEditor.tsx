@@ -80,7 +80,13 @@ export function PageModuleEditor<T extends string>({
               <Text style={styles.sheetEyebrow}>Page Modularity</Text>
               <Text style={styles.sheetTitle}>{title}</Text>
             </View>
-            <TourTarget name="add-gyms-close">
+            <TourTarget
+              name="add-gyms-close"
+              assistAction={() => {
+                onClose();
+                setTimeout(() => advanceStep('add-gyms-close'), 250);
+              }}
+            >
               <Pressable 
                 style={styles.closeButton} 
                 onPress={() => {
@@ -145,7 +151,16 @@ export function PageModuleEditor<T extends string>({
 
               if (item.id === 'Rec') {
                 return (
-                  <TourTarget key={item.id} name="add-gyms-toggle">
+                  <TourTarget
+                    key={item.id}
+                    name="add-gyms-toggle"
+                    assistAction={() => {
+                      if (!item.visible) {
+                        onToggle(item.id);
+                      }
+                      setTimeout(() => advanceStep('add-gyms-toggle'), 250);
+                    }}
+                  >
                     {row}
                   </TourTarget>
                 );

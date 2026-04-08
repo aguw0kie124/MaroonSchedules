@@ -1091,7 +1091,13 @@ export function CampusPingsScreen() {
         </View>
       </View>
 
-      <TourTarget name="crowdping-cta">
+      <TourTarget
+        name="crowdping-cta"
+        assistAction={() => {
+          setComposerVisible(true);
+          setTimeout(() => advanceStep('crowdping-cta'), 900);
+        }}
+      >
         <View
           style={[
             activeTargetName === 'crowdping-cta' && {
@@ -1228,7 +1234,14 @@ export function CampusPingsScreen() {
                     <View style={styles.modalCard}>
                       <View style={styles.modalHeader}>
                         <Text style={styles.modalTitle}>Create a ping</Text>
-                        <TourTarget name="crowdping-close">
+                        <TourTarget
+                          name="crowdping-close"
+                          assistAction={() => {
+                            setComposerVisible(false);
+                            resetComposer();
+                            setTimeout(() => advanceStep('crowdping-close'), 250);
+                          }}
+                        >
                           <Pressable
                             onPress={() => {
                               setComposerVisible(false);

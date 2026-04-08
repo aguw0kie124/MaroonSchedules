@@ -121,7 +121,13 @@ export function GlassPillTabBar({
           const itemContent = (
             <>
               {targetName ? (
-                <TourTarget name={targetName}>
+                <TourTarget
+                  name={targetName}
+                  assistAction={() => {
+                    navigation.navigate(route.name);
+                    setTimeout(() => advanceStep(targetName), 350);
+                  }}
+                >
                   <View style={styles.iconWrap}>{icon}</View>
                 </TourTarget>
               ) : (

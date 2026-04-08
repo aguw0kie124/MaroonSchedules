@@ -56,17 +56,37 @@ import { TourTarget, useTour } from './components/onboarding/TourProvider';
 import { syncUser, fetchUserProfile, requestJson, setApiAuthTokenProvider } from './api/client';
 import { TOSScreen } from './components/TOSScreen';
 import { NotificationPromptScreen } from './components/onboarding/NotificationPromptScreen';
+import { EventPreferenceOnboardingScreen } from './components/onboarding/EventPreferenceOnboardingScreen';
 
 import { AdminApplicationScreen } from './components/admin/AdminApplicationScreen';
 import { AdminPortal } from './components/admin/AdminPortal';
 import { PendingReviewInterceptor } from './components/events/PendingReviewInterceptor';
 import { API_URL } from './config';
 import { ClubAccessScreen } from './components/ClubAccessScreen';
+import { type MajorOption, useEventStore } from './store/eventStore';
+
+function isMajorOption(value: string): value is MajorOption {
+  return [
+    'Engineering',
+    'Business',
+    'Liberal Arts',
+    'Agriculture',
+    'Science',
+    'Architecture',
+    'Education',
+    'Public Health',
+    'Law',
+    'Medicine',
+  ].includes(value);
+}
 
 function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const setTourCompleted = useAppShellStore((state) => state.setTourCompleted);
+  const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
+  const setSelectedMajor = useEventStore((state) => state.setSelectedMajor);
+  const setMajorSpecific = useEventStore((state) => state.setMajorSpecific);
   const lastSyncedUserId = React.useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -85,10 +105,19 @@ function UserSync({ children }: { children: React.ReactNode }) {
           if (typeof data.tour_completed === 'boolean') {
             setTourCompleted(data.tour_completed);
           }
+          if (typeof data.event_preferences_completed === 'boolean') {
+            setEventPreferencesCompleted(data.event_preferences_completed);
+          }
+          if (typeof data.major === 'string' && isMajorOption(data.major)) {
+            setSelectedMajor(data.major);
+            setMajorSpecific(true);
+          } else {
+            setMajorSpecific(false);
+          }
         }
       }).catch((err: any) => console.warn('UserSync failed:', err));
     }
-  }, [user?.id, user?.primaryEmailAddress?.emailAddress, user?.fullName, user?.imageUrl]);
+  }, [setEventPreferencesCompleted, setMajorSpecific, setSelectedMajor, setTOSAccepted, setTourCompleted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
 
   return <>{children}</>;
 }
@@ -280,6 +309,10 @@ function RootNavigator() {
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const isNotificationPrompted = useAppShellStore((state) => state.isNotificationPrompted);
   const setNotificationPrompted = useAppShellStore((state) => state.setNotificationPrompted);
+  const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
+  const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
+  const showEventPreferencesOnboarding = useAppShellStore((state) => state.showEventPreferencesOnboarding);
+  const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
   const isAdmin = useAppShellStore((state) => state.adminAccessStatus);
   const setIsAdmin = useAppShellStore((state) => state.setAdminAccessStatus);
 
@@ -314,6 +347,16 @@ function RootNavigator() {
     content = (
       <NotificationPromptScreen 
         onDone={() => setNotificationPrompted(true)} 
+      />
+    );
+  } else if (isSignedIn && isTOSAccepted && isNotificationPrompted && (!isEventPreferencesCompleted || showEventPreferencesOnboarding) && user?.id) {
+    content = (
+      <EventPreferenceOnboardingScreen
+        clerkId={user.id}
+        onDone={() => {
+          setEventPreferencesCompleted(true);
+          setShowEventPreferencesOnboarding(false);
+        }}
       />
     );
   } else {
@@ -436,7 +479,14 @@ function TabButtonWrapper({ screenName, props }: { screenName: string; props: an
   };
 
   return (
-    <TourTarget name={targetName} style={{ flex: 1 }}>
+    <TourTarget
+      name={targetName}
+      style={{ flex: 1 }}
+      assistAction={() => {
+        (navigationRef as any).navigate('Main', { screen: screenName });
+        setTimeout(() => advanceStep(targetName), 350);
+      }}
+    >
       <View
         style={[
           { flex: 1, margin: 4, borderRadius: 12 },

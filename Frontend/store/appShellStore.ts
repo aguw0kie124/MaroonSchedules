@@ -133,6 +133,8 @@ type AppShellState = {
   isTOSAccepted: boolean;
   isTourCompleted: boolean;
   isNotificationPrompted: boolean;
+  isEventPreferencesCompleted: boolean;
+  showEventPreferencesOnboarding: boolean;
   adminAccessStatus: boolean | null;
   notificationsEnabled: boolean;
   eventNotifications: boolean;
@@ -151,6 +153,8 @@ type AppShellState = {
   setTOSAccepted: (accepted: boolean) => void;
   setTourCompleted: (completed: boolean) => void;
   setNotificationPrompted: (prompted: boolean) => void;
+  setEventPreferencesCompleted: (completed: boolean) => void;
+  setShowEventPreferencesOnboarding: (visible: boolean) => void;
   setAdminAccessStatus: (status: boolean | null) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
   setNotificationPreference: (key: 'event' | 'place' | 'ping', value: boolean) => void;
@@ -170,6 +174,8 @@ export const useAppShellStore = create<AppShellState>()(
       isTOSAccepted: false,
       isTourCompleted: false,
       isNotificationPrompted: false,
+      isEventPreferencesCompleted: false,
+      showEventPreferencesOnboarding: false,
       adminAccessStatus: null,
       notificationsEnabled: false,
       eventNotifications: true,
@@ -200,6 +206,8 @@ export const useAppShellStore = create<AppShellState>()(
       setTOSAccepted: (isTOSAccepted) => set({ isTOSAccepted }),
       setTourCompleted: (isTourCompleted) => set({ isTourCompleted }),
       setNotificationPrompted: (isNotificationPrompted) => set({ isNotificationPrompted }),
+      setEventPreferencesCompleted: (isEventPreferencesCompleted) => set({ isEventPreferencesCompleted }),
+      setShowEventPreferencesOnboarding: (showEventPreferencesOnboarding) => set({ showEventPreferencesOnboarding }),
       setAdminAccessStatus: (adminAccessStatus) => set({ adminAccessStatus }),
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
       setNotificationPreference: (key, value) => set((state) => ({
@@ -209,7 +217,7 @@ export const useAppShellStore = create<AppShellState>()(
     }),
     {
       name: 'app-shell-store',
-      version: 4,
+      version: 5,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         parkingPermit: state.parkingPermit,
@@ -221,6 +229,7 @@ export const useAppShellStore = create<AppShellState>()(
         isTOSAccepted: state.isTOSAccepted,
         isTourCompleted: state.isTourCompleted,
         isNotificationPrompted: state.isNotificationPrompted,
+        isEventPreferencesCompleted: state.isEventPreferencesCompleted,
         notificationsEnabled: state.notificationsEnabled,
         eventNotifications: state.eventNotifications,
         placeNotifications: state.placeNotifications,
@@ -255,6 +264,9 @@ export const useAppShellStore = create<AppShellState>()(
           isNotificationPrompted: typeof persisted.isNotificationPrompted === 'boolean'
             ? persisted.isNotificationPrompted
             : currentState.isNotificationPrompted,
+          isEventPreferencesCompleted: typeof persisted.isEventPreferencesCompleted === 'boolean'
+            ? persisted.isEventPreferencesCompleted
+            : currentState.isEventPreferencesCompleted,
           notificationsEnabled: typeof persisted.notificationsEnabled === 'boolean'
             ? persisted.notificationsEnabled
             : currentState.notificationsEnabled,
@@ -273,7 +285,7 @@ export const useAppShellStore = create<AppShellState>()(
         };
       },
       migrate: (persistedState: any, version: number) => {
-        if (version < 4) {
+        if (version < 5) {
           const state = persistedState as Partial<AppShellState>;
           const newState = { ...state };
           
@@ -289,6 +301,9 @@ export const useAppShellStore = create<AppShellState>()(
               p.id === 'Rec' ? { ...p, visible: false } : p
             );
           }
+          newState.isEventPreferencesCompleted = typeof state.isEventPreferencesCompleted === 'boolean'
+            ? state.isEventPreferencesCompleted
+            : false;
           
           return newState;
         }
