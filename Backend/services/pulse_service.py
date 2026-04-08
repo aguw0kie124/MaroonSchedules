@@ -19,6 +19,7 @@ PULSE_CACHE_LIMITS = (8, 12, 25)
 PULSE_CACHE_VERSION = "v4"
 PULSE_LOOKBACK_HOURS = 18
 PULSE_LOOKAHEAD_HOURS = 72
+PULSE_GEO_BUCKET_PRECISION = 3
 
 
 def invalidate_pulse_map_cache(limit: int | None = None) -> None:
@@ -150,6 +151,36 @@ def _preview_label_for_group(group: Dict[str, Any]) -> str:
     return f"{event_count} featured event{'s' if event_count != 1 else ''}"
 
 
+def _coerce_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _geo_bucket_for(lat: Any, lng: Any) -> tuple[str, Dict[str, float]] | None:
+    safe_lat = _coerce_float(lat)
+    safe_lng = _coerce_float(lng)
+    if safe_lat is None or safe_lng is None:
+        return None
+
+    bucket_lat = round(safe_lat, PULSE_GEO_BUCKET_PRECISION)
+    bucket_lng = round(safe_lng, PULSE_GEO_BUCKET_PRECISION)
+    return (
+        f"geo:{bucket_lat:.{PULSE_GEO_BUCKET_PRECISION}f}:{bucket_lng:.{PULSE_GEO_BUCKET_PRECISION}f}",
+        {"lat": bucket_lat, "lng": bucket_lng},
+    )
+
+
+def _fallback_location_name(location_tag: Any) -> str:
+    label = str(location_tag or "").strip()
+    if not label or label.lower() in {"campus", "pinned location"}:
+        return "Pinned area"
+    return label
+
+
 def _load_admin_events() -> List[Dict[str, Any]]:
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
@@ -229,9 +260,15 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
 
     grouped: Dict[str, Dict[str, Any]] = {}
 
-    def ensure_group(place_id: str, location_name: str, coord: Dict[str, float]) -> Dict[str, Any]:
-        if place_id not in grouped:
-            grouped[place_id] = {
+    def ensure_group(
+        group_id: str,
+        location_name: str,
+        coord: Dict[str, float],
+        place_id: str | None = None,
+    ) -> Dict[str, Any]:
+        if group_id not in grouped:
+            grouped[group_id] = {
+                "groupId": group_id,
                 "placeId": place_id,
                 "locationName": location_name,
                 "coord": coord,
@@ -242,13 +279,14 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
                 "categoryWeights": {},
                 "items": [],
             }
-        return grouped[place_id]
+        return grouped[group_id]
 
     for ping in pings:
         ping_id = ping["id"]
         custom = ping.get("custom_data") or {}
 
-        # Resolve place_id: check custom_data first, then try location_tag fallback
+        # Resolve the ping to a campus place when possible, otherwise fall back to
+        # a small geo bucket so dropped-pin pings still surface on Pulse.
         place_id = custom.get("place_id") or None
         location_tag = ping.get("location_tag") or ""
         lat = ping.get("lat")
@@ -259,7 +297,22 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
             place = place_registry_service.resolve_place(location_tag, lat, lng)
             if place:
                 place_id = place["place_id"]
-        if not place:
+
+        group_id: str | None = None
+        group_coord: Dict[str, float] | None = None
+        location_name: str | None = None
+        if place:
+            group_id = place["place_id"]
+            group_coord = {"lat": place["lat"], "lng": place["lng"]}
+            location_name = place["name"]
+        else:
+            geo_bucket = _geo_bucket_for(lat, lng)
+            if geo_bucket:
+                group_id, group_coord = geo_bucket
+                location_name = _fallback_location_name(location_tag)
+                place_id = None
+
+        if not group_id or not group_coord or not location_name:
             continue
 
         category = str(custom.get("ping_category") or ping.get("post_type") or "Popup")
@@ -283,7 +336,7 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
         
         print(f"[pulse_service] Including ping: {ping_id} (Date: {start_at}, Weight: {weight}, Category: {category})")
 
-        group = ensure_group(place_id, place["name"], {"lat": place["lat"], "lng": place["lng"]})
+        group = ensure_group(group_id, location_name, group_coord, place_id=place_id)
         group["score"] += weight
         group["pingCount"] += 1
         group["categoryWeights"][category] = group["categoryWeights"].get(category, 0) + weight
@@ -322,6 +375,7 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
             resolved_place["place_id"],
             resolved_place["name"],
             {"lat": resolved_place["lat"], "lng": resolved_place["lng"]},
+            place_id=resolved_place["place_id"],
         )
         weight = 18 * _recency_weight(start_at) + 12
         if boosted:
@@ -344,8 +398,9 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
         )
 
     hotspots: List[Dict[str, Any]] = []
-    for place_id, group in grouped.items():
-        percent_full = occupancy_by_place.get(place_id)
+    for group_id, group in grouped.items():
+        place_id = group.get("placeId")
+        percent_full = occupancy_by_place.get(place_id) if place_id else None
         occupancy_boost = min(14, (percent_full - 15) * 0.18) if percent_full is not None and percent_full > 15 else 0
         score = round(group["score"] + occupancy_boost)
         if score < 8:
@@ -359,7 +414,7 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
 
         hotspots.append(
             {
-                "id": f"hotspot-{place_id}",
+                "id": f"hotspot-{group_id}",
                 "placeId": place_id,
                 "locationName": group["locationName"],
                 "coord": group["coord"],
