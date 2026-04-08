@@ -1092,45 +1092,17 @@ export function PlacesMapScreen({ route, navigation }: any) {
     [isMapTilted],
   );
 
-  const openHotspotPlace = useCallback(
-    (hotspot: CampusHotspot) => {
-      if (!hotspot.place) {
-        if (mapRef.current) {
-          mapRef.current.animateCamera(
-            {
-              center: {
-                latitude: hotspot.coord.lat,
-                longitude: hotspot.coord.lng,
-              },
-              zoom: 16.4,
-              pitch: isMapTilted ? 55 : 0,
-              heading: 0,
-            },
-            { duration: 650 },
-          );
-        }
-        return;
-      }
-
-      handleSelectLocation(hotspot.place);
-    },
-    [handleSelectLocation, isMapTilted],
-  );
-
   const openHotspotItem = useCallback(
-    async (hotspot: CampusHotspot, item: CampusHotspot["items"][number]) => {
+    async (_hotspot: CampusHotspot, item: CampusHotspot["items"][number]) => {
       if (item.source === "event" && item.link) {
         try {
           await Linking.openURL(item.link);
-          return;
         } catch (error) {
           console.warn("Failed to open event link", error);
         }
       }
-
-      openHotspotPlace(hotspot);
     },
-    [openHotspotPlace],
+    [],
   );
  
   const toggleHotspotVote = useCallback(async (hotspotId: string, itemId: string, targetVote: number) => {
@@ -2554,7 +2526,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
             fitMapToActiveOverview();
           });
         }}
-        onOpenPlace={openHotspotPlace}
         onOpenItem={openHotspotItem}
         onVote={toggleHotspotVote}
       />

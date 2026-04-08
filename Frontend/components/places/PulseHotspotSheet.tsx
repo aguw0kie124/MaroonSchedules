@@ -1,33 +1,16 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  ScrollView,
-  Dimensions,
-  Platform,
-} from 'react-native';
+import { Dimensions, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   FadeIn,
-  FadeOut,
+  LinearTransition,
   SlideInDown,
   SlideOutDown,
-  LinearTransition,
 } from 'react-native-reanimated';
-import {
-  X,
-  MapPin,
-  ChevronRight,
-  ChevronUp,
-  ChevronDown,
-  Zap,
-} from 'lucide-react-native';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ChevronDown, ChevronUp, ExternalLink, Flame, X } from 'lucide-react-native';
+
 import { useTheme } from '../SharedUI';
-import { Image } from 'react-native';
-import type { CampusHotspot } from '../../services/campusPulse';
+import type { CampusHotspot, CampusHotspotItem } from '../../services/campusPulse';
+import { FLOATING_CARD_BOTTOM_OFFSET } from './types';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -35,8 +18,7 @@ interface PulseHotspotSheetProps {
   visible: boolean;
   hotspot: CampusHotspot | null;
   onClose: () => void;
-  onOpenPlace: (hotspot: CampusHotspot) => void;
-  onOpenItem: (hotspot: CampusHotspot, item: any) => void;
+  onOpenItem: (hotspot: CampusHotspot, item: CampusHotspotItem) => void;
   onVote: (hotspotId: string, itemId: string, target: number) => void;
 }
 
@@ -44,7 +26,6 @@ export function PulseHotspotSheet({
   visible,
   hotspot,
   onClose,
-  onOpenPlace,
   onOpenItem,
   onVote,
 }: PulseHotspotSheetProps) {
@@ -54,358 +35,429 @@ export function PulseHotspotSheet({
   if (!visible || !hotspot) return null;
 
   const categoryColor = hotspot.pulseColor || COLORS.primary;
+  const previewLabel =
+    hotspot.previewLabel?.trim() ||
+    `${hotspot.items.length} update${hotspot.items.length === 1 ? '' : 's'}`;
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      <Pressable style={styles.pulseSheetOverlay} onPress={onClose}>
-        <Animated.View 
-          entering={FadeIn.duration(300)} 
-          exiting={FadeOut.duration(200)} 
-          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]} 
-        />
-      </Pressable>
+      <Pressable style={styles.overlayTapTarget} onPress={onClose} />
 
       <Animated.View
-        entering={SlideInDown.duration(400).withCallback((finished) => {
-          if (finished) {
-            // Animation finished
-          }
-        })}
-        exiting={SlideOutDown.duration(300)}
-        style={[
-          styles.pulseSheetContainer,
-          { backgroundColor: isDark ? 'rgba(28, 28, 30, 0.85)' : 'rgba(255, 255, 255, 0.85)' },
-          { borderColor: COLORS.border + '40' },
-        ]}
+        entering={SlideInDown.duration(240)}
+        exiting={SlideOutDown.duration(180)}
+        style={styles.sheetWrap}
       >
-        <BlurView intensity={Platform.OS === 'ios' ? 40 : 100} tint={isDark ? 'dark' : 'light'} style={styles.blurContainer}>
-          <View style={styles.dragHandleContainer}>
-            <View style={[styles.dragHandle, { backgroundColor: COLORS.textTertiary + '40' }]} />
+        <View
+          style={[
+            styles.sheetCard,
+            {
+              backgroundColor: isDark ? 'rgba(20,20,22,0.985)' : 'rgba(255,255,255,0.99)',
+              borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(12,12,14,0.08)',
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.handle,
+              { backgroundColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(12,12,14,0.12)' },
+            ]}
+          />
+
+          <View style={styles.header}>
+            <View style={styles.headerBody}>
+              <View style={styles.eyebrowRow}>
+                <View style={[styles.statusBadge, { backgroundColor: `${categoryColor}18` }]}>
+                  <Flame size={12} color={categoryColor} />
+                  <Text style={[styles.statusLabel, { color: categoryColor }]}>{hotspot.pulseLabel}</Text>
+                </View>
+                <Text style={[styles.previewLabel, { color: COLORS.textSecondary }]} numberOfLines={1}>
+                  {previewLabel}
+                </Text>
+              </View>
+
+              <Text style={[styles.title, { color: COLORS.textPrimary }]} numberOfLines={2}>
+                {hotspot.locationName}
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={onClose}
+              style={({ pressed }) => [
+                styles.closeButton,
+                {
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(12,12,14,0.05)',
+                  opacity: pressed ? 0.72 : 1,
+                },
+              ]}
+            >
+              <X size={18} color={COLORS.textPrimary} />
+            </Pressable>
           </View>
 
-          <View style={styles.pulseSheetHeader}>
-            <View style={styles.pulseSheetHeaderTitleRow}>
-              <View style={styles.titleContainer}>
-                <Text style={[styles.pulseSheetTitle, { color: COLORS.textPrimary }]}>
-                  {hotspot.locationName}
-                </Text>
-                <View style={[styles.statusBadge, { backgroundColor: categoryColor + '15' }]}>
-                  <Zap size={12} color={categoryColor} fill={categoryColor} />
-                  <Text style={[styles.pulseSheetStatus, { color: categoryColor }]}>
-                    {hotspot.pulseLabel} · {hotspot.pingCount} Pings
-                  </Text>
-                </View>
-              </View>
-              <Pressable onPress={onClose} style={[styles.pulseSheetCloseButton, { backgroundColor: COLORS.surfaceElevated }]}>
-                <X size={20} color={COLORS.textTertiary} />
-              </Pressable>
-            </View>
-
-            <View style={styles.pulseSheetActionRow}>
-              <Pressable
-                onPress={() => onOpenPlace(hotspot)}
-                style={({ pressed }) => [
-                  styles.pulseSheetPrimaryBtn,
-                  { backgroundColor: categoryColor, opacity: pressed ? 0.8 : 1 }
-                ]}
-              >
-                <LinearGradient
-                  colors={[categoryColor, categoryColor + 'CC']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.btnGradient}
-                >
-                  <MapPin size={18} color="#FFF" />
-                  <Text style={styles.pulseSheetPrimaryBtnText}>View Location</Text>
-                </LinearGradient>
-              </Pressable>
-            </View>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: COLORS.textPrimary }]}>What&apos;s happening here</Text>
+            <Text style={[styles.sectionMeta, { color: COLORS.textSecondary }]}>
+              {hotspot.dominantCategory}
+            </Text>
           </View>
 
           <ScrollView
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.pulseSheetItemsContent}
+            style={styles.itemsScroll}
+            contentContainerStyle={styles.itemsContent}
           >
-            {hotspot.items.map((item, index) => (
-              <Animated.View
-                key={`${item.source}-${item.id}`}
-                entering={FadeIn.delay(index * 50).duration(400)}
-                layout={LinearTransition}
-              >
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.pulseSheetItemCard,
-                    { 
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
-                      borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
-                      opacity: pressed ? 0.7 : 1
-                    }
-                  ]}
-                  onPress={() => onOpenItem(hotspot, item)}
-                >
-                  <View style={styles.pulseSheetItemHeader}>
-                    <View style={styles.sourceTag}>
-                       <Text style={[styles.pulseSheetItemSource, { color: COLORS.textSecondary }]}>
-                        {item.source === "event" ? "featured event" : "live ping"}
+            {hotspot.items.length ? (
+              hotspot.items.map((item, index) => {
+                const isEventLink = item.source === 'event' && !!item.link;
+                const card = (
+                  <View
+                    style={[
+                      styles.itemCard,
+                      {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.04)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(12,12,14,0.05)',
+                      },
+                    ]}
+                  >
+                    <View style={styles.itemHeader}>
+                      <Text style={[styles.itemSource, { color: categoryColor }]}>
+                        {item.source === 'event' ? 'Featured Event' : 'Live Ping'}
                       </Text>
+                      <Text style={[styles.itemTime, { color: COLORS.textSecondary }]}>{item.timeLabel}</Text>
                     </View>
-                    <Text style={[styles.pulseSheetItemTime, { color: COLORS.textSecondary }]}>{item.timeLabel}</Text>
+
+                    <View style={styles.itemBodyRow}>
+                      <View style={styles.itemBody}>
+                        <Text style={[styles.itemTitle, { color: COLORS.textPrimary }]} numberOfLines={2}>
+                          {item.title}
+                        </Text>
+                        <Text style={[styles.itemMeta, { color: COLORS.textSecondary }]} numberOfLines={2}>
+                          {item.category}
+                          {item.subtitle ? ` · ${item.subtitle}` : ''}
+                        </Text>
+                      </View>
+
+                      {item.source === 'ping' ? (
+                        <ItemVoteControls
+                          score={item.itemScore || 0}
+                          userVote={item.userVote || 0}
+                          onVote={(target) => onVote(hotspot.id, item.id, target)}
+                          categoryColor={categoryColor}
+                        />
+                      ) : isEventLink ? (
+                        <View
+                          style={[
+                            styles.linkBadge,
+                            {
+                              backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(12,12,14,0.05)',
+                            },
+                          ]}
+                        >
+                          <ExternalLink size={14} color={COLORS.textSecondary} />
+                        </View>
+                      ) : null}
+                    </View>
                   </View>
-                  <Text style={[styles.pulseSheetItemTitle, { color: COLORS.textPrimary }]}>{item.title}</Text>
-                  
-                  {item.imageUrl && (
-                    <Image
-                      source={{ uri: item.imageUrl }}
-                      style={styles.pulseSheetItemImage}
-                      resizeMode="cover"
-                    />
-                  )}
-                  
-                  <View style={styles.pulseSheetItemFooter}>
-                    <Text style={[styles.pulseSheetItemMeta, { color: COLORS.textSecondary }]}>
-                      {item.category}
-                      {item.subtitle ? ` · ${item.subtitle}` : ""}
-                    </Text>
-                    {item.source === "ping" && (
-                      <ItemVoteControls
-                        score={item.itemScore || 0}
-                        userVote={item.userVote || 0}
-                        onVote={(target) => {
-                          onVote(hotspot.id, item.id, target);
-                        }}
-                        categoryColor={categoryColor}
-                      />
+                );
+
+                return (
+                  <Animated.View
+                    key={`${item.source}-${item.id}`}
+                    entering={FadeIn.delay(index * 35).duration(220)}
+                    layout={LinearTransition}
+                  >
+                    {isEventLink ? (
+                      <Pressable
+                        onPress={() => onOpenItem(hotspot, item)}
+                        style={({ pressed }) => ({ opacity: pressed ? 0.76 : 1 })}
+                      >
+                        {card}
+                      </Pressable>
+                    ) : (
+                      card
                     )}
-                  </View>
-                </Pressable>
-              </Animated.View>
-            ))}
+                  </Animated.View>
+                );
+              })
+            ) : (
+              <View
+                style={[
+                  styles.emptyCard,
+                  {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(12,12,14,0.04)',
+                    borderColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(12,12,14,0.05)',
+                  },
+                ]}
+              >
+                <Text style={[styles.emptyTitle, { color: COLORS.textPrimary }]}>No live posts yet</Text>
+                <Text style={[styles.emptyBody, { color: COLORS.textSecondary }]}>
+                  This hotspot is quiet right now, but it will stay pinned on the Pulse map.
+                </Text>
+              </View>
+            )}
           </ScrollView>
-        </BlurView>
+        </View>
       </Animated.View>
     </View>
   );
 }
 
-function ItemVoteControls({ score, userVote, onVote, categoryColor }: { score: number, userVote: number, onVote: (target: number) => void, categoryColor: string }) {
-  const { COLORS } = useTheme();
+function ItemVoteControls({
+  score,
+  userVote,
+  onVote,
+  categoryColor,
+}: {
+  score: number;
+  userVote: number;
+  onVote: (target: number) => void;
+  categoryColor: string;
+}) {
+  const { COLORS, theme } = useTheme();
+  const isDark = theme === 'dark';
 
   return (
-    <View style={[styles.itemVoteStack, { backgroundColor: COLORS.surfaceElevated }]}>
-      <Pressable 
+    <View
+      style={[
+        styles.voteStack,
+        {
+          backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F7',
+        },
+      ]}
+    >
+      <Pressable
         onPress={() => onVote(userVote === 1 ? 0 : 1)}
         style={({ pressed }) => [
-          styles.itemVoteButton, 
-          userVote === 1 && { backgroundColor: categoryColor + '20' },
-          pressed && { opacity: 0.7 }
+          styles.voteButton,
+          userVote === 1 && { backgroundColor: `${categoryColor}20` },
+          pressed && { opacity: 0.72 },
         ]}
       >
-        <ChevronUp size={18} color={userVote === 1 ? categoryColor : COLORS.textSecondary} strokeWidth={userVote === 1 ? 3 : 2} />
+        <ChevronUp
+          size={16}
+          color={userVote === 1 ? categoryColor : COLORS.textSecondary}
+          strokeWidth={userVote === 1 ? 3 : 2}
+        />
       </Pressable>
-      <Text style={[styles.itemVoteScore, { color: COLORS.textPrimary }, userVote !== 0 && { color: userVote === 1 ? categoryColor : '#FF4D6D' }]}>
+
+      <Text
+        style={[
+          styles.voteScore,
+          { color: COLORS.textPrimary },
+          userVote === 1 && { color: categoryColor },
+          userVote === -1 && { color: '#FF4D6D' },
+        ]}
+      >
         {score}
       </Text>
-      <Pressable 
+
+      <Pressable
         onPress={() => onVote(userVote === -1 ? 0 : -1)}
         style={({ pressed }) => [
-          styles.itemVoteButton, 
-          userVote === -1 && { backgroundColor: '#FF4D6D20' },
-          pressed && { opacity: 0.7 }
+          styles.voteButton,
+          userVote === -1 && { backgroundColor: 'rgba(255,77,109,0.14)' },
+          pressed && { opacity: 0.72 },
         ]}
       >
-        <ChevronDown size={18} color={userVote === -1 ? '#FF4D6D' : COLORS.textSecondary} strokeWidth={userVote === -1 ? 3 : 2} />
+        <ChevronDown
+          size={16}
+          color={userVote === -1 ? '#FF4D6D' : COLORS.textSecondary}
+          strokeWidth={userVote === -1 ? 3 : 2}
+        />
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  pulseSheetOverlay: {
+  overlayTapTarget: {
     ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'transparent',
   },
-  pulseSheetContainer: {
+  sheetWrap: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: SCREEN_HEIGHT * 0.72,
-    borderTopLeftRadius: 36,
-    borderTopRightRadius: 36,
+    left: 16,
+    right: 16,
+    bottom: FLOATING_CARD_BOTTOM_OFFSET + 12,
+    zIndex: 7000,
+    elevation: 18,
+  },
+  sheetCard: {
+    maxHeight: SCREEN_HEIGHT * 0.42,
+    borderRadius: 26,
     borderWidth: 1,
-    overflow: 'hidden',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 14,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -12 },
-    shadowOpacity: 0.15,
-    shadowRadius: 24,
-    elevation: 24,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    elevation: 12,
   },
-  blurContainer: {
-    flex: 1,
-  },
-  dragHandleContainer: {
-    width: '100%',
-    alignItems: 'center',
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  dragHandle: {
-    width: 36,
+  handle: {
+    width: 38,
     height: 4,
     borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 12,
   },
-  pulseSheetHeader: {
-    paddingHorizontal: 24,
-    paddingBottom: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.06)',
-  },
-  pulseSheetHeaderTitleRow: {
+  header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 24,
+    gap: 12,
+    marginBottom: 14,
   },
-  titleContainer: {
+  headerBody: {
     flex: 1,
-    paddingRight: 16,
+    minWidth: 0,
   },
-  pulseSheetTitle: {
-    fontSize: 26,
-    fontWeight: '900',
-    letterSpacing: -0.6,
+  eyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+    marginBottom: 8,
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginTop: 8,
     gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
   },
-  pulseSheetStatus: {
-    fontSize: 13,
-    fontWeight: '800',
+  statusLabel: {
+    fontSize: 11,
+    fontWeight: '900',
     textTransform: 'uppercase',
-    letterSpacing: 0.2,
+    letterSpacing: 0.5,
   },
-  pulseSheetCloseButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+  previewLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 24,
+  },
+  closeButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pulseSheetActionRow: {
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+    marginBottom: 8,
   },
-  pulseSheetPrimaryBtn: {
-    borderRadius: 18,
-    flex: 1,
-    overflow: 'hidden',
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '800',
   },
-  btnGradient: {
+  sectionMeta: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  itemsScroll: {
+    maxHeight: SCREEN_HEIGHT * 0.2,
+  },
+  itemsContent: {
+    gap: 8,
+    paddingBottom: 4,
+  },
+  itemCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  itemHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 6,
+  },
+  itemSource: {
+    fontSize: 10,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  itemTime: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  itemBodyRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: 10,
   },
-  pulseSheetPrimaryBtnText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: -0.2,
+  itemBody: {
+    flex: 1,
+    minWidth: 0,
   },
-  pulseSheetVoteStack: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 18,
-    paddingHorizontal: 4,
-  },
-  pulseSheetVoteButton: {
-    padding: 10,
-    borderRadius: 14,
-  },
-  pulseSheetVoteScore: {
-    fontSize: 17,
-    fontWeight: '900',
-    minWidth: 32,
-    textAlign: 'center',
-  },
-  itemVoteStack: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 14,
-    paddingHorizontal: 2,
-    paddingVertical: 2,
-  },
-  itemVoteButton: {
-    padding: 6,
-    borderRadius: 10,
-  },
-  itemVoteScore: {
+  itemTitle: {
     fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 18,
+    marginBottom: 3,
+  },
+  itemMeta: {
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 16,
+  },
+  linkBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voteStack: {
+    width: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    paddingVertical: 3,
+    gap: 1,
+  },
+  voteButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voteScore: {
+    fontSize: 12,
     fontWeight: '800',
     minWidth: 20,
     textAlign: 'center',
   },
-  pulseSheetItemsContent: {
-    padding: 24,
-    paddingBottom: 60,
-  },
-  pulseSheetItemCard: {
-    padding: 20,
-    borderRadius: 24,
-    marginBottom: 16,
+  emptyCard: {
+    borderRadius: 16,
     borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
   },
-  pulseSheetItemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sourceTag: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-    backgroundColor: 'rgba(0,0,0,0.03)',
-  },
-  pulseSheetItemSource: {
-    fontSize: 10,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  pulseSheetItemTime: {
-    fontSize: 13,
+  emptyTitle: {
+    fontSize: 14,
     fontWeight: '700',
+    marginBottom: 4,
   },
-  pulseSheetItemTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 10,
-    letterSpacing: -0.2,
-  },
-  pulseSheetItemImage: {
-    width: '100%',
-    height: 180,
-    borderRadius: 12,
-    marginBottom: 12,
-  },
-  pulseSheetItemFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  pulseSheetItemMeta: {
-    fontSize: 15,
-    fontWeight: '500',
-    flex: 1,
+  emptyBody: {
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 17,
   },
 });
