@@ -226,6 +226,17 @@ const FREE_INTERACTION_STEPS = new Set([
   'tour-finish',
 ]);
 
+const COMPACT_COACH_STEPS = new Set([
+  'places-settings',
+  'add-gyms-toggle',
+  'add-gyms-close',
+  'gyms-pill',
+  'rec-center-item',
+  'crowdping-cta',
+  'crowdping-close',
+  'tour-finish',
+]);
+
 function getTargetRegion(rect: TargetRect, width: number, height: number) {
   const horizontal = rect.x + rect.w / 2 < width / 3
     ? 'left side'
@@ -720,6 +731,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const regionHint = targetRect && currentDef ? `Highlighted in the ${getTargetRegion(targetRect, width, height)}.` : '';
   const encouragement = ENCOURAGEMENTS[currentStep % ENCOURAGEMENTS.length];
   const allowFreeInteraction = currentDef ? FREE_INTERACTION_STEPS.has(currentDef.id) : false;
+  const isCompactCoachStep = currentDef ? COMPACT_COACH_STEPS.has(currentDef.id) : false;
 
   const showBlockedHint = useCallback((message?: string) => {
     if (!currentDef) {
@@ -970,13 +982,14 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
                 shadowColor: COLORS.border,
                 borderColor: `${COLORS.primary}22`,
                 ...(currentDef.position === 'top'
-                  ? { top: Math.max(12, Math.min(28, height * 0.03)) }
+                  ? { top: Math.max(10, Math.min(22, height * 0.025)) }
                   : currentDef.position === 'bottom'
-                    ? { bottom: Math.max(14, Math.min(24, height * 0.035)) }
+                    ? { bottom: Math.max(10, Math.min(18, height * 0.025)) }
                     : targetRect && targetRect.y > height * 0.44
-                      ? { top: Math.max(12, Math.min(28, height * 0.03)) }
-                      : { bottom: Math.max(14, Math.min(24, height * 0.035)) }),
+                      ? { top: Math.max(10, Math.min(22, height * 0.025)) }
+                      : { bottom: Math.max(10, Math.min(18, height * 0.025)) }),
               },
+              isCompactCoachStep ? styles.tourBoxCompact : null,
             ]}
             pointerEvents="box-none"
           >
@@ -1000,23 +1013,25 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.progressDotsRow}>
-              {TOUR_SEQUENCE.map((step, index) => {
-                const isDone = index < currentStep;
-                const isCurrent = index === currentStep;
-                return (
-                  <View
-                    key={step.id}
-                    style={[
-                      styles.progressDot,
-                      isDone && { backgroundColor: COLORS.primary, opacity: 0.92 },
-                      isCurrent && { backgroundColor: COLORS.primary, width: 24, opacity: 1 },
-                      !isDone && !isCurrent && { backgroundColor: COLORS.border, opacity: 0.9 },
-                    ]}
-                  />
-                );
-              })}
-            </View>
+            {!isCompactCoachStep ? (
+              <View style={styles.progressDotsRow}>
+                {TOUR_SEQUENCE.map((step, index) => {
+                  const isDone = index < currentStep;
+                  const isCurrent = index === currentStep;
+                  return (
+                    <View
+                      key={step.id}
+                      style={[
+                        styles.progressDot,
+                        isDone && { backgroundColor: COLORS.primary, opacity: 0.92 },
+                        isCurrent && { backgroundColor: COLORS.primary, width: 24, opacity: 1 },
+                        !isDone && !isCurrent && { backgroundColor: COLORS.border, opacity: 0.9 },
+                      ]}
+                    />
+                  );
+                })}
+              </View>
+            ) : null}
 
             <View style={[styles.actionBlock, { borderColor: COLORS.border }]}>
               <Text style={[styles.coachLabel, { color: COLORS.primary }]}>Do this now</Text>
@@ -1024,13 +1039,18 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
             </View>
 
             <Text style={[styles.tourTitle, { color: COLORS.textPrimary }]}>{currentDef.title}</Text>
-            <Text style={[styles.tourDescription, { color: COLORS.textSecondary }]}>{currentDef.instruction}</Text>
+            <Text
+              numberOfLines={isCompactCoachStep ? 2 : undefined}
+              style={[styles.tourDescription, { color: COLORS.textSecondary }]}
+            >
+              {currentDef.instruction}
+            </Text>
 
             {regionHint ? (
               <Text style={[styles.regionHintText, { color: COLORS.textSecondary }]}>{regionHint}</Text>
             ) : null}
 
-            {encouragement ? (
+            {!isCompactCoachStep && encouragement ? (
               <View style={[styles.encouragementRow, { backgroundColor: 'rgba(255,255,255,0.56)' }]}>
                 <View style={[styles.encouragementDot, { backgroundColor: COLORS.primary }]} />
                 <Text style={[styles.encouragementText, { color: COLORS.textSecondary }]}>{encouragement}</Text>
@@ -1188,6 +1208,10 @@ const styles = StyleSheet.create({
     zIndex: 10000,
     borderWidth: 1,
     gap: 8,
+  },
+  tourBoxCompact: {
+    padding: 12,
+    gap: 6,
   },
   cardGlow: {
     position: 'absolute',

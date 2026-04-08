@@ -411,6 +411,7 @@ export function CampusPingsScreen() {
   const [composerVisible, setComposerVisible] = useState(false);
   const [postCelebration, setPostCelebration] = useState<{ title: string; body: string } | null>(null);
   const postCelebrationTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const postButtonPulse = React.useRef(new RNAnimated.Value(1)).current;
 
   // Onboarding logic: automatically advance if the tour is on the CTA step handled in the open composer call
   // We added a 1s delay so the instructions and highlight appear AFTER the animation finishes
@@ -447,6 +448,24 @@ export function CampusPingsScreen() {
   const [composerImageUri, setComposerImageUri] = useState<string | null>(null);
   const [composerAnonymous, setComposerAnonymous] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
+
+  const canPostPing = !!composerTitle.trim() && !!composerBody.trim() && !!selectedLocation;
+
+  useEffect(() => {
+    if (!composerVisible || !canPostPing || isPosting) {
+      postButtonPulse.stopAnimation();
+      postButtonPulse.setValue(1);
+      return;
+    }
+    const animation = RNAnimated.loop(
+      RNAnimated.sequence([
+        RNAnimated.timing(postButtonPulse, { toValue: 1.03, duration: 850, useNativeDriver: true }),
+        RNAnimated.timing(postButtonPulse, { toValue: 1, duration: 850, useNativeDriver: true }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [canPostPing, composerVisible, isPosting, postButtonPulse]);
 
   const [activeFeaturedEvent, setActiveFeaturedEvent] = useState<FeaturedEvent | null>(null);
   const [rsvpBanner, setRsvpBanner] = useState<string | null>(null);
@@ -1534,17 +1553,19 @@ export function CampusPingsScreen() {
                       </ScrollView>
 
                       <View style={styles.modalFooter}>
-                        <Pressable
-                          style={[styles.postButton, (!composerTitle.trim() || !composerBody.trim() || !selectedLocation) && styles.postButtonDisabled]}
-                          onPress={handleCreatePing}
-                          disabled={isPosting}
-                        >
-                          {isPosting ? (
-                            <ActivityIndicator size="small" color="#FFFFFF" />
-                          ) : (
-                            <Text style={styles.postButtonText}>Post CrowdPing</Text>
-                          )}
-                        </Pressable>
+                        <RNAnimated.View style={{ transform: [{ scale: postButtonPulse }] }}>
+                          <Pressable
+                            style={[styles.postButton, !canPostPing && styles.postButtonDisabled]}
+                            onPress={handleCreatePing}
+                            disabled={isPosting}
+                          >
+                            {isPosting ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <Text style={styles.postButtonText}>Post CrowdPing</Text>
+                            )}
+                          </Pressable>
+                        </RNAnimated.View>
                       </View>
                     </View>
                   </TouchableWithoutFeedback>

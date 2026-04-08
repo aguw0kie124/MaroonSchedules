@@ -332,6 +332,7 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
   const fade = React.useRef(new Animated.Value(1)).current;
+  const continuePulse = React.useRef(new Animated.Value(1)).current;
   const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
   const preferredTime = useAppShellStore((state) => state.preferredTime);
   const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
@@ -396,6 +397,22 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
       }
     };
   }, []);
+
+  React.useEffect(() => {
+    if (!canContinue || loading) {
+      continuePulse.stopAnimation();
+      continuePulse.setValue(1);
+      return;
+    }
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(continuePulse, { toValue: 1.03, duration: 820, useNativeDriver: true }),
+        Animated.timing(continuePulse, { toValue: 1, duration: 820, useNativeDriver: true }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [canContinue, continuePulse, loading]);
 
   const handleSelect = (optionId: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -639,17 +656,18 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
             })}
           </View>
 
-          <Pressable
-            onPress={handleContinue}
-            disabled={!canContinue || loading}
-            style={({ pressed }) => [
-              styles.continueButton,
-              {
-                backgroundColor: canContinue ? COLORS.primary : `${COLORS.primary}55`,
-                opacity: pressed ? 0.94 : 1,
-              },
-            ]}
-          >
+          <Animated.View style={{ transform: [{ scale: continuePulse }] }}>
+            <Pressable
+              onPress={handleContinue}
+              disabled={!canContinue || loading}
+              style={({ pressed }) => [
+                styles.continueButton,
+                {
+                  backgroundColor: canContinue ? COLORS.primary : `${COLORS.primary}55`,
+                  opacity: pressed ? 0.94 : 1,
+                },
+              ]}
+            >
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
@@ -662,7 +680,8 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
                 <ChevronRight size={18} color="#FFFFFF" strokeWidth={3} />
               </>
             )}
-          </Pressable>
+            </Pressable>
+          </Animated.View>
         </LinearGradient>
       </Animated.View>
     </View>

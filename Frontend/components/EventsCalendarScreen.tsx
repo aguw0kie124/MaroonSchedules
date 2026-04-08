@@ -820,6 +820,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [rewardToast, setRewardToast] = useState<{ title: string; body: string } | null>(null);
   const rewardToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const swipeCtaScale = useRef(new Animated.Value(1)).current;
+  const heroSparkleFloat = useRef(new Animated.Value(0)).current;
 
   const {
     isMajorSpecific,
@@ -1045,6 +1047,33 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       setView('list');
     }
   }, [isGuest]);
+
+  useEffect(() => {
+    if (view !== 'discover' || loading) {
+      swipeCtaScale.stopAnimation();
+      swipeCtaScale.setValue(1);
+      return;
+    }
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(swipeCtaScale, { toValue: 1.04, duration: 900, useNativeDriver: true }),
+        Animated.timing(swipeCtaScale, { toValue: 1, duration: 900, useNativeDriver: true }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [loading, swipeCtaScale, view]);
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(heroSparkleFloat, { toValue: 1, duration: 1400, useNativeDriver: true }),
+        Animated.timing(heroSparkleFloat, { toValue: 0, duration: 1400, useNativeDriver: true }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [heroSparkleFloat]);
 
   useEffect(() => {
     if (isGuest || !isEventPreferencesCompleted) {
@@ -1511,9 +1540,29 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                     <Text style={s.forYouEyebrow}>For You</Text>
                     <Text style={s.forYouTitle}>Picked for you.</Text>
                   </View>
-                  <View style={s.forYouSparkle}>
+                  <Animated.View
+                    style={[
+                      s.forYouSparkle,
+                      {
+                        transform: [
+                          {
+                            translateY: heroSparkleFloat.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0, -4],
+                            }),
+                          },
+                          {
+                            scale: heroSparkleFloat.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [1, 1.06],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  >
                     <Sparkles size={20} color={isDark ? '#FFFFFF' : COLORS.primary} />
-                  </View>
+                  </Animated.View>
                 </View>
                 {discoverEvents[0] ? (
                   <WhyItFitsRow
@@ -1650,6 +1699,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 })}
               </ScrollView>
 
+              <Animated.View style={{ transform: [{ scale: swipeCtaScale }] }}>
               <Pressable
                 style={s.swipeCta}
                 onPress={() => {
@@ -1660,6 +1710,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 <ArrowRight size={18} color={COLORS.textPrimary} />
                 <Text style={s.swipeCtaText}>Swipe to explore</Text>
               </Pressable>
+              </Animated.View>
             </ScrollView>
           )}
         </>
