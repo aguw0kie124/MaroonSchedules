@@ -24,9 +24,7 @@ import {
 } from 'react-native';
 import Animated, { 
   FadeIn,
-  FadeInDown,
   FadeOut,
-  FadeOutDown,
   SlideInDown,
   SlideOutDown 
 } from 'react-native-reanimated';
@@ -362,7 +360,6 @@ export function CampusPingsScreen() {
     setSelectedLocation(null);
     setComposerGeoLocation(null);
     setComposerImageUri(null);
-    setUseCurrentLocation(true);
   }, []);
 
   const openComposer = useCallback(() => setComposerVisible(true), []);
@@ -426,7 +423,6 @@ export function CampusPingsScreen() {
   const [composerTimePreset, setComposerTimePreset] = useState<TimePreset>('now');
   const [composerDurationHours, setComposerDurationHours] = useState<number>(3);
   const [composerAnonymous, setComposerAnonymous] = useState(false);
-  const [useCurrentLocation, setUseCurrentLocation] = useState(true);
   const [locationQuery, setLocationQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [composerGeoLocation, setComposerGeoLocation] = useState<ComposerGeoLocation | null>(null);
@@ -527,8 +523,59 @@ export function CampusPingsScreen() {
     setSelectedLocation(locationName);
     setComposerGeoLocation(null);
     setLocationQuery(locationName);
-    setUseCurrentLocation(false);
   }, []);
+
+  const handleUseCurrentLocation = useCallback(async () => {
+    setIsResolvingCurrentLocation(true);
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Location unavailable', 'Allow location access to pin your current spot.');
+        return;
+      }
+
+      const current = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const latitude = current.coords.latitude;
+      const longitude = current.coords.longitude;
+
+      const nearest = directory.reduce(
+        (best, item) => {
+          const distanceMeters = haversineDistanceMeters(
+            latitude,
+            longitude,
+            item.coord.lat,
+            item.coord.lng,
+          );
+          if (!best || distanceMeters < best.distanceMeters) {
+            return { item, distanceMeters };
+          }
+          return best;
+        },
+        null as { item: (typeof directory)[number]; distanceMeters: number } | null,
+      );
+
+      const label =
+        nearest && nearest.distanceMeters <= 220
+          ? `Near ${nearest.item.location}`
+          : 'Pinned location';
+
+      setComposerGeoLocation({
+        latitude,
+        longitude,
+        label,
+      });
+      setSelectedLocation(null);
+      setLocationQuery('');
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (error) {
+      console.warn('[Pings] current location failed', error);
+      Alert.alert('Could not pin location', 'Try again in a moment.');
+    } finally {
+      setIsResolvingCurrentLocation(false);
+    }
+  }, [directory]);
 
   const handlePickPingImage = useCallback(async () => {
     try {
@@ -585,45 +632,11 @@ export function CampusPingsScreen() {
       return;
     }
     if (!composerTitle.trim()) {
-      Alert.alert('Missing details', 'Add a title and a quick description so people know what is happening.');
+      Alert.alert('Missing title', 'Add a title so people immediately know what is happening.');
       return;
     }
-
-    let finalLocation = selectedLocation;
-    let finalLat: number | undefined;
-    let finalLng: number | undefined;
-    let anchorType: PingAnchorType = 'place';
-
-    if (useCurrentLocation) {
-      try {
-        const permission = await Location.requestForegroundPermissionsAsync();
-        if (permission.granted) {
-          const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-          const nearest = directory.reduce((best, item) => {
-            const dist = haversineDistanceMeters(current.coords.latitude, current.coords.longitude, item.coord.lat, item.coord.lng);
-            return (!best || dist < best.dist) ? { item, dist } : best;
-          }, null as any);
-
-          if (nearest) {
-            finalLocation = nearest.item.location;
-            finalLat = nearest.item.coord.lat;
-            finalLng = nearest.item.coord.lng;
-          } else {
-            finalLocation = 'Current Location';
-            finalLat = current.coords.latitude;
-            finalLng = current.coords.longitude;
-            anchorType = 'geo';
-          }
-        } else {
-          finalLocation = 'Current Location';
-        }
-      } catch (e) {
-        finalLocation = 'Current Location';
-      }
-    }
-
-    if (!finalLocation) {
-      Alert.alert('Pick a location', 'Tag a campus location so this ping can connect back into the map.');
+    if (!selectedLocation && !composerGeoLocation) {
+      Alert.alert('Pick a location', 'Tag a campus location or pin your current geolocation so this ping can connect back into the map.');
       return;
     }
 
@@ -631,6 +644,13 @@ export function CampusPingsScreen() {
       user.firstName && user.lastName
         ? `${user.firstName} ${user.lastName}`.trim()
         : user.firstName || user.fullName || user.username || 'Aggie';
+    const selectedPlace = selectedLocation
+      ? locationLookup.get(getCanonicalLocationName(selectedLocation))
+      : null;
+    const anchorType: PingAnchorType = composerGeoLocation ? 'geo' : 'place';
+    const locationTag = composerGeoLocation?.label || selectedLocation || 'Pinned location';
+    const latitude = composerGeoLocation?.latitude ?? selectedPlace?.coord.lat;
+    const longitude = composerGeoLocation?.longitude ?? selectedPlace?.coord.lng;
 
     const { startAt, endAt } = buildPresetWindow(composerTimePreset, composerDurationHours);
     setIsPosting(true);
@@ -647,11 +667,10 @@ export function CampusPingsScreen() {
         title: composerTitle.trim(),
         body: composerBody.trim(),
         category: composerCategory,
-        locationTag: finalLocation,
-        placeId:
-          locationLookup.get(getCanonicalLocationName(finalLocation))?.placeId || undefined,
-        latitude: finalLat,
-        longitude: finalLng,
+        locationTag,
+        placeId: selectedPlace?.placeId || undefined,
+        latitude,
+        longitude,
         anchorType,
         startAt,
         endAt,
@@ -676,13 +695,12 @@ export function CampusPingsScreen() {
     composerTimePreset,
     composerImageUri,
     composerAnonymous,
-    useCurrentLocation,
+    composerGeoLocation,
     selectedLocation,
     feedConnected,
     handleRefresh,
     resetComposer,
     user,
-    directory,
     locationLookup,
   ]);
 
@@ -1006,6 +1024,9 @@ export function CampusPingsScreen() {
     </View>
   );
 
+  const composerHasLocation = Boolean(selectedLocation || composerGeoLocation);
+  const canSubmitComposer = Boolean(composerTitle.trim()) && composerHasLocation;
+
   if (loading) {
     return (
       <View style={styles.loadingWrap}>
@@ -1038,221 +1059,293 @@ export function CampusPingsScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      <Modal visible={composerVisible} animationType="slide" transparent statusBarTranslucent>
-        <View style={styles.composerOverlay}>
-          <Animated.View 
-            entering={FadeInDown.duration(400)} 
-            exiting={FadeOutDown}
-            style={[styles.composerSheet, { paddingTop: insets.top || 20 }]}
-          >
-            <View style={styles.composerHeader}>
-              <ScalePressable onPress={closeComposer} style={styles.composerCloseButton}>
-                <X size={22} color={COLORS.textPrimary} />
-              </ScalePressable>
-              <Text style={styles.composerHeaderTitle}>Create</Text>
-              <Pressable 
-                onPress={handleCreatePing} 
-                disabled={isPosting || !composerTitle.trim()}
-                style={({ pressed }) => [
-                  styles.composerTopPostButton,
-                  (isPosting || !composerTitle.trim()) && { opacity: 0.5 },
-                  pressed && { opacity: 0.7 }
-                ]}
-              >
-                <Text style={styles.composerTopPostLabel}>Post</Text>
-              </Pressable>
-            </View>
-
-            <ScrollView 
-              style={styles.composerScroll}
-              contentContainerStyle={styles.composerScrollContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
+      <Modal visible={composerVisible} animationType="fade" transparent statusBarTranslucent>
+        <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={styles.composerOverlay}>
+          <Animated.View entering={SlideInDown.duration(220)} exiting={SlideOutDown.duration(180)} style={styles.composerSheet}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.composerKeyboardWrap}
             >
-              {/* Category Selection (Top) */}
-              <View style={styles.composerCategoryRowWrap}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.composerCategoryRow}>
-                  {PING_CATEGORIES.map((cat) => {
-                    const active = composerCategory === cat.id;
-                    const Icon = cat.Icon;
-                    return (
-                      <ScalePressable 
-                        key={cat.id} 
-                        onPress={() => setComposerCategory(cat.id)}
-                        style={[
-                          styles.composerCategoryPill,
-                          active && styles.composerCategoryPillActive
-                        ]}
-                      >
-                        <Icon size={16} color={active ? '#FFFFFF' : cat.accent} />
-                        <Text style={[styles.composerCategoryLabel, active && styles.composerCategoryLabelActive]}>
-                          {cat.id}
+              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <View style={[styles.composerScreen, { paddingTop: Math.max(insets.top + 8, 20) }]}>
+                  <View style={styles.composerTopBar}>
+                    <Pressable onPress={closeComposer} style={styles.composerTopIconButton}>
+                      <X size={20} color={COLORS.textPrimary} />
+                    </Pressable>
+
+                    <Text style={styles.composerTopTitle}>Create</Text>
+
+                    <Pressable
+                      onPress={handleCreatePing}
+                      disabled={!canSubmitComposer || isPosting}
+                      style={styles.composerTopPostButton}
+                    >
+                      {isPosting ? (
+                        <ActivityIndicator size="small" color={COLORS.primary} />
+                      ) : (
+                        <Text
+                          style={[
+                            styles.composerTopPostLabel,
+                            (!canSubmitComposer || isPosting) && styles.composerTopPostLabelDisabled,
+                          ]}
+                        >
+                          Post
                         </Text>
-                      </ScalePressable>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-
-              {/* Title Section */}
-              <View style={styles.composerTextStack}>
-                <TextInput
-                  value={composerTitle}
-                  onChangeText={setComposerTitle}
-                  placeholder="Title your ping..."
-                  placeholderTextColor={COLORS.textTertiary}
-                  style={styles.composerTitleInput}
-                />
-                <TextInput
-                  value={composerBody}
-                  onChangeText={setComposerBody}
-                  placeholder="What's happening? (Optional)"
-                  placeholderTextColor={COLORS.textTertiary}
-                  style={styles.composerPromptInput}
-                  multiline
-                />
-              </View>
-
-              {/* Media Section */}
-              <View style={styles.composerMediaCard}>
-                <Pressable 
-                  onPress={!composerImageUri ? handlePickPingImage : undefined}
-                  style={[styles.composerMediaStage, !composerImageUri && styles.composerMediaStageEmpty]}
-                >
-                  {composerImageUri ? (
-                    <>
-                      <Image source={{ uri: composerImageUri }} style={styles.composerMediaStagePreview} resizeMode="cover" />
-                      <View style={styles.composerMediaStageOverlay}>
-                        <ImageIcon size={32} color="#FFFFFF" />
-                        <Text style={styles.composerMediaStageOverlayText}>Photo attached</Text>
-                      </View>
-                      <Pressable style={styles.composerMediaRemoveButton} onPress={() => setComposerImageUri(null)}>
-                        <X size={16} color="#FFFFFF" />
-                      </Pressable>
-                    </>
-                  ) : (
-                    <>
-                      <View style={styles.composerMediaStageIconWrap}>
-                        <ImageIcon size={32} color="#500000" />
-                      </View>
-                      <Text style={styles.composerMediaStageTitle}>Add Photo (Optional)</Text>
-                      <Text style={styles.composerMediaStageSubtitle}>
-                        Share a flyer, food spread, or what people should look for.
-                      </Text>
-                    </>
-                  )}
-                </Pressable>
-              </View>
-
-              {/* Location & Preferences Section (Condensed) */}
-              <View style={styles.composerSectionBlock}>
-                <View style={styles.composerSearchWrap}>
-                  <Search size={18} color={COLORS.textTertiary} />
-                  <TextInput
-                    value={locationQuery}
-                    onChangeText={(text) => {
-                      setLocationQuery(text);
-                      setSelectedLocation(null);
-                      setUseCurrentLocation(false);
-                    }}
-                    placeholder="Search building..."
-                    placeholderTextColor={COLORS.textTertiary}
-                    style={styles.searchInput}
-                  />
-                  <ScalePressable 
-                    onPress={() => setUseCurrentLocation(!useCurrentLocation)}
-                    style={[
-                      styles.searchGpsBtn,
-                      useCurrentLocation && styles.searchGpsBtnActive
-                    ]}
-                  >
-                    <LocateFixed size={18} color={useCurrentLocation ? '#FFFFFF' : COLORS.primary} />
-                  </ScalePressable>
-                </View>
-
-                {locationQuery.length > 0 && !selectedLocation && (
-                  <View style={styles.suggestionsWrap}>
-                    {locationSuggestions.map((loc) => (
-                      <Pressable 
-                        key={loc.location} 
-                        style={styles.suggestionItem}
-                        onPress={() => handleSelectLocation(loc.location)}
-                      >
-                        <MapPin size={16} color={COLORS.textTertiary} />
-                        <Text style={styles.suggestionText}>{loc.location}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                )}
-
-                {selectedLocation && (
-                  <View style={styles.selectedLocationBadge}>
-                    <MapPin size={18} color={COLORS.primary} />
-                    <View style={styles.selectedLocationCopy}>
-                      <Text style={styles.selectedLocationText}>{selectedLocation}</Text>
-                      <Text style={styles.selectedLocationSubtext}>Campus Landmark</Text>
-                    </View>
-                    <Pressable onPress={() => { setSelectedLocation(null); setLocationQuery(''); }}>
-                      <X size={18} color={COLORS.textTertiary} />
+                      )}
                     </Pressable>
                   </View>
-                )}
 
-                {/* Combined Preferences (Duration & Identity) */}
-                <View style={styles.composerPreferenceCard}>
-                  <View style={styles.compactPreferenceRow}>
-                    <Clock size={18} color={COLORS.textSecondary} />
-                    <Text style={styles.compactPreferenceLabel}>Active for</Text>
-                    <View style={styles.durationStepper}>
-                      <ScalePressable 
-                        onPress={() => setComposerDurationHours(Math.max(0.5, composerDurationHours - 0.5))}
-                        style={styles.stepperButton}
-                      >
-                        <Text style={styles.stepperButtonText}>-</Text>
-                      </ScalePressable>
-                      <View style={styles.stepperValueContainer}>
-                        <Text style={styles.stepperValueText}>
-                          {composerDurationHours === 0.5 ? '30m' : `${composerDurationHours}h`}
-                        </Text>
-                      </View>
-                      <ScalePressable 
-                        onPress={() => setComposerDurationHours(Math.min(24, composerDurationHours + 0.5))}
-                        style={styles.stepperButton}
-                      >
-                        <Text style={styles.stepperButtonText}>+</Text>
-                      </ScalePressable>
+                  <ScrollView
+                    style={styles.composerScroll}
+                    contentContainerStyle={[
+                      styles.composerScrollContent,
+                      { paddingBottom: Math.max(insets.bottom + 44, 44) },
+                    ]}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                  >
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.composerCategoryRow}
+                    >
+                      {PING_CATEGORIES.map((cat) => {
+                        const active = composerCategory === cat.id;
+                        const Icon = cat.Icon;
+                        return (
+                          <Pressable
+                            key={cat.id}
+                            style={[styles.composerCategoryPill, active && styles.composerCategoryPillActive]}
+                            onPress={() => setComposerCategory(cat.id)}
+                          >
+                            <Icon size={12} color={active ? '#FFFFFF' : cat.accent} />
+                            <Text
+                              style={[
+                                styles.composerCategoryLabel,
+                                active && styles.composerCategoryLabelActive,
+                              ]}
+                            >
+                              {cat.id}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+
+                    <View style={styles.composerTextStack}>
+                      <TextInput
+                        value={composerTitle}
+                        onChangeText={setComposerTitle}
+                        placeholder="Title your ping..."
+                        placeholderTextColor={COLORS.textTertiary}
+                        style={styles.composerTitleInput}
+                      />
+                      <TextInput
+                        value={composerBody}
+                        onChangeText={setComposerBody}
+                        placeholder="What's happening? (Optional)"
+                        placeholderTextColor={COLORS.textTertiary}
+                        style={styles.composerPromptInput}
+                        multiline
+                      />
                     </View>
-                  </View>
 
-                  <View style={styles.preferenceDivider} />
+                    <View style={styles.composerMediaCard}>
+                      {composerImageUri ? (
+                        <View style={styles.composerMediaStage}>
+                          <Image source={{ uri: composerImageUri }} style={styles.composerMediaStagePreview} />
+                          <Pressable style={styles.composerMediaStageOverlay} onPress={handlePickPingImage}>
+                            <Text style={styles.composerMediaStageOverlayText}>Tap to replace</Text>
+                          </Pressable>
+                          <Pressable style={styles.composerMediaRemoveButton} onPress={() => setComposerImageUri(null)}>
+                            <X size={14} color="#FFFFFF" />
+                          </Pressable>
+                        </View>
+                      ) : (
+                        <Pressable
+                          style={[styles.composerMediaStage, styles.composerMediaStageEmpty]}
+                          onPress={handlePickPingImage}
+                        >
+                          <View style={styles.composerMediaStageIconWrap}>
+                            <ImageIcon size={24} color={COLORS.primary} />
+                          </View>
+                          <Text style={styles.composerMediaStageTitle}>Add Photo (Optional)</Text>
+                          <Text style={styles.composerMediaStageSubtitle}>
+                            Share a flyer, food spread, or what people should look for.
+                          </Text>
+                        </Pressable>
+                      )}
 
-                  <View style={styles.compactPreferenceRow}>
-                    <Shield size={18} color={composerAnonymous ? COLORS.success : COLORS.textSecondary} />
-                    <Text style={styles.compactPreferenceLabel}>Post Anonymously</Text>
-                    <Switch 
-                      value={composerAnonymous} 
-                      onValueChange={setComposerAnonymous}
-                      trackColor={{ false: COLORS.border, true: COLORS.success }}
-                      thumbColor="#FFFFFF"
-                      style={{ transform: [{ scale: 0.85 }] }}
-                    />
-                  </View>
+                      <View style={styles.composerMediaActionRow}>
+                        <Pressable style={styles.composerMediaActionButton} onPress={handlePickPingImage}>
+                          <ImageIcon size={16} color={COLORS.textPrimary} />
+                          <Text style={styles.composerMediaActionLabel}>
+                            {composerImageUri ? 'Change photo' : 'Choose photo'}
+                          </Text>
+                        </Pressable>
+                        <Pressable style={styles.composerMediaActionButton} onPress={handleCapturePingImage}>
+                          <Camera size={16} color={COLORS.textPrimary} />
+                          <Text style={styles.composerMediaActionLabel}>Take photo</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+
+                    <View style={styles.composerSectionBlock}>
+                      <Text style={styles.composerSectionLabel}>Location</Text>
+                      <View style={styles.composerSearchWrap}>
+                        <Search size={16} color={COLORS.textSecondary} />
+                        <TextInput
+                          value={locationQuery}
+                          onChangeText={(text) => {
+                            setLocationQuery(text);
+                            setSelectedLocation(null);
+                            setComposerGeoLocation(null);
+                          }}
+                          placeholder="Search for a building or spot..."
+                          placeholderTextColor={COLORS.textTertiary}
+                          style={styles.searchInput}
+                        />
+                        <Pressable
+                          style={[
+                            styles.composerSearchAction,
+                            (composerGeoLocation || isResolvingCurrentLocation) &&
+                              styles.composerSearchActionActive,
+                          ]}
+                          onPress={handleUseCurrentLocation}
+                          disabled={isResolvingCurrentLocation}
+                        >
+                          {isResolvingCurrentLocation ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
+                            <LocateFixed
+                              size={16}
+                              color={composerGeoLocation ? '#FFFFFF' : COLORS.primary}
+                            />
+                          )}
+                        </Pressable>
+                      </View>
+
+                      {locationQuery.trim().length > 0 && !selectedLocation && !composerGeoLocation && (
+                        <View style={styles.suggestionsWrap}>
+                          {locationSuggestions.map((loc) => (
+                            <Pressable
+                              key={loc.location}
+                              style={styles.suggestionItem}
+                              onPress={() => handleSelectLocation(loc.location)}
+                            >
+                              <MapPin size={14} color={COLORS.textSecondary} />
+                              <Text style={styles.suggestionText}>{loc.location}</Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      )}
+
+                      {selectedLocation && (
+                        <View style={styles.selectedLocationBadge}>
+                          <MapPin size={14} color={COLORS.primary} />
+                          <View style={styles.selectedLocationCopy}>
+                            <Text style={styles.selectedLocationText}>{selectedLocation}</Text>
+                            <Text style={styles.selectedLocationSubtext}>Campus Landmark</Text>
+                          </View>
+                          <Pressable
+                            onPress={() => {
+                              setSelectedLocation(null);
+                              setLocationQuery('');
+                            }}
+                          >
+                            <X size={14} color={COLORS.textSecondary} />
+                          </Pressable>
+                        </View>
+                      )}
+
+                      {composerGeoLocation && (
+                        <View style={styles.selectedLocationBadge}>
+                          <LocateFixed size={14} color={COLORS.primary} />
+                          <View style={styles.selectedLocationCopy}>
+                            <Text style={styles.selectedLocationText}>{composerGeoLocation.label}</Text>
+                            <Text style={styles.selectedLocationSubtext}>Pinned to your current geolocation</Text>
+                          </View>
+                          <Pressable onPress={() => setComposerGeoLocation(null)}>
+                            <X size={14} color={COLORS.textSecondary} />
+                          </Pressable>
+                        </View>
+                      )}
+                    </View>
+
+                    <View style={styles.composerSectionBlock}>
+                      <Text style={styles.composerSectionLabel}>Duration</Text>
+                      <View style={styles.composerPreferenceCard}>
+                        <View style={styles.compactPreferenceRow}>
+                          <Clock size={18} color={COLORS.textSecondary} />
+                          <Text style={styles.compactPreferenceLabel}>Active for</Text>
+                          <View style={styles.durationStepper}>
+                            <ScalePressable
+                              onPress={() => setComposerDurationHours(Math.max(0.5, composerDurationHours - 0.5))}
+                              style={styles.stepperButton}
+                            >
+                              <Text style={styles.stepperButtonText}>-</Text>
+                            </ScalePressable>
+                            <View style={styles.stepperValueContainer}>
+                              <Text style={styles.stepperValueText}>
+                                {composerDurationHours === 0.5 ? '30m' : `${composerDurationHours}h`}
+                              </Text>
+                            </View>
+                            <ScalePressable
+                              onPress={() => setComposerDurationHours(Math.min(24, composerDurationHours + 0.5))}
+                              style={styles.stepperButton}
+                            >
+                              <Text style={styles.stepperButtonText}>+</Text>
+                            </ScalePressable>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+
+                    <Pressable
+                      style={[
+                        styles.sharePingButton,
+                        (!canSubmitComposer || isPosting) && styles.sharePingButtonDisabled,
+                      ]}
+                      onPress={handleCreatePing}
+                      disabled={!canSubmitComposer || isPosting}
+                    >
+                      {isPosting ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.sharePingButtonText}>Share Ping</Text>
+                      )}
+                    </Pressable>
+
+                    <View style={styles.anonymousCard}>
+                      <View
+                        style={[
+                          styles.anonymousIconWrap,
+                          composerAnonymous && styles.anonymousIconWrapActive,
+                        ]}
+                      >
+                        <Shield
+                          size={18}
+                          color={composerAnonymous ? COLORS.success : COLORS.primary}
+                        />
+                      </View>
+                      <View style={styles.anonymousCopy}>
+                        <Text style={styles.anonymousTitle}>Post Anonymously</Text>
+                        <Text style={styles.anonymousSubtitle}>Hide your profile from others</Text>
+                      </View>
+                      <Switch
+                        value={composerAnonymous}
+                        onValueChange={setComposerAnonymous}
+                        trackColor={{ false: COLORS.border, true: COLORS.success }}
+                        thumbColor={Platform.OS === 'ios' ? undefined : '#FFFFFF'}
+                      />
+                    </View>
+                  </ScrollView>
                 </View>
-              </View>
-
-              {/* Main Action Button */}
-              <ScalePressable 
-                style={[styles.sharePingButton, (isPosting || !composerTitle.trim()) && styles.sharePingButtonDisabled]} 
-                onPress={handleCreatePing}
-                disabled={isPosting || !composerTitle.trim()}
-              >
-                {isPosting ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.sharePingButtonText}>Share Ping</Text>}
-              </ScalePressable>
-
-              <View style={{ height: 60 }} />
-            </ScrollView>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
           </Animated.View>
-        </View>
+        </Animated.View>
       </Modal>
 
       <Modal visible={!!activeFeaturedEvent} animationType="fade" transparent>
@@ -1610,216 +1703,268 @@ const getStyles = (theme: any) => {
 
     // Composer Styles
     composerOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.6)',
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: COLORS.background,
+      zIndex: 20,
     },
     composerSheet: {
       flex: 1,
       backgroundColor: COLORS.background,
-      borderTopLeftRadius: 32,
-      borderTopRightRadius: 32,
-      overflow: 'hidden',
     },
-    composerHeader: {
+    composerKeyboardWrap: {
+      flex: 1,
+    },
+    composerScreen: {
+      flex: 1,
+      backgroundColor: COLORS.background,
+      paddingHorizontal: 18,
+    },
+    composerTopBar: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 20,
-      paddingVertical: 16,
-      borderBottomWidth: 1,
+      paddingBottom: 14,
+      marginBottom: 14,
+      borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: COLORS.border,
     },
-    composerHeaderTitle: {
-      fontSize: 19,
-      fontWeight: '900',
-      color: COLORS.textPrimary,
-      letterSpacing: -0.5,
-    },
-    composerCloseButton: {
-      width: 44,
+    composerTopIconButton: {
+      width: 52,
       height: 44,
-      borderRadius: 14,
+      borderRadius: 22,
       alignItems: 'center',
       justifyContent: 'center',
     },
+    composerTopTitle: {
+      flex: 1,
+      textAlign: 'center',
+      color: COLORS.textPrimary,
+      fontSize: 19,
+      fontWeight: '800',
+      letterSpacing: -0.5,
+    },
     composerTopPostButton: {
-      paddingHorizontal: 20,
-      paddingVertical: 10,
+      width: 52,
+      minHeight: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     composerTopPostLabel: {
-      color: '#A85D5D',
-      fontSize: 17,
+      color: COLORS.primary,
+      fontSize: 18,
       fontWeight: '800',
+    },
+    composerTopPostLabelDisabled: {
+      opacity: 0.38,
     },
     composerScroll: {
       flex: 1,
     },
     composerScrollContent: {
-      paddingBottom: 60,
-    },
-    composerCategoryRowWrap: {
-      marginTop: 20,
-      borderBottomWidth: 1,
-      borderBottomColor: COLORS.border,
-      paddingBottom: 20,
+      paddingTop: 4,
     },
     composerCategoryRow: {
-      paddingHorizontal: 20,
-      gap: 10,
+      gap: 8,
+      paddingRight: 18,
+      paddingBottom: 14,
     },
     composerCategoryPill: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      paddingHorizontal: 16,
+      paddingHorizontal: 17,
       paddingVertical: 10,
-      borderRadius: 20,
+      borderRadius: 999,
       backgroundColor: COLORS.surfaceElevated,
-      borderWidth: 1.5,
+      borderWidth: 1,
       borderColor: COLORS.border,
     },
     composerCategoryPillActive: {
-      backgroundColor: '#500000',
-      borderColor: '#500000',
+      backgroundColor: COLORS.primary,
+      borderColor: COLORS.primary,
+      shadowColor: COLORS.primary,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.16,
+      shadowRadius: 16,
+      elevation: 4,
     },
     composerCategoryLabel: {
+      color: COLORS.textSecondary,
       fontSize: 14,
       fontWeight: '700',
-      color: COLORS.textSecondary,
     },
     composerCategoryLabelActive: {
       color: '#FFFFFF',
     },
     composerTextStack: {
-      paddingHorizontal: 24,
-      marginTop: 16,
-      gap: 12,
+      gap: 16,
+      paddingTop: 6,
+      paddingBottom: 20,
     },
     composerTitleInput: {
-      fontSize: 22,
-      fontWeight: '900',
       color: COLORS.textPrimary,
-      letterSpacing: -0.5,
+      fontSize: 18,
+      fontWeight: '800',
+      paddingVertical: 0,
     },
     composerPromptInput: {
-      fontSize: 18,
-      color: COLORS.textTertiary,
-      minHeight: 40,
-      fontWeight: '600',
+      minHeight: 106,
+      color: COLORS.textPrimary,
+      fontSize: 17,
+      lineHeight: 27,
+      paddingVertical: 0,
+      textAlignVertical: 'top',
     },
     composerMediaCard: {
-      paddingHorizontal: 20,
-      marginTop: 20,
+      gap: 14,
+      marginBottom: 28,
     },
     composerMediaStage: {
-      width: '100%',
-      height: 280,
-      borderRadius: 32,
-      overflow: 'hidden',
+      height: 232,
+      borderRadius: 34,
+      borderWidth: 1,
+      borderColor: COLORS.border,
       backgroundColor: COLORS.surfaceElevated,
+      overflow: 'hidden',
       alignItems: 'center',
       justifyContent: 'center',
+      paddingHorizontal: 28,
     },
     composerMediaStageEmpty: {
-      backgroundColor: theme.theme === 'dark' ? '#1A1B1E' : '#F2F3F7',
+      paddingVertical: 28,
     },
     composerMediaStagePreview: {
       width: '100%',
       height: '100%',
     },
     composerMediaStageOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'rgba(0,0,0,0.3)',
+      position: 'absolute',
+      left: 16,
+      right: 16,
+      bottom: 16,
+      borderRadius: 999,
+      backgroundColor: 'rgba(0,0,0,0.42)',
+      paddingVertical: 8,
       alignItems: 'center',
-      justifyContent: 'center',
-      gap: 12,
     },
     composerMediaStageOverlayText: {
       color: '#FFFFFF',
-      fontSize: 16,
-      fontWeight: '800',
+      fontSize: 12,
+      fontWeight: '700',
     },
     composerMediaRemoveButton: {
       position: 'absolute',
-      top: 16,
-      right: 16,
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: 'rgba(0,0,0,0.5)',
+      top: 14,
+      right: 14,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: 'rgba(0,0,0,0.62)',
       alignItems: 'center',
       justifyContent: 'center',
     },
     composerMediaStageIconWrap: {
-      width: 80,
-      height: 80,
-      borderRadius: 40,
-      backgroundColor: '#FFFFFF',
+      width: 78,
+      height: 78,
+      borderRadius: 39,
+      backgroundColor: COLORS.surface,
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: 12,
+      marginBottom: 16,
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.04,
-      shadowRadius: 12,
-      elevation: 2,
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.06,
+      shadowRadius: 16,
+      elevation: 3,
     },
     composerMediaStageTitle: {
+      color: COLORS.textPrimary,
       fontSize: 17,
-      fontWeight: '800',
-      color: '#000000',
-      marginBottom: 6,
+      fontWeight: '700',
     },
     composerMediaStageSubtitle: {
+      marginTop: 8,
+      color: COLORS.textSecondary,
       fontSize: 13,
-      color: COLORS.textTertiary,
+      lineHeight: 19,
       textAlign: 'center',
-      lineHeight: 18,
-      paddingHorizontal: 30,
-      fontWeight: '600',
+      maxWidth: 248,
+    },
+    composerMediaActionRow: {
+      flexDirection: 'row',
+      gap: 10,
+    },
+    composerMediaActionButton: {
+      flex: 1,
+      minHeight: 50,
+      borderRadius: 18,
+      backgroundColor: COLORS.surface,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    composerMediaActionLabel: {
+      color: COLORS.textPrimary,
+      fontSize: 14,
+      fontWeight: '700',
     },
     composerSectionBlock: {
-      paddingHorizontal: 20,
-      marginTop: 20,
+      marginBottom: 28,
+    },
+    composerSectionLabel: {
+      color: COLORS.textTertiary,
+      fontSize: 13,
+      fontWeight: '800',
+      letterSpacing: 1.1,
+      textTransform: 'uppercase',
+      marginBottom: 14,
     },
     composerSearchWrap: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 18,
-      height: 54,
-      borderRadius: 18,
-      backgroundColor: theme.theme === 'dark' ? COLORS.surfaceElevated : '#F2F3F7',
       gap: 12,
+      borderRadius: 26,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surfaceElevated,
+      paddingHorizontal: 18,
+      marginTop: 16,
     },
     searchInput: {
       flex: 1,
-      fontSize: 16,
-      fontWeight: '600',
       color: COLORS.textPrimary,
+      paddingVertical: 16,
+      fontSize: 17,
     },
-    searchGpsBtn: {
-      width: 44,
-      height: 44,
-      borderRadius: 12,
-      backgroundColor: `${COLORS.primary}12`,
+    composerSearchAction: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
       alignItems: 'center',
       justifyContent: 'center',
+      backgroundColor: `${COLORS.primary}10`,
+      borderWidth: 1,
+      borderColor: `${COLORS.primary}20`,
     },
-    searchGpsBtnActive: {
+    composerSearchActionActive: {
       backgroundColor: COLORS.primary,
+      borderColor: COLORS.primary,
     },
     composerPreferenceCard: {
-      backgroundColor: COLORS.surfaceElevated,
       borderRadius: 24,
-      padding: 16,
-      borderWidth: 1.5,
+      borderWidth: 1,
       borderColor: COLORS.border,
-      marginTop: 16,
+      backgroundColor: COLORS.surface,
+      paddingHorizontal: 18,
+      paddingVertical: 16,
     },
     compactPreferenceRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      height: 54,
+      minHeight: 52,
     },
     compactPreferenceLabel: {
       fontSize: 15,
@@ -1827,12 +1972,6 @@ const getStyles = (theme: any) => {
       color: COLORS.textPrimary,
       marginLeft: 12,
       flex: 1,
-    },
-    preferenceDivider: {
-      height: 1,
-      backgroundColor: COLORS.border,
-      marginVertical: 4,
-      opacity: 0.5,
     },
     durationStepper: {
       flexDirection: 'row',
@@ -1843,10 +1982,10 @@ const getStyles = (theme: any) => {
       width: 36,
       height: 36,
       borderRadius: 10,
-      backgroundColor: COLORS.surface,
+      backgroundColor: COLORS.surfaceElevated,
       alignItems: 'center',
       justifyContent: 'center',
-      borderWidth: 1.5,
+      borderWidth: 1,
       borderColor: COLORS.border,
     },
     stepperButtonText: {
@@ -1866,44 +2005,45 @@ const getStyles = (theme: any) => {
       letterSpacing: -0.5,
     },
     sharePingButton: {
-      height: 60,
-      borderRadius: 20,
-      backgroundColor: '#9B6B6B',
+      height: 44,
+      borderRadius: 33,
+      backgroundColor: COLORS.primary,
       alignItems: 'center',
       justifyContent: 'center',
-      marginTop: 20,
-      marginHorizontal: 20,
-      shadowColor: '#9B6B6B',
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.25,
-      shadowRadius: 15,
+      marginTop: 2,
+      marginBottom: 16,
+      minHeight: 66,
+      shadowColor: COLORS.primary,
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.18,
+      shadowRadius: 16,
       elevation: 6,
     },
     sharePingButtonDisabled: {
-      opacity: 0.5,
-      backgroundColor: COLORS.textTertiary,
+      opacity: 0.56,
     },
     sharePingButtonText: {
-      fontSize: 18,
-      fontWeight: '900',
       color: '#FFFFFF',
-      letterSpacing: 0.5,
+      fontSize: 17,
+      fontWeight: '800',
+      letterSpacing: -0.3,
     },
     anonymousTitle: {
-      fontSize: 16,
-      fontWeight: '800',
       color: COLORS.textPrimary,
+      fontSize: 17,
+      fontWeight: '700',
     },
     anonymousSubtitle: {
-      fontSize: 13,
+      marginTop: 4,
       color: COLORS.textSecondary,
-      marginTop: 2,
-      lineHeight: 18,
+      fontSize: 14,
+      lineHeight: 19,
     },
     suggestionsWrap: {
-      marginTop: 8,
+      maxHeight: 210,
+      marginTop: 14,
+      borderRadius: 24,
       backgroundColor: COLORS.surface,
-      borderRadius: 18,
       borderWidth: 1,
       borderColor: COLORS.border,
       overflow: 'hidden',
@@ -1911,40 +2051,72 @@ const getStyles = (theme: any) => {
     suggestionItem: {
       flexDirection: 'row',
       alignItems: 'center',
-      padding: 16,
-      borderBottomWidth: 1,
-      borderBottomColor: COLORS.border,
       gap: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: COLORS.border,
     },
     suggestionText: {
+      color: COLORS.textPrimary,
       fontSize: 15,
       fontWeight: '600',
-      color: COLORS.textPrimary,
     },
     selectedLocationBadge: {
       flexDirection: 'row',
       alignItems: 'center',
-      padding: 16,
+      gap: 10,
+      alignSelf: 'stretch',
+      backgroundColor: `${COLORS.primary}10`,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
       borderRadius: 18,
-      backgroundColor: `${COLORS.primary}08`,
-      borderWidth: 1.5,
-      borderColor: COLORS.primary,
-      marginTop: 12,
-      gap: 12,
+      marginTop: 14,
+      borderWidth: 1,
+      borderColor: `${COLORS.primary}20`,
     },
     selectedLocationCopy: {
       flex: 1,
     },
     selectedLocationText: {
-      fontSize: 15,
-      fontWeight: '800',
       color: COLORS.textPrimary,
+      fontSize: 15,
+      fontWeight: '700',
     },
     selectedLocationSubtext: {
-      fontSize: 12,
-      fontWeight: '600',
+      marginTop: 3,
       color: COLORS.textSecondary,
-      marginTop: 1,
+      fontSize: 12,
+    },
+    anonymousCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      borderRadius: 28,
+      backgroundColor: COLORS.surface,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 18,
+      paddingVertical: 22,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.04,
+      shadowRadius: 16,
+      elevation: 2,
+    },
+    anonymousIconWrap: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: `${COLORS.primary}12`,
+    },
+    anonymousIconWrapActive: {
+      backgroundColor: `${COLORS.success}18`,
+    },
+    anonymousCopy: {
+      flex: 1,
     },
     emptyState: {
       marginTop: 60,
