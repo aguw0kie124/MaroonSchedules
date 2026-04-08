@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import * as Location from "expo-location";
 import { useUser } from "@clerk/clerk-expo";
 import { fetchSchedules } from "../../api/client";
 import { useCampusHubStore } from "../../store/campusHubStore";
@@ -22,6 +23,72 @@ export function useScheduleMap(
   const [savedSchedules, setSavedSchedules] = useState<any[]>([]);
   const [isLoadingSchedules, setIsLoadingSchedules] = useState(false);
   const [activeScheduleId, setActiveScheduleId] = useState<string | null>(null);
+  const [resolvedNames, setResolvedNames] = useState<Record<string, string>>({});
+  const [resolvedCoords, setResolvedCoords] = useState<Record<string, { lat: number; lng: number }>>({});
+  const [userGpsResolved, setUserGpsResolved] = useState(false);
+
+  // Resolve current GPS position and reverse geocode for "Current Location" entries
+  useEffect(() => {
+    if (userGpsResolved) return;
+    
+    // Check if any scheduled event has "Current Location" as its location
+    const hasCurrentLocationEvent = scheduledEvents.some(
+      (e) => e.location === "Current Location"
+    );
+    if (!hasCurrentLocationEvent) return;
+
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== "granted") return;
+
+        const pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        const { latitude, longitude } = pos.coords;
+
+        // Reverse geocode to get a friendly name
+        const results = await Location.reverseGeocodeAsync({ latitude, longitude });
+        let friendlyName = "Current Location";
+        if (results && results[0]) {
+          const { name, street, city, region } = results[0];
+          const genericNames = ["Current", "Unknown", "Unnamed Road"];
+          if (name && !genericNames.includes(name)) {
+            friendlyName = name;
+          } else if (street) {
+            friendlyName = street;
+          } else if (city && region) {
+            friendlyName = `${city}, ${region}`;
+          } else if (city) {
+            friendlyName = city;
+          }
+        }
+
+        // Apply to all "Current Location" events
+        const updates: Record<string, string> = {};
+        const coordUpdates: Record<string, { lat: number; lng: number }> = {};
+        scheduledEvents.forEach((e) => {
+          if (e.location === "Current Location") {
+            const entryId = `event:${e.id}`;
+            updates[entryId] = friendlyName;
+            if (!e.location_lat || !e.location_lng) {
+              coordUpdates[entryId] = { lat: latitude, lng: longitude };
+            }
+          }
+        });
+
+        if (Object.keys(updates).length > 0) {
+          setResolvedNames((prev) => ({ ...prev, ...updates }));
+        }
+        if (Object.keys(coordUpdates).length > 0) {
+          setResolvedCoords((prev) => ({ ...prev, ...coordUpdates }));
+        }
+        setUserGpsResolved(true);
+      } catch (e) {
+        console.warn("GPS resolution for Current Location failed", e);
+      }
+    })();
+  }, [scheduledEvents, userGpsResolved]);
 
   const loadSchedules = useCallback(async () => {
     if (!user?.id || isGuest) {
@@ -196,11 +263,20 @@ export function useScheduleMap(
       });
       opt.entries.forEach((entry, idx) => {
         (entry as any).sequenceIndex = idx + 1;
+        // Apply resolved names if available
+        if (resolvedNames[entry.id]) {
+          entry.locationLabel = resolvedNames[entry.id];
+        }
+        // Inject resolved GPS coordinates for entries missing them
+        if (resolvedCoords[entry.id]) {
+          (entry as any).lat = (entry as any).lat || resolvedCoords[entry.id].lat;
+          (entry as any).lng = (entry as any).lng || resolvedCoords[entry.id].lng;
+        }
       });
     });
 
     return options;
-  }, [campusHubSnapshot?.academic?.courses, campusHubSnapshot?.academic?.scheduleName, isGuest, savedSchedules, scheduledEvents, selectedDate]);
+  }, [campusHubSnapshot?.academic?.courses, campusHubSnapshot?.academic?.scheduleName, isGuest, savedSchedules, scheduledEvents, selectedDate, resolvedNames, resolvedCoords]);
 
   useEffect(() => {
     if (scheduleOptions.length === 0) {
@@ -270,14 +346,17 @@ export function useScheduleMap(
     return Array.from(grouped.entries()).map(([locationName, group]) => {
       const existingLocation = fullCampusIndex.find((l) => l.location === locationName);
       return {
-        ...(existingLocation || { location: locationName, percent_full: 0, type: "Academic" as LocationType, is_live: false, available_seats: null, coord: { lat: group.building.latitude, lng: group.building.longitude } }),
+        ...(existingLocation || { location: locationName, percent_full: 0, type: "Academic" as LocationType, is_live: false, available_seats: null }),
         location: locationName,
         shortName: group.building.shortName,
         percent_full: 0,
         type: "Academic" as LocationType,
         is_live: false,
         available_seats: null,
-        coord: { lat: group.building.latitude, lng: group.building.longitude },
+        coord: { 
+          lat: group.building.coord?.lat ?? group.building.latitude, 
+          lng: group.building.coord?.lng ?? group.building.longitude 
+        },
         source: "schedule" as const,
         scheduleLabel: activeScheduleOption.label,
         description: `${group.classMeetings.length} class location${group.classMeetings.length === 1 ? "" : "s"} from ${activeScheduleOption.label}.`,

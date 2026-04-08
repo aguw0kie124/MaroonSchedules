@@ -243,15 +243,18 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
         lng = ping.get("lng")
 
         if not place_id:
-            if location_tag and lat is not None and lng is not None:
+            if lat is not None and lng is not None:
                 # Synthetic place for non-campus snaps (allows off-campus pings to be seen)
+                if location_tag:
+                    place_id = f"geo:{location_tag.lower().replace(' ', '-')}:{lat}:{lng}"
+                else:
+                    place_id = f"geo:point:{lat}:{lng}"
                 place = {
-                    "place_id": f"geo:{location_tag.lower().replace(' ', '-')}",
-                    "name": location_tag,
+                    "place_id": place_id,
+                    "name": location_tag or "Current Location",
                     "lat": lat,
                     "lng": lng
                 }
-                place_id = place["place_id"]
             else:
                 continue
 
@@ -274,7 +277,7 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
         counts = interactions.get(ping_id, {})
         upvote_count = int(counts.get("upvote") or counts.get("like") or 0)
         downvote_count = int(counts.get("downvote") or 0)
-        item_score = upvote_count - downvote_count
+        item_score = upvote_count - downvote_count + 20 # Base boost to ensure visibility
         comment_count = int(counts.get("comment") or 0)
 
         weight = (
@@ -382,6 +385,7 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
                 "lat": group["coord"]["lat"],
                 "lng": group["coord"]["lng"],
                 "type": "General",
+                "coord": group["coord"],
                 "is_live": True,
                 "percent_full": 0,
                 "available_seats": None

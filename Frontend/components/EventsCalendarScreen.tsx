@@ -42,7 +42,7 @@ import {
   Search,
   Settings,
   Share2,
-  Sparkles,
+
   Ticket,
   Trash2,
   Trophy,
@@ -225,51 +225,7 @@ function getPersonalizationScore(
   return score;
 }
 
-function getEventPersonalizationReasons(
-  event: TAMUEvent,
-  preferredCategories: ExploreCategory[],
-  preferredSocialMode: SocialMode | null,
-  preferredTime: string | null,
-  selectedMajor: MajorOption,
-  useMajorSignal: boolean,
-) {
-  const reasons: string[] = [];
-  const category = event._category || classifyCategory(event);
 
-  if (preferredCategories.includes(category)) {
-    reasons.push(`Matches your ${category.toLowerCase()} interests`);
-  }
-
-  if (preferredTime && preferredTime !== 'Anytime' && getTimePreferenceScore(event, preferredTime) >= 10) {
-    reasons.push(`Great for your ${preferredTime.toLowerCase()} plans`);
-  }
-
-  if (category === 'Social' && preferredSocialMode && (event._socialMode || getSocialMode(event)) === preferredSocialMode) {
-    reasons.push(
-      preferredSocialMode === 'casual'
-        ? 'Fits your casual social vibe'
-        : 'Fits your professional networking vibe',
-    );
-  }
-
-  if (useMajorSignal && matchesMajor(event, selectedMajor)) {
-    reasons.push(`Relevant for ${selectedMajor}`);
-  }
-
-  if (event.has_food && !reasons.some((reason) => reason.includes('food'))) {
-    reasons.push('Includes food');
-  }
-
-  if ((event.is_admin_event || category === 'Featured') && reasons.length < 2) {
-    reasons.push('Popular across campus');
-  }
-
-  if (reasons.length === 0) {
-    reasons.push(`Strong ${category.toLowerCase()} pick`);
-  }
-
-  return reasons.slice(0, 3);
-}
 
 export const CATEGORY_META: Record<
   ExploreCategory,
@@ -725,45 +681,7 @@ function StaggeredReveal({
   );
 }
 
-function WhyItFitsRow({
-  reasons,
-  compact = false,
-  light = false,
-}: {
-  reasons: string[];
-  compact?: boolean;
-  light?: boolean;
-}) {
-  if (!reasons.length) return null;
 
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={compact ? stylesStatic.reasonRowCompact : stylesStatic.reasonRow}
-    >
-      {reasons.map((reason) => (
-        <View
-          key={reason}
-          style={[
-            compact ? stylesStatic.reasonChipCompact : stylesStatic.reasonChip,
-            light ? stylesStatic.reasonChipLight : null,
-          ]}
-        >
-          <Sparkles size={compact ? 12 : 13} color={light ? '#FFFFFF' : '#7A0B1C'} />
-          <Text
-            style={[
-              compact ? stylesStatic.reasonChipTextCompact : stylesStatic.reasonChipText,
-              light ? stylesStatic.reasonChipTextLight : null,
-            ]}
-          >
-            {reason}
-          </Text>
-        </View>
-      ))}
-    </ScrollView>
-  );
-}
 
 function handleGoogleCalendar(event: TAMUEvent) {
   const formatGCalDate = (ts: number) =>
@@ -881,7 +799,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [rewardToast, setRewardToast] = useState<{ title: string; body: string } | null>(null);
   const rewardToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
-  const heroSparkleFloat = useRef(new Animated.Value(0)).current;
+
 
   const {
     isMajorSpecific,
@@ -1023,16 +941,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     }
   }, [isGuest]);
 
-  useEffect(() => {
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(heroSparkleFloat, { toValue: 1, duration: 1400, useNativeDriver: true }),
-        Animated.timing(heroSparkleFloat, { toValue: 0, duration: 1400, useNativeDriver: true }),
-      ]),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [heroSparkleFloat]);
+
 
   useEffect(() => {
     if (isGuest || !isEventPreferencesCompleted) {
@@ -1056,42 +965,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     }
   }, [embedded, isEventPreferencesCompleted, isGuest, normalizedPreferenceCategories, preferredSocialMode, preferredTime]);
 
-  const personalizationChips = useMemo(() => {
-    const chips: string[] = [];
-    normalizedPreferenceCategories.forEach((category) => chips.push(category));
-    if (preferredTime && preferredTime !== 'Anytime') {
-      chips.push(preferredTime);
-    }
-    if (preferredSocialMode) {
-      chips.push(preferredSocialMode === 'casual' ? 'Casual' : 'Professional');
-    }
-    if (isMajorSpecific) {
-      chips.push(selectedMajor);
-    }
-    return chips.slice(0, 5);
-  }, [isMajorSpecific, normalizedPreferenceCategories, preferredSocialMode, preferredTime, selectedMajor]);
 
-  const personalizationReasonMap = useMemo(() => {
-    const next: Record<string, string[]> = {};
-    filteredUpcomingEvents.forEach((event) => {
-      next[String(event.id)] = getEventPersonalizationReasons(
-        event,
-        normalizedPreferenceCategories,
-        preferredSocialMode,
-        preferredTime,
-        selectedMajor,
-        isMajorSpecific,
-      );
-    });
-    return next;
-  }, [
-    filteredUpcomingEvents,
-    isMajorSpecific,
-    normalizedPreferenceCategories,
-    preferredSocialMode,
-    preferredTime,
-    selectedMajor,
-  ]);
 
   const changeView = useCallback((nextView: EventsView) => {
     startTransition(() => {
@@ -1469,57 +1343,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 nestedScrollEnabled
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
               >
-              <LinearGradient
-                colors={isDark ? ['rgba(80,0,0,0.92)', 'rgba(28,18,24,0.94)'] : ['#FFF2EA', '#F7F0FF']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={s.forYouHero}
-              >
-                <View style={s.forYouHeroTop}>
-                  <View>
-                    <Text style={s.forYouEyebrow}>For You</Text>
-                    <Text style={s.forYouTitle}>Picked for you.</Text>
-                  </View>
-                  <Animated.View
-                    style={[
-                      s.forYouSparkle,
-                      {
-                        transform: [
-                          {
-                            translateY: heroSparkleFloat.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [0, -4],
-                            }),
-                          },
-                          {
-                            scale: heroSparkleFloat.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [1, 1.06],
-                            }),
-                          },
-                        ],
-                      },
-                    ]}
-                  >
-                    <Sparkles size={20} color={isDark ? '#FFFFFF' : COLORS.primary} />
-                  </Animated.View>
-                </View>
-                {discoverEvents[0] ? (
-                  <WhyItFitsRow
-                    reasons={personalizationReasonMap[String(discoverEvents[0].id)] || []}
-                    light={isDark}
-                  />
-                ) : null}
-                {personalizationChips.length > 0 ? (
-                  <View style={s.forYouChipRow}>
-                    {personalizationChips.map((chip) => (
-                      <View key={`hero-${chip}`} style={s.forYouChip}>
-                        <Text style={s.forYouChipText}>{chip}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-              </LinearGradient>
+
 
               <View style={s.categoryWrap}>
                 {categoriesExpanded ? (
@@ -1611,7 +1435,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                       >
                         <HeroEventCard
                           event={event}
-                          reasons={personalizationReasonMap[String(event.id)] || []}
+
                           scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
                           onSchedule={() => handleSchedule(event)}
                           onPress={() => setDetailEvent(event)}
@@ -1691,7 +1515,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                     <ListEventRow
                       event={item}
                       isGuest={isGuest}
-                      reasons={personalizationReasonMap[String(item.id)] || []}
+
                       saved={savedEventIds.includes(String(item.id))}
                       scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(item.id))}
                       onPress={() => {
@@ -1834,7 +1658,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           onUnsubscribeOrganizer={handleUnsubscribeOrganizer}
           onBlockOrganizer={handleBlockOrganizer}
           onReportOrganizer={handleReportOrganizer}
-          reasons={detailEvent ? personalizationReasonMap[String(detailEvent.id)] || [] : []}
+
           saved={detailEvent ? savedEventIds.includes(String(detailEvent.id)) : false}
           scheduled={detailEvent ? scheduledEvents.some((scheduled) => String(scheduled.id) === String(detailEvent.id)) : false}
         />
@@ -1885,14 +1709,14 @@ function CategoryChip({
 
 function HeroEventCard({
   event,
-  reasons,
+
   scheduled,
   onSchedule,
   onPress,
   onMap,
 }: {
   event: TAMUEvent;
-  reasons: string[];
+
   scheduled: boolean;
   onSchedule: () => void;
   onPress: () => void;
@@ -1937,7 +1761,7 @@ function HeroEventCard({
         nestedScrollEnabled
       >
         <Text style={stylesStatic.heroTitle}>{event.title}</Text>
-        <WhyItFitsRow reasons={reasons} light={isDark} />
+
         {event.group_title ? (
           <View style={stylesStatic.heroOrganizerPill}>
             <BadgeCheck size={13} color="#FFFFFF" />
@@ -1998,7 +1822,7 @@ function HeroEventCard({
 function ListEventRow({
   event,
   isGuest,
-  reasons,
+
   saved,
   scheduled,
   onPress,
@@ -2009,7 +1833,7 @@ function ListEventRow({
 
   event: TAMUEvent;
   isGuest: boolean;
-  reasons: string[];
+
   saved: boolean;
   scheduled: boolean;
   onPress: () => void;
@@ -2056,7 +1880,7 @@ function ListEventRow({
             {event.group_title}
           </Text>
         ) : null}
-        <WhyItFitsRow reasons={reasons} compact />
+
         <Text style={[stylesStatic.listMeta, { color: COLORS.textTertiary }]} numberOfLines={1}>
           {event.location || 'Campus'}
         </Text>
@@ -2306,7 +2130,7 @@ function DetailModal({
   onUnsubscribeOrganizer,
   onBlockOrganizer,
   onReportOrganizer,
-  reasons,
+
   saved,
   scheduled,
 }: {
@@ -2320,7 +2144,7 @@ function DetailModal({
   onUnsubscribeOrganizer: (event: TAMUEvent) => void;
   onBlockOrganizer: (event: TAMUEvent) => void;
   onReportOrganizer: (event: TAMUEvent) => void;
-  reasons: string[];
+
   saved: boolean;
   scheduled: boolean;
 }) {
@@ -2368,7 +2192,7 @@ function DetailModal({
             </View>
 
             <Text style={[stylesStatic.detailTitle, { color: COLORS.textPrimary }]}>{event.title}</Text>
-            <WhyItFitsRow reasons={reasons} />
+
 
             <View style={stylesStatic.detailMetaBlock}>
               <View style={stylesStatic.detailMetaRow}>

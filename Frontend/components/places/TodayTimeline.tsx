@@ -15,7 +15,7 @@ interface TodayTimelineProps {
   COLORS: any;
   isDark: boolean;
   activeScheduleOption: ScheduleMapOption | null;
-  onGetDirections?: (building: string) => void;
+  onGetDirections?: (entry: ScheduleMeetingEntry) => void;
 }
 
 export function TodayTimeline({
@@ -88,12 +88,8 @@ export function TodayTimeline({
   }
 
   const handleGetDirections = (entry: ScheduleMeetingEntry) => {
-    if (onGetDirections && entry.building) {
-      onGetDirections(entry.building);
-    } else {
-      const query = encodeURIComponent(`${entry.building || entry.locationLabel} TAMU`);
-      const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
-      Linking.openURL(url).catch((err) => console.error("Couldn't load page", err));
+    if (onGetDirections) {
+      onGetDirections(entry);
     }
   };
 

@@ -108,6 +108,7 @@ import {
   PARKING_INFO_URL,
   type CampusLocation,
   type LocationType,
+  type ScheduleMeetingEntry,
 } from "./places/types";
 import {
   CAMPUS_ZONES,
@@ -283,13 +284,23 @@ export function PlacesMapScreen({ route, navigation }: any) {
         }),
       );
 
-      return rawHotspots.map((hotspot) => ({
-        ...hotspot,
-        place:
-          (hotspot.placeId ? placeLookup.get(hotspot.placeId) : null) ||
-          placeLookup.get(hotspot.locationName) ||
-          null,
-      }));
+      return rawHotspots.map((hotspot) => {
+        let place = (hotspot.placeId ? placeLookup.get(hotspot.placeId) : null) || placeLookup.get(hotspot.locationName) || null;
+        if (!place && hotspot.coord) {
+          place = {
+            placeId: hotspot.placeId || `geo:${hotspot.id}`,
+            location: hotspot.locationName || "Location",
+            shortName: (hotspot.locationName || "Location").slice(0, 10),
+            percent_full: 0,
+            type: "General" as any,
+            is_live: true,
+            available_seats: null,
+            coord: hotspot.coord,
+            source: "pulse",
+          } as any;
+        }
+        return { ...hotspot, place };
+      });
     },
     enabled: activeLayer === 'Pulse' || !!pulsePlacesRef.current.length,
     staleTime: 1000 * 30,
@@ -538,7 +549,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           l.type === "Rec" || (l.type === "Hub" && l.location.includes("Rec")),
       );
     return browsableLocations.filter((l) => l.type === activeLayer);
-  }, [activeLayer, allMapLocations, scheduleLocations]);
+  }, [activeLayer, allMapLocations, scheduleLocations, pulseHotspots]);
 
   const sortedFilteredLocations = useMemo(() => {
     return [...filteredLocations].sort((a, b) => {
@@ -669,6 +680,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   }, [pulseHotspots]);
   const hottestHotspot = pulseHotspots[0] || null;
   const markerLocations = useMemo(() => {
+    if (activeLayer === "Pulse") return [];
     if (activeLayer === "Heatmap" || activeLayer === "Bus")
       return selectedLoc ? [selectedLoc] : [];
     const merged = new Map<string, CampusLocation>();
@@ -1013,7 +1025,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setIsFetchingReviews(false);
     }
   }, []);
-
   const handlePostReview = useCallback(async () => {
     if (isGuest) {
       promptGuestLogin(
@@ -1048,22 +1059,50 @@ export function PlacesMapScreen({ route, navigation }: any) {
   ]);
 
   const handleGetDirections = useCallback(
-    (building: string) => {
-      // Find building in standard directory or Today schedule entries (e.g. Current Location)
-      const code = building.split(/\s+/)[0]?.toUpperCase();
-      const allSearchable = [...locations, ...scheduleLocations];
-      const loc = allSearchable.find(
-        (l) =>
-          l.location.toUpperCase() === code ||
-          l.location.toUpperCase() === building.toUpperCase() ||
-          (l.shortName && l.shortName.toUpperCase().includes(code)),
-      );
-      if (loc) {
-        handleSelectLocation(loc);
+    (item: ScheduleMeetingEntry | string) => {
+      const buildingName = typeof item === "string" ? item : (item.building || item.locationLabel);
+      
+      // If we have an entry with coordinates, use them directly for navigation
+      if (typeof item === "object" && item.lat && item.lng) {
+        const syntheticLoc: CampusLocation = {
+          location: item.locationLabel || item.name || "Target",
+          shortName: (item.name || item.locationLabel || "Target").slice(0, 12),
+          coord: { lat: item.lat, lng: item.lng },
+          type: "General",
+          percent_full: 0,
+          is_live: false,
+          available_seats: null,
+          source: "directory",
+        };
+        openNavigationToLocation(syntheticLoc);
         setIsTodayExpanded(false);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        return;
+      }
+
+      const allSearchable = [...fullCampusIndex, ...scheduleLocations];
+      const loc = allSearchable.find((l) => {
+        const canonical = getCanonicalLocationName(l.location);
+        const searchCanon = getCanonicalLocationName(buildingName);
+        return (
+          canonical === searchCanon ||
+          l.shortName === buildingName ||
+          l.location === buildingName
+        );
+      });
+
+      if (loc) {
+        openNavigationToLocation(loc);
+        setIsTodayExpanded(false);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } else {
+        // Fallback to search query
+        setSearchQuery(buildingName);
+        setIsSearchExpanded(true);
+        setShowSearchResults(true);
       }
     },
-    [handleSelectLocation, locations, scheduleLocations],
+    [fullCampusIndex, scheduleLocations, openNavigationToLocation]
   );
 
   const handleSelectHotspot = useCallback(

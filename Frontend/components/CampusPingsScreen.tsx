@@ -320,8 +320,8 @@ function mapActivityToPing(activity: any): PingCard {
     userId: (actor.id || activity.actor || '').replace('SU:', ''),
     userName: custom.is_anonymous ? 'Aggie User' : (actor.name || actor.data?.name || custom.user_name || 'Aggie User'),
     userImage: custom.is_anonymous ? null : (actor.image || actor.data?.image || custom.user_image || null),
-    score: activity.reaction_counts?.score || 0,
-    userVote: custom.own_reaction === 'score' ? 1 : (custom.own_reaction === 'downvote' ? -1 : 0),
+    score: activity.reaction_counts?.score ?? activity.reaction_counts?.upvote ?? 0,
+    userVote: activity.own_reactions?.upvote ? 1 : (activity.own_reactions?.downvote ? -1 : 0),
     commentCount: activity.reaction_counts?.comment || 0,
     activityId: activity.id,
     isAnonymous: !!custom.is_anonymous,
@@ -427,6 +427,7 @@ export function CampusPingsScreen() {
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [composerGeoLocation, setComposerGeoLocation] = useState<ComposerGeoLocation | null>(null);
   const [composerImageUri, setComposerImageUri] = useState<string | null>(null);
+  const [useCurrentLocation, setUseCurrentLocation] = useState(true);
   const [isPosting, setIsPosting] = useState(false);
   const [isResolvingCurrentLocation, setIsResolvingCurrentLocation] = useState(false);
 
@@ -468,8 +469,8 @@ export function CampusPingsScreen() {
           const location = locationLookup.get(getCanonicalLocationName(ping.locationTag));
           return {
             ...ping,
-            locationLat: location?.coord.lat ?? null,
-            locationLng: location?.coord.lng ?? null,
+            locationLat: location?.coord.lat ?? ping.locationLat ?? null,
+            locationLng: location?.coord.lng ?? ping.locationLng ?? null,
           };
         })
         .sort((left, right) => {
@@ -632,11 +633,79 @@ export function CampusPingsScreen() {
       return;
     }
     if (!composerTitle.trim()) {
-      Alert.alert('Missing title', 'Add a title so people immediately know what is happening.');
+      Alert.alert('Missing details', 'Add a title so people know what is happening.');
       return;
     }
-    if (!selectedLocation && !composerGeoLocation) {
-      Alert.alert('Pick a location', 'Tag a campus location or pin your current geolocation so this ping can connect back into the map.');
+
+    let finalLocation = selectedLocation;
+    let finalLat: number | undefined;
+    let finalLng: number | undefined;
+    let anchorType: PingAnchorType = 'place';
+
+    if (useCurrentLocation) {
+      setIsResolvingCurrentLocation(true);
+      try {
+        const permission = await Location.requestForegroundPermissionsAsync();
+        if (permission.granted) {
+          let current;
+          try {
+            // Use Balanced accuracy to avoid hanging in simulators or indoor locations
+            current = await Location.getCurrentPositionAsync({ 
+              accuracy: Location.Accuracy.Balanced 
+            });
+          } catch (gpsError) {
+            current = await Location.getLastKnownPositionAsync();
+          }
+
+          if (!current) throw new Error("Could not determine your location.");
+
+          let friendlyName = 'Current Location';
+          try {
+            const results = await Location.reverseGeocodeAsync({
+              latitude: current.coords.latitude,
+              longitude: current.coords.longitude
+            });
+            if (results && results[0]) {
+              const { name, street, city, region } = results[0];
+              const genericNames = ["Current", "Unknown", "Unnamed Road"];
+              if (name && !genericNames.includes(name)) {
+                friendlyName = name;
+              } else if (street) {
+                friendlyName = street;
+              } else if (city && region) {
+                friendlyName = `${city}, ${region}`;
+              } else if (city) {
+                friendlyName = city;
+              }
+            }
+          } catch (e) {}
+
+          finalLocation = friendlyName;
+          finalLat = current.coords.latitude;
+          finalLng = current.coords.longitude;
+          anchorType = 'geo';
+        } else {
+          Alert.alert("Permission Denied", "Enable location access to use your live location.");
+          setIsResolvingCurrentLocation(false);
+          return;
+        }
+      } catch (e: any) {
+        Alert.alert("Location Failure", e.message || "Could not resolve your live location.");
+        setIsResolvingCurrentLocation(false);
+        return;
+      } finally {
+        setIsResolvingCurrentLocation(false);
+      }
+    } else {
+      const lookup = locationLookup.get(getCanonicalLocationName(finalLocation));
+      if (lookup && lookup.coord) {
+        finalLat = lookup.coord.lat;
+        finalLng = lookup.coord.lng;
+      }
+    }
+
+    if (!finalLocation) {
+      Alert.alert('Pick a location', 'Tag a campus location so this ping can connect back into the map.');
       return;
     }
 
@@ -716,12 +785,41 @@ export function CampusPingsScreen() {
       const targetKind = direction === 1 ? 'upvote' : 'downvote';
       const finalKind = currentVote === direction ? 'none' : targetKind;
 
+      // Optimistic Update
+      const previousPings = queryClient.getQueryData<PingCard[]>(['campus-pings']);
+      if (previousPings) {
+        const newPings = previousPings.map(p => {
+          if (p.id !== ping.id) return p;
+          
+          let scoreAdjustment = 0;
+          if (finalKind === 'none') {
+            scoreAdjustment = -currentVote; // Remove old vote
+          } else if (currentVote === 0) {
+            scoreAdjustment = direction; // Add new vote
+          } else {
+            scoreAdjustment = direction * 2; // Flip vote (e.g. -1 to +1 is +2)
+          }
+
+          return {
+            ...p,
+            userVote: finalKind === 'upvote' ? 1 : (finalKind === 'downvote' ? -1 : 0),
+            score: (p.score || 0) + scoreAdjustment
+          };
+        });
+        queryClient.setQueryData(['campus-pings'], newPings);
+      }
+
       try {
-        await toggleVote(ping.activityId, finalKind);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        queryClient.invalidateQueries({ queryKey: ['campus-pings'] });
+        await toggleVote(ping.activityId, finalKind);
+        // We don't invalidate here to keep the optimistic speed, 
+        // rely on background refetch or next intentional refresh
       } catch (error) {
         console.warn('[Pings] vote failed', error);
+        // Rollback
+        if (previousPings) {
+          queryClient.setQueryData(['campus-pings'], previousPings);
+        }
       }
     },
     [isGuest, navigation, queryClient],
@@ -876,91 +974,120 @@ export function CampusPingsScreen() {
     const CategoryData = PING_CATEGORIES.find((c) => c.id === item.category) || PING_CATEGORIES[PING_CATEGORIES.length - 1];
     const { Icon, accent } = CategoryData;
 
+    const hasImage = !!item.imageUrl;
+    const textColor = hasImage ? '#FFFFFF' : COLORS.textPrimary;
+    const secondaryTextColor = hasImage ? 'rgba(255,255,255,0.8)' : COLORS.textSecondary;
+
     return (
-      <View style={styles.pingCard}>
-        <View style={styles.pingCardHeader}>
-          <View style={[styles.pingAvatar, { backgroundColor: `${accent}15` }]}>
-            <Icon size={18} color={accent} />
+      <View style={[styles.pingCard, { padding: 0, overflow: 'hidden', minHeight: hasImage ? 400 : undefined }]}>
+        {hasImage && (
+          <>
+            <Image source={{ uri: item.imageUrl }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+            <LinearGradient
+              colors={['rgba(0,0,0,0.5)', 'transparent', 'transparent', 'rgba(0,0,0,0.85)']}
+              style={StyleSheet.absoluteFillObject}
+            />
+          </>
+        )}
+
+        <View style={{ padding: 16, flex: 1, justifyContent: 'space-between', zIndex: 1 }}>
+          <View style={[styles.pingCardHeader, { marginBottom: hasImage ? 0 : 14 }]}>
+            <View style={[styles.pingAvatar, { backgroundColor: hasImage ? 'rgba(255,255,255,0.2)' : `${accent}15` }]}>
+              <Icon size={18} color={hasImage ? '#FFFFFF' : accent} />
+            </View>
+            <View style={styles.pingAuthorBlock}>
+              <Text style={[styles.pingAuthorName, { color: textColor }]}>
+                {item.isAnonymous ? 'Anonymous' : item.userName}
+              </Text>
+              <Text style={[styles.pingTimestamp, { color: secondaryTextColor }]}>
+                {formatRelativeAge(item.createdAt)} · {item.locationTag}
+              </Text>
+            </View>
+            {item.anchorType === 'geo' && (
+              <View style={[styles.geoIndicator, hasImage && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                <LocateFixed size={12} color={hasImage ? '#FFFFFF' : COLORS.textTertiary} />
+              </View>
+            )}
           </View>
-          <View style={styles.pingAuthorBlock}>
-            <Text style={styles.pingAuthorName}>
-              {item.isAnonymous ? 'Anonymous' : item.userName}
-            </Text>
-            <Text style={styles.pingTimestamp}>
-              {formatRelativeAge(item.createdAt)} · {item.locationTag}
-            </Text>
-          </View>
-          {item.anchorType === 'geo' && (
-            <View style={styles.geoIndicator}>
-              <LocateFixed size={12} color={COLORS.textTertiary} />
+
+          {!hasImage && (
+            <View style={styles.pingContent}>
+              <Text style={[styles.pingTitle, { color: textColor }]}>{item.title}</Text>
+              {item.body ? <Text style={[styles.pingBody, { color: secondaryTextColor }]}>{item.body}</Text> : null}
             </View>
           )}
-        </View>
 
-        {item.imageUrl ? (
-          <View style={styles.pingMediaContainer}>
-            <Image source={{ uri: item.imageUrl }} style={styles.pingMedia} resizeMode="cover" />
+          <View style={{ marginTop: hasImage ? 'auto' : 0 }}>
+            {hasImage && (
+              <View style={[styles.pingContent, { marginBottom: 16 }]}>
+                <Text style={[styles.pingTitle, { color: textColor, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 }]}>
+                  {item.title}
+                </Text>
+                {item.body ? (
+                  <Text style={[styles.pingBody, { color: secondaryTextColor, textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3 }]} numberOfLines={3}>
+                    {item.body}
+                  </Text>
+                ) : null}
+              </View>
+            )}
+
+            <View style={styles.pingActions}>
+              <View style={[styles.pingVoteWrap, hasImage && { backgroundColor: 'rgba(0,0,0,0.4)', borderColor: 'rgba(255,255,255,0.1)' }]}>
+                <ScalePressable
+                  onPress={() => item.activityId && handleVotePing(item, 1)}
+                  style={[
+                    styles.pingVoteBtn,
+                    item.userVote === 1 && { backgroundColor: hasImage ? 'rgba(74, 222, 128, 0.3)' : '#4ADE8020' }
+                  ]}
+                >
+                  <ArrowBigUp 
+                    size={22} 
+                    color={item.userVote === 1 ? '#4ADE80' : (hasImage ? '#FFFFFF' : COLORS.textTertiary)} 
+                    fill={item.userVote === 1 ? '#4ADE80' : 'transparent'}
+                  />
+                </ScalePressable>
+                
+                <Text style={[
+                  styles.pingVoteCount, 
+                  hasImage && { color: '#FFFFFF' },
+                  item.userVote !== 0 && { color: item.userVote === 1 ? '#4ADE80' : '#FF4D6D', fontWeight: '800' }
+                ]}>
+                  {item.score || 0}
+                </Text>
+
+                <ScalePressable
+                  onPress={() => item.activityId && handleVotePing(item, -1)}
+                  style={[
+                    styles.pingVoteBtn,
+                    item.userVote === -1 && { backgroundColor: hasImage ? 'rgba(255, 77, 109, 0.3)' : '#FF4D6D20' }
+                  ]}
+                >
+                  <ArrowBigDown 
+                    size={22} 
+                    color={item.userVote === -1 ? '#FF4D6D' : (hasImage ? '#FFFFFF' : COLORS.textTertiary)} 
+                    fill={item.userVote === -1 ? '#FF4D6D' : 'transparent'}
+                  />
+                </ScalePressable>
+              </View>
+
+              <ScalePressable 
+                style={[styles.pingSecondaryAction, hasImage && { backgroundColor: 'rgba(0,0,0,0.4)', borderColor: 'rgba(255,255,255,0.1)' }]}
+                onPress={() => savePingToPlans(item)}
+              >
+                <CalendarDays size={18} color={hasImage ? '#FFFFFF' : COLORS.textTertiary} />
+                {!hasImage && <Text style={styles.pingSecondaryActionText}>Plan</Text>}
+              </ScalePressable>
+
+              {canDelete && (
+                <ScalePressable 
+                  style={[styles.pingSecondaryAction, hasImage && { backgroundColor: 'rgba(0,0,0,0.4)', borderColor: 'rgba(255,255,255,0.1)' }]}
+                  onPress={() => handleDeletePing(item)}
+                >
+                  <Trash2 size={18} color={hasImage ? '#FFFFFF' : COLORS.danger} opacity={hasImage ? 1 : 0.6} />
+                </ScalePressable>
+              )}
+            </View>
           </View>
-        ) : null}
-
-        <View style={styles.pingContent}>
-          <Text style={styles.pingTitle}>{item.title}</Text>
-          {item.body ? <Text style={styles.pingBody}>{item.body}</Text> : null}
-        </View>
-
-        <View style={styles.pingActions}>
-          <View style={styles.pingVoteWrap}>
-            <ScalePressable
-              onPress={() => item.activityId && handleVotePing(item, 1)}
-              style={[
-                styles.pingVoteBtn,
-                item.userVote === 1 && { backgroundColor: `${COLORS.success}15` }
-              ]}
-            >
-              <ArrowBigUp 
-                size={22} 
-                color={item.userVote === 1 ? COLORS.success : COLORS.textTertiary} 
-                fill={item.userVote === 1 ? COLORS.success : 'transparent'}
-              />
-            </ScalePressable>
-            
-            <Text style={[
-              styles.pingVoteCount, 
-              item.userVote !== 0 && { color: item.userVote === 1 ? COLORS.success : COLORS.danger, fontWeight: '800' }
-            ]}>
-              {item.score || 0}
-            </Text>
-
-            <ScalePressable
-              onPress={() => item.activityId && handleVotePing(item, -1)}
-              style={[
-                styles.pingVoteBtn,
-                item.userVote === -1 && { backgroundColor: `${COLORS.danger}15` }
-              ]}
-            >
-              <ArrowBigDown 
-                size={22} 
-                color={item.userVote === -1 ? COLORS.danger : COLORS.textTertiary} 
-                fill={item.userVote === -1 ? COLORS.danger : 'transparent'}
-              />
-            </ScalePressable>
-          </View>
-
-          <ScalePressable 
-            style={styles.pingSecondaryAction}
-            onPress={() => savePingToPlans(item)}
-          >
-            <CalendarDays size={18} color={COLORS.textTertiary} />
-          </ScalePressable>
-
-          {canDelete && (
-            <ScalePressable 
-              style={styles.pingSecondaryAction}
-              onPress={() => handleDeletePing(item)}
-            >
-              <Trash2 size={18} color={COLORS.danger} opacity={0.6} />
-            </ScalePressable>
-          )}
         </View>
       </View>
     );
@@ -970,9 +1097,7 @@ export function CampusPingsScreen() {
     <View style={styles.headerWrap}>
       <View style={styles.heroTopRow}>
         <View>
-          <Text style={[styles.heroBody, { color: COLORS.primary, fontWeight: '800', marginBottom: 4 }]}>FOR YOU</Text>
           <Text style={styles.heroTitle}>Campus Pulse</Text>
-          <Text style={[styles.heroBody, { color: isDark ? COLORS.textSecondary : '#555555' }]}>Great for your morning updates</Text>
         </View>
       </View>
 
@@ -1004,23 +1129,6 @@ export function CampusPingsScreen() {
         })}
       </ScrollView>
 
-      {featuredCards.length ? (
-        <View style={styles.featuredSection}>
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionTitle}>Featured Events</Text>
-          </View>
-          <FlatList
-            horizontal
-            data={featuredCards}
-            keyExtractor={(item) => item.id}
-            renderItem={renderFeaturedEvent}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.featuredList}
-            snapToInterval={280 + 16}
-            decelerationRate="fast"
-          />
-        </View>
-      ) : null}
     </View>
   );
 
@@ -1342,8 +1450,10 @@ export function CampusPingsScreen() {
                     </View>
                   </ScrollView>
                 </View>
-              </TouchableWithoutFeedback>
-            </KeyboardAvoidingView>
+
+              <View style={{ height: 60 }} />
+            </ScrollView>
+>>>>>>> b8f25e5a (Other fixes on maps and pings)
           </Animated.View>
         </Animated.View>
       </Modal>
