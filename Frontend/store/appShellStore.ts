@@ -167,7 +167,7 @@ export const useAppShellStore = create<AppShellState>()(
       parkingPermit: 'any_valid',
       placesPills: DEFAULT_PLACES_PILLS,
       navItems: DEFAULT_NAV_ITEMS,
-      settingsTab: 'layout',
+      settingsTab: 'personal',
       tabBarMode: 'solid',
       isBottomBarHidden: false,
       selectedScheduleId: null,
@@ -217,7 +217,7 @@ export const useAppShellStore = create<AppShellState>()(
     }),
     {
       name: 'app-shell-store',
-      version: 5,
+      version: 6,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         parkingPermit: state.parkingPermit,
@@ -292,8 +292,8 @@ export const useAppShellStore = create<AppShellState>()(
           // 1. Reset Nav Defaults (Events, Places, Pings on; Dining off)
           newState.navItems = DEFAULT_NAV_ITEMS;
 
-          // 2. Set Default Tab Bar Mode to 'floating'
-          newState.tabBarMode = 'floating';
+          // 2. Set Default Tab Bar Mode to 'solid'
+          newState.tabBarMode = 'solid';
 
           // 3. Adjust Places Pills (Gyms off)
           if (state.placesPills && Array.isArray(state.placesPills)) {
@@ -305,6 +305,16 @@ export const useAppShellStore = create<AppShellState>()(
             ? state.isEventPreferencesCompleted
             : false;
           
+          return newState;
+        }
+
+        if (version < 6) {
+          const state = persistedState as Partial<AppShellState>;
+          const newState = { ...state };
+          
+          newState.settingsTab = 'personal';
+          newState.tabBarMode = 'solid';
+
           return newState;
         }
         return persistedState;
