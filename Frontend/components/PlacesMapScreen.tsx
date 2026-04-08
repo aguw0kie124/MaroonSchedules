@@ -55,7 +55,7 @@ import AnimatedReanimated, {
   withTiming,
   runOnJS,
 } from "react-native-reanimated";
-import MapView, { Marker, Circle, Polyline } from "react-native-maps";
+import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -123,6 +123,13 @@ import {
   invalidateCampusPulseCache,
   type CampusHotspot,
 } from "../services/campusPulse";
+import {
+  CAMPUS_MAP_STYLE_URL,
+  MapLibreCircleOverlay,
+  MapLibreMarker,
+  MapLibrePolylineOverlay,
+  useMapLibreCamera,
+} from "./map/mapLibreUtils";
 
 // Make map colors "neon" and bright
 const getNeonColor = (hex: string) => {
@@ -182,12 +189,22 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // ── Map ref ───────────────────────────────────────────────
   const mapRef = useRef<any>(null);
+  const { cameraRef, defaultCamera, animateToRegion, animateCamera, fitToCoordinates } =
+    useMapLibreCamera(TAMU_CENTER);
   const currentBusRouteFetchId = useRef<string | null>(null);
   const lastPlacesFitKey = useRef<string | null>(null);
   const [isListDroppedDown, setIsListDroppedDown] = useState(false);
   const { activeTargetName, advanceStep } = useTour();
 
   // Onboarding: Force expand list when targeting items inside it
+  useEffect(() => {
+    mapRef.current = {
+      animateToRegion,
+      animateCamera,
+      fitToCoordinates,
+    };
+  }, [animateCamera, animateToRegion, fitToCoordinates]);
+
   useEffect(() => {
     if (activeTargetName === "rec-center-item") {
       setIsListDroppedDown(true);
@@ -1683,30 +1700,30 @@ export function PlacesMapScreen({ route, navigation }: any) {
   return (
     <View style={styles.container}>
       <MapView
-        ref={mapRef}
         style={StyleSheet.absoluteFillObject}
-        initialRegion={TAMU_CENTER}
-        showsUserLocation
-        showsMyLocationButton={false}
-        showsCompass={false}
-        toolbarEnabled={false}
+        mapStyle={CAMPUS_MAP_STYLE_URL}
+        compassEnabled={false}
+        logoEnabled={false}
+        attributionEnabled={false}
+        rotateEnabled={false}
+        pitchEnabled
       >
+        <Camera ref={cameraRef} defaultSettings={defaultCamera} />
+        <UserLocation visible renderMode="normal" />
         {/* Heatmap circles */}
         {activeLayer === "Heatmap" &&
           CAMPUS_ZONES.map((zone) => {
             const density = getZoneDensity(zone);
             return (
-              <Circle
+              <MapLibreCircleOverlay
                 key={zone.name}
+                id={`heatmap-${zone.name}`}
                 center={{ latitude: zone.lat, longitude: zone.lng }}
-                radius={zone.radius}
+                radiusMeters={zone.radius}
                 fillColor={
-                  density >= 70
-                    ? "rgba(255,59,48,0.22)"
-                    : density >= 40
-                      ? "rgba(255,149,0,0.18)"
-                      : "rgba(50,215,75,0.14)"
+                  density >= 70 ? "#FF3B30" : density >= 40 ? "#FF9500" : "#32D74B"
                 }
+                fillOpacity={density >= 70 ? 0.22 : density >= 40 ? 0.18 : 0.14}
                 strokeColor={
                   density >= 70
                     ? "rgba(255,59,48,0.5)"
@@ -1721,14 +1738,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
         {activeLayer === "Pulse" &&
           pulseHotspots.map((hotspot) => (
-            <Circle
+            <MapLibreCircleOverlay
               key={`pulse-radius-${hotspot.id}`}
+              id={`pulse-radius-${hotspot.id}`}
               center={{
                 latitude: hotspot.coord.lat,
                 longitude: hotspot.coord.lng,
               }}
-              radius={hotspot.radius}
-              fillColor={`${hotspot.pulseColor}22`}
+              radiusMeters={hotspot.radius}
+              fillColor={hotspot.pulseColor}
+              fillOpacity={0.13}
               strokeColor={`${hotspot.pulseColor}66`}
               strokeWidth={1.5}
             />
@@ -1745,24 +1764,25 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     .toLowerCase()
                     .includes((selectedDirection || "All").toLowerCase());
                 return (path.points || []).length > 0 ? (
-                  <Polyline
+                  <MapLibrePolylineOverlay
                     key={`path-${idx}`}
+                    id={`path-${idx}`}
                     coordinates={path.points}
-                    strokeColor={
+                    color={
                       isSelected
                         ? getNeonColor(selectedRoute?.Color || "#007AFF")
                         : getNeonColor(selectedRoute?.Color || "#007AFF") + "40"
                     }
-                    strokeWidth={isSelected ? 4 : 2}
-                    zIndex={isSelected ? 10 : 5}
+                    width={isSelected ? 4 : 2}
                   />
                 ) : null;
               })
             : routePatterns.length > 0 && (
-                <Polyline
+                <MapLibrePolylineOverlay
+                  id="bus-route-pattern"
                   coordinates={routePatterns}
-                  strokeColor={getNeonColor(selectedRoute?.Color || "#007AFF")}
-                  strokeWidth={4}
+                  color={getNeonColor(selectedRoute?.Color || "#007AFF")}
+                  width={4}
                 />
               ))}
         {activeLayer === "Bus" &&
@@ -1770,11 +1790,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
           Object.entries(allRoutePatternsById).map(([routeKey, pattern]) => {
             const route = busRoutes.find((r) => r.Key === routeKey);
             return pattern?.points?.length > 0 ? (
-              <Polyline
+              <MapLibrePolylineOverlay
                 key={routeKey}
+                id={`all-route-${routeKey}`}
                 coordinates={pattern.points}
-                strokeColor={getNeonColor(route?.Color || "#007AFF")}
-                strokeWidth={4}
+                color={getNeonColor(route?.Color || "#007AFF")}
+                width={4}
               />
             ) : null;
           })}
@@ -1796,15 +1817,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 .includes((selectedDirection || "All").toLowerCase());
 
             return (
-              <Marker
+              <MapLibreMarker
                 key={`stop-${stop.StopCode || stop.Name || sLat}`}
+                id={`stop-${stop.StopCode || stop.Name || sLat}`}
                 coordinate={{
                   latitude: sLat,
                   longitude: sLng,
                 }}
                 onPress={() => handleStopPress(stop)}
                 anchor={{ x: 0.5, y: 0.5 }}
-                zIndex={stopSelected ? 50 : 10}
               >
                 <View
                   style={[
@@ -1814,7 +1835,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 >
                   <View style={styles.busStopMarkerInner} />
                 </View>
-              </Marker>
+              </MapLibreMarker>
             );
           })}
 
@@ -1850,10 +1871,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 .includes((selectedDirection || "All").toLowerCase());
             const opacity = matchesDirection ? (isTrackedBus ? 1 : 0.9) : 0.3;
 
-            const hasDash = routeShortName.includes("-");
             return (
-              <Marker
+              <MapLibreMarker
                 key={`bus-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`}
+                id={`bus-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`}
                 coordinate={{
                   latitude: bus.Latitude || bus.lat,
                   longitude: bus.Longitude || bus.lng,
@@ -1877,11 +1898,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   }
                 }}
                 anchor={{ x: 0.5, y: 0.5 }}
-                zIndex={isTrackedBus ? 501 : 500}
               >
                 <View
                   style={{
-                    opacity: opacity,
+                    opacity,
                     alignItems: "center",
                     justifyContent: "center",
                     transform: [{ rotate: `${heading}deg` }],
@@ -1930,17 +1950,18 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     </View>
                   </View>
                 </View>
-              </Marker>
+              </MapLibreMarker>
             );
           })}
 
         {/* Walking Route Polyline */}
         {activeLayer === "Today" && activeWalkingRoute && (
-          <Polyline
+          <MapLibrePolylineOverlay
+            id="walking-route"
             coordinates={activeWalkingRoute.polyline}
-            strokeColor="#500000"
-            strokeWidth={4}
-            lineDashPattern={[5, 10]}
+            color="#500000"
+            width={4}
+            lineDasharray={[1.5, 2.5]}
           />
         )}
 
@@ -1948,15 +1969,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
           pulseHotspots.map((hotspot) => {
             const isSelected = hotspot.id === selectedHotspotId;
             return (
-              <Marker
+              <MapLibreMarker
                 key={hotspot.id}
+                id={`pulse-hotspot-${hotspot.id}`}
                 coordinate={{
                   latitude: hotspot.coord.lat,
                   longitude: hotspot.coord.lng,
                 }}
                 onPress={() => handleSelectHotspot(hotspot)}
                 anchor={{ x: 0.5, y: 0.66 }}
-                zIndex={isSelected ? 1100 : 900}
               >
                 <View
                   style={[
@@ -1988,7 +2009,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     </Text>
                   </View>
                 </View>
-              </Marker>
+              </MapLibreMarker>
             );
           })}
 
@@ -2009,8 +2030,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 : null;
 
             return (
-              <Marker
+              <MapLibreMarker
                 key={`loc-${getLocationSelectionId(loc)}`}
+                id={`loc-${getLocationSelectionId(loc)}`}
                 coordinate={{
                   latitude: loc.coord.lat,
                   longitude: loc.coord.lng,
@@ -2066,7 +2088,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     />
                   </View>
                 )}
-              </Marker>
+              </MapLibreMarker>
             );
           })}
       </MapView>

@@ -31,7 +31,7 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
-import MapView, { Marker } from 'react-native-maps';
+import { Camera as MapLibreCamera, MapView } from '@maplibre/maplibre-react-native';
 import {
   ArrowBigDown,
   ArrowBigUp,
@@ -80,6 +80,11 @@ import {
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
 import { TAMU_CENTER } from './places/types';
 import { haversineDistanceMeters } from './places/utils';
+import {
+  CAMPUS_MAP_STYLE_URL,
+  MapLibreMarker,
+  useMapLibreCamera,
+} from './map/mapLibreUtils';
 import { TourTarget, useTour } from './onboarding/TourProvider';
 import { getPremiumName, getPremiumImage } from '../utils/userUtils';
 import { scheduleAdminEventReviewNotification } from '../services/notificationService';
@@ -384,10 +389,26 @@ export function CampusPingsScreen() {
   const [composerImageUri, setComposerImageUri] = useState<string | null>(null);
   const [composerAnonymous, setComposerAnonymous] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
-  const composerMapRef = useRef<MapView>(null);
+  const composerInitialRegion = composerPinnedCoord
+    ? getRegionForCoordinate(composerPinnedCoord)
+    : TAMU_CENTER;
+  const {
+    cameraRef: composerCameraRef,
+    defaultCamera: composerDefaultCamera,
+    animateToRegion: animateComposerToRegion,
+  } = useMapLibreCamera(composerInitialRegion);
+  const composerMapRef = useRef<{
+    animateToRegion: typeof animateComposerToRegion;
+  } | null>(null);
 
   const [activeFeaturedEvent, setActiveFeaturedEvent] = useState<FeaturedEvent | null>(null);
   const [rsvpBanner, setRsvpBanner] = useState<string | null>(null);
+
+  useEffect(() => {
+    composerMapRef.current = {
+      animateToRegion: animateComposerToRegion,
+    };
+  }, [animateComposerToRegion]);
 
   const locationSuggestions = useMemo(() => {
     const query = locationQuery.trim().toLowerCase();
@@ -578,6 +599,16 @@ export function CampusPingsScreen() {
     setComposerPinnedCoord(coordinate);
     setIsLocationMapVisible(true);
   }, []);
+
+  const handleComposerMapLongPress = useCallback((feature: any) => {
+    const coordinates = feature?.geometry?.coordinates;
+    if (!Array.isArray(coordinates) || coordinates.length < 2) return;
+
+    handlePinCoordinateChange({
+      latitude: coordinates[1],
+      longitude: coordinates[0],
+    });
+  }, [handlePinCoordinateChange]);
 
   const handleUseCurrentLocation = useCallback(async () => {
     try {
@@ -1540,19 +1571,29 @@ export function CampusPingsScreen() {
                         {(isLocationMapVisible || composerPinnedCoord) && (
                           <View style={styles.pinMapCard}>
                             <MapView
-                              ref={composerMapRef}
                               style={styles.pinMap}
-                              initialRegion={
-                                composerPinnedCoord
-                                  ? getRegionForCoordinate(composerPinnedCoord)
-                                  : TAMU_CENTER
-                              }
-                              onLongPress={(event) =>
-                                handlePinCoordinateChange(event.nativeEvent.coordinate)
-                              }
+                              mapStyle={CAMPUS_MAP_STYLE_URL}
+                              logoEnabled={false}
+                              attributionEnabled={false}
+                              rotateEnabled={false}
+                              pitchEnabled={false}
+                              compassEnabled={false}
+                              onLongPress={handleComposerMapLongPress}
                             >
+                              <MapLibreCamera
+                                ref={composerCameraRef}
+                                defaultSettings={composerDefaultCamera}
+                              />
                               {composerPinnedCoord ? (
-                                <Marker coordinate={composerPinnedCoord} />
+                                <MapLibreMarker
+                                  id="composer-ping-pin"
+                                  coordinate={composerPinnedCoord}
+                                  anchor={{ x: 0.5, y: 0.5 }}
+                                >
+                                  <View style={styles.pinMapMarker}>
+                                    <MapPin size={16} color="#FFFFFF" />
+                                  </View>
+                                </MapLibreMarker>
                               ) : null}
                             </MapView>
                             <View style={styles.pinMapFooter}>
@@ -2479,6 +2520,21 @@ const getStyles = (COLORS: any) =>
     pinMap: {
       width: '100%',
       height: 190,
+    },
+    pinMapMarker: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: COLORS.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 2,
+      borderColor: '#FFFFFF',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      elevation: 3,
     },
     pinMapFooter: {
       flexDirection: 'row',

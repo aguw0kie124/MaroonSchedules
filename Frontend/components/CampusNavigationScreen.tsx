@@ -13,7 +13,7 @@ import {
   Dimensions,
 } from 'react-native';
 import * as Location from 'expo-location';
-import MapView, { Marker, Polyline, Region, PROVIDER_GOOGLE } from 'react-native-maps';
+import { Camera, MapView } from '@maplibre/maplibre-react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from './SharedUI';
 import { CampusSearchBar } from './CampusSearchBar';
@@ -62,6 +62,12 @@ import {
   VoiceIntent,
 } from '../services/campusVoice';
 import { buildTransitPlan, CampusTransitPlan } from '../services/campusTransitRouting';
+import {
+  CAMPUS_MAP_STYLE_URL,
+  MapLibreMarker,
+  MapLibrePolylineOverlay,
+  useMapLibreCamera,
+} from './map/mapLibreUtils';
 
 type NavMode = 'idle' | 'selected' | 'navigating';
 type TravelMode = 'walk' | 'bus';
@@ -146,14 +152,20 @@ export function CampusNavigationScreen() {
     longitude: DEFAULT_USER_LOCATION.longitude,
   });
 
-  const mapRef = useRef<MapView>(null);
+  const { cameraRef, defaultCamera, animateToRegion, animateCamera, fitToCoordinates } =
+    useMapLibreCamera(TAMU_CENTER);
+  const mapRef = useRef<{
+    animateToRegion: typeof animateToRegion;
+    animateCamera: typeof animateCamera;
+    fitToCoordinates: typeof fitToCoordinates;
+  } | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const locationSubRef = useRef<Location.LocationSubscription | null>(null);
   const routeGenerationRef = useRef(0);
   const seededOriginRef = useRef(false);
   const seededTravelModeRef = useRef(false);
 
-  const initialRegion: Region = {
+  const initialRegion = {
     ...TAMU_CENTER,
   };
 
@@ -263,7 +275,7 @@ export function CampusNavigationScreen() {
     const minLon = Math.min(...longitudes);
     const maxLon = Math.max(...longitudes);
 
-    const fitRegion: Region = {
+    const fitRegion = {
       latitude: (minLat + maxLat) / 2,
       longitude: (minLon + maxLon) / 2,
       latitudeDelta: Math.max((maxLat - minLat) * 1.6, 0.005),
@@ -274,6 +286,14 @@ export function CampusNavigationScreen() {
   };
 
   // ─── Effects ────────────────────────────────────────────────
+
+  useEffect(() => {
+    mapRef.current = {
+      animateToRegion,
+      animateCamera,
+      fitToCoordinates,
+    };
+  }, [animateCamera, animateToRegion, fitToCoordinates]);
 
   // Request location permission and start watching GPS
   useEffect(() => {
@@ -715,53 +735,54 @@ export function CampusNavigationScreen() {
       {/* Map */}
       <View style={styles.mapContainer}>
         <MapView
-          ref={mapRef}
           style={styles.map}
-          initialRegion={initialRegion}
-          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-          showsUserLocation={false}
-          showsCompass={true}
+          mapStyle={CAMPUS_MAP_STYLE_URL}
+          compassEnabled
+          logoEnabled={false}
+          attributionEnabled={false}
           scrollEnabled={true}
           zoomEnabled={true}
           pitchEnabled={false}
           rotateEnabled={false}
         >
+          <Camera ref={cameraRef} defaultSettings={defaultCamera} />
           {/* Route polyline */}
           {(activeTransitPlan || activeRoute) && (
-            <Polyline
+            <MapLibrePolylineOverlay
+              id="campus-navigation-route"
               coordinates={activeTransitPlan?.polyline || activeRoute?.polyline || []}
-              strokeColor={activeTransitPlan?.routeColor || COLORS.primary}
-              strokeWidth={4}
-              lineDashPattern={activeTransitPlan ? undefined : [6, 4]}
+              color={activeTransitPlan?.routeColor || COLORS.primary}
+              width={4}
+              lineDasharray={activeTransitPlan ? undefined : [2, 2]}
             />
           )}
 
           {/* User location marker */}
-          <Marker
+          <MapLibreMarker
+            id="campus-navigation-user"
             coordinate={userCoord}
-            title="You are here"
             anchor={{ x: 0.5, y: 0.5 }}
           >
             <Animated.View style={[styles.userMarker, { transform: [{ scale: pulseAnim }] }]}>
               <MapPin size={18} color="#FFFFFF" />
             </Animated.View>
-          </Marker>
+          </MapLibreMarker>
           {manualOrigin && (
-            <Marker
+            <MapLibreMarker
+              id="campus-navigation-origin"
               coordinate={manualOrigin.coordinate}
-              title={`Start: ${manualOrigin.name}`}
               anchor={{ x: 0.5, y: 0.5 }}
             >
               <View style={styles.startMarker}>
                 <Text style={styles.startMarkerText}>S</Text>
               </View>
-            </Marker>
+            </MapLibreMarker>
           )}
           {transitStopMarkers.map((stop) => (
-            <Marker
+            <MapLibreMarker
               key={stop.key}
+              id={`campus-navigation-stop-${stop.key}`}
               coordinate={stop.coordinate}
-              title={`${stop.badge}: ${stop.title}`}
               anchor={{ x: 0.5, y: 1 }}
             >
               <View style={styles.transitStopMarkerWrap}>
@@ -779,38 +800,38 @@ export function CampusNavigationScreen() {
                   stop.badge === 'Board' ? styles.transitStopPinBoard : styles.transitStopPinExit,
                 ]} />
               </View>
-            </Marker>
+            </MapLibreMarker>
           ))}
           {destinationCoord ? (
-            <Marker
+            <MapLibreMarker
+              id="campus-navigation-destination"
               coordinate={destinationCoord}
-              title={`Destination: ${destination.name}`}
               anchor={{ x: 0.5, y: 0.5 }}
             >
               <View style={styles.destinationMarker}>
                 <Text style={styles.destinationMarkerText}>E</Text>
               </View>
-            </Marker>
+            </MapLibreMarker>
           ) : null}
-          <Marker
+          <MapLibreMarker
+            id="campus-navigation-user-label"
             coordinate={{ latitude: userCoord.latitude + 0.00012, longitude: userCoord.longitude }}
             anchor={{ x: 0.5, y: 1 }}
           >
             <View style={styles.youBadge}>
               <Text style={styles.youBadgeText}>You are here</Text>
             </View>
-          </Marker>
+          </MapLibreMarker>
 
           {/* Building markers */}
           {!destination && BUILDINGS.map((b) => {
             const isDestination = destination?.building?.id === b.id;
             const Icon = getBuildingIcon(b.type);
             return (
-              <Marker
+              <MapLibreMarker
                 key={b.id}
+                id={`campus-navigation-building-${b.id}`}
                 coordinate={{ latitude: b.latitude, longitude: b.longitude }}
-                title={b.name}
-                description={b.shortName}
                 onPress={() => {
                   setDestination({ type: 'building', building: b, name: b.name });
                 }}
@@ -818,7 +839,7 @@ export function CampusNavigationScreen() {
                 <View style={[styles.buildingMarker, isDestination && styles.destMarker]}>
                   <Icon size={18} color="#FFFFFF" />
                 </View>
-              </Marker>
+              </MapLibreMarker>
             );
           })}
 
@@ -827,10 +848,10 @@ export function CampusNavigationScreen() {
             const isDestination = destination?.amenity?.id === a.id;
             const Icon = getAmenityIcon(a.type);
             return (
-              <Marker
+              <MapLibreMarker
                 key={a.id}
+                id={`campus-navigation-amenity-${a.id}`}
                 coordinate={{ latitude: a.latitude, longitude: a.longitude }}
-                title={a.name}
                 onPress={() => {
                   setDestination({ type: 'amenity', amenity: a, name: a.name });
                 }}
@@ -838,7 +859,7 @@ export function CampusNavigationScreen() {
                 <View style={[styles.amenityMarker, isDestination && styles.destAmenityMarker]}>
                   <Icon size={18} color="#FFFFFF" />
                 </View>
-              </Marker>
+              </MapLibreMarker>
             );
           })}
         </MapView>

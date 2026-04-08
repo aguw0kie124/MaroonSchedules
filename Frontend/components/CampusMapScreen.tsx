@@ -1,8 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet, ActivityIndicator } from "react-native";
-import MapView, { Marker, Circle, Callout } from "react-native-maps";
+import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
 import { useTheme } from "./SharedUI";
 import { fetchCampusPlacesMap } from "../api/client";
+import {
+  CAMPUS_MAP_STYLE_URL,
+  MapLibreCircleOverlay,
+  MapLibreMarker,
+  useMapLibreCamera,
+} from "./map/mapLibreUtils";
 
 const TAMU_CENTER = {
   latitude: 30.6153,
@@ -35,6 +41,7 @@ export function CampusMapScreen() {
   const styles = getStyles(COLORS);
   const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const { cameraRef, defaultCamera } = useMapLibreCamera(TAMU_CENTER);
 
   useEffect(() => {
     fetchPlaces();
@@ -78,37 +85,43 @@ export function CampusMapScreen() {
       </View>
       <MapView
         style={styles.map}
-        initialRegion={TAMU_CENTER}
-        showsUserLocation={true}
+        mapStyle={CAMPUS_MAP_STYLE_URL}
+        compassEnabled
+        logoEnabled={false}
+        attributionEnabled={false}
+        rotateEnabled={false}
+        pitchEnabled={false}
       >
+        <Camera ref={cameraRef} defaultSettings={defaultCamera} />
+        <UserLocation visible renderMode="normal" />
         {locations.map((loc, idx) => {
           const radius = getRadius(loc.percent_full);
           const fill = getCapacityColor(loc.percent_full);
           const stroke = getStrokeColor(loc.percent_full);
+          const coordinate = {
+            latitude: loc.coord?.lat || 0,
+            longitude: loc.coord?.lng || 0,
+          };
+          const markerId = `${loc.location}-${idx}`.replace(/[^a-zA-Z0-9_-]+/g, "-");
 
           return (
             <React.Fragment key={`${loc.location}-${idx}`}>
               {loc.coord && (
-                <Circle
-                  center={{
-                    latitude: loc.coord?.lat || 0,
-                    longitude: loc.coord?.lng || 0,
-                  }}
-                  radius={radius}
+                <MapLibreCircleOverlay
+                  id={`capacity-zone-${markerId}`}
+                  center={coordinate}
+                  radiusMeters={radius}
                   fillColor={fill}
+                  fillOpacity={0.35}
                   strokeColor={stroke}
                   strokeWidth={1}
                 />
               )}
               {loc.coord && (
-                <Marker
-                  coordinate={{
-                    latitude: loc.coord?.lat || 0,
-                    longitude: loc.coord?.lng || 0,
-                  }}
+                <MapLibreMarker
+                  id={`capacity-marker-${markerId}`}
+                  coordinate={coordinate}
                   anchor={{ x: 0.5, y: 0.5 }}
-                  title={loc.location}
-                  description={`Live Capacity: ${loc.percent_full}%`}
                 >
                   <View
                     style={{
@@ -118,7 +131,7 @@ export function CampusMapScreen() {
                       backgroundColor: stroke,
                     }}
                   />
-                </Marker>
+                </MapLibreMarker>
               )}
             </React.Fragment>
           );
