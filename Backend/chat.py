@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Optional
 import uuid
 import traceback
 
-from services import ping_service, cache_service
+from services import ping_service, cache_service, pulse_service
 from repositories import feed_repository, user_repository
 from db_config import CONNECTION_PARAMS
 from auth.clerk_middleware import require_auth, optional_auth, ensure_matching_user
@@ -125,7 +125,7 @@ async def proxy_get_feed(
                     raw_items = feed_repository.get_place_reviews(place_id, limit=limit*2) # Get extra for filtering headroom
                 elif feed_id in ["campus_global", "campus_pings", "reels_global"]:
                     post_types = ['post', 'reel', 'ping']
-                    if feed_id == "campus_pings": post_types = ['ping', 'post']
+                    if feed_id == "campus_pings": post_types = ['ping']
                     elif feed_id == "reels_global": post_types = ['reel']
                     raw_items = feed_repository.get_crowdping_feed(post_types=post_types, limit=limit*2)
             

@@ -57,9 +57,7 @@ import AnimatedReanimated, {
 } from "react-native-reanimated";
 import {
   Camera,
-  HeatmapLayer,
   MapView,
-  ShapeSource,
   UserLocation,
 } from "@maplibre/maplibre-react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
@@ -168,6 +166,26 @@ const getNeonColor = (hex: string) => {
 
 const PULSE_HEATMAP_LIMIT = 25;
 const PULSE_MARKER_LIMIT = 12;
+
+function getPulseBlobOpacity(score: number) {
+  if (score >= 60) return { outer: 0.18, inner: 0.28, core: 0.2 };
+  if (score >= 34) return { outer: 0.14, inner: 0.22, core: 0.16 };
+  return { outer: 0.1, inner: 0.16, core: 0.12 };
+}
+
+function getPulseBlobRadii(radius: number) {
+  return {
+    outer: Math.max(90, radius * 1.5),
+    inner: Math.max(64, radius * 0.92),
+    core: Math.max(34, radius * 0.42),
+  };
+}
+
+function getPulseMarkerScale(score: number) {
+  if (score >= 60) return 1.14;
+  if (score >= 34) return 1.06;
+  return 1;
+}
 
 export function PlacesMapScreen({ route, navigation }: any) {
   const { COLORS, theme } = useTheme();
@@ -591,112 +609,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
     }
     return base;
   }, [pulseHotspots, selectedHotspot]);
-  const pulseHeatmapShape = useMemo(
-    () => ({
-      type: "FeatureCollection" as const,
-      features: pulseHotspots.map((hotspot) => ({
-        type: "Feature" as const,
-        id: hotspot.id,
-        properties: {
-          hotspotId: hotspot.id,
-          weight: hotspot.score,
-          activityCount: hotspot.pingCount + hotspot.eventCount,
-        },
-        geometry: {
-          type: "Point" as const,
-          coordinates: [hotspot.coord.lng, hotspot.coord.lat],
-        },
-      })),
-    }),
-    [pulseHotspots],
-  );
-  const pulseHeatmapStyle = useMemo(
-    () =>
-      ({
-        heatmapWeight: [
-          "interpolate",
-          ["linear"],
-          ["get", "weight"],
-          0,
-          0,
-          8,
-          0.18,
-          18,
-          0.4,
-          34,
-          0.7,
-          60,
-          1.05,
-          90,
-          1.35,
-        ],
-        heatmapIntensity: [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          8,
-          0.55,
-          11,
-          0.78,
-          13,
-          1.0,
-          15,
-          1.28,
-          17,
-          1.6,
-        ],
-        heatmapRadius: [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          8,
-          18,
-          11,
-          28,
-          13,
-          40,
-          15,
-          56,
-          17,
-          72,
-        ],
-        heatmapOpacity: [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          8,
-          0.92,
-          12,
-          0.82,
-          15,
-          0.62,
-          17,
-          0.3,
-          18.5,
-          0.1,
-        ],
-        heatmapColor: [
-          "interpolate",
-          ["linear"],
-          ["heatmap-density"],
-          0,
-          "rgba(255,194,0,0)",
-          0.1,
-          "rgba(255,214,138,0.22)",
-          0.22,
-          "rgba(255,176,106,0.42)",
-          0.38,
-          "rgba(255,132,93,0.62)",
-          0.56,
-          "rgba(255,92,109,0.78)",
-          0.76,
-          "rgba(216,63,101,0.9)",
-          1,
-          "rgba(118,24,61,0.98)",
-        ],
-      }) as any,
-    [],
-  );
   const markerLocations = useMemo(() => {
     if (activeLayer === "Heatmap" || activeLayer === "Bus")
       return selectedLoc ? [selectedLoc] : [];
@@ -1853,16 +1765,53 @@ export function PlacesMapScreen({ route, navigation }: any) {
             );
           })}
 
-        {activeLayer === "Pulse" && pulseHeatmapShape.features.length > 0 && (
-          <ShapeSource id="pulse-heatmap-source" shape={pulseHeatmapShape}>
-            <HeatmapLayer
-              id="pulse-heatmap-layer"
-              minZoomLevel={7}
-              maxZoomLevel={20}
-              style={pulseHeatmapStyle}
-            />
-          </ShapeSource>
-        )}
+        {activeLayer === "Pulse" &&
+          pulseHotspots.map((hotspot) => {
+            const opacity = getPulseBlobOpacity(hotspot.score);
+            const radii = getPulseBlobRadii(hotspot.radius);
+            const isSelected = hotspot.id === selectedHotspotId;
+
+            return (
+              <React.Fragment key={`pulse-blob-${hotspot.id}`}>
+                <MapLibreCircleOverlay
+                  id={`pulse-blob-outer-${hotspot.id}`}
+                  center={{
+                    latitude: hotspot.coord.lat,
+                    longitude: hotspot.coord.lng,
+                  }}
+                  radiusMeters={radii.outer}
+                  fillColor={hotspot.pulseColor}
+                  fillOpacity={opacity.outer}
+                  strokeColor={`${hotspot.pulseColor}12`}
+                  strokeWidth={0}
+                />
+                <MapLibreCircleOverlay
+                  id={`pulse-blob-inner-${hotspot.id}`}
+                  center={{
+                    latitude: hotspot.coord.lat,
+                    longitude: hotspot.coord.lng,
+                  }}
+                  radiusMeters={radii.inner}
+                  fillColor={hotspot.pulseColor}
+                  fillOpacity={opacity.inner}
+                  strokeColor={`${hotspot.pulseColor}1A`}
+                  strokeWidth={0}
+                />
+                <MapLibreCircleOverlay
+                  id={`pulse-blob-core-${hotspot.id}`}
+                  center={{
+                    latitude: hotspot.coord.lat,
+                    longitude: hotspot.coord.lng,
+                  }}
+                  radiusMeters={radii.core}
+                  fillColor={hotspot.pulseColor}
+                  fillOpacity={isSelected ? opacity.core + 0.1 : opacity.core}
+                  strokeColor={`${hotspot.pulseColor}${isSelected ? "88" : "44"}`}
+                  strokeWidth={isSelected ? 2.25 : 1}
+                />
+              </React.Fragment>
+            );
+          })}
 
         {activeLayer === "Pulse" && selectedHotspot && (
           <MapLibreCircleOverlay
@@ -2109,7 +2058,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 <View
                   style={[
                     styles.pulseMarkerWrap,
-                    { transform: [{ scale: isSelected ? 1.08 : 1 }] },
+                    {
+                      transform: [
+                        {
+                          scale: isSelected
+                            ? getPulseMarkerScale(hotspot.score) + 0.06
+                            : getPulseMarkerScale(hotspot.score),
+                        },
+                      ],
+                    },
                   ]}
                 >
                   <View

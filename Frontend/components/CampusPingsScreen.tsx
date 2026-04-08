@@ -168,6 +168,16 @@ const TIME_PRESETS: Array<{ id: TimePreset; label: string }> = [
 
 const NEAREST_PLACE_SUGGESTION_RADIUS_METERS = 120;
 
+function asSafeObject(value: unknown): Record<string, any> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : {};
+}
+
+function asSafeString(value: unknown, fallback = ''): string {
+  if (typeof value === 'string') return value;
+  if (value == null) return fallback;
+  return String(value);
+}
+
 function parseOptionalNumber(value: unknown): number | null {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -278,7 +288,8 @@ function formatRelativeAge(isoValue: string) {
 }
 
 function getInitials(name: string) {
-  const parts = name.trim().split(/\s+/).slice(0, 2);
+  const safeName = asSafeString(name, 'Aggie User');
+  const parts = safeName.trim().split(/\s+/).slice(0, 2);
   if (!parts.length) return 'A';
   return parts.map((part) => part[0]?.toUpperCase() || '').join('');
 }
@@ -300,30 +311,50 @@ function mapOfficialEventCategory(event: FeaturedEvent): PingCategory {
 }
 
 function mapActivityToPing(activity: any): PingCard {
-  const custom = activity.custom || {};
-  const actor = activity.actor || {};
-  const attachments = activity.attachments || [];
-  const media = attachments[0] || {};
+  const custom = asSafeObject(activity?.custom);
+  const actor = asSafeObject(activity?.actor);
+  const actorData = asSafeObject(actor.data);
+  const attachments = Array.isArray(activity?.attachments) ? activity.attachments : [];
+  const media = asSafeObject(attachments[0]);
   const locationLat = parseOptionalNumber(custom.place_lat);
   const locationLng = parseOptionalNumber(custom.place_lng);
+  const actorId = asSafeString(actor.id || activity?.actor, '');
+  const title = asSafeString(custom.ping_title, 'Campus Ping');
+  const body = asSafeString(activity?.text, '');
+  const category = asSafeString(custom.ping_category, 'Popup');
+  const locationTag = asSafeString(custom.location_tag, 'Campus');
+  const startAt = asSafeString(custom.start_at || activity?.time, new Date().toISOString());
+  const endAt = custom.end_at ? asSafeString(custom.end_at) : null;
+  const createdAt = asSafeString(activity?.time || activity?.created_at, new Date().toISOString());
+  const userName = custom.is_anonymous
+    ? 'Aggie User'
+    : asSafeString(actor.name || actorData.name || custom.user_name, 'Aggie User');
+  const userImage = custom.is_anonymous
+    ? null
+    : asSafeString(actor.image || actorData.image || custom.user_image, '') || null;
 
   return {
-    id: activity.id || `${Date.now()}`,
+    id: asSafeString(activity?.id, `${Date.now()}`),
     source: 'user',
-    title: custom.ping_title || 'Campus Ping',
-    body: activity.text || '',
-    category: custom.ping_category || 'Popup',
-    placeId: custom.place_id || activity.place?.place_id || null,
-    locationTag: custom.location_tag || 'Campus',
-    startAt: custom.start_at || activity.time || new Date().toISOString(),
-    endAt: custom.end_at || null,
-    createdAt: activity.time || activity.created_at || new Date().toISOString(),
-    userId: (actor.id || activity.actor || '').replace('SU:', ''),
-    userName: custom.is_anonymous ? 'Aggie User' : (actor.name || actor.data?.name || custom.user_name || 'Aggie User'),
-    userImage: custom.is_anonymous ? null : (actor.image || actor.data?.image || custom.user_image || null),
-    score: activity.reaction_counts?.score || 0,
-    ownVote: (activity.own_reactions?.upvote || []).length > 0 ? 'upvote' : ((activity.own_reactions?.downvote || []).length > 0 ? 'downvote' : null),
-    activityId: activity.id,
+    title,
+    body,
+    category,
+    placeId: asSafeString(custom.place_id || activity?.place?.place_id, '') || null,
+    locationTag,
+    startAt,
+    endAt,
+    createdAt,
+    userId: actorId.replace('SU:', ''),
+    userName,
+    userImage,
+    score: Number(activity?.reaction_counts?.score) || 0,
+    ownVote:
+      (Array.isArray(activity?.own_reactions?.upvote) ? activity.own_reactions.upvote : []).length > 0
+        ? 'upvote'
+        : (Array.isArray(activity?.own_reactions?.downvote) ? activity.own_reactions.downvote : []).length > 0
+          ? 'downvote'
+          : null,
+    activityId: asSafeString(activity?.id, ''),
     isAnonymous: !!custom.is_anonymous,
     sourceUrl: null,
     locationLat,

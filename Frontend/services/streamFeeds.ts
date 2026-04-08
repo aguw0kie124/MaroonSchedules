@@ -106,7 +106,12 @@ export async function getPingFeed(limit = 40): Promise<any[]> {
     const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?limit=${limit}`);
     if (!res.ok) throw new Error('Proxy Fetch Error');
     const data = await res.json();
-    return data.results || [];
+    const results = Array.isArray(data?.results) ? data.results : [];
+    return results.filter((item: any) => {
+      const verb = item?.verb;
+      const customType = item?.custom?.content_type;
+      return verb === 'ping' || customType === 'ping';
+    });
   } catch (e) {
     console.error('[NativeFeeds] getPingFeed error:', e);
     return [];
