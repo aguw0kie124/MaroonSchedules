@@ -9,7 +9,7 @@ import {
   Animated,
   PanResponder,
 } from "react-native";
-import { X, MapPin, Clock } from "lucide-react-native";
+import { X, MapPin, Clock, Navigation } from "lucide-react-native";
 import { SNAP_PEEK, SNAP_FULL, SCREEN_HEIGHT } from "./types";
 
 interface BusTimetableSheetProps {
@@ -106,17 +106,21 @@ export function BusTimetableSheet({
 
   if (!visible) return null;
 
+  const routeColor = selectedRoute?.Color || (isDark ? "#FF8FA3" : "#500000");
+
   return (
     <Animated.View
       style={[
         styles.container,
         {
-          backgroundColor:
-            COLORS.surfaceElevated ||
-            COLORS.background ||
-            (isDark ? "#111" : "#fff"),
+          backgroundColor: isDark ? "#1A1A1C" : "#FFFFFF",
           borderTopColor: COLORS.border || "rgba(0,0,0,0.1)",
           transform: [{ translateY: panY }],
+          shadowColor: "#000",
+          shadowOffset: { width: 0, height: -10 },
+          shadowOpacity: 0.15,
+          shadowRadius: 20,
+          elevation: 20,
         },
       ]}
     >
@@ -124,77 +128,107 @@ export function BusTimetableSheet({
         <View
           style={[
             styles.dragHandle,
-            { backgroundColor: isDark ? "#333" : "#E0E0E0" },
+            { backgroundColor: isDark ? "#444" : "#D1D1D6" },
           ]}
         />
       </View>
 
-      <View style={styles.header}>
+      {/* Hero Header */}
+      <View
+        style={[
+          styles.header,
+          { backgroundColor: isDark ? "#1A1A1C" : "#FFFFFF" },
+        ]}
+      >
         <View style={{ flex: 1 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
             {selectedRoute && (
               <View
                 style={{
-                  backgroundColor: selectedRoute.Color || "#500000",
-                  width: 34,
-                  height: 34,
-                  borderRadius: 10,
+                  backgroundColor: COLORS.surface,
+                  width: 52,
+                  height: 52,
+                  borderRadius: 16,
                   alignItems: "center",
                   justifyContent: "center",
+                  borderWidth: 2,
+                  borderColor: routeColor,
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 8,
+                  elevation: 5,
                 }}
               >
                 <Text
-                  style={{ color: "#FFF", fontWeight: "900", fontSize: 13 }}
+                  style={{ color: routeColor, fontWeight: "900", fontSize: 20 }}
                 >
                   {selectedRoute.ShortName}
                 </Text>
               </View>
             )}
-            <Text
-              style={[
-                styles.title,
-                {
-                  color: COLORS.textPrimary,
-                  marginBottom: 0,
-                  fontSize: 24,
-                  fontWeight: "900",
-                  letterSpacing: -0.5,
-                },
-              ]}
-            >
-              {selectedRoute ? "Timetable" : "Bus Timetable"}
-            </Text>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={[
+                  styles.title,
+                  {
+                    color: isDark ? "#F2F2F7" : "#1C1C1E",
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {selectedRoute ? selectedRoute.Name : "Bus Timetable"}
+              </Text>
+              {selectedRoute && (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    marginTop: 4,
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.pulseDot,
+                      {
+                        backgroundColor:
+                          liveBusCount > 0 ? "#34C759" : "#FF3B30",
+                      },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.subtitle,
+                      { color: isDark ? "#EBEBF5" : "#8E8E93" },
+                    ]}
+                  >
+                    {liveBusCount} live bus{liveBusCount === 1 ? "" : "es"} on
+                    route
+                  </Text>
+                </View>
+              )}
+            </View>
           </View>
-          {selectedRoute && (
-            <Text
-              style={[
-                styles.subtitle,
-                {
-                  color: COLORS.textSecondary,
-                  marginTop: 6,
-                  fontSize: 14,
-                  fontWeight: "600",
-                },
-              ]}
-            >
-              {selectedRoute.Name} • {liveBusCount} live bus
-              {liveBusCount === 1 ? "" : "es"}
-            </Text>
-          )}
         </View>
         <TouchableOpacity
           onPress={handleClose}
-          style={styles.closeBtn}
-          hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+          style={[
+            styles.closeBtn,
+            { backgroundColor: isDark ? "#2C2C2E" : "#F2F2F7" },
+          ]}
+          hitSlop={{ top: 15, right: 15, bottom: 15, left: 15 }}
         >
-          <X size={20} color={COLORS.textSecondary} />
+          <X size={20} color={isDark ? "#EBEBF5" : "#8E8E93"} />
         </TouchableOpacity>
       </View>
 
       <ScrollView
         ref={scrollRef}
         style={styles.listContainer}
-        contentContainerStyle={{ paddingBottom: SCREEN_HEIGHT / 2 }}
+        contentContainerStyle={{
+          paddingBottom: SCREEN_HEIGHT / 2,
+          paddingTop: 10,
+        }}
         showsVerticalScrollIndicator={false}
         scrollEnabled={scrollEnabled}
         onScroll={(e) => {
@@ -205,126 +239,164 @@ export function BusTimetableSheet({
         }}
         scrollEventThrottle={16}
       >
-        {stopTimetable.map((item, index) => {
-          const isFirst = index === 0;
-          const isLast = index === stopTimetable.length - 1;
-
-          return (
-            <TouchableOpacity
-              key={item.stop.Id || index}
-              style={styles.stopRow}
-              onPress={() => {
-                snapTo(SNAP_PEEK);
-                onStopPress(item.stop);
-              }}
-              activeOpacity={0.7}
-            >
-              <View style={styles.timelineCol}>
-                <View
-                  style={[
-                    styles.timelineLine,
-                    {
-                      backgroundColor: isDark
-                        ? "rgba(255, 255, 255, 0.2)"
-                        : "rgba(80, 0, 0, 0.15)",
-                      opacity: isFirst ? 0 : 1,
-                      flex: 1,
-                    },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.timelineDot,
-                    {
-                      backgroundColor:
-                        item.etaLabel === "Now" || item.etaLabel === "Arriving"
-                          ? isDark
-                            ? "#FF8FA3"
-                            : "#500000"
-                          : isDark
-                            ? "#2A2A2A"
-                            : "#F0F0F0",
-                      borderColor: isDark ? "#FF8FA3" : "#500000",
-                      shadowColor: isDark ? "#FF8FA3" : "#500000",
-                    },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.timelineLine,
-                    {
-                      backgroundColor: isDark
-                        ? "rgba(255, 255, 255, 0.2)"
-                        : "rgba(80, 0, 0, 0.15)",
-                      opacity: isLast ? 0 : 1,
-                      flex: 1,
-                    },
-                  ]}
-                />
-              </View>
-              <View
-                style={[
-                  styles.stopContent,
-                  {
-                    borderBottomColor: isLast
-                      ? "transparent"
-                      : isDark
-                        ? "rgba(255, 255, 255, 0.05)"
-                        : "rgba(0,0,0,0.06)",
-                  },
-                ]}
-              >
-                <View style={{ flex: 1, paddingRight: 10 }}>
-                  <Text
-                    style={[styles.stopName, { color: COLORS.textPrimary }]}
-                  >
-                    {item.stop.Name}
-                  </Text>
-                  <View style={styles.detailRow}>
-                    <MapPin size={12} color={COLORS.textSecondary} />
-                    <Text
-                      style={[
-                        styles.stopDetail,
-                        { color: COLORS.textSecondary },
-                      ]}
-                    >
-                      Stop #{item.stop.StopCode || item.sequence}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.etaContainer}>
-                  <Text
-                    style={[
-                      styles.etaBox,
-                      {
-                        backgroundColor: isDark
-                          ? "rgba(255, 143, 163, 0.15)"
-                          : "rgba(80, 0, 0, 0.1)",
-                        color: isDark ? "#FF8FA3" : "#500000",
-                      },
-                    ]}
-                  >
-                    {item.etaLabel}
-                  </Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-        {stopTimetable.length === 0 && (
+        {stopTimetable.length === 0 ? (
           <View style={styles.emptyState}>
-            <Clock
-              size={40}
-              color={isDark ? "#FF8FA3" : "#500000"}
-              style={{ opacity: 0.8, marginBottom: 12 }}
-            />
+            <View
+              style={[
+                styles.emptyIconCircle,
+                { backgroundColor: isDark ? "#2C2C2E" : "#F2F2F7" },
+              ]}
+            >
+              <Clock size={36} color={routeColor} />
+            </View>
             <Text
-              style={[styles.emptyStateText, { color: COLORS.textSecondary }]}
+              style={[
+                styles.emptyStateTitle,
+                { color: isDark ? "#F2F2F7" : "#1C1C1E" },
+              ]}
+            >
+              No Active Schedule
+            </Text>
+            <Text
+              style={[
+                styles.emptyStateText,
+                { color: isDark ? "#8E8E93" : "#8E8E93" },
+              ]}
             >
               {selectedRoute
-                ? "No schedule available for this route."
-                : "Select a route to view its timetable."}
+                ? "This route has no currently scheduled stops."
+                : "Select a route to view exactly when it arrives."}
             </Text>
+          </View>
+        ) : (
+          <View style={styles.timelineWrapper}>
+            {/* Continuous background line for timeline */}
+            <View
+              style={[
+                styles.continuousLine,
+                { backgroundColor: isDark ? "#3A3A3C" : "#E5E5EA" },
+              ]}
+            />
+
+            {stopTimetable.map((item, index) => {
+              const isFirst = index === 0;
+              const isLast = index === stopTimetable.length - 1;
+              const isLiveOrSoon =
+                item.etaLabel === "Now" ||
+                item.etaLabel === "Arriving" ||
+                parseInt(item.etaLabel) <= 5;
+              const isNow =
+                item.etaLabel === "Now" || item.etaLabel === "Arriving";
+
+              return (
+                <TouchableOpacity
+                  key={item.stop.Id || index}
+                  style={styles.stopRow}
+                  onPress={() => {
+                    snapTo(SNAP_PEEK);
+                    onStopPress(item.stop);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.timelineCol}>
+                    <View
+                      style={[
+                        styles.timelineDot,
+                        {
+                          backgroundColor: isNow
+                            ? routeColor
+                            : isDark
+                              ? "#1A1A1C"
+                              : "#FFFFFF",
+                          borderColor: isLiveOrSoon
+                            ? routeColor
+                            : isDark
+                              ? "#48484A"
+                              : "#C7C7CC",
+                          borderWidth: isNow ? 0 : 3,
+                          width: isNow ? 16 : 14,
+                          height: isNow ? 16 : 14,
+                        },
+                      ]}
+                    />
+                  </View>
+
+                  <View style={styles.stopContent}>
+                    <View style={styles.stopTextContainer}>
+                      <Text
+                        style={[
+                          styles.stopName,
+                          {
+                            color: isDark ? "#F2F2F7" : "#1C1C1E",
+                            fontWeight: isLiveOrSoon ? "800" : "600",
+                          },
+                        ]}
+                      >
+                        {item.stop.Name}
+                      </Text>
+                      <View style={styles.detailRow}>
+                        <MapPin
+                          size={12}
+                          color={isDark ? "#8E8E93" : "#8E8E93"}
+                        />
+                        <Text
+                          style={[
+                            styles.stopDetail,
+                            { color: isDark ? "#8E8E93" : "#8E8E93" },
+                          ]}
+                        >
+                          Stop #{item.stop.StopCode || item.sequence}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.etaContainer}>
+                      <View
+                        style={[
+                          styles.etaBox,
+                          isNow && styles.etaBoxNow,
+                          {
+                            backgroundColor: isNow
+                              ? routeColor
+                              : isLiveOrSoon
+                                ? isDark
+                                  ? "rgba(255,255,255,0.1)"
+                                  : "rgba(0,0,0,0.05)"
+                                : "transparent",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.etaText,
+                            {
+                              color: isNow
+                                ? "#FFFFFF"
+                                : isDark
+                                  ? "#F2F2F7"
+                                  : "#1C1C1E",
+                              fontWeight: isNow ? "900" : "700",
+                            },
+                          ]}
+                        >
+                          {item.etaLabel}
+                        </Text>
+                        {!isNow && /^\d+$/.test(item.etaLabel) && (
+                          <Text
+                            style={[
+                              styles.etaUnit,
+                              { color: isDark ? "#8E8E93" : "#8E8E93" },
+                            ]}
+                          >
+                            min
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
       </ScrollView>
@@ -339,131 +411,162 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     height: SCREEN_HEIGHT,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderTopWidth: 1,
-
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
     zIndex: 99999,
     elevation: 999,
   },
   dragHandleArea: {
     width: "100%",
-    paddingVertical: 12,
+    paddingTop: 14,
+    paddingBottom: 10,
     alignItems: "center",
   },
   dragHandle: {
-    width: 40,
+    width: 44,
     height: 5,
     borderRadius: 3,
   },
   header: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    alignItems: "center",
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+    paddingTop: 4,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.05)",
+    borderBottomColor: "rgba(150,150,150,0.15)",
+  },
+  pulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
   },
   title: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 4,
+    fontSize: 22,
+    fontWeight: "800",
+    letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 14,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   closeBtn: {
-    padding: 8,
-    backgroundColor: "rgba(0,0,0,0.05)",
+    padding: 10,
     borderRadius: 20,
-    marginLeft: 10,
+    marginLeft: 16,
   },
   listContainer: {
     flex: 1,
-    paddingHorizontal: 20,
+  },
+  timelineWrapper: {
+    paddingHorizontal: 24,
+    position: "relative",
+  },
+  continuousLine: {
+    position: "absolute",
+    left: 45, // 24 (padding) + 21 (center of timelineCol)
+    top: 30,
+    bottom: 60,
+    width: 3,
+    borderRadius: 1.5,
+    zIndex: 1,
   },
   stopRow: {
     flexDirection: "row",
     alignItems: "stretch",
-    minHeight: 64,
+    minHeight: 74,
   },
   timelineCol: {
-    width: 32,
+    width: 46,
     alignItems: "center",
-    marginRight: 16,
+    justifyContent: "center",
+    zIndex: 2,
   },
   timelineDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 4,
-    zIndex: 2,
-    marginVertical: 4,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  timelineLine: {
-    width: 4,
-    borderRadius: 2,
+    borderRadius: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2,
   },
   stopContent: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 18,
-    borderBottomWidth: 1,
+  },
+  stopTextContainer: {
+    flex: 1,
+    paddingRight: 16,
   },
   stopName: {
     fontSize: 17,
-    fontWeight: "800",
     letterSpacing: -0.3,
     lineHeight: 22,
+    marginBottom: 4,
   },
   detailRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 6,
-    backgroundColor: "rgba(150, 150, 150, 0.1)",
-    alignSelf: "flex-start",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
   },
   stopDetail: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "600",
     marginLeft: 4,
   },
   etaContainer: {
     alignItems: "flex-end",
     justifyContent: "center",
-    marginLeft: 12,
   },
   etaBox: {
-    fontSize: 15,
-    fontWeight: "900",
+    flexDirection: "row",
+    alignItems: "baseline",
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 16,
+    paddingVertical: 10,
+    borderRadius: 14,
     overflow: "hidden",
-    textTransform: "uppercase",
+  },
+  etaBoxNow: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 4,
+  },
+  etaText: {
+    fontSize: 17,
     letterSpacing: 0.5,
+  },
+  etaUnit: {
+    fontSize: 13,
+    fontWeight: "600",
+    marginLeft: 3,
   },
   emptyState: {
     padding: 40,
+    paddingTop: 60,
     alignItems: "center",
     justifyContent: "center",
   },
+  emptyIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 20,
+  },
+  emptyStateTitle: {
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
   emptyStateText: {
     fontSize: 15,
-    marginTop: 16,
     textAlign: "center",
+    lineHeight: 22,
+    paddingHorizontal: 20,
   },
 });

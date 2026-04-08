@@ -1,5 +1,5 @@
-import React, { useMemo, useRef } from 'react';
-import { Dimensions, Pressable } from 'react-native';
+import React, { useMemo, useRef } from "react";
+import { Dimensions, Pressable } from "react-native";
 import {
   Camera,
   type CameraRef,
@@ -7,7 +7,7 @@ import {
   LineLayer,
   MarkerView,
   ShapeSource,
-} from '@maplibre/maplibre-react-native';
+} from "@maplibre/maplibre-react-native";
 
 export type MapCoordinate = {
   latitude: number;
@@ -19,7 +19,8 @@ export type MapRegion = MapCoordinate & {
   longitudeDelta: number;
 };
 
-export const CAMPUS_MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
+export const CAMPUS_MAP_STYLE_URL =
+  "https://tiles.openfreemap.org/styles/liberty";
 
 const EARTH_RADIUS_METERS = 6371008.8;
 
@@ -36,7 +37,7 @@ function radToDeg(value: number) {
 }
 
 function regionToZoomLevel(region: MapRegion) {
-  const { width } = Dimensions.get('window');
+  const { width } = Dimensions.get("window");
   const safeLongitudeDelta = Math.max(region.longitudeDelta, 0.0001);
   const zoom = Math.log2((360 * ((width || 1) / 256)) / safeLongitudeDelta);
   return clamp(zoom, 2, 20);
@@ -50,7 +51,7 @@ function normalizePadding(
     | { top?: number; right?: number; bottom?: number; left?: number },
 ) {
   if (padding == null) return undefined;
-  if (typeof padding === 'number') return padding;
+  if (typeof padding === "number") return padding;
   if (Array.isArray(padding)) return padding;
   return [
     padding.top ?? 0,
@@ -60,16 +61,21 @@ function normalizePadding(
   ] as [number, number, number, number];
 }
 
-export function toMapLibrePosition(coordinate: MapCoordinate): [number, number] {
+export function toMapLibrePosition(
+  coordinate: MapCoordinate,
+): [number, number] {
   return [coordinate.longitude, coordinate.latitude];
 }
 
-export function getCameraStopFromRegion(region: MapRegion, extras: Partial<{
-  pitch: number;
-  heading: number;
-  animationDuration: number;
-  animationMode: 'flyTo' | 'easeTo' | 'linearTo' | 'moveTo';
-}> = {}) {
+export function getCameraStopFromRegion(
+  region: MapRegion,
+  extras: Partial<{
+    pitch: number;
+    heading: number;
+    animationDuration: number;
+    animationMode: "flyTo" | "easeTo" | "linearTo" | "moveTo";
+  }> = {},
+) {
   return {
     centerCoordinate: toMapLibrePosition(region),
     zoomLevel: regionToZoomLevel(region),
@@ -80,7 +86,11 @@ export function getCameraStopFromRegion(region: MapRegion, extras: Partial<{
   };
 }
 
-export function createCirclePolygon(center: MapCoordinate, radiusMeters: number, steps = 48) {
+export function createCirclePolygon(
+  center: MapCoordinate,
+  radiusMeters: number,
+  steps = 48,
+) {
   const angularDistance = radiusMeters / EARTH_RADIUS_METERS;
   const latitudeRad = degToRad(center.latitude);
   const longitudeRad = degToRad(center.longitude);
@@ -103,9 +113,9 @@ export function createCirclePolygon(center: MapCoordinate, radiusMeters: number,
   }
 
   return {
-    type: 'Feature' as const,
+    type: "Feature" as const,
     geometry: {
-      type: 'Polygon' as const,
+      type: "Polygon" as const,
       coordinates: [coordinates],
     },
     properties: {},
@@ -114,16 +124,18 @@ export function createCirclePolygon(center: MapCoordinate, radiusMeters: number,
 
 export function createLineFeature(coordinates: MapCoordinate[]) {
   return {
-    type: 'Feature' as const,
+    type: "Feature" as const,
     geometry: {
-      type: 'LineString' as const,
+      type: "LineString" as const,
       coordinates: coordinates.map(toMapLibrePosition),
     },
     properties: {},
   };
 }
 
-function isValidCoordinate(coordinate: MapCoordinate | null | undefined): coordinate is MapCoordinate {
+function isValidCoordinate(
+  coordinate: MapCoordinate | null | undefined,
+): coordinate is MapCoordinate {
   return (
     coordinate != null &&
     Number.isFinite(coordinate.latitude) &&
@@ -138,7 +150,7 @@ export function useMapLibreCamera(initialRegion: MapRegion) {
     cameraRef.current?.setCamera({
       ...getCameraStopFromRegion(region),
       animationDuration: duration,
-      animationMode: 'easeTo',
+      animationMode: "easeTo",
     });
   };
 
@@ -152,19 +164,26 @@ export function useMapLibreCamera(initialRegion: MapRegion) {
     options?: { duration?: number },
   ) => {
     cameraRef.current?.setCamera({
-      centerCoordinate: config.center ? toMapLibrePosition(config.center) : undefined,
+      centerCoordinate: config.center
+        ? toMapLibrePosition(config.center)
+        : undefined,
       zoomLevel: config.zoom,
       pitch: config.pitch,
       heading: config.heading,
       animationDuration: options?.duration ?? 700,
-      animationMode: 'easeTo',
+      animationMode: "easeTo",
     });
   };
 
   const fitToCoordinates = (
     coordinates: MapCoordinate[],
     options?: {
-      edgePadding?: { top?: number; right?: number; bottom?: number; left?: number };
+      edgePadding?: {
+        top?: number;
+        right?: number;
+        bottom?: number;
+        left?: number;
+      };
       animated?: boolean;
       duration?: number;
     },
@@ -203,7 +222,12 @@ export function useMapLibreCamera(initialRegion: MapRegion) {
 
   const defaultCamera = useMemo(
     () => getCameraStopFromRegion(initialRegion),
-    [initialRegion.latitude, initialRegion.longitude, initialRegion.latitudeDelta, initialRegion.longitudeDelta],
+    [
+      initialRegion.latitude,
+      initialRegion.longitude,
+      initialRegion.latitudeDelta,
+      initialRegion.longitudeDelta,
+    ],
   );
 
   return {
@@ -299,10 +323,7 @@ export function MapLibrePolylineOverlay({
 
   return (
     <ShapeSource id={`${id}-source`} shape={shape}>
-      <LineLayer
-        id={`${id}-line`}
-        style={lineStyle}
-      />
+      <LineLayer id={`${id}-line`} style={lineStyle} />
     </ShapeSource>
   );
 }
@@ -332,7 +353,9 @@ export function MapLibreMarker({
         <Pressable onPress={onPress} hitSlop={8}>
           {children}
         </Pressable>
-      ) : children}
+      ) : (
+        children
+      )}
     </MarkerView>
   );
 }

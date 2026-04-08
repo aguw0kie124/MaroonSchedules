@@ -2166,7 +2166,6 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
     mapFabStack: {
       position: "absolute",
       right: 18,
-      bottom: FLOATING_CARD_BOTTOM_OFFSET + 76,
       gap: 12,
       zIndex: 4500,
     },
@@ -2805,7 +2804,6 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
     mapControls: {
       position: "absolute",
       right: 16,
-      bottom: 220,
       gap: 12,
       zIndex: 10,
     },

@@ -61,7 +61,11 @@ import AnimatedReanimated, {
   runOnJS,
 } from "react-native-reanimated";
 import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
-import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
+import {
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+} from "@react-navigation/native";
 import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
@@ -72,9 +76,7 @@ import { getOrderedItems, useAppShellStore } from "../store/appShellStore";
 import { useSessionStore } from "../store/sessionStore";
 import { useShareStore } from "../store/shareStore";
 import { promptGuestLogin } from "../utils/guestAccess";
-import {
-  getDiningMealPeriodForLocation,
-} from "../services/diningMenuCache";
+import { getDiningMealPeriodForLocation } from "../services/diningMenuCache";
 
 // ── Sub-components ────────────────────────────────────────────
 import { FloatingSearchBar } from "./places/FloatingSearchBar";
@@ -199,8 +201,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // ── Map ref ───────────────────────────────────────────────
   const mapRef = useRef<any>(null);
-  const { cameraRef, defaultCamera, animateToRegion, animateCamera, fitToCoordinates } =
-    useMapLibreCamera(TAMU_CENTER);
+  const {
+    cameraRef,
+    defaultCamera,
+    animateToRegion,
+    animateCamera,
+    fitToCoordinates,
+  } = useMapLibreCamera(TAMU_CENTER);
   const currentBusRouteFetchId = useRef<string | null>(null);
   const lastPlacesFitKey = useRef<string | null>(null);
   const [isListDroppedDown, setIsListDroppedDown] = useState(false);
@@ -228,9 +235,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
   );
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [dynamicSearchLocations, setDynamicSearchLocations] = useState<CampusLocation[]>([]);
+  const [dynamicSearchLocations, setDynamicSearchLocations] = useState<
+    CampusLocation[]
+  >([]);
   const [isSearchingGlobal, setIsSearchingGlobal] = useState(false);
-  const [globalSearchError, setGlobalSearchError] = useState<string | null>(null);
+  const [globalSearchError, setGlobalSearchError] = useState<string | null>(
+    null,
+  );
   const [isTimetableSheetOpen, setIsTimetableSheetOpen] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [isEditorVisible, setIsEditorVisible] = useState(false);
@@ -249,17 +260,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const timelineHeight = useSharedValue(0);
 
   // ── Location data ─────────────────────────────────────────
-  const {
-    fullCampusIndex,
-    locations,
-    refreshLocations,
-  } = useLocationData({ autoFetch: false });
+  const { fullCampusIndex, locations, refreshLocations } = useLocationData({
+    autoFetch: false,
+  });
   const [pulseHotspots, setPulseHotspots] = useState<CampusHotspot[]>([]);
   const pulseHotspotsRef = useRef<CampusHotspot[]>([]);
   const pulsePlacesRef = useRef<CampusLocation[]>([]);
   const selectedHotspotIdRef = useRef<string | null>(null);
   const [isLoadingPulse, setIsLoadingPulse] = useState(false);
-  const lastGlobalSearchQueryRef = useRef('');
+  const lastGlobalSearchQueryRef = useRef("");
   const globalSearchRequestIdRef = useRef(0);
 
   // ── Schedule state ────────────────────────────────────────
@@ -555,7 +564,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       globalSearchRequestIdRef.current += 1;
       setGlobalSearchError(null);
       setIsSearchingGlobal(false);
-      lastGlobalSearchQueryRef.current = '';
+      lastGlobalSearchQueryRef.current = "";
       return;
     }
 
@@ -785,7 +794,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
         const results = await searchGlobalPlaces(normalizedQuery, { limit: 6 });
         if (requestId !== globalSearchRequestIdRef.current) return;
         lastGlobalSearchQueryRef.current = normalizedQuery.toLowerCase();
-        setDynamicSearchLocations((current) => mergeCampusLocations(current, results));
+        setDynamicSearchLocations((current) =>
+          mergeCampusLocations(current, results),
+        );
         if (results.length === 0) {
           setGlobalSearchError(`No matches found for "${normalizedQuery}".`);
         }
@@ -1087,49 +1098,54 @@ export function PlacesMapScreen({ route, navigation }: any) {
     [openHotspotPlace],
   );
 
-  const fetchPulseHotspots = useCallback(async (options: { force?: boolean } = {}) => {
-    const forceRefresh = options.force === true;
-    if (!pulseHotspotsRef.current.length) {
-      setIsLoadingPulse(true);
-    }
-    try {
-      if (forceRefresh) {
-        invalidateCampusPulseCache();
+  const fetchPulseHotspots = useCallback(
+    async (options: { force?: boolean } = {}) => {
+      const forceRefresh = options.force === true;
+      if (!pulseHotspotsRef.current.length) {
+        setIsLoadingPulse(true);
       }
-      const rawHotspots = await fetchCampusPulseMap(12, { force: forceRefresh });
-      const currentPulsePlaces = pulsePlacesRef.current;
-      const placeLookup = new Map(
-        currentPulsePlaces.flatMap((place) => {
-          const keys = [place.location];
-          if (place.placeId) keys.push(place.placeId);
-          return keys.map((key) => [key, place] as const);
-        }),
-      );
-      const hotspots = rawHotspots.map((hotspot) => ({
-        ...hotspot,
-        place:
-          (hotspot.placeId ? placeLookup.get(hotspot.placeId) : null) ||
-          placeLookup.get(hotspot.locationName) ||
-          null,
-      }));
+      try {
+        if (forceRefresh) {
+          invalidateCampusPulseCache();
+        }
+        const rawHotspots = await fetchCampusPulseMap(12, {
+          force: forceRefresh,
+        });
+        const currentPulsePlaces = pulsePlacesRef.current;
+        const placeLookup = new Map(
+          currentPulsePlaces.flatMap((place) => {
+            const keys = [place.location];
+            if (place.placeId) keys.push(place.placeId);
+            return keys.map((key) => [key, place] as const);
+          }),
+        );
+        const hotspots = rawHotspots.map((hotspot) => ({
+          ...hotspot,
+          place:
+            (hotspot.placeId ? placeLookup.get(hotspot.placeId) : null) ||
+            placeLookup.get(hotspot.locationName) ||
+            null,
+        }));
 
-      pulseHotspotsRef.current = hotspots;
-      setPulseHotspots(hotspots);
-      const currentSelectedId = selectedHotspotIdRef.current;
-      if (
-        currentSelectedId &&
-        !hotspots.some((hotspot) => hotspot.id === currentSelectedId)
-      ) {
-        setSelectedHotspotId(null);
+        pulseHotspotsRef.current = hotspots;
+        setPulseHotspots(hotspots);
+        const currentSelectedId = selectedHotspotIdRef.current;
+        if (
+          currentSelectedId &&
+          !hotspots.some((hotspot) => hotspot.id === currentSelectedId)
+        ) {
+          setSelectedHotspotId(null);
+        }
+      } catch (error) {
+        console.warn("Failed to build pulse hotspots", error);
+        if (!selectedHotspotIdRef.current) setPulseHotspots([]);
+      } finally {
+        setIsLoadingPulse(false);
       }
-    } catch (error) {
-      console.warn("Failed to build pulse hotspots", error);
-      if (!selectedHotspotIdRef.current) setPulseHotspots([]);
-    } finally {
-      setIsLoadingPulse(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [],
+  );
 
   const hasSeenPulseLayer = useRef(false);
   useEffect(() => {
@@ -1426,7 +1442,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         );
         return;
       }
-      setSelectedBus(nearest.bus);
+
       const eta = Math.max(1, Math.round(nearest.distanceMeters / 220));
       const label = nearest.bus.RouteShortName
         ? `Route ${nearest.bus.RouteShortName}`
@@ -1450,7 +1466,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       if (sLat != null && sLng != null && mapRef.current) {
         mapRef.current.animateCamera(
           {
-            center: { latitude: sLat - 0.0018, longitude: sLng },
+            center: { latitude: sLat - 0.0005, longitude: sLng },
             zoom: 16.5,
           },
           { duration: 600 },
@@ -1785,7 +1801,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 center={{ latitude: zone.lat, longitude: zone.lng }}
                 radiusMeters={zone.radius}
                 fillColor={
-                  density >= 70 ? "#FF3B30" : density >= 40 ? "#FF9500" : "#32D74B"
+                  density >= 70
+                    ? "#FF3B30"
+                    : density >= 40
+                      ? "#FF9500"
+                      : "#32D74B"
                 }
                 fillOpacity={density >= 70 ? 0.22 : density >= 40 ? 0.18 : 0.14}
                 strokeColor={
@@ -1939,6 +1959,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 }}
                 onPress={() => {
                   setSelectedBus(bus);
+                  setSelectedStop(null); // Deselect stop when selecting a bus
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
                   const bLat =
@@ -1948,7 +1969,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   if (bLat != null && bLng != null && mapRef.current) {
                     mapRef.current.animateCamera(
                       {
-                        center: { latitude: bLat - 0.0018, longitude: bLng },
+                        center: { latitude: bLat - 0.0005, longitude: bLng },
                         zoom: 16.5,
                       },
                       { duration: 600 },
@@ -1962,45 +1983,42 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     opacity,
                     alignItems: "center",
                     justifyContent: "center",
-                    transform: [{ rotate: `${heading}deg` }],
                     shadowColor: "#000",
-                    shadowOpacity: 0.3,
-                    shadowRadius: 3,
-                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.35,
+                    shadowRadius: 5,
+                    shadowOffset: { width: 0, height: 3 },
                   }}
                 >
+                  {/* Teardrop shape pointing in the direction of heading */}
                   <View
                     style={{
-                      width: 0,
-                      height: 0,
-                      borderLeftWidth: 8,
-                      borderRightWidth: 8,
-                      borderBottomWidth: 14,
-                      borderLeftColor: "transparent",
-                      borderRightColor: "transparent",
-                      borderBottomColor: routeColor,
-                      marginBottom: -4,
-                      zIndex: 2,
-                    }}
-                  />
-
-                  <View
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 16,
+                      width: 36,
+                      height: 36,
                       backgroundColor: routeColor,
+                      borderTopLeftRadius: 18,
+                      borderBottomLeftRadius: 18,
+                      borderBottomRightRadius: 18,
+                      borderTopRightRadius: 4, // Pointed tip
+                      transform: [{ rotate: `${heading - 45}deg` }],
                       alignItems: "center",
                       justifyContent: "center",
-                      borderWidth: isTrackedBus ? 3 : 2,
+                      borderWidth: isTrackedBus ? 2.5 : 2,
                       borderColor: isTrackedBus ? "#FFD700" : "white",
-                      zIndex: 1,
+                      zIndex: 2,
                     }}
                   >
-                    <View style={{ transform: [{ rotate: `-${heading}deg` }] }}>
+                    {/* Keep the icon upright despite the outer teardrop rotation */}
+                    <View
+                      style={{
+                        transform: [{ rotate: `-${heading - 45}deg` }],
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
                       <Bus
                         size={16}
                         color={isTrackedBus ? "#FFD700" : "white"}
+                        strokeWidth={2.5}
                       />
                     </View>
                   </View>
@@ -2394,7 +2412,19 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
       {/* Global Search Results Overlay moved to bottom for z-index priority */}
 
-      <View style={styles.mapFabStack} pointerEvents="box-none">
+      <View
+        style={[
+          styles.mapFabStack,
+          {
+            bottom: (() => {
+              if (selectedStop || selectedBus) return 230;
+              if (showSearchResults) return 360;
+              return 150; // Default when nothing is popping up over them
+            })(),
+          },
+        ]}
+        pointerEvents="box-none"
+      >
         <TouchableOpacity style={styles.mapFab} onPress={centerOnUserLocation}>
           <LocateFixed size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
