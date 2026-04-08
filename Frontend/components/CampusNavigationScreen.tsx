@@ -963,21 +963,12 @@ export function CampusNavigationScreen() {
           ref={cameraRef}
           style={styles.map}
           initialRegion={defaultCamera}
-<<<<<<< HEAD
-          showsUserLocation={false}
-          showsCompass
-=======
           showsCompass
           showsUserLocation={false}
->>>>>>> remotes/origin/gauravtest
           zoomEnabled={true}
           pitchEnabled={false}
           rotateEnabled={false}
         >
-<<<<<<< HEAD
-
-=======
->>>>>>> remotes/origin/gauravtest
           {/* Route polyline */}
           {(activeTransitPlan || activeRoute) && (
             <MapLibrePolylineOverlay

@@ -4,9 +4,11 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Dimensions,
   FlatList,
   Linking,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   RefreshControl,
@@ -15,16 +17,11 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
-<<<<<<< HEAD
-import AsyncStorage from '@react-native-async-storage/async-storage';
-=======
 import * as Haptics from 'expo-haptics';
->>>>>>> remotes/origin/gauravtest
 import {
   BadgeCheck,
   BellOff,
@@ -60,7 +57,7 @@ import { requestJson, saveCampusEventRsvp } from '../api/client';
 import { normalizeImageUrl } from '../services/url';
 import { TourTarget, useTour } from './onboarding/TourProvider';
 import { useShareStore } from '../store/shareStore';
-import { ALL_MAJOR_OPTIONS, useEventStore } from '../store/eventStore';
+import { useEventStore } from '../store/eventStore';
 import type { MajorOption, ScheduledEvent } from '../store/eventStore';
 import { useTheme } from './SharedUI';
 import { useAppShellStore } from '../store/appShellStore';
@@ -69,26 +66,13 @@ import { scheduleAdminEventReviewNotification, scheduleEventNotification } from 
 import { promptGuestLogin } from '../utils/guestAccess';
 import { blockUser, reportContent } from '../services/streamFeeds';
 import { TagChips } from './common/TagChips';
-import { ScalePressable } from './common/Motion';
 
-<<<<<<< HEAD
-=======
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.24;
 const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
 const HERO_CARD_HEIGHT = Math.min(Math.max(396, SCREEN_HEIGHT * 0.54), 452);
->>>>>>> remotes/origin/gauravtest
 const HERO_CARD_GAP = 14;
-const EVENTS_CACHE_KEY = 'events-screen-cache-v1';
-const EVENTS_CACHE_TTL_MS = 5 * 60 * 1000;
-
-let memoryEventsCache:
-  | {
-      fetchedAt: number;
-      userId: string | null;
-      events: TAMUEvent[];
-    }
-  | null = null;
+const HERO_CARD_SNAP_INTERVAL = HERO_CARD_WIDTH + HERO_CARD_GAP;
 
 interface CampusEventResponse {
   event_id: string;
@@ -146,18 +130,6 @@ interface TAMUEvent {
   _socialMode?: SocialMode;
 }
 
-interface EventsCachePayload {
-  fetchedAt: number;
-  userId: string | null;
-  events: TAMUEvent[];
-}
-
-interface EventsCachePayload {
-  fetchedAt: number;
-  userId: string | null;
-  events: TAMUEvent[];
-}
-
 type ExploreCategory =
   | 'Featured'
   | 'Food'
@@ -170,7 +142,7 @@ type ExploreCategory =
   | 'Health & Wellness';
 
 type SocialMode = 'casual' | 'professional';
-type EventsView = 'discover' | 'list' | 'inbox';
+type EventsView = 'discover' | 'list' | 'swipe' | 'inbox';
 
 const ALL_CATEGORIES: ExploreCategory[] = [
   'Featured',
@@ -184,9 +156,6 @@ const ALL_CATEGORIES: ExploreCategory[] = [
   'Miscellaneous',
 ];
 
-<<<<<<< HEAD
-const MAJOR_OPTIONS: MajorOption[] = ALL_MAJOR_OPTIONS;
-=======
 const PERSONALIZATION_CATEGORY_LIMIT = 3;
 
 const MAJOR_OPTIONS: MajorOption[] = [
@@ -201,7 +170,6 @@ const MAJOR_OPTIONS: MajorOption[] = [
   'Law',
   'Medicine',
 ];
->>>>>>> remotes/origin/gauravtest
 
 function isExploreCategory(value: string): value is ExploreCategory {
   return ALL_CATEGORIES.includes(value as ExploreCategory);
@@ -411,38 +379,6 @@ function resolveEventImageUrl(value?: string | null) {
   return normalizeImageUrl(value);
 }
 
-async function loadCachedEvents(userId: string | null): Promise<EventsCachePayload | null> {
-  if (
-    memoryEventsCache &&
-    memoryEventsCache.userId === userId &&
-    Date.now() - memoryEventsCache.fetchedAt <= EVENTS_CACHE_TTL_MS
-  ) {
-    return memoryEventsCache;
-  }
-
-  try {
-    const raw = await AsyncStorage.getItem(EVENTS_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as EventsCachePayload;
-    if (parsed.userId !== userId || !Array.isArray(parsed.events)) return null;
-    if (Date.now() - parsed.fetchedAt > EVENTS_CACHE_TTL_MS) return null;
-    memoryEventsCache = parsed;
-    return parsed;
-  } catch (error) {
-    console.warn('[Events] Failed to load cache:', error);
-    return null;
-  }
-}
-
-async function persistCachedEvents(payload: EventsCachePayload) {
-  memoryEventsCache = payload;
-  try {
-    await AsyncStorage.setItem(EVENTS_CACHE_KEY, JSON.stringify(payload));
-  } catch (error) {
-    console.warn('[Events] Failed to persist cache:', error);
-  }
-}
-
 function classifyCategory(event: TAMUEvent): ExploreCategory {
   if (event.categories) {
     if (event.categories.food) return 'Food';
@@ -638,8 +574,6 @@ function shortDescription(text?: string | null) {
   return `${clean.slice(0, 157).trim()}...`;
 }
 
-<<<<<<< HEAD
-=======
 function EventRewardToast({
   visible,
   title,
@@ -846,7 +780,6 @@ function handleGoogleCalendar(event: TAMUEvent) {
   Linking.openURL(url).catch((err) => console.error('Error opening Google Calendar', err));
 }
 
->>>>>>> remotes/origin/gauravtest
 function openNativeMaps(lat: number, lng: number, label?: string | null) {
   const query = label ? encodeURIComponent(label) : `${lat},${lng}`;
   const url =
@@ -864,17 +797,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const navigation = useNavigation<any>();
   const { user } = useUser();
   const isGuest = useSessionStore((state) => state.isGuest);
-<<<<<<< HEAD
-  const { width: windowWidth } = useWindowDimensions();
-=======
   const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
   const preferredTime = useAppShellStore((state) => state.preferredTime);
   const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
   const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
->>>>>>> remotes/origin/gauravtest
   const s = useMemo(() => getStyles(COLORS, isDark, embedded), [COLORS, isDark, embedded]);
-  const heroCardWidth = useMemo(() => Math.min(Math.max(windowWidth - 52, 280), 520), [windowWidth]);
-  const heroCardSnapInterval = heroCardWidth + HERO_CARD_GAP;
 
   const { advanceStep, activeTargetName } = useTour();
 
@@ -887,20 +814,13 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [searchQuery, setSearchQuery] = useState('');
   const [detailEvent, setDetailEvent] = useState<TAMUEvent | null>(null);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [swipeIndex, setSwipeIndex] = useState(0);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-<<<<<<< HEAD
-  const [preferredEventCategories, setPreferredEventCategories] = useState<ExploreCategory[]>([]);
-  const [preferredSocialMode, setPreferredSocialMode] = useState<SocialMode | null>(null);
-  const deferredSearchQuery = useDeferredValue(searchQuery);
-  const lastNetworkFetchAtRef = useRef(0);
-  const inFlightFetchRef = useRef<Promise<void> | null>(null);
-=======
   const [rewardToast, setRewardToast] = useState<{ title: string; body: string } | null>(null);
   const rewardToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const heroSparkleFloat = useRef(new Animated.Value(0)).current;
->>>>>>> remotes/origin/gauravtest
 
   const {
     isMajorSpecific,
@@ -926,177 +846,88 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const dislikedEventIds = isGuest ? [] : Array.isArray(persistedDislikedEventIds) ? persistedDislikedEventIds : [];
   const receivedInvites = isGuest ? [] : Array.isArray(persistedReceivedInvites) ? persistedReceivedInvites : [];
 
-<<<<<<< HEAD
-=======
   const pan = useRef(new Animated.ValueXY()).current;
   const opacity = useRef(new Animated.Value(1)).current;
   const lastAppliedPreferenceKey = useRef<string | null>(null);
->>>>>>> remotes/origin/gauravtest
   const nowTs = Math.floor(Date.now() / 1000);
   const normalizedPreferenceCategories = useMemo(
     () => normalizePreferredCategories(preferredEventCategories),
     [preferredEventCategories],
   );
 
-  const parseCampusEvents = useCallback((raw: CampusEventResponse[]): TAMUEvent[] => {
-    return raw
-      .filter((event) => event && event.event_id && event.title && event.start_time)
-      .map((event) => {
-        const startTs = Math.floor(new Date(event.start_time).getTime() / 1000);
-        const endTs = event.end_time ? Math.floor(new Date(event.end_time).getTime() / 1000) : null;
-        return {
-          id: event.event_id,
-          title: stripHtml(event.title),
-          date_ts: Number.isFinite(startTs) ? startTs : 0,
-          date_iso: event.start_time,
-          date2_ts: Number.isFinite(endTs as number) ? endTs : null,
-          location: event.location ? stripHtml(event.location) : null,
-          location_title: event.location ? stripHtml(event.location) : null,
-          description: event.description || event.summary || null,
-          url: event.link || event.source_url || '',
-          tags: event.tags || null,
-          access_tags: event.access_tags || null,
-          event_types: event.has_food ? ['Free Food'] : null,
-          group_title: event.organization_name || event.host_name || event.source_name || '',
-          location_lat: event.location_lat ?? null,
-          location_lng: event.location_lng ?? null,
-          has_food: !!event.has_food,
-          food_confidence: event.food_confidence ?? 0,
-          food_type: event.food_type ?? null,
-          categories: event.categories || undefined,
-          imageUrl: resolveEventImageUrl(event.image_url ?? null),
-          is_admin_event: !!event.is_admin_event,
-          google_review_url: event.google_review_url ?? null,
-          admin_clerk_id: event.admin_clerk_id ?? null,
-        };
-      })
-      .map((event) => {
-        const searchBlob = getSearchBlob(event);
-        return {
-          ...event,
-          _searchBlob: searchBlob,
-          _category: classifyCategory(event),
-          _socialMode: getSocialMode({ ...event, _searchBlob: searchBlob }),
-        };
-      })
-      .sort((a, b) => a.date_ts - b.date_ts);
-  }, []);
-
-  const fetchEvents = useCallback(async (options?: { force?: boolean; silent?: boolean }) => {
-    const force = options?.force ?? false;
-    const silent = options?.silent ?? false;
-    const cacheUserId = user?.id ?? null;
-    const nowMs = Date.now();
-
-    if (!force) {
-      const cached = await loadCachedEvents(cacheUserId);
-      if (cached) {
-        setEvents(cached.events);
-        setLoading(false);
-        lastNetworkFetchAtRef.current = cached.fetchedAt;
-        return;
+  const fetchEvents = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams({
+        limit: '1000',
+        student_relevant_only: 'false',
+      });
+      if (user?.id) {
+        params.set('clerk_id', user.id);
       }
-    }
-
-    if (
-      !force &&
-      lastNetworkFetchAtRef.current > 0 &&
-      nowMs - lastNetworkFetchAtRef.current <= EVENTS_CACHE_TTL_MS
-    ) {
+      const payload = (await requestJson(
+        `/campus/events?${params.toString()}`,
+      )) as { events?: CampusEventResponse[] } | CampusEventResponse[];
+      const raw = Array.isArray(payload) ? payload : payload.events || [];
+      const parsed: TAMUEvent[] = raw
+        .filter((event) => event && event.event_id && event.title && event.start_time)
+        .map((event) => {
+          const startTs = Math.floor(new Date(event.start_time).getTime() / 1000);
+          const endTs = event.end_time ? Math.floor(new Date(event.end_time).getTime() / 1000) : null;
+          return {
+            id: event.event_id,
+            title: stripHtml(event.title),
+            date_ts: Number.isFinite(startTs) ? startTs : 0,
+            date_iso: event.start_time,
+            date2_ts: Number.isFinite(endTs as number) ? endTs : null,
+            location: event.location ? stripHtml(event.location) : null,
+            location_title: event.location ? stripHtml(event.location) : null,
+            description: event.description || event.summary || null,
+            url: event.link || event.source_url || '',
+            tags: event.tags || null,
+            access_tags: event.access_tags || null,
+            event_types: event.has_food ? ['Free Food'] : null,
+            group_title: event.organization_name || event.host_name || event.source_name || '',
+            location_lat: event.location_lat ?? null,
+            location_lng: event.location_lng ?? null,
+            has_food: !!event.has_food,
+            food_confidence: event.food_confidence ?? 0,
+            food_type: event.food_type ?? null,
+            categories: event.categories || undefined,
+            imageUrl: resolveEventImageUrl(event.image_url ?? null),
+            is_admin_event: !!event.is_admin_event,
+            google_review_url: event.google_review_url ?? null,
+            admin_clerk_id: event.admin_clerk_id ?? null,
+          };
+        })
+        .map((event) => {
+          const searchBlob = getSearchBlob(event);
+          return {
+            ...event,
+            _searchBlob: searchBlob,
+            _category: classifyCategory(event),
+            _socialMode: getSocialMode({ ...event, _searchBlob: searchBlob }),
+          };
+        })
+        .sort((a, b) => a.date_ts - b.date_ts);
+      setEvents(parsed);
+    } catch (error) {
+      console.error('[Events] Fetch error:', error);
+    } finally {
       setLoading(false);
-      return;
     }
+  }, [user?.id]);
 
-    if (inFlightFetchRef.current) {
-      return inFlightFetchRef.current;
-    }
-
-    const request = (async () => {
-      try {
-        if (!silent) {
-          setLoading(true);
-        }
-        const params = new URLSearchParams({
-          limit: '1000',
-          student_relevant_only: 'false',
-        });
-        if (user?.id) {
-          params.set('clerk_id', user.id);
-        }
-        const payload = (await requestJson(
-          `/campus/events?${params.toString()}`,
-        )) as { events?: CampusEventResponse[] } | CampusEventResponse[];
-        const raw = Array.isArray(payload) ? payload : payload.events || [];
-        const parsed = parseCampusEvents(raw);
-        setEvents(parsed);
-        const fetchedAt = Date.now();
-        lastNetworkFetchAtRef.current = fetchedAt;
-        await persistCachedEvents({
-          fetchedAt,
-          userId: cacheUserId,
-          events: parsed,
-        });
-      } catch (error) {
-        console.error('[Events] Fetch error:', error);
-      } finally {
-        setLoading(false);
-        inFlightFetchRef.current = null;
-      }
-    })();
-
-    inFlightFetchRef.current = request;
-    return request;
-  }, [parseCampusEvents, user?.id]);
-
-<<<<<<< HEAD
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!user?.id || isGuest) {
-      setPreferredEventCategories([]);
-      setPreferredSocialMode(null);
-      return;
-    }
-
-    requestJson(`/users/${user.id}`)
-      .then((profile) => {
-        if (cancelled) return;
-        const rawCategories = Array.isArray(profile?.preferred_event_categories)
-          ? profile.preferred_event_categories
-          : [];
-        const nextCategories = rawCategories
-          .map((entry: unknown) => String(entry))
-          .filter((entry): entry is ExploreCategory => ALL_CATEGORIES.includes(entry as ExploreCategory));
-        setPreferredEventCategories(nextCategories);
-
-        const nextSocialMode = profile?.preferred_social_mode;
-        setPreferredSocialMode(nextSocialMode === 'casual' || nextSocialMode === 'professional' ? nextSocialMode : null);
-      })
-      .catch((error) => console.warn('Failed to load event preferences:', error));
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isGuest, user?.id]);
-
-=======
->>>>>>> remotes/origin/gauravtest
   useFocusEffect(
     useCallback(() => {
-      const shouldRefresh = Date.now() - lastNetworkFetchAtRef.current > EVENTS_CACHE_TTL_MS;
-      if (shouldRefresh) {
-        fetchEvents({ force: true, silent: events.length > 0 });
-      }
-    }, [events.length, fetchEvents]),
+      fetchEvents();
+    }, [fetchEvents]),
   );
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await fetchEvents({ force: true, silent: true });
+      await fetchEvents();
     } finally {
       setRefreshing(false);
     }
@@ -1126,17 +957,17 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     events.forEach((event) => {
       const isOngoing = (event.date2_ts != null && event.date2_ts > nowTs) || (event.date_ts >= nowTs - 7200);
       if (!isOngoing) return;
+      if (isMajorSpecific && !matchesMajor(event, selectedMajor)) return;
       const category = event._category || classifyCategory(event);
       counts[category] += 1;
     });
 
     return counts;
-  }, [events, nowTs]);
+  }, [events, isMajorSpecific, nowTs, selectedMajor]);
 
-  const orderedUpcomingEvents = useMemo(() => {
+  const filteredUpcomingEvents = useMemo(() => {
     let next = events.filter((event) => {
-      const isUpcoming = (event.date2_ts != null && event.date2_ts > nowTs) || (event.date_ts >= nowTs - 7200);
-      return isUpcoming && !dislikedEventIds.includes(String(event.id));
+      return (event.date2_ts != null && event.date2_ts > nowTs) || (event.date_ts >= nowTs - 7200);
     });
 
     if (deferredSearchQuery.trim()) {
@@ -1144,41 +975,21 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       next = next.filter((event) => (event._searchBlob || getSearchBlob(event)).includes(q));
     }
 
-    return next
-      .map((event) => {
+    if (isMajorSpecific) {
+      next = next.filter((event) => matchesMajor(event, selectedMajor));
+    }
+
+    if (selectedCategories.size > 0) {
+      next = next.filter((event) => selectedCategories.has(event._category || classifyCategory(event)));
+    }
+
+    if (selectedCategories.has('Social')) {
+      next = next.filter((event) => {
         const category = event._category || classifyCategory(event);
-        let score = 0;
+        return category !== 'Social' || (event._socialMode || getSocialMode(event)) === socialMode;
+      });
+    }
 
-<<<<<<< HEAD
-        if (preferredEventCategories.includes(category)) score += 18;
-        if (selectedCategories.has(category)) score += 14;
-        if (category === 'Featured') score += 4;
-        if (event.has_food) score += 2;
-        if (event.group_title) score += 2;
-
-        const eventSocialMode = event._socialMode || getSocialMode(event);
-        if (category === 'Social' && preferredSocialMode && eventSocialMode === preferredSocialMode) score += 10;
-        if (category === 'Social' && selectedCategories.has('Social') && eventSocialMode === socialMode) score += 8;
-
-        if (isMajorSpecific && matchesMajor(event, selectedMajor)) score += 10;
-
-        if (savedEventIds.includes(String(event.id))) score += 1;
-        if (scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))) score -= 4;
-
-        const hoursUntilStart = Math.max(0, (event.date_ts - nowTs) / 3600);
-        if (hoursUntilStart <= 6) score += 8;
-        else if (hoursUntilStart <= 24) score += 6;
-        else if (hoursUntilStart <= 72) score += 4;
-        else if (hoursUntilStart <= 168) score += 2;
-
-        return { event, score };
-      })
-      .sort((left, right) => {
-        if (right.score !== left.score) return right.score - left.score;
-        return left.event.date_ts - right.event.date_ts;
-      })
-      .map((entry) => entry.event);
-=======
     next = next.filter((event) => !dislikedEventIds.includes(String(event.id)));
     return [...next].sort((left, right) => {
       const leftScore = getPersonalizationScore(
@@ -1202,32 +1013,33 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       }
       return left.date_ts - right.date_ts;
     });
->>>>>>> remotes/origin/gauravtest
   }, [
-    deferredSearchQuery,
     dislikedEventIds,
     events,
     isMajorSpecific,
     nowTs,
-<<<<<<< HEAD
-    preferredEventCategories,
-    preferredSocialMode,
-    savedEventIds,
-    scheduledEvents,
-=======
     normalizedPreferenceCategories,
     deferredSearchQuery,
     preferredSocialMode,
     preferredTime,
->>>>>>> remotes/origin/gauravtest
     selectedCategories,
     selectedMajor,
     socialMode,
   ]);
 
-  const spotlightEvents = useMemo(() => orderedUpcomingEvents.slice(0, 8), [orderedUpcomingEvents]);
-  const moreEvents = useMemo(() => orderedUpcomingEvents.slice(8, 24), [orderedUpcomingEvents]);
+  const discoverEvents = useMemo(() => filteredUpcomingEvents.slice(0, 8), [filteredUpcomingEvents]);
   const collapsedCategories = useMemo(() => ALL_CATEGORIES.slice(0, 5), []);
+
+  const swipeDeck = useMemo(() => {
+    if (selectedCategories.size === 0) return filteredUpcomingEvents;
+    return filteredUpcomingEvents.filter((event) => selectedCategories.has(event._category || classifyCategory(event)));
+  }, [filteredUpcomingEvents, selectedCategories]);
+
+  const activeSwipeEvent = swipeDeck[swipeIndex] ?? null;
+
+  useEffect(() => {
+    setSwipeIndex(0);
+  }, [selectedCategories, socialMode, deferredSearchQuery, isMajorSpecific, selectedMajor]);
 
   useEffect(() => {
     if (isGuest) {
@@ -1577,6 +1389,32 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     ]);
   }, [user?.id]);
 
+  const handleSwipeAdvance = useCallback(() => {
+    pan.setValue({ x: 0, y: 0 });
+    opacity.setValue(1);
+    setSwipeIndex((prev) => prev + 1);
+  }, [opacity, pan]);
+
+  const handleSwipeLeft = useCallback(
+    (event: TAMUEvent) => {
+      if (isGuest) {
+        handleSwipeAdvance();
+        return;
+      }
+      dislikeEvent(String(event.id));
+      handleSwipeAdvance();
+    },
+    [dislikeEvent, handleSwipeAdvance, isGuest],
+  );
+
+  const handleSwipeRight = useCallback(
+    (event: TAMUEvent) => {
+      handleSchedule(event);
+      handleSwipeAdvance();
+    },
+    [handleSchedule, handleSwipeAdvance],
+  );
+
   const handleRestoreCategory = useCallback(
     (category?: ExploreCategory) => {
       if (!category) {
@@ -1604,7 +1442,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           <Text style={s.pageTitle}>{title}</Text>
         </View>
         <Pressable style={s.headerIconButton} onPress={() => setSettingsVisible(true)}>
-          <Filter size={18} color={COLORS.textPrimary} />
+          <Settings size={18} color={COLORS.textPrimary} />
         </Pressable>
       </View>
 
@@ -1612,6 +1450,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         {([
           { id: 'discover', label: 'Discover' },
           { id: 'list', label: 'List' },
+          { id: 'swipe', label: 'Swipe' },
         ] as const).map((tab) => {
           const active = view === tab.id;
           const tabItem = (
@@ -1776,8 +1615,25 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 )}
               </View>
 
-              {selectedCategories.has('Social') ? (
-                <View style={s.inlineControls}>
+              <View style={s.inlineControls}>
+                <Pressable
+                  style={s.inlineControl}
+                  onPress={() => setMajorSpecific(!isMajorSpecific)}
+                >
+                  <Text
+                    style={[
+                      s.inlineControlTitle,
+                      isMajorSpecific && s.inlineControlTitleActive,
+                    ]}
+                  >
+                    Major specific
+                  </Text>
+                  <Text style={s.inlineControlValue}>
+                    {isMajorSpecific ? selectedMajor : 'Off'}
+                  </Text>
+                </Pressable>
+
+                {selectedCategories.has('Social') ? (
                   <View style={s.socialModeWrap}>
                     {(['casual', 'professional'] as SocialMode[]).map((mode) => (
                       <Pressable
@@ -1796,14 +1652,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                       </Pressable>
                     ))}
                   </View>
-                </View>
-              ) : null}
-
-              <View style={s.sectionHeader}>
-                <View>
-                  <Text style={s.sectionEyebrow}>Discover</Text>
-                  <Text style={s.sectionTitle}>Spotlight events</Text>
-                </View>
+                ) : null}
               </View>
 
               <ScrollView
@@ -1812,29 +1661,13 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 nestedScrollEnabled
                 directionalLockEnabled
                 contentContainerStyle={s.heroRail}
-                snapToOffsets={spotlightEvents.map((_, index) => index * heroCardSnapInterval)}
+                snapToOffsets={discoverEvents.map((_, index) => index * HERO_CARD_SNAP_INTERVAL)}
                 snapToAlignment="start"
                 disableIntervalMomentum
                 decelerationRate="fast"
               >
-                {spotlightEvents.map((event, i) => {
+                {discoverEvents.map((event, i) => {
                   const card = (
-<<<<<<< HEAD
-                    <View
-                      key={String(event.id)}
-                      style={{ marginRight: i === spotlightEvents.length - 1 ? 0 : HERO_CARD_GAP }}
-                    >
-                      <HeroEventCard
-                        cardWidth={heroCardWidth}
-                        event={event}
-                        scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
-                        onSchedule={() => handleSchedule(event)}
-                        onDismiss={() => dislikeEvent(String(event.id))}
-                        onPress={() => setDetailEvent(event)}
-                        onMap={() => handleMapOpen(event)}
-                      />
-                    </View>
-=======
                     <StaggeredReveal key={String(event.id)} index={i}>
                       <View
                         style={{ marginRight: i === discoverEvents.length - 1 ? 0 : HERO_CARD_GAP }}
@@ -1849,54 +1682,12 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                         />
                       </View>
                     </StaggeredReveal>
->>>>>>> remotes/origin/gauravtest
                   );
                   return card;
                 })}
               </ScrollView>
-<<<<<<< HEAD
-
-              {moreEvents.length ? (
-                <>
-                  <View style={s.sectionHeader}>
-                    <View>
-                      <Text style={s.sectionEyebrow}>More Events</Text>
-                      <Text style={s.sectionTitle}>Keep exploring</Text>
-                    </View>
-                  </View>
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={s.heroRail}
-                    snapToOffsets={moreEvents.map((_, index) => index * heroCardSnapInterval)}
-                    snapToAlignment="start"
-                    disableIntervalMomentum
-                    decelerationRate="fast"
-                  >
-                    {moreEvents.map((event, i) => (
-                      <View
-                        key={`more-${event.id}`}
-                        style={{ marginRight: i === moreEvents.length - 1 ? 0 : HERO_CARD_GAP }}
-                      >
-                        <HeroEventCard
-                          cardWidth={heroCardWidth}
-                          event={event}
-                          scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
-                          onSchedule={() => handleSchedule(event)}
-                          onDismiss={() => dislikeEvent(String(event.id))}
-                          onPress={() => setDetailEvent(event)}
-                          onMap={() => handleMapOpen(event)}
-                        />
-                      </View>
-                    ))}
-                  </ScrollView>
-                </>
-              ) : null}
-            </ScrollView>
-=======
               </ScrollView>
             </View>
->>>>>>> remotes/origin/gauravtest
           )}
         </>
       )}
@@ -1917,6 +1708,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 clearButtonMode="while-editing"
               />
             </View>
+            <Pressable style={s.filterButton} onPress={() => setSettingsVisible(true)}>
+              <Filter size={18} color={COLORS.textPrimary} />
+            </Pressable>
           </View>
 
           <View style={[s.categoryWrap, { marginBottom: 16, marginTop: 4 }]}>
@@ -1945,7 +1739,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             </View>
           ) : (
             <FlatList
-              data={orderedUpcomingEvents}
+              data={filteredUpcomingEvents}
               keyExtractor={(event) => String(event.id)}
               contentContainerStyle={s.listScroll}
               showsVerticalScrollIndicator={false}
@@ -1999,6 +1793,88 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               }
             />
           )}
+        </>
+      )}
+
+      {view === 'swipe' && (
+        <>
+          <View style={s.swipeHeader}>
+            <Pressable style={s.headerIconButton} onPress={() => changeView('discover')}>
+              <ChevronLeft size={18} color={COLORS.textPrimary} />
+            </Pressable>
+            <Text style={s.swipeProgress}>
+              {activeSwipeEvent ? `${Math.min(swipeIndex + 1, swipeDeck.length)} of ${swipeDeck.length}` : 'Done'}
+            </Text>
+            <View style={s.swipeHeaderSpacer} />
+          </View>
+
+          {selectedCategories.has('Social') ? (
+            <View style={s.swipeSocialModeWrap}>
+              {(['casual', 'professional'] as SocialMode[]).map((mode) => (
+                <Pressable
+                  key={mode}
+                  style={[s.socialModePill, socialMode === mode && s.socialModePillActive]}
+                  onPress={() => setSocialMode(mode)}
+                >
+                  <Text
+                    style={[s.socialModeText, socialMode === mode && s.socialModeTextActive]}
+                  >
+                    {mode === 'casual' ? 'Casual' : 'Professional'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
+          {activeSwipeEvent ? (
+            <SwipeEventCard
+              event={activeSwipeEvent}
+              pan={pan}
+              opacity={opacity}
+              onSwipeLeft={() => handleSwipeLeft(activeSwipeEvent)}
+              onSwipeRight={() => handleSwipeRight(activeSwipeEvent)}
+              onOpen={() => setDetailEvent(activeSwipeEvent)}
+            />
+          ) : (
+            <View style={s.finishedWrap}>
+              <Text style={s.finishedTitle}>All caught up</Text>
+              <Text style={s.finishedSubtitle}>
+                You have worked through every event in this deck.
+              </Text>
+              <Pressable
+                style={s.finishedButton}
+                onPress={() => {
+                  setSwipeIndex(0);
+                  changeView('discover');
+                }}
+              >
+                <Text style={s.finishedButtonText}>Back to discover</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {activeSwipeEvent ? (
+            <View style={s.swipeActions}>
+              <ActionButton color="#FF4D6D" onPress={() => handleSwipeLeft(activeSwipeEvent)}>
+                <XIcon size={28} color="#FFFFFF" />
+              </ActionButton>
+              <ActionButton
+                color="#2F80ED"
+                onPress={() => {
+                  handleSchedule(activeSwipeEvent);
+                  handleGoogleCalendar(activeSwipeEvent);
+                }}
+              >
+                <CalendarIcon size={24} color="#FFFFFF" />
+              </ActionButton>
+              <ActionButton color="#3CCB6C" onPress={() => handleSwipeRight(activeSwipeEvent)}>
+                <Check size={28} color="#FFFFFF" />
+              </ActionButton>
+              <ActionButton color="#FF9F0A" onPress={() => handleShare(activeSwipeEvent)}>
+                <Share2 size={24} color="#FFFFFF" />
+              </ActionButton>
+            </View>
+          ) : null}
         </>
       )}
 
@@ -2123,7 +1999,7 @@ function CategoryChip({
 }) {
   const { accent, chipBg, chipText, icon: Icon } = CATEGORY_META[category];
   return (
-    <ScalePressable
+    <Pressable
       onPress={onPress}
       style={[
         stylesStatic.categoryChip,
@@ -2147,26 +2023,22 @@ function CategoryChip({
       >
         {count}
       </Text>
-    </ScalePressable>
+    </Pressable>
   );
 }
 
 function HeroEventCard({
-  cardWidth,
   event,
   reasons,
   scheduled,
   onSchedule,
-  onDismiss,
   onPress,
   onMap,
 }: {
-  cardWidth: number;
   event: TAMUEvent;
   reasons: string[];
   scheduled: boolean;
   onSchedule: () => void;
-  onDismiss: () => void;
   onPress: () => void;
   onMap: () => void;
 }) {
@@ -2176,9 +2048,9 @@ function HeroEventCard({
   const Icon = meta.icon;
 
   return (
-    <ScalePressable
+    <Pressable
       onPress={onPress}
-      style={[stylesStatic.heroCard, { backgroundColor: meta.cardTint, width: cardWidth }]}
+      style={[stylesStatic.heroCard, { backgroundColor: meta.cardTint }]}
     >
       {event.imageUrl ? <Image source={{ uri: event.imageUrl }} style={stylesStatic.heroImage} resizeMode="cover" /> : null}
       {event.imageUrl ? <View style={stylesStatic.heroImageOverlay} /> : null}
@@ -2228,49 +2100,30 @@ function HeroEventCard({
           <Text style={stylesStatic.heroMetaText}>{event.location || 'Campus'}</Text>
         </View>
         {event.location_lat != null && event.location_lng != null ? (
-          <ScalePressable style={stylesStatic.heroMapButton} onPress={onMap}>
+          <Pressable style={stylesStatic.heroMapButton} onPress={onMap}>
             <Map size={15} color={COLORS.textPrimary} />
             <Text style={stylesStatic.heroMapButtonText}>
               Open in Places
             </Text>
-          </ScalePressable>
+          </Pressable>
         ) : null}
-        <View style={stylesStatic.heroActionRow}>
-          <ScalePressable
+        <Pressable
+          style={[
+            stylesStatic.heroRsvpButton,
+            { backgroundColor: scheduled ? '#FFF1EA' : '#FFFFFF' },
+          ]}
+          onPress={onSchedule}
+        >
+          {scheduled ? <XIcon size={15} color="#E06A3E" /> : <CalendarDays size={15} color="#2A6F3E" />}
+          <Text
             style={[
-              stylesStatic.heroRsvpButton,
-              { backgroundColor: scheduled ? '#FFF1EA' : '#FFFFFF' },
+              stylesStatic.heroRsvpButtonText,
+              { color: scheduled ? '#C65A28' : '#174F2E' },
             ]}
-            onPress={onSchedule}
+            numberOfLines={!event.is_admin_event && !scheduled ? 2 : 1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
           >
-<<<<<<< HEAD
-            {scheduled ? <XIcon size={15} color="#E06A3E" /> : <CalendarDays size={15} color="#2A6F3E" />}
-            <Text
-              style={[
-                stylesStatic.heroRsvpButtonText,
-                { color: scheduled ? '#C65A28' : '#174F2E' },
-              ]}
-              numberOfLines={!event.is_admin_event && !scheduled ? 2 : 1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.75}
-            >
-              {event.is_admin_event
-                ? scheduled
-                  ? 'Remove RSVP'
-                  : 'RSVP'
-                : scheduled
-                  ? 'Remove from Schedule'
-                  : 'Add'}
-            </Text>
-          </ScalePressable>
-          <ScalePressable style={stylesStatic.heroDismissButton} onPress={onDismiss}>
-            <Trash2 size={16} color="#FFFFFF" />
-            <Text style={stylesStatic.heroDismissButtonText}>Remove</Text>
-          </ScalePressable>
-        </View>
-      </View>
-    </ScalePressable>
-=======
             {event.is_admin_event
               ? scheduled
                 ? 'Remove RSVP'
@@ -2282,7 +2135,6 @@ function HeroEventCard({
         </Pressable>
       </ScrollView>
     </Pressable>
->>>>>>> remotes/origin/gauravtest
   );
 }
 
@@ -2316,7 +2168,7 @@ function ListEventRow({
   const Icon = meta.icon;
 
   return (
-    <ScalePressable
+    <Pressable
       onPress={onPress}
       style={[
         stylesStatic.listRow,
@@ -2354,15 +2206,15 @@ function ListEventRow({
       </View>
       <View style={stylesStatic.listActions}>
         {!isGuest ? (
-          <ScalePressable onPress={onDelete} style={stylesStatic.listActionButton}>
+          <Pressable onPress={onDelete} style={stylesStatic.listActionButton}>
             <Trash2 size={20} color={COLORS.textSecondary} />
-          </ScalePressable>
+          </Pressable>
         ) : null}
 
-        <ScalePressable onPress={onShare} style={stylesStatic.listActionButton}>
+        <Pressable onPress={onShare} style={stylesStatic.listActionButton}>
           <Share2 size={20} color={COLORS.textSecondary} />
-        </ScalePressable>
-        <ScalePressable
+        </Pressable>
+        <Pressable
           onPress={onSchedule}
           style={[
             stylesStatic.listActionButton,
@@ -2376,9 +2228,116 @@ function ListEventRow({
           ]}
         >
           {scheduled ? <XIcon size={20} color="#E06A3E" /> : <Check size={20} color="#3CCB6C" />}
-        </ScalePressable>
+        </Pressable>
       </View>
-    </ScalePressable>
+    </Pressable>
+  );
+}
+
+function SwipeEventCard({
+  event,
+  pan,
+  opacity,
+  onSwipeLeft,
+  onSwipeRight,
+  onOpen,
+}: {
+  event: TAMUEvent;
+  pan: Animated.ValueXY;
+  opacity: Animated.Value;
+  onSwipeLeft: () => void;
+  onSwipeRight: () => void;
+  onOpen: () => void;
+}) {
+  const category = classifyCategory(event);
+  const meta = CATEGORY_META[category];
+  const Icon = meta.icon;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 10,
+      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
+        useNativeDriver: false,
+      }),
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dx > SWIPE_THRESHOLD) {
+          Animated.parallel([
+            Animated.timing(pan.x, {
+              toValue: SCREEN_WIDTH + 80,
+              duration: 220,
+              useNativeDriver: false,
+            }),
+            Animated.timing(opacity, {
+              toValue: 0,
+              duration: 220,
+              useNativeDriver: false,
+            }),
+          ]).start(onSwipeRight);
+        } else if (gesture.dx < -SWIPE_THRESHOLD) {
+          Animated.parallel([
+            Animated.timing(pan.x, {
+              toValue: -(SCREEN_WIDTH + 80),
+              duration: 220,
+              useNativeDriver: false,
+            }),
+            Animated.timing(opacity, {
+              toValue: 0,
+              duration: 220,
+              useNativeDriver: false,
+            }),
+          ]).start(onSwipeLeft);
+        } else {
+          Animated.spring(pan, {
+            toValue: { x: 0, y: 0 },
+            useNativeDriver: false,
+          }).start();
+        }
+      },
+    }),
+  ).current;
+
+  const rotate = pan.x.interpolate({
+    inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
+    outputRange: ['-10deg', '0deg', '10deg'],
+  });
+
+  return (
+    <View style={stylesStatic.swipeWrap}>
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={[
+          stylesStatic.swipeCard,
+          {
+            backgroundColor: meta.cardTint,
+            transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }],
+            opacity,
+          },
+        ]}
+      >
+        <Pressable style={{ flex: 1 }} onPress={onOpen}>
+          {event.imageUrl ? <Image source={{ uri: event.imageUrl }} style={stylesStatic.swipeImage} resizeMode="cover" /> : null}
+          {event.imageUrl ? <View style={stylesStatic.swipeImageOverlay} /> : null}
+          <View style={stylesStatic.swipeGlow} />
+          <View style={[stylesStatic.swipeWatermark, event.imageUrl ? stylesStatic.swipeWatermarkWithImage : null]}>
+            <Icon size={108} color="rgba(255,255,255,0.13)" />
+          </View>
+          <View style={stylesStatic.swipeTopLabel}>
+            <Text style={stylesStatic.swipeTopLabelText}>{category}</Text>
+          </View>
+          <View style={stylesStatic.swipeBody}>
+            <Text style={stylesStatic.swipeTitle}>{event.title}</Text>
+            <Text style={stylesStatic.swipeMeta}>
+              {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
+            </Text>
+            <Text style={stylesStatic.swipeMeta}>{event.location || 'Campus'}</Text>
+            {shortDescription(event.description) ? (
+              <Text style={stylesStatic.swipeDescription}>{shortDescription(event.description)}</Text>
+            ) : null}
+          </View>
+        </Pressable>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -2394,7 +2353,7 @@ function ActionButton({
   small?: boolean;
 }) {
   return (
-    <ScalePressable
+    <Pressable
       onPress={onPress}
       style={[
         stylesStatic.actionButton,
@@ -2403,7 +2362,7 @@ function ActionButton({
       ]}
     >
       {children}
-    </ScalePressable>
+    </Pressable>
   );
 }
 
@@ -2990,42 +2949,6 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       marginTop: 14,
       gap: 10,
     },
-    sectionBlock: {
-      marginTop: 20,
-      gap: 12,
-    },
-    sectionHeader: {
-      marginTop: 18,
-      marginBottom: 4,
-      flexDirection: 'row',
-      alignItems: 'flex-end',
-      justifyContent: 'space-between',
-      gap: 12,
-    },
-    sectionEyebrow: {
-      color: COLORS.textSecondary,
-      fontSize: 11,
-      fontWeight: '800',
-      letterSpacing: 0.4,
-      textTransform: 'uppercase',
-      marginBottom: 4,
-    },
-    sectionTitle: {
-      color: COLORS.textPrimary,
-      fontSize: 24,
-      fontWeight: '900',
-      letterSpacing: -0.5,
-    },
-    sectionMeta: {
-      flex: 1,
-      textAlign: 'right',
-      color: COLORS.textSecondary,
-      fontSize: 12,
-      fontWeight: '700',
-    },
-    recommendedList: {
-      gap: 12,
-    },
     inlineControl: {
       borderRadius: 16,
       paddingHorizontal: 0,
@@ -3378,64 +3301,12 @@ const stylesStatic = StyleSheet.create({
     marginLeft: 2,
   },
   heroCard: {
-<<<<<<< HEAD
-    height: 372,
-=======
     width: HERO_CARD_WIDTH,
     height: HERO_CARD_HEIGHT,
->>>>>>> remotes/origin/gauravtest
     borderRadius: 34,
     overflow: 'hidden',
     paddingHorizontal: 22,
     paddingVertical: 24,
-  },
-  recommendedRow: {
-    minHeight: 90,
-    borderRadius: 22,
-    borderWidth: 1,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  recommendedIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  recommendedBody: {
-    flex: 1,
-    gap: 4,
-  },
-  recommendedTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  recommendedTitle: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '800',
-    lineHeight: 21,
-  },
-  recommendedMeta: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  recommendedOrganizer: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  recommendedAction: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
   },
   heroImage: {
     ...StyleSheet.absoluteFillObject,
@@ -3565,17 +3436,11 @@ const stylesStatic = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
-  heroActionRow: {
-    marginTop: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
   heroRsvpButton: {
-    flex: 1,
+    marginTop: 6,
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 6,
     borderWidth: 1,
     borderColor: 'rgba(15,23,42,0.1)',
@@ -3584,23 +3449,6 @@ const stylesStatic = StyleSheet.create({
     borderRadius: 999,
   },
   heroRsvpButtonText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  heroDismissButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.22)',
-    backgroundColor: 'rgba(17,24,39,0.18)',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  heroDismissButtonText: {
-    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800',
   },
@@ -3674,6 +3522,8 @@ const stylesStatic = StyleSheet.create({
     paddingBottom: 20,
   },
   swipeCard: {
+    width: SCREEN_WIDTH - 44,
+    height: SCREEN_HEIGHT * 0.6,
     borderRadius: 34,
     overflow: 'hidden',
   },

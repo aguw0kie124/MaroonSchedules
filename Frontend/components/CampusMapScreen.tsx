@@ -86,13 +86,8 @@ export function CampusMapScreen() {
         ref={cameraRef}
         style={styles.map}
         initialRegion={defaultCamera}
-<<<<<<< HEAD
-        showsUserLocation
-        showsCompass
-=======
         showsCompass
         showsUserLocation
->>>>>>> remotes/origin/gauravtest
         rotateEnabled={false}
         pitchEnabled={false}
       >

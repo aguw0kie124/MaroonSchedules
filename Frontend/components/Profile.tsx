@@ -179,13 +179,10 @@ export function Profile() {
   const notificationsEnabled = useAppShellStore((state) => state.notificationsEnabled);
   const setNotificationsEnabled = useAppShellStore((state) => state.setNotificationsEnabled);
   const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
-<<<<<<< HEAD
-=======
   const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
   const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
   const preferredTime = useAppShellStore((state) => state.preferredTime);
   const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
->>>>>>> remotes/origin/gauravtest
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
   const [profileTags, setProfileTags] = useState<string[]>([]);
@@ -619,29 +616,6 @@ export function Profile() {
           <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Redo Preference Questions</Text>
           <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Reopen the 4 Events setup questions.</Text>
           <Text style={{ color: COLORS.textTertiary, fontSize: 12, marginTop: 6, lineHeight: 17 }}>{preferenceSummary}</Text>
-        </View>
-        <ChevronRight size={20} color={COLORS.textTertiary} />
-      </Pressable>
-
-      <Pressable 
-        style={[styles.heroCard, { 
-          padding: 16, 
-          backgroundColor: isDark ? COLORS.surface : '#F8FAFC', 
-          borderColor: '#2F80ED', 
-          borderWidth: 1.5,
-          flexDirection: 'row', 
-          alignItems: 'center', 
-          gap: 12,
-          marginTop: 10
-        }]} 
-        onPress={() => setShowEventPreferencesOnboarding(true)}
-      >
-        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(47, 128, 237, 0.12)', alignItems: 'center', justifyContent: 'center' }}>
-          <Sparkles size={24} color="#2F80ED" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Redo Preference Questions</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Retune your Events feed preferences and discovery setup.</Text>
         </View>
         <ChevronRight size={20} color={COLORS.textTertiary} />
       </Pressable>
