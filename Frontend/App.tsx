@@ -53,20 +53,45 @@ import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './sto
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
 
-import { syncUser, fetchUserProfile, requestJson, setApiAuthTokenProvider } from './api/client';
+import { syncUser, requestJson, setApiAuthTokenProvider } from './api/client';
 import { TOSScreen } from './components/TOSScreen';
 import { NotificationPromptScreen } from './components/onboarding/NotificationPromptScreen';
+import { EventPreferenceOnboardingScreen } from './components/onboarding/EventPreferenceOnboardingScreen';
 
 import { AdminApplicationScreen } from './components/admin/AdminApplicationScreen';
 import { AdminPortal } from './components/admin/AdminPortal';
 import { PendingReviewInterceptor } from './components/events/PendingReviewInterceptor';
 import { API_URL } from './config';
 import { ClubAccessScreen } from './components/ClubAccessScreen';
+import { useEventStore, type MajorOption } from './store/eventStore';
+
+const VALID_EVENT_MAJORS: MajorOption[] = [
+  'Engineering',
+  'Business',
+  'Liberal Arts',
+  'Agriculture',
+  'Science',
+  'Architecture',
+  'Education',
+  'Public Health',
+  'Law',
+  'Medicine',
+];
+
+function isMajorOption(value: unknown): value is MajorOption {
+  return typeof value === 'string' && VALID_EVENT_MAJORS.includes(value as MajorOption);
+}
 
 function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const setTourCompleted = useAppShellStore((state) => state.setTourCompleted);
+  const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
+  const setPreferredEventCategories = useAppShellStore((state) => state.setPreferredEventCategories);
+  const setPreferredTime = useAppShellStore((state) => state.setPreferredTime);
+  const setPreferredSocialMode = useAppShellStore((state) => state.setPreferredSocialMode);
+  const setSelectedMajor = useEventStore((state) => state.setSelectedMajor);
+  const setMajorSpecific = useEventStore((state) => state.setMajorSpecific);
   const lastSyncedUserId = React.useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -85,10 +110,49 @@ function UserSync({ children }: { children: React.ReactNode }) {
           if (typeof data.tour_completed === 'boolean') {
             setTourCompleted(data.tour_completed);
           }
+          const hasLegacyPreferenceShape =
+            !('event_preferences_completed' in data) ||
+            (!Array.isArray(data.preferred_event_categories) &&
+              data.preferred_time == null &&
+              data.preferred_social_mode == null &&
+              !isMajorOption(data.major));
+          setEventPreferencesCompleted(
+            typeof data.event_preferences_completed === 'boolean'
+              ? data.event_preferences_completed
+              : hasLegacyPreferenceShape,
+          );
+          if (Array.isArray(data.preferred_event_categories)) {
+            setPreferredEventCategories(
+              data.preferred_event_categories.filter((entry: unknown): entry is string => typeof entry === 'string'),
+            );
+          } else {
+            setPreferredEventCategories([]);
+          }
+          if (
+            data.preferred_time === 'Morning' ||
+            data.preferred_time === 'Afternoon' ||
+            data.preferred_time === 'Evening' ||
+            data.preferred_time === 'Anytime'
+          ) {
+            setPreferredTime(data.preferred_time);
+          } else {
+            setPreferredTime(null);
+          }
+          if (data.preferred_social_mode === 'casual' || data.preferred_social_mode === 'professional') {
+            setPreferredSocialMode(data.preferred_social_mode);
+          } else {
+            setPreferredSocialMode(null);
+          }
+          if (isMajorOption(data.major)) {
+            setSelectedMajor(data.major);
+            setMajorSpecific(true);
+          } else {
+            setMajorSpecific(false);
+          }
         }
       }).catch((err: any) => console.warn('UserSync failed:', err));
     }
-  }, [user?.id, user?.primaryEmailAddress?.emailAddress, user?.fullName, user?.imageUrl]);
+  }, [setEventPreferencesCompleted, setMajorSpecific, setPreferredEventCategories, setPreferredSocialMode, setPreferredTime, setSelectedMajor, setTOSAccepted, setTourCompleted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
 
   return <>{children}</>;
 }
@@ -280,8 +344,13 @@ function RootNavigator() {
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const isNotificationPrompted = useAppShellStore((state) => state.isNotificationPrompted);
   const setNotificationPrompted = useAppShellStore((state) => state.setNotificationPrompted);
+  const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
+  const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
+  const showEventPreferencesOnboarding = useAppShellStore((state) => state.showEventPreferencesOnboarding);
+  const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
   const isAdmin = useAppShellStore((state) => state.adminAccessStatus);
   const setIsAdmin = useAppShellStore((state) => state.setAdminAccessStatus);
+  const isRegularUserFlow = isSignedIn && authMode !== 'admin';
 
   React.useEffect(() => {
     if (isSignedIn && user?.id) {
@@ -314,6 +383,25 @@ function RootNavigator() {
     content = (
       <NotificationPromptScreen 
         onDone={() => setNotificationPrompted(true)} 
+      />
+    );
+  } else if (isRegularUserFlow && isTOSAccepted && isNotificationPrompted && isAdmin === null) {
+    content = <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  } else if (
+    isRegularUserFlow &&
+    isTOSAccepted &&
+    isNotificationPrompted &&
+    isAdmin === false &&
+    (!isEventPreferencesCompleted || showEventPreferencesOnboarding) &&
+    user?.id
+  ) {
+    content = (
+      <EventPreferenceOnboardingScreen
+        clerkId={user.id}
+        onDone={() => {
+          setEventPreferencesCompleted(true);
+          setShowEventPreferencesOnboarding(false);
+        }}
       />
     );
   } else {
@@ -436,7 +524,14 @@ function TabButtonWrapper({ screenName, props }: { screenName: string; props: an
   };
 
   return (
-    <TourTarget name={targetName} style={{ flex: 1 }}>
+    <TourTarget
+      name={targetName}
+      style={{ flex: 1 }}
+      assistAction={() => {
+        (navigationRef as any).navigate('Main', { screen: screenName });
+        setTimeout(() => advanceStep(targetName), 350);
+      }}
+    >
       <View
         style={[
           { flex: 1, margin: 4, borderRadius: 12 },

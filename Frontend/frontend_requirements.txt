@@ -24,5 +24,4 @@ react-native-worklets
 react-native-worklets-core
 stream-chat
 zustand
-@maplibre/maplibre-react-native
-expo-dev-client
+react-native-maps

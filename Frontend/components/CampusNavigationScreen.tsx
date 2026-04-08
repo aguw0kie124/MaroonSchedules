@@ -13,7 +13,7 @@ import {
   Dimensions,
 } from 'react-native';
 import * as Location from 'expo-location';
-import { Camera, MapView } from '@maplibre/maplibre-react-native';
+import MapView from 'react-native-maps';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from './SharedUI';
 import { CampusSearchBar } from './CampusSearchBar';
@@ -61,7 +61,6 @@ import { buildExpandedPlacesDirectory, getLocationSelectionId } from './places/c
 import { getCategoryColor, getCategoryIcon } from './places/utils';
 import { buildGlobalRoute, isCoordinateNearTexasAM, searchGlobalPlaces } from '../services/globalMap';
 import {
-  CAMPUS_MAP_STYLE_URL,
   MapLibreMarker,
   MapLibrePolylineOverlay,
   useMapLibreCamera,
@@ -961,17 +960,15 @@ export function CampusNavigationScreen() {
       {/* Map */}
       <View style={styles.mapContainer}>
         <MapView
+          ref={cameraRef}
           style={styles.map}
-          mapStyle={CAMPUS_MAP_STYLE_URL}
-          compassEnabled
-          logoEnabled={false}
-          attributionEnabled={false}
+          initialRegion={defaultCamera}
+          showsCompass
+          showsUserLocation={false}
           zoomEnabled={true}
           pitchEnabled={false}
           rotateEnabled={false}
         >
-          <Camera ref={cameraRef} defaultSettings={defaultCamera} />
-
           {/* Route polyline */}
           {(activeTransitPlan || activeRoute) && (
             <MapLibrePolylineOverlay
