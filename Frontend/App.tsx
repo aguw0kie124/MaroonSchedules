@@ -64,6 +64,7 @@ import { PendingReviewInterceptor } from './components/events/PendingReviewInter
 import { API_URL } from './config';
 import { ClubAccessScreen } from './components/ClubAccessScreen';
 import { type MajorOption, useEventStore } from './store/eventStore';
+import { FocusMotionView } from './components/common/Motion';
 
 function isMajorOption(value: string): value is MajorOption {
   return [
@@ -164,6 +165,30 @@ if (!publishableKey) {
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
+function withTabMotion(Component: React.ComponentType<any>, delay = 0) {
+  return function MotionWrappedScreen(props: any) {
+    return (
+      <FocusMotionView delay={delay} style={{ flex: 1 }}>
+        <Component {...props} />
+      </FocusMotionView>
+    );
+  };
+}
+
+const AnimatedDashboardScreen = withTabMotion(Dashboard, 0);
+const AnimatedPlacesScreen = withTabMotion(PlacesMapScreen, 40);
+const AnimatedSocialScreen = withTabMotion(SocialHubScreen, 60);
+const AnimatedDiningScreen = withTabMotion(
+  () => (
+    <ErrorBoundary name="Dining Dashboard">
+      <DiningDashboard />
+    </ErrorBoundary>
+  ),
+  50,
+);
+const AnimatedTimerScreen = withTabMotion(TimerScreen, 80);
+const AnimatedSettingsScreen = withTabMotion(Profile, 80);
+
 function MainTabs(props: any) {
   const { COLORS } = useTheme();
   const navItems = useAppShellStore((state) => state.navItems);
@@ -183,7 +208,7 @@ function MainTabs(props: any) {
       if (item.id === 'Dashboard') {
         return {
           name: 'Dashboard',
-          component: Dashboard,
+          component: AnimatedDashboardScreen,
           title: 'Events',
           icon: Home,
           initialParams: undefined,
@@ -192,7 +217,7 @@ function MainTabs(props: any) {
       if (item.id === 'Places') {
         return {
           name: 'Places',
-          component: PlacesMapScreen,
+          component: AnimatedPlacesScreen,
           title: 'Places',
           icon: Map,
           initialParams: undefined,
@@ -201,7 +226,7 @@ function MainTabs(props: any) {
       if (item.id === 'Social') {
         return {
           name: 'Social',
-          component: SocialHubScreen,
+          component: AnimatedSocialScreen,
           title: 'Pings',
           icon: Radio,
           initialParams: undefined,
@@ -210,11 +235,7 @@ function MainTabs(props: any) {
       if (item.id === 'Dining') {
         return {
           name: 'Dining',
-          component: () => (
-            <ErrorBoundary name="Dining Dashboard">
-              <DiningDashboard />
-            </ErrorBoundary>
-          ),
+          component: AnimatedDiningScreen,
           title: 'Dining',
           icon: UtensilsCrossed,
           initialParams: undefined,
@@ -222,7 +243,7 @@ function MainTabs(props: any) {
       }
       return {
         name: 'Timer',
-        component: TimerScreen,
+        component: AnimatedTimerScreen,
         title: 'Timer',
         icon: Clock3,
         initialParams: undefined,
@@ -230,7 +251,7 @@ function MainTabs(props: any) {
     }),
     {
       name: 'Settings',
-      component: Profile,
+      component: AnimatedSettingsScreen,
       title: 'Settings',
       icon: Settings,
       initialParams: undefined,

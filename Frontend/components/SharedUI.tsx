@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-nati
 import { MapPin, Bookmark } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
+import { ScalePressable } from './common/Motion';
 
 export const DARK_COLORS = {
   background: '#000000',      // Pure Black
@@ -213,14 +214,13 @@ export const PrimaryButton = ({ title, onPress, style, textStyle, isLoading, var
   };
   
   return (
-    <Pressable 
-      style={({ pressed }) => [
-        styles.button, 
+    <ScalePressable
+      containerStyle={style}
+      style={[
+        styles.button,
         { backgroundColor: getBgColor() },
         variant === 'outline' && { borderWidth: 1, borderColor: COLORS.border },
-        style,
-        pressed && styles.pressed
-      ]} 
+      ]}
       onPress={onPress}
       disabled={isLoading}
     >
@@ -231,7 +231,7 @@ export const PrimaryButton = ({ title, onPress, style, textStyle, isLoading, var
           variant === 'outline' && { color: isDark ? '#F3F1ED' : COLORS.textPrimary },
           textStyle
       ]}>{title}</Text>}
-    </Pressable>
+    </ScalePressable>
   );
 };
 

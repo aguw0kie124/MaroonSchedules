@@ -13,7 +13,7 @@ import { Sparkles, ChevronRight, Clock3, GraduationCap, HeartHandshake, Shapes }
 
 import { updateUserProfile } from '../../api/client';
 import { useTheme } from '../SharedUI';
-import { useEventStore, type MajorOption } from '../../store/eventStore';
+import { ALL_MAJOR_OPTIONS, useEventStore, type MajorOption } from '../../store/eventStore';
 
 type Props = {
   clerkId: string;
@@ -48,11 +48,25 @@ const TIME_OPTIONS = [
   { id: 'Anytime', label: 'Anytime', description: 'I am open to whatever looks good.' },
 ];
 
+const MAJOR_DESCRIPTIONS: Record<MajorOption, string> = {
+  Engineering: 'Prioritize events relevant to engineering.',
+  Business: 'Surface networking and business-oriented events.',
+  'Liberal Arts': 'Show humanities, culture, and discussion events.',
+  Agriculture: 'Highlight agriculture and life sciences opportunities.',
+  Science: 'Highlight research and science-oriented events.',
+  Architecture: 'Show design, planning, and architecture events.',
+  Education: 'Surface teaching, outreach, and education events.',
+  'Public Health': 'Highlight health and community-focused events.',
+  Law: 'Surface legal, policy, and pre-law opportunities.',
+  Medicine: 'Show pre-med, clinical, and health profession events.',
+};
+
 const MAJOR_OPTIONS: Array<{ id: MajorOption | 'none'; label: string; description: string }> = [
-  { id: 'Engineering', label: 'Engineering', description: 'Prioritize events relevant to engineering.' },
-  { id: 'Business', label: 'Business', description: 'Surface networking and business-oriented events.' },
-  { id: 'Science', label: 'Science', description: 'Highlight research and science-oriented events.' },
-  { id: 'Liberal Arts', label: 'Liberal Arts', description: 'Show humanities, culture, and discussion events.' },
+  ...ALL_MAJOR_OPTIONS.map((major) => ({
+    id: major,
+    label: major,
+    description: MAJOR_DESCRIPTIONS[major],
+  })),
   { id: 'none', label: 'No Preference', description: 'Keep recommendations broad across campus.' },
 ];
 
@@ -97,6 +111,7 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
   const fade = React.useRef(new Animated.Value(1)).current;
+  const scrollRef = React.useRef<ScrollView>(null);
   const [questionIndex, setQuestionIndex] = React.useState(0);
   const [loading, setLoading] = React.useState(false);
   const [categorySelection, setCategorySelection] = React.useState<string[]>([]);
@@ -146,7 +161,12 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
       Animated.timing(fade, { toValue: 0, duration: 180, useNativeDriver: true }),
       Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: true }),
     ]).start();
-    setTimeout(callback, 180);
+    setTimeout(() => {
+      callback();
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      });
+    }, 180);
   };
 
   const handleContinue = async () => {
@@ -202,38 +222,45 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
       <View style={[styles.orb, styles.orbTop, { backgroundColor: `${COLORS.primary}20` }]} />
       <View style={[styles.orb, styles.orbBottom]} />
 
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.eyebrow, { color: COLORS.primary }]}>Tune Your Feed</Text>
-          <Text style={[styles.headerTitle, { color: COLORS.textPrimary }]}>Let’s shape your Events page.</Text>
-        </View>
-        <View style={styles.sparkleWrap}>
-          <Sparkles size={22} color={COLORS.primary} />
-        </View>
-      </View>
-
-      <View style={[styles.progressTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.08)' }]}>
-        <View style={[styles.progressFill, { width: `${progress * 100}%`, backgroundColor: COLORS.primary }]} />
-      </View>
-
-      <Animated.View style={[styles.cardShell, { opacity: fade }]}>
-        <LinearGradient
-          colors={isDark ? ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.03)'] : ['rgba(255,255,255,0.92)', 'rgba(255,255,255,0.74)']}
-          style={[styles.card, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)' }]}
-        >
-          <View style={styles.cardHeader}>
-            <View style={[styles.questionIconWrap, { backgroundColor: `${COLORS.primary}14` }]}>
-              <question.icon size={28} color={COLORS.primary} />
-            </View>
-            <Text style={[styles.questionStep, { color: COLORS.textSecondary }]}>Question {questionIndex + 1} of {QUESTIONS.length}</Text>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
+          <View>
+            <Text style={[styles.eyebrow, { color: COLORS.primary }]}>Tune Your Feed</Text>
+            <Text style={[styles.headerTitle, { color: COLORS.textPrimary }]}>Let’s shape your Events page.</Text>
           </View>
+          <View style={styles.sparkleWrap}>
+            <Sparkles size={22} color={COLORS.primary} />
+          </View>
+        </View>
 
-          <Text style={[styles.questionTitle, { color: COLORS.textPrimary }]}>{question.title}</Text>
-          <Text style={[styles.questionSubtitle, { color: COLORS.textSecondary }]}>{question.subtitle}</Text>
+        <View style={[styles.progressTrack, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.08)' }]}>
+          <View style={[styles.progressFill, { width: `${progress * 100}%`, backgroundColor: COLORS.primary }]} />
+        </View>
 
-          <Text style={[styles.selectionHint, { color: COLORS.primary }]}>{selectedCountLabel}</Text>
+        <Animated.View style={[styles.cardShell, { opacity: fade }]}>
+          <LinearGradient
+            colors={isDark ? ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.03)'] : ['rgba(255,255,255,0.92)', 'rgba(255,255,255,0.74)']}
+            style={[styles.card, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)' }]}
+          >
+            <View style={styles.cardHeader}>
+              <View style={[styles.questionIconWrap, { backgroundColor: `${COLORS.primary}14` }]}>
+                <question.icon size={28} color={COLORS.primary} />
+              </View>
+              <Text style={[styles.questionStep, { color: COLORS.textSecondary }]}>Question {questionIndex + 1} of {QUESTIONS.length}</Text>
+            </View>
 
-          <ScrollView contentContainerStyle={styles.optionsWrap} showsVerticalScrollIndicator={false}>
+            <Text style={[styles.questionTitle, { color: COLORS.textPrimary }]}>{question.title}</Text>
+            <Text style={[styles.questionSubtitle, { color: COLORS.textSecondary }]}>{question.subtitle}</Text>
+
+            <Text style={[styles.selectionHint, { color: COLORS.primary }]}>{selectedCountLabel}</Text>
+
+            <View style={styles.optionsWrap}>
             {question.options.map((option) => {
               const selected =
                 (question.id === 'categories' && categorySelection.includes(option.id)) ||
@@ -271,30 +298,31 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
                 </Pressable>
               );
             })}
-          </ScrollView>
+            </View>
 
-          <Pressable
-            onPress={handleContinue}
-            disabled={!canContinue || loading}
-            style={({ pressed }) => [
-              styles.continueButton,
-              {
-                backgroundColor: canContinue ? COLORS.primary : `${COLORS.primary}55`,
-                opacity: pressed ? 0.92 : 1,
-              },
-            ]}
-          >
-            {loading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <>
-                <Text style={styles.continueText}>{questionIndex === QUESTIONS.length - 1 ? 'Save Preferences' : 'Continue'}</Text>
-                <ChevronRight size={18} color="#FFFFFF" strokeWidth={3} />
-              </>
-            )}
-          </Pressable>
-        </LinearGradient>
-      </Animated.View>
+            <Pressable
+              onPress={handleContinue}
+              disabled={!canContinue || loading}
+              style={({ pressed }) => [
+                styles.continueButton,
+                {
+                  backgroundColor: canContinue ? COLORS.primary : `${COLORS.primary}55`,
+                  opacity: pressed ? 0.92 : 1,
+                },
+              ]}
+            >
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Text style={styles.continueText}>{questionIndex === QUESTIONS.length - 1 ? 'Save Preferences' : 'Continue'}</Text>
+                  <ChevronRight size={18} color="#FFFFFF" strokeWidth={3} />
+                </>
+              )}
+            </Pressable>
+          </LinearGradient>
+        </Animated.View>
+      </ScrollView>
     </View>
   );
 }
@@ -302,6 +330,11 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
     paddingHorizontal: 22,
     paddingTop: 72,
     paddingBottom: 32,
@@ -362,10 +395,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   cardShell: {
-    flex: 1,
+    minHeight: 0,
   },
   card: {
-    flex: 1,
     borderRadius: 30,
     borderWidth: 1,
     padding: 22,

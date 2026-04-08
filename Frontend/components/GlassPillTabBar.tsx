@@ -2,7 +2,6 @@ import React from 'react';
 import {
   LayoutAnimation,
   Platform,
-  Pressable,
   StyleSheet,
   Text,
   UIManager,
@@ -13,6 +12,7 @@ import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useTheme } from './SharedUI';
 import { useAppShellStore } from '../store/appShellStore';
 import { TourTarget, useTour } from './onboarding/TourProvider';
+import { ScalePressable } from './common/Motion';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -142,11 +142,12 @@ export function GlassPillTabBar({
           );
 
           const item = (
-            <Pressable
+            <ScalePressable
               key={route.key}
               onPress={onPress}
               accessibilityRole="button"
               accessibilityLabel={label}
+              scaleTo={0.94}
               style={[
                 styles.item,
                 collapsedRouteKey ? styles.itemCollapsed : null,
@@ -154,7 +155,7 @@ export function GlassPillTabBar({
               ]}
             >
               {itemContent}
-            </Pressable>
+            </ScalePressable>
           );
 
           return item;

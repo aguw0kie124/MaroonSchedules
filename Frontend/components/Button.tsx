@@ -1,5 +1,6 @@
 import React from 'react';
-import { Text, Pressable, StyleSheet, SafeAreaView, View, StyleProp, ViewStyle, TextStyle } from 'react-native';
+import { Text, StyleSheet, StyleProp, ViewStyle, TextStyle } from 'react-native';
+import { ScalePressable } from './common/Motion';
 
 interface ButtonProps {
     variant?: 'primary' | 'secondary' | 'icon';
@@ -37,8 +38,9 @@ export function Button({ variant = 'primary', children, onPress, style, textStyl
     ];
 
     return (
-        <Pressable 
-            style={({ pressed }) => [getContainerStyle(pressed), disabled && { opacity: 0.5 }]} 
+        <ScalePressable
+            style={getContainerStyle(false)}
+            containerStyle={disabled ? { opacity: 0.5 } : undefined}
             onPress={onPress}
             disabled={disabled}
         >
@@ -49,7 +51,7 @@ export function Button({ variant = 'primary', children, onPress, style, textStyl
             ) : (
                 children
             )}
-        </Pressable>
+        </ScalePressable>
     );
 }
 

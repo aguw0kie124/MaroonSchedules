@@ -80,6 +80,7 @@ import { getPremiumName, getPremiumImage } from '../utils/userUtils';
 import { scheduleAdminEventReviewNotification } from '../services/notificationService';
 import { normalizeExternalUrl, normalizeImageUrl } from '../services/url';
 import { invalidateCampusPulseCache } from '../services/campusPulse';
+import { FocusMotionView, ScalePressable } from './common/Motion';
 
 type PingCategory =
   | 'Free Food'
@@ -1083,6 +1084,7 @@ export function CampusPingsScreen() {
   };
 
   const header = (
+    <FocusMotionView delay={30}>
     <View style={styles.headerWrap}>
       <View style={styles.heroTopRow}>
         <View>
@@ -1108,7 +1110,7 @@ export function CampusPingsScreen() {
             },
           ]}
         >
-          <Pressable 
+          <ScalePressable
             style={styles.quickPostBar} 
             onPress={() => {
               setComposerVisible(true);
@@ -1121,7 +1123,7 @@ export function CampusPingsScreen() {
               <Megaphone size={16} color={COLORS.primary} />
             </View>
             <Text style={styles.quickPostText}>What's happening at...</Text>
-          </Pressable>
+          </ScalePressable>
         </View>
       </TourTarget>
 
@@ -1139,7 +1141,7 @@ export function CampusPingsScreen() {
         {(['All', ...PING_CATEGORIES.map((entry) => entry.id)] as Array<'All' | PingCategory>).map((option) => {
           const active = categoryFilter === option;
           return (
-            <Pressable
+            <ScalePressable
               key={option}
               style={[styles.categoryChip, active && styles.categoryChipActive]}
               onPress={() => setCategoryFilter(option)}
@@ -1147,32 +1149,13 @@ export function CampusPingsScreen() {
               <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>
                 {option}
               </Text>
-            </Pressable>
+            </ScalePressable>
           );
         })}
       </ScrollView>
 
-      {featuredCards.length ? (
-        <View style={styles.featuredSection}>
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionTitle}>Featured</Text>
-          </View>
-          {rsvpBanner ? (
-            <View style={styles.rsvpBanner}>
-              <Text style={styles.rsvpBannerText}>{rsvpBanner}</Text>
-            </View>
-          ) : null}
-          <FlatList
-            horizontal
-            data={featuredCards}
-            keyExtractor={(item) => item.id}
-            renderItem={renderFeaturedEvent}
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.featuredList}
-          />
-        </View>
-      ) : null}
     </View>
+    </FocusMotionView>
   );
 
   if (loading) {

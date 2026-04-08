@@ -30,6 +30,19 @@ export type MajorOption =
   | 'Law'
   | 'Medicine';
 
+export const ALL_MAJOR_OPTIONS: MajorOption[] = [
+  'Engineering',
+  'Business',
+  'Liberal Arts',
+  'Agriculture',
+  'Science',
+  'Architecture',
+  'Education',
+  'Public Health',
+  'Law',
+  'Medicine',
+];
+
 export interface ScheduledEvent extends BaseEvent {
   id: string;
   endDate_ts?: number | null;
