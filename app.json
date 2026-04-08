@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon-v2.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "scheme": "maroonlife",
     "splash": {
       "image": "./assets/splash-icon-v2.png",

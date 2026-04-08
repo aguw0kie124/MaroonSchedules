@@ -68,7 +68,6 @@ import { blockUser, reportContent } from '../services/streamFeeds';
 import { TagChips } from './common/TagChips';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.24;
 const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
 const HERO_CARD_HEIGHT = Math.min(Math.max(396, SCREEN_HEIGHT * 0.54), 452);
 const HERO_CARD_GAP = 14;
@@ -142,7 +141,7 @@ type ExploreCategory =
   | 'Health & Wellness';
 
 type SocialMode = 'casual' | 'professional';
-type EventsView = 'discover' | 'list' | 'swipe' | 'inbox';
+type EventsView = 'discover' | 'list' | 'inbox';
 
 const ALL_CATEGORIES: ExploreCategory[] = [
   'Featured',
@@ -1030,17 +1029,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const discoverEvents = useMemo(() => filteredUpcomingEvents.slice(0, 8), [filteredUpcomingEvents]);
   const collapsedCategories = useMemo(() => ALL_CATEGORIES.slice(0, 5), []);
 
-  const swipeDeck = useMemo(() => {
-    if (selectedCategories.size === 0) return filteredUpcomingEvents;
-    return filteredUpcomingEvents.filter((event) => selectedCategories.has(event._category || classifyCategory(event)));
-  }, [filteredUpcomingEvents, selectedCategories]);
-
-  const activeSwipeEvent = swipeDeck[swipeIndex] ?? null;
-
-  useEffect(() => {
-    setSwipeIndex(0);
-  }, [selectedCategories, socialMode, deferredSearchQuery, isMajorSpecific, selectedMajor]);
-
   useEffect(() => {
     if (isGuest) {
       setView('list');
@@ -1389,32 +1377,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     ]);
   }, [user?.id]);
 
-  const handleSwipeAdvance = useCallback(() => {
-    pan.setValue({ x: 0, y: 0 });
-    opacity.setValue(1);
-    setSwipeIndex((prev) => prev + 1);
-  }, [opacity, pan]);
-
-  const handleSwipeLeft = useCallback(
-    (event: TAMUEvent) => {
-      if (isGuest) {
-        handleSwipeAdvance();
-        return;
-      }
-      dislikeEvent(String(event.id));
-      handleSwipeAdvance();
-    },
-    [dislikeEvent, handleSwipeAdvance, isGuest],
-  );
-
-  const handleSwipeRight = useCallback(
-    (event: TAMUEvent) => {
-      handleSchedule(event);
-      handleSwipeAdvance();
-    },
-    [handleSchedule, handleSwipeAdvance],
-  );
-
   const handleRestoreCategory = useCallback(
     (category?: ExploreCategory) => {
       if (!category) {
@@ -1450,7 +1412,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         {([
           { id: 'discover', label: 'Discover' },
           { id: 'list', label: 'List' },
-          { id: 'swipe', label: 'Swipe' },
         ] as const).map((tab) => {
           const active = view === tab.id;
           const tabItem = (
@@ -1616,23 +1577,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               </View>
 
               <View style={s.inlineControls}>
-                <Pressable
-                  style={s.inlineControl}
-                  onPress={() => setMajorSpecific(!isMajorSpecific)}
-                >
-                  <Text
-                    style={[
-                      s.inlineControlTitle,
-                      isMajorSpecific && s.inlineControlTitleActive,
-                    ]}
-                  >
-                    Major specific
-                  </Text>
-                  <Text style={s.inlineControlValue}>
-                    {isMajorSpecific ? selectedMajor : 'Off'}
-                  </Text>
-                </Pressable>
-
                 {selectedCategories.has('Social') ? (
                   <View style={s.socialModeWrap}>
                     {(['casual', 'professional'] as SocialMode[]).map((mode) => (
@@ -1796,88 +1740,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         </>
       )}
 
-      {view === 'swipe' && (
-        <>
-          <View style={s.swipeHeader}>
-            <Pressable style={s.headerIconButton} onPress={() => changeView('discover')}>
-              <ChevronLeft size={18} color={COLORS.textPrimary} />
-            </Pressable>
-            <Text style={s.swipeProgress}>
-              {activeSwipeEvent ? `${Math.min(swipeIndex + 1, swipeDeck.length)} of ${swipeDeck.length}` : 'Done'}
-            </Text>
-            <View style={s.swipeHeaderSpacer} />
-          </View>
-
-          {selectedCategories.has('Social') ? (
-            <View style={s.swipeSocialModeWrap}>
-              {(['casual', 'professional'] as SocialMode[]).map((mode) => (
-                <Pressable
-                  key={mode}
-                  style={[s.socialModePill, socialMode === mode && s.socialModePillActive]}
-                  onPress={() => setSocialMode(mode)}
-                >
-                  <Text
-                    style={[s.socialModeText, socialMode === mode && s.socialModeTextActive]}
-                  >
-                    {mode === 'casual' ? 'Casual' : 'Professional'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-
-          {activeSwipeEvent ? (
-            <SwipeEventCard
-              event={activeSwipeEvent}
-              pan={pan}
-              opacity={opacity}
-              onSwipeLeft={() => handleSwipeLeft(activeSwipeEvent)}
-              onSwipeRight={() => handleSwipeRight(activeSwipeEvent)}
-              onOpen={() => setDetailEvent(activeSwipeEvent)}
-            />
-          ) : (
-            <View style={s.finishedWrap}>
-              <Text style={s.finishedTitle}>All caught up</Text>
-              <Text style={s.finishedSubtitle}>
-                You have worked through every event in this deck.
-              </Text>
-              <Pressable
-                style={s.finishedButton}
-                onPress={() => {
-                  setSwipeIndex(0);
-                  changeView('discover');
-                }}
-              >
-                <Text style={s.finishedButtonText}>Back to discover</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {activeSwipeEvent ? (
-            <View style={s.swipeActions}>
-              <ActionButton color="#FF4D6D" onPress={() => handleSwipeLeft(activeSwipeEvent)}>
-                <XIcon size={28} color="#FFFFFF" />
-              </ActionButton>
-              <ActionButton
-                color="#2F80ED"
-                onPress={() => {
-                  handleSchedule(activeSwipeEvent);
-                  handleGoogleCalendar(activeSwipeEvent);
-                }}
-              >
-                <CalendarIcon size={24} color="#FFFFFF" />
-              </ActionButton>
-              <ActionButton color="#3CCB6C" onPress={() => handleSwipeRight(activeSwipeEvent)}>
-                <Check size={28} color="#FFFFFF" />
-              </ActionButton>
-              <ActionButton color="#FF9F0A" onPress={() => handleShare(activeSwipeEvent)}>
-                <Share2 size={24} color="#FFFFFF" />
-              </ActionButton>
-            </View>
-          ) : null}
-        </>
-      )}
-
       {view === 'inbox' && (
         <>
           <View style={s.swipeHeader}>
@@ -1962,6 +1824,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         socialMode={socialMode}
         setSocialMode={setSocialMode}
         selectedCategories={selectedCategories}
+        setSelectedCategories={setSelectedCategories}
         dislikedEventIds={dislikedEventIds}
         events={events}
         onRestoreCategory={handleRestoreCategory}
@@ -2234,113 +2097,6 @@ function ListEventRow({
   );
 }
 
-function SwipeEventCard({
-  event,
-  pan,
-  opacity,
-  onSwipeLeft,
-  onSwipeRight,
-  onOpen,
-}: {
-  event: TAMUEvent;
-  pan: Animated.ValueXY;
-  opacity: Animated.Value;
-  onSwipeLeft: () => void;
-  onSwipeRight: () => void;
-  onOpen: () => void;
-}) {
-  const category = classifyCategory(event);
-  const meta = CATEGORY_META[category];
-  const Icon = meta.icon;
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 10,
-      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
-        useNativeDriver: false,
-      }),
-      onPanResponderRelease: (_, gesture) => {
-        if (gesture.dx > SWIPE_THRESHOLD) {
-          Animated.parallel([
-            Animated.timing(pan.x, {
-              toValue: SCREEN_WIDTH + 80,
-              duration: 220,
-              useNativeDriver: false,
-            }),
-            Animated.timing(opacity, {
-              toValue: 0,
-              duration: 220,
-              useNativeDriver: false,
-            }),
-          ]).start(onSwipeRight);
-        } else if (gesture.dx < -SWIPE_THRESHOLD) {
-          Animated.parallel([
-            Animated.timing(pan.x, {
-              toValue: -(SCREEN_WIDTH + 80),
-              duration: 220,
-              useNativeDriver: false,
-            }),
-            Animated.timing(opacity, {
-              toValue: 0,
-              duration: 220,
-              useNativeDriver: false,
-            }),
-          ]).start(onSwipeLeft);
-        } else {
-          Animated.spring(pan, {
-            toValue: { x: 0, y: 0 },
-            useNativeDriver: false,
-          }).start();
-        }
-      },
-    }),
-  ).current;
-
-  const rotate = pan.x.interpolate({
-    inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
-    outputRange: ['-10deg', '0deg', '10deg'],
-  });
-
-  return (
-    <View style={stylesStatic.swipeWrap}>
-      <Animated.View
-        {...panResponder.panHandlers}
-        style={[
-          stylesStatic.swipeCard,
-          {
-            backgroundColor: meta.cardTint,
-            transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }],
-            opacity,
-          },
-        ]}
-      >
-        <Pressable style={{ flex: 1 }} onPress={onOpen}>
-          {event.imageUrl ? <Image source={{ uri: event.imageUrl }} style={stylesStatic.swipeImage} resizeMode="cover" /> : null}
-          {event.imageUrl ? <View style={stylesStatic.swipeImageOverlay} /> : null}
-          <View style={stylesStatic.swipeGlow} />
-          <View style={[stylesStatic.swipeWatermark, event.imageUrl ? stylesStatic.swipeWatermarkWithImage : null]}>
-            <Icon size={108} color="rgba(255,255,255,0.13)" />
-          </View>
-          <View style={stylesStatic.swipeTopLabel}>
-            <Text style={stylesStatic.swipeTopLabelText}>{category}</Text>
-          </View>
-          <View style={stylesStatic.swipeBody}>
-            <Text style={stylesStatic.swipeTitle}>{event.title}</Text>
-            <Text style={stylesStatic.swipeMeta}>
-              {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
-            </Text>
-            <Text style={stylesStatic.swipeMeta}>{event.location || 'Campus'}</Text>
-            {shortDescription(event.description) ? (
-              <Text style={stylesStatic.swipeDescription}>{shortDescription(event.description)}</Text>
-            ) : null}
-          </View>
-        </Pressable>
-      </Animated.View>
-    </View>
-  );
-}
-
 function ActionButton({
   color,
   onPress,
@@ -2376,6 +2132,7 @@ function SettingsModal({
   socialMode,
   setSocialMode,
   selectedCategories,
+  setSelectedCategories,
   dislikedEventIds,
   events,
   onRestoreCategory,
@@ -2389,6 +2146,7 @@ function SettingsModal({
   socialMode: SocialMode;
   setSocialMode: (mode: SocialMode) => void;
   selectedCategories: Set<ExploreCategory>;
+  setSelectedCategories: (val: Set<ExploreCategory>) => void;
   dislikedEventIds: string[];
   events: TAMUEvent[];
   onRestoreCategory: (category?: ExploreCategory) => void;
@@ -2408,39 +2166,30 @@ function SettingsModal({
         >
           <ScrollView showsVerticalScrollIndicator={false}>
             <Text style={[stylesStatic.modalTitle, { color: COLORS.textPrimary }]}>Filters</Text>
-
-            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary }]}>
-              Major
+            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 12 }]}>
+              Categories
             </Text>
-            <Pressable
-              style={[
-                stylesStatic.modalToggleRow,
-                { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)' },
-              ]}
-              onPress={() => setMajorSpecific(!isMajorSpecific)}
-            >
-              <Text style={[stylesStatic.modalOptionText, { color: COLORS.textPrimary }]}>
-                Major specific
-              </Text>
-              <Text style={[stylesStatic.modalMetaText, { color: COLORS.primary }]}>
-                {isMajorSpecific ? 'On' : 'Off'}
-              </Text>
-            </Pressable>
-            {MAJOR_OPTIONS.map((major) => (
+
+            {ALL_CATEGORIES.map((category) => (
               <Pressable
-                key={major}
+                key={category}
                 style={stylesStatic.modalOption}
-                onPress={() => setSelectedMajor(major)}
+                onPress={() => {
+                  const next = new Set(selectedCategories);
+                  if (next.has(category)) next.delete(category);
+                  else next.add(category);
+                  setSelectedCategories(next);
+                }}
               >
                 <Text
                   style={[
                     stylesStatic.modalOptionText,
-                    { color: selectedMajor === major ? COLORS.primary : COLORS.textPrimary },
+                    { color: selectedCategories.has(category) ? COLORS.primary : COLORS.textPrimary },
                   ]}
                 >
-                  {major}
+                  {category}
                 </Text>
-                {selectedMajor === major ? <Check size={16} color={COLORS.primary} /> : null}
+                {selectedCategories.has(category) ? <Check size={16} color={COLORS.primary} /> : null}
               </Pressable>
             ))}
 
@@ -2467,6 +2216,53 @@ function SettingsModal({
                   </Pressable>
                 ))}
               </>
+            ) : null}
+
+            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary }]}>
+              Major filter
+            </Text>
+            <Pressable
+              style={stylesStatic.modalOption}
+              onPress={() => setMajorSpecific(!isMajorSpecific)}
+            >
+              <Text style={[stylesStatic.modalOptionText, { color: COLORS.textPrimary }]}>
+                Major specific events only
+              </Text>
+              <View
+                style={[
+                  { width: 34, height: 20, borderRadius: 10, padding: 2 },
+                  { backgroundColor: isMajorSpecific ? COLORS.primary : COLORS.border },
+                ]}
+              >
+                <View
+                  style={[
+                    { width: 16, height: 16, borderRadius: 8, backgroundColor: '#FFF' },
+                    isMajorSpecific && { alignSelf: 'flex-end' },
+                  ]}
+                />
+              </View>
+            </Pressable>
+
+            {isMajorSpecific ? (
+              <View style={{ marginTop: 8 }}>
+                {MAJOR_OPTIONS.map((major) => (
+                  <Pressable
+                    key={major}
+                    style={stylesStatic.modalOption}
+                    onPress={() => setSelectedMajor(major)}
+                  >
+                    <Text
+                      style={[
+                        stylesStatic.modalOptionText,
+                        { color: selectedMajor === major ? COLORS.primary : COLORS.textPrimary },
+                      ]}
+                    >
+                      {major}
+                    </Text>
+                    {selectedMajor === major ? <Check size={16} color={COLORS.primary} /> : null}
+                  </Pressable>
+                ))}
+              </View>
             ) : null}
 
             <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary }]}>

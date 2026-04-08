@@ -29,6 +29,7 @@ import {
   ScrollView,
   InteractionManager,
   ActivityIndicator,
+  Share,
 } from "react-native";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
@@ -1095,7 +1096,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
       if (forceRefresh) {
         invalidateCampusPulseCache();
       }
-      const rawHotspots = await fetchCampusPulseMap(12, { force: forceRefresh });
+      const rawHotspots = await fetchCampusPulseMap(12, { 
+        force: forceRefresh,
+        clerkId: user?.id || undefined
+      });
+      console.log(`[PulseMap] Fetched ${rawHotspots.length} hotspots:`, rawHotspots.map(h => h.locationName).join(", "));
       const currentPulsePlaces = pulsePlacesRef.current;
       const placeLookup = new Map(
         currentPulsePlaces.flatMap((place) => {
@@ -1114,6 +1119,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
       pulseHotspotsRef.current = hotspots;
       setPulseHotspots(hotspots);
+      console.log(`[Pulse] Fetched ${hotspots.length} hotspots`);
       const currentSelectedId = selectedHotspotIdRef.current;
       if (
         currentSelectedId &&
@@ -1129,6 +1135,26 @@ export function PlacesMapScreen({ route, navigation }: any) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleVoteHotspot = useCallback(
+    async (hotspotId: string, direction: number) => {
+      try {
+        const { voteHotspot } = require("../services/campusPulse");
+        const currentHotspot = pulseHotspots.find((h) => h.id === hotspotId);
+        if (!currentHotspot) return;
+
+        const currentVote = currentHotspot.userVote || 0;
+        // If clicking same direction -> Undo (0). Else -> Direction.
+        const newUserVote = currentVote === direction ? 0 : direction;
+
+        await voteHotspot(hotspotId, newUserVote);
+        fetchPulseHotspots();
+      } catch (e) {
+        console.warn("Failed to vote on hotspot", e);
+      }
+    },
+    [pulseHotspots, fetchPulseHotspots],
+  );
 
   const hasSeenPulseLayer = useRef(false);
   useEffect(() => {
@@ -1321,7 +1347,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           latitude: hotspot.coord.lat,
           longitude: hotspot.coord.lng,
         })),
-        { top: 140, right: 52, bottom: 250, left: 52 },
+        { top: 250, right: 120, bottom: 350, left: 120 },
       );
       return;
     }
@@ -1888,7 +1914,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 latitude: hotspot.coord.lat,
                 longitude: hotspot.coord.lng,
               }}
-              radiusMeters={hotspot.radius}
+              radiusMeters={(hotspot.radius || 100) * (1 + (hotspot.score || 0) * 0.15) * 0.05}
               fillColor={hotspot.pulseColor}
               fillOpacity={0.13}
               strokeColor={`${hotspot.pulseColor}66`}
@@ -2098,6 +2124,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
           />
         )}
 
+
+
+
         {activeLayer === "Pulse" &&
           pulseHotspots.map((hotspot) => {
             const isSelected = hotspot.id === selectedHotspotId;
@@ -2110,7 +2139,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   longitude: hotspot.coord.lng,
                 }}
                 onPress={() => handleSelectHotspot(hotspot)}
-                anchor={{ x: 0.5, y: 0.66 }}
+                anchor={{ x: 0.5, y: 0.5 }}
               >
                 <View
                   style={[
@@ -2240,10 +2269,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
           setShowSearchResults={setShowSearchResults}
           onOpenSettings={() => setIsEditorVisible(true)}
           onShare={() =>
-            useShareStore.getState().openShare({
+            Share.share({
               title: "Campus Map",
-              message: "Check out the live campus map on MaroonSchedules!",
-              url: "https://maroonschedules.tamu.edu/places",
+              message: "Check out the live campus map on MaroonSchedules! https://maroonschedules.tamu.edu/places",
             })
           }
           onSubmitSearch={() => runGlobalSearch()}
@@ -2519,6 +2547,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         styles={styles}
         COLORS={COLORS}
         hotspot={activeLayer === "Pulse" ? selectedHotspot : null}
+        onVote={(id, delta) => handleVoteHotspot(id, delta)}
         onClose={() => {
           setSelectedHotspotId(null);
           requestAnimationFrame(() => {

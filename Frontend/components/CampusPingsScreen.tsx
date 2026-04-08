@@ -1,13 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import {
   ActivityIndicator,
   Alert,
-  Animated as RNAnimated,
   FlatList,
   Image,
-  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Modal,
@@ -16,18 +13,11 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
-import Animated, { 
-  FadeIn,
-  FadeOut,
-  SlideInDown,
-  SlideOutDown
-} from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
@@ -42,46 +32,29 @@ import {
   Megaphone,
   MessageCircle,
   Pizza,
-  Flag,
-  MoreVertical,
   Plus,
   Search,
-  Share2,
-  Shield,
   Sparkles,
   Trash2,
   Users,
   X,
   Image as ImageIcon,
-  Camera,
 } from 'lucide-react-native';
 
 import { API_URL } from '../config';
-import { requestJson, saveCampusEventRsvp } from '../api/client';
 import { useTheme } from './SharedUI';
-import { useAppShellStore } from '../store/appShellStore';
-import { useShareStore } from '../store/shareStore';
 import { useEventStore } from '../store/eventStore';
 import {
   addComment,
   addPing,
   connectFeedsUser,
   deletePing,
-  reportContent,
-  blockUser,
   getComments,
   getPingFeed,
   toggleLike,
-  toggleVote,
   uploadStreamImage,
 } from '../services/streamFeeds';
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
-import { TourTarget, useTour } from './onboarding/TourProvider';
-import { getPremiumName, getPremiumImage } from '../utils/userUtils';
-import { scheduleAdminEventReviewNotification } from '../services/notificationService';
-import { normalizeExternalUrl, normalizeImageUrl } from '../services/url';
-import { invalidateCampusPulseCache } from '../services/campusPulse';
-import { FocusMotionView, ScalePressable } from './common/Motion';
 
 type PingCategory =
   | 'Free Food'
@@ -104,24 +77,9 @@ interface FeaturedEvent {
   startTime: string;
   endTime?: string | null;
   link?: string | null;
-  googleReviewUrl?: string | null;
   locationLat?: number | null;
   locationLng?: number | null;
   categories?: Record<string, number>;
-  isAdminEvent?: boolean;
-  rsvpStatus?: string;
-}
-
-function parseFeaturedEventTime(value?: string | null): number | null {
-  if (!value) return null;
-  const timestamp = Date.parse(value);
-  return Number.isNaN(timestamp) ? null : timestamp;
-}
-
-function isFeaturedEventUpcoming(event: FeaturedEvent): boolean {
-  const relevantTime = parseFeaturedEventTime(event.endTime) ?? parseFeaturedEventTime(event.startTime);
-  if (relevantTime == null) return true;
-  return relevantTime >= Date.now();
 }
 
 interface PingCard {
@@ -138,115 +96,14 @@ interface PingCard {
   userId?: string;
   userName: string;
   userImage?: string | null;
-  score: number;
-  ownVote: 'upvote' | 'downvote' | null;
+  likeCount: number;
+  commentCount: number;
+  userVote?: number; // -1, 0, or 1
   activityId?: string;
-  isAnonymous: boolean;
   sourceUrl?: string | null;
   locationLat?: number | null;
   locationLng?: number | null;
   imageUrl?: string | null;
-}
-
-function PingCelebrationToast({
-  visible,
-  title,
-  body,
-}: {
-  visible: boolean;
-  title: string;
-  body: string;
-}) {
-  const progress = React.useRef(new RNAnimated.Value(0)).current;
-  const pieces = React.useMemo(
-    () =>
-      Array.from({ length: 14 }, (_, index) => ({
-        id: index,
-        left: 18 + index * 18,
-        color: ['#F9C74F', '#43AA8B', '#F9844A', '#577590', '#F94144'][index % 5],
-      })),
-    [],
-  );
-
-  React.useEffect(() => {
-    if (!visible) {
-      progress.setValue(0);
-      return;
-    }
-    const animation = RNAnimated.timing(progress, {
-      toValue: 1,
-      duration: 900,
-      useNativeDriver: true,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [progress, visible]);
-
-  if (!visible) return null;
-
-  return (
-    <View pointerEvents="none" style={stylesStatic.pingCelebrationWrap}>
-      {pieces.map((piece, index) => (
-        <RNAnimated.View
-          key={`${piece.id}-${title}`}
-          style={[
-            stylesStatic.pingConfettiPiece,
-            {
-              left: piece.left,
-              backgroundColor: piece.color,
-              opacity: progress.interpolate({
-                inputRange: [0, 0.84, 1],
-                outputRange: [0, 1, 0],
-              }),
-              transform: [
-                {
-                  translateY: progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-10, 130 + (index % 3) * 18],
-                  }),
-                },
-                {
-                  translateX: progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, ((index % 5) - 2) * 14],
-                  }),
-                },
-                {
-                  rotate: progress.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0deg', `${160 + index * 14}deg`],
-                  }),
-                },
-              ],
-            },
-          ]}
-        />
-      ))}
-      <RNAnimated.View
-        style={[
-          stylesStatic.pingCelebrationCard,
-          {
-            opacity: progress.interpolate({
-              inputRange: [0, 0.12, 0.85, 1],
-              outputRange: [0, 1, 1, 0],
-            }),
-            transform: [
-              {
-                translateY: progress.interpolate({
-                  inputRange: [0, 0.12, 1],
-                  outputRange: [14, 0, -8],
-                }),
-              },
-            ],
-          },
-        ]}
-      >
-        <Text style={stylesStatic.pingCelebrationEyebrow}>CrowdPing posted</Text>
-        <Text style={stylesStatic.pingCelebrationTitle}>{title}</Text>
-        <Text style={stylesStatic.pingCelebrationBody}>{body}</Text>
-      </RNAnimated.View>
-    </View>
-  );
 }
 
 const PING_CATEGORIES: Array<{ id: PingCategory; accent: string; Icon: any }> = [
@@ -372,28 +229,25 @@ function mapActivityToPing(activity: any): PingCard {
     startAt: custom.start_at || activity.time || new Date().toISOString(),
     endAt: custom.end_at || null,
     createdAt: activity.time || activity.created_at || new Date().toISOString(),
-    userId: (actor.id || activity.actor || '').replace('SU:', ''),
-    userName: custom.is_anonymous ? 'Aggie User' : (actor.name || actor.data?.name || custom.user_name || 'Aggie User'),
-    userImage: custom.is_anonymous ? null : (actor.image || actor.data?.image || custom.user_image || null),
-    score: activity.reaction_counts?.score || 0,
-    ownVote: (activity.own_reactions?.upvote || []).length > 0 ? 'upvote' : ((activity.own_reactions?.downvote || []).length > 0 ? 'downvote' : null),
+    userId: actor.id || activity.actor || '',
+    userName: actor.data?.name || custom.user_name || 'Aggie',
+    userImage: actor.data?.image || custom.user_image || null,
+    likeCount: activity.reaction_counts?.like || activity.reaction_count || 0,
+    commentCount: activity.reaction_counts?.comment || 0,
+    userVote: (activity.own_reactions?.like || []).length > 0 ? 1 : 0,
     activityId: activity.id,
-    isAnonymous: !!custom.is_anonymous,
     sourceUrl: null,
-    imageUrl: normalizeImageUrl(media.image_url || media.asset_url || null),
+    imageUrl: media.image_url || media.asset_url || null,
   };
 }
 
 export function CampusPingsScreen() {
   const { COLORS } = useTheme();
-  const { advanceStep, activeTargetName } = useTour();
   const styles = useMemo(() => getStyles(COLORS), [COLORS]);
   const navigation = useNavigation<any>();
   const { user } = useUser();
   const scheduleEvent = useEventStore((state) => state.scheduleEvent);
-  const removeScheduledEvent = useEventStore((state) => state.removeScheduledEvent);
   const saveEvent = useEventStore((state) => state.saveEvent);
-  const unsaveEvent = useEventStore((state) => state.unsaveEvent);
 
   const directory = useMemo(() => buildCampusDirectory(), []);
   const locationLookup = useMemo(
@@ -410,20 +264,6 @@ export function CampusPingsScreen() {
   const [categoryFilter, setCategoryFilter] = useState<'All' | PingCategory>('All');
 
   const [composerVisible, setComposerVisible] = useState(false);
-  const [postCelebration, setPostCelebration] = useState<{ title: string; body: string } | null>(null);
-  const postCelebrationTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const postButtonPulse = React.useRef(new RNAnimated.Value(1)).current;
-
-  // Onboarding progression is now user-action only for the CTA step.
-
-  useEffect(() => {
-    return () => {
-      if (postCelebrationTimerRef.current) {
-        clearTimeout(postCelebrationTimerRef.current);
-      }
-    };
-  }, []);
-
   const [composerTitle, setComposerTitle] = useState('');
   const [composerBody, setComposerBody] = useState('');
   const [composerCategory, setComposerCategory] = useState<PingCategory>('Popup');
@@ -431,29 +271,15 @@ export function CampusPingsScreen() {
   const [locationQuery, setLocationQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [composerImageUri, setComposerImageUri] = useState<string | null>(null);
-  const [composerAnonymous, setComposerAnonymous] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
 
-  const canPostPing = !!composerTitle.trim() && !!composerBody.trim() && !!selectedLocation;
-
-  useEffect(() => {
-    if (!composerVisible || !canPostPing || isPosting) {
-      postButtonPulse.stopAnimation();
-      postButtonPulse.setValue(1);
-      return;
-    }
-    const animation = RNAnimated.loop(
-      RNAnimated.sequence([
-        RNAnimated.timing(postButtonPulse, { toValue: 1.03, duration: 850, useNativeDriver: true }),
-        RNAnimated.timing(postButtonPulse, { toValue: 1, duration: 850, useNativeDriver: true }),
-      ]),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [canPostPing, composerVisible, isPosting, postButtonPulse]);
-
+  const [commentModalVisible, setCommentModalVisible] = useState(false);
+  const [activeCommentPing, setActiveCommentPing] = useState<PingCard | null>(null);
+  const [comments, setComments] = useState<any[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [sendingComment, setSendingComment] = useState(false);
   const [activeFeaturedEvent, setActiveFeaturedEvent] = useState<FeaturedEvent | null>(null);
-  const [rsvpBanner, setRsvpBanner] = useState<string | null>(null);
 
   const locationSuggestions = useMemo(() => {
     const query = locationQuery.trim().toLowerCase();
@@ -469,7 +295,6 @@ export function CampusPingsScreen() {
 
   const featuredCards = useMemo(() => {
     return featuredEvents
-      .filter((event) => isFeaturedEventUpcoming(event))
       .filter((event) => categoryFilter === 'All' || mapOfficialEventCategory(event) === categoryFilter)
       .map((event) => {
         const canonicalLocation = getCanonicalLocationName(event.location);
@@ -511,14 +336,10 @@ export function CampusPingsScreen() {
 
   const loadFeaturedEvents = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ limit: '12' });
-      if (user?.id) {
-        params.set('clerk_id', user.id);
-      }
-
-      const data = await requestJson(`/campus/events?${params.toString()}`);
-      const events = Array.isArray(data) ? data : Array.isArray(data?.events) ? data.events : [];
-      const nextEvents = events.map((event: any) => ({
+      const res = await fetch(`${API_URL}/campus/events?limit=12`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const nextEvents = (data || []).map((event: any) => ({
         id: String(event.event_id),
         placeId: event.place_id ?? event.place?.place_id ?? null,
         title: event.title || 'Campus Event',
@@ -527,19 +348,16 @@ export function CampusPingsScreen() {
         startTime: event.start_time,
         endTime: event.end_time,
         link: event.link || event.source_url || null,
-        googleReviewUrl: event.google_review_url || null,
         locationLat: event.location_lat ?? null,
         locationLng: event.location_lng ?? null,
         categories: event.categories || undefined,
-        isAdminEvent: !!event.is_admin_event,
-        rsvpStatus: event.rsvp_status ?? 'none',
-      })).filter((event) => isFeaturedEventUpcoming(event));
+      }));
       setFeaturedEvents(nextEvents);
     } catch (error) {
       console.warn('[Pings] Failed to load featured events', error);
       setFeaturedEvents([]);
     }
-  }, [user?.id]);
+  }, []);
 
   const loadUserPings = useCallback(async () => {
     try {
@@ -563,13 +381,19 @@ export function CampusPingsScreen() {
       return;
     }
 
-    connectFeedsUser(user);
-    setFeedConnected(true);
     try {
+      const displayName =
+        user.username ||
+        user.fullName ||
+        user.primaryEmailAddress?.emailAddress?.split('@')[0] ||
+        'Aggie';
+      connectFeedsUser(user);
+      setFeedConnected(true);
       await loadUserPings();
     } catch (error) {
       console.warn('[Pings] Stream connection failed', error);
-      setStreamError('Could not load live pings right now.');
+      setFeedConnected(false);
+      setStreamError('Live pings are unavailable until the feed connection is restored.');
       setUserPings([]);
     } finally {
       setLoading(false);
@@ -597,15 +421,6 @@ export function CampusPingsScreen() {
     setLocationQuery('');
     setSelectedLocation(null);
     setComposerImageUri(null);
-    setComposerAnonymous(false);
-  }, []);
-
-  const triggerPostCelebration = useCallback((title: string, body: string) => {
-    if (postCelebrationTimerRef.current) {
-      clearTimeout(postCelebrationTimerRef.current);
-    }
-    setPostCelebration({ title, body });
-    postCelebrationTimerRef.current = setTimeout(() => setPostCelebration(null), 1050);
   }, []);
 
   const handleRefresh = useCallback(() => {
@@ -637,26 +452,6 @@ export function CampusPingsScreen() {
     }
   }, []);
 
-  const handleCapturePingImage = useCallback(async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Camera unavailable', 'Allow camera access to take a photo for your ping.');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 0.82,
-      aspect: [4, 3],
-      cameraType: ImagePicker.CameraType.back,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      setComposerImageUri(result.assets[0].uri);
-    }
-  }, []);
-
   const handleCreatePing = useCallback(async () => {
     if (!user || !feedConnected) {
       Alert.alert('Live pings unavailable', 'Feed connection is required before posting a ping.');
@@ -671,7 +466,10 @@ export function CampusPingsScreen() {
       return;
     }
 
-    const displayName = getPremiumName(user);
+    const displayName =
+      user.firstName && user.lastName
+        ? `${user.firstName} ${user.lastName}`.trim()
+        : user.firstName || user.fullName || user.username || 'Aggie';
 
     const { startAt, endAt } = buildPresetWindow(composerTimePreset);
     setIsPosting(true);
@@ -683,8 +481,8 @@ export function CampusPingsScreen() {
 
       await addPing({
         userId: user.id,
-        userName: composerAnonymous ? 'Aggie User' : displayName,
-        userImage: composerAnonymous ? undefined : user.imageUrl,
+        userName: displayName,
+        userImage: user.imageUrl,
         title: composerTitle.trim(),
         body: composerBody.trim(),
         category: composerCategory,
@@ -694,16 +492,11 @@ export function CampusPingsScreen() {
         startAt,
         endAt,
         mediaUrl: uploadedImageUrl,
-        isAnonymous: composerAnonymous,
       });
 
-      invalidateCampusPulseCache();
       setComposerVisible(false);
       resetComposer();
       await loadUserPings();
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      triggerPostCelebration('Live now', 'Your CrowdPing is out on the feed.');
-
     } catch (error: any) {
       console.error('[Pings] create failed', error);
       Alert.alert('Could not post ping', error?.message || 'Something went wrong while posting your ping.');
@@ -713,56 +506,45 @@ export function CampusPingsScreen() {
   }, [
     composerBody,
     composerCategory,
-    composerAnonymous,
     composerImageUri,
     composerTimePreset,
     composerTitle,
     feedConnected,
     loadUserPings,
-    locationLookup,
-    triggerPostCelebration,
     resetComposer,
     selectedLocation,
     user,
   ]);
 
   const handleVotePing = useCallback(
-    async (ping: PingCard, kind: 'upvote' | 'downvote') => {
+    async (ping: PingCard, direction: number) => {
       if (!user || !feedConnected || !ping.activityId || ping.source !== 'user') return;
+      
+      const currentVote = ping.userVote || 0;
+      const newUserVote = currentVote === direction ? 0 : direction;
+      const delta = newUserVote - currentVote;
 
-      // Optimistic update
+      // Haptics for physical feel
+      if (Platform.OS !== 'web') {
+        const Haptics = require('expo-haptics');
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+
       setUserPings((current) =>
-        current.map((entry) => {
-          if (entry.id !== ping.id) return entry;
-          
-          let newScore = entry.score;
-          let newOwnVote: 'upvote' | 'downvote' | null = kind;
-
-          if (entry.ownVote === kind) {
-            // Toggle off
-            newScore = kind === 'upvote' ? entry.score - 1 : entry.score + 1;
-            newOwnVote = null;
-          } else if (entry.ownVote === null) {
-            // First time vote
-            newScore = kind === 'upvote' ? entry.score + 1 : entry.score - 1;
-          } else {
-            // Switching votes
-            newScore = kind === 'upvote' ? entry.score + 2 : entry.score - 2;
-          }
-
-          return { ...entry, score: newScore, ownVote: newOwnVote };
-        }),
+        current.map((entry) =>
+          entry.id === ping.id
+            ? { ...entry, userVote: newUserVote, likeCount: entry.likeCount + delta }
+            : entry,
+        ),
       );
 
       try {
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        await toggleVote(ping.activityId, kind);
+        await toggleLike(ping.activityId, user.id); 
       } catch (error) {
         console.warn('[Pings] vote failed', error);
-        loadUserPings();
       }
     },
-    [feedConnected, loadUserPings, user],
+    [feedConnected, user],
   );
 
   const handleDeletePing = useCallback(
@@ -776,9 +558,7 @@ export function CampusPingsScreen() {
           onPress: async () => {
             try {
               await deletePing(ping.activityId!);
-              invalidateCampusPulseCache();
               setUserPings((current) => current.filter((entry) => entry.id !== ping.id));
-              await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             } catch (error) {
               console.warn('[Pings] delete failed', error);
               Alert.alert('Delete failed', 'This ping could not be removed right now.');
@@ -791,13 +571,43 @@ export function CampusPingsScreen() {
   );
 
   const openComments = useCallback(async (ping: PingCard) => {
-    // Replies removed for pings
+    if (ping.source !== 'user' || !ping.activityId) return;
+    setActiveCommentPing(ping);
+    setCommentModalVisible(true);
+    setLoadingComments(true);
+    try {
+      const nextComments = await getComments(ping.activityId);
+      setComments(nextComments);
+    } catch (error) {
+      console.warn('[Pings] comment fetch failed', error);
+      setComments([]);
+    } finally {
+      setLoadingComments(false);
+    }
   }, []);
 
-  // Replies removed from pings
   const handleSendComment = useCallback(async () => {
-    // No-op for pings
-  }, []);
+    if (!user || !activeCommentPing?.activityId || !commentText.trim()) return;
+    setSendingComment(true);
+    try {
+      await addComment(activeCommentPing.activityId, user, commentText.trim());
+      const nextComments = await getComments(activeCommentPing.activityId);
+      setComments(nextComments);
+      setCommentText('');
+      setUserPings((current) =>
+        current.map((entry) =>
+          entry.id === activeCommentPing.id
+            ? { ...entry, commentCount: entry.commentCount + 1 }
+            : entry,
+        ),
+      );
+    } catch (error) {
+      console.warn('[Pings] comment send failed', error);
+      Alert.alert('Comment failed', 'Could not post this reply right now.');
+    } finally {
+      setSendingComment(false);
+    }
+  }, [activeCommentPing, commentText, user]);
 
   const openPingOnMap = useCallback(
     (ping: PingCard) => {
@@ -871,208 +681,47 @@ export function CampusPingsScreen() {
     [locationLookup, saveEvent, scheduleEvent],
   );
 
-  const removeFeaturedEventFromPlans = useCallback(
-    (event: FeaturedEvent) => {
-      removeScheduledEvent(`featured-${event.id}`);
-      unsaveEvent(`featured-${event.id}`);
-    },
-    [removeScheduledEvent, unsaveEvent],
-  );
-
-  const handleFeaturedEventRsvp = useCallback(
-    async (event: FeaturedEvent) => {
-      if (!user?.id) {
-        Alert.alert('Sign in required', 'Sign in to RSVP for featured events.');
-        return;
-      }
-
-      try {
-        const isRemoving = event.rsvpStatus === 'going';
-        await saveCampusEventRsvp({
-          clerk_id: user.id,
-          event_id: event.id,
-          response: isRemoving ? 'none' : 'going',
-        });
-
-        const prefs = useAppShellStore.getState();
-        if (!isRemoving && prefs.notificationsEnabled && prefs.eventNotifications && event.isAdminEvent && event.endTime) {
-          await scheduleAdminEventReviewNotification(
-            event.title,
-            event.location,
-            new Date(event.endTime),
-            event.googleReviewUrl,
-            event.id,
-          );
-        }
-
-        if (isRemoving) {
-          removeFeaturedEventFromPlans(event);
-        } else {
-          saveFeaturedEventToPlans(event);
-        }
-        setFeaturedEvents((current) =>
-          current.map((entry) =>
-            entry.id === event.id ? { ...entry, rsvpStatus: isRemoving ? 'none' : 'going' } : entry,
-          ),
-        );
-        setActiveFeaturedEvent((current) =>
-          current?.id === event.id ? { ...current, rsvpStatus: isRemoving ? 'none' : 'going' } : current,
-        );
-        const successMessage = isRemoving
-          ? `${event.title} was removed from your plans.`
-          : `${event.title} is in your plans now.`;
-        setRsvpBanner(successMessage);
-        Alert.alert(isRemoving ? 'RSVP removed' : 'RSVP saved', successMessage);
-      } catch (error) {
-        console.warn('[Pings] Failed to RSVP for featured event', error);
-        Alert.alert('RSVP failed', 'We could not update your RSVP right now.');
-      }
-    },
-    [removeFeaturedEventFromPlans, saveFeaturedEventToPlans, user?.id],
-  );
-
-  const handleFeaturedEventShare = useCallback((event: FeaturedEvent) => {
-    useShareStore.getState().openShare({
-      title: event.title,
-      message: `Check out this featured event: ${event.title} at ${getCanonicalLocationName(event.location)}!`,
-      url: event.link || 'https://maroonschedules.tamu.edu',
-    });
-
-    if (event.isAdminEvent) {
-      fetch(`${API_URL}/admin/events/${event.id}/share`, { method: 'POST' }).catch((error) =>
-        console.error('[Pings] Failed to track featured event share', error),
-      );
-    }
-  }, []);
-
   const openFeaturedEventLink = useCallback(async (event: FeaturedEvent) => {
-    const normalizedUrl = normalizeExternalUrl(event.link);
-    if (!normalizedUrl) return;
+    if (!event.link) return;
     try {
-      await Linking.openURL(normalizedUrl);
+      await Linking.openURL(event.link);
     } catch (error) {
       console.warn('[Pings] Failed to open featured event link', error);
-      Alert.alert('Link unavailable', 'We could not open the event link. Please ask the organizer to verify it.');
     }
   }, []);
 
   const renderFeaturedEvent = ({ item }: { item: FeaturedEvent }) => {
     const meta = categoryMeta(mapOfficialEventCategory(item));
     const FeaturedIcon = meta.Icon;
-    const isRsvped = item.rsvpStatus === 'going';
     return (
-      <View style={[styles.featuredCard, { borderColor: `${meta.accent}30` }]}>
-        <Pressable onPress={() => setActiveFeaturedEvent(item)}>
-          <LinearGradient
-            colors={[`${meta.accent}F2`, `${meta.accent}99`]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.featuredVisual}
-          >
-            <View style={styles.featuredCardTopRow}>
-              <View style={styles.featuredVisualChip}>
-                <Text style={styles.featuredVisualChipText}>{mapOfficialEventCategory(item)}</Text>
-              </View>
-              <FeaturedIcon size={20} color="#FFFFFF" />
+      <Pressable
+        style={[styles.featuredCard, { borderColor: `${meta.accent}30` }]}
+        onPress={() => setActiveFeaturedEvent(item)}
+      >
+        <LinearGradient
+          colors={[`${meta.accent}F2`, `${meta.accent}99`]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.featuredVisual}
+        >
+          <View style={styles.featuredCardTopRow}>
+            <View style={styles.featuredVisualChip}>
+              <Text style={styles.featuredVisualChipText}>{mapOfficialEventCategory(item)}</Text>
             </View>
-          </LinearGradient>
-
-          <View style={styles.featuredContent}>
-            <Text style={styles.featuredTitle} numberOfLines={2}>
-              {item.title}
-            </Text>
-            <Text style={styles.featuredMeta}>{formatStartLabel(item.startTime)}</Text>
-            <Text style={styles.featuredMeta} numberOfLines={1}>
-              {getCanonicalLocationName(item.location)}
-            </Text>
+            <FeaturedIcon size={20} color="#FFFFFF" />
           </View>
-        </Pressable>
+        </LinearGradient>
 
-        <View style={styles.featuredFooter}>
-          <Pressable
-            style={[styles.featuredRsvpButton, isRsvped && styles.featuredRsvpButtonSaved]}
-            onPress={() => handleFeaturedEventRsvp(item)}
-          >
-            <CalendarDays size={14} color={isRsvped ? COLORS.textPrimary : '#FFFFFF'} />
-            <Text
-              style={[styles.featuredRsvpButtonText, isRsvped && styles.featuredRsvpButtonTextSaved]}
-              numberOfLines={!item.isAdminEvent && !isRsvped ? 2 : 1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.75}
-            >
-              {item.isAdminEvent
-                ? isRsvped
-                  ? "You're in"
-                  : 'RSVP'
-                : isRsvped
-                  ? 'Added'
-                  : 'Add'}
-            </Text>
-          </Pressable>
-          <Pressable
-            style={styles.featuredDetailsButton}
-            onPress={() => setActiveFeaturedEvent(item)}
-          >
-            <Text style={styles.featuredDetailsButtonText}>Details</Text>
-          </Pressable>
+        <View style={styles.featuredContent}>
+          <Text style={styles.featuredTitle} numberOfLines={2}>
+            {item.title}
+          </Text>
+          <Text style={styles.featuredMeta}>{formatStartLabel(item.startTime)}</Text>
+          <Text style={styles.featuredMeta} numberOfLines={1}>
+            {getCanonicalLocationName(item.location)}
+          </Text>
         </View>
-      </View>
-    );
-  };
-
-  useEffect(() => {
-    if (!rsvpBanner) return undefined;
-    const timeout = setTimeout(() => setRsvpBanner(null), 2800);
-    return () => clearTimeout(timeout);
-  }, [rsvpBanner]);
-  
-  const handleReportPing = (item: any) => {
-    Alert.alert(
-      'Report Content',
-      'Why are you reporting this ping?',
-      [
-        { text: 'Inappropriate', onPress: () => submitReport(item, 'inappropriate') },
-        { text: 'Spam', onPress: () => submitReport(item, 'spam') },
-        { text: 'Harassment', onPress: () => submitReport(item, 'harassment') },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
-  };
-
-  const submitReport = async (item: any, reason: string) => {
-    try {
-      await reportContent({
-        reporteeId: item.userId,
-        postType: 'crowdping',
-        postId: item.id,
-        reason: reason
-      });
-      Alert.alert('Report Received', 'Thank you for keeping our community safe.');
-    } catch (err) {
-      Alert.alert('Error', 'Failed to submit report.');
-    }
-  };
-
-  const handleBlockPingAuthor = (item: any) => {
-    Alert.alert(
-      'Block User',
-      `Block ${item.userName}? You won't see their posts.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Block User', 
-          style: 'destructive',
-          onPress: async () => {
-             try {
-                await blockUser(item.userId);
-                handleRefresh();
-                Alert.alert('User Blocked');
-             } catch (err) {
-                Alert.alert('Error', 'Failed to block user.');
-             }
-          }
-        },
-      ]
+      </Pressable>
     );
   };
 
@@ -1084,7 +733,6 @@ export function CampusPingsScreen() {
     const isActive = isPingActiveNow(item.startAt, item.endAt);
     const initials = getInitials(item.userName);
     const AccentIcon = meta.Icon;
-    const isOwnPing = item.userId === user?.id;
 
     return (
       <View style={styles.pingCard}>
@@ -1153,64 +801,46 @@ export function CampusPingsScreen() {
         </View>
 
         <View style={styles.actionRow}>
-          <Pressable
-            style={styles.actionButton}
-            onPress={() => handleVotePing(item, 'upvote')}
-          >
-            <ArrowBigUp
-              size={22}
-              color={item.ownVote === 'upvote' ? '#FF4500' : COLORS.textPrimary}
-              fill={item.ownVote === 'upvote' ? '#FF4500' : 'none'}
-            />
+          <Pressable style={styles.actionButton} onPress={() => openComments(item)}>
+            <MessageCircle size={16} color={COLORS.textPrimary} />
+            <Text style={styles.actionLabel}>{item.commentCount}</Text>
           </Pressable>
 
-          <Text style={[
-            styles.actionLabel, 
-            { fontSize: 15, minWidth: 20, textAlign: 'center' },
-            item.ownVote === 'upvote' && { color: '#FF4500' },
-            item.ownVote === 'downvote' && { color: '#7193FF' }
-          ]}>
-            {item.score}
-          </Text>
+          <View style={styles.voteStack}>
+            <Pressable
+              style={[styles.voteButton, item.userVote === 1 && { backgroundColor: meta.accent }]}
+              onPress={() => handleVotePing(item, 1)}
+            >
+              <ArrowBigUp size={18} color={item.userVote === 1 ? '#FFF' : COLORS.textPrimary} />
+            </Pressable>
+            <Text style={[styles.voteCount, item.userVote !== 0 && { color: item.userVote === 1 ? meta.accent : '#FF6347' }]}>
+              {item.likeCount}
+            </Text>
+            <Pressable
+              style={[styles.voteButton, item.userVote === -1 && { backgroundColor: '#FF6347' }]}
+              onPress={() => handleVotePing(item, -1)}
+            >
+              <ArrowBigDown size={18} color={item.userVote === -1 ? '#FFF' : COLORS.textPrimary} />
+            </Pressable>
+          </View>
 
-          <Pressable
-            style={styles.actionButton}
-            onPress={() => handleVotePing(item, 'downvote')}
-          >
-            <ArrowBigDown
-              size={22}
-              color={item.ownVote === 'downvote' ? '#7193FF' : COLORS.textPrimary}
-              fill={item.ownVote === 'downvote' ? '#7193FF' : 'none'}
-            />
-          </Pressable>
-
-          <Pressable style={[styles.actionButton, { marginLeft: 8 }]} onPress={() => savePingToPlans(item)}>
-            <CalendarDays size={18} color={COLORS.textPrimary} />
+          <Pressable style={styles.actionButton} onPress={() => savePingToPlans(item)}>
+            <CalendarDays size={16} color={COLORS.textPrimary} />
           </Pressable>
 
           <View style={{ flex: 1 }} />
 
-          {!isOwnPing ? (
-            <>
-              <Pressable style={styles.actionButton} onPress={() => handleReportPing(item)}>
-                <Flag size={18} color={COLORS.textTertiary} />
-              </Pressable>
-              <Pressable style={styles.actionButton} onPress={() => handleBlockPingAuthor(item)}>
-                <Shield size={18} color={COLORS.textTertiary} />
-              </Pressable>
-            </>
-          ) : (
+          {canDelete ? (
             <Pressable style={styles.actionButton} onPress={() => handleDeletePing(item)}>
-              <Trash2 size={18} color="#E56B6B" />
+              <Trash2 size={16} color="#E56B6B" />
             </Pressable>
-          )}
+          ) : null}
         </View>
       </View>
     );
   };
 
   const header = (
-    <FocusMotionView delay={30}>
     <View style={styles.headerWrap}>
       <View style={styles.heroTopRow}>
         <View>
@@ -1219,39 +849,12 @@ export function CampusPingsScreen() {
         </View>
       </View>
 
-      <TourTarget
-        name="crowdping-cta"
-        assistAction={() => {
-          setComposerVisible(true);
-          setTimeout(() => advanceStep('crowdping-cta'), 900);
-        }}
-      >
-        <View
-          style={[
-            activeTargetName === 'crowdping-cta' && {
-              borderWidth: 2,
-              borderColor: COLORS.primary,
-              borderRadius: 16,
-              padding: 2,
-            },
-          ]}
-        >
-          <ScalePressable
-            style={styles.quickPostBar} 
-            onPress={() => {
-              setComposerVisible(true);
-              if (activeTargetName === 'crowdping-cta') {
-                advanceStep('crowdping-cta');
-              }
-            }}
-          >
-            <View style={styles.quickPostIconWrap}>
-              <Megaphone size={16} color={COLORS.primary} />
-            </View>
-            <Text style={styles.quickPostText}>What's happening at...</Text>
-          </ScalePressable>
+      <Pressable style={styles.quickPostBar} onPress={() => setComposerVisible(true)}>
+        <View style={styles.quickPostIconWrap}>
+          <Megaphone size={16} color={COLORS.primary} />
         </View>
-      </TourTarget>
+        <Text style={styles.quickPostText}>What's happening at...</Text>
+      </Pressable>
 
       {streamError ? (
         <View style={styles.noticePill}>
@@ -1267,7 +870,7 @@ export function CampusPingsScreen() {
         {(['All', ...PING_CATEGORIES.map((entry) => entry.id)] as Array<'All' | PingCategory>).map((option) => {
           const active = categoryFilter === option;
           return (
-            <ScalePressable
+            <Pressable
               key={option}
               style={[styles.categoryChip, active && styles.categoryChipActive]}
               onPress={() => setCategoryFilter(option)}
@@ -1275,13 +878,27 @@ export function CampusPingsScreen() {
               <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>
                 {option}
               </Text>
-            </ScalePressable>
+            </Pressable>
           );
         })}
       </ScrollView>
 
+      {featuredCards.length ? (
+        <View style={styles.featuredSection}>
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionTitle}>Featured</Text>
+          </View>
+          <FlatList
+            horizontal
+            data={featuredCards}
+            keyExtractor={(item) => item.id}
+            renderItem={renderFeaturedEvent}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.featuredList}
+          />
+        </View>
+      ) : null}
     </View>
-    </FocusMotionView>
   );
 
   if (loading) {
@@ -1295,11 +912,6 @@ export function CampusPingsScreen() {
 
   return (
     <View style={styles.container}>
-      <PingCelebrationToast
-        visible={!!postCelebration}
-        title={postCelebration?.title || ''}
-        body={postCelebration?.body || ''}
-      />
       <FlatList
         data={filteredFeed}
         keyExtractor={(item) => item.id}
@@ -1321,229 +933,165 @@ export function CampusPingsScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      {/* ── CUSTOM COMPOSER OVERLAY (Replaces Modal for Tour Compatibility) ── */}
-      {composerVisible && (
-        <Animated.View 
-          entering={FadeIn} 
-          exiting={FadeOut}
-          style={StyleSheet.absoluteFill}
+      <Modal visible={composerVisible} animationType="slide" transparent>
+        <TouchableWithoutFeedback
+          onPress={() => {
+            setComposerVisible(false);
+            resetComposer();
+          }}
         >
-          <TouchableWithoutFeedback
-            onPress={() => {
-              setComposerVisible(false);
-              resetComposer();
-            }}
-          >
-            <View style={styles.modalBackdrop}>
-               <Animated.View
-                entering={SlideInDown.duration(220)}
-                exiting={SlideOutDown.duration(180)}
-                 style={styles.modalKeyboardWrap}
-              >
-                <KeyboardAvoidingView
-                  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                  style={{ width: '100%' }}
-                >
-                  <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                    <View style={styles.modalCard}>
-                      <View style={styles.modalHeader}>
-                        <Text style={styles.modalTitle}>Create a ping</Text>
-                        <TourTarget
-                          name="crowdping-close"
-                          assistAction={() => {
-                            setComposerVisible(false);
-                            resetComposer();
-                            setTimeout(() => advanceStep('crowdping-close'), 250);
-                          }}
-                        >
+          <View style={styles.modalBackdrop}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.modalKeyboardWrap}
+            >
+              <TouchableWithoutFeedback>
+                <View style={styles.modalCard}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Create a ping</Text>
+                    <Pressable
+                      onPress={() => {
+                        setComposerVisible(false);
+                        resetComposer();
+                      }}
+                    >
+                      <X size={20} color={COLORS.textPrimary} />
+                    </Pressable>
+                  </View>
+
+                  <ScrollView
+                    style={styles.modalScroll}
+                    contentContainerStyle={styles.modalScrollContent}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                  >
+                    <Text style={styles.modalLabel}>Category</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
+                      {PING_CATEGORIES.map((entry) => {
+                        const active = composerCategory === entry.id;
+                        return (
                           <Pressable
-                            onPress={() => {
-                              setComposerVisible(false);
-                              resetComposer();
-                              if (activeTargetName === 'crowdping-close') {
-                                advanceStep('crowdping-close');
-                              }
-                            }}
-                            style={[
-                              { padding: 12, borderRadius: 20 },
-                              activeTargetName === 'crowdping-close' && { backgroundColor: `${COLORS.primary}15` }
-                            ]}
+                            key={entry.id}
+                            style={[styles.modalChip, active && styles.modalChipActive]}
+                            onPress={() => setComposerCategory(entry.id)}
                           >
-                            <X size={20} color={activeTargetName === 'crowdping-close' ? COLORS.primary : COLORS.textPrimary} />
+                            <Text style={[styles.modalChipLabel, active && styles.modalChipLabelActive]}>{entry.id}</Text>
                           </Pressable>
-                        </TourTarget>
-                      </View>
+                        );
+                      })}
+                    </ScrollView>
 
-                      <ScrollView
-                        style={styles.modalScroll}
-                        contentContainerStyle={styles.modalScrollContent}
-                        showsVerticalScrollIndicator={false}
-                        keyboardShouldPersistTaps="handled"
-                        keyboardDismissMode="on-drag"
-                      >
-                        <Text style={styles.modalLabel}>Category</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
-                          {PING_CATEGORIES.map((entry) => {
-                            const active = composerCategory === entry.id;
-                            return (
-                              <Pressable
-                                key={entry.id}
-                                style={[styles.modalChip, active && styles.modalChipActive]}
-                                onPress={() => setComposerCategory(entry.id)}
-                              >
-                                <Text style={[styles.modalChipLabel, active && styles.modalChipLabelActive]}>{entry.id}</Text>
-                              </Pressable>
-                            );
-                          })}
-                        </ScrollView>
+                    <Text style={styles.modalLabel}>Title</Text>
+                    <TextInput
+                      value={composerTitle}
+                      onChangeText={setComposerTitle}
+                      placeholder="Free boba, pop-up market, pickup game..."
+                      placeholderTextColor={COLORS.textTertiary}
+                      style={styles.input}
+                    />
 
-                        <Text style={styles.modalLabel}>Title</Text>
-                        <TextInput
-                          value={composerTitle}
-                          onChangeText={setComposerTitle}
-                          placeholder="Free boba, pop-up market, pickup game..."
-                          placeholderTextColor={COLORS.textTertiary}
-                          style={styles.input}
-                        />
+                    <Text style={styles.modalLabel}>Details</Text>
+                    <TextInput
+                      value={composerBody}
+                      onChangeText={setComposerBody}
+                      placeholder="Give people the quick context they need before they head over."
+                      placeholderTextColor={COLORS.textTertiary}
+                      style={[styles.input, styles.inputMultiline]}
+                      multiline
+                    />
 
-                        <Text style={styles.modalLabel}>Details</Text>
-                        <TextInput
-                          value={composerBody}
-                          onChangeText={setComposerBody}
-                          placeholder="Give people the quick context they need before they head over."
-                          placeholderTextColor={COLORS.textTertiary}
-                          style={[styles.input, styles.inputMultiline]}
-                          multiline
-                        />
-
-                        <Text style={styles.modalLabel}>Photo (Optional)</Text>
-                        <View style={styles.imageComposerRow}>
-                          <View style={styles.imagePickerActions}>
-                            <Pressable style={styles.imagePickerButton} onPress={handlePickPingImage}>
-                              <ImageIcon size={16} color={COLORS.textPrimary} />
-                              <Text style={styles.imagePickerButtonText}>
-                                {composerImageUri ? 'Choose another' : 'Choose photo'}
-                              </Text>
-                            </Pressable>
-                            <Pressable style={styles.imagePickerButton} onPress={handleCapturePingImage}>
-                              <Camera size={16} color={COLORS.textPrimary} />
-                              <Text style={styles.imagePickerButtonText}>Take photo</Text>
-                            </Pressable>
+                    <Text style={styles.modalLabel}>Photo</Text>
+                    <View style={styles.imageComposerRow}>
+                      <Pressable style={styles.imagePickerButton} onPress={handlePickPingImage}>
+                        <ImageIcon size={16} color={COLORS.textPrimary} />
+                        <Text style={styles.imagePickerButtonText}>
+                          {composerImageUri ? 'Change photo' : 'Add photo'}
+                        </Text>
+                      </Pressable>
+                      {composerImageUri ? (
+                        <Pressable style={styles.imagePreviewWrap} onPress={handlePickPingImage}>
+                          <Image source={{ uri: composerImageUri }} style={styles.imagePreview} />
+                          <View style={styles.imagePreviewRemoveHint}>
+                            <Text style={styles.imagePreviewRemoveHintText}>Tap to edit</Text>
                           </View>
-                          {composerImageUri ? (
-                            <Pressable style={styles.imagePreviewWrap} onPress={handlePickPingImage}>
-                              <Image source={{ uri: composerImageUri }} style={styles.imagePreview} />
-                              <View style={styles.imagePreviewRemoveHint}>
-                                <Text style={styles.imagePreviewRemoveHintText}>Tap to replace</Text>
-                              </View>
-                            </Pressable>
-                          ) : (
-                            <View style={styles.imageEmptyState}>
-                              <Text style={styles.imageEmptyStateText}>No photo attached</Text>
-                            </View>
-                          )}
+                        </Pressable>
+                      ) : (
+                        <View style={styles.imageEmptyState}>
+                          <Text style={styles.imageEmptyStateText}>Optional</Text>
                         </View>
-                        <Text style={styles.optionalHelperText}>You can post a CrowdPing without adding an image.</Text>
-                        {composerImageUri ? (
-                          <Pressable style={styles.removeImageButton} onPress={() => setComposerImageUri(null)}>
-                            <Text style={styles.removeImageButtonText}>Remove photo</Text>
-                          </Pressable>
-                        ) : null}
-
-                        <Text style={styles.modalLabel}>When</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
-                          {TIME_PRESETS.map((entry) => {
-                            const active = composerTimePreset === entry.id;
-                            return (
-                              <Pressable
-                                key={entry.id}
-                                style={[styles.modalChip, active && styles.modalChipActive]}
-                                onPress={() => setComposerTimePreset(entry.id)}
-                              >
-                                <Text style={[styles.modalChipLabel, active && styles.modalChipLabelActive]}>{entry.label}</Text>
-                              </Pressable>
-                            );
-                          })}
-                        </ScrollView>
-
-                        <Text style={styles.modalLabel}>Location</Text>
-                        <View style={styles.searchInputWrap}>
-                          <Search size={16} color={COLORS.textSecondary} />
-                          <TextInput
-                            value={locationQuery}
-                            onChangeText={setLocationQuery}
-                            placeholder="Search for a building or spot..."
-                            placeholderTextColor={COLORS.textTertiary}
-                            style={styles.searchInput}
-                          />
-                        </View>
-
-                        {locationQuery.trim().length > 0 && !selectedLocation && (
-                          <View style={styles.suggestionsWrap}>
-                            {locationSuggestions.map((item) => (
-                              <Pressable
-                                key={item.location}
-                                style={styles.suggestionItem}
-                                onPress={() => handleSelectLocation(item.location)}
-                              >
-                                <MapPin size={14} color={COLORS.textSecondary} />
-                                <Text style={styles.suggestionText}>{item.location}</Text>
-                              </Pressable>
-                            ))}
-                          </View>
-                        )}
-
-                        {selectedLocation && (
-                          <View style={styles.selectedLocationBadge}>
-                            <MapPin size={14} color={COLORS.primary} />
-                            <Text style={styles.selectedLocationText}>{selectedLocation}</Text>
-                            <Pressable onPress={() => setSelectedLocation(null)}>
-                              <X size={14} color={COLORS.textSecondary} />
-                            </Pressable>
-                          </View>
-                        )}
-
-                        <View style={{ marginTop: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <View>
-                            <Text style={styles.modalLabel}>Post Anonymously</Text>
-                            <Text style={{ fontSize: 12, color: COLORS.textSecondary }}>Hides your name and profile photo</Text>
-                          </View>
-                          <Switch
-                            value={composerAnonymous}
-                            onValueChange={setComposerAnonymous}
-                            trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                            thumbColor={Platform.OS === 'ios' ? undefined : (composerAnonymous ? COLORS.background : '#f4f3f4')}
-                          />
-                        </View>
-                        
-                        <View style={{ height: 160 }} />
-                      </ScrollView>
-
-                      <View style={styles.modalFooter}>
-                        <RNAnimated.View style={{ transform: [{ scale: postButtonPulse }] }}>
-                          <Pressable
-                            style={[styles.postButton, !canPostPing && styles.postButtonDisabled]}
-                            onPress={handleCreatePing}
-                            disabled={isPosting}
-                          >
-                            {isPosting ? (
-                              <ActivityIndicator size="small" color="#FFFFFF" />
-                            ) : (
-                              <Text style={styles.postButtonText}>Post CrowdPing</Text>
-                            )}
-                          </Pressable>
-                        </RNAnimated.View>
-                      </View>
+                      )}
                     </View>
-                  </TouchableWithoutFeedback>
-                </KeyboardAvoidingView>
-              </Animated.View>
-            </View>
-          </TouchableWithoutFeedback>
-        </Animated.View>
-      )}
 
-      {/* ── Featured Event Modal ── */}
+                    <Text style={styles.modalLabel}>When</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modalChipRow}>
+                      {TIME_PRESETS.map((entry) => {
+                        const active = composerTimePreset === entry.id;
+                        return (
+                          <Pressable
+                            key={entry.id}
+                            style={[styles.modalChip, active && styles.modalChipActive]}
+                            onPress={() => setComposerTimePreset(entry.id)}
+                          >
+                            <Text style={[styles.modalChipLabel, active && styles.modalChipLabelActive]}>{entry.label}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+
+                    <Text style={styles.modalLabel}>Location</Text>
+                    <View style={styles.searchInputWrap}>
+                      <Search size={16} color={COLORS.textSecondary} />
+                      <TextInput
+                        value={locationQuery}
+                        onChangeText={(text) => {
+                          setLocationQuery(text);
+                          setSelectedLocation(null);
+                        }}
+                        placeholder="Search for a campus location"
+                        placeholderTextColor={COLORS.textTertiary}
+                        style={styles.searchInput}
+                      />
+                    </View>
+
+                    <ScrollView style={styles.locationResults} keyboardShouldPersistTaps="handled">
+                      {locationSuggestions.map((location) => {
+                        const active = selectedLocation === location.location;
+                        return (
+                          <Pressable
+                            key={location.location}
+                            style={[styles.locationSuggestion, active && styles.locationSuggestionActive]}
+                            onPress={() => handleSelectLocation(location.location)}
+                          >
+                            <Text style={styles.locationSuggestionTitle}>{location.location}</Text>
+                            <Text style={styles.locationSuggestionMeta}>
+                              {location.type}
+                              {location.shortName ? ` · ${location.shortName}` : ''}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                  </ScrollView>
+
+                  <View style={styles.modalFooter}>
+                    <Pressable style={styles.submitButton} onPress={handleCreatePing} disabled={isPosting}>
+                      {isPosting ? (
+                        <ActivityIndicator color="#FFFFFF" />
+                      ) : (
+                        <>
+                          <Plus size={18} color="#FFFFFF" />
+                          <Text style={styles.submitButtonLabel}>Post ping</Text>
+                        </>
+                      )}
+                    </Pressable>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
       <Modal visible={!!activeFeaturedEvent} animationType="fade" transparent>
         <TouchableWithoutFeedback onPress={() => setActiveFeaturedEvent(null)}>
           <View style={styles.modalBackdrop}>
@@ -1574,49 +1122,17 @@ export function CampusPingsScreen() {
                   <View style={styles.featuredModalActions}>
                     <Pressable
                       style={styles.primaryActionButton}
-                      onPress={() =>
-                        activeFeaturedEvent && handleFeaturedEventRsvp(activeFeaturedEvent)
-                      }
+                      onPress={() => activeFeaturedEvent && openFeaturedEventOnMap(activeFeaturedEvent)}
                     >
-                      <CalendarDays size={16} color="#FFFFFF" />
-                      <Text
-                        style={styles.primaryActionLabel}
-                        numberOfLines={
-                          activeFeaturedEvent?.isAdminEvent
-                            ? 1
-                            : activeFeaturedEvent?.rsvpStatus === 'going'
-                              ? 1
-                              : 2
-                        }
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.75}
-                      >
-                        {activeFeaturedEvent?.isAdminEvent
-                          ? activeFeaturedEvent?.rsvpStatus === 'going'
-                            ? 'Remove RSVP'
-                            : 'RSVP'
-                          : activeFeaturedEvent?.rsvpStatus === 'going'
-                            ? 'Remove from Schedule'
-                            : 'Add'}
-                      </Text>
+                      <MapPin size={16} color="#FFFFFF" />
+                      <Text style={styles.primaryActionLabel}>Open on map</Text>
                     </Pressable>
                     <Pressable
                       style={styles.actionButton}
-                      onPress={() =>
-                        activeFeaturedEvent && handleFeaturedEventShare(activeFeaturedEvent)
-                      }
+                      onPress={() => activeFeaturedEvent && saveFeaturedEventToPlans(activeFeaturedEvent)}
                     >
-                      <Share2 size={16} color={COLORS.textPrimary} />
-                      <Text style={styles.actionLabel}>Share</Text>
-                    </Pressable>
-                    <Pressable
-                      style={styles.actionButton}
-                      onPress={() =>
-                        activeFeaturedEvent && openFeaturedEventOnMap(activeFeaturedEvent)
-                      }
-                    >
-                      <MapPin size={16} color={COLORS.textPrimary} />
-                      <Text style={styles.actionLabel}>Open on map</Text>
+                      <CalendarDays size={16} color={COLORS.textPrimary} />
+                      <Text style={styles.actionLabel}>Save</Text>
                     </Pressable>
                     {activeFeaturedEvent?.link ? (
                       <Pressable
@@ -1627,6 +1143,87 @@ export function CampusPingsScreen() {
                         <Text style={styles.actionLabel}>Details</Text>
                       </Pressable>
                     ) : null}
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      <Modal visible={commentModalVisible} animationType="fade" transparent>
+        <TouchableWithoutFeedback
+          onPress={() => {
+            setCommentModalVisible(false);
+            setActiveCommentPing(null);
+            setCommentText('');
+          }}
+        >
+          <View style={styles.modalBackdrop}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={styles.modalKeyboardWrap}
+            >
+              <TouchableWithoutFeedback>
+                <View style={styles.commentModalCard}>
+                  <View style={styles.modalHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.modalTitle}>Replies</Text>
+                      <Text style={styles.commentModalSubtitle} numberOfLines={2}>
+                        {activeCommentPing?.title}
+                      </Text>
+                    </View>
+                    <Pressable
+                      onPress={() => {
+                        setCommentModalVisible(false);
+                        setActiveCommentPing(null);
+                        setCommentText('');
+                      }}
+                    >
+                      <X size={20} color={COLORS.textPrimary} />
+                    </Pressable>
+                  </View>
+
+                  {loadingComments ? (
+                    <View style={styles.commentsLoadingWrap}>
+                      <ActivityIndicator color={COLORS.primary} />
+                    </View>
+                  ) : (
+                    <ScrollView style={styles.commentList} showsVerticalScrollIndicator={false}>
+                      {comments.length ? (
+                        comments.map((comment: any, index: number) => (
+                          <View key={`${comment.id || index}`} style={styles.commentRow}>
+                            <Text style={styles.commentName}>
+                              {comment.data?.name || comment.user?.data?.name || 'Aggie'}
+                            </Text>
+                            <Text style={styles.commentBody}>
+                              {comment.data?.text || comment.data?.comment || ''}
+                            </Text>
+                          </View>
+                        ))
+                      ) : (
+                        <View style={styles.emptyCommentsWrap}>
+                          <Text style={styles.emptyCommentsText}>No replies yet.</Text>
+                        </View>
+                      )}
+                    </ScrollView>
+                  )}
+
+                  <View style={styles.commentComposer}>
+                    <TextInput
+                      value={commentText}
+                      onChangeText={setCommentText}
+                      placeholder="Add a quick reply"
+                      placeholderTextColor={COLORS.textTertiary}
+                      style={styles.commentInput}
+                    />
+                    <Pressable style={styles.commentSendButton} onPress={handleSendComment} disabled={sendingComment}>
+                      {sendingComment ? (
+                        <ActivityIndicator color="#FFFFFF" size="small" />
+                      ) : (
+                        <MessageCircle size={16} color="#FFFFFF" />
+                      )}
+                    </Pressable>
                   </View>
                 </View>
               </TouchableWithoutFeedback>
@@ -1845,53 +1442,6 @@ const getStyles = (COLORS: any) =>
       paddingHorizontal: 12,
       paddingVertical: 12,
     },
-    featuredFooter: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      paddingHorizontal: 12,
-      paddingBottom: 12,
-      paddingTop: 2,
-    },
-    featuredRsvpButton: {
-      flex: 1,
-      minHeight: 40,
-      borderRadius: 12,
-      backgroundColor: COLORS.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexDirection: 'row',
-      gap: 6,
-      paddingHorizontal: 12,
-    },
-    featuredRsvpButtonSaved: {
-      backgroundColor: `${COLORS.primary}14`,
-      borderWidth: 1,
-      borderColor: `${COLORS.primary}26`,
-    },
-    featuredRsvpButtonText: {
-      color: '#FFFFFF',
-      fontSize: 13,
-      fontWeight: '800',
-    },
-    featuredRsvpButtonTextSaved: {
-      color: COLORS.textPrimary,
-    },
-    featuredDetailsButton: {
-      minHeight: 40,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      backgroundColor: COLORS.background,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 12,
-    },
-    featuredDetailsButtonText: {
-      color: COLORS.textSecondary,
-      fontSize: 13,
-      fontWeight: '700',
-    },
     featuredTitle: {
       color: COLORS.textPrimary,
       fontSize: 15,
@@ -1903,22 +1453,6 @@ const getStyles = (COLORS: any) =>
       color: COLORS.textSecondary,
       fontSize: 11,
       fontWeight: '600',
-    },
-    rsvpBanner: {
-      marginLeft: 18,
-      marginBottom: 10,
-      alignSelf: 'flex-start',
-      borderRadius: 999,
-      backgroundColor: '#EAF8EE',
-      borderWidth: 1,
-      borderColor: '#B9E8C4',
-      paddingHorizontal: 14,
-      paddingVertical: 10,
-    },
-    rsvpBannerText: {
-      color: '#17663A',
-      fontSize: 12,
-      fontWeight: '800',
     },
     pingCard: {
       marginTop: 16,
@@ -2132,6 +1666,32 @@ const getStyles = (COLORS: any) =>
       fontSize: 12,
       fontWeight: '700',
     },
+    voteStack: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: COLORS.surfaceElevated,
+      borderRadius: 14,
+      paddingHorizontal: 4,
+      paddingVertical: 2,
+      gap: 0,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    voteButton: {
+      width: 32,
+      height: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: 10,
+    },
+    voteCount: {
+      color: COLORS.textPrimary,
+      fontSize: 13,
+      fontWeight: '800',
+      minWidth: 20,
+      textAlign: 'center',
+      marginHorizontal: 2,
+    },
     primaryActionButton: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -2186,7 +1746,6 @@ const getStyles = (COLORS: any) =>
     modalKeyboardWrap: {
       width: '100%',
       justifyContent: 'flex-end',
-      height: '100%',
     },
     modalCard: {
       backgroundColor: COLORS.background,
@@ -2195,11 +1754,10 @@ const getStyles = (COLORS: any) =>
       paddingHorizontal: 18,
       paddingTop: 18,
       paddingBottom: 16,
-      height: '88%',
-      overflow: 'hidden',
+      maxHeight: '88%',
     },
     modalScroll: {
-      flex: 1,
+      flexGrow: 0,
     },
     modalScrollContent: {
       paddingBottom: 12,
@@ -2343,10 +1901,6 @@ const getStyles = (COLORS: any) =>
       gap: 12,
       marginBottom: 4,
     },
-    imagePickerActions: {
-      flex: 1,
-      gap: 12,
-    },
     imagePickerButton: {
       flex: 1,
       minHeight: 96,
@@ -2405,27 +1959,6 @@ const getStyles = (COLORS: any) =>
     },
     imageEmptyStateText: {
       color: COLORS.textTertiary,
-      fontSize: 12,
-      fontWeight: '700',
-    },
-    optionalHelperText: {
-      color: COLORS.textSecondary,
-      fontSize: 12,
-      lineHeight: 18,
-      marginTop: 2,
-    },
-    removeImageButton: {
-      alignSelf: 'flex-start',
-      marginTop: 8,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      backgroundColor: COLORS.surface,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-    },
-    removeImageButtonText: {
-      color: COLORS.textPrimary,
       fontSize: 12,
       fontWeight: '700',
     },
@@ -2509,114 +2042,4 @@ const getStyles = (COLORS: any) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    suggestionsWrap: {
-      maxHeight: 210,
-      marginTop: 10,
-      borderRadius: 16,
-      backgroundColor: COLORS.surface,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      overflow: 'hidden',
-    },
-    suggestionItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-      paddingHorizontal: 14,
-      paddingVertical: 12,
-      borderBottomWidth: 1,
-      borderBottomColor: COLORS.border,
-    },
-    suggestionText: {
-      color: COLORS.textPrimary,
-      fontSize: 14,
-      fontWeight: '600',
-    },
-    selectedLocationBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-      alignSelf: 'flex-start',
-      backgroundColor: `${COLORS.primary}12`,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 12,
-      marginTop: 12,
-      borderWidth: 1,
-      borderColor: `${COLORS.primary}25`,
-    },
-    selectedLocationText: {
-      color: COLORS.textPrimary,
-      fontSize: 14,
-      fontWeight: '700',
-    },
-    postButton: {
-      height: 56,
-      borderRadius: 18,
-      backgroundColor: COLORS.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginTop: 8,
-    },
-    postButtonDisabled: {
-      opacity: 0.5,
-    },
-    postButtonText: {
-      color: '#FFFFFF',
-      fontSize: 16,
-      fontWeight: '800',
-    },
   });
-
-const stylesStatic = StyleSheet.create({
-  pingCelebrationWrap: {
-    position: 'absolute',
-    left: 18,
-    right: 18,
-    top: 72,
-    alignItems: 'center',
-    zIndex: 40,
-    pointerEvents: 'none',
-  },
-  pingCelebrationCard: {
-    minWidth: 220,
-    maxWidth: 300,
-    borderRadius: 24,
-    backgroundColor: 'rgba(20,20,24,0.92)',
-    paddingHorizontal: 18,
-    paddingVertical: 14,
-    alignItems: 'center',
-    shadowColor: '#000000',
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
-  },
-  pingCelebrationEyebrow: {
-    color: '#F9C74F',
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.7,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  pingCelebrationTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
-  pingCelebrationBody: {
-    color: 'rgba(255,255,255,0.82)',
-    fontSize: 13,
-    lineHeight: 18,
-    textAlign: 'center',
-  },
-  pingConfettiPiece: {
-    position: 'absolute',
-    top: 8,
-    width: 8,
-    height: 14,
-    borderRadius: 3,
-  },
-});

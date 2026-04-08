@@ -2578,7 +2578,8 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
     },
     pulseSheetHeader: {
       flexDirection: "row",
-      alignItems: "flex-start",
+      alignItems: "center",
+      paddingBottom: 4,
       gap: 12,
     },
     pulseSheetEyebrowRow: {
@@ -2612,6 +2613,14 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       fontSize: 20,
       fontWeight: "800",
       marginBottom: 4,
+    },
+    pulseSheetVoteButton: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "#F3F4F7",
+      alignItems: "center",
+      justifyContent: "center",
     },
     pulseSheetCloseButton: {
       width: 34,

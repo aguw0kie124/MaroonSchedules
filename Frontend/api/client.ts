@@ -247,8 +247,10 @@ export const fetchCampusPlaceDetail = async (placeIdOrIdentifier: string) => {
     return requestJson(`/campus/places/${encodeURIComponent(placeIdOrIdentifier)}/detail`);
 };
 
-export const fetchCampusPulseMap = async (limit = 12) => {
-    return requestJson(`/campus/pulse/map?limit=${limit}`);
+export const fetchCampusPulseMap = async (limit = 12, clerkId?: string) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (clerkId) params.set('clerk_id', clerkId);
+    return requestJson(`/campus/pulse/map?${params.toString()}`);
 };
 
 export const saveCampusEventRsvp = async (payload: { clerk_id: string; event_id: string; response: string }) => {

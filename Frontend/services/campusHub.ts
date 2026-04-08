@@ -271,7 +271,26 @@ function normalizeCampusHubSnapshot(userId: string, raw: any): CampusHubSnapshot
     recreation: {
       ...fallback.recreation,
       ...(raw.recreation || {}),
-      facilities: Array.isArray(raw.recreation?.facilities) ? raw.recreation.facilities : fallback.recreation.facilities,
+      facilities: (Array.isArray(raw.recreation?.facilities) ? raw.recreation.facilities : fallback.recreation.facilities).map((f: any) => {
+        const isClosed = (f.today_hours || f.hours_hint || "").toLowerCase().includes("closed");
+        
+        if (isClosed) {
+          return {
+            ...f,
+            percent_full: null,
+            current_count: null,
+          };
+        }
+
+        // Recalculate percent_full if current_count and capacity are provided for better accuracy
+        if (f.current_count != null && f.capacity != null && f.capacity > 0) {
+          return {
+            ...f,
+            percent_full: Math.round((f.current_count / f.capacity) * 100)
+          };
+        }
+        return f;
+      }),
     },
     services: Array.isArray(raw.services) ? raw.services : fallback.services,
     connectors: Array.isArray(raw.connectors) ? raw.connectors : fallback.connectors,

@@ -1,6 +1,6 @@
 import React from "react";
 import { Animated, Pressable, ScrollView, Text, View } from "react-native";
-import { CalendarDays, Flame, MapPin, TrendingUp, X } from "lucide-react-native";
+import { ArrowBigDown, ArrowBigUp, CalendarDays, Flame, MapPin, TrendingUp, X } from "lucide-react-native";
 
 import type { CampusHotspot } from "../../services/campusPulse";
 
@@ -9,6 +9,7 @@ interface PulseHotspotSheetProps {
   COLORS: any;
   hotspot: CampusHotspot | null;
   onClose: () => void;
+  onVote?: (id: string, delta: number) => void;
   onOpenPlace: (hotspot: CampusHotspot) => void;
   onOpenItem: (hotspot: CampusHotspot, item: CampusHotspot["items"][number]) => void;
 }
@@ -18,6 +19,7 @@ export function PulseHotspotSheet({
   COLORS,
   hotspot,
   onClose,
+  onVote,
   onOpenPlace,
   onOpenItem,
 }: PulseHotspotSheetProps) {
@@ -52,9 +54,32 @@ export function PulseHotspotSheet({
             <Text style={styles.pulseSheetTitle}>{hotspot.locationName}</Text>
           </View>
 
-          <Pressable style={styles.pulseSheetCloseButton} onPress={onClose}>
-            <X size={18} color={COLORS.textPrimary} />
-          </Pressable>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginRight: 8 }}>
+            <Pressable
+              style={[
+                styles.pulseSheetVoteButton,
+                hotspot.userVote === 1 && { backgroundColor: hotspot.pulseColor },
+              ]}
+              onPress={() => onVote?.(hotspot.id, 1)}
+            >
+              <ArrowBigUp size={20} color={hotspot.userVote === 1 ? "#FFF" : COLORS.textTertiary} />
+            </Pressable>
+            <Pressable
+              style={[
+                styles.pulseSheetVoteButton,
+                hotspot.userVote === -1 && { backgroundColor: "#FF6347" }, // Tomato/Coral
+              ]}
+              onPress={() => onVote?.(hotspot.id, -1)}
+            >
+              <ArrowBigDown size={20} color={hotspot.userVote === -1 ? "#FFF" : COLORS.textTertiary} />
+            </Pressable>
+
+            <View style={{ width: 1, height: 24, backgroundColor: COLORS.border, marginHorizontal: 4 }} />
+
+            <Pressable style={styles.pulseSheetCloseButton} onPress={onClose}>
+              <X size={18} color={COLORS.textPrimary} />
+            </Pressable>
+          </View>
         </View>
 
 

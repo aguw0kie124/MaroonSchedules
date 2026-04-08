@@ -184,6 +184,7 @@ export function MapLibreCircleOverlay({
   fillColor,
   strokeColor,
   strokeWidth = 1.5,
+  fillOpacity,
 }: {
   id: string;
   center: MapCoordinate;
@@ -197,7 +198,7 @@ export function MapLibreCircleOverlay({
     <Circle
       center={toLatLng(center)}
       radius={radiusMeters}
-      fillColor={fillColor}
+      fillColor={fillOpacity !== undefined ? `${fillColor}${Math.floor(fillOpacity * 255).toString(16).padStart(2, '0')}` : fillColor}
       strokeColor={strokeColor}
       strokeWidth={strokeWidth}
       zIndex={1}
