@@ -2142,15 +2142,6 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       fontSize: 11,
       fontWeight: "700",
     },
-    loadBadge: {
-      paddingHorizontal: 8,
-      paddingVertical: 2,
-      borderRadius: 6,
-    },
-    loadText: {
-      fontSize: 11,
-      fontWeight: "700",
-    },
     busInfoRouteName: {
       color: COLORS.textPrimary,
       fontSize: 15,
@@ -2211,13 +2202,13 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       alignItems: "center",
     },
     dockedStopName: {
-      color: "#FFFFFF",
+      color: COLORS.textPrimary,
       fontSize: 16,
       fontWeight: "800",
       marginBottom: 2,
     },
     busStopHintText: {
-      color: "rgba(255, 255, 255, 0.7)",
+      color: COLORS.textSecondary,
       fontSize: 12,
       marginBottom: 2,
     },

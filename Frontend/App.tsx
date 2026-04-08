@@ -57,6 +57,7 @@ import { syncUser, fetchUserProfile, requestJson, setApiAuthTokenProvider } from
 import { TOSScreen } from './components/TOSScreen';
 import { NotificationPromptScreen } from './components/onboarding/NotificationPromptScreen';
 import { EventPreferenceOnboardingScreen } from './components/onboarding/EventPreferenceOnboardingScreen';
+import { ShareOverlay } from './components/ShareOverlay';
 
 import { AdminApplicationScreen } from './components/admin/AdminApplicationScreen';
 import { AdminPortal } from './components/admin/AdminPortal';
@@ -473,6 +474,7 @@ function RootNavigator() {
       <ApiAuthBridge />
       {isSignedIn ? <UserSync>{content}</UserSync> : content}
       {isSignedIn && <PendingReviewInterceptor />}
+      <ShareOverlay />
     </>
   );
 }

@@ -1218,91 +1218,157 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setAllRoutePatternsById(nextPatterns);
     const vehicles = await transitService.getVehicles();
     setBusVehicles(vehicles || []);
+
+    const routeCoords = Object.values(nextPatterns).flatMap((pattern: any) =>
+      Array.isArray(pattern?.points)
+        ? pattern.points.map((point: any) => ({
+            latitude: point.latitude,
+            longitude: point.longitude,
+          }))
+        : [],
+    );
+    const vehicleCoords = (vehicles || [])
+      .map((bus: any) => ({
+        latitude: bus.Latitude,
+        longitude: bus.Longitude,
+      }))
+      .filter(
+        (coord: { latitude?: number; longitude?: number }) =>
+          typeof coord.latitude === "number" && typeof coord.longitude === "number",
+      ) as { latitude: number; longitude: number }[];
+
+    const fitCoords = [...routeCoords, ...vehicleCoords];
+    if (mapRef.current && fitCoords.length > 1) {
+      mapRef.current.fitToCoordinates(fitCoords, {
+        edgePadding: { top: 180, right: 50, bottom: 220, left: 50 },
+        animated: true,
+      });
+    }
   }, []);
+
+  const fitMapToActiveOverview = useCallback(() => {
+    if (!mapRef.current) return;
+
+    const fitToCoords = (
+      coords: { latitude: number; longitude: number }[],
+      edgePadding = { top: 180, right: 48, bottom: 220, left: 48 },
+    ) => {
+      if (coords.length === 0) return;
+      if (coords.length === 1) {
+        mapRef.current.animateToRegion(
+          {
+            latitude: coords[0].latitude - 0.0018,
+            longitude: coords[0].longitude,
+            latitudeDelta: 0.008,
+            longitudeDelta: 0.008,
+          },
+          650,
+        );
+        return;
+      }
+      mapRef.current.fitToCoordinates(coords, {
+        edgePadding,
+        animated: true,
+      });
+    };
+
+    if (activeLayer === "Bus") {
+      if (isAllBusRoutesSelected) {
+        const routeCoords = Object.values(allRoutePatternsById).flatMap((pattern: any) =>
+          Array.isArray(pattern?.points)
+            ? pattern.points.map((point: any) => ({
+                latitude: point.latitude,
+                longitude: point.longitude,
+              }))
+            : [],
+        );
+        const vehicleCoords = busVehicles
+          .map((bus: any) => ({
+            latitude: bus.Latitude,
+            longitude: bus.Longitude,
+          }))
+          .filter(
+            (coord: { latitude?: number; longitude?: number }) =>
+              typeof coord.latitude === "number" && typeof coord.longitude === "number",
+          ) as { latitude: number; longitude: number }[];
+        fitToCoords([...routeCoords, ...vehicleCoords]);
+        return;
+      }
+
+      if (routePatterns.length > 0) {
+        fitToCoords(
+          routePatterns.map((point: any) => ({
+            latitude: point.latitude,
+            longitude: point.longitude,
+          })),
+        );
+        return;
+      }
+
+      if (busStops.length > 0) {
+        fitToCoords(
+          busStops.map((stop: any) => ({
+            latitude: stop.Latitude,
+            longitude: stop.Longitude,
+          })),
+        );
+      }
+      return;
+    }
+
+    if (activeLayer === "Pulse") {
+      fitToCoords(
+        pulseHotspots.map((hotspot) => ({
+          latitude: hotspot.coord.lat,
+          longitude: hotspot.coord.lng,
+        })),
+        { top: 140, right: 52, bottom: 250, left: 52 },
+      );
+      return;
+    }
+
+    if (activeLayer === "Today") {
+      fitToCoords(
+        sortedFilteredLocations.map((loc) => ({
+          latitude: loc.coord.lat,
+          longitude: loc.coord.lng,
+        })),
+        { top: 210, right: 40, bottom: 250, left: 40 },
+      );
+      return;
+    }
+
+    fitToCoords(
+      sortedFilteredLocations.slice(0, 18).map((loc) => ({
+        latitude: loc.coord.lat,
+        longitude: loc.coord.lng,
+      })),
+      { top: 210, right: 48, bottom: 250, left: 48 },
+    );
+  }, [
+    activeLayer,
+    allRoutePatternsById,
+    busStops,
+    busVehicles,
+    isAllBusRoutesSelected,
+    pulseHotspots,
+    routePatterns,
+    sortedFilteredLocations,
+  ]);
 
   // ── Auto-zoom and fitting logic ───────────────────────────
   useEffect(() => {
     if (!mapRef.current) return;
     if (selectedId || (activeLayer === "Pulse" && selectedHotspotId)) return;
-
-    let coords: { latitude: number; longitude: number }[] = [];
-
-    if (activeLayer === "Bus") {
-      // Intentionally bypassed: We no longer auto-fit based on the live vehicle positions or routes globally
-      // every single time the timer fires because it aggressively resets user zoom.
-      // Route fittings are handled manually on route selection instead inside handleSelectBusRoute!
-    } else if (activeLayer === "Pulse") {
-      // Bypassed: Let the map stay at the campus-wide TAMU_CENTER initialRegion when on the Pulse tab.
-      // Auto-zooming to hotspots bounds the camera incorrectly and breaks the intended overview.
-    } else if (activeLayer === "Today") {
-      // Only fit when there are multiple scheduled locations to show.
-      coords = sortedFilteredLocations
-        .filter((loc) => loc.coord)
-        .map((loc) => ({ latitude: loc.coord.lat, longitude: loc.coord.lng }));
-    } else {
-      // General map fit for other layers (Dining, Parking, Places)
-      if (filteredLocations.length > 0 && filteredLocations.length < 50) {
-        // Only fit to filtered list if it's manageable.
-        coords = filteredLocations
-          .filter((loc) => loc.coord)
-          .map((loc) => ({
-            latitude: loc.coord.lat,
-            longitude: loc.coord.lng,
-          }));
-      }
-    }
-
-    if (coords.length > 0) {
-      const { width, height } = Dimensions.get("window");
-      const isToday = activeLayer === "Today";
-      const isPulse = activeLayer === "Pulse";
-
-      if (isToday && coords.length < 2) {
-        return;
-      }
-
-      // Dynamic padding to ensure data is centered in the visible ~65% of the viewport
-      // Dynamic padding to ensure data is centered in the visible area below the Today box
-      // Today: Scale with screen height (roughly 58% on pro phones, less on smaller)
-      // pins have height (40px) and we want 20px margin.
-      const topPadding = isToday
-        ? Math.max(80, Math.min(height * 0.58, 540) - 200)
-        : isPulse
-          ? 250
-          : 120;
-      const bottomPadding = isPulse ? 220 : 120;
-      const sidePadding = isToday ? 20 : width * 0.15;
-
-      // Force 2D view (0 pitch) for Today to ensure padding logic is pixel-accurate
-      if (isToday && isMapTilted) {
-        setIsMapTilted(false);
-        mapRef.current.animateCamera(
-          { pitch: 0, heading: 0 },
-          { duration: 400 },
-        );
-      }
-
-      mapRef.current.fitToCoordinates(coords, {
-        edgePadding: {
-          top: topPadding,
-          right: sidePadding,
-          bottom: bottomPadding,
-          left: sidePadding,
-        },
-        animated: true,
-      });
-    }
+    fitMapToActiveOverview();
   }, [
     activeLayer,
-    filteredLocations,
-    isMapTilted,
+    fitMapToActiveOverview,
     busVehicles,
     routePatterns,
     selectedId,
     selectedHotspotId,
-    userCoord,
     isAllBusRoutesSelected,
-    selectedRoute,
     pulseHotspots,
   ]);
 
@@ -1426,7 +1492,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
         );
         return;
       }
-      setSelectedBus(nearest.bus);
       const eta = Math.max(1, Math.round(nearest.distanceMeters / 220));
       const label = nearest.bus.RouteShortName
         ? `Route ${nearest.bus.RouteShortName}`
@@ -1771,6 +1836,20 @@ export function PlacesMapScreen({ route, navigation }: any) {
         attributionEnabled={false}
         rotateEnabled={false}
         pitchEnabled
+        onPress={() => {
+          const hadSelection =
+            !!selectedId || !!selectedHotspotId || !!selectedStop || !!selectedBus;
+          setSelectedId(null);
+          setSelectedHotspotId(null);
+          setSelectedStop(null);
+          setSelectedBus(null);
+          setNearestBusInfo(null);
+          if (hadSelection) {
+            requestAnimationFrame(() => {
+              fitMapToActiveOverview();
+            });
+          }
+        }}
       >
         <Camera ref={cameraRef} defaultSettings={defaultCamera} />
         <UserLocation visible renderMode="normal" />
@@ -2410,8 +2489,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
         styles={styles}
         COLORS={COLORS}
         selectedStop={selectedStop}
-        setSelectedStop={setSelectedStop}
-        selectedBus={selectedBus}
+        setSelectedStop={(stop) => {
+          setSelectedStop(stop);
+          if (!stop) {
+            requestAnimationFrame(() => {
+              fitMapToActiveOverview();
+            });
+          }
+        }}
         nearestBusInfo={nearestBusInfo}
       />
 
@@ -2419,7 +2504,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
         styles={styles}
         COLORS={COLORS}
         selectedBus={selectedBus && !selectedStop ? selectedBus : null}
-        setSelectedBus={setSelectedBus}
+        setSelectedBus={(bus) => {
+          setSelectedBus(bus);
+          if (!bus) {
+            requestAnimationFrame(() => {
+              fitMapToActiveOverview();
+            });
+          }
+        }}
         selectedRoute={selectedRoute}
       />
 
@@ -2427,7 +2519,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
         styles={styles}
         COLORS={COLORS}
         hotspot={activeLayer === "Pulse" ? selectedHotspot : null}
-        onClose={() => setSelectedHotspotId(null)}
+        onClose={() => {
+          setSelectedHotspotId(null);
+          requestAnimationFrame(() => {
+            fitMapToActiveOverview();
+          });
+        }}
         onOpenPlace={openHotspotPlace}
         onOpenItem={openHotspotItem}
       />
