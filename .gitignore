@@ -2,6 +2,10 @@ node_modules
 __pycache__/
 *.py[cod]
 *$py.class
+.expo/
+build.log
+*.xcuserstate
+DerivedData/
 
 # Environment variables
 .env

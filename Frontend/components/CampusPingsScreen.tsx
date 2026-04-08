@@ -81,8 +81,8 @@ import { buildCampusDirectory, getCanonicalLocationName } from './places/campusD
 import { TAMU_CENTER } from './places/types';
 import { haversineDistanceMeters } from './places/utils';
 import {
-  CAMPUS_MAP_STYLE_URL,
   MapLibreMarker,
+  useCampusMapStyle,
   useMapLibreCamera,
 } from './map/mapLibreUtils';
 import { TourTarget, useTour } from './onboarding/TourProvider';
@@ -397,6 +397,7 @@ export function CampusPingsScreen() {
     defaultCamera: composerDefaultCamera,
     animateToRegion: animateComposerToRegion,
   } = useMapLibreCamera(composerInitialRegion);
+  const campusMapStyle = useCampusMapStyle();
   const composerMapRef = useRef<{
     animateToRegion: typeof animateComposerToRegion;
   } | null>(null);
@@ -1572,7 +1573,7 @@ export function CampusPingsScreen() {
                           <View style={styles.pinMapCard}>
                             <MapView
                               style={styles.pinMap}
-                              mapStyle={CAMPUS_MAP_STYLE_URL}
+                              mapStyle={campusMapStyle}
                               logoEnabled={false}
                               attributionEnabled={false}
                               rotateEnabled={false}

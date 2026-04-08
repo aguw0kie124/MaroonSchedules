@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, Pressable } from 'react-native';
 import {
   type CameraRef,
@@ -20,10 +20,249 @@ export type MapRegion = MapCoordinate & {
 
 export const CAMPUS_MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 
+type MapLibreStyleLayer = {
+  id?: string;
+  type?: string;
+  source?: string;
+  'source-layer'?: string;
+  layout?: Record<string, unknown>;
+  paint?: Record<string, unknown>;
+};
+
+type MapLibreStyleSource = {
+  url?: string;
+  tiles?: string[];
+  data?: string;
+  [key: string]: unknown;
+};
+
+type MapLibreStyleDefinition = {
+  sprite?: string;
+  glyphs?: string;
+  sources?: Record<string, MapLibreStyleSource>;
+  layers?: MapLibreStyleLayer[];
+  [key: string]: unknown;
+};
+
+let campusMapStyleCache: MapLibreStyleDefinition | null = null;
+let campusMapStylePromise: Promise<MapLibreStyleDefinition> | null = null;
+
 const EARTH_RADIUS_METERS = 6371008.8;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function isAbsoluteUrl(value: string) {
+  return /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value);
+}
+
+function toAbsoluteUrl(value: string | undefined, baseUrl: string) {
+  if (!value || isAbsoluteUrl(value)) return value;
+  try {
+    return new URL(value, baseUrl).toString();
+  } catch {
+    return value;
+  }
+}
+
+function absolutizeStyleDefinition(
+  styleDefinition: MapLibreStyleDefinition,
+  baseUrl: string,
+): MapLibreStyleDefinition {
+  const style = JSON.parse(JSON.stringify(styleDefinition)) as MapLibreStyleDefinition;
+
+  style.sprite = toAbsoluteUrl(style.sprite, baseUrl);
+  style.glyphs = toAbsoluteUrl(style.glyphs, baseUrl);
+
+  if (style.sources) {
+    Object.values(style.sources).forEach((source) => {
+      source.url = toAbsoluteUrl(source.url, baseUrl);
+      if (Array.isArray(source.tiles)) {
+        source.tiles = source.tiles.map((tileUrl) => toAbsoluteUrl(tileUrl, baseUrl) || tileUrl);
+      }
+      if (typeof source.data === 'string') {
+        source.data = toAbsoluteUrl(source.data, baseUrl);
+      }
+    });
+  }
+
+  return style;
+}
+
+function setLayerPaint(
+  layer: MapLibreStyleLayer,
+  updates: Record<string, unknown>,
+) {
+  layer.paint = {
+    ...(layer.paint || {}),
+    ...updates,
+  };
+}
+
+function hideLayer(layer: MapLibreStyleLayer) {
+  layer.layout = {
+    ...(layer.layout || {}),
+    visibility: 'none',
+  };
+}
+
+function getLayerName(layer: MapLibreStyleLayer) {
+  return `${layer.id || ''} ${layer.source || ''} ${layer['source-layer'] || ''}`.toLowerCase();
+}
+
+function customizeCampusMapStyle(baseStyle: MapLibreStyleDefinition) {
+  const style = JSON.parse(JSON.stringify(baseStyle)) as MapLibreStyleDefinition;
+
+  style.layers = (style.layers || []).map((layer) => {
+    const name = getLayerName(layer);
+    const isSymbolLayer = layer.type === 'symbol';
+    const isWaterLayer = name.includes('water');
+    const isBuildingLayer = name.includes('building');
+    const isPathLayer =
+      name.includes('path') ||
+      name.includes('footway') ||
+      name.includes('pedestrian') ||
+      name.includes('walk');
+    const isRoadLayer =
+      name.includes('road') ||
+      name.includes('street') ||
+      name.includes('bridge') ||
+      name.includes('tunnel');
+    const isMajorRoadLayer =
+      isRoadLayer &&
+      (name.includes('motorway') ||
+        name.includes('trunk') ||
+        name.includes('primary') ||
+        name.includes('major'));
+    const isGreenLayer =
+      name.includes('park') ||
+      name.includes('grass') ||
+      name.includes('wood') ||
+      name.includes('forest') ||
+      name.includes('landcover') ||
+      name.includes('landuse');
+    const isCampusNoiseLabel =
+      isSymbolLayer &&
+      (name.includes('poi') ||
+        name.includes('transit') ||
+        name.includes('housenumber') ||
+        name.includes('address') ||
+        name.includes('road') ||
+        name.includes('street') ||
+        name.includes('path') ||
+        name.includes('pedestrian') ||
+        name.includes('aeroway'));
+
+    if (layer.type === 'background') {
+      setLayerPaint(layer, {
+        'background-color': '#f5f1e8',
+      });
+    }
+
+    if (isGreenLayer) {
+      setLayerPaint(layer, {
+        'fill-color': '#dce7d7',
+        'fill-opacity': 0.75,
+        'line-color': '#c6d5c2',
+      });
+    }
+
+    if (isWaterLayer) {
+      setLayerPaint(layer, {
+        'fill-color': '#bad6e7',
+        'fill-opacity': 0.9,
+        'line-color': '#8fb7cf',
+      });
+    }
+
+    if (isBuildingLayer) {
+      setLayerPaint(layer, {
+        'fill-color': '#e4ddd1',
+        'fill-outline-color': '#c6baa7',
+        'fill-opacity': 0.72,
+        'line-color': '#c6baa7',
+      });
+    }
+
+    if (isRoadLayer) {
+      setLayerPaint(layer, {
+        'line-color': isMajorRoadLayer ? '#cbb9a2' : '#ddd3c6',
+        'line-opacity': isMajorRoadLayer ? 0.72 : 0.52,
+      });
+    }
+
+    if (isPathLayer) {
+      setLayerPaint(layer, {
+        'line-color': '#cebda3',
+        'line-opacity': 0.4,
+      });
+    }
+
+    if (isCampusNoiseLabel) {
+      hideLayer(layer);
+      return layer;
+    }
+
+    if (isSymbolLayer) {
+      setLayerPaint(layer, {
+        'text-color': '#5b5147',
+        'text-halo-color': '#f5f1e8',
+        'text-halo-width': 1.1,
+      });
+    }
+
+    return layer;
+  });
+
+  return style;
+}
+
+async function loadCampusMapStyle() {
+  if (campusMapStyleCache) return campusMapStyleCache;
+  if (!campusMapStylePromise) {
+    campusMapStylePromise = fetch(CAMPUS_MAP_STYLE_URL)
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to load map style (${response.status})`);
+        }
+
+        const styleDefinition = (await response.json()) as MapLibreStyleDefinition;
+        const absolutizedStyle = absolutizeStyleDefinition(styleDefinition, CAMPUS_MAP_STYLE_URL);
+        const customizedStyle = customizeCampusMapStyle(absolutizedStyle);
+        campusMapStyleCache = customizedStyle;
+        return customizedStyle;
+      })
+      .finally(() => {
+        campusMapStylePromise = null;
+      });
+  }
+
+  return campusMapStylePromise;
+}
+
+export function useCampusMapStyle() {
+  const [mapStyle, setMapStyle] = useState<string | MapLibreStyleDefinition>(CAMPUS_MAP_STYLE_URL);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    loadCampusMapStyle()
+      .then((styleDefinition) => {
+        if (isMounted) {
+          setMapStyle(styleDefinition);
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to customize campus map style', error);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  return mapStyle;
 }
 
 function degToRad(value: number) {

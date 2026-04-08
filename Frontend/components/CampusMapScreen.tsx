@@ -4,9 +4,9 @@ import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
 import { useTheme } from "./SharedUI";
 import { fetchCampusPlacesMap } from "../api/client";
 import {
-  CAMPUS_MAP_STYLE_URL,
   MapLibreCircleOverlay,
   MapLibreMarker,
+  useCampusMapStyle,
   useMapLibreCamera,
 } from "./map/mapLibreUtils";
 
@@ -42,6 +42,7 @@ export function CampusMapScreen() {
   const [locations, setLocations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { cameraRef, defaultCamera } = useMapLibreCamera(TAMU_CENTER);
+  const campusMapStyle = useCampusMapStyle();
 
   useEffect(() => {
     fetchPlaces();
@@ -85,7 +86,7 @@ export function CampusMapScreen() {
       </View>
       <MapView
         style={styles.map}
-        mapStyle={CAMPUS_MAP_STYLE_URL}
+        mapStyle={campusMapStyle}
         compassEnabled
         logoEnabled={false}
         attributionEnabled={false}

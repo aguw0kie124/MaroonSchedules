@@ -130,10 +130,10 @@ import {
   type CampusHotspot,
 } from "../services/campusPulse";
 import {
-  CAMPUS_MAP_STYLE_URL,
   MapLibreCircleOverlay,
   MapLibreMarker,
   MapLibrePolylineOverlay,
+  useCampusMapStyle,
   useMapLibreCamera,
 } from "./map/mapLibreUtils";
 
@@ -200,6 +200,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const mapRef = useRef<any>(null);
   const { cameraRef, defaultCamera, animateToRegion, animateCamera, fitToCoordinates } =
     useMapLibreCamera(TAMU_CENTER);
+  const campusMapStyle = useCampusMapStyle();
   const currentBusRouteFetchId = useRef<string | null>(null);
   const lastPlacesFitKey = useRef<string | null>(null);
   const [isListDroppedDown, setIsListDroppedDown] = useState(false);
@@ -1830,7 +1831,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     <View style={styles.container}>
       <MapView
         style={StyleSheet.absoluteFillObject}
-        mapStyle={CAMPUS_MAP_STYLE_URL}
+        mapStyle={campusMapStyle}
         compassEnabled={false}
         logoEnabled={false}
         attributionEnabled={false}
