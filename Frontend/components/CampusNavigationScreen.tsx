@@ -63,9 +63,9 @@ import {
 } from '../services/campusVoice';
 import { buildTransitPlan, CampusTransitPlan } from '../services/campusTransitRouting';
 import {
+  CAMPUS_MAP_STYLE_URL,
   MapLibreMarker,
   MapLibrePolylineOverlay,
-  useCampusMapStyle,
   useMapLibreCamera,
 } from './map/mapLibreUtils';
 
@@ -154,7 +154,6 @@ export function CampusNavigationScreen() {
 
   const { cameraRef, defaultCamera, animateToRegion, animateCamera, fitToCoordinates } =
     useMapLibreCamera(TAMU_CENTER);
-  const campusMapStyle = useCampusMapStyle();
   const mapRef = useRef<{
     animateToRegion: typeof animateToRegion;
     animateCamera: typeof animateCamera;
@@ -737,7 +736,7 @@ export function CampusNavigationScreen() {
       <View style={styles.mapContainer}>
         <MapView
           style={styles.map}
-          mapStyle={campusMapStyle}
+          mapStyle={CAMPUS_MAP_STYLE_URL}
           compassEnabled
           logoEnabled={false}
           attributionEnabled={false}

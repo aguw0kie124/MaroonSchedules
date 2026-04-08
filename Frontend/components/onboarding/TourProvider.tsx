@@ -53,8 +53,6 @@ export const TOUR_SEQUENCE = [
   { id: 'gyms-pill', title: "Focus Filters 🏙️", desc: "Tap the 'Gyms' pill to quickly filter the map for recreation spots." },
   { id: 'rec-center-item', title: "Live Insights 📈", desc: "Select a rec center from the list to view its current live crowd data." },
   { id: 'social-tab', title: "Community ⬇️", desc: "Stay connected! Tap the 'Pings' tab to see trending campus updates." },
-  { id: 'crowdping-cta', title: "Spread the Word 📢", desc: "Help others by sharing live updates! Tap the search bar to start." },
-  { id: 'crowdping-close', title: "Spread the Word ✖️", desc: "You can post updates for others to see. Tap the 'X' to continue." },
   { id: 'settings-tab', title: "Profile ⚙️", desc: "Final step! Tap 'Settings' to finish your account setup.", position: 'top' },
   { id: 'tour-finish', title: "Welcome Home! 🎉", desc: "You're all set! Tap 'Launch MaroonLife' to start your journey." }
 ];
