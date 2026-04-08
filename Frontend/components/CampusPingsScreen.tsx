@@ -1444,8 +1444,8 @@ export function CampusPingsScreen() {
                         value={composerAnonymous}
                         onValueChange={setComposerAnonymous}
                         trackColor={{ false: COLORS.border, true: COLORS.success }}
-                        thumbColor={Platform.OS === 'ios' ? undefined : '#FFFFFF'}
                       />
+                    </View>
                   </ScrollView>
                 </View>
               </TouchableWithoutFeedback>
