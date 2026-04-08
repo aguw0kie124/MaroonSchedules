@@ -252,7 +252,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     fullCampusIndex,
     locations,
     refreshLocations,
-  } = useLocationData({ autoFetch: false });
+  } = useLocationData({ autoFetch: true });
   const [pulseHotspots, setPulseHotspots] = useState<CampusHotspot[]>([]);
   const pulseHotspotsRef = useRef<CampusHotspot[]>([]);
   const pulsePlacesRef = useRef<CampusLocation[]>([]);
@@ -1835,18 +1835,21 @@ export function PlacesMapScreen({ route, navigation }: any) {
         showsCompass={false}
         rotateEnabled={false}
         pitchEnabled
-        onPress={() => {
-          const hadSelection =
-            !!selectedId || !!selectedHotspotId || !!selectedStop || !!selectedBus;
-          setSelectedId(null);
-          setSelectedHotspotId(null);
-          setSelectedStop(null);
-          setSelectedBus(null);
-          setNearestBusInfo(null);
-          if (hadSelection) {
-            requestAnimationFrame(() => {
-              fitMapToActiveOverview();
-            });
+        onPress={(e) => {
+          // Only clear if we actually tapped the map background, not an annotation
+          if (e.nativeEvent.action !== 'marker-press') {
+            const hadSelection =
+              !!selectedId || !!selectedHotspotId || !!selectedStop || !!selectedBus;
+            setSelectedId(null);
+            setSelectedHotspotId(null);
+            setSelectedStop(null);
+            setSelectedBus(null);
+            setNearestBusInfo(null);
+            if (hadSelection) {
+              requestAnimationFrame(() => {
+                fitMapToActiveOverview();
+              });
+            }
           }
         }}
       >

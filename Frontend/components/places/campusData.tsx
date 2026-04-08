@@ -404,7 +404,7 @@ function toRegistryCampusLocation(place: CampusRegistryPlaceRecord): CampusLocat
     description: staticMeta.description || place.description || undefined,
     features: staticMeta.features || parseFeatureList(place.features),
     source: (place.source as CampusLocation["source"]) || "snapshot",
-    searchOnly: place.search_only !== false,
+    searchOnly: place.search_only === true,
   };
 }
 

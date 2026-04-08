@@ -255,11 +255,7 @@ export function MapLibreMarker({
       onPress={onPress ? () => onPress() : undefined}
       tracksViewChanges={false}
     >
-      {onPress ? (
-        <Pressable onPress={onPress} hitSlop={8}>
-          {children}
-        </Pressable>
-      ) : children}
+      {children}
     </Marker>
   );
 }
