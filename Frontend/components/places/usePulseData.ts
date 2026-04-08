@@ -37,7 +37,7 @@ export function usePulseData(
   const fetchPulseHotspots = useCallback(async () => {
     setIsLoadingPulse(true);
     try {
-      const rawHotspots = await fetchCampusPulseMap(12);
+      const rawHotspots = await fetchCampusPulseMap(100);
       const placeLookup = new Map(
         pulsePlaces.flatMap((place) => {
           const keys = [place.location];

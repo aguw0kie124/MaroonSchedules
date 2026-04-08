@@ -1226,12 +1226,13 @@ export function CampusPingsScreen() {
                             style={[styles.composerCategoryPill, active && styles.composerCategoryPillActive]}
                             onPress={() => setComposerCategory(cat.id)}
                           >
-                            <Icon size={12} color={active ? '#FFFFFF' : cat.accent} />
+                            <Icon size={14} color={active ? '#FFFFFF' : cat.accent} />
                             <Text
                               style={[
                                 styles.composerCategoryLabel,
                                 active && styles.composerCategoryLabelActive,
                               ]}
+                              numberOfLines={1}
                             >
                               {cat.id}
                             </Text>
@@ -1895,9 +1896,10 @@ const getStyles = (theme: any) => {
       elevation: 4,
     },
     composerCategoryLabel: {
-      color: COLORS.textSecondary,
+      color: COLORS.textPrimary,
       fontSize: 14,
-      fontWeight: '700',
+      fontWeight: '600',
+      marginLeft: 6,
     },
     composerCategoryLabelActive: {
       color: '#FFFFFF',

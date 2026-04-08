@@ -183,7 +183,7 @@ def invalidate_pulse_map_cache() -> None:
         cache_service.delete(f"campus:pulse:map:v2:{limit}")
 
 
-def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
+def get_pulse_map(limit: int = 100) -> Dict[str, Any]:
     cache_key = f"campus:pulse:map:v2:{limit}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
@@ -253,7 +253,8 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
                     "place_id": place_id,
                     "name": location_tag or "Current Location",
                     "lat": lat,
-                    "lng": lng
+                    "lng": lng,
+                    "is_synthetic": True
                 }
             else:
                 continue
@@ -286,6 +287,11 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
             + min(4, comment_count * 0.7)
             + _ping_category_boost(category)
         )
+
+        # Boost off-campus pings to verify they show up even when campus is active
+        if place.get("is_synthetic"):
+            weight += 15
+        
         
         print(f"[pulse_service] Including ping: {ping_id} (Date: {start_at}, Weight: {weight}, Category: {category})")
 

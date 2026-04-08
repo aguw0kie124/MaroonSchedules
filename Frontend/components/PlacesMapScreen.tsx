@@ -271,7 +271,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   } = useQuery({
     queryKey: ['campus-pulse', user?.id],
     queryFn: async () => {
-      const rawHotspots = await fetchCampusPulseMap(12, { 
+      const rawHotspots = await fetchCampusPulseMap(100, { 
         clerkId: user?.id || undefined
       });
       
