@@ -140,7 +140,7 @@ function categoryMeta(category: string) {
   );
 }
 
-function buildPresetWindow(preset: TimePreset) {
+function buildPresetWindow(preset: TimePreset, durationHours: number = 3) {
   const now = new Date();
   const start = new Date(now);
 
@@ -157,7 +157,7 @@ function buildPresetWindow(preset: TimePreset) {
   }
 
   const end = new Date(start);
-  end.setHours(end.getHours() + (preset === 'now' ? 2 : 3));
+  end.setMinutes(end.getMinutes() + Math.round(durationHours * 60));
 
   return {
     startAt: start.toISOString(),
@@ -209,6 +209,16 @@ function isPingActiveNow(startAt: string, endAt?: string | null) {
   return Number.isFinite(start) && now >= start - 30 * 60 * 1000 && now <= end;
 }
 
+function resolveMediaUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('/uploads/')) return `${API_URL}${url}`;
+  if ((url.includes('127.0.0.1') || url.includes('localhost')) && url.includes('/uploads/')) {
+    const parts = url.split('/uploads/');
+    return `${API_URL}/uploads/${parts[1]}`;
+  }
+  return url;
+}
+
 function mapOfficialEventCategory(event: FeaturedEvent): PingCategory {
   if (event.categories?.food) return 'Free Food';
   if (event.categories?.sports) return 'Sports';
@@ -243,7 +253,7 @@ function mapActivityToPing(activity: any): PingCard {
     commentCount: activity.reaction_counts?.reply || 0,
     activityId: activity.id,
     sourceUrl: null,
-    imageUrl: media.image_url || media.asset_url || null,
+    imageUrl: resolveMediaUrl(media.image_url || media.asset_url || null),
   };
 }
 
@@ -314,6 +324,8 @@ export function CampusPingsScreen() {
   const [composerBody, setComposerBody] = useState('');
   const [composerCategory, setComposerCategory] = useState<PingCategory>('Popup');
   const [composerTimePreset, setComposerTimePreset] = useState<TimePreset>('now');
+  const [composerDurationHours, setComposerDurationHours] = useState<number>(3);
+  const [useCurrentLocation, setUseCurrentLocation] = useState(true);
   const [locationQuery, setLocationQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [composerImageUri, setComposerImageUri] = useState<string | null>(null);
@@ -417,9 +429,11 @@ export function CampusPingsScreen() {
     setComposerBody('');
     setComposerCategory('Popup');
     setComposerTimePreset('now');
+    setComposerDurationHours(3);
     setLocationQuery('');
     setSelectedLocation(null);
     setComposerImageUri(null);
+    setUseCurrentLocation(true);
   }, []);
 
   const handleRefresh = useCallback(() => {
@@ -429,6 +443,7 @@ export function CampusPingsScreen() {
   const handleSelectLocation = useCallback((locationName: string) => {
     setSelectedLocation(locationName);
     setLocationQuery(locationName);
+    setUseCurrentLocation(false);
   }, []);
 
   const handlePickPingImage = useCallback(async () => {
@@ -459,7 +474,12 @@ export function CampusPingsScreen() {
       Alert.alert('Missing details', 'Add a title and a quick description so people know what is happening.');
       return;
     }
-    if (!selectedLocation) {
+    let finalLocation = selectedLocation;
+    if (useCurrentLocation) {
+      finalLocation = 'Current Location';
+    }
+
+    if (!finalLocation) {
       Alert.alert('Pick a location', 'Tag a campus location so this ping can connect back into the map.');
       return;
     }
@@ -469,7 +489,7 @@ export function CampusPingsScreen() {
         ? `${user.firstName} ${user.lastName}`.trim()
         : user.firstName || user.fullName || user.username || 'Aggie';
 
-    const { startAt, endAt } = buildPresetWindow(composerTimePreset);
+    const { startAt, endAt } = buildPresetWindow(composerTimePreset, composerDurationHours);
     setIsPosting(true);
     try {
       let uploadedImageUrl: string | undefined;
@@ -484,9 +504,9 @@ export function CampusPingsScreen() {
         title: composerTitle.trim(),
         body: composerBody.trim(),
         category: composerCategory,
-        locationTag: selectedLocation,
+        locationTag: finalLocation,
         placeId:
-          locationLookup.get(getCanonicalLocationName(selectedLocation))?.placeId || undefined,
+          locationLookup.get(getCanonicalLocationName(finalLocation))?.placeId || undefined,
         startAt,
         endAt,
         mediaUrl: uploadedImageUrl,
@@ -1045,7 +1065,40 @@ export function CampusPingsScreen() {
                       })}
                     </ScrollView>
 
+                    <Text style={styles.modalLabel}>Duration</Text>
+                    <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 24, alignSelf: 'flex-start'}}>
+                      <Pressable 
+                        onPress={() => setComposerDurationHours(Math.max(0.5, composerDurationHours - 0.5))}
+                        style={{width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border}}
+                      >
+                         <Text style={{color: COLORS.textPrimary, fontSize: 18, fontWeight: '600'}}>-</Text>
+                      </Pressable>
+                      
+                      <View style={{width: 90, alignItems: 'center'}}>
+                        <Text style={{color: COLORS.textPrimary, fontSize: 15, fontWeight: '600'}}>
+                           {composerDurationHours === 0.5 ? '30 min' : `${composerDurationHours} hr${composerDurationHours !== 1 ? 's' : ''}`}
+                        </Text>
+                      </View>
+
+                      <Pressable 
+                        onPress={() => setComposerDurationHours(Math.min(24, composerDurationHours + 0.5))}
+                        style={{width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.05)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border}}
+                      >
+                         <Text style={{color: COLORS.textPrimary, fontSize: 18, fontWeight: '600'}}>+</Text>
+                      </Pressable>
+                    </View>
+
                     <Text style={styles.modalLabel}>Location</Text>
+                    <Pressable 
+                      onPress={() => {
+                        setUseCurrentLocation(!useCurrentLocation);
+                        if (!useCurrentLocation) { setLocationQuery(''); setSelectedLocation(null); }
+                      }}
+                      style={{flexDirection: 'row', alignItems: 'center', marginBottom: 12, backgroundColor: useCurrentLocation ? 'rgba(122,11,28,0.1)' : 'transparent', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 16, alignSelf: 'flex-start', borderWidth: 1, borderColor: useCurrentLocation ? '#7A0B1C' : COLORS.border}}
+                    >
+                      <MapPin size={16} color={useCurrentLocation ? '#7A0B1C' : COLORS.textTertiary} style={{marginRight: 6}} />
+                      <Text style={{color: useCurrentLocation ? '#7A0B1C' : COLORS.textTertiary, fontWeight: '600', fontSize: 13}}>Use current location</Text>
+                    </Pressable>
                     <View style={styles.searchInputWrap}>
                       <Search size={16} color={COLORS.textSecondary} />
                       <TextInput
@@ -1053,6 +1106,7 @@ export function CampusPingsScreen() {
                         onChangeText={(text) => {
                           setLocationQuery(text);
                           setSelectedLocation(null);
+                          setUseCurrentLocation(false);
                         }}
                         placeholder="Search for a campus location"
                         placeholderTextColor={COLORS.textTertiary}

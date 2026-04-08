@@ -1507,7 +1507,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 {discoverEvents[0] ? (
                   <WhyItFitsRow
                     reasons={personalizationReasonMap[String(discoverEvents[0].id)] || []}
-                    light
+                    light={isDark}
                   />
                 ) : null}
                 {personalizationChips.length > 0 ? (
@@ -1898,7 +1898,8 @@ function HeroEventCard({
   onPress: () => void;
   onMap: () => void;
 }) {
-  const { COLORS } = useTheme();
+  const { COLORS, theme } = useTheme();
+  const isDark = theme === 'dark';
   const category = classifyCategory(event);
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
@@ -1936,7 +1937,7 @@ function HeroEventCard({
         nestedScrollEnabled
       >
         <Text style={stylesStatic.heroTitle}>{event.title}</Text>
-        <WhyItFitsRow reasons={reasons} light />
+        <WhyItFitsRow reasons={reasons} light={isDark} />
         {event.group_title ? (
           <View style={stylesStatic.heroOrganizerPill}>
             <BadgeCheck size={13} color="#FFFFFF" />

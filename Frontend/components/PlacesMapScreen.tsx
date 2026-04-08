@@ -1166,15 +1166,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
             return i;
           });
           
-          let pingCountDelta = 0;
-          if (scoreDelta > 0 && currentVote === 0) pingCountDelta = 1;
-          else if (scoreDelta < 0 && finalVote === 0) pingCountDelta = -1;
-
           return {
             ...h,
             items: updatedItems,
             score: (h.score || 0) + scoreDelta,
-            pingCount: Math.max(0, h.pingCount + pingCountDelta),
           };
         }
         return h;
