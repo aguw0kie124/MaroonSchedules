@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Animated,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -37,48 +36,48 @@ type Question = {
   helper: string;
   icon: React.ComponentType<any>;
   multi?: boolean;
-  options: Array<{ id: string; label: string; description: string }>;
+  options: Array<{ id: string; label: string }>;
 };
 
 const NO_PREFERENCE_ID = 'none';
 
 const CATEGORY_OPTIONS: Question['options'] = [
-  { id: 'Featured', label: 'Featured', description: 'Big campus happenings and standout moments.' },
-  { id: 'Food', label: 'Free Food', description: 'Meals, snacks, and surprise food drops.' },
-  { id: 'Sports', label: 'Sports', description: 'Games, rec events, and athletic energy.' },
-  { id: 'Social', label: 'Social', description: 'Mixers, hangouts, and meeting people.' },
-  { id: 'Academic', label: 'Academic', description: 'Workshops, talks, and career-focused events.' },
-  { id: 'Entertainment', label: 'Entertainment', description: 'Shows, concerts, and fun nights out.' },
-  { id: NO_PREFERENCE_ID, label: 'No preference', description: 'Keep this broad and let the app learn over time.' },
+  { id: 'Featured', label: 'Featured' },
+  { id: 'Food', label: 'Free Food' },
+  { id: 'Sports', label: 'Sports' },
+  { id: 'Social', label: 'Social' },
+  { id: 'Academic', label: 'Academic' },
+  { id: 'Entertainment', label: 'Entertainment' },
+  { id: NO_PREFERENCE_ID, label: 'No preference' },
 ];
 
 const TIME_OPTIONS: Question['options'] = [
-  { id: 'Morning', label: 'Morning', description: 'Start me with early-day plans and campus energy.' },
-  { id: 'Afternoon', label: 'Afternoon', description: 'Best for finding events between classes.' },
-  { id: 'Evening', label: 'Evening', description: 'Bias the feed toward later-day plans.' },
-  { id: NO_PREFERENCE_ID, label: 'No preference', description: 'Do not favor any part of the day yet.' },
+  { id: 'Morning', label: 'Morning' },
+  { id: 'Afternoon', label: 'Afternoon' },
+  { id: 'Evening', label: 'Evening' },
+  { id: NO_PREFERENCE_ID, label: 'No preference' },
 ];
 
 const MAJOR_OPTIONS: Question['options'] = [
-  { id: 'Engineering', label: 'Engineering', description: 'Prioritize engineering-relevant events when possible.' },
-  { id: 'Business', label: 'Business', description: 'Surface networking and business-focused opportunities.' },
-  { id: 'Science', label: 'Science', description: 'Highlight research, lab, and science-centered events.' },
-  { id: 'Liberal Arts', label: 'Liberal Arts', description: 'Show culture, humanities, and discussion events.' },
-  { id: NO_PREFERENCE_ID, label: 'No preference', description: 'Keep recommendations broad across campus.' },
+  { id: 'Engineering', label: 'Engineering' },
+  { id: 'Business', label: 'Business' },
+  { id: 'Science', label: 'Science' },
+  { id: 'Liberal Arts', label: 'Liberal Arts' },
+  { id: NO_PREFERENCE_ID, label: 'No preference' },
 ];
 
 const SOCIAL_OPTIONS: Question['options'] = [
-  { id: 'casual', label: 'Casual', description: 'Fun, friends, and low-pressure social plans.' },
-  { id: 'professional', label: 'Professional', description: 'Networking, panels, and growth-focused events.' },
-  { id: NO_PREFERENCE_ID, label: 'No preference', description: 'Do not lean one way until I explore more.' },
+  { id: 'casual', label: 'Casual' },
+  { id: 'professional', label: 'Professional' },
+  { id: NO_PREFERENCE_ID, label: 'No preference' },
 ];
 
 const QUESTIONS: Question[] = [
   {
     id: 'categories',
     title: 'What kinds of events should we feature more often?',
-    subtitle: 'Pick up to three so your Events feed starts with the kinds of things you are most likely to care about.',
-    helper: 'These map directly to the category filters on the Events page.',
+    subtitle: 'Pick up to three.',
+    helper: 'These become your default event filters.',
     multi: true,
     icon: Shapes,
     options: CATEGORY_OPTIONS,
@@ -86,24 +85,24 @@ const QUESTIONS: Question[] = [
   {
     id: 'time',
     title: 'When do you usually want to go out?',
-    subtitle: 'We use this as a ranking signal so the Events feed puts the right time-of-day plans higher first.',
-    helper: 'This shapes your For You ordering without locking you out of anything.',
+    subtitle: 'This helps rank your feed.',
+    helper: 'You can still browse everything.',
     icon: Clock3,
     options: TIME_OPTIONS,
   },
   {
     id: 'major',
     title: 'Should we personalize around your major?',
-    subtitle: 'This helps us surface more relevant academic and career events when it makes sense for you.',
-    helper: 'You can still toggle major-specific recommendations later from Events.',
+    subtitle: 'We can boost relevant academic and career events.',
+    helper: 'You can turn this on or off later.',
     icon: GraduationCap,
     options: MAJOR_OPTIONS,
   },
   {
     id: 'social',
     title: 'When a social event appears, what vibe should we lean toward?',
-    subtitle: 'We use this to tune how social recommendations feel so the feed is more useful right away.',
-    helper: 'This maps to the social mode filter on the Events screen.',
+    subtitle: 'Choose the vibe you want first.',
+    helper: 'This tunes social recommendations.',
     icon: HeartHandshake,
     options: SOCIAL_OPTIONS,
   },
@@ -240,7 +239,7 @@ function QuestionOptionCard({
   isDark,
   colors,
 }: {
-  option: { id: string; label: string; description: string };
+  option: { id: string; label: string };
   selected: boolean;
   onPress: () => void;
   index: number;
@@ -314,9 +313,6 @@ function QuestionOptionCard({
               </View>
             ) : null}
           </View>
-          <Text style={[styles.optionDescription, { color: colors.textSecondary }]}>
-            {option.description}
-          </Text>
         </View>
         <View
           style={[
@@ -342,6 +338,8 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
   const setPreferredEventCategories = useAppShellStore((state) => state.setPreferredEventCategories);
   const setPreferredTime = useAppShellStore((state) => state.setPreferredTime);
   const setPreferredSocialMode = useAppShellStore((state) => state.setPreferredSocialMode);
+  const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
+  const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
   const selectedMajor = useEventStore((state) => state.selectedMajor);
   const isMajorSpecific = useEventStore((state) => state.isMajorSpecific);
   const setSelectedMajor = useEventStore((state) => state.setSelectedMajor);
@@ -351,7 +349,6 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
   const [loading, setLoading] = React.useState(false);
   const [celebration, setCelebration] = React.useState<{ title: string; body: string } | null>(null);
   const celebrationTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const autoAdvanceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [categorySelection, setCategorySelection] = React.useState<string[]>(
     getInitialCategories(preferredEventCategories),
   );
@@ -367,7 +364,6 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
 
   const question = QUESTIONS[questionIndex];
   const progress = (questionIndex + 1) / QUESTIONS.length;
-  const nextQuestion = QUESTIONS[questionIndex + 1] || null;
 
   const canContinue =
     (question.id === 'categories' && categorySelection.length > 0) ||
@@ -379,8 +375,11 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
     Animated.sequence([
       Animated.timing(fade, { toValue: 0, duration: 180, useNativeDriver: true }),
       Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: true }),
-    ]).start();
-    setTimeout(callback, 180);
+    ]).start(({ finished }) => {
+      if (finished) {
+        callback();
+      }
+    });
   };
 
   const normalizedCategorySelection = React.useMemo(
@@ -389,18 +388,11 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
   );
   const normalizedTimeSelection = timeSelection === NO_PREFERENCE_ID ? null : timeSelection;
   const normalizedSocialSelection = socialSelection === NO_PREFERENCE_ID ? null : socialSelection;
-  const singleChoiceReady =
-    (question.id === 'time' && !!timeSelection) ||
-    (question.id === 'major' && !!majorSelection) ||
-    (question.id === 'social' && !!socialSelection);
 
   React.useEffect(() => {
     return () => {
       if (celebrationTimerRef.current) {
         clearTimeout(celebrationTimerRef.current);
-      }
-      if (autoAdvanceTimerRef.current) {
-        clearTimeout(autoAdvanceTimerRef.current);
       }
     };
   }, []);
@@ -478,6 +470,16 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
       setPreferredTime(normalizedTimeSelection);
       setPreferredSocialMode(normalizedSocialSelection);
 
+      if (majorSelection !== NO_PREFERENCE_ID) {
+        setSelectedMajor(majorSelection);
+        setMajorSpecific(true);
+      } else {
+        setMajorSpecific(false);
+      }
+      setEventPreferencesCompleted(true);
+      setShowEventPreferencesOnboarding(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      onDone();
       await updateUserProfile(clerkId, {
         preferred_event_categories: normalizedCategorySelection,
         preferred_time: normalizedTimeSelection,
@@ -485,20 +487,6 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
         preferred_social_mode: normalizedSocialSelection,
         event_preferences_completed: true,
       });
-
-      if (majorSelection !== NO_PREFERENCE_ID) {
-        setSelectedMajor(majorSelection);
-        setMajorSpecific(true);
-      } else {
-        setMajorSpecific(false);
-      }
-
-      setCelebration({
-        title: 'You are all set',
-        body: 'Your Events feed now has a much better starting point.',
-      });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-      onDone();
     } catch (error) {
       console.warn('Failed to save event preferences', error);
     } finally {
@@ -515,38 +503,17 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
     onDone,
     question.id,
     questionIndex,
+    setEventPreferencesCompleted,
     setMajorSpecific,
     setPreferredEventCategories,
     setPreferredSocialMode,
     setPreferredTime,
     setSelectedMajor,
+    setShowEventPreferencesOnboarding,
     socialSelection,
     timeSelection,
     clerkId,
   ]);
-
-  React.useEffect(() => {
-    if (question.id === 'categories' || !singleChoiceReady || loading) {
-      if (autoAdvanceTimerRef.current) {
-        clearTimeout(autoAdvanceTimerRef.current);
-      }
-      return;
-    }
-
-    if (autoAdvanceTimerRef.current) {
-      clearTimeout(autoAdvanceTimerRef.current);
-    }
-
-    autoAdvanceTimerRef.current = setTimeout(() => {
-      handleContinue();
-    }, 420);
-
-    return () => {
-      if (autoAdvanceTimerRef.current) {
-        clearTimeout(autoAdvanceTimerRef.current);
-      }
-    };
-  }, [handleContinue, loading, question.id, singleChoiceReady]);
 
   const selectionHint =
     question.id === 'categories'
@@ -576,34 +543,14 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
 
       <View style={styles.header}>
         <View style={styles.headerTextWrap}>
-          <Text style={[styles.eyebrow, { color: COLORS.primary }]}>Personalize Your Feed</Text>
-          <Text style={[styles.headerTitle, { color: COLORS.textPrimary }]}>Let us shape Events around you.</Text>
+          <Text style={[styles.eyebrow, { color: COLORS.primary }]}>Events Setup</Text>
+          <Text style={[styles.headerTitle, { color: COLORS.textPrimary }]}>Pick your event vibe.</Text>
           <Text style={[styles.headerSubtitle, { color: COLORS.textSecondary }]}>
-            A few quick answers now make your Events screen feel much smarter from the start.
+            4 quick questions.
           </Text>
         </View>
         <View style={[styles.sparkleWrap, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.72)' }]}>
           <Sparkles size={22} color={COLORS.primary} />
-        </View>
-      </View>
-
-      <View
-        style={[
-          styles.coachBanner,
-          {
-            backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.72)',
-            borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.06)',
-          },
-        ]}
-      >
-        <View style={[styles.coachAvatar, { backgroundColor: `${COLORS.primary}16` }]}>
-          <Text style={[styles.coachAvatarText, { color: COLORS.primary }]}>M</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.coachLabel, { color: COLORS.textPrimary }]}>Maroon Coach</Text>
-          <Text style={[styles.coachMessage, { color: COLORS.textSecondary }]}>
-            Answer with your gut. We will tune the Events page around this, and you can always retune it later in Settings.
-          </Text>
         </View>
       </View>
 
@@ -668,18 +615,9 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
           <View style={styles.helperRow}>
             <Text style={[styles.selectionHint, { color: COLORS.primary }]}>{selectionHint}</Text>
             <Text style={[styles.helperText, { color: COLORS.textSecondary }]}>{question.helper}</Text>
-            {nextQuestion ? (
-              <Text style={[styles.nextQuestionHint, { color: COLORS.textSecondary }]}>
-                Up next: {nextQuestion.title}
-              </Text>
-            ) : (
-              <Text style={[styles.nextQuestionHint, { color: COLORS.textSecondary }]}>
-                Final step. We will save this and tailor Events for you right away.
-              </Text>
-            )}
           </View>
 
-          <ScrollView contentContainerStyle={styles.optionsWrap} showsVerticalScrollIndicator={false}>
+          <View style={styles.optionsWrap}>
             {question.options.map((option, index) => {
               const selected =
                 (question.id === 'categories' && categorySelection.includes(option.id)) ||
@@ -699,7 +637,7 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
                 />
               );
             })}
-          </ScrollView>
+          </View>
 
           <Pressable
             onPress={handleContinue}
@@ -719,9 +657,7 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
                 <Text style={styles.continueText}>
                   {questionIndex === QUESTIONS.length - 1
                     ? 'Save preferences'
-                    : question.id === 'categories'
-                      ? 'Continue'
-                      : 'Saving and moving on'}
+                    : 'Continue'}
                 </Text>
                 <ChevronRight size={18} color="#FFFFFF" strokeWidth={3} />
               </>
@@ -737,8 +673,8 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 22,
-    paddingTop: 72,
-    paddingBottom: 32,
+    paddingTop: 34,
+    paddingBottom: 18,
   },
   orb: {
     position: 'absolute',
@@ -761,7 +697,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 16,
-    marginBottom: 20,
+    marginBottom: 12,
   },
   headerTextWrap: {
     flex: 1,
@@ -774,16 +710,16 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   headerTitle: {
-    fontSize: 31,
+    fontSize: 27,
     fontWeight: '900',
-    lineHeight: 36,
+    lineHeight: 31,
     letterSpacing: -1,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   headerSubtitle: {
-    fontSize: 14,
-    lineHeight: 21,
-    fontWeight: '600',
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
     maxWidth: 300,
   },
   sparkleWrap: {
@@ -794,41 +730,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   progressTrack: {
-    height: 8,
+    height: 6,
     borderRadius: 999,
     overflow: 'hidden',
-    marginBottom: 12,
-  },
-  coachBanner: {
-    borderRadius: 24,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 14,
-  },
-  coachAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  coachAvatarText: {
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  coachLabel: {
-    fontSize: 13,
-    fontWeight: '900',
-    marginBottom: 3,
-  },
-  coachMessage: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '600',
+    marginBottom: 10,
   },
   progressFill: {
     height: '100%',
@@ -837,7 +742,7 @@ const styles = StyleSheet.create({
   progressDots: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 18,
+    marginBottom: 12,
   },
   progressDot: {
     height: 10,
@@ -847,7 +752,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 18,
     right: 18,
-    top: 154,
+    top: 106,
     alignItems: 'center',
     zIndex: 20,
     pointerEvents: 'none',
@@ -895,12 +800,16 @@ const styles = StyleSheet.create({
   },
   cardShell: {
     flex: 1,
+    minHeight: 0,
   },
   card: {
     flex: 1,
+    minHeight: 0,
     borderRadius: 32,
     borderWidth: 1,
-    padding: 22,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 14,
     shadowOpacity: 0.12,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 12 },
@@ -910,13 +819,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 18,
+    marginBottom: 12,
     gap: 12,
   },
   questionIconWrap: {
-    width: 58,
-    height: 58,
-    borderRadius: 20,
+    width: 50,
+    height: 50,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -930,21 +839,21 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   questionTitle: {
-    fontSize: 28,
-    lineHeight: 33,
+    fontSize: 22,
+    lineHeight: 26,
     fontWeight: '900',
     letterSpacing: -0.8,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   questionSubtitle: {
-    fontSize: 15,
-    lineHeight: 22,
-    marginBottom: 14,
+    fontSize: 13,
+    lineHeight: 17,
+    marginBottom: 8,
     fontWeight: '600',
   },
   helperRow: {
-    gap: 6,
-    marginBottom: 14,
+    gap: 4,
+    marginBottom: 8,
   },
   selectionHint: {
     fontSize: 12,
@@ -953,26 +862,22 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   helperText: {
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 11,
+    lineHeight: 15,
     fontWeight: '600',
   },
-  nextQuestionHint: {
-    fontSize: 12,
-    lineHeight: 18,
-    fontWeight: '700',
-  },
   optionsWrap: {
-    gap: 12,
-    paddingBottom: 12,
+    gap: 8,
+    paddingBottom: 8,
   },
   optionCard: {
-    borderRadius: 24,
+    borderRadius: 18,
     borderWidth: 1.5,
-    padding: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 10,
   },
   optionTextWrap: {
     flex: 1,
@@ -982,40 +887,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,
-    marginBottom: 6,
   },
   optionLabel: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '800',
     flex: 1,
   },
   selectedBadge: {
     borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   selectedBadgeText: {
     color: '#FFFFFF',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '900',
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
-  optionDescription: {
-    fontSize: 13,
-    lineHeight: 19,
-    fontWeight: '500',
-  },
   radio: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     borderWidth: 2,
   },
   continueButton: {
     height: 58,
     borderRadius: 22,
-    marginTop: 18,
+    marginTop: 10,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',

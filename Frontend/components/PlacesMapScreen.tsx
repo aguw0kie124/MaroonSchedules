@@ -602,6 +602,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
       pulseHotspots.find((hotspot) => hotspot.id === selectedHotspotId) || null,
     [pulseHotspots, selectedHotspotId],
   );
+
+  useEffect(() => {
+    if (activeTargetName === "rec-center-item" && selectedLoc?.type === "Rec") {
+      const timer = setTimeout(() => {
+        advanceStep("rec-center-item");
+      }, 220);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTargetName, advanceStep, selectedLoc?.location, selectedLoc?.type]);
+
   const pulseTotals = useMemo(() => {
     return pulseHotspots.reduce(
       (totals, hotspot) => ({

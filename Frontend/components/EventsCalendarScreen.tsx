@@ -179,14 +179,6 @@ function normalizePreferredCategories(categories: string[] | undefined) {
   return (categories || []).filter(isExploreCategory).slice(0, PERSONALIZATION_CATEGORY_LIMIT);
 }
 
-function timeBucketLabel(preference: string | null) {
-  if (preference === 'Morning') return 'morning plans';
-  if (preference === 'Afternoon') return 'afternoon events';
-  if (preference === 'Evening') return 'evening picks';
-  if (preference === 'Anytime') return 'all-day plans';
-  return null;
-}
-
 function getTimePreferenceScore(event: TAMUEvent, preference: string | null) {
   if (!preference || preference === 'Anytime') return 0;
   const hour = new Date(event.date_ts * 1000).getHours();
@@ -388,8 +380,6 @@ function resolveEventImageUrl(value?: string | null) {
 }
 
 function classifyCategory(event: TAMUEvent): ExploreCategory {
-  if (event.is_admin_event || event.categories?.featured) return 'Featured';
-
   if (event.categories) {
     if (event.categories.food) return 'Food';
     if (event.categories.sports) return 'Sports';
@@ -399,7 +389,10 @@ function classifyCategory(event: TAMUEvent): ExploreCategory {
     if (event.categories.health_wellness) return 'Health & Wellness';
     if (event.categories.social) return 'Social';
     if (event.categories.miscellaneous || event.categories.religion) return 'Miscellaneous';
+    if (event.categories.featured || event.is_admin_event) return 'Featured';
   }
+
+  if (event.is_admin_event) return 'Featured';
 
   const blob = getSearchBlob(event);
   if (event.has_food || /\bfood\b|\bmeal\b|\bdinner\b|\blunch\b|\bbreakfast\b|\bpizza\b|\brefreshments\b/.test(blob)) return 'Food';
@@ -420,21 +413,136 @@ function getSocialMode(event: TAMUEvent): SocialMode {
   return 'casual';
 }
 
+const MAJOR_KEYWORDS: Record<MajorOption, string[]> = {
+  Engineering: [
+    'engineering',
+    'engineer',
+    'engr',
+    'mechanical',
+    'electrical',
+    'civil',
+    'industrial',
+    'biomedical',
+    'petroleum',
+    'aerospace',
+    'csce',
+    'computer science',
+    'coding',
+    'hackathon',
+    'robotics',
+  ],
+  Business: [
+    'business',
+    'mays',
+    'finance',
+    'accounting',
+    'marketing',
+    'consulting',
+    'entrepreneur',
+    'entrepreneurship',
+    'management',
+    'supply chain',
+    'economics',
+  ],
+  'Liberal Arts': [
+    'liberal arts',
+    'history',
+    'english',
+    'philosophy',
+    'communication',
+    'political science',
+    'polisci',
+    'journalism',
+    'writing',
+    'humanities',
+    'language',
+    'sociology',
+  ],
+  Agriculture: [
+    'agriculture',
+    'ag ',
+    'agriculture',
+    'animal science',
+    'horticulture',
+    'agronomy',
+    'ranch',
+    'livestock',
+    'soil',
+    'plant science',
+    'agribusiness',
+  ],
+  Science: [
+    'science',
+    'biology',
+    'biochem',
+    'chemistry',
+    'physics',
+    'math',
+    'mathematics',
+    'laboratory',
+    'lab',
+    'research',
+    'statistics',
+    'geology',
+  ],
+  Architecture: [
+    'architecture',
+    'arch ',
+    'arch.',
+    'urban planning',
+    'construction science',
+    'design studio',
+    'landscape',
+    'environment design',
+  ],
+  Education: [
+    'education',
+    'teaching',
+    'teacher',
+    'curriculum',
+    'classroom',
+    'pedagogy',
+    'educator',
+  ],
+  'Public Health': [
+    'public health',
+    'health policy',
+    'community health',
+    'epidemiology',
+    'global health',
+    'wellbeing',
+    'wellness',
+  ],
+  Law: [
+    'law',
+    'legal',
+    'pre-law',
+    'prelaw',
+    'attorney',
+    'mock trial',
+    'lsat',
+  ],
+  Medicine: [
+    'medicine',
+    'medical',
+    'premed',
+    'pre-med',
+    'nursing',
+    'clinical',
+    'healthcare',
+    'physician',
+    'patient care',
+    'dental',
+  ],
+};
+
+function normalizeMajorBlob(blob: string) {
+  return ` ${blob.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
+}
+
 function matchesMajor(event: TAMUEvent, major: MajorOption) {
-  const blob = event._searchBlob || getSearchBlob(event);
-  const aliases: Record<MajorOption, string[]> = {
-    Engineering: ['engineering', 'engr', 'mechanical', 'electrical', 'csce', 'computer science'],
-    Business: ['business', 'mays', 'finance', 'accounting', 'marketing'],
-    'Liberal Arts': ['liberal arts', 'history', 'english', 'philosophy', 'communication'],
-    Agriculture: ['agriculture', 'ag', 'animal science', 'horticulture'],
-    Science: ['science', 'biology', 'chemistry', 'physics', 'math'],
-    Architecture: ['architecture', 'arch', 'urban planning', 'construction science'],
-    Education: ['education', 'teaching', 'curriculum'],
-    'Public Health': ['public health', 'health', 'epidemiology'],
-    Law: ['law', 'legal', 'pre-law'],
-    Medicine: ['medicine', 'medical', 'premed', 'nursing', 'clinical'],
-  };
-  return aliases[major]?.some((term) => blob.includes(term)) ?? false;
+  const blob = normalizeMajorBlob(event._searchBlob || getSearchBlob(event));
+  return MAJOR_KEYWORDS[major]?.some((term) => blob.includes(` ${term.toLowerCase().trim()} `)) ?? false;
 }
 
 function formatTime(ts: number) {
@@ -809,10 +917,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     }
   }, [user?.id]);
 
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
-
   useFocusEffect(
     useCallback(() => {
       fetchEvents();
@@ -963,43 +1067,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       setView('discover');
     }
   }, [embedded, isEventPreferencesCompleted, isGuest, normalizedPreferenceCategories, preferredSocialMode, preferredTime]);
-
-  const pageSubtitle = useMemo(() => {
-    if (isGuest) {
-      return 'Browse what is happening on campus right now.';
-    }
-    if (!isEventPreferencesCompleted) {
-      return 'Discover events tailored to your campus life.';
-    }
-
-    const detailParts: string[] = [];
-    if (normalizedPreferenceCategories.length > 0) {
-      detailParts.push(normalizedPreferenceCategories.join(', '));
-    }
-    const timeLabel = timeBucketLabel(preferredTime);
-    if (timeLabel) {
-      detailParts.push(timeLabel);
-    }
-    if (preferredSocialMode) {
-      detailParts.push(preferredSocialMode === 'casual' ? 'casual social picks' : 'professional social picks');
-    }
-    if (isMajorSpecific) {
-      detailParts.push(`${selectedMajor} relevance`);
-    }
-
-    if (detailParts.length === 0) {
-      return 'Your Events feed is personalized and ready to learn from what you explore.';
-    }
-    return `For you: ${detailParts.join(' | ')}.`;
-  }, [
-    isEventPreferencesCompleted,
-    isGuest,
-    isMajorSpecific,
-    normalizedPreferenceCategories,
-    preferredSocialMode,
-    preferredTime,
-    selectedMajor,
-  ]);
 
   const personalizationChips = useMemo(() => {
     const chips: string[] = [];
@@ -1361,7 +1428,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       <View style={s.headerTopRow}>
         <View style={{ flex: 1 }}>
           <Text style={s.pageTitle}>{title}</Text>
-          <Text style={s.pageSubtitle}>{pageSubtitle}</Text>
         </View>
         <Pressable style={s.headerIconButton} onPress={() => setSettingsVisible(true)}>
           <Settings size={18} color={COLORS.textPrimary} />
@@ -1443,15 +1509,12 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 <View style={s.forYouHeroTop}>
                   <View>
                     <Text style={s.forYouEyebrow}>For You</Text>
-                    <Text style={s.forYouTitle}>A feed shaped around your campus rhythm.</Text>
+                    <Text style={s.forYouTitle}>Picked for you.</Text>
                   </View>
                   <View style={s.forYouSparkle}>
                     <Sparkles size={20} color={isDark ? '#FFFFFF' : COLORS.primary} />
                   </View>
                 </View>
-                <Text style={s.forYouBody}>
-                  {pageSubtitle}
-                </Text>
                 {discoverEvents[0] ? (
                   <WhyItFitsRow
                     reasons={personalizationReasonMap[String(discoverEvents[0].id)] || []}
@@ -1459,33 +1522,15 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   />
                 ) : null}
                 {personalizationChips.length > 0 ? (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={s.forYouChipRow}
-                  >
+                  <View style={s.forYouChipRow}>
                     {personalizationChips.map((chip) => (
                       <View key={`hero-${chip}`} style={s.forYouChip}>
                         <Text style={s.forYouChipText}>{chip}</Text>
                       </View>
                     ))}
-                  </ScrollView>
+                  </View>
                 ) : null}
               </LinearGradient>
-
-              {personalizationChips.length > 0 ? (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={s.personalizationRow}
-                >
-                  {personalizationChips.map((chip) => (
-                    <View key={chip} style={s.personalizationChip}>
-                      <Text style={s.personalizationChipText}>{chip}</Text>
-                    </View>
-                  ))}
-                </ScrollView>
-              ) : null}
 
               <View style={s.categoryWrap}>
                 {categoriesExpanded ? (
@@ -2765,9 +2810,9 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     forYouHero: {
       borderRadius: 28,
       paddingHorizontal: 18,
-      paddingVertical: 18,
+      paddingVertical: 14,
       marginTop: 6,
-      marginBottom: 14,
+      marginBottom: 10,
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.06)',
       shadowColor: '#000000',
@@ -2781,7 +2826,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       alignItems: 'flex-start',
       justifyContent: 'space-between',
       gap: 12,
-      marginBottom: 10,
+      marginBottom: 8,
     },
     forYouEyebrow: {
       color: isDark ? 'rgba(255,255,255,0.76)' : COLORS.primary,
@@ -2793,16 +2838,16 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     forYouTitle: {
       color: isDark ? '#FFFFFF' : COLORS.textPrimary,
-      fontSize: 24,
-      lineHeight: 28,
+      fontSize: 21,
+      lineHeight: 24,
       fontWeight: '900',
       letterSpacing: -0.7,
       maxWidth: 250,
     },
     forYouBody: {
       color: isDark ? 'rgba(255,255,255,0.82)' : COLORS.textSecondary,
-      fontSize: 14,
-      lineHeight: 20,
+      fontSize: 13,
+      lineHeight: 18,
       fontWeight: '600',
     },
     forYouSparkle: {
@@ -2814,40 +2859,22 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.72)',
     },
     forYouChipRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: 8,
-      paddingTop: 14,
-      paddingRight: 8,
+      paddingTop: 10,
     },
     forYouChip: {
       borderRadius: 999,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
       backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.84)',
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.06)',
     },
     forYouChipText: {
       color: isDark ? '#FFFFFF' : COLORS.textPrimary,
-      fontSize: 12,
-      fontWeight: '800',
-    },
-    personalizationRow: {
-      gap: 8,
-      paddingTop: 6,
-      paddingBottom: 14,
-      paddingRight: 8,
-    },
-    personalizationChip: {
-      borderRadius: 999,
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)',
-      borderWidth: 1,
-      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
-    },
-    personalizationChipText: {
-      color: COLORS.textPrimary,
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: '800',
     },
     categoryWrap: {

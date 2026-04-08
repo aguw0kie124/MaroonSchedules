@@ -179,6 +179,7 @@ export function Profile() {
   const notificationsEnabled = useAppShellStore((state) => state.notificationsEnabled);
   const setNotificationsEnabled = useAppShellStore((state) => state.setNotificationsEnabled);
   const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
+  const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
   const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
   const preferredTime = useAppShellStore((state) => state.preferredTime);
   const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
@@ -586,8 +587,8 @@ export function Profile() {
           <Compass size={24} color={COLORS.primary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Restart Interactive Tour</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Replay the guided onboarding tutorial.</Text>
+          <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Restart App Tour</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Replay the guided walkthrough for Events, Places, and Pings.</Text>
         </View>
         <ChevronRight size={20} color={COLORS.textTertiary} />
       </Pressable>
@@ -603,14 +604,17 @@ export function Profile() {
           gap: 12,
           marginTop: 10
         }]} 
-        onPress={() => setShowEventPreferencesOnboarding(true)}
+        onPress={() => {
+          setEventPreferencesCompleted(false);
+          setShowEventPreferencesOnboarding(true);
+        }}
       >
         <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(47, 128, 237, 0.12)', alignItems: 'center', justifyContent: 'center' }}>
           <Sparkles size={24} color="#2F80ED" />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Redo Preference Questions</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Retune your Events feed preferences and discovery setup.</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Reopen the 4 Events setup questions.</Text>
           <Text style={{ color: COLORS.textTertiary, fontSize: 12, marginTop: 6, lineHeight: 17 }}>{preferenceSummary}</Text>
         </View>
         <ChevronRight size={20} color={COLORS.textTertiary} />

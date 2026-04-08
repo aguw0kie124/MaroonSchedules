@@ -63,6 +63,17 @@ export function PageModuleEditor<T extends string>({
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark);
   const { activeTargetName, advanceStep } = useTour();
+  const scrollRef = React.useRef<ScrollView>(null);
+
+  React.useEffect(() => {
+    if (!visible) return;
+    if (activeTargetName === 'add-gyms-toggle' || activeTargetName === 'add-gyms-close') {
+      const timer = setTimeout(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }, 260);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTargetName, visible]);
 
   if (!visible) return null;
 
@@ -102,6 +113,7 @@ export function PageModuleEditor<T extends string>({
           </View>
 
           <ScrollView
+            ref={scrollRef}
             style={styles.sheetScroller}
             contentContainerStyle={styles.sheetContent}
             showsVerticalScrollIndicator={false}
