@@ -242,24 +242,31 @@ def get_pulse_map(limit: int = 100) -> Dict[str, Any]:
         lat = ping.get("lat")
         lng = ping.get("lng")
 
-        if not place_id:
-            if lat is not None and lng is not None:
-                # Synthetic place for non-campus snaps (allows off-campus pings to be seen)
+        # 1. Attempt to resolve from registry first for named campus buildings
+        if place_id and not place_id.startswith("geo:"):
+            place = place_registry_service.get_place_by_id(place_id)
+
+        # 2. If no campus building, but we have geographic coordinates, create/use a synthetic place
+        if not place and lat is not None and lng is not None:
+            if not place_id or not place_id.startswith("geo:"):
+                # Generate a stable synthetic ID if we don't have one
                 if location_tag:
                     place_id = f"geo:{location_tag.lower().replace(' ', '-')}:{lat}:{lng}"
                 else:
                     place_id = f"geo:point:{lat}:{lng}"
-                place = {
-                    "place_id": place_id,
-                    "name": location_tag or "Current Location",
-                    "lat": lat,
-                    "lng": lng,
-                    "is_synthetic": True
-                }
-            else:
-                continue
+            
+            place = {
+                "place_id": place_id,
+                "name": location_tag or "Current Location",
+                "lat": lat,
+                "lng": lng,
+                "is_synthetic": True
+            }
 
-        place = place or place_registry_service.get_place_by_id(place_id)
+        # 3. Last fallback: if we only have a location name, try to resolve by name
+        if not place and location_tag:
+            place = place_registry_service.resolve_place(location_tag, None, None)
+
         if not place:
             continue
 
