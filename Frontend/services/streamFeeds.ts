@@ -224,7 +224,7 @@ export async function addPost(params: {
   }
 }
 
-export async function toggleVote(activityId: string, kind: 'upvote' | 'downvote'): Promise<any> {
+export async function toggleVote(activityId: string, kind: 'upvote' | 'downvote' | 'none' | 'like'): Promise<any> {
     if (!connectedUserId) throw new Error('Must be logged in to vote.');
     const res = await feedFetch('/chat/feeds/proxy/reactions', {
         method: 'POST',

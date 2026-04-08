@@ -25,6 +25,10 @@ import {
   ArrowBigDown,
   ArrowBigUp,
   CalendarDays,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Clock,
   ExternalLink,
   Flame,
   Heart,
@@ -52,6 +56,7 @@ import {
   getComments,
   getPingFeed,
   toggleLike,
+  toggleVote,
   uploadStreamImage,
 } from '../services/streamFeeds';
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
@@ -96,9 +101,9 @@ interface PingCard {
   userId?: string;
   userName: string;
   userImage?: string | null;
-  likeCount: number;
+  score: number;
+  userVote?: number; // -1, 0, 1
   commentCount: number;
-  userVote?: number; // -1, 0, or 1
   activityId?: string;
   sourceUrl?: string | null;
   locationLat?: number | null;
@@ -230,11 +235,11 @@ function mapActivityToPing(activity: any): PingCard {
     endAt: custom.end_at || null,
     createdAt: activity.time || activity.created_at || new Date().toISOString(),
     userId: actor.id || activity.actor || '',
-    userName: actor.data?.name || custom.user_name || 'Aggie',
-    userImage: actor.data?.image || custom.user_image || null,
-    likeCount: activity.reaction_counts?.like || activity.reaction_count || 0,
-    commentCount: activity.reaction_counts?.comment || 0,
-    userVote: (activity.own_reactions?.like || []).length > 0 ? 1 : 0,
+    userName: custom.is_anonymous ? 'Aggie User' : (actor.name || actor.data?.name || custom.user_name || 'Aggie User'),
+    userImage: custom.is_anonymous ? null : (actor.image || actor.data?.image || custom.user_image || null),
+    score: activity.reaction_counts?.score || 0,
+    userVote: (activity.own_reactions?.upvote || []).length > 0 ? 1 : ((activity.own_reactions?.downvote || []).length > 0 ? -1 : 0),
+    commentCount: activity.reaction_counts?.reply || 0,
     activityId: activity.id,
     sourceUrl: null,
     imageUrl: media.image_url || media.asset_url || null,
@@ -358,6 +363,8 @@ export function CampusPingsScreen() {
       setFeaturedEvents([]);
     }
   }, []);
+
+
 
   const loadUserPings = useCallback(async () => {
     try {
@@ -524,7 +531,6 @@ export function CampusPingsScreen() {
       const newUserVote = currentVote === direction ? 0 : direction;
       const delta = newUserVote - currentVote;
 
-      // Haptics for physical feel
       if (Platform.OS !== 'web') {
         const Haptics = require('expo-haptics');
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -533,13 +539,13 @@ export function CampusPingsScreen() {
       setUserPings((current) =>
         current.map((entry) =>
           entry.id === ping.id
-            ? { ...entry, userVote: newUserVote, likeCount: entry.likeCount + delta }
+            ? { ...entry, userVote: newUserVote, score: (entry.score || 0) + delta }
             : entry,
         ),
       );
 
       try {
-        await toggleLike(ping.activityId, user.id); 
+        await toggleVote(ping.activityId, newUserVote === 1 ? 'upvote' : newUserVote === -1 ? 'downvote' : 'none');
       } catch (error) {
         console.warn('[Pings] vote failed', error);
       }
@@ -808,19 +814,29 @@ export function CampusPingsScreen() {
 
           <View style={styles.voteStack}>
             <Pressable
-              style={[styles.voteButton, item.userVote === 1 && { backgroundColor: meta.accent }]}
               onPress={() => handleVotePing(item, 1)}
+              style={[styles.voteButton, item.userVote === 1 && { backgroundColor: 'rgba(122,11,28,0.1)' }]}
             >
-              <ArrowBigUp size={18} color={item.userVote === 1 ? '#FFF' : COLORS.textPrimary} />
+              <ChevronUp 
+                size={20} 
+                color={item.userVote === 1 ? '#7A0B1C' : COLORS.textTertiary} 
+                strokeWidth={item.userVote === 1 ? 3 : 2}
+              />
             </Pressable>
-            <Text style={[styles.voteCount, item.userVote !== 0 && { color: item.userVote === 1 ? meta.accent : '#FF6347' }]}>
-              {item.likeCount}
+            
+            <Text style={[styles.voteCount, item.userVote !== 0 && { color: item.userVote === 1 ? '#7A0B1C' : '#FF4D6D' }]}>
+              {item.score || 0}
             </Text>
+
             <Pressable
-              style={[styles.voteButton, item.userVote === -1 && { backgroundColor: '#FF6347' }]}
               onPress={() => handleVotePing(item, -1)}
+              style={[styles.voteButton, item.userVote === -1 && { backgroundColor: 'rgba(255,77,109,0.1)' }]}
             >
-              <ArrowBigDown size={18} color={item.userVote === -1 ? '#FFF' : COLORS.textPrimary} />
+              <ChevronDown 
+                size={20} 
+                color={item.userVote === -1 ? '#FF4D6D' : COLORS.textTertiary} 
+                strokeWidth={item.userVote === -1 ? 3 : 2}
+              />
             </Pressable>
           </View>
 

@@ -30,6 +30,7 @@ import {
   InteractionManager,
   ActivityIndicator,
   Share,
+  Pressable,
 } from "react-native";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
@@ -127,6 +128,7 @@ import { getStyles } from "./places/placesStyles";
 import {
   fetchCampusPulseMap,
   invalidateCampusPulseCache,
+  voteHotspot,
   type CampusHotspot,
 } from "../services/campusPulse";
 import {
@@ -1086,6 +1088,38 @@ export function PlacesMapScreen({ route, navigation }: any) {
     },
     [openHotspotPlace],
   );
+ 
+  const handleVoteHotspot = useCallback(async (hotspotId: string, targetVote: number) => {
+    const prevHotspots = pulseHotspotsRef.current;
+    const hotspot = prevHotspots.find(h => h.id === hotspotId);
+    if (!hotspot) return;
+
+    // Toggle-to-undo logic
+    const finalVote = hotspot.userVote === targetVote ? 0 : targetVote;
+    const currentVote = hotspot.userVote || 0;
+    const scoreDelta = finalVote - currentVote;
+
+    const nextHotspots = prevHotspots.map(h => {
+      if (h.id === hotspotId) {
+        return {
+          ...h,
+          score: (h.score || 0) + scoreDelta,
+          pingCount: Math.max(0, h.pingCount + scoreDelta),
+          userVote: finalVote
+        };
+      }
+      return h;
+    });
+
+    setPulseHotspots(nextHotspots);
+    pulseHotspotsRef.current = nextHotspots;
+
+    if (finalVote !== 0) {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
+    await voteHotspot(hotspotId, finalVote);
+  }, []);
 
   const fetchPulseHotspots = useCallback(async (options: { force?: boolean } = {}) => {
     const forceRefresh = options.force === true;
@@ -1136,25 +1170,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleVoteHotspot = useCallback(
-    async (hotspotId: string, direction: number) => {
-      try {
-        const { voteHotspot } = require("../services/campusPulse");
-        const currentHotspot = pulseHotspots.find((h) => h.id === hotspotId);
-        if (!currentHotspot) return;
-
-        const currentVote = currentHotspot.userVote || 0;
-        // If clicking same direction -> Undo (0). Else -> Direction.
-        const newUserVote = currentVote === direction ? 0 : direction;
-
-        await voteHotspot(hotspotId, newUserVote);
-        fetchPulseHotspots();
-      } catch (e) {
-        console.warn("Failed to vote on hotspot", e);
-      }
-    },
-    [pulseHotspots, fetchPulseHotspots],
-  );
 
   const hasSeenPulseLayer = useRef(false);
   useEffect(() => {
@@ -2501,6 +2516,20 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
       {/* Global Search Results Overlay moved to bottom for z-index priority */}
 
+      <PulseHotspotSheet
+        visible={activeLayer === "Pulse" && !!selectedHotspot}
+        hotspot={selectedHotspot}
+        onClose={() => {
+          setSelectedHotspotId(null);
+          requestAnimationFrame(() => {
+            fitMapToActiveOverview();
+          });
+        }}
+        onOpenPlace={openHotspotPlace}
+        onOpenItem={openHotspotItem}
+        onVote={handleVoteHotspot}
+      />
+
       <View style={styles.mapFabStack} pointerEvents="box-none">
         <TouchableOpacity style={styles.mapFab} onPress={centerOnUserLocation}>
           <LocateFixed size={22} color={COLORS.textPrimary} />
@@ -2541,21 +2570,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
           }
         }}
         selectedRoute={selectedRoute}
-      />
-
-      <PulseHotspotSheet
-        styles={styles}
-        COLORS={COLORS}
-        hotspot={activeLayer === "Pulse" ? selectedHotspot : null}
-        onVote={(id, delta) => handleVoteHotspot(id, delta)}
-        onClose={() => {
-          setSelectedHotspotId(null);
-          requestAnimationFrame(() => {
-            fitMapToActiveOverview();
-          });
-        }}
-        onOpenPlace={openHotspotPlace}
-        onOpenItem={openHotspotItem}
       />
 
       {/* Slidable lists / Dropdowns removed per user request - handled by Top Dropdown */}
