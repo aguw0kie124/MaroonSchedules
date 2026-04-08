@@ -55,7 +55,13 @@ import AnimatedReanimated, {
   withTiming,
   runOnJS,
 } from "react-native-reanimated";
-import { Camera, MapView, UserLocation } from "@maplibre/maplibre-react-native";
+import {
+  Camera,
+  HeatmapLayer,
+  MapView,
+  ShapeSource,
+  UserLocation,
+} from "@maplibre/maplibre-react-native";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -159,6 +165,9 @@ const getNeonColor = (hex: string) => {
     .map((c) => Math.min(255, c).toString(16).padStart(2, "0"))
     .join("")}`;
 };
+
+const PULSE_HEATMAP_LIMIT = 25;
+const PULSE_MARKER_LIMIT = 12;
 
 export function PlacesMapScreen({ route, navigation }: any) {
   const { COLORS, theme } = useTheme();
@@ -580,6 +589,126 @@ export function PlacesMapScreen({ route, navigation }: any) {
     );
   }, [pulseHotspots]);
   const hottestHotspot = pulseHotspots[0] || null;
+  const pulseHeroHotspot = selectedHotspot || hottestHotspot;
+  const pulseMarkerHotspots = useMemo(() => {
+    const base = pulseHotspots.slice(0, PULSE_MARKER_LIMIT);
+    if (
+      selectedHotspot &&
+      !base.some((hotspot) => hotspot.id === selectedHotspot.id)
+    ) {
+      return [
+        selectedHotspot,
+        ...base.slice(0, Math.max(PULSE_MARKER_LIMIT - 1, 0)),
+      ];
+    }
+    return base;
+  }, [pulseHotspots, selectedHotspot]);
+  const pulseHeatmapShape = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features: pulseHotspots.map((hotspot) => ({
+        type: "Feature" as const,
+        id: hotspot.id,
+        properties: {
+          hotspotId: hotspot.id,
+          weight: hotspot.score,
+          activityCount: hotspot.pingCount + hotspot.eventCount,
+        },
+        geometry: {
+          type: "Point" as const,
+          coordinates: [hotspot.coord.lng, hotspot.coord.lat],
+        },
+      })),
+    }),
+    [pulseHotspots],
+  );
+  const pulseHeatmapStyle = useMemo(
+    () =>
+      ({
+        heatmapWeight: [
+          "interpolate",
+          ["linear"],
+          ["get", "weight"],
+          0,
+          0,
+          8,
+          0.18,
+          18,
+          0.4,
+          34,
+          0.7,
+          60,
+          1.05,
+          90,
+          1.35,
+        ],
+        heatmapIntensity: [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          8,
+          0.55,
+          11,
+          0.78,
+          13,
+          1.0,
+          15,
+          1.28,
+          17,
+          1.6,
+        ],
+        heatmapRadius: [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          8,
+          18,
+          11,
+          28,
+          13,
+          40,
+          15,
+          56,
+          17,
+          72,
+        ],
+        heatmapOpacity: [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          8,
+          0.92,
+          12,
+          0.82,
+          15,
+          0.62,
+          17,
+          0.3,
+          18.5,
+          0.1,
+        ],
+        heatmapColor: [
+          "interpolate",
+          ["linear"],
+          ["heatmap-density"],
+          0,
+          "rgba(255,194,0,0)",
+          0.1,
+          "rgba(255,214,138,0.22)",
+          0.22,
+          "rgba(255,176,106,0.42)",
+          0.38,
+          "rgba(255,132,93,0.62)",
+          0.56,
+          "rgba(255,92,109,0.78)",
+          0.76,
+          "rgba(216,63,101,0.9)",
+          1,
+          "rgba(118,24,61,0.98)",
+        ],
+      }) as any,
+    [],
+  );
   const markerLocations = useMemo(() => {
     if (activeLayer === "Heatmap" || activeLayer === "Bus")
       return selectedLoc ? [selectedLoc] : [];
@@ -992,7 +1121,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setIsLoadingPulse(true);
     }
     try {
-      const rawHotspots = await fetchCampusPulseMap(12);
+      const rawHotspots = await fetchCampusPulseMap(PULSE_HEATMAP_LIMIT);
       const currentPulsePlaces = pulsePlacesRef.current;
       const placeLookup = new Map(
         currentPulsePlaces.flatMap((place) => {
@@ -1736,22 +1865,32 @@ export function PlacesMapScreen({ route, navigation }: any) {
             );
           })}
 
-        {activeLayer === "Pulse" &&
-          pulseHotspots.map((hotspot) => (
-            <MapLibreCircleOverlay
-              key={`pulse-radius-${hotspot.id}`}
-              id={`pulse-radius-${hotspot.id}`}
-              center={{
-                latitude: hotspot.coord.lat,
-                longitude: hotspot.coord.lng,
-              }}
-              radiusMeters={hotspot.radius}
-              fillColor={hotspot.pulseColor}
-              fillOpacity={0.13}
-              strokeColor={`${hotspot.pulseColor}66`}
-              strokeWidth={1.5}
+        {activeLayer === "Pulse" && pulseHeatmapShape.features.length > 0 && (
+          <ShapeSource id="pulse-heatmap-source" shape={pulseHeatmapShape}>
+            <HeatmapLayer
+              id="pulse-heatmap-layer"
+              minZoomLevel={7}
+              maxZoomLevel={20}
+              style={pulseHeatmapStyle}
             />
-          ))}
+          </ShapeSource>
+        )}
+
+        {activeLayer === "Pulse" && selectedHotspot && (
+          <MapLibreCircleOverlay
+            key={`pulse-radius-${selectedHotspot.id}`}
+            id={`pulse-radius-${selectedHotspot.id}`}
+            center={{
+              latitude: selectedHotspot.coord.lat,
+              longitude: selectedHotspot.coord.lng,
+            }}
+            radiusMeters={selectedHotspot.radius}
+            fillColor={selectedHotspot.pulseColor}
+            fillOpacity={0.1}
+            strokeColor={`${selectedHotspot.pulseColor}66`}
+            strokeWidth={1.5}
+          />
+        )}
 
         {/* Bus route polylines */}
         {activeLayer === "Bus" &&
@@ -1966,7 +2105,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         )}
 
         {activeLayer === "Pulse" &&
-          pulseHotspots.map((hotspot) => {
+          pulseMarkerHotspots.map((hotspot) => {
             const isSelected = hotspot.id === selectedHotspotId;
             return (
               <MapLibreMarker
@@ -2243,6 +2382,84 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   nearestBusInfo={nearestBusInfo}
                   handleStopPress={handleStopPress}
                 />
+              </View>
+            )}
+
+            {activeLayer === "Pulse" && (
+              <View style={{ marginTop: 12, width: "100%" }}>
+                <TouchableOpacity
+                  activeOpacity={pulseHeroHotspot ? 0.88 : 1}
+                  style={styles.pulseHeroCard}
+                  onPress={() => {
+                    if (pulseHeroHotspot) {
+                      handleSelectHotspot(pulseHeroHotspot);
+                    }
+                  }}
+                >
+                  <View style={styles.pulseHeroTopRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.pulseHeroEyebrow}>Live Campus Pulse</Text>
+                      <Text style={styles.pulseHeroTitle}>
+                        {isLoadingPulse && !pulseHotspots.length
+                          ? "Building the live heatmap"
+                          : pulseHeroHotspot
+                            ? `${pulseHeroHotspot.locationName} is buzzing`
+                            : "Campus energy map"}
+                      </Text>
+                      <Text style={styles.pulseHeroBody}>
+                        {isLoadingPulse && !pulseHotspots.length
+                          ? "Pulling in campus pings, events, and occupancy to paint the map."
+                          : pulseHeroHotspot
+                            ? `${pulseHeroHotspot.summary} Tap to zoom into the hottest zone.`
+                            : "Live pings now glow as a continuous heatmap. Tap a flame marker to dive into what is happening nearby."}
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.pulseHeroBadge,
+                        {
+                          backgroundColor:
+                            pulseHeroHotspot?.pulseColor || COLORS.primary,
+                        },
+                      ]}
+                    >
+                      {isLoadingPulse && !pulseHotspots.length ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <>
+                          <Text style={styles.pulseHeroBadgeValue}>
+                            {pulseTotals.hotspots}
+                          </Text>
+                          <Text style={styles.pulseHeroBadgeLabel}>zones</Text>
+                        </>
+                      )}
+                    </View>
+                  </View>
+
+                  <View style={styles.pulseHeroStatsRow}>
+                    <View style={styles.pulseHeroStat}>
+                      <Text style={styles.pulseHeroStatValue}>
+                        {pulseTotals.pings}
+                      </Text>
+                      <Text style={styles.pulseHeroStatLabel}>Live pings</Text>
+                    </View>
+                    <View style={styles.pulseHeroStat}>
+                      <Text style={styles.pulseHeroStatValue}>
+                        {pulseTotals.events}
+                      </Text>
+                      <Text style={styles.pulseHeroStatLabel}>Events</Text>
+                    </View>
+                    <View style={styles.pulseHeroStat}>
+                      <Text style={styles.pulseHeroStatValue}>
+                        {pulseHeroHotspot?.pulseLabel || "Quiet"}
+                      </Text>
+                      <Text style={styles.pulseHeroStatLabel}>
+                        {pulseHeroHotspot ? "Top zone" : "Status"}
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
               </View>
             )}
 
