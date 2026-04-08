@@ -716,10 +716,9 @@ export function CampusPingsScreen() {
     const selectedPlace = selectedLocation
       ? locationLookup.get(getCanonicalLocationName(selectedLocation))
       : null;
-    const anchorType: PingAnchorType = composerGeoLocation ? 'geo' : 'place';
-    const locationTag = composerGeoLocation?.label || selectedLocation || 'Pinned location';
-    const latitude = composerGeoLocation?.latitude ?? selectedPlace?.coord.lat;
-    const longitude = composerGeoLocation?.longitude ?? selectedPlace?.coord.lng;
+    const locationTag = finalLocation || 'Pinned location';
+    const latitude = finalLat;
+    const longitude = finalLng;
 
     const { startAt, endAt } = buildPresetWindow(composerTimePreset, composerDurationHours);
     setIsPosting(true);
