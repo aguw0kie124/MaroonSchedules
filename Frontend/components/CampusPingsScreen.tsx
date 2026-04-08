@@ -24,7 +24,9 @@ import {
 } from 'react-native';
 import Animated, { 
   FadeIn,
+  FadeInDown,
   FadeOut,
+  FadeOutDown,
   SlideInDown,
   SlideOutDown 
 } from 'react-native-reanimated';
@@ -529,41 +531,51 @@ export function CampusPingsScreen() {
   }, []);
 
   const handlePickPingImage = useCallback(async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Photos unavailable', 'Allow photo access to attach an image to your ping.');
-      return;
-    }
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Photos unavailable', 'Allow photo access to attach an image to your ping.');
+        return;
+      }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 0.82,
-      aspect: [4, 3],
-    });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.82,
+        aspect: [4, 3],
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      setComposerImageUri(result.assets[0].uri);
+      if (!result.canceled && result.assets[0]) {
+        setComposerImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.warn('[Pings] image pick failed', error);
+      Alert.alert('Selection failed', 'Could not open your photo library.');
     }
   }, []);
 
   const handleCapturePingImage = useCallback(async () => {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Camera unavailable', 'Allow camera access to take a photo for your ping.');
-      return;
-    }
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Camera unavailable', 'Allow camera access to take a photo for your ping.');
+        return;
+      }
 
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      quality: 0.82,
-      aspect: [4, 3],
-      cameraType: ImagePicker.CameraType.back,
-    });
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.82,
+        aspect: [4, 3],
+        cameraType: ImagePicker.CameraType.back,
+      });
 
-    if (!result.canceled && result.assets[0]) {
-      setComposerImageUri(result.assets[0].uri);
+      if (!result.canceled && result.assets[0]) {
+        setComposerImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.warn('[Pings] camera capture failed', error);
+      Alert.alert('Camera failed', 'Could not open your camera.');
     }
   }, []);
 
@@ -1029,16 +1041,26 @@ export function CampusPingsScreen() {
       <Modal visible={composerVisible} animationType="slide" transparent statusBarTranslucent>
         <View style={styles.composerOverlay}>
           <Animated.View 
-            entering={SlideInDown.springify().damping(22)} 
-            exiting={SlideOutDown}
+            entering={FadeInDown.duration(400)} 
+            exiting={FadeOutDown}
             style={[styles.composerSheet, { paddingTop: insets.top || 20 }]}
           >
             <View style={styles.composerHeader}>
               <ScalePressable onPress={closeComposer} style={styles.composerCloseButton}>
                 <X size={22} color={COLORS.textPrimary} />
               </ScalePressable>
-              <Text style={styles.composerHeaderTitle}>Create Ping</Text>
-              <View style={{ width: 44 }} />
+              <Text style={styles.composerHeaderTitle}>Create</Text>
+              <Pressable 
+                onPress={handleCreatePing} 
+                disabled={isPosting || !composerTitle.trim()}
+                style={({ pressed }) => [
+                  styles.composerTopPostButton,
+                  (isPosting || !composerTitle.trim()) && { opacity: 0.5 },
+                  pressed && { opacity: 0.7 }
+                ]}
+              >
+                <Text style={styles.composerTopPostLabel}>Post</Text>
+              </Pressable>
             </View>
 
             <ScrollView 
@@ -1047,14 +1069,61 @@ export function CampusPingsScreen() {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
             >
+              {/* Category Selection (Top) */}
+              <View style={styles.composerCategoryRowWrap}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.composerCategoryRow}>
+                  {PING_CATEGORIES.map((cat) => {
+                    const active = composerCategory === cat.id;
+                    const Icon = cat.Icon;
+                    return (
+                      <ScalePressable 
+                        key={cat.id} 
+                        onPress={() => setComposerCategory(cat.id)}
+                        style={[
+                          styles.composerCategoryPill,
+                          active && styles.composerCategoryPillActive
+                        ]}
+                      >
+                        <Icon size={16} color={active ? '#FFFFFF' : cat.accent} />
+                        <Text style={[styles.composerCategoryLabel, active && styles.composerCategoryLabelActive]}>
+                          {cat.id}
+                        </Text>
+                      </ScalePressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+
+              {/* Title Section */}
+              <View style={styles.composerTextStack}>
+                <TextInput
+                  value={composerTitle}
+                  onChangeText={setComposerTitle}
+                  placeholder="Title your ping..."
+                  placeholderTextColor={COLORS.textTertiary}
+                  style={styles.composerTitleInput}
+                />
+                <TextInput
+                  value={composerBody}
+                  onChangeText={setComposerBody}
+                  placeholder="What's happening? (Optional)"
+                  placeholderTextColor={COLORS.textTertiary}
+                  style={styles.composerPromptInput}
+                  multiline
+                />
+              </View>
+
               {/* Media Section */}
-              <View style={styles.composerSectionBlock}>
-                <Text style={styles.composerSectionLabel}>Visuals</Text>
-                <View style={[styles.composerMediaStage, !composerImageUri && styles.composerMediaStageEmpty]}>
+              <View style={styles.composerMediaCard}>
+                <Pressable 
+                  onPress={!composerImageUri ? handlePickPingImage : undefined}
+                  style={[styles.composerMediaStage, !composerImageUri && styles.composerMediaStageEmpty]}
+                >
                   {composerImageUri ? (
                     <>
                       <Image source={{ uri: composerImageUri }} style={styles.composerMediaStagePreview} resizeMode="cover" />
                       <View style={styles.composerMediaStageOverlay}>
+                        <ImageIcon size={32} color="#FFFFFF" />
                         <Text style={styles.composerMediaStageOverlayText}>Photo attached</Text>
                       </View>
                       <Pressable style={styles.composerMediaRemoveButton} onPress={() => setComposerImageUri(null)}>
@@ -1064,172 +1133,41 @@ export function CampusPingsScreen() {
                   ) : (
                     <>
                       <View style={styles.composerMediaStageIconWrap}>
-                        <ImageIcon size={32} color={COLORS.primary} />
+                        <ImageIcon size={32} color={isDark ? COLORS.primary : '#500000'} />
                       </View>
-                      <Text style={styles.composerMediaStageTitle}>Add a photo</Text>
+                      <Text style={styles.composerMediaStageTitle}>Add Photo (Optional)</Text>
                       <Text style={styles.composerMediaStageSubtitle}>
-                        Pings with photos get 4x more engagement from other Aggies.
+                        Share a flyer, food spread, or what people should look for.
                       </Text>
                     </>
                   )}
-                </View>
+                </Pressable>
 
                 <View style={styles.composerMediaActionRow}>
-                  <ScalePressable style={styles.composerMediaActionButton} onPress={handleCapturePingImage}>
-                    <Camera size={20} color={COLORS.primary} />
-                    <Text style={styles.composerMediaActionLabel}>Take Photo</Text>
-                  </ScalePressable>
                   <ScalePressable style={styles.composerMediaActionButton} onPress={handlePickPingImage}>
-                    <ImageIcon size={20} color={COLORS.primary} />
-                    <Text style={styles.composerMediaActionLabel}>Library</Text>
+                    <ImageIcon size={18} color={COLORS.textPrimary} />
+                    <Text style={styles.composerMediaActionLabel}>Choose photo</Text>
+                  </ScalePressable>
+                  <ScalePressable style={styles.composerMediaActionButton} onPress={handleCapturePingImage}>
+                    <Camera size={18} color={COLORS.textPrimary} />
+                    <Text style={styles.composerMediaActionLabel}>Take photo</Text>
                   </ScalePressable>
                 </View>
-              </View>
-
-              {/* Identity Section */}
-              <View style={styles.composerSectionBlock}>
-                <Text style={styles.composerSectionLabel}>Identity</Text>
-                <Pressable 
-                  onPress={() => setComposerAnonymous(!composerAnonymous)}
-                  style={styles.anonymousCard}
-                >
-                  <View style={[styles.anonymousIconWrap, composerAnonymous && styles.anonymousIconWrapActive]}>
-                    <Shield size={22} color={composerAnonymous ? COLORS.success : COLORS.primary} />
-                  </View>
-                  <View style={styles.anonymousCopy}>
-                    <Text style={styles.anonymousTitle}>Post Anonymously</Text>
-                    <Text style={styles.anonymousSubtitle}>
-                      {composerAnonymous 
-                        ? "Your name and profile photo will be hidden from this ping." 
-                        : "Post as yourself to build your campus reputation."}
-                    </Text>
-                  </View>
-                  <Switch 
-                    value={composerAnonymous} 
-                    onValueChange={setComposerAnonymous}
-                    trackColor={{ false: COLORS.border, true: COLORS.success }}
-                    thumbColor="#FFFFFF"
-                  />
-                </Pressable>
-              </View>
-
-              {/* Category Section */}
-              <View style={styles.composerSectionBlock}>
-                <Text style={styles.composerSectionLabel}>Category</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-                  {PING_CATEGORIES.map((cat) => {
-                    const active = composerCategory === cat.id;
-                    const Icon = cat.Icon;
-                    return (
-                      <ScalePressable 
-                        key={cat.id} 
-                        onPress={() => setComposerCategory(cat.id)}
-                        style={[
-                          { 
-                            flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 20, borderWidth: 1.5 
-                          },
-                          active ? { backgroundColor: cat.accent, borderColor: cat.accent } : { backgroundColor: COLORS.surface, borderColor: COLORS.border }
-                        ]}
-                      >
-                        <Icon size={18} color={active ? '#FFFFFF' : COLORS.textSecondary} />
-                        <Text style={[{ fontSize: 14, fontWeight: '700' }, active ? { color: '#FFFFFF' } : { color: COLORS.textPrimary }]}>
-                          {cat.id}
-                        </Text>
-                      </ScalePressable>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-
-              {/* Timing Section */}
-              <View style={styles.composerSectionBlock}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-                  <Text style={styles.composerSectionLabel}>Duration & Timing</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: `${COLORS.primary}12`, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
-                    <Clock size={12} color={COLORS.primary} />
-                    <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.primary }}>
-                       {composerDurationHours === 0.5 ? '30m' : `${composerDurationHours}h`}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.timeSegmentTrack}>
-                   {([
-                     { id: 'now', label: 'Now' },
-                     { id: 'soon', label: 'Soon' },
-                     { id: 'tonight', label: 'Later' },
-                   ] as const).map((seg) => {
-                     const active = composerTimePreset === seg.id;
-                     return (
-                       <Pressable 
-                         key={seg.id} 
-                         onPress={() => setComposerTimePreset(seg.id)}
-                         style={[styles.timeSegmentButton, active && styles.timeSegmentButtonActive]}
-                       >
-                         <Text style={[styles.timeSegmentButtonText, active && styles.timeSegmentButtonTextActive]}>
-                           {seg.label}
-                         </Text>
-                       </Pressable>
-                     );
-                   })}
-                </View>
-
-                {/* Duration Stepper Integrated */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 16, backgroundColor: COLORS.surfaceElevated, borderRadius: 24, padding: 8, borderWidth: 1, borderColor: COLORS.border }}>
-                  <Text style={{ flex: 1, marginLeft: 12, color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' }}>Active for</Text>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <ScalePressable 
-                      onPress={() => setComposerDurationHours(Math.max(0.5, composerDurationHours - 0.5))}
-                      style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border }}
-                    >
-                      <Text style={{ color: COLORS.textPrimary, fontSize: 18, fontWeight: '600' }}>-</Text>
-                    </ScalePressable>
-                    <Text style={{ width: 50, textAlign: 'center', color: COLORS.textPrimary, fontSize: 15, fontWeight: '800' }}>
-                      {composerDurationHours}h
-                    </Text>
-                    <ScalePressable 
-                      onPress={() => setComposerDurationHours(Math.min(24, composerDurationHours + 0.5))}
-                      style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: COLORS.surface, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border }}
-                    >
-                      <Text style={{ color: COLORS.textPrimary, fontSize: 18, fontWeight: '600' }}>+</Text>
-                    </ScalePressable>
-                  </View>
-                </View>
-              </View>
-
-              {/* Content Section */}
-              <View style={styles.composerSectionBlock}>
-                <Text style={styles.composerSectionLabel}>What's happening?</Text>
-                <TextInput
-                  value={composerTitle}
-                  onChangeText={setComposerTitle}
-                  placeholder="The headline..."
-                  placeholderTextColor={COLORS.textTertiary}
-                  style={[styles.input, { fontSize: 19, fontWeight: '800', borderBottomWidth: 1, borderBottomColor: COLORS.border, borderRadius: 0, paddingHorizontal: 4, paddingVertical: 12 }]}
-                />
-                <TextInput
-                  value={composerBody}
-                  onChangeText={setComposerBody}
-                  placeholder="More context (optional)..."
-                  placeholderTextColor={COLORS.textTertiary}
-                  style={[styles.input, { minHeight: 100, borderRadius: 20, backgroundColor: COLORS.surface, marginTop: 12, textAlignVertical: 'top' }]}
-                  multiline
-                />
               </View>
 
               {/* Location Section */}
               <View style={styles.composerSectionBlock}>
-                <Text style={styles.composerSectionLabel}>Where</Text>
+                <Text style={styles.composerSectionLabel}>LOCATION</Text>
                 
                 <ScalePressable 
-                  onPress={() => setUseCurrentLocation(true)}
+                  onPress={() => setUseCurrentLocation(!useCurrentLocation)}
                   style={[
                     styles.locationModeButton,
-                    useCurrentLocation && { backgroundColor: `${COLORS.primary}12`, borderColor: COLORS.primary }
+                    useCurrentLocation && { backgroundColor: `${COLORS.primary}08`, borderColor: COLORS.primary }
                   ]}
                 >
                   <LocateFixed size={20} color={COLORS.primary} />
-                  <Text style={styles.locationModeButtonText}>Snap to Current Location</Text>
+                  <Text style={[styles.locationModeButtonText, { color: '#500000' }]}>Use current location</Text>
                   {useCurrentLocation && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.primary, marginLeft: 'auto' }} />}
                 </ScalePressable>
 
@@ -1242,7 +1180,7 @@ export function CampusPingsScreen() {
                       setSelectedLocation(null);
                       setUseCurrentLocation(false);
                     }}
-                    placeholder="Search building or place..."
+                    placeholder="Search for a building or spot..."
                     placeholderTextColor={COLORS.textTertiary}
                     style={styles.searchInput}
                   />
@@ -1277,18 +1215,70 @@ export function CampusPingsScreen() {
                 )}
               </View>
 
-              <View style={{ height: 100 }} />
-            </ScrollView>
+              {/* Duration Setting (Custom Feature) */}
+              <View style={styles.composerSectionBlock}>
+                <Text style={styles.composerSectionLabel}>PING DURATION</Text>
+                <View style={styles.durationControlCard}>
+                  <View style={styles.durationHeader}>
+                    <Clock size={16} color={COLORS.textSecondary} />
+                    <Text style={styles.durationLabel}>Active for</Text>
+                  </View>
 
-            <View style={{ paddingHorizontal: 20, paddingBottom: Platform.OS === 'ios' ? 34 : 20, backgroundColor: COLORS.surfaceElevated, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 16 }}>
+                  <View style={styles.durationStepper}>
+                    <ScalePressable 
+                      onPress={() => setComposerDurationHours(Math.max(0.5, composerDurationHours - 0.5))}
+                      style={styles.stepperButton}
+                    >
+                      <Text style={styles.stepperButtonText}>-</Text>
+                    </ScalePressable>
+                    
+                    <View style={styles.stepperValueContainer}>
+                      <Text style={styles.stepperValueText}>
+                        {composerDurationHours === 0.5 ? '30m' : `${composerDurationHours}h`}
+                      </Text>
+                    </View>
+
+                    <ScalePressable 
+                      onPress={() => setComposerDurationHours(Math.min(24, composerDurationHours + 0.5))}
+                      style={styles.stepperButton}
+                    >
+                      <Text style={styles.stepperButtonText}>+</Text>
+                    </ScalePressable>
+                  </View>
+                </View>
+              </View>
+
+              {/* Main Action Button */}
               <ScalePressable 
-                style={[styles.sharePingButton, isPosting && styles.sharePingButtonDisabled]} 
+                style={[styles.sharePingButton, (isPosting || !composerTitle.trim()) && styles.sharePingButtonDisabled]} 
                 onPress={handleCreatePing}
-                disabled={isPosting}
+                disabled={isPosting || !composerTitle.trim()}
               >
                 {isPosting ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.sharePingButtonText}>Share Ping</Text>}
               </ScalePressable>
-            </View>
+
+              {/* Identity Section (Bottom) */}
+              <Pressable 
+                onPress={() => setComposerAnonymous(!composerAnonymous)}
+                style={styles.anonymousCard}
+              >
+                <View style={[styles.anonymousIconWrap, composerAnonymous && styles.anonymousIconWrapActive]}>
+                  <Shield size={22} color={composerAnonymous ? COLORS.success : COLORS.textTertiary} />
+                </View>
+                <View style={styles.anonymousCopy}>
+                  <Text style={styles.anonymousTitle}>Post Anonymously</Text>
+                  <Text style={styles.anonymousSubtitle}>Hide your profile from others</Text>
+                </View>
+                <Switch 
+                  value={composerAnonymous} 
+                  onValueChange={setComposerAnonymous}
+                  trackColor={{ false: COLORS.border, true: COLORS.success }}
+                  thumbColor="#FFFFFF"
+                />
+              </Pressable>
+
+              <View style={{ height: 60 }} />
+            </ScrollView>
           </Animated.View>
         </View>
       </Modal>
@@ -1668,72 +1658,60 @@ const getStyles = (theme: any) => {
       borderBottomColor: COLORS.border,
     },
     composerHeaderTitle: {
-      fontSize: 18,
-      fontWeight: '800',
+      fontSize: 19,
+      fontWeight: '900',
       color: COLORS.textPrimary,
+      letterSpacing: -0.5,
     },
     composerCloseButton: {
       width: 44,
       height: 44,
-      borderRadius: 22,
+      borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: COLORS.surfaceElevated,
     },
     composerTopPostButton: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 12,
-      backgroundColor: COLORS.primary,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
     },
     composerTopPostLabel: {
-      color: '#FFFFFF',
-      fontSize: 14,
+      color: '#A85D5D',
+      fontSize: 17,
       fontWeight: '800',
-    },
-    composerTopPostLabelDisabled: {
-      opacity: 0.5,
     },
     composerScroll: {
       flex: 1,
     },
     composerScrollContent: {
-      paddingBottom: 40,
+      paddingBottom: 60,
     },
-    composerSectionBlock: {
-      paddingHorizontal: 20,
-      marginTop: 28,
-    },
-    composerSectionLabel: {
-      fontSize: 14,
-      fontWeight: '800',
-      color: COLORS.textSecondary,
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
-      marginBottom: 16,
+    composerCategoryRowWrap: {
+      marginTop: 20,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.border,
+      paddingBottom: 20,
     },
     composerCategoryRow: {
       paddingHorizontal: 20,
       gap: 10,
-      marginTop: 12,
     },
     composerCategoryPill: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 14,
+      gap: 8,
+      paddingHorizontal: 16,
       paddingVertical: 10,
-      borderRadius: 14,
+      borderRadius: 20,
       backgroundColor: COLORS.surfaceElevated,
-      borderWidth: 1,
+      borderWidth: 1.5,
       borderColor: COLORS.border,
     },
     composerCategoryPillActive: {
-      backgroundColor: COLORS.primary,
-      borderColor: COLORS.primary,
+      backgroundColor: '#500000',
+      borderColor: '#500000',
     },
     composerCategoryLabel: {
-      fontSize: 13,
+      fontSize: 14,
       fontWeight: '700',
       color: COLORS.textSecondary,
     },
@@ -1741,38 +1719,38 @@ const getStyles = (theme: any) => {
       color: '#FFFFFF',
     },
     composerTextStack: {
-      paddingHorizontal: 20,
+      paddingHorizontal: 24,
       marginTop: 24,
-      gap: 12,
+      gap: 16,
     },
     composerTitleInput: {
-      fontSize: 22,
-      fontWeight: '800',
+      fontSize: 26,
+      fontWeight: '900',
       color: COLORS.textPrimary,
+      letterSpacing: -0.5,
     },
     composerPromptInput: {
-      fontSize: 16,
+      fontSize: 18,
       color: COLORS.textPrimary,
-      minHeight: 80,
+      minHeight: 100,
+      fontWeight: '500',
+      lineHeight: 24,
     },
     composerMediaCard: {
       paddingHorizontal: 20,
-      marginTop: 24,
+      marginTop: 32,
     },
     composerMediaStage: {
       width: '100%',
-      height: 240,
-      borderRadius: 24,
+      height: 280,
+      borderRadius: 32,
       overflow: 'hidden',
       backgroundColor: COLORS.surfaceElevated,
-      borderWidth: 2,
-      borderColor: COLORS.border,
-      borderStyle: 'dashed',
       alignItems: 'center',
       justifyContent: 'center',
     },
     composerMediaStageEmpty: {
-      padding: 30,
+      backgroundColor: theme.theme === 'dark' ? `${COLORS.primary}05` : '#F8F9FB',
     },
     composerMediaStagePreview: {
       width: '100%',
@@ -1783,35 +1761,41 @@ const getStyles = (theme: any) => {
       backgroundColor: 'rgba(0,0,0,0.3)',
       alignItems: 'center',
       justifyContent: 'center',
+      gap: 12,
     },
     composerMediaStageOverlayText: {
       color: '#FFFFFF',
-      fontSize: 14,
-      fontWeight: '700',
+      fontSize: 16,
+      fontWeight: '800',
     },
     composerMediaRemoveButton: {
       position: 'absolute',
-      top: 12,
-      right: 12,
-      width: 32,
-      height: 32,
-      borderRadius: 16,
+      top: 16,
+      right: 16,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       backgroundColor: 'rgba(0,0,0,0.5)',
       alignItems: 'center',
       justifyContent: 'center',
     },
     composerMediaStageIconWrap: {
-      width: 64,
-      height: 64,
-      borderRadius: 20,
-      backgroundColor: `${COLORS.primary}15`,
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      backgroundColor: '#FFFFFF',
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: 16,
+      marginBottom: 20,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.05,
+      shadowRadius: 10,
+      elevation: 2,
     },
     composerMediaStageTitle: {
       fontSize: 18,
-      fontWeight: '800',
+      fontWeight: '900',
       color: COLORS.textPrimary,
       marginBottom: 8,
     },
@@ -1820,37 +1804,165 @@ const getStyles = (theme: any) => {
       color: COLORS.textSecondary,
       textAlign: 'center',
       lineHeight: 20,
+      paddingHorizontal: 40,
+      fontWeight: '500',
     },
     composerMediaActionRow: {
       flexDirection: 'row',
-      gap: 12,
-      marginTop: 14,
+      gap: 14,
+      marginTop: 16,
     },
     composerMediaActionButton: {
       flex: 1,
-      height: 48,
-      borderRadius: 16,
-      backgroundColor: COLORS.surfaceElevated,
+      height: 54,
+      borderRadius: 18,
+      backgroundColor: COLORS.surface,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 8,
-      borderWidth: 1,
+      gap: 10,
+      borderWidth: 1.5,
       borderColor: COLORS.border,
     },
     composerMediaActionLabel: {
-      fontSize: 14,
+      fontSize: 15,
       fontWeight: '700',
       color: COLORS.textPrimary,
+    },
+    composerSectionBlock: {
+      paddingHorizontal: 20,
+      marginTop: 40,
+    },
+    composerSectionLabel: {
+      fontSize: 13,
+      fontWeight: '900',
+      color: COLORS.textTertiary,
+      letterSpacing: 1,
+      marginBottom: 16,
+    },
+    locationModeButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 18,
+      borderRadius: 24,
+      backgroundColor: '#FFF5F5',
+      borderWidth: 1.5,
+      borderColor: '#FFE0E0',
+      marginBottom: 14,
+      gap: 12,
+    },
+    locationModeButtonText: {
+      fontSize: 16,
+      fontWeight: '800',
+    },
+    composerSearchWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 18,
+      height: 60,
+      borderRadius: 20,
+      backgroundColor: theme.theme === 'dark' ? COLORS.surfaceElevated : '#F2F3F7',
+      gap: 14,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: 16,
+      fontWeight: '600',
+      color: COLORS.textPrimary,
+    },
+    durationControlCard: {
+      backgroundColor: COLORS.surfaceElevated,
+      borderRadius: 24,
+      padding: 20,
+      borderWidth: 1.5,
+      borderColor: COLORS.border,
+    },
+    durationHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginBottom: 20,
+    },
+    durationLabel: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
+      flex: 1,
+    },
+    durationBadge: {
+      backgroundColor: COLORS.primary,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 10,
+    },
+    durationBadgeText: {
+      color: '#FFFFFF',
+      fontSize: 13,
+      fontWeight: '800',
+    },
+    durationStepper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 16,
+    },
+    stepperButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 14,
+      backgroundColor: COLORS.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1.5,
+      borderColor: COLORS.border,
+    },
+    stepperButtonText: {
+      fontSize: 22,
+      fontWeight: '600',
+      color: COLORS.textPrimary,
+    },
+    stepperValueContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    stepperValueText: {
+      fontSize: 24,
+      fontWeight: '900',
+      color: COLORS.textPrimary,
+      letterSpacing: -1,
+    },
+    sharePingButton: {
+      height: 64,
+      borderRadius: 32,
+      backgroundColor: '#9B6B6B',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 40,
+      marginHorizontal: 20,
+      shadowColor: '#9B6B6B',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.25,
+      shadowRadius: 15,
+      elevation: 6,
+    },
+    sharePingButtonDisabled: {
+      opacity: 0.5,
+      backgroundColor: COLORS.textTertiary,
+    },
+    sharePingButtonText: {
+      fontSize: 19,
+      fontWeight: '900',
+      color: '#FFFFFF',
+      letterSpacing: 0.5,
     },
     anonymousCard: {
       flexDirection: 'row',
       alignItems: 'center',
-      padding: 16,
+      padding: 20,
       marginHorizontal: 20,
-      marginTop: 24,
-      borderRadius: 20,
-      backgroundColor: COLORS.surfaceElevated,
+      marginTop: 20,
+      borderRadius: 28,
+      backgroundColor: COLORS.surface,
       borderWidth: 1.5,
       borderColor: COLORS.border,
     },
@@ -1880,78 +1992,6 @@ const getStyles = (theme: any) => {
       color: COLORS.textSecondary,
       marginTop: 2,
       lineHeight: 18,
-    },
-    timeSegmentTrack: {
-      flexDirection: 'row',
-      backgroundColor: COLORS.surfaceElevated,
-      borderRadius: 18,
-      padding: 6,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-    },
-    timeSegmentButton: {
-      flex: 1,
-      height: 40,
-      borderRadius: 14,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    timeSegmentButtonActive: {
-      backgroundColor: COLORS.surface,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 2,
-    },
-    timeSegmentButtonText: {
-      fontSize: 14,
-      fontWeight: '700',
-      color: COLORS.textSecondary,
-    },
-    timeSegmentButtonTextActive: {
-      color: COLORS.primary,
-    },
-    input: {
-      paddingHorizontal: 16,
-      paddingVertical: 14,
-      borderRadius: 16,
-      color: COLORS.textPrimary,
-      fontSize: 16,
-      fontWeight: '500',
-    },
-    locationModeButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      padding: 16,
-      borderRadius: 18,
-      backgroundColor: COLORS.surfaceElevated,
-      borderWidth: 1.5,
-      borderColor: COLORS.border,
-      marginBottom: 12,
-      gap: 12,
-    },
-    locationModeButtonText: {
-      fontSize: 15,
-      fontWeight: '700',
-      color: COLORS.textPrimary,
-    },
-    composerSearchWrap: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 16,
-      height: 56,
-      borderRadius: 18,
-      backgroundColor: COLORS.surfaceElevated,
-      borderWidth: 1.5,
-      borderColor: COLORS.border,
-      gap: 12,
-    },
-    searchInput: {
-      flex: 1,
-      fontSize: 16,
-      fontWeight: '600',
-      color: COLORS.textPrimary,
     },
     suggestionsWrap: {
       marginTop: 8,
@@ -1999,30 +2039,6 @@ const getStyles = (theme: any) => {
       color: COLORS.textSecondary,
       marginTop: 1,
     },
-    sharePingButton: {
-      height: 58,
-      borderRadius: 20,
-      backgroundColor: COLORS.primary,
-      alignItems: 'center',
-      justifyContent: 'center',
-      shadowColor: COLORS.primary,
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.2,
-      shadowRadius: 12,
-      elevation: 4,
-      marginHorizontal: 20,
-      marginTop: 32,
-    },
-    sharePingButtonDisabled: {
-      opacity: 0.5,
-    },
-    sharePingButtonText: {
-      fontSize: 18,
-      fontWeight: '900',
-      color: '#FFFFFF',
-      letterSpacing: 0.5,
-    },
-
     emptyState: {
       marginTop: 60,
       alignItems: 'center',
