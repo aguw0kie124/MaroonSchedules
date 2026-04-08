@@ -44,6 +44,7 @@ import {
   X,
   Image as ImageIcon,
 } from 'lucide-react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { API_URL } from '../config';
 import { useTheme } from './SharedUI';
@@ -260,12 +261,52 @@ export function CampusPingsScreen() {
     [directory],
   );
 
-  const [featuredEvents, setFeaturedEvents] = useState<FeaturedEvent[]>([]);
-  const [userPings, setUserPings] = useState<PingCard[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const {
+    data: featuredEvents = [],
+    isLoading: loadingFeatured,
+    refetch: refetchFeatured,
+  } = useQuery({
+    queryKey: ['campus-featured'],
+    queryFn: async () => {
+      const res = await fetch(`${API_URL}/campus/events?limit=12`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      return (data || []).map((event: any) => ({
+        id: String(event.event_id),
+        placeId: event.place_id ?? event.place?.place_id ?? null,
+        title: event.title || 'Campus Event',
+        description: event.summary || event.description || '',
+        location: event.location || 'Campus',
+        startTime: event.start_time,
+        endTime: event.end_time,
+        link: event.link || event.source_url || null,
+        locationLat: event.location_lat ?? null,
+        locationLng: event.location_lng ?? null,
+        categories: event.categories || undefined,
+      }));
+    },
+    staleTime: 1000 * 60 * 10,
+  });
+
+  const {
+    data: userPings = [],
+    isLoading: loadingPings,
+    refetch: refetchPings,
+    isRefetching: refreshingPings,
+  } = useQuery({
+    queryKey: ['campus-pings'],
+    queryFn: async () => {
+      const activities = await getPingFeed(60);
+      return activities.map(mapActivityToPing);
+    },
+    refetchInterval: 15000,
+    staleTime: 1000 * 30,
+  });
+
   const [feedConnected, setFeedConnected] = useState(false);
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<'All' | PingCategory>('All');
 
   const [composerVisible, setComposerVisible] = useState(false);
@@ -339,86 +380,37 @@ export function CampusPingsScreen() {
     return feedPings.filter((ping) => categoryFilter === 'All' || ping.category === categoryFilter);
   }, [categoryFilter, feedPings]);
 
-  const loadFeaturedEvents = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_URL}/campus/events?limit=12`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const nextEvents = (data || []).map((event: any) => ({
-        id: String(event.event_id),
-        placeId: event.place_id ?? event.place?.place_id ?? null,
-        title: event.title || 'Campus Event',
-        description: event.summary || event.description || '',
-        location: event.location || 'Campus',
-        startTime: event.start_time,
-        endTime: event.end_time,
-        link: event.link || event.source_url || null,
-        locationLat: event.location_lat ?? null,
-        locationLng: event.location_lng ?? null,
-        categories: event.categories || undefined,
-      }));
-      setFeaturedEvents(nextEvents);
-    } catch (error) {
-      console.warn('[Pings] Failed to load featured events', error);
-      setFeaturedEvents([]);
-    }
-  }, []);
-
-
-
-  const loadUserPings = useCallback(async () => {
-    try {
-      const activities = await getPingFeed(60);
-      setUserPings(activities.map(mapActivityToPing));
-      setStreamError(null);
-    } catch (error) {
-      console.warn('[Pings] Failed to load user pings', error);
-      setStreamError('Could not load live pings right now.');
-      setUserPings([]);
-    }
-  }, []);
-
   const loadAll = useCallback(async () => {
-    setLoading(true);
-    await loadFeaturedEvents();
-    if (!user) {
-      setFeedConnected(false);
-      setLoading(false);
-      setRefreshing(false);
-      return;
-    }
-
+    setRefreshing(true);
     try {
-      const displayName =
-        user.username ||
-        user.fullName ||
-        user.primaryEmailAddress?.emailAddress?.split('@')[0] ||
-        'Aggie';
-      connectFeedsUser(user);
-      setFeedConnected(true);
-      await loadUserPings();
+      if (user) {
+        connectFeedsUser(user);
+        setFeedConnected(true);
+      }
+      await Promise.all([refetchFeatured(), refetchPings()]);
     } catch (error) {
-      console.warn('[Pings] Stream connection failed', error);
-      setFeedConnected(false);
-      setStreamError('Live pings are unavailable until the feed connection is restored.');
-      setUserPings([]);
+      console.warn('[Pings] Refresh failed', error);
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
-  }, [loadFeaturedEvents, loadUserPings, user]);
+  }, [refetchFeatured, refetchPings, user]);
+
+  useEffect(() => {
+    if (user && !feedConnected) {
+      try {
+        connectFeedsUser(user);
+        setFeedConnected(true);
+      } catch (e) {
+        setStreamError('Live pings are unavailable.');
+      }
+    }
+  }, [user, feedConnected]);
 
   useEffect(() => {
     loadAll();
   }, [loadAll]);
 
-  useEffect(() => {
-    if (!feedConnected) return;
-    const interval = setInterval(() => {
-      loadUserPings();
-    }, 15000);
-    return () => clearInterval(interval);
-  }, [feedConnected, loadUserPings]);
+  const queryClient = useQueryClient();
 
   const resetComposer = useCallback(() => {
     setComposerTitle('');
@@ -431,7 +423,6 @@ export function CampusPingsScreen() {
   }, []);
 
   const handleRefresh = useCallback(() => {
-    setRefreshing(true);
     loadAll();
   }, [loadAll]);
 
@@ -503,7 +494,7 @@ export function CampusPingsScreen() {
 
       setComposerVisible(false);
       resetComposer();
-      await loadUserPings();
+      await refetchPings();
     } catch (error: any) {
       console.error('[Pings] create failed', error);
       Alert.alert('Could not post ping', error?.message || 'Something went wrong while posting your ping.');
@@ -517,7 +508,7 @@ export function CampusPingsScreen() {
     composerTimePreset,
     composerTitle,
     feedConnected,
-    loadUserPings,
+    refetchPings,
     resetComposer,
     selectedLocation,
     user,
@@ -536,13 +527,14 @@ export function CampusPingsScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       }
 
-      setUserPings((current) =>
-        current.map((entry) =>
+      queryClient.setQueryData(['campus-pings'], (current: PingCard[] | undefined) => {
+        if (!current) return current;
+        return current.map((entry) =>
           entry.id === ping.id
             ? { ...entry, userVote: newUserVote, score: (entry.score || 0) + delta }
             : entry,
-        ),
-      );
+        );
+      });
 
       try {
         await toggleVote(ping.activityId, newUserVote === 1 ? 'upvote' : newUserVote === -1 ? 'downvote' : 'none');
@@ -564,7 +556,10 @@ export function CampusPingsScreen() {
           onPress: async () => {
             try {
               await deletePing(ping.activityId!);
-              setUserPings((current) => current.filter((entry) => entry.id !== ping.id));
+              queryClient.setQueryData(['campus-pings'], (current: PingCard[] | undefined) => {
+                if (!current) return current;
+                return current.filter((entry) => entry.id !== ping.id);
+              });
             } catch (error) {
               console.warn('[Pings] delete failed', error);
               Alert.alert('Delete failed', 'This ping could not be removed right now.');
@@ -600,13 +595,14 @@ export function CampusPingsScreen() {
       const nextComments = await getComments(activeCommentPing.activityId);
       setComments(nextComments);
       setCommentText('');
-      setUserPings((current) =>
-        current.map((entry) =>
+      queryClient.setQueryData(['campus-pings'], (current: PingCard[] | undefined) => {
+        if (!current) return current;
+        return current.map((entry) =>
           entry.id === activeCommentPing.id
-            ? { ...entry, commentCount: entry.commentCount + 1 }
+            ? { ...entry, commentCount: (entry.commentCount || 0) + 1 }
             : entry,
-        ),
-      );
+        );
+      });
     } catch (error) {
       console.warn('[Pings] comment send failed', error);
       Alert.alert('Comment failed', 'Could not post this reply right now.');
@@ -807,11 +803,6 @@ export function CampusPingsScreen() {
         </View>
 
         <View style={styles.actionRow}>
-          <Pressable style={styles.actionButton} onPress={() => openComments(item)}>
-            <MessageCircle size={16} color={COLORS.textPrimary} />
-            <Text style={styles.actionLabel}>{item.commentCount}</Text>
-          </Pressable>
-
           <View style={styles.voteStack}>
             <Pressable
               onPress={() => handleVotePing(item, 1)}
@@ -1237,7 +1228,7 @@ export function CampusPingsScreen() {
                       {sendingComment ? (
                         <ActivityIndicator color="#FFFFFF" size="small" />
                       ) : (
-                        <MessageCircle size={16} color="#FFFFFF" />
+                        <Text style={{color: 'white', fontWeight: 'bold'}}>Send</Text>
                       )}
                     </Pressable>
                   </View>

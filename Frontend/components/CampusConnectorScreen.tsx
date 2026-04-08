@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     ActivityIndicator,
     Alert,
@@ -123,40 +124,39 @@ export function CampusConnectorScreen() {
     const webViewRef = useRef<WebView>(null);
     const manualCaptureRef = useRef(false);
     const lastSavedSignatureRef = useRef('');
-    const [connector, setConnector] = useState<any>(null);
+    const queryClient = useQueryClient();
+    const {
+        data: connectors = [],
+        isLoading: loadingConnectors,
+        refetch: refetchConnectors,
+    } = useQuery({
+        queryKey: ['campus-connectors', user?.id],
+        queryFn: async () => {
+            if (!user?.id) return [];
+            return await fetchCampusConnectors(user.id);
+        },
+        enabled: !!user?.id,
+    });
+
+    const connector = useMemo(() => {
+        return Array.isArray(connectors)
+            ? connectors.find((entry: any) => entry.system_id === systemId)
+            : null;
+    }, [connectors, systemId]);
+
     const [currentUrl, setCurrentUrl] = useState(params.sourceUrl || loginUrl);
     const [webViewKey, setWebViewKey] = useState(0);
-    const [loadingConnector, setLoadingConnector] = useState(true);
     const [webBusy, setWebBusy] = useState(true);
     const [saving, setSaving] = useState(false);
     const [statusText, setStatusText] = useState('Sign in below. Once your campus data page opens, the app will capture and reuse that state.');
 
-    const loadConnector = useCallback(async () => {
-        if (!user?.id) return;
-
-        setLoadingConnector(true);
-        try {
-            const connectors = await fetchCampusConnectors(user.id);
-            const nextConnector = Array.isArray(connectors)
-                ? connectors.find((entry: any) => entry.system_id === systemId)
-                : null;
-
-            setConnector(nextConnector || null);
-            if (nextConnector?.source_url) {
-                setCurrentUrl(nextConnector.source_url);
-            } else {
-                setCurrentUrl(loginUrl);
-            }
-        } catch (error) {
-            console.warn('Failed to load connector:', error);
-        } finally {
-            setLoadingConnector(false);
-        }
-    }, [loginUrl, systemId, user?.id]);
+    const loadingConnector = loadingConnectors;
 
     useEffect(() => {
-        loadConnector().catch(() => {});
-    }, [loadConnector]);
+        if (connector?.source_url) {
+            setCurrentUrl(connector.source_url);
+        }
+    }, [connector?.source_url]);
 
     const requestCapture = useCallback((manual: boolean) => {
         manualCaptureRef.current = manual;
@@ -212,7 +212,7 @@ export function CampusConnectorScreen() {
 
             lastSavedSignatureRef.current = signature;
             manualCaptureRef.current = false;
-            setConnector(savedConnector);
+            queryClient.invalidateQueries({ queryKey: ['campus-connectors', user.id] });
             setCurrentUrl(payload.url || currentUrl);
             setStatusText('Campus data captured. The dashboard can now refresh from this saved session state.');
             await hydrateCampusHub(user.id).catch(() => {});
@@ -239,13 +239,7 @@ export function CampusConnectorScreen() {
                         try {
                             setSaving(true);
                             await deleteCampusConnector(user.id, systemId);
-                            setConnector({
-                                system_id: systemId,
-                                label,
-                                status: 'disconnected',
-                                login_url: loginUrl,
-                                source_url: null,
-                            });
+                            queryClient.invalidateQueries({ queryKey: ['campus-connectors', user.id] });
                             setCurrentUrl(loginUrl);
                             setWebViewKey(value => value + 1);
                             setStatusText('Saved campus data removed. You can reconnect at any time from this screen.');

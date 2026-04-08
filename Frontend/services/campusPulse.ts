@@ -10,6 +10,11 @@ export interface CampusHotspotItem {
   timeLabel: string;
   startAt: string;
   link?: string | null;
+  imageUrl?: string | null;
+  upvotes?: number;
+  downvotes?: number;
+  itemScore?: number;
+  userVote?: number;
 }
 
 export interface CampusHotspot {
@@ -91,21 +96,32 @@ export async function fetchCampusPulseMap(
 }
 
 /**
- * voteHotspot — session-based voting logic.
- * @param hotspotId 
+ * voteHotspotItem — session-based voting logic for individual pings inside a hotspot.
+ * @param itemId The unique ID of the ping
  * @param newUserVote The desired vote state (-1, 0, 1)
  */
-export async function voteHotspot(hotspotId: string, newUserVote: number) {
+export async function voteHotspotItem(itemId: string, newUserVote: number) {
   if (!_cachedHotspots) return;
-  const hotspot = _cachedHotspots.find((h) => h.id === hotspotId);
-  if (hotspot) {
-    const currentVote = hotspot.userVote || 0;
-    const delta = newUserVote - currentVote;
+  
+  for (const hotspot of _cachedHotspots) {
+    if (!hotspot.items) continue;
     
-    hotspot.score = (hotspot.score || 0) + delta;
-    hotspot.userVote = newUserVote;
-    
-    // Adjust ping count by delta for immediate visual feedback
-    hotspot.pingCount = Math.max(0, hotspot.pingCount + delta);
+    const item = hotspot.items.find((i) => i.id === itemId);
+    if (item) {
+      const currentVote = item.userVote || 0;
+      const delta = newUserVote - currentVote;
+      
+      item.itemScore = (item.itemScore || 0) + delta;
+      item.userVote = newUserVote;
+      
+      // Update the parent hotspot's aggregate visual fields
+      hotspot.score = (hotspot.score || 0) + delta;
+      if (delta > 0 && currentVote === 0) {
+        hotspot.pingCount = (hotspot.pingCount || 0) + 1;
+      } else if (delta < 0 && newUserVote === 0) {
+        hotspot.pingCount = Math.max(0, (hotspot.pingCount || 1) - 1);
+      }
+      return;
+    }
   }
 }

@@ -505,8 +505,17 @@ import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/
 import { navigationRef } from './navigation/Refs';
 import { registerRootComponent } from 'expo';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { setupQueryPersistence } from './services/queryCache';
 import { TourProvider } from './components/onboarding/TourProvider';
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      gcTime: 1000 * 60 * 60 * 24, // 24 hours
+      staleTime: 1000 * 60 * 5, // 5 minutes default
+    },
+  },
+});
+setupQueryPersistence(queryClient);
 
 function TabButtonWrapper({ screenName, props }: { screenName: string; props: any }) {
   const { advanceStep, activeTargetName } = useTour();

@@ -50,6 +50,7 @@ import {
   UserX,
   X as XIcon,
 } from 'lucide-react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 
 import { API_URL } from '../config';
@@ -804,59 +805,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const { advanceStep, activeTargetName } = useTour();
 
-  const [events, setEvents] = useState<TAMUEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<EventsView>(isGuest ? 'list' : 'discover');
-
-  const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set());
-  const [socialMode, setSocialMode] = useState<SocialMode>('casual');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [detailEvent, setDetailEvent] = useState<TAMUEvent | null>(null);
-  const [settingsVisible, setSettingsVisible] = useState(false);
-  const [swipeIndex, setSwipeIndex] = useState(0);
-  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [rewardToast, setRewardToast] = useState<{ title: string; body: string } | null>(null);
-  const rewardToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const deferredSearchQuery = useDeferredValue(searchQuery);
-  const heroSparkleFloat = useRef(new Animated.Value(0)).current;
-
   const {
-    isMajorSpecific,
-    selectedMajor,
-    setMajorSpecific,
-    setSelectedMajor,
-    scheduledEvents: persistedScheduledEvents,
-    scheduleEvent,
-    savedEventIds: persistedSavedEventIds,
-    removeScheduledEvent,
-    saveEvent,
-    unsaveEvent,
-    dislikedEventIds: persistedDislikedEventIds,
-    dislikeEvent,
-    removeIdsFromDisliked,
-    clearDisliked,
-    receivedInvites: persistedReceivedInvites,
-    acceptInvite,
-    rejectInvite,
-  } = useEventStore();
-  const scheduledEvents = isGuest ? [] : Array.isArray(persistedScheduledEvents) ? persistedScheduledEvents : [];
-  const savedEventIds = isGuest ? [] : Array.isArray(persistedSavedEventIds) ? persistedSavedEventIds : [];
-  const dislikedEventIds = isGuest ? [] : Array.isArray(persistedDislikedEventIds) ? persistedDislikedEventIds : [];
-  const receivedInvites = isGuest ? [] : Array.isArray(persistedReceivedInvites) ? persistedReceivedInvites : [];
-
-  const pan = useRef(new Animated.ValueXY()).current;
-  const opacity = useRef(new Animated.Value(1)).current;
-  const lastAppliedPreferenceKey = useRef<string | null>(null);
-  const nowTs = Math.floor(Date.now() / 1000);
-  const normalizedPreferenceCategories = useMemo(
-    () => normalizePreferredCategories(preferredEventCategories),
-    [preferredEventCategories],
-  );
-
-  const fetchEvents = useCallback(async () => {
-    try {
-      setLoading(true);
+    data: events = [],
+    isLoading: loading,
+    refetch,
+    isRefetching: refreshing,
+  } = useQuery({
+    queryKey: ['campus-events', user?.id],
+    queryFn: async () => {
       const params = new URLSearchParams({
         limit: '1000',
         student_relevant_only: 'false',
@@ -868,7 +824,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         `/campus/events?${params.toString()}`,
       )) as { events?: CampusEventResponse[] } | CampusEventResponse[];
       const raw = Array.isArray(payload) ? payload : payload.events || [];
-      const parsed: TAMUEvent[] = raw
+      return raw
         .filter((event) => event && event.event_id && event.title && event.start_time)
         .map((event) => {
           const startTs = Math.floor(new Date(event.start_time).getTime() / 1000);
@@ -909,28 +865,60 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           };
         })
         .sort((a, b) => a.date_ts - b.date_ts);
-      setEvents(parsed);
-    } catch (error) {
-      console.error('[Events] Fetch error:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id]);
+    },
+    staleTime: 1000 * 60 * 15, // 15 mins for events
+  });
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchEvents();
-    }, [fetchEvents]),
+  const [view, setView] = useState<EventsView>(isGuest ? 'list' : 'discover');
+
+  const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set());
+  const [socialMode, setSocialMode] = useState<SocialMode>('casual');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [detailEvent, setDetailEvent] = useState<TAMUEvent | null>(null);
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [swipeIndex, setSwipeIndex] = useState(0);
+  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
+  const [rewardToast, setRewardToast] = useState<{ title: string; body: string } | null>(null);
+  const rewardToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const heroSparkleFloat = useRef(new Animated.Value(0)).current;
+
+  const {
+    isMajorSpecific,
+    selectedMajor,
+    setMajorSpecific,
+    setSelectedMajor,
+    scheduledEvents: persistedScheduledEvents,
+    scheduleEvent,
+    savedEventIds: persistedSavedEventIds,
+    removeScheduledEvent,
+    saveEvent,
+    unsaveEvent,
+    dislikedEventIds: persistedDislikedEventIds,
+    dislikeEvent,
+    removeIdsFromDisliked,
+    clearDisliked,
+    receivedInvites: persistedReceivedInvites,
+    acceptInvite,
+    rejectInvite,
+  } = useEventStore();
+  const scheduledEvents = isGuest ? [] : Array.isArray(persistedScheduledEvents) ? persistedScheduledEvents : [];
+  const savedEventIds = isGuest ? [] : Array.isArray(persistedSavedEventIds) ? persistedSavedEventIds : [];
+  const dislikedEventIds = isGuest ? [] : Array.isArray(persistedDislikedEventIds) ? persistedDislikedEventIds : [];
+  const receivedInvites = isGuest ? [] : Array.isArray(persistedReceivedInvites) ? persistedReceivedInvites : [];
+
+  const pan = useRef(new Animated.ValueXY()).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+  const lastAppliedPreferenceKey = useRef<string | null>(null);
+  const nowTs = Math.floor(Date.now() / 1000);
+  const normalizedPreferenceCategories = useMemo(
+    () => normalizePreferredCategories(preferredEventCategories),
+    [preferredEventCategories],
   );
 
   const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await fetchEvents();
-    } finally {
-      setRefreshing(false);
-    }
-  }, [fetchEvents]);
+    await refetch();
+  }, [refetch]);
 
   const triggerRewardToast = useCallback((title: string, body: string) => {
     if (rewardToastTimerRef.current) {
@@ -1274,10 +1262,15 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     [isGuest, navigation, saveEvent, savedEventIds, triggerRewardToast, unsaveEvent],
   );
 
+  const queryClient = useQueryClient();
+
   const removeOrganizerEvents = useCallback((adminClerkId: string) => {
-    setEvents((current) => current.filter((event) => event.admin_clerk_id !== adminClerkId));
+    queryClient.setQueryData(['campus-events', user?.id], (current: TAMUEvent[] | undefined) => {
+      if (!current) return current;
+      return current.filter((event) => event.admin_clerk_id !== adminClerkId);
+    });
     setDetailEvent((current) => (current?.admin_clerk_id === adminClerkId ? null : current));
-  }, []);
+  }, [queryClient, user?.id]);
 
   const handleUnsubscribeOrganizer = useCallback(
     (event: TAMUEvent) => {

@@ -1,14 +1,20 @@
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from pydantic import BaseModel, Field
 from typing import Optional
 import psycopg
 from db_config import CONNECTION_PARAMS
 from auth.clerk_middleware import require_auth, ensure_matching_user
+from models.base import SanitizedBaseModel
+
+from main import limiter
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 
-class CreatePostRequest(BaseModel):
+class PostCreateRequest(SanitizedBaseModel):
     user_id: str
+    text: str
+    image_url: str = ""
+    is_reel: bool = False
     user_name: str = Field(..., min_length=1, max_length=120)
     user_image: Optional[str] = None
     caption: Optional[str] = Field(default=None, max_length=2000)
@@ -20,7 +26,8 @@ class LikePostRequest(BaseModel):
     user_id: str
 
 @router.get("/")
-def get_posts(limit: int = 20, offset: int = 0):
+@limiter.limit("60/minute")
+def get_posts(request: Request, limit: int = 20, offset: int = 0):
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
             with conn.cursor() as cur:
@@ -54,7 +61,8 @@ def get_posts(limit: int = 20, offset: int = 0):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/")
-def create_post(req: CreatePostRequest, auth_user_id: str = Depends(require_auth)):
+@limiter.limit("10/minute")
+def create_post(request: Request, req: PostCreateRequest, auth_user_id: str = Depends(require_auth)):
     ensure_matching_user(auth_user_id, req.user_id, detail="You can only create posts as yourself")
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
@@ -76,7 +84,8 @@ def create_post(req: CreatePostRequest, auth_user_id: str = Depends(require_auth
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/{post_id}/like")
-def toggle_like(post_id: str, req: LikePostRequest, auth_user_id: str = Depends(require_auth)):
+@limiter.limit("20/minute")
+def toggle_like(request: Request, post_id: str, req: LikePostRequest, auth_user_id: str = Depends(require_auth)):
     ensure_matching_user(auth_user_id, req.user_id, detail="You can only like posts as yourself")
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
@@ -201,7 +210,8 @@ def get_reels(limit: int = 30, offset: int = 0):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/reels")
-def create_reel(req: CreateReelRequest, auth_user_id: str = Depends(require_auth)):
+@limiter.limit("10/minute")
+def create_reel(request: Request, req: CreateReelRequest, auth_user_id: str = Depends(require_auth)):
     ensure_matching_user(auth_user_id, req.user_id, detail="You can only create reels as yourself")
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:

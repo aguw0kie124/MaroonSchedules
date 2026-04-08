@@ -64,11 +64,13 @@ import AnimatedReanimated, {
 } from "react-native-reanimated";
 import MapViewRNM from "react-native-maps";
 import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { connectFeedsUser } from "../services/streamFeeds";
+import { connectFeedsUser, toggleVote } from "../services/streamFeeds";
 import { API_URL } from "../config";
+
 import { useCampusHubStore } from "../store/campusHubStore";
 import { getOrderedItems, useAppShellStore } from "../store/appShellStore";
 import { useSessionStore } from "../store/sessionStore";
@@ -128,7 +130,7 @@ import { getStyles } from "./places/placesStyles";
 import {
   fetchCampusPulseMap,
   invalidateCampusPulseCache,
-  voteHotspot,
+  voteHotspotItem,
   type CampusHotspot,
 } from "../services/campusPulse";
 import {
@@ -256,11 +258,45 @@ export function PlacesMapScreen({ route, navigation }: any) {
     locations,
     refreshLocations,
   } = useLocationData({ autoFetch: true });
-  const [pulseHotspots, setPulseHotspots] = useState<CampusHotspot[]>([]);
   const pulseHotspotsRef = useRef<CampusHotspot[]>([]);
   const pulsePlacesRef = useRef<CampusLocation[]>([]);
   const selectedHotspotIdRef = useRef<string | null>(null);
-  const [isLoadingPulse, setIsLoadingPulse] = useState(false);
+
+  const queryClient = useQueryClient();
+  const {
+    data: pulseHotspots = [],
+    isLoading: isLoadingPulse,
+    refetch: refetchPulse,
+  } = useQuery({
+    queryKey: ['campus-pulse', user?.id],
+    queryFn: async () => {
+      const rawHotspots = await fetchCampusPulseMap(12, { 
+        clerkId: user?.id || undefined
+      });
+      
+      const currentPulsePlaces = pulsePlacesRef.current;
+      const placeLookup = new Map(
+        currentPulsePlaces.flatMap((place) => {
+          const keys = [place.location];
+          if (place.placeId) keys.push(place.placeId);
+          return keys.map((key) => [key, place] as const);
+        }),
+      );
+
+      return rawHotspots.map((hotspot) => ({
+        ...hotspot,
+        place:
+          (hotspot.placeId ? placeLookup.get(hotspot.placeId) : null) ||
+          placeLookup.get(hotspot.locationName) ||
+          null,
+      }));
+    },
+    enabled: activeLayer === 'Pulse' || !!pulsePlacesRef.current.length,
+    staleTime: 1000 * 30,
+    refetchInterval: 15000,
+  });
+  // isLoadingPulse is now handled by useQuery
+  // const [isLoadingPulse, setIsLoadingPulse] = useState(false);
   const lastGlobalSearchQueryRef = useRef('');
   const globalSearchRequestIdRef = useRef(0);
 
@@ -1089,86 +1125,76 @@ export function PlacesMapScreen({ route, navigation }: any) {
     [openHotspotPlace],
   );
  
-  const handleVoteHotspot = useCallback(async (hotspotId: string, targetVote: number) => {
-    const prevHotspots = pulseHotspotsRef.current;
+  const toggleHotspotVote = useCallback(async (hotspotId: string, itemId: string, targetVote: number) => {
+    if (isGuest) {
+      promptGuestLogin(navigation);
+      return;
+    }
+
+    const prevHotspots = pulseHotspots;
     const hotspot = prevHotspots.find(h => h.id === hotspotId);
     if (!hotspot) return;
+    
+    const item = hotspot.items?.find((i) => i.id === itemId);
+    if (!item) return;
 
     // Toggle-to-undo logic
-    const finalVote = hotspot.userVote === targetVote ? 0 : targetVote;
-    const currentVote = hotspot.userVote || 0;
+    const finalVote = item.userVote === targetVote ? 0 : targetVote;
+    const currentVote = item.userVote || 0;
     const scoreDelta = finalVote - currentVote;
 
-    const nextHotspots = prevHotspots.map(h => {
-      if (h.id === hotspotId) {
-        return {
-          ...h,
-          score: (h.score || 0) + scoreDelta,
-          pingCount: Math.max(0, h.pingCount + scoreDelta),
-          userVote: finalVote
-        };
-      }
-      return h;
-    });
+    // Dispatch real vote to backend using streamFeed's toggleVote mechanism
+    try {
+      await toggleVote(itemId, finalVote === 1 ? 'upvote' : (finalVote === -1 ? 'downvote' : 'none'));
+    } catch (e) {
+      console.error("Failed to commit final item vote", e);
+    }
 
-    setPulseHotspots(nextHotspots);
-    pulseHotspotsRef.current = nextHotspots;
+    // Process frontend cache instantly
+    queryClient.setQueryData(['campus-pulse', user?.id], (current: CampusHotspot[] | undefined) => {
+      if (!current) return current;
+      return current.map(h => {
+        if (h.id === hotspotId) {
+          const updatedItems = (h.items || []).map(i => {
+            if (i.id === itemId) {
+              return {
+                ...i,
+                itemScore: (i.itemScore || 0) + scoreDelta,
+                userVote: finalVote,
+              };
+            }
+            return i;
+          });
+          
+          let pingCountDelta = 0;
+          if (scoreDelta > 0 && currentVote === 0) pingCountDelta = 1;
+          else if (scoreDelta < 0 && finalVote === 0) pingCountDelta = -1;
+
+          return {
+            ...h,
+            items: updatedItems,
+            score: (h.score || 0) + scoreDelta,
+            pingCount: Math.max(0, h.pingCount + pingCountDelta),
+          };
+        }
+        return h;
+      });
+    });
 
     if (finalVote !== 0) {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     
-    await voteHotspot(hotspotId, finalVote);
-  }, []);
+    await voteHotspotItem(itemId, finalVote);
+  }, [isGuest, navigation, pulseHotspots, queryClient, user?.id]);
+
 
   const fetchPulseHotspots = useCallback(async (options: { force?: boolean } = {}) => {
-    const forceRefresh = options.force === true;
-    if (!pulseHotspotsRef.current.length) {
-      setIsLoadingPulse(true);
+    if (options.force) {
+      invalidateCampusPulseCache();
     }
-    try {
-      if (forceRefresh) {
-        invalidateCampusPulseCache();
-      }
-      const rawHotspots = await fetchCampusPulseMap(12, { 
-        force: forceRefresh,
-        clerkId: user?.id || undefined
-      });
-      console.log(`[PulseMap] Fetched ${rawHotspots.length} hotspots:`, rawHotspots.map(h => h.locationName).join(", "));
-      const currentPulsePlaces = pulsePlacesRef.current;
-      const placeLookup = new Map(
-        currentPulsePlaces.flatMap((place) => {
-          const keys = [place.location];
-          if (place.placeId) keys.push(place.placeId);
-          return keys.map((key) => [key, place] as const);
-        }),
-      );
-      const hotspots = rawHotspots.map((hotspot) => ({
-        ...hotspot,
-        place:
-          (hotspot.placeId ? placeLookup.get(hotspot.placeId) : null) ||
-          placeLookup.get(hotspot.locationName) ||
-          null,
-      }));
-
-      pulseHotspotsRef.current = hotspots;
-      setPulseHotspots(hotspots);
-      console.log(`[Pulse] Fetched ${hotspots.length} hotspots`);
-      const currentSelectedId = selectedHotspotIdRef.current;
-      if (
-        currentSelectedId &&
-        !hotspots.some((hotspot) => hotspot.id === currentSelectedId)
-      ) {
-        setSelectedHotspotId(null);
-      }
-    } catch (error) {
-      console.warn("Failed to build pulse hotspots", error);
-      if (!selectedHotspotIdRef.current) setPulseHotspots([]);
-    } finally {
-      setIsLoadingPulse(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    await refetchPulse();
+  }, [refetchPulse]);
 
 
   const hasSeenPulseLayer = useRef(false);
@@ -2527,7 +2553,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         }}
         onOpenPlace={openHotspotPlace}
         onOpenItem={openHotspotItem}
-        onVote={handleVoteHotspot}
+        onVote={toggleHotspotVote}
       />
 
       <View style={styles.mapFabStack} pointerEvents="box-none">

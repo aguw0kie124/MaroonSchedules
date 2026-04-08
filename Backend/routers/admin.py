@@ -5,8 +5,12 @@ import psycopg
 
 from db_config import CONNECTION_PARAMS
 from auth.clerk_middleware import require_auth, ensure_matching_user
-from services import cache_service
+from services import cache_service, encryption_service
 from repositories import tag_repository
+
+from models.base import SanitizedBaseModel
+from main import limiter
+from fastapi import Request
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -84,14 +88,14 @@ def _ensure_admin_review_schema(conn: psycopg.Connection) -> None:
     tag_repository._ensure_tag_schema(conn)
 
 
-class AdminApplicationRequest(BaseModel):
+class AdminApplicationRequest(SanitizedBaseModel):
     clerk_id: str
     email: Optional[str] = Field(default=None, max_length=320)
     organization_name: Optional[str] = Field(default=None, max_length=120)
     reason: Optional[str] = Field(default=None, max_length=2000)
 
 
-class AdminEventCreateRequest(BaseModel):
+class AdminEventCreateRequest(SanitizedBaseModel):
     clerk_id: str
     title: str = Field(..., min_length=1, max_length=140)
     description: str = Field(..., max_length=4000)
@@ -109,32 +113,32 @@ class AdminEventUpdateRequest(AdminEventCreateRequest):
     pass
 
 
-class AdminEventReviewRequest(BaseModel):
+class AdminEventReviewRequest(SanitizedBaseModel):
     clerk_id: str
     rating: int = Field(..., ge=1, le=5)
     feedback: Optional[str] = Field(default=None, max_length=2000)
 
 
-class AdminEventReviewDismissRequest(BaseModel):
+class AdminEventReviewDismissRequest(SanitizedBaseModel):
     clerk_id: str
 
 
-class AdminOrganizerPreferenceRequest(BaseModel):
+class AdminOrganizerPreferenceRequest(SanitizedBaseModel):
     clerk_id: str
 
 
-class AdminUserTagsRequest(BaseModel):
+class AdminUserTagsRequest(SanitizedBaseModel):
     clerk_id: str
     tags: list[str] = Field(default_factory=list)
 
 
-class AdminClubSettingsRequest(BaseModel):
+class AdminClubSettingsRequest(SanitizedBaseModel):
     clerk_id: str
     club_tag: Optional[str] = Field(default=None, max_length=80)
     auto_approve_join_requests: bool = False
 
 
-class ClubJoinReviewRequest(BaseModel):
+class ClubJoinReviewRequest(SanitizedBaseModel):
     clerk_id: str
     assign_club_tag: bool = True
 
@@ -205,7 +209,9 @@ def _normalize_admin_application(req: AdminApplicationRequest) -> dict[str, str 
 
 
 @router.get("/status")
+@limiter.limit("60/minute")
 def get_admin_status(
+    request: Request,
     clerk_id: str = Query(...),
     _auth_user_id: str = Depends(require_clerk_user),
 ):
@@ -235,7 +241,9 @@ def get_admin_status(
 
 
 @router.get("/tags")
+@limiter.limit("60/minute")
 def get_available_tags(
+    request: Request,
     clerk_id: str = Query(...),
     query: Optional[str] = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
@@ -381,7 +389,9 @@ def reject_club_join_request(
 
 
 @router.post("/apply")
+@limiter.limit("5/minute")
 def submit_admin_application(
+    request: Request,
     req: AdminApplicationRequest,
     auth_user_id: str = Depends(require_auth),
 ):
@@ -439,7 +449,9 @@ def submit_admin_application(
 
 
 @router.post("/events")
+@limiter.limit("30/minute")
 def create_admin_event(
+    request: Request,
     req: AdminEventCreateRequest,
     auth_user_id: str = Depends(require_auth),
 ):
@@ -468,8 +480,8 @@ def create_admin_event(
                     """,
                     (
                         req.clerk_id,
-                        req.title,
-                        req.description,
+                        encryption_service.encrypt_string(req.title),
+                        encryption_service.encrypt_string(req.description),
                         req.lat,
                         req.lng,
                         req.location_name,
@@ -526,8 +538,8 @@ def update_admin_event(
                     RETURNING id
                     """,
                     (
-                        req.title,
-                        req.description,
+                        encryption_service.encrypt_string(req.title),
+                        encryption_service.encrypt_string(req.description),
                         req.lat,
                         req.lng,
                         req.location_name,
@@ -625,7 +637,8 @@ def get_my_admin_events(
 
 
 @router.post("/events/{event_id}/share")
-def track_admin_event_share(event_id: str):
+@limiter.limit("5/minute")
+def track_admin_event_share(request: Request, event_id: str):
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
             _ensure_admin_review_schema(conn)
@@ -698,7 +711,9 @@ def get_pending_reviews(
 
 
 @router.post("/events/{event_id}/reviews")
+@limiter.limit("10/minute")
 def submit_event_review(
+    request: Request,
     event_id: str,
     req: AdminEventReviewRequest,
     auth_user_id: str = Depends(require_auth),

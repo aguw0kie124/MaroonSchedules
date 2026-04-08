@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface Course {
   id: string;
@@ -78,23 +80,31 @@ const initialCourses: Course[] = [
   },
 ];
 
-export const useCourseStore = create<CourseStore>((set) => ({
-  courses: initialCourses,
-  savedCourses: [],
-  addCourse: (course) =>
-    set((state) => ({
-      courses: [...state.courses, { ...course, color: getNextColor() }],
-    })),
-  removeCourse: (id) =>
-    set((state) => ({
-      courses: state.courses.filter((c) => c.id !== id),
-    })),
-  saveCourse: (course) =>
-    set((state) => ({
-      savedCourses: [...state.savedCourses, course],
-    })),
-  unsaveCourse: (id) =>
-    set((state) => ({
-      savedCourses: state.savedCourses.filter((c) => c.id !== id),
-    })),
-}));
+export const useCourseStore = create<CourseStore>()(
+  persist(
+    (set) => ({
+      courses: initialCourses,
+      savedCourses: [],
+      addCourse: (course) =>
+        set((state) => ({
+          courses: [...state.courses, { ...course, color: getNextColor() }],
+        })),
+      removeCourse: (id) =>
+        set((state) => ({
+          courses: state.courses.filter((c) => c.id !== id),
+        })),
+      saveCourse: (course) =>
+        set((state) => ({
+          savedCourses: [...state.savedCourses, course],
+        })),
+      unsaveCourse: (id) =>
+        set((state) => ({
+          savedCourses: state.savedCourses.filter((c) => c.id !== id),
+        })),
+    }),
+    {
+      name: 'course-storage',
+      storage: createJSONStorage(() => AsyncStorage),
+    },
+  ),
+);

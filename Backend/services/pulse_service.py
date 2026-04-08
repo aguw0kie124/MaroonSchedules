@@ -266,12 +266,14 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
             continue  # Don't show pings with invalid dates!
 
         counts = interactions.get(ping_id, {})
-        like_count = int(counts.get("like") or counts.get("upvote") or 0)
+        upvote_count = int(counts.get("upvote") or counts.get("like") or 0)
+        downvote_count = int(counts.get("downvote") or 0)
+        item_score = upvote_count - downvote_count
         comment_count = int(counts.get("comment") or 0)
 
         weight = (
             14 * _recency_weight(start_at)
-            + min(6, like_count * 0.8)
+            + min(6, upvote_count * 0.8)
             + min(4, comment_count * 0.7)
             + _ping_category_boost(category)
         )
@@ -292,6 +294,11 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
                 "timeLabel": _format_time_label(start_at),
                 "startAt": start_at,
                 "link": None,
+                "imageUrl": ping.get("image_url") or custom.get("image_url") or (ping.get("media_urls") and ping.get("media_urls")[0] if ping.get("media_urls") else None) or (ping.get("images") and ping.get("images")[0] if ping.get("images") else None),
+                "upvotes": upvote_count,
+                "downvotes": downvote_count,
+                "itemScore": item_score,
+                "userVote": 0 # userVote can be mapped client-side or handled dynamically
             }
         )
 
@@ -338,6 +345,11 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
                 "timeLabel": _format_time_label(start_at),
                 "startAt": start_at,
                 "link": None,
+                "imageUrl": event.get("image_url"),
+                "upvotes": 0,
+                "downvotes": 0,
+                "itemScore": 0,
+                "userVote": 0
             }
         )
 

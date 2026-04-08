@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
 import requests
 from datetime import datetime
@@ -18,7 +18,7 @@ try:
 except ImportError:
     Perplexity = None
 
-router = APIRouter()
+from main import limiter
 
 router = APIRouter()
 
@@ -538,18 +538,21 @@ class EventRequest(BaseModel):
 
 
 @router.post("/ask")
-def ask_perplexity(request: QueryRequest):
-    result = tracker.ask_perplexity(request.query)
+@limiter.limit("10/minute")
+def ask_perplexity(request: Request, body_request: QueryRequest):
+    result = tracker.ask_perplexity(body_request.query)
     return {"response": result}
 
 
 @router.get("/retrieve")
-def retrieve_locations():
+@limiter.limit("60/minute")
+def retrieve_locations(request: Request):
     return tracker.get_all_locations_with_events()
 
 
 @router.get("/transit/routes")
-def get_transit_routes():
+@limiter.limit("120/minute")
+def get_transit_routes(request: Request):
     cache_key = "traffic:transit:routes:v1"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
@@ -564,7 +567,8 @@ def get_transit_routes():
 
 
 @router.get("/transit/route/{route_key}")
-def get_transit_route(route_key: str):
+@limiter.limit("120/minute")
+def get_transit_route(request: Request, route_key: str):
     cache_key = f"traffic:transit:route:v1:{route_key}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
@@ -576,7 +580,8 @@ def get_transit_route(route_key: str):
 
 
 @router.get("/transit/vehicles")
-def get_transit_vehicles(route_id: str = Query("")):
+@limiter.limit("120/minute")
+def get_transit_vehicles(request: Request, route_id: str = Query("")):
     cache_key = f"traffic:transit:vehicles:v1:{route_id or '__all__'}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
@@ -588,7 +593,8 @@ def get_transit_vehicles(route_id: str = Query("")):
 
 
 @router.post("/create-event")
-def create_event(event: EventRequest):
+@limiter.limit("10/minute")
+def create_event(request: Request, event: EventRequest):
     event_dict = event.dict()
     base_url = "https://calendar.google.com/calendar/r/eventedit?"
     params = (

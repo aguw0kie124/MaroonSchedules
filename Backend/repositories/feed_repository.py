@@ -3,7 +3,18 @@ import psycopg
 from db_config import CONNECTION_PARAMS
 from typing import List, Dict, Any, Optional
 import uuid
-from services import cache_service
+from services import cache_service, encryption_service
+
+def _safe_decrypt_json(data: Any) -> Dict[str, Any]:
+    if isinstance(data, dict) and "_enc" in data:
+        return encryption_service.decrypt_json(data["_enc"])
+    if isinstance(data, str) and data.startswith("{"):
+        # Legacy fallback
+        try:
+            return json.loads(data)
+        except Exception:
+            pass
+    return data if isinstance(data, dict) else {}
 
 def _row_to_review_dict(row) -> Dict[str, Any]:
     if not row: return {}
@@ -14,8 +25,8 @@ def _row_to_review_dict(row) -> Dict[str, Any]:
         "user_name": row[3],
         "user_image": row[4],
         "rating": row[5],
-        "title": row[6],
-        "body": row[7],
+        "title": encryption_service.decrypt_string(row[6]) if row[6] else "",
+        "body": encryption_service.decrypt_string(row[7]) if row[7] else "",
         "images": row[8] or [],
         "created_at": str(row[9]),
         "updated_at": str(row[10]),
@@ -29,7 +40,7 @@ def _row_to_post_dict(row) -> Dict[str, Any]:
         "user_id": row[1],
         "user_name": row[2],
         "user_image": row[3],
-        "content": row[4],
+        "content": encryption_service.decrypt_string(row[4]) if row[4] else "",
         "lat": row[5],
         "lng": row[6],
         "location_tag": row[7],
@@ -38,7 +49,7 @@ def _row_to_post_dict(row) -> Dict[str, Any]:
         "is_anonymous": row[10],
         "visibility": row[11],
         "post_type": row[12],
-        "custom_data": row[13] or {},
+        "custom_data": _safe_decrypt_json(row[13]),
         "created_at": str(row[14])
     }
 
@@ -50,7 +61,7 @@ def _row_to_interaction_dict(row) -> Dict[str, Any]:
         "post_type": row[2],
         "user_id": row[3],
         "interaction_type": row[4],
-        "comment_text": row[5],
+        "comment_text": encryption_service.decrypt_string(row[5]) if row[5] else None,
         "created_at": str(row[6]),
         "user_name": row[7],
         "user_image": row[8]
@@ -77,7 +88,7 @@ def add_place_review(
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id, place_id, user_id, user_name, user_image, rating, title, body, images, created_at, updated_at, is_anonymous
                 """,
-                (place_id, user_id, user_name, user_image, rating, title, body, images or [], is_anonymous)
+                (place_id, user_id, user_name, user_image, rating, encryption_service.encrypt_string(title), encryption_service.encrypt_string(body), images or [], is_anonymous)
             )
             row = cur.fetchone()
         conn.commit()
@@ -133,7 +144,7 @@ def add_crowdping_post(
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 RETURNING id, user_id, user_name, user_image, content, lat, lng, location_tag, event_id, images, is_anonymous, visibility, post_type, custom_data, created_at
                 """,
-                (user_id, user_name, user_image, content, lat, lng, location_tag, event_id, images or [], is_anonymous, visibility, post_type, json.dumps(custom_data or {}))
+                (user_id, user_name, user_image, encryption_service.encrypt_string(content), lat, lng, location_tag, event_id, images or [], is_anonymous, visibility, post_type, json.dumps({"_enc": encryption_service.encrypt_json(custom_data or {})}))
             )
             row = cur.fetchone()
         conn.commit()
@@ -219,7 +230,7 @@ def add_post_interaction(
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id, post_id, post_type, user_id, type, comment_text, created_at, user_name, user_image
                 """,
-                (post_id, post_type, user_id, interaction_type, comment_text, user_name, user_image)
+                (post_id, post_type, user_id, interaction_type, encryption_service.encrypt_string(comment_text) if comment_text else None, user_name, user_image)
             )
             row = cur.fetchone()
         conn.commit()

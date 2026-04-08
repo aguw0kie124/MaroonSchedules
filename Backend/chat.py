@@ -17,23 +17,27 @@ from auth.clerk_middleware import require_auth, optional_auth, ensure_matching_u
 env_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(dotenv_path=env_path, override=True)
 
+from models.base import SanitizedBaseModel
+from main import limiter
+from fastapi import Request
+
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 # --- Models ---
 
-class FeedActivity(BaseModel):
+class FeedActivity(SanitizedBaseModel):
     activity: Dict[str, Any]
 
-class ReactionPayload(BaseModel):
+class ReactionPayload(SanitizedBaseModel):
     kind: str
     activity_id: str
     user_id: str
     data: Dict[str, Any] | None = None
 
-class BlockRequest(BaseModel):
+class BlockRequest(SanitizedBaseModel):
     target_id: str
 
-class ReportRequest(BaseModel):
+class ReportRequest(SanitizedBaseModel):
     reportee_id: str
     post_type: str
     post_id: str
@@ -59,7 +63,8 @@ def _invalidate_ping_related_caches(feed_group: str, feed_id: str) -> None:
 # --- User Management (Clerk) ---
 
 @router.get("/users")
-async def list_users(exclude_id: str = "", _auth_user_id: str = Depends(require_auth)):
+@limiter.limit("60/minute")
+async def list_users(request: Request, exclude_id: str = "", _auth_user_id: str = Depends(require_auth)):
     """Returns all Clerk users for messaging. Pass exclude_id to hide the current user."""
     clerk_secret = os.environ.get("CLERK_SECRET_KEY", "")
     if not clerk_secret:
@@ -92,7 +97,8 @@ async def list_users(exclude_id: str = "", _auth_user_id: str = Depends(require_
 
 @router.post("/token")
 @router.post("/feeds/token")
-async def get_noop_token(body: Dict[str, Any], auth_user_id: str = Depends(require_auth)):
+@limiter.limit("5/minute")
+async def get_noop_token(request: Request, body: Dict[str, Any], auth_user_id: str = Depends(require_auth)):
     """Actually sync the user to our DB during the connection phase to fix the Aggie bug."""
     clerk_id = body.get("clerk_user_id") or auth_user_id
     ensure_matching_user(auth_user_id, clerk_id, detail="You can only initialize chat as yourself")
@@ -112,7 +118,9 @@ async def get_noop_token(body: Dict[str, Any], auth_user_id: str = Depends(requi
 # --- Feed Proxy (Now 100% Native) ---
 
 @router.get("/feeds/proxy/{feed_group}/{feed_id}")
+@limiter.limit("120/minute")
 async def proxy_get_feed(
+    request: Request,
     feed_group: str,
     feed_id: str,
     limit: int = 25,
@@ -244,7 +252,8 @@ def _transform_post_to_activity(p: Dict[str, Any], counts: Dict[str, Any], own_r
     return activity
 
 @router.post("/feeds/proxy/{feed_group}/{feed_id}")
-async def proxy_add_activity(feed_group: str, feed_id: str, body: FeedActivity, auth_user_id: str = Depends(require_auth)):
+@limiter.limit("10/minute")
+async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, body: FeedActivity, auth_user_id: str = Depends(require_auth)):
     """Add an activity to the feed (100% Native Postgres)."""
     try:
         _ensure_social_schema()
@@ -331,7 +340,8 @@ async def proxy_delete_activity(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/feeds/proxy/reactions")
-async def proxy_add_reaction(body: ReactionPayload, auth_user_id: str = Depends(require_auth)):
+@limiter.limit("20/minute")
+async def proxy_add_reaction(request: Request, body: ReactionPayload, auth_user_id: str = Depends(require_auth)):
     """Add a reaction (Like/Comment/Upvote/Downvote) natively with toggle support."""
     try:
         _ensure_social_schema()
@@ -400,7 +410,8 @@ async def proxy_get_reactions(activity_id: str, kind: str):
 # --- Block & Report Endpoints ---
 
 @router.post("/users/{clerk_id}/block")
-async def proxy_block_user(clerk_id: str, body: BlockRequest = Body(...), auth_user_id: str = Depends(require_auth)):
+@limiter.limit("10/minute")
+async def proxy_block_user(request: Request, clerk_id: str, body: BlockRequest = Body(...), auth_user_id: str = Depends(require_auth)):
     """Block another user for the current account only."""
     try:
         ensure_matching_user(auth_user_id, clerk_id, detail="You can only block users from your own account")
@@ -476,7 +487,8 @@ async def proxy_unblock_user(clerk_id: str, target_id: str, auth_user_id: str = 
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/reports")
-async def proxy_report_content(body: ReportRequest, auth_user_id: str = Depends(require_auth)):
+@limiter.limit("5/minute")
+async def proxy_report_content(request: Request, body: ReportRequest, auth_user_id: str = Depends(require_auth)):
     """Submit a report for content."""
     try:
         report_id = feed_repository.add_content_report(

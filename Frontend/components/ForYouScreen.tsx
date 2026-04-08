@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   View,
   Text,
@@ -59,13 +60,14 @@ export function ForYouScreen() {
     const { COLORS } = useTheme();
     const styles = getStyles(COLORS);
     const openShare = useShareStore(state => state.openShare);
-  const [locations, setLocations] = useState<ForYouItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-
-  const fetchData = async () => {
-    try {
+  const {
+    data: locations = [],
+    isLoading: loading,
+    refetch,
+    isRefetching: refreshing,
+  } = useQuery({
+    queryKey: ['for-you-locations'],
+    queryFn: async () => {
       const snapshot = await fetchCampusPlacesMap();
       const data: { location: string; percent_full: number }[] = Array.isArray(snapshot?.locations)
         ? snapshot.locations
@@ -74,7 +76,6 @@ export function ForYouScreen() {
       const items: ForYouItem[] = data.map((d, i) => {
         const cat = classifyLocation(d.location);
         const available = Math.max(0, Math.round((100 - d.percent_full) * 2));
-        // Generate contextual reason
         let reason = '';
         if (d.percent_full < 30) reason = 'Very quiet right now — great pick!';
         else if (d.percent_full < 50) reason = 'Not too busy, plenty of space';
@@ -91,25 +92,17 @@ export function ForYouScreen() {
         };
       });
 
-      // Sort: lowest capacity first (best spots)
       items.sort((a, b) => a.percentFull - b.percentFull);
-      setLocations(items);
-    } catch (e) {
-      console.error('[ForYou] Error:', e);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+      return items;
+    },
+    staleTime: 1000 * 60 * 5, // 5 mins
+  });
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchData();
-  }, []);
+    refetch();
+  }, [refetch]);
 
   const categories = useMemo(() => {
     const cats = new Set(locations.map((l) => l.category));
