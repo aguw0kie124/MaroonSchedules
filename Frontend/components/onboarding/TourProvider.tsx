@@ -353,6 +353,86 @@ function CelebrationBurst({
   );
 }
 
+function CompletionConfetti({
+  visible,
+  width,
+}: {
+  visible: boolean;
+  width: number;
+}) {
+  const progress = React.useRef(new RNAnimated.Value(0)).current;
+  const pieces = React.useMemo(
+    () =>
+      Array.from({ length: 26 }, (_, index) => ({
+        id: index,
+        left: Math.max(10, (width / 26) * index + ((index % 4) - 1.5) * 10),
+        rotate: `${-24 + (index % 8) * 7}deg`,
+        color: ['#F94144', '#F9C74F', '#43AA8B', '#577590', '#F9844A', '#90BE6D'][index % 6],
+        size: 8 + (index % 4) * 3,
+      })),
+    [width],
+  );
+
+  React.useEffect(() => {
+    if (!visible) {
+      progress.setValue(0);
+      return;
+    }
+    const animation = RNAnimated.timing(progress, {
+      toValue: 1,
+      duration: 1800,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [progress, visible]);
+
+  if (!visible) return null;
+
+  return (
+    <View pointerEvents="none" style={styles.completionConfettiLayer}>
+      {pieces.map((piece, index) => (
+        <RNAnimated.View
+          key={`completion-confetti-${piece.id}`}
+          style={[
+            styles.completionConfettiPiece,
+            {
+              left: piece.left,
+              width: piece.size,
+              height: piece.size * 1.8,
+              backgroundColor: piece.color,
+              opacity: progress.interpolate({
+                inputRange: [0, 0.78, 1],
+                outputRange: [0, 1, 0],
+              }),
+              transform: [
+                {
+                  translateY: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-50 - (index % 5) * 16, 460 + (index % 3) * 40],
+                  }),
+                },
+                {
+                  translateX: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, ((index % 6) - 3) * 16],
+                  }),
+                },
+                {
+                  rotate: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0deg', `${180 + index * 12}deg`],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
 export function TourProvider({ children }: { children: React.ReactNode }) {
   const { isSignedIn, userId } = useAuth();
   const { user } = useUser();
@@ -597,15 +677,15 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     }
 
     setCompletionCelebration({
-      title: 'MaroonLife unlocked',
-      body: 'Your tour is complete. We are dropping you into your personalized app now.',
+      title: 'Congrats! You are all set.',
+      body: 'Your MaroonLife tour is complete. Your campus app is ready to explore.',
     });
     if (completionTimerRef.current) {
       clearTimeout(completionTimerRef.current);
     }
     completionTimerRef.current = setTimeout(() => {
       endTour({ navigateToDashboard: true });
-    }, 1850);
+    }, 2800);
   }, [activeTargetName, currentStep, endTour, isTourActive, triggerCelebration]);
 
   const haloScale = useSharedValue(1);
@@ -1107,6 +1187,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
           {completionCelebration ? (
             <Animated.View entering={FadeIn.duration(220)} exiting={FadeOut.duration(240)} style={styles.completionOverlay}>
               <View style={styles.completionBackdrop} />
+              <CompletionConfetti visible width={width} />
               <CelebrationBurst
                 visible
                 title={completionCelebration.title}
@@ -1541,6 +1622,15 @@ const styles = StyleSheet.create({
   completionBackdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(10,12,18,0.9)',
+  },
+  completionConfettiLayer: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
+  completionConfettiPiece: {
+    position: 'absolute',
+    top: 0,
+    borderRadius: 4,
   },
   completionCard: {
     width: '100%',
