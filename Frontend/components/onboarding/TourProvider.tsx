@@ -35,6 +35,10 @@ type CelebrationState = {
   title: string;
   body: string;
 };
+type CompletionCelebrationState = {
+  title: string;
+  body: string;
+};
 type BlockedHintState = {
   key: number;
   message: string;
@@ -53,7 +57,7 @@ type TourStep = {
 
 type TourContextType = {
   startTour: () => void;
-  endTour: () => void;
+  endTour: (options?: { navigateToDashboard?: boolean }) => void;
   isTourActive: boolean;
   currentStep: number;
   registerTarget: (name: string, measureFn: () => Promise<TargetRect | null>) => void;
@@ -143,9 +147,9 @@ export const TOUR_SEQUENCE: TourStep[] = [
   {
     id: 'gyms-pill',
     title: 'Filter to gyms only',
-    instruction: "Tap the 'Rec' filter pill so the map focuses on recreation locations.",
+    instruction: "Tap the highlighted 'Gyms' pill (Rec) once so the map focuses on recreation locations.",
     where: 'Look across the pill row on the Places screen for the recreation filter.',
-    cue: 'Tap the highlighted Rec pill.',
+    cue: "Tap the highlighted Gyms (Rec) pill once.",
     celebrationTitle: 'There it is.',
     celebrationBody: 'You are now filtered into recreation spots.',
   },
@@ -207,12 +211,25 @@ export const TOUR_SEQUENCE: TourStep[] = [
   },
 ];
 
-const ENCOURAGEMENTS = [
-  'You are doing great.',
-  'One clear step at a time.',
-  'We will guide you through this.',
-  'You are almost there.',
-];
+const FREE_INTERACTION_STEPS = new Set([
+  'add-gyms-toggle',
+  'gyms-pill',
+  'rec-center-item',
+  'crowdping-cta',
+  'crowdping-close',
+  'tour-finish',
+]);
+
+const COMPACT_COACH_STEPS = new Set([
+  'places-settings',
+  'add-gyms-toggle',
+  'add-gyms-close',
+  'gyms-pill',
+  'rec-center-item',
+  'crowdping-cta',
+  'crowdping-close',
+  'tour-finish',
+]);
 
 function getTargetRegion(rect: TargetRect, width: number, height: number) {
   const horizontal = rect.x + rect.w / 2 < width / 3
@@ -330,10 +347,91 @@ function CelebrationBurst({
   );
 }
 
+function CompletionConfetti({
+  visible,
+  width,
+}: {
+  visible: boolean;
+  width: number;
+}) {
+  const progress = React.useRef(new RNAnimated.Value(0)).current;
+  const pieces = React.useMemo(
+    () =>
+      Array.from({ length: 26 }, (_, index) => ({
+        id: index,
+        left: Math.max(10, (width / 26) * index + ((index % 4) - 1.5) * 10),
+        rotate: `${-24 + (index % 8) * 7}deg`,
+        color: ['#F94144', '#F9C74F', '#43AA8B', '#577590', '#F9844A', '#90BE6D'][index % 6],
+        size: 8 + (index % 4) * 3,
+      })),
+    [width],
+  );
+
+  React.useEffect(() => {
+    if (!visible) {
+      progress.setValue(0);
+      return;
+    }
+    const animation = RNAnimated.timing(progress, {
+      toValue: 1,
+      duration: 1800,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [progress, visible]);
+
+  if (!visible) return null;
+
+  return (
+    <View pointerEvents="none" style={styles.completionConfettiLayer}>
+      {pieces.map((piece, index) => (
+        <RNAnimated.View
+          key={`completion-confetti-${piece.id}`}
+          style={[
+            styles.completionConfettiPiece,
+            {
+              left: piece.left,
+              width: piece.size,
+              height: piece.size * 1.8,
+              backgroundColor: piece.color,
+              opacity: progress.interpolate({
+                inputRange: [0, 0.78, 1],
+                outputRange: [0, 1, 0],
+              }),
+              transform: [
+                {
+                  translateY: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-50 - (index % 5) * 16, 460 + (index % 3) * 40],
+                  }),
+                },
+                {
+                  translateX: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, ((index % 6) - 3) * 16],
+                  }),
+                },
+                {
+                  rotate: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0deg', `${180 + index * 12}deg`],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
+}
+
 export function TourProvider({ children }: { children: React.ReactNode }) {
   const { isSignedIn, userId } = useAuth();
   const { user } = useUser();
-  const { COLORS } = useTheme();
+  const { COLORS, theme } = useTheme();
+  const isDark = theme === 'dark';
   const isTOSAccepted = useAppShellStore((state) => state.isTOSAccepted);
   const isNotificationPrompted = useAppShellStore((state) => state.isNotificationPrompted);
   const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
@@ -349,6 +447,8 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const [assistVisible, setAssistVisible] = useState(false);
   const [isAssisting, setIsAssisting] = useState(false);
   const [blockedHint, setBlockedHint] = useState<BlockedHintState | null>(null);
+  const [completionCelebration, setCompletionCelebration] = useState<CompletionCelebrationState | null>(null);
+  const [tourStartSource, setTourStartSource] = useState<'auto' | 'manual' | null>(null);
 
   const targetsRef = useRef<Record<string, () => Promise<TargetRect | null>>>({});
   const assistActionsRef = useRef<Record<string, (() => void | Promise<void>) | null>>({});
@@ -357,6 +457,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const celebrationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const blockedHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assistPointerProgress = useRef(new RNAnimated.Value(0)).current;
   const blockedTapCountRef = useRef(0);
 
@@ -390,15 +491,10 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     return () => {
-      if (celebrationTimerRef.current) {
-        clearTimeout(celebrationTimerRef.current);
-      }
-      if (assistTimerRef.current) {
-        clearTimeout(assistTimerRef.current);
-      }
-      if (blockedHintTimerRef.current) {
-        clearTimeout(blockedHintTimerRef.current);
-      }
+      if (celebrationTimerRef.current) clearTimeout(celebrationTimerRef.current);
+      if (assistTimerRef.current) clearTimeout(assistTimerRef.current);
+      if (blockedHintTimerRef.current) clearTimeout(blockedHintTimerRef.current);
+      if (completionTimerRef.current) clearTimeout(completionTimerRef.current);
     };
   }, []);
 
@@ -423,16 +519,12 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     }, 4000);
 
     return () => {
-      if (assistTimerRef.current) {
-        clearTimeout(assistTimerRef.current);
-      }
+      if (assistTimerRef.current) clearTimeout(assistTimerRef.current);
     };
   }, [assistPointerProgress, currentStep, currentDef, isTourActive]);
 
   const triggerCelebration = useCallback((step: TourStep) => {
-    if (celebrationTimerRef.current) {
-      clearTimeout(celebrationTimerRef.current);
-    }
+    if (celebrationTimerRef.current) clearTimeout(celebrationTimerRef.current);
 
     setCelebration({
       title: step.celebrationTitle,
@@ -444,14 +536,16 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     }, 1700);
   }, []);
 
-  const startTour = useCallback(() => {
+  const beginTour = useCallback((source: 'auto' | 'manual') => {
     setCurrentStep(0);
     setTargetRect(null);
     setCelebration(null);
     setAssistVisible(false);
     setIsAssisting(false);
     setBlockedHint(null);
+    setCompletionCelebration(null);
     blockedTapCountRef.current = 0;
+    setTourStartSource(source);
     setIsTourActive(true);
 
     setTimeout(() => {
@@ -465,7 +559,11 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     }, 300);
   }, []);
 
-  const endTour = useCallback(async () => {
+  const startTour = useCallback(() => {
+    beginTour('manual');
+  }, [beginTour]);
+
+  const endTour = useCallback(async (options?: { navigateToDashboard?: boolean }) => {
     setIsTourActive(false);
     setCurrentStep(0);
     setTargetRect(null);
@@ -473,16 +571,30 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     setAssistVisible(false);
     setIsAssisting(false);
     setBlockedHint(null);
+    setCompletionCelebration(null);
+    setTourStartSource(null);
     blockedTapCountRef.current = 0;
 
     if (userId) {
       setTourCompleted(true);
       completeTour(userId).catch((error) => console.warn('Failed to persist tour completion:', error));
     }
+
+    if (options?.navigateToDashboard) {
+      setTimeout(() => {
+        if (navigationRef.isReady()) {
+          try {
+            (navigationRef as any).navigate('Main', { screen: 'Dashboard' });
+          } catch (error) {
+            console.warn("TourProvider couldn't navigate to Dashboard after completion", error);
+          }
+        }
+      }, 180);
+    }
   }, [setTourCompleted, userId]);
 
   useEffect(() => {
-    if (isSignedIn && shouldSkipTourForEmail) {
+    if (isSignedIn && shouldSkipTourForEmail && tourStartSource !== 'manual') {
       if (isTourActive) {
         setIsTourActive(false);
         setCurrentStep(0);
@@ -491,13 +603,15 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
         setAssistVisible(false);
         setIsAssisting(false);
         setBlockedHint(null);
+        setCompletionCelebration(null);
+        setTourStartSource(null);
         blockedTapCountRef.current = 0;
       }
       if (!isTourCompleted) {
         setTourCompleted(true);
       }
     }
-  }, [isSignedIn, isTourActive, isTourCompleted, setTourCompleted, shouldSkipTourForEmail]);
+  }, [isSignedIn, isTourActive, isTourCompleted, setTourCompleted, shouldSkipTourForEmail, tourStartSource]);
 
   useEffect(() => {
     if (
@@ -510,17 +624,17 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       !isTourCompleted &&
       !shouldSkipTourForEmail
     ) {
-      startTour();
+      beginTour('auto');
     }
   }, [
+    beginTour,
     isEventPreferencesCompleted,
     isNotificationPrompted,
     isSignedIn,
     isTOSAccepted,
     isTourCompleted,
-    showEventPreferencesOnboarding,
     shouldSkipTourForEmail,
-    startTour,
+    showEventPreferencesOnboarding,
     userId,
   ]);
 
@@ -551,14 +665,22 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    setTimeout(() => {
-      endTour();
-    }, 900);
+    setCompletionCelebration({
+      title: 'Congrats! You are all set.',
+      body: 'Your MaroonLife tour is complete. Your campus app is ready to explore.',
+    });
+    if (completionTimerRef.current) clearTimeout(completionTimerRef.current);
+    completionTimerRef.current = setTimeout(() => {
+      endTour({ navigateToDashboard: true });
+    }, 2800);
   }, [activeTargetName, currentStep, endTour, isTourActive, triggerCelebration]);
 
   const haloScale = useSharedValue(1);
   const haloOpacity = useSharedValue(0.16);
   const nudgeY = useSharedValue(0);
+  const coachCardLift = useSharedValue(0);
+  const coachCardScale = useSharedValue(1);
+  const coachGlowOpacity = useSharedValue(0.18);
 
   useEffect(() => {
     if (isTourActive && targetRect) {
@@ -594,6 +716,36 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     nudgeY.value = 0;
   }, [haloOpacity, haloScale, isTourActive, nudgeY, targetRect]);
 
+  useEffect(() => {
+    if (isTourActive && currentDef) {
+      coachCardScale.value = withSequence(
+        withTiming(0.985, { duration: 120 }),
+        withTiming(1, { duration: 240 }),
+      );
+      coachCardLift.value = withRepeat(
+        withSequence(
+          withTiming(-4, { duration: 1600 }),
+          withTiming(0, { duration: 1600 }),
+        ),
+        -1,
+        true,
+      );
+      coachGlowOpacity.value = withRepeat(
+        withSequence(
+          withTiming(0.28, { duration: 1300 }),
+          withTiming(0.16, { duration: 1300 }),
+        ),
+        -1,
+        true,
+      );
+      return;
+    }
+
+    coachCardScale.value = 1;
+    coachCardLift.value = 0;
+    coachGlowOpacity.value = 0.18;
+  }, [coachCardLift, coachCardScale, coachGlowOpacity, currentDef, isTourActive]);
+
   const pulseStyle = useAnimatedStyle(() => {
     if (!targetRect) return { opacity: 0 };
 
@@ -618,9 +770,9 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const targetTagStyle = useAnimatedStyle(() => {
     if (!targetRect) return { opacity: 0 };
 
-    const boxWidth = Math.min(width - 32, 230);
+    const boxWidth = Math.min(width - 40, 180);
     const left = Math.max(16, Math.min(targetRect.x + targetRect.w / 2 - boxWidth / 2, width - boxWidth - 16));
-    const top = targetRect.y > 80 ? targetRect.y - 62 : targetRect.y + targetRect.h + 14;
+    const top = targetRect.y > height * 0.42 ? targetRect.y - 44 : targetRect.y + targetRect.h + 10;
 
     return {
       position: 'absolute',
@@ -632,27 +784,32 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     };
   });
 
+  const coachCardStyle = useAnimatedStyle(
+    () => ({
+      transform: [{ translateY: coachCardLift.value }, { scale: coachCardScale.value }],
+    }) as any,
+  );
+
+  const coachGlowStyle = useAnimatedStyle(() => ({
+    opacity: coachGlowOpacity.value,
+  }));
+
   const stepLabel = currentDef ? `Step ${currentStep + 1} of ${TOUR_SEQUENCE.length}` : '';
   const regionHint = targetRect && currentDef ? `Highlighted in the ${getTargetRegion(targetRect, width, height)}.` : '';
-  const encouragement = ENCOURAGEMENTS[currentStep % ENCOURAGEMENTS.length];
+  const allowFreeInteraction = currentDef ? FREE_INTERACTION_STEPS.has(currentDef.id) : false;
+  const isCompactCoachStep = currentDef ? COMPACT_COACH_STEPS.has(currentDef.id) : false;
 
   const showBlockedHint = useCallback((message?: string) => {
-    if (!currentDef) {
-      return;
-    }
+    if (!currentDef) return;
 
     blockedTapCountRef.current += 1;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
 
-    if (blockedHintTimerRef.current) {
-      clearTimeout(blockedHintTimerRef.current);
-    }
+    if (blockedHintTimerRef.current) clearTimeout(blockedHintTimerRef.current);
 
     setBlockedHint({
       key: Date.now(),
-      message:
-        message ||
-        `Only the highlighted step is active right now. ${currentDef.cue}`,
+      message: message || `Only the highlighted step is active right now. ${currentDef.cue}`,
     });
 
     blockedHintTimerRef.current = setTimeout(() => {
@@ -665,9 +822,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   }, [currentDef]);
 
   const runAssist = useCallback(async () => {
-    if (!currentDef || isAssisting) {
-      return;
-    }
+    if (!currentDef || isAssisting) return;
 
     blockedTapCountRef.current = 0;
     setAssistVisible(false);
@@ -705,45 +860,23 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     : null;
 
   const assistPointerStyle: any = React.useMemo(() => {
-    if (!targetRect) {
-      return { opacity: 0 };
-    }
-
+    if (!targetRect) return { opacity: 0 };
     const endX = targetRect.x + targetRect.w / 2 - 18;
     const endY = targetRect.y + targetRect.h / 2 - 18;
     const startX = Math.max(20, endX - 84);
     const startY = Math.max(20, endY - 84);
-
     return {
       opacity: isAssisting ? 1 : 0,
       transform: [
-        {
-          translateX: assistPointerProgress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [startX, endX],
-          }),
-        },
-        {
-          translateY: assistPointerProgress.interpolate({
-            inputRange: [0, 1],
-            outputRange: [startY, endY],
-          }),
-        },
-        {
-          scale: assistPointerProgress.interpolate({
-            inputRange: [0, 0.8, 1],
-            outputRange: [0.9, 1, 0.92],
-          }),
-        },
+        { translateX: assistPointerProgress.interpolate({ inputRange: [0, 1], outputRange: [startX, endX] }) },
+        { translateY: assistPointerProgress.interpolate({ inputRange: [0, 1], outputRange: [startY, endY] }) },
+        { scale: assistPointerProgress.interpolate({ inputRange: [0, 0.8, 1], outputRange: [0.9, 1, 0.92] }) },
       ],
     };
   }, [assistPointerProgress, isAssisting, targetRect]);
 
   const assistRippleStyle: any = React.useMemo(() => {
-    if (!targetRect) {
-      return { opacity: 0 };
-    }
-
+    if (!targetRect) return { opacity: 0 };
     const centerX = targetRect.x + targetRect.w / 2 - 26;
     const centerY = targetRect.y + targetRect.h / 2 - 26;
     return {
@@ -751,12 +884,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       transform: [
         { translateX: centerX },
         { translateY: centerY },
-        {
-          scale: assistPointerProgress.interpolate({
-            inputRange: [0, 0.72, 0.9, 1],
-            outputRange: [0.25, 0.25, 1.2, 1.45],
-          }),
-        },
+        { scale: assistPointerProgress.interpolate({ inputRange: [0, 0.72, 0.9, 1], outputRange: [0.25, 0.25, 1.2, 1.45] }) },
       ],
     };
   }, [assistPointerProgress, isAssisting, targetRect]);
@@ -781,7 +909,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
       {isTourActive && currentDef ? (
         <View style={styles.overlayWrapper} pointerEvents="box-none">
-          {overlayTargetRect ? (
+          {!allowFreeInteraction && overlayTargetRect ? (
             <>
               <Pressable
                 style={[styles.blocker, { left: 0, top: 0, width, height: overlayTargetRect.top }]}
@@ -824,9 +952,9 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
                 onPress={() => showBlockedHint()}
               />
             </>
-          ) : (
+          ) : !allowFreeInteraction ? (
             <Pressable style={[styles.blocker, styles.blockerFull]} onPress={() => showBlockedHint('Setting up this step for you. Use End tour if you want to leave onboarding.')} />
-          )}
+          ) : null}
 
           {targetRect ? (
             <Animated.View entering={FadeIn} exiting={FadeOut} style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -878,23 +1006,25 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
             exiting={SlideOutDown}
             style={[
               styles.tourBox,
+              coachCardStyle,
               {
-                width: Math.min(width - 24, 430),
+                width: Math.min(width - 32, 360),
                 backgroundColor: COLORS.surface,
                 shadowColor: COLORS.border,
                 borderColor: `${COLORS.primary}22`,
                 ...(currentDef.position === 'top'
-                  ? { top: Math.max(18, Math.min(56, height * 0.06)) }
+                  ? { top: Math.max(10, Math.min(22, height * 0.025)) }
                   : currentDef.position === 'bottom'
-                    ? { bottom: Math.max(18, Math.min(34, height * 0.05)) }
-                    : targetRect && targetRect.y > height * 0.58
-                      ? { top: Math.max(18, Math.min(56, height * 0.06)) }
-                      : { bottom: Math.max(18, Math.min(34, height * 0.05)) }),
+                    ? { bottom: Math.max(10, Math.min(18, height * 0.025)) }
+                    : targetRect && targetRect.y > height * 0.44
+                      ? { top: Math.max(10, Math.min(22, height * 0.025)) }
+                      : { bottom: Math.max(10, Math.min(18, height * 0.025)) }),
               },
+              isCompactCoachStep ? styles.tourBoxCompact : null,
             ]}
             pointerEvents="box-none"
           >
-            <View style={[styles.cardGlow, styles.cardGlowPrimary, { backgroundColor: `${COLORS.primary}12` }]} />
+            <Animated.View style={[styles.cardGlow, styles.cardGlowPrimary, coachGlowStyle, { backgroundColor: `${COLORS.primary}12` }]} />
             <View style={[styles.cardGlow, styles.cardGlowSuccess]} />
 
             <View style={styles.tourHeader}>
@@ -909,83 +1039,101 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
                   </View>
                 </View>
               </View>
-              <TouchableOpacity onPress={endTour}>
+              <TouchableOpacity onPress={() => { endTour(); }}>
                 <Text style={[styles.skipText, { color: COLORS.textSecondary }]}>End tour</Text>
               </TouchableOpacity>
             </View>
 
-            <View style={styles.progressDotsRow}>
-              {TOUR_SEQUENCE.map((step, index) => {
-                const isDone = index < currentStep;
-                const isCurrent = index === currentStep;
-                return (
-                  <View
-                    key={step.id}
-                    style={[
-                      styles.progressDot,
-                      isDone && { backgroundColor: COLORS.primary, opacity: 0.92 },
-                      isCurrent && { backgroundColor: COLORS.primary, width: 24, opacity: 1 },
-                      !isDone && !isCurrent && { backgroundColor: COLORS.border, opacity: 0.9 },
-                    ]}
-                  />
-                );
-              })}
-            </View>
-
-            <Text style={[styles.tourTitle, { color: COLORS.textPrimary }]}>{currentDef.title}</Text>
-            <Text style={[styles.tourDescription, { color: COLORS.textPrimary }]}>{currentDef.instruction}</Text>
-
-            <View style={[styles.encouragementRow, { backgroundColor: 'rgba(255,255,255,0.56)' }]}>
-              <View style={[styles.encouragementDot, { backgroundColor: COLORS.primary }]} />
-              <Text style={[styles.encouragementText, { color: COLORS.textSecondary }]}>{encouragement}</Text>
-            </View>
-
-            <View style={styles.rewardStrip}>
-              <View style={[styles.rewardChip, { backgroundColor: `${COLORS.primary}12` }]}>
-                <Text style={[styles.rewardChipText, { color: COLORS.primary }]}>XP +5</Text>
+            {!isCompactCoachStep ? (
+              <View style={styles.progressDotsRow}>
+                {TOUR_SEQUENCE.map((step, index) => {
+                  const isDone = index < currentStep;
+                  const isCurrent = index === currentStep;
+                  return (
+                    <View
+                      key={step.id}
+                      style={[
+                        styles.progressDot,
+                        isDone && { backgroundColor: COLORS.primary, opacity: 0.92 },
+                        isCurrent && { backgroundColor: COLORS.primary, width: 24, opacity: 1 },
+                        !isDone && !isCurrent && { backgroundColor: COLORS.border, opacity: 0.9 },
+                      ]}
+                    />
+                  );
+                })}
               </View>
-              <View style={[styles.rewardChip, { backgroundColor: 'rgba(19,138,91,0.12)' }]}>
-                <Text style={[styles.rewardChipText, { color: '#138A5B' }]}>Keep going</Text>
-              </View>
-            </View>
-
-            <View style={[styles.coachBlock, { backgroundColor: `${COLORS.primary}10` }]}>
-              <Text style={[styles.coachLabel, { color: COLORS.primary }]}>Where to look</Text>
-              <Text style={[styles.coachText, { color: COLORS.textSecondary }]}>
-                {currentDef.where} {regionHint}
-              </Text>
-            </View>
+            ) : null}
 
             <View style={[styles.actionBlock, { borderColor: COLORS.border }]}>
-              <Text style={[styles.coachLabel, { color: COLORS.textPrimary }]}>Do this now</Text>
+              <Text style={[styles.coachLabel, { color: COLORS.primary }]}>Do this now</Text>
               <Text style={[styles.actionText, { color: COLORS.textPrimary }]}>{currentDef.cue}</Text>
             </View>
 
-            {assistVisible ? (
+            <Text style={[styles.tourTitle, { color: COLORS.textPrimary }]}>{currentDef.title}</Text>
+            <Text
+              numberOfLines={isCompactCoachStep ? 2 : undefined}
+              style={[styles.tourDescription, { color: COLORS.textSecondary }]}
+            >
+              {currentDef.instruction}
+            </Text>
+
+            {regionHint ? (
+              <Text style={[styles.regionHintText, { color: COLORS.textSecondary }]}>{regionHint}</Text>
+            ) : null}
+
+            <View style={styles.bottomActionGroup}>
+              {assistVisible ? (
+                <Pressable
+                  onPress={runAssist}
+                  style={({ pressed }) => [
+                    styles.assistButton,
+                    {
+                      backgroundColor: `${COLORS.primary}14`,
+                      borderColor: `${COLORS.primary}30`,
+                      opacity: pressed ? 0.88 : 1,
+                      transform: [{ scale: pressed ? 0.98 : 1 }],
+                    },
+                  ]}
+                >
+                  <Text style={[styles.assistButtonTitle, { color: COLORS.primary }]}>Confused? Click here for extra guidance.</Text>
+                  <Text style={[styles.assistButtonBody, { color: COLORS.textSecondary }]}>
+                    We will show the exact action, animate it on screen, and move you to the next step automatically.
+                  </Text>
+                </Pressable>
+              ) : null}
+
               <Pressable
-                onPress={runAssist}
+                onPress={() => endTour({ navigateToDashboard: true })}
                 style={({ pressed }) => [
-                  styles.assistButton,
+                  styles.finishTourButton,
                   {
+                    borderColor: `${COLORS.primary}2C`,
                     backgroundColor: `${COLORS.primary}12`,
-                    borderColor: `${COLORS.primary}26`,
-                    opacity: pressed ? 0.88 : 1,
-                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                    opacity: pressed ? 0.9 : 1,
                   },
                 ]}
               >
-                <Text style={[styles.assistButtonTitle, { color: COLORS.primary }]}>Confused? Click here for extra guidance.</Text>
-                <Text style={[styles.assistButtonBody, { color: COLORS.textSecondary }]}>
-                  We will show the exact action, animate it on screen, and move you to the next step automatically.
-                </Text>
+                <Text style={[styles.finishTourText, { color: COLORS.primary }]}>Finish tour now</Text>
               </Pressable>
-            ) : null}
 
-            {blockedHint ? (
-              <Animated.View entering={FadeIn.duration(140)} exiting={FadeOut.duration(180)} style={styles.blockedHintBubble}>
-                <Text style={[styles.blockedHintText, { color: COLORS.textPrimary }]}>{blockedHint.message}</Text>
-              </Animated.View>
-            ) : null}
+              {blockedHint ? (
+                <Animated.View
+                  entering={FadeIn.duration(140)}
+                  exiting={FadeOut.duration(180)}
+                  style={[
+                    styles.blockedHintBubble,
+                    {
+                      backgroundColor: isDark ? 'rgba(17,24,39,0.96)' : 'rgba(255,255,255,0.96)',
+                      borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(17,24,39,0.12)',
+                    },
+                  ]}
+                >
+                  <Text style={[styles.blockedHintText, { color: isDark ? '#F9FAFB' : '#111827' }]}>
+                    {blockedHint.message}
+                  </Text>
+                </Animated.View>
+              ) : null}
+            </View>
           </Animated.View>
 
           <CelebrationBurst
@@ -994,6 +1142,25 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
             body={celebration?.body || ''}
             width={width}
           />
+
+          {completionCelebration ? (
+            <Animated.View entering={FadeIn.duration(220)} exiting={FadeOut.duration(240)} style={styles.completionOverlay}>
+              <View style={styles.completionBackdrop} />
+              <CompletionConfetti visible width={width} />
+              <CelebrationBurst visible title={completionCelebration.title} body={completionCelebration.body} width={width} />
+              <View style={[styles.completionCard, { backgroundColor: COLORS.surface }]}>
+                <View style={[styles.completionOrb, { backgroundColor: `${COLORS.primary}16` }]} />
+                <View style={styles.completionBadge}>
+                  <Text style={styles.completionBadgeText}>Tour Complete</Text>
+                </View>
+                <Text style={[styles.completionTitle, { color: COLORS.textPrimary }]}>{completionCelebration.title}</Text>
+                <Text style={[styles.completionBody, { color: COLORS.textSecondary }]}>{completionCelebration.body}</Text>
+                <View style={[styles.completionProgressTrack, { backgroundColor: `${COLORS.primary}18` }]}>
+                  <RNAnimated.View style={[styles.completionProgressFill, { backgroundColor: COLORS.primary }]} />
+                </View>
+              </View>
+            </Animated.View>
+          ) : null}
         </View>
       ) : null}
     </TourContext.Provider>
@@ -1003,29 +1170,21 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 export function TourTarget({ name, children, style, assistAction }: any) {
   const { registerTarget, registerAssistAction, activeTargetName } = useTour();
   const ref = useRef<View>(null);
-
   const isHighlighted = activeTargetName === name;
 
   useEffect(() => {
     const measure = () => {
       if (!ref.current) return;
-
       ref.current.measureInWindow((x, y, w, h) => {
         if (w > 0 && h > 0) {
           registerTarget(name, () => Promise.resolve({ x, y, w, h }));
         }
       });
     };
-
     measure();
     let interval: ReturnType<typeof setInterval> | undefined;
-    if (isHighlighted) {
-      interval = setInterval(measure, 150);
-    }
-
-    return () => {
-      if (interval) clearInterval(interval);
-    };
+    if (isHighlighted) interval = setInterval(measure, 150);
+    return () => { if (interval) clearInterval(interval); };
   }, [isHighlighted, name, registerTarget]);
 
   useEffect(() => {
@@ -1034,12 +1193,7 @@ export function TourTarget({ name, children, style, assistAction }: any) {
   }, [assistAction, name, registerAssistAction]);
 
   return (
-    <View
-      ref={ref}
-      style={[style, isHighlighted && { zIndex: 9999 }]}
-      collapsable={false}
-      pointerEvents="box-none"
-    >
+    <View ref={ref} style={[style, isHighlighted && { zIndex: 9999 }]} collapsable={false} pointerEvents="box-none">
       {children}
     </View>
   );
@@ -1052,17 +1206,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 10000,
   },
-  blocker: {
-    position: 'absolute',
-    zIndex: 9998,
-  },
-  blockerFull: {
-    ...StyleSheet.absoluteFillObject,
-  },
+  blocker: { position: 'absolute', zIndex: 9998 },
+  blockerFull: { ...StyleSheet.absoluteFillObject },
   tourBox: {
     position: 'absolute',
     borderRadius: 26,
-    padding: 18,
+    padding: 14,
     overflow: 'hidden',
     elevation: 20,
     shadowOpacity: 0.18,
@@ -1070,39 +1219,18 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     zIndex: 10000,
     borderWidth: 1,
-    gap: 12,
+    gap: 8,
   },
-  cardGlow: {
-    position: 'absolute',
-    borderRadius: 999,
-  },
-  cardGlowPrimary: {
-    width: 180,
-    height: 180,
-    top: -70,
-    right: -40,
-  },
-  cardGlowSuccess: {
-    width: 120,
-    height: 120,
-    bottom: -45,
-    left: -20,
-    backgroundColor: 'rgba(19,138,91,0.10)',
-  },
-  tourHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
+  tourBoxCompact: { padding: 12, gap: 6 },
+  cardGlow: { position: 'absolute', borderRadius: 999 },
+  cardGlowPrimary: { width: 180, height: 180, top: -70, right: -40 },
+  cardGlowSuccess: { width: 120, height: 120, bottom: -45, left: -20, backgroundColor: 'rgba(19,138,91,0.10)' },
+  tourHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   coachAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#7A0B1C',
     alignItems: 'center',
     justifyContent: 'center',
@@ -1112,115 +1240,33 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
   },
-  coachAvatarText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  coachName: {
-    fontSize: 14,
-    fontWeight: '900',
-    marginBottom: 4,
-  },
+  coachAvatarText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+  coachName: { fontSize: 13, fontWeight: '900', marginBottom: 2 },
   progressPill: {
     alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 999,
     backgroundColor: 'rgba(80,0,0,0.08)',
   },
-  progressDotsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  progressDot: {
-    height: 8,
-    width: 8,
-    borderRadius: 999,
-  },
-  stepIndicator: {
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    fontSize: 10,
-    letterSpacing: 0.8,
-  },
-  skipText: {
-    fontWeight: '700',
-    fontSize: 12,
-  },
-  tourTitle: {
-    fontSize: 22,
-    fontWeight: '900',
-    letterSpacing: -0.6,
-  },
-  tourDescription: {
-    fontSize: 15,
-    fontWeight: '700',
-    lineHeight: 22,
-  },
-  encouragementRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    alignSelf: 'flex-start',
+  progressDotsRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  progressDot: { height: 6, width: 6, borderRadius: 999 },
+  stepIndicator: { fontWeight: '800', textTransform: 'uppercase', fontSize: 10, letterSpacing: 0.8 },
+  skipText: { fontWeight: '700', fontSize: 11 },
+  tourTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.6 },
+  tourDescription: { fontSize: 13, fontWeight: '700', lineHeight: 18 },
+  regionHintText: { fontSize: 11, lineHeight: 15, fontWeight: '600' },
+  bottomActionGroup: { marginTop: 6, gap: 10 },
+  finishTourButton: {
+    alignSelf: 'stretch',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(17,24,39,0.06)',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  encouragementDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  encouragementText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  rewardStrip: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  rewardChip: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  rewardChipText: {
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  coachBlock: {
-    borderRadius: 18,
-    padding: 14,
-    gap: 6,
-  },
-  actionBlock: {
-    borderRadius: 18,
-    padding: 14,
-    gap: 6,
-    borderWidth: 1,
-  },
-  coachLabel: {
-    fontSize: 11,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0.9,
-  },
-  coachText: {
-    fontSize: 13,
-    fontWeight: '600',
-    lineHeight: 19,
-  },
-  actionText: {
-    fontSize: 14,
-    fontWeight: '800',
-    lineHeight: 20,
-  },
+  finishTourText: { fontSize: 13, fontWeight: '900', letterSpacing: 0.2 },
   targetTag: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
@@ -1234,49 +1280,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(80,0,0,0.1)',
   },
-  targetTagLabel: {
-    fontSize: 10,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0.9,
-    color: '#7A0B1C',
-    marginBottom: 4,
-  },
-  targetTagText: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '700',
-    color: '#151821',
-  },
-  assistButton: {
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    borderWidth: 1,
-    gap: 4,
-  },
-  assistButtonTitle: {
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  assistButtonBody: {
-    fontSize: 12,
-    fontWeight: '600',
-    lineHeight: 17,
-  },
+  targetTagLabel: { fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.9, color: '#7A0B1C', marginBottom: 4 },
+  targetTagText: { fontSize: 13, lineHeight: 18, fontWeight: '700', color: '#151821' },
+  actionBlock: { borderRadius: 18, padding: 14, gap: 6, borderWidth: 1 },
+  coachLabel: { fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.9 },
+  actionText: { fontSize: 14, fontWeight: '800', lineHeight: 20 },
+  assistButton: { borderRadius: 18, paddingHorizontal: 15, paddingVertical: 14, borderWidth: 1, gap: 6 },
+  assistButtonTitle: { fontSize: 13, fontWeight: '900' },
+  assistButtonBody: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
   blockedHintBubble: {
     borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    backgroundColor: 'rgba(255,255,255,0.98)',
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.08)',
   },
-  blockedHintText: {
-    fontSize: 12,
-    fontWeight: '700',
-    lineHeight: 17,
-  },
+  blockedHintText: { fontSize: 12, fontWeight: '700', lineHeight: 17 },
   assistPointer: {
     position: 'absolute',
     left: 0,
@@ -1295,12 +1315,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 10,
   },
-  assistPointerDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#111827',
-  },
+  assistPointerDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#111827' },
   assistRipple: {
     position: 'absolute',
     left: 0,
@@ -1312,13 +1327,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.95)',
     backgroundColor: 'rgba(255,255,255,0.12)',
   },
-  celebrationWrapper: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingTop: 44,
-    zIndex: 10001,
-  },
+  celebrationWrapper: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 44, zIndex: 10001 },
   celebrationCard: {
     minWidth: 230,
     maxWidth: 320,
@@ -1334,30 +1343,35 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 12,
   },
-  celebrationEyebrow: {
-    fontSize: 10,
-    fontWeight: '900',
-    textTransform: 'uppercase',
-    letterSpacing: 0.9,
-    color: '#138A5B',
-    marginBottom: 4,
+  celebrationEyebrow: { fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.9, color: '#138A5B', marginBottom: 4 },
+  celebrationTitle: { fontSize: 22, fontWeight: '900', color: '#111827', marginBottom: 4, letterSpacing: -0.4 },
+  celebrationBody: { fontSize: 13, fontWeight: '600', color: '#4B5563', lineHeight: 18 },
+  confettiPiece: { position: 'absolute', top: 6, borderRadius: 4 },
+  completionOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', zIndex: 10002, paddingHorizontal: 24 },
+  completionBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(10,12,18,0.9)' },
+  completionConfettiLayer: { ...StyleSheet.absoluteFillObject, overflow: 'hidden' },
+  completionConfettiPiece: { position: 'absolute', top: 0, borderRadius: 4 },
+  completionCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 30,
+    paddingHorizontal: 22,
+    paddingVertical: 24,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(80,0,0,0.08)',
+    shadowColor: '#000000',
+    shadowOpacity: 0.22,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 18,
+    overflow: 'hidden',
   },
-  celebrationTitle: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#111827',
-    marginBottom: 4,
-    letterSpacing: -0.4,
-  },
-  celebrationBody: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#4B5563',
-    lineHeight: 18,
-  },
-  confettiPiece: {
-    position: 'absolute',
-    top: 6,
-    borderRadius: 4,
-  },
+  completionOrb: { position: 'absolute', width: 180, height: 180, borderRadius: 90, top: -72, right: -38 },
+  completionBadge: { borderRadius: 999, backgroundColor: 'rgba(19,138,91,0.12)', paddingHorizontal: 12, paddingVertical: 8, marginBottom: 14 },
+  completionBadgeText: { color: '#138A5B', fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.8 },
+  completionTitle: { fontSize: 30, lineHeight: 34, fontWeight: '900', letterSpacing: -0.8, marginBottom: 10, textAlign: 'center' },
+  completionBody: { fontSize: 15, lineHeight: 22, fontWeight: '600', textAlign: 'center', marginBottom: 18 },
+  completionProgressTrack: { width: '100%', height: 8, borderRadius: 999, overflow: 'hidden' },
+  completionProgressFill: { width: '100%', height: '100%', borderRadius: 999 },
 });

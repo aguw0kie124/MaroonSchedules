@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import {
   ActivityIndicator,
   Alert,
+  Animated as RNAnimated,
   FlatList,
   Image,
   Keyboard,
@@ -145,6 +146,107 @@ interface PingCard {
   locationLat?: number | null;
   locationLng?: number | null;
   imageUrl?: string | null;
+}
+
+function PingCelebrationToast({
+  visible,
+  title,
+  body,
+}: {
+  visible: boolean;
+  title: string;
+  body: string;
+}) {
+  const progress = React.useRef(new RNAnimated.Value(0)).current;
+  const pieces = React.useMemo(
+    () =>
+      Array.from({ length: 14 }, (_, index) => ({
+        id: index,
+        left: 18 + index * 18,
+        color: ['#F9C74F', '#43AA8B', '#F9844A', '#577590', '#F94144'][index % 5],
+      })),
+    [],
+  );
+
+  React.useEffect(() => {
+    if (!visible) {
+      progress.setValue(0);
+      return;
+    }
+    const animation = RNAnimated.timing(progress, {
+      toValue: 1,
+      duration: 900,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [progress, visible]);
+
+  if (!visible) return null;
+
+  return (
+    <View pointerEvents="none" style={stylesStatic.pingCelebrationWrap}>
+      {pieces.map((piece, index) => (
+        <RNAnimated.View
+          key={`${piece.id}-${title}`}
+          style={[
+            stylesStatic.pingConfettiPiece,
+            {
+              left: piece.left,
+              backgroundColor: piece.color,
+              opacity: progress.interpolate({
+                inputRange: [0, 0.84, 1],
+                outputRange: [0, 1, 0],
+              }),
+              transform: [
+                {
+                  translateY: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-10, 130 + (index % 3) * 18],
+                  }),
+                },
+                {
+                  translateX: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, ((index % 5) - 2) * 14],
+                  }),
+                },
+                {
+                  rotate: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0deg', `${160 + index * 14}deg`],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      ))}
+      <RNAnimated.View
+        style={[
+          stylesStatic.pingCelebrationCard,
+          {
+            opacity: progress.interpolate({
+              inputRange: [0, 0.12, 0.85, 1],
+              outputRange: [0, 1, 1, 0],
+            }),
+            transform: [
+              {
+                translateY: progress.interpolate({
+                  inputRange: [0, 0.12, 1],
+                  outputRange: [14, 0, -8],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <Text style={stylesStatic.pingCelebrationEyebrow}>CrowdPing posted</Text>
+        <Text style={stylesStatic.pingCelebrationTitle}>{title}</Text>
+        <Text style={stylesStatic.pingCelebrationBody}>{body}</Text>
+      </RNAnimated.View>
+    </View>
+  );
 }
 
 const PING_CATEGORIES: Array<{ id: PingCategory; accent: string; Icon: any }> = [
@@ -308,24 +410,19 @@ export function CampusPingsScreen() {
   const [categoryFilter, setCategoryFilter] = useState<'All' | PingCategory>('All');
 
   const [composerVisible, setComposerVisible] = useState(false);
+  const [postCelebration, setPostCelebration] = useState<{ title: string; body: string } | null>(null);
+  const postCelebrationTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const postButtonPulse = React.useRef(new RNAnimated.Value(1)).current;
 
-  // Onboarding logic: automatically advance if the tour is on the CTA step handled in the open composer call
-  // We added a 1s delay so the instructions and highlight appear AFTER the animation finishes
-  useEffect(() => {
-    if (activeTargetName === 'crowdping-cta' && composerVisible) {
-      const timer = setTimeout(() => {
-        advanceStep('crowdping-cta');
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [activeTargetName, composerVisible, advanceStep]);
+  // Onboarding progression is now user-action only for the CTA step.
 
-  // Removed onboarding idle timer that was auto-advancing the tour
   useEffect(() => {
-    if (activeTargetName === 'crowdping-cta' && !composerVisible) {
-      // Optional: Pulse or hint if they are just sitting there, but no forced advancement
-    }
-  }, [activeTargetName, composerVisible]);
+    return () => {
+      if (postCelebrationTimerRef.current) {
+        clearTimeout(postCelebrationTimerRef.current);
+      }
+    };
+  }, []);
 
   const [composerTitle, setComposerTitle] = useState('');
   const [composerBody, setComposerBody] = useState('');
@@ -336,6 +433,24 @@ export function CampusPingsScreen() {
   const [composerImageUri, setComposerImageUri] = useState<string | null>(null);
   const [composerAnonymous, setComposerAnonymous] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
+
+  const canPostPing = !!composerTitle.trim() && !!composerBody.trim() && !!selectedLocation;
+
+  useEffect(() => {
+    if (!composerVisible || !canPostPing || isPosting) {
+      postButtonPulse.stopAnimation();
+      postButtonPulse.setValue(1);
+      return;
+    }
+    const animation = RNAnimated.loop(
+      RNAnimated.sequence([
+        RNAnimated.timing(postButtonPulse, { toValue: 1.03, duration: 850, useNativeDriver: true }),
+        RNAnimated.timing(postButtonPulse, { toValue: 1, duration: 850, useNativeDriver: true }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [canPostPing, composerVisible, isPosting, postButtonPulse]);
 
   const [activeFeaturedEvent, setActiveFeaturedEvent] = useState<FeaturedEvent | null>(null);
   const [rsvpBanner, setRsvpBanner] = useState<string | null>(null);
@@ -485,6 +600,14 @@ export function CampusPingsScreen() {
     setComposerAnonymous(false);
   }, []);
 
+  const triggerPostCelebration = useCallback((title: string, body: string) => {
+    if (postCelebrationTimerRef.current) {
+      clearTimeout(postCelebrationTimerRef.current);
+    }
+    setPostCelebration({ title, body });
+    postCelebrationTimerRef.current = setTimeout(() => setPostCelebration(null), 1050);
+  }, []);
+
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
     loadAll();
@@ -578,6 +701,8 @@ export function CampusPingsScreen() {
       setComposerVisible(false);
       resetComposer();
       await loadUserPings();
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      triggerPostCelebration('Live now', 'Your CrowdPing is out on the feed.');
 
     } catch (error: any) {
       console.error('[Pings] create failed', error);
@@ -595,6 +720,7 @@ export function CampusPingsScreen() {
     feedConnected,
     loadUserPings,
     locationLookup,
+    triggerPostCelebration,
     resetComposer,
     selectedLocation,
     user,
@@ -1169,6 +1295,11 @@ export function CampusPingsScreen() {
 
   return (
     <View style={styles.container}>
+      <PingCelebrationToast
+        visible={!!postCelebration}
+        title={postCelebration?.title || ''}
+        body={postCelebration?.body || ''}
+      />
       <FlatList
         data={filteredFeed}
         keyExtractor={(item) => item.id}
@@ -1389,17 +1520,19 @@ export function CampusPingsScreen() {
                       </ScrollView>
 
                       <View style={styles.modalFooter}>
-                        <Pressable
-                          style={[styles.postButton, (!composerTitle.trim() || !composerBody.trim() || !selectedLocation) && styles.postButtonDisabled]}
-                          onPress={handleCreatePing}
-                          disabled={isPosting}
-                        >
-                          {isPosting ? (
-                            <ActivityIndicator size="small" color="#FFFFFF" />
-                          ) : (
-                            <Text style={styles.postButtonText}>Post CrowdPing</Text>
-                          )}
-                        </Pressable>
+                        <RNAnimated.View style={{ transform: [{ scale: postButtonPulse }] }}>
+                          <Pressable
+                            style={[styles.postButton, !canPostPing && styles.postButtonDisabled]}
+                            onPress={handleCreatePing}
+                            disabled={isPosting}
+                          >
+                            {isPosting ? (
+                              <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                              <Text style={styles.postButtonText}>Post CrowdPing</Text>
+                            )}
+                          </Pressable>
+                        </RNAnimated.View>
                       </View>
                     </View>
                   </TouchableWithoutFeedback>
@@ -2434,3 +2567,56 @@ const getStyles = (COLORS: any) =>
       fontWeight: '800',
     },
   });
+
+const stylesStatic = StyleSheet.create({
+  pingCelebrationWrap: {
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    top: 72,
+    alignItems: 'center',
+    zIndex: 40,
+    pointerEvents: 'none',
+  },
+  pingCelebrationCard: {
+    minWidth: 220,
+    maxWidth: 300,
+    borderRadius: 24,
+    backgroundColor: 'rgba(20,20,24,0.92)',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  pingCelebrationEyebrow: {
+    color: '#F9C74F',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  pingCelebrationTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 4,
+  },
+  pingCelebrationBody: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  pingConfettiPiece: {
+    position: 'absolute',
+    top: 8,
+    width: 8,
+    height: 14,
+    borderRadius: 3,
+  },
+});

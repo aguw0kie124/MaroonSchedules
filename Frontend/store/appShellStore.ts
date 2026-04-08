@@ -17,6 +17,8 @@ export type PlacesPillId =
 export type ParkingPermit = 'visitor' | 'garage' | 'any_valid' | 'west_campus' | 'resident';
 export type SettingsTabId = 'personal' | 'layout' | 'resources';
 export type TabBarMode = 'floating' | 'solid';
+export type EventTimePreference = 'Morning' | 'Afternoon' | 'Evening' | 'Anytime';
+export type EventSocialPreference = 'casual' | 'professional';
 
 export interface ToggleLayoutItem<T extends string> {
   id: T;
@@ -135,6 +137,9 @@ type AppShellState = {
   isNotificationPrompted: boolean;
   isEventPreferencesCompleted: boolean;
   showEventPreferencesOnboarding: boolean;
+  preferredEventCategories: string[];
+  preferredTime: EventTimePreference | null;
+  preferredSocialMode: EventSocialPreference | null;
   adminAccessStatus: boolean | null;
   notificationsEnabled: boolean;
   eventNotifications: boolean;
@@ -155,6 +160,9 @@ type AppShellState = {
   setNotificationPrompted: (prompted: boolean) => void;
   setEventPreferencesCompleted: (completed: boolean) => void;
   setShowEventPreferencesOnboarding: (visible: boolean) => void;
+  setPreferredEventCategories: (categories: string[]) => void;
+  setPreferredTime: (time: EventTimePreference | null) => void;
+  setPreferredSocialMode: (mode: EventSocialPreference | null) => void;
   setAdminAccessStatus: (status: boolean | null) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
   setNotificationPreference: (key: 'event' | 'place' | 'ping', value: boolean) => void;
@@ -176,6 +184,9 @@ export const useAppShellStore = create<AppShellState>()(
       isNotificationPrompted: false,
       isEventPreferencesCompleted: false,
       showEventPreferencesOnboarding: false,
+      preferredEventCategories: [],
+      preferredTime: null,
+      preferredSocialMode: null,
       adminAccessStatus: null,
       notificationsEnabled: false,
       eventNotifications: true,
@@ -208,6 +219,9 @@ export const useAppShellStore = create<AppShellState>()(
       setNotificationPrompted: (isNotificationPrompted) => set({ isNotificationPrompted }),
       setEventPreferencesCompleted: (isEventPreferencesCompleted) => set({ isEventPreferencesCompleted }),
       setShowEventPreferencesOnboarding: (showEventPreferencesOnboarding) => set({ showEventPreferencesOnboarding }),
+      setPreferredEventCategories: (preferredEventCategories) => set({ preferredEventCategories }),
+      setPreferredTime: (preferredTime) => set({ preferredTime }),
+      setPreferredSocialMode: (preferredSocialMode) => set({ preferredSocialMode }),
       setAdminAccessStatus: (adminAccessStatus) => set({ adminAccessStatus }),
       setNotificationsEnabled: (notificationsEnabled) => set({ notificationsEnabled }),
       setNotificationPreference: (key, value) => set((state) => ({
@@ -230,6 +244,9 @@ export const useAppShellStore = create<AppShellState>()(
         isTourCompleted: state.isTourCompleted,
         isNotificationPrompted: state.isNotificationPrompted,
         isEventPreferencesCompleted: state.isEventPreferencesCompleted,
+        preferredEventCategories: state.preferredEventCategories,
+        preferredTime: state.preferredTime,
+        preferredSocialMode: state.preferredSocialMode,
         notificationsEnabled: state.notificationsEnabled,
         eventNotifications: state.eventNotifications,
         placeNotifications: state.placeNotifications,
@@ -267,6 +284,15 @@ export const useAppShellStore = create<AppShellState>()(
           isEventPreferencesCompleted: typeof persisted.isEventPreferencesCompleted === 'boolean'
             ? persisted.isEventPreferencesCompleted
             : currentState.isEventPreferencesCompleted,
+          preferredEventCategories: Array.isArray(persisted.preferredEventCategories)
+            ? persisted.preferredEventCategories.filter((item): item is string => typeof item === 'string')
+            : currentState.preferredEventCategories,
+          preferredTime: typeof persisted.preferredTime === 'string'
+            ? persisted.preferredTime as EventTimePreference
+            : currentState.preferredTime,
+          preferredSocialMode: persisted.preferredSocialMode === 'casual' || persisted.preferredSocialMode === 'professional'
+            ? persisted.preferredSocialMode
+            : currentState.preferredSocialMode,
           notificationsEnabled: typeof persisted.notificationsEnabled === 'boolean'
             ? persisted.notificationsEnabled
             : currentState.notificationsEnabled,
@@ -289,13 +315,9 @@ export const useAppShellStore = create<AppShellState>()(
           const state = persistedState as Partial<AppShellState>;
           const newState = { ...state };
           
-          // 1. Reset Nav Defaults (Events, Places, Pings on; Dining off)
           newState.navItems = DEFAULT_NAV_ITEMS;
-
-          // 2. Set Default Tab Bar Mode to 'solid'
           newState.tabBarMode = 'solid';
 
-          // 3. Adjust Places Pills (Gyms off)
           if (state.placesPills && Array.isArray(state.placesPills)) {
             newState.placesPills = state.placesPills.map(p => 
               p.id === 'Rec' ? { ...p, visible: false } : p
@@ -304,6 +326,16 @@ export const useAppShellStore = create<AppShellState>()(
           newState.isEventPreferencesCompleted = typeof state.isEventPreferencesCompleted === 'boolean'
             ? state.isEventPreferencesCompleted
             : false;
+          
+          newState.preferredEventCategories = Array.isArray(state.preferredEventCategories)
+            ? state.preferredEventCategories.filter((item): item is string => typeof item === 'string')
+            : [];
+          newState.preferredTime = typeof state.preferredTime === 'string'
+            ? state.preferredTime as EventTimePreference
+            : null;
+          newState.preferredSocialMode = state.preferredSocialMode === 'casual' || state.preferredSocialMode === 'professional'
+            ? state.preferredSocialMode
+            : null;
           
           return newState;
         }

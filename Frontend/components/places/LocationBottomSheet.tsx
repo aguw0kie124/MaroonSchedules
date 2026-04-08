@@ -194,27 +194,15 @@ export function LocationBottomSheet({
         mass: 0.9,
       }).start(() => {
         if (onDone) onDone();
-        // Onboarding: Instant advance on full expansion
-        if (toValue === SHEET_TOP_SNAP && activeTargetName === 'rec-center-item') {
-          advanceStep('rec-center-item');
-        }
       });
     },
-    [sheetY, activeTargetName, advanceStep],
+    [sheetY],
   );
 
   useEffect(() => {
     setDiningDetailTab("reviews");
     if (selectedId) {
       animateSheet(SHEET_MID_SNAP);
-      
-      // Onboarding: Auto-advance after 3 seconds of viewing Rec Center
-      if (activeTargetName === 'rec-center-item' && selectedLoc?.type === 'Rec') {
-        const timer = setTimeout(() => {
-          advanceStep('rec-center-item');
-        }, 3000);
-        return () => clearTimeout(timer);
-      }
     } else {
       animateSheet(SHEET_HIDDEN_SNAP);
     }

@@ -53,17 +53,21 @@ import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './sto
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
 
-import { syncUser, fetchUserProfile, requestJson, setApiAuthTokenProvider } from './api/client';
+import { syncUser, requestJson, setApiAuthTokenProvider } from './api/client';
 import { TOSScreen } from './components/TOSScreen';
 import { NotificationPromptScreen } from './components/onboarding/NotificationPromptScreen';
 import { EventPreferenceOnboardingScreen } from './components/onboarding/EventPreferenceOnboardingScreen';
+<<<<<<< HEAD
 import { ShareOverlay } from './components/ShareOverlay';
+=======
+>>>>>>> remotes/origin/gauravtest
 
 import { AdminApplicationScreen } from './components/admin/AdminApplicationScreen';
 import { AdminPortal } from './components/admin/AdminPortal';
 import { PendingReviewInterceptor } from './components/events/PendingReviewInterceptor';
 import { API_URL } from './config';
 import { ClubAccessScreen } from './components/ClubAccessScreen';
+<<<<<<< HEAD
 import { type MajorOption, useEventStore } from './store/eventStore';
 import { FocusMotionView } from './components/common/Motion';
 
@@ -80,6 +84,25 @@ function isMajorOption(value: string): value is MajorOption {
     'Law',
     'Medicine',
   ].includes(value);
+=======
+import { useEventStore, type MajorOption } from './store/eventStore';
+
+const VALID_EVENT_MAJORS: MajorOption[] = [
+  'Engineering',
+  'Business',
+  'Liberal Arts',
+  'Agriculture',
+  'Science',
+  'Architecture',
+  'Education',
+  'Public Health',
+  'Law',
+  'Medicine',
+];
+
+function isMajorOption(value: unknown): value is MajorOption {
+  return typeof value === 'string' && VALID_EVENT_MAJORS.includes(value as MajorOption);
+>>>>>>> remotes/origin/gauravtest
 }
 
 function UserSync({ children }: { children: React.ReactNode }) {
@@ -87,6 +110,12 @@ function UserSync({ children }: { children: React.ReactNode }) {
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const setTourCompleted = useAppShellStore((state) => state.setTourCompleted);
   const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
+<<<<<<< HEAD
+=======
+  const setPreferredEventCategories = useAppShellStore((state) => state.setPreferredEventCategories);
+  const setPreferredTime = useAppShellStore((state) => state.setPreferredTime);
+  const setPreferredSocialMode = useAppShellStore((state) => state.setPreferredSocialMode);
+>>>>>>> remotes/origin/gauravtest
   const setSelectedMajor = useEventStore((state) => state.setSelectedMajor);
   const setMajorSpecific = useEventStore((state) => state.setMajorSpecific);
   const lastSyncedUserId = React.useRef<string | null>(null);
@@ -107,10 +136,47 @@ function UserSync({ children }: { children: React.ReactNode }) {
           if (typeof data.tour_completed === 'boolean') {
             setTourCompleted(data.tour_completed);
           }
+<<<<<<< HEAD
           if (typeof data.event_preferences_completed === 'boolean') {
             setEventPreferencesCompleted(data.event_preferences_completed);
           }
           if (typeof data.major === 'string' && isMajorOption(data.major)) {
+=======
+          const hasLegacyPreferenceShape =
+            !('event_preferences_completed' in data) ||
+            (!Array.isArray(data.preferred_event_categories) &&
+              data.preferred_time == null &&
+              data.preferred_social_mode == null &&
+              !isMajorOption(data.major));
+          setEventPreferencesCompleted(
+            typeof data.event_preferences_completed === 'boolean'
+              ? data.event_preferences_completed
+              : hasLegacyPreferenceShape,
+          );
+          if (Array.isArray(data.preferred_event_categories)) {
+            setPreferredEventCategories(
+              data.preferred_event_categories.filter((entry: unknown): entry is string => typeof entry === 'string'),
+            );
+          } else {
+            setPreferredEventCategories([]);
+          }
+          if (
+            data.preferred_time === 'Morning' ||
+            data.preferred_time === 'Afternoon' ||
+            data.preferred_time === 'Evening' ||
+            data.preferred_time === 'Anytime'
+          ) {
+            setPreferredTime(data.preferred_time);
+          } else {
+            setPreferredTime(null);
+          }
+          if (data.preferred_social_mode === 'casual' || data.preferred_social_mode === 'professional') {
+            setPreferredSocialMode(data.preferred_social_mode);
+          } else {
+            setPreferredSocialMode(null);
+          }
+          if (isMajorOption(data.major)) {
+>>>>>>> remotes/origin/gauravtest
             setSelectedMajor(data.major);
             setMajorSpecific(true);
           } else {
@@ -119,7 +185,11 @@ function UserSync({ children }: { children: React.ReactNode }) {
         }
       }).catch((err: any) => console.warn('UserSync failed:', err));
     }
+<<<<<<< HEAD
   }, [setEventPreferencesCompleted, setMajorSpecific, setSelectedMajor, setTOSAccepted, setTourCompleted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
+=======
+  }, [setEventPreferencesCompleted, setMajorSpecific, setPreferredEventCategories, setPreferredSocialMode, setPreferredTime, setSelectedMajor, setTOSAccepted, setTourCompleted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
+>>>>>>> remotes/origin/gauravtest
 
   return <>{children}</>;
 }
@@ -337,6 +407,7 @@ function RootNavigator() {
   const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
   const isAdmin = useAppShellStore((state) => state.adminAccessStatus);
   const setIsAdmin = useAppShellStore((state) => state.setAdminAccessStatus);
+  const isRegularUserFlow = isSignedIn && authMode !== 'admin';
 
   React.useEffect(() => {
     if (isSignedIn && user?.id) {
@@ -371,7 +442,20 @@ function RootNavigator() {
         onDone={() => setNotificationPrompted(true)} 
       />
     );
+<<<<<<< HEAD
   } else if (isSignedIn && isTOSAccepted && isNotificationPrompted && (!isEventPreferencesCompleted || showEventPreferencesOnboarding) && user?.id) {
+=======
+  } else if (isRegularUserFlow && isTOSAccepted && isNotificationPrompted && isAdmin === null) {
+    content = <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  } else if (
+    isRegularUserFlow &&
+    isTOSAccepted &&
+    isNotificationPrompted &&
+    isAdmin === false &&
+    (!isEventPreferencesCompleted || showEventPreferencesOnboarding) &&
+    user?.id
+  ) {
+>>>>>>> remotes/origin/gauravtest
     content = (
       <EventPreferenceOnboardingScreen
         clerkId={user.id}

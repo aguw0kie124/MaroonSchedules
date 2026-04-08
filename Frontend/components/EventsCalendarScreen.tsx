@@ -1,4 +1,5 @@
 import React, { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   ActivityIndicator,
   Alert,
@@ -19,7 +20,11 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
+<<<<<<< HEAD
 import AsyncStorage from '@react-native-async-storage/async-storage';
+=======
+import * as Haptics from 'expo-haptics';
+>>>>>>> remotes/origin/gauravtest
 import {
   BadgeCheck,
   BellOff,
@@ -40,6 +45,7 @@ import {
   Search,
   Settings,
   Share2,
+  Sparkles,
   Ticket,
   Trash2,
   Trophy,
@@ -65,6 +71,13 @@ import { blockUser, reportContent } from '../services/streamFeeds';
 import { TagChips } from './common/TagChips';
 import { ScalePressable } from './common/Motion';
 
+<<<<<<< HEAD
+=======
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.24;
+const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
+const HERO_CARD_HEIGHT = Math.min(Math.max(396, SCREEN_HEIGHT * 0.54), 452);
+>>>>>>> remotes/origin/gauravtest
 const HERO_CARD_GAP = 14;
 const EVENTS_CACHE_KEY = 'events-screen-cache-v1';
 const EVENTS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -171,7 +184,124 @@ const ALL_CATEGORIES: ExploreCategory[] = [
   'Miscellaneous',
 ];
 
+<<<<<<< HEAD
 const MAJOR_OPTIONS: MajorOption[] = ALL_MAJOR_OPTIONS;
+=======
+const PERSONALIZATION_CATEGORY_LIMIT = 3;
+
+const MAJOR_OPTIONS: MajorOption[] = [
+  'Engineering',
+  'Business',
+  'Liberal Arts',
+  'Agriculture',
+  'Science',
+  'Architecture',
+  'Education',
+  'Public Health',
+  'Law',
+  'Medicine',
+];
+>>>>>>> remotes/origin/gauravtest
+
+function isExploreCategory(value: string): value is ExploreCategory {
+  return ALL_CATEGORIES.includes(value as ExploreCategory);
+}
+
+function normalizePreferredCategories(categories: string[] | undefined) {
+  return (categories || []).filter(isExploreCategory).slice(0, PERSONALIZATION_CATEGORY_LIMIT);
+}
+
+function getTimePreferenceScore(event: TAMUEvent, preference: string | null) {
+  if (!preference || preference === 'Anytime') return 0;
+  const hour = new Date(event.date_ts * 1000).getHours();
+  if (preference === 'Morning') {
+    return hour >= 5 && hour < 12 ? 14 : hour >= 12 && hour < 17 ? 4 : 0;
+  }
+  if (preference === 'Afternoon') {
+    return hour >= 12 && hour < 17 ? 14 : hour >= 17 && hour < 22 ? 4 : 0;
+  }
+  if (preference === 'Evening') {
+    return hour >= 17 && hour < 24 ? 14 : hour >= 12 && hour < 17 ? 4 : 0;
+  }
+  return 0;
+}
+
+function getPersonalizationScore(
+  event: TAMUEvent,
+  preferredCategories: ExploreCategory[],
+  preferredSocialMode: SocialMode | null,
+  preferredTime: string | null,
+  selectedMajor: MajorOption,
+  useMajorSignal: boolean,
+) {
+  let score = 0;
+  const category = event._category || classifyCategory(event);
+  const categoryIndex = preferredCategories.indexOf(category);
+  if (categoryIndex >= 0) {
+    score += 34 - categoryIndex * 6;
+  }
+  if (category === 'Social' && preferredSocialMode) {
+    if ((event._socialMode || getSocialMode(event)) === preferredSocialMode) {
+      score += 16;
+    }
+  }
+  if (useMajorSignal && matchesMajor(event, selectedMajor)) {
+    score += 10;
+  }
+  score += getTimePreferenceScore(event, preferredTime);
+  if (event.is_admin_event || category === 'Featured') {
+    score += 6;
+  }
+  const hoursAway = Math.max(0, (event.date_ts - Math.floor(Date.now() / 1000)) / 3600);
+  score += Math.max(0, 10 - Math.min(hoursAway / 12, 10));
+  return score;
+}
+
+function getEventPersonalizationReasons(
+  event: TAMUEvent,
+  preferredCategories: ExploreCategory[],
+  preferredSocialMode: SocialMode | null,
+  preferredTime: string | null,
+  selectedMajor: MajorOption,
+  useMajorSignal: boolean,
+) {
+  const reasons: string[] = [];
+  const category = event._category || classifyCategory(event);
+
+  if (preferredCategories.includes(category)) {
+    reasons.push(`Matches your ${category.toLowerCase()} interests`);
+  }
+
+  if (preferredTime && preferredTime !== 'Anytime' && getTimePreferenceScore(event, preferredTime) >= 10) {
+    reasons.push(`Great for your ${preferredTime.toLowerCase()} plans`);
+  }
+
+  if (category === 'Social' && preferredSocialMode && (event._socialMode || getSocialMode(event)) === preferredSocialMode) {
+    reasons.push(
+      preferredSocialMode === 'casual'
+        ? 'Fits your casual social vibe'
+        : 'Fits your professional networking vibe',
+    );
+  }
+
+  if (useMajorSignal && matchesMajor(event, selectedMajor)) {
+    reasons.push(`Relevant for ${selectedMajor}`);
+  }
+
+  if (event.has_food && !reasons.some((reason) => reason.includes('food'))) {
+    reasons.push('Includes food');
+  }
+
+  if ((event.is_admin_event || category === 'Featured') && reasons.length < 2) {
+    reasons.push('Popular across campus');
+  }
+
+  if (reasons.length === 0) {
+    reasons.push(`Strong ${category.toLowerCase()} pick`);
+  }
+
+  return reasons.slice(0, 3);
+}
 
 export const CATEGORY_META: Record<
   ExploreCategory,
@@ -314,8 +444,6 @@ async function persistCachedEvents(payload: EventsCachePayload) {
 }
 
 function classifyCategory(event: TAMUEvent): ExploreCategory {
-  if (event.is_admin_event || event.categories?.featured) return 'Featured';
-
   if (event.categories) {
     if (event.categories.food) return 'Food';
     if (event.categories.sports) return 'Sports';
@@ -325,7 +453,10 @@ function classifyCategory(event: TAMUEvent): ExploreCategory {
     if (event.categories.health_wellness) return 'Health & Wellness';
     if (event.categories.social) return 'Social';
     if (event.categories.miscellaneous || event.categories.religion) return 'Miscellaneous';
+    if (event.categories.featured || event.is_admin_event) return 'Featured';
   }
+
+  if (event.is_admin_event) return 'Featured';
 
   const blob = getSearchBlob(event);
   if (event.has_food || /\bfood\b|\bmeal\b|\bdinner\b|\blunch\b|\bbreakfast\b|\bpizza\b|\brefreshments\b/.test(blob)) return 'Food';
@@ -346,21 +477,136 @@ function getSocialMode(event: TAMUEvent): SocialMode {
   return 'casual';
 }
 
+const MAJOR_KEYWORDS: Record<MajorOption, string[]> = {
+  Engineering: [
+    'engineering',
+    'engineer',
+    'engr',
+    'mechanical',
+    'electrical',
+    'civil',
+    'industrial',
+    'biomedical',
+    'petroleum',
+    'aerospace',
+    'csce',
+    'computer science',
+    'coding',
+    'hackathon',
+    'robotics',
+  ],
+  Business: [
+    'business',
+    'mays',
+    'finance',
+    'accounting',
+    'marketing',
+    'consulting',
+    'entrepreneur',
+    'entrepreneurship',
+    'management',
+    'supply chain',
+    'economics',
+  ],
+  'Liberal Arts': [
+    'liberal arts',
+    'history',
+    'english',
+    'philosophy',
+    'communication',
+    'political science',
+    'polisci',
+    'journalism',
+    'writing',
+    'humanities',
+    'language',
+    'sociology',
+  ],
+  Agriculture: [
+    'agriculture',
+    'ag ',
+    'agriculture',
+    'animal science',
+    'horticulture',
+    'agronomy',
+    'ranch',
+    'livestock',
+    'soil',
+    'plant science',
+    'agribusiness',
+  ],
+  Science: [
+    'science',
+    'biology',
+    'biochem',
+    'chemistry',
+    'physics',
+    'math',
+    'mathematics',
+    'laboratory',
+    'lab',
+    'research',
+    'statistics',
+    'geology',
+  ],
+  Architecture: [
+    'architecture',
+    'arch ',
+    'arch.',
+    'urban planning',
+    'construction science',
+    'design studio',
+    'landscape',
+    'environment design',
+  ],
+  Education: [
+    'education',
+    'teaching',
+    'teacher',
+    'curriculum',
+    'classroom',
+    'pedagogy',
+    'educator',
+  ],
+  'Public Health': [
+    'public health',
+    'health policy',
+    'community health',
+    'epidemiology',
+    'global health',
+    'wellbeing',
+    'wellness',
+  ],
+  Law: [
+    'law',
+    'legal',
+    'pre-law',
+    'prelaw',
+    'attorney',
+    'mock trial',
+    'lsat',
+  ],
+  Medicine: [
+    'medicine',
+    'medical',
+    'premed',
+    'pre-med',
+    'nursing',
+    'clinical',
+    'healthcare',
+    'physician',
+    'patient care',
+    'dental',
+  ],
+};
+
+function normalizeMajorBlob(blob: string) {
+  return ` ${blob.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
+}
+
 function matchesMajor(event: TAMUEvent, major: MajorOption) {
-  const blob = event._searchBlob || getSearchBlob(event);
-  const aliases: Record<MajorOption, string[]> = {
-    Engineering: ['engineering', 'engr', 'mechanical', 'electrical', 'csce', 'computer science'],
-    Business: ['business', 'mays', 'finance', 'accounting', 'marketing'],
-    'Liberal Arts': ['liberal arts', 'history', 'english', 'philosophy', 'communication'],
-    Agriculture: ['agriculture', 'ag', 'animal science', 'horticulture'],
-    Science: ['science', 'biology', 'chemistry', 'physics', 'math'],
-    Architecture: ['architecture', 'arch', 'urban planning', 'construction science'],
-    Education: ['education', 'teaching', 'curriculum'],
-    'Public Health': ['public health', 'health', 'epidemiology'],
-    Law: ['law', 'legal', 'pre-law'],
-    Medicine: ['medicine', 'medical', 'premed', 'nursing', 'clinical'],
-  };
-  return aliases[major].some((term) => blob.includes(term));
+  const blob = normalizeMajorBlob(event._searchBlob || getSearchBlob(event));
+  return MAJOR_KEYWORDS[major]?.some((term) => blob.includes(` ${term.toLowerCase().trim()} `)) ?? false;
 }
 
 function formatTime(ts: number) {
@@ -392,6 +638,215 @@ function shortDescription(text?: string | null) {
   return `${clean.slice(0, 157).trim()}...`;
 }
 
+<<<<<<< HEAD
+=======
+function EventRewardToast({
+  visible,
+  title,
+  body,
+}: {
+  visible: boolean;
+  title: string;
+  body: string;
+}) {
+  const progress = React.useRef(new Animated.Value(0)).current;
+  const confetti = React.useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, index) => ({
+        id: index,
+        left: 24 + index * 20,
+        color: ['#F9C74F', '#43AA8B', '#F94144', '#577590'][index % 4],
+      })),
+    [],
+  );
+
+  useEffect(() => {
+    if (!visible) {
+      progress.setValue(0);
+      return;
+    }
+    const animation = Animated.timing(progress, {
+      toValue: 1,
+      duration: 950,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [progress, visible]);
+
+  if (!visible) return null;
+
+  return (
+    <View pointerEvents="none" style={stylesStatic.rewardToastWrap}>
+      {confetti.map((piece, index) => (
+        <Animated.View
+          key={`${piece.id}-${title}`}
+          style={[
+            stylesStatic.rewardConfetti,
+            {
+              left: piece.left,
+              backgroundColor: piece.color,
+              opacity: progress.interpolate({
+                inputRange: [0, 0.8, 1],
+                outputRange: [0, 1, 0],
+              }),
+              transform: [
+                {
+                  translateY: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-8, 120 + (index % 3) * 14],
+                  }),
+                },
+                {
+                  translateX: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, ((index % 5) - 2) * 12],
+                  }),
+                },
+                {
+                  rotate: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0deg', `${150 + index * 15}deg`],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      ))}
+      <Animated.View
+        style={[
+          stylesStatic.rewardToastCard,
+          {
+            opacity: progress.interpolate({
+              inputRange: [0, 0.1, 0.86, 1],
+              outputRange: [0, 1, 1, 0],
+            }),
+            transform: [
+              {
+                translateY: progress.interpolate({
+                  inputRange: [0, 0.12, 1],
+                  outputRange: [12, 0, -8],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <Text style={stylesStatic.rewardToastEyebrow}>Yay</Text>
+        <Text style={stylesStatic.rewardToastTitle}>{title}</Text>
+        <Text style={stylesStatic.rewardToastBody}>{body}</Text>
+      </Animated.View>
+    </View>
+  );
+}
+
+function StaggeredReveal({
+  children,
+  index,
+}: {
+  children: React.ReactNode;
+  index: number;
+}) {
+  const opacity = React.useRef(new Animated.Value(0)).current;
+  const translateY = React.useRef(new Animated.Value(18)).current;
+  const scale = React.useRef(new Animated.Value(0.98)).current;
+
+  useEffect(() => {
+    const delay = Math.min(index * 70, 420);
+    const animation = Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 360,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 420,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scale, {
+        toValue: 1,
+        duration: 380,
+        delay,
+        useNativeDriver: true,
+      }),
+    ]);
+
+    animation.start();
+    return () => animation.stop();
+  }, [index, opacity, scale, translateY]);
+
+  return (
+    <Animated.View
+      style={{
+        opacity,
+        transform: [{ translateY }, { scale }],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+function WhyItFitsRow({
+  reasons,
+  compact = false,
+  light = false,
+}: {
+  reasons: string[];
+  compact?: boolean;
+  light?: boolean;
+}) {
+  if (!reasons.length) return null;
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={compact ? stylesStatic.reasonRowCompact : stylesStatic.reasonRow}
+    >
+      {reasons.map((reason) => (
+        <View
+          key={reason}
+          style={[
+            compact ? stylesStatic.reasonChipCompact : stylesStatic.reasonChip,
+            light ? stylesStatic.reasonChipLight : null,
+          ]}
+        >
+          <Sparkles size={compact ? 12 : 13} color={light ? '#FFFFFF' : '#7A0B1C'} />
+          <Text
+            style={[
+              compact ? stylesStatic.reasonChipTextCompact : stylesStatic.reasonChipText,
+              light ? stylesStatic.reasonChipTextLight : null,
+            ]}
+          >
+            {reason}
+          </Text>
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
+function handleGoogleCalendar(event: TAMUEvent) {
+  const formatGCalDate = (ts: number) =>
+    new Date(ts * 1000).toISOString().replace(/-|:|\.\d\d\d/g, '');
+
+  const start = formatGCalDate(event.date_ts);
+  const end = event.date2_ts
+    ? formatGCalDate(event.date2_ts)
+    : formatGCalDate(event.date_ts + 3600);
+  const title = encodeURIComponent(event.title);
+  const desc = encodeURIComponent(stripHtml(event.description || ''));
+  const loc = encodeURIComponent(event.location || '');
+  const url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${desc}&location=${loc}`;
+  Linking.openURL(url).catch((err) => console.error('Error opening Google Calendar', err));
+}
+
+>>>>>>> remotes/origin/gauravtest
 function openNativeMaps(lat: number, lng: number, label?: string | null) {
   const query = label ? encodeURIComponent(label) : `${lat},${lng}`;
   const url =
@@ -409,7 +864,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const navigation = useNavigation<any>();
   const { user } = useUser();
   const isGuest = useSessionStore((state) => state.isGuest);
+<<<<<<< HEAD
   const { width: windowWidth } = useWindowDimensions();
+=======
+  const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
+  const preferredTime = useAppShellStore((state) => state.preferredTime);
+  const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
+  const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
+>>>>>>> remotes/origin/gauravtest
   const s = useMemo(() => getStyles(COLORS, isDark, embedded), [COLORS, isDark, embedded]);
   const heroCardWidth = useMemo(() => Math.min(Math.max(windowWidth - 52, 280), 520), [windowWidth]);
   const heroCardSnapInterval = heroCardWidth + HERO_CARD_GAP;
@@ -427,11 +889,18 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+<<<<<<< HEAD
   const [preferredEventCategories, setPreferredEventCategories] = useState<ExploreCategory[]>([]);
   const [preferredSocialMode, setPreferredSocialMode] = useState<SocialMode | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const lastNetworkFetchAtRef = useRef(0);
   const inFlightFetchRef = useRef<Promise<void> | null>(null);
+=======
+  const [rewardToast, setRewardToast] = useState<{ title: string; body: string } | null>(null);
+  const rewardToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const heroSparkleFloat = useRef(new Animated.Value(0)).current;
+>>>>>>> remotes/origin/gauravtest
 
   const {
     isMajorSpecific,
@@ -452,12 +921,22 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     acceptInvite,
     rejectInvite,
   } = useEventStore();
-  const scheduledEvents = isGuest ? [] : persistedScheduledEvents;
-  const savedEventIds = isGuest ? [] : persistedSavedEventIds;
-  const dislikedEventIds = isGuest ? [] : persistedDislikedEventIds;
-  const receivedInvites = isGuest ? [] : persistedReceivedInvites;
+  const scheduledEvents = isGuest ? [] : Array.isArray(persistedScheduledEvents) ? persistedScheduledEvents : [];
+  const savedEventIds = isGuest ? [] : Array.isArray(persistedSavedEventIds) ? persistedSavedEventIds : [];
+  const dislikedEventIds = isGuest ? [] : Array.isArray(persistedDislikedEventIds) ? persistedDislikedEventIds : [];
+  const receivedInvites = isGuest ? [] : Array.isArray(persistedReceivedInvites) ? persistedReceivedInvites : [];
 
+<<<<<<< HEAD
+=======
+  const pan = useRef(new Animated.ValueXY()).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+  const lastAppliedPreferenceKey = useRef<string | null>(null);
+>>>>>>> remotes/origin/gauravtest
   const nowTs = Math.floor(Date.now() / 1000);
+  const normalizedPreferenceCategories = useMemo(
+    () => normalizePreferredCategories(preferredEventCategories),
+    [preferredEventCategories],
+  );
 
   const parseCampusEvents = useCallback((raw: CampusEventResponse[]): TAMUEvent[] => {
     return raw
@@ -569,6 +1048,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     return request;
   }, [parseCampusEvents, user?.id]);
 
+<<<<<<< HEAD
   useEffect(() => {
     fetchEvents();
   }, [fetchEvents]);
@@ -602,6 +1082,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     };
   }, [isGuest, user?.id]);
 
+=======
+>>>>>>> remotes/origin/gauravtest
   useFocusEffect(
     useCallback(() => {
       const shouldRefresh = Date.now() - lastNetworkFetchAtRef.current > EVENTS_CACHE_TTL_MS;
@@ -619,6 +1101,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       setRefreshing(false);
     }
   }, [fetchEvents]);
+
+  const triggerRewardToast = useCallback((title: string, body: string) => {
+    if (rewardToastTimerRef.current) {
+      clearTimeout(rewardToastTimerRef.current);
+    }
+    setRewardToast({ title, body });
+    rewardToastTimerRef.current = setTimeout(() => setRewardToast(null), 980);
+  }, []);
 
   const categoryCounts = useMemo(() => {
     const counts: Record<ExploreCategory, number> = {
@@ -659,6 +1149,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         const category = event._category || classifyCategory(event);
         let score = 0;
 
+<<<<<<< HEAD
         if (preferredEventCategories.includes(category)) score += 18;
         if (selectedCategories.has(category)) score += 14;
         if (category === 'Featured') score += 4;
@@ -687,16 +1178,48 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         return left.event.date_ts - right.event.date_ts;
       })
       .map((entry) => entry.event);
+=======
+    next = next.filter((event) => !dislikedEventIds.includes(String(event.id)));
+    return [...next].sort((left, right) => {
+      const leftScore = getPersonalizationScore(
+        left,
+        normalizedPreferenceCategories,
+        preferredSocialMode,
+        preferredTime,
+        selectedMajor,
+        isMajorSpecific,
+      );
+      const rightScore = getPersonalizationScore(
+        right,
+        normalizedPreferenceCategories,
+        preferredSocialMode,
+        preferredTime,
+        selectedMajor,
+        isMajorSpecific,
+      );
+      if (rightScore !== leftScore) {
+        return rightScore - leftScore;
+      }
+      return left.date_ts - right.date_ts;
+    });
+>>>>>>> remotes/origin/gauravtest
   }, [
     deferredSearchQuery,
     dislikedEventIds,
     events,
     isMajorSpecific,
     nowTs,
+<<<<<<< HEAD
     preferredEventCategories,
     preferredSocialMode,
     savedEventIds,
     scheduledEvents,
+=======
+    normalizedPreferenceCategories,
+    deferredSearchQuery,
+    preferredSocialMode,
+    preferredTime,
+>>>>>>> remotes/origin/gauravtest
     selectedCategories,
     selectedMajor,
     socialMode,
@@ -711,6 +1234,76 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       setView('list');
     }
   }, [isGuest]);
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(heroSparkleFloat, { toValue: 1, duration: 1400, useNativeDriver: true }),
+        Animated.timing(heroSparkleFloat, { toValue: 0, duration: 1400, useNativeDriver: true }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [heroSparkleFloat]);
+
+  useEffect(() => {
+    if (isGuest || !isEventPreferencesCompleted) {
+      return;
+    }
+    const preferenceKey = JSON.stringify({
+      categories: normalizedPreferenceCategories,
+      socialMode: preferredSocialMode,
+      preferredTime,
+    });
+    if (lastAppliedPreferenceKey.current === preferenceKey) {
+      return;
+    }
+    lastAppliedPreferenceKey.current = preferenceKey;
+    setSelectedCategories(new Set(normalizedPreferenceCategories));
+    if (preferredSocialMode) {
+      setSocialMode(preferredSocialMode);
+    }
+    if (!embedded) {
+      setView('discover');
+    }
+  }, [embedded, isEventPreferencesCompleted, isGuest, normalizedPreferenceCategories, preferredSocialMode, preferredTime]);
+
+  const personalizationChips = useMemo(() => {
+    const chips: string[] = [];
+    normalizedPreferenceCategories.forEach((category) => chips.push(category));
+    if (preferredTime && preferredTime !== 'Anytime') {
+      chips.push(preferredTime);
+    }
+    if (preferredSocialMode) {
+      chips.push(preferredSocialMode === 'casual' ? 'Casual' : 'Professional');
+    }
+    if (isMajorSpecific) {
+      chips.push(selectedMajor);
+    }
+    return chips.slice(0, 5);
+  }, [isMajorSpecific, normalizedPreferenceCategories, preferredSocialMode, preferredTime, selectedMajor]);
+
+  const personalizationReasonMap = useMemo(() => {
+    const next: Record<string, string[]> = {};
+    filteredUpcomingEvents.forEach((event) => {
+      next[String(event.id)] = getEventPersonalizationReasons(
+        event,
+        normalizedPreferenceCategories,
+        preferredSocialMode,
+        preferredTime,
+        selectedMajor,
+        isMajorSpecific,
+      );
+    });
+    return next;
+  }, [
+    filteredUpcomingEvents,
+    isMajorSpecific,
+    normalizedPreferenceCategories,
+    preferredSocialMode,
+    preferredTime,
+    selectedMajor,
+  ]);
 
   const changeView = useCallback((nextView: EventsView) => {
     startTransition(() => {
@@ -742,6 +1335,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       const isScheduled = scheduledEvents.some((scheduled) => String(scheduled.id) === eventId);
 
       if (isScheduled) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         removeScheduledEvent(eventId);
         if (user?.id) {
           try {
@@ -754,6 +1348,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             console.error('[Events] RSVP remove error:', error);
           }
         }
+        triggerRewardToast('Removed from your plans', 'No problem. You can always add it back later.');
         return;
       }
       const scheduled: ScheduledEvent = {
@@ -770,6 +1365,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         categories: event.categories,
       };
       scheduleEvent(scheduled);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
       // Notification logic
       const prefs = useAppShellStore.getState();
@@ -811,9 +1407,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           console.error('[Events] RSVP error:', error);
         }
       }
+      triggerRewardToast('Added to your schedule', 'Nice. We will keep this one easy to come back to.');
       Alert.alert('Successfully RSVPed', `${event.title} is now in your schedule.`);
     },
-    [activeTargetName, advanceStep, isGuest, navigation, removeScheduledEvent, scheduleEvent, scheduledEvents, user],
+    [activeTargetName, advanceStep, isGuest, navigation, removeScheduledEvent, scheduleEvent, scheduledEvents, triggerRewardToast, user],
   );
 
   const handleShare = useCallback((event: TAMUEvent) => {
@@ -864,10 +1461,17 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         return;
       }
       const id = String(event.id);
-      if (savedEventIds.includes(id)) unsaveEvent(id);
-      else saveEvent(id);
+      if (savedEventIds.includes(id)) {
+        unsaveEvent(id);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        triggerRewardToast('Saved event removed', 'Your shortlist just got a little cleaner.');
+      } else {
+        saveEvent(id);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        triggerRewardToast('Saved for later', 'Good pick. This one is waiting for you.');
+      }
     },
-    [isGuest, navigation, saveEvent, savedEventIds, unsaveEvent],
+    [isGuest, navigation, saveEvent, savedEventIds, triggerRewardToast, unsaveEvent],
   );
 
   const removeOrganizerEvents = useCallback((adminClerkId: string) => {
@@ -994,12 +1598,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   );
 
   const renderHeader = (title: string) => (
-
-      <View style={s.headerBlock}>
-        <View style={s.headerTopRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={s.pageTitle}>{title}</Text>
-
+    <View style={s.headerBlock}>
+      <View style={s.headerTopRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.pageTitle}>{title}</Text>
         </View>
         <Pressable style={s.headerIconButton} onPress={() => setSettingsVisible(true)}>
           <Filter size={18} color={COLORS.textPrimary} />
@@ -1050,6 +1652,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   return (
     <View style={s.container}>
+      <EventRewardToast
+        visible={!!rewardToast}
+        title={rewardToast?.title || ''}
+        body={rewardToast?.body || ''}
+      />
       {view === 'discover' && (
         <>
           {renderHeader('Events')}
@@ -1061,11 +1668,66 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               <Text style={s.loadingText}>Loading campus events...</Text>
             </View>
           ) : (
-            <ScrollView
-              contentContainerStyle={s.scrollContent}
-              showsVerticalScrollIndicator={false}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
-            >
+            <View style={s.discoverLayout}>
+              <ScrollView
+                style={s.discoverScroll}
+                contentContainerStyle={s.scrollContent}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
+              >
+              <LinearGradient
+                colors={isDark ? ['rgba(80,0,0,0.92)', 'rgba(28,18,24,0.94)'] : ['#FFF2EA', '#F7F0FF']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={s.forYouHero}
+              >
+                <View style={s.forYouHeroTop}>
+                  <View>
+                    <Text style={s.forYouEyebrow}>For You</Text>
+                    <Text style={s.forYouTitle}>Picked for you.</Text>
+                  </View>
+                  <Animated.View
+                    style={[
+                      s.forYouSparkle,
+                      {
+                        transform: [
+                          {
+                            translateY: heroSparkleFloat.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0, -4],
+                            }),
+                          },
+                          {
+                            scale: heroSparkleFloat.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [1, 1.06],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  >
+                    <Sparkles size={20} color={isDark ? '#FFFFFF' : COLORS.primary} />
+                  </Animated.View>
+                </View>
+                {discoverEvents[0] ? (
+                  <WhyItFitsRow
+                    reasons={personalizationReasonMap[String(discoverEvents[0].id)] || []}
+                    light
+                  />
+                ) : null}
+                {personalizationChips.length > 0 ? (
+                  <View style={s.forYouChipRow}>
+                    {personalizationChips.map((chip) => (
+                      <View key={`hero-${chip}`} style={s.forYouChip}>
+                        <Text style={s.forYouChipText}>{chip}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+              </LinearGradient>
+
               <View style={s.categoryWrap}>
                 {categoriesExpanded ? (
                   <>
@@ -1147,6 +1809,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled
+                directionalLockEnabled
                 contentContainerStyle={s.heroRail}
                 snapToOffsets={spotlightEvents.map((_, index) => index * heroCardSnapInterval)}
                 snapToAlignment="start"
@@ -1155,6 +1819,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               >
                 {spotlightEvents.map((event, i) => {
                   const card = (
+<<<<<<< HEAD
                     <View
                       key={String(event.id)}
                       style={{ marginRight: i === spotlightEvents.length - 1 ? 0 : HERO_CARD_GAP }}
@@ -1169,10 +1834,27 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                         onMap={() => handleMapOpen(event)}
                       />
                     </View>
+=======
+                    <StaggeredReveal key={String(event.id)} index={i}>
+                      <View
+                        style={{ marginRight: i === discoverEvents.length - 1 ? 0 : HERO_CARD_GAP }}
+                      >
+                        <HeroEventCard
+                          event={event}
+                          reasons={personalizationReasonMap[String(event.id)] || []}
+                          scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
+                          onSchedule={() => handleSchedule(event)}
+                          onPress={() => setDetailEvent(event)}
+                          onMap={() => handleMapOpen(event)}
+                        />
+                      </View>
+                    </StaggeredReveal>
+>>>>>>> remotes/origin/gauravtest
                   );
                   return card;
                 })}
               </ScrollView>
+<<<<<<< HEAD
 
               {moreEvents.length ? (
                 <>
@@ -1211,6 +1893,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 </>
               ) : null}
             </ScrollView>
+=======
+              </ScrollView>
+            </View>
+>>>>>>> remotes/origin/gauravtest
           )}
         </>
       )}
@@ -1270,22 +1956,24 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               removeClippedSubviews
               renderItem={({ item, index }) => {
                 const row = (
-                  <ListEventRow
-                    event={item}
-                    isGuest={isGuest}
-                    saved={savedEventIds.includes(String(item.id))}
-                    scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(item.id))}
-                    onPress={() => {
-                      if (index === 0 && activeTargetName === 'first-event-card') {
-                        advanceStep('first-event-card');
-                      }
-                      setDetailEvent(item);
-                    }}
-                    onDelete={() => dislikeEvent(String(item.id))}
-                    onShare={() => handleShare(item)}
-                    onSchedule={() => handleSchedule(item)}
-
-                  />
+                  <StaggeredReveal index={index}>
+                    <ListEventRow
+                      event={item}
+                      isGuest={isGuest}
+                      reasons={personalizationReasonMap[String(item.id)] || []}
+                      saved={savedEventIds.includes(String(item.id))}
+                      scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(item.id))}
+                      onPress={() => {
+                        if (index === 0 && activeTargetName === 'first-event-card') {
+                          advanceStep('first-event-card');
+                        }
+                        setDetailEvent(item);
+                      }}
+                      onDelete={() => dislikeEvent(String(item.id))}
+                      onShare={() => handleShare(item)}
+                      onSchedule={() => handleSchedule(item)}
+                    />
+                  </StaggeredReveal>
                 );
                 return index === 0 ? (
                   <TourTarget
@@ -1414,6 +2102,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           onUnsubscribeOrganizer={handleUnsubscribeOrganizer}
           onBlockOrganizer={handleBlockOrganizer}
           onReportOrganizer={handleReportOrganizer}
+          reasons={detailEvent ? personalizationReasonMap[String(detailEvent.id)] || [] : []}
           saved={detailEvent ? savedEventIds.includes(String(detailEvent.id)) : false}
           scheduled={detailEvent ? scheduledEvents.some((scheduled) => String(scheduled.id) === String(detailEvent.id)) : false}
         />
@@ -1465,6 +2154,7 @@ function CategoryChip({
 function HeroEventCard({
   cardWidth,
   event,
+  reasons,
   scheduled,
   onSchedule,
   onDismiss,
@@ -1473,6 +2163,7 @@ function HeroEventCard({
 }: {
   cardWidth: number;
   event: TAMUEvent;
+  reasons: string[];
   scheduled: boolean;
   onSchedule: () => void;
   onDismiss: () => void;
@@ -1509,8 +2200,15 @@ function HeroEventCard({
         ) : null}
       </View>
 
-      <View style={stylesStatic.heroBottom}>
+      <ScrollView
+        style={stylesStatic.heroBottom}
+        contentContainerStyle={stylesStatic.heroBottomContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        nestedScrollEnabled
+      >
         <Text style={stylesStatic.heroTitle}>{event.title}</Text>
+        <WhyItFitsRow reasons={reasons} light />
         {event.group_title ? (
           <View style={stylesStatic.heroOrganizerPill}>
             <BadgeCheck size={13} color="#FFFFFF" />
@@ -1545,6 +2243,7 @@ function HeroEventCard({
             ]}
             onPress={onSchedule}
           >
+<<<<<<< HEAD
             {scheduled ? <XIcon size={15} color="#E06A3E" /> : <CalendarDays size={15} color="#2A6F3E" />}
             <Text
               style={[
@@ -1571,12 +2270,26 @@ function HeroEventCard({
         </View>
       </View>
     </ScalePressable>
+=======
+            {event.is_admin_event
+              ? scheduled
+                ? 'Remove RSVP'
+                : 'RSVP'
+              : scheduled
+                ? 'Remove from Schedule'
+                : 'Add'}
+          </Text>
+        </Pressable>
+      </ScrollView>
+    </Pressable>
+>>>>>>> remotes/origin/gauravtest
   );
 }
 
 function ListEventRow({
   event,
   isGuest,
+  reasons,
   saved,
   scheduled,
   onPress,
@@ -1587,6 +2300,7 @@ function ListEventRow({
 
   event: TAMUEvent;
   isGuest: boolean;
+  reasons: string[];
   saved: boolean;
   scheduled: boolean;
   onPress: () => void;
@@ -1633,6 +2347,7 @@ function ListEventRow({
             {event.group_title}
           </Text>
         ) : null}
+        <WhyItFitsRow reasons={reasons} compact />
         <Text style={[stylesStatic.listMeta, { color: COLORS.textTertiary }]} numberOfLines={1}>
           {event.location || 'Campus'}
         </Text>
@@ -1842,6 +2557,7 @@ function DetailModal({
   onUnsubscribeOrganizer,
   onBlockOrganizer,
   onReportOrganizer,
+  reasons,
   saved,
   scheduled,
 }: {
@@ -1855,6 +2571,7 @@ function DetailModal({
   onUnsubscribeOrganizer: (event: TAMUEvent) => void;
   onBlockOrganizer: (event: TAMUEvent) => void;
   onReportOrganizer: (event: TAMUEvent) => void;
+  reasons: string[];
   saved: boolean;
   scheduled: boolean;
 }) {
@@ -1902,6 +2619,7 @@ function DetailModal({
             </View>
 
             <Text style={[stylesStatic.detailTitle, { color: COLORS.textPrimary }]}>{event.title}</Text>
+            <WhyItFitsRow reasons={reasons} />
 
             <View style={stylesStatic.detailMetaBlock}>
               <View style={stylesStatic.detailMetaRow}>
@@ -2161,7 +2879,83 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     scrollContent: {
       paddingHorizontal: 20,
-      paddingBottom: 118,
+      paddingBottom: 38,
+    },
+    discoverLayout: {
+      flex: 1,
+    },
+    discoverScroll: {
+      flex: 1,
+    },
+    forYouHero: {
+      borderRadius: 28,
+      paddingHorizontal: 18,
+      paddingVertical: 14,
+      marginTop: 6,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.06)',
+      shadowColor: '#000000',
+      shadowOpacity: isDark ? 0.18 : 0.08,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 10 },
+      elevation: 6,
+    },
+    forYouHeroTop: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 12,
+      marginBottom: 8,
+    },
+    forYouEyebrow: {
+      color: isDark ? 'rgba(255,255,255,0.76)' : COLORS.primary,
+      fontSize: 11,
+      fontWeight: '900',
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+      marginBottom: 6,
+    },
+    forYouTitle: {
+      color: isDark ? '#FFFFFF' : COLORS.textPrimary,
+      fontSize: 21,
+      lineHeight: 24,
+      fontWeight: '900',
+      letterSpacing: -0.7,
+      maxWidth: 250,
+    },
+    forYouBody: {
+      color: isDark ? 'rgba(255,255,255,0.82)' : COLORS.textSecondary,
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: '600',
+    },
+    forYouSparkle: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.72)',
+    },
+    forYouChipRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      paddingTop: 10,
+    },
+    forYouChip: {
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.84)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.06)',
+    },
+    forYouChipText: {
+      color: isDark ? '#FFFFFF' : COLORS.textPrimary,
+      fontSize: 11,
+      fontWeight: '800',
     },
     categoryWrap: {
       gap: 12,
@@ -2284,21 +3078,6 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       paddingTop: 18,
       paddingLeft: 0,
       paddingRight: 0,
-    },
-    swipeCta: {
-      marginTop: 16,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      paddingVertical: 8,
-      alignSelf: 'center',
-    },
-    swipeCtaText: {
-      color: COLORS.textPrimary,
-      fontSize: 16,
-      fontWeight: '700',
-      letterSpacing: -0.2,
     },
     listSearchRow: {
       flexDirection: 'row',
@@ -2479,6 +3258,108 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
   });
 
 const stylesStatic = StyleSheet.create({
+  rewardToastWrap: {
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    top: 92,
+    alignItems: 'center',
+    zIndex: 200,
+    pointerEvents: 'none',
+  },
+  rewardToastCard: {
+    minWidth: 220,
+    maxWidth: 310,
+    borderRadius: 22,
+    backgroundColor: 'rgba(20,20,24,0.94)',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  rewardToastEyebrow: {
+    color: '#F9C74F',
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    marginBottom: 4,
+  },
+  rewardToastTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  rewardToastBody: {
+    color: 'rgba(255,255,255,0.84)',
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  rewardConfetti: {
+    position: 'absolute',
+    top: 6,
+    width: 8,
+    height: 14,
+    borderRadius: 3,
+  },
+  reasonRow: {
+    gap: 8,
+    paddingTop: 10,
+    paddingBottom: 2,
+    paddingRight: 8,
+  },
+  reasonRowCompact: {
+    gap: 6,
+    paddingTop: 6,
+    paddingBottom: 4,
+    paddingRight: 8,
+  },
+  reasonChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(122,11,28,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(122,11,28,0.12)',
+  },
+  reasonChipCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(122,11,28,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(122,11,28,0.12)',
+  },
+  reasonChipLight: {
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  reasonChipText: {
+    color: '#7A0B1C',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  reasonChipTextCompact: {
+    color: '#7A0B1C',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  reasonChipTextLight: {
+    color: '#FFFFFF',
+  },
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2497,11 +3378,16 @@ const stylesStatic = StyleSheet.create({
     marginLeft: 2,
   },
   heroCard: {
+<<<<<<< HEAD
     height: 372,
+=======
+    width: HERO_CARD_WIDTH,
+    height: HERO_CARD_HEIGHT,
+>>>>>>> remotes/origin/gauravtest
     borderRadius: 34,
     overflow: 'hidden',
-    padding: 20,
-    justifyContent: 'space-between',
+    paddingHorizontal: 22,
+    paddingVertical: 24,
   },
   recommendedRow: {
     minHeight: 90,
@@ -2569,7 +3455,7 @@ const stylesStatic = StyleSheet.create({
   },
   heroGlowSmall: {
     position: 'absolute',
-    bottom: 70,
+    bottom: 86,
     left: -35,
     width: 120,
     height: 120,
@@ -2579,16 +3465,16 @@ const stylesStatic = StyleSheet.create({
   heroIconHalo: {
     position: 'absolute',
     right: 18,
-    bottom: 118,
+    bottom: Math.round(HERO_CARD_HEIGHT * 0.31),
     opacity: 0.55,
   },
   heroIconHaloWithImage: {
     opacity: 0.28,
   },
   heroTopRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   heroCategoryPill: {
     paddingHorizontal: 10,
@@ -2618,7 +3504,13 @@ const stylesStatic = StyleSheet.create({
     fontWeight: '700',
   },
   heroBottom: {
+    flex: 1,
+    marginTop: 'auto',
+    minHeight: 0,
+  },
+  heroBottomContent: {
     gap: 8,
+    paddingBottom: 2,
   },
   heroTitle: {
     color: '#FFFFFF',

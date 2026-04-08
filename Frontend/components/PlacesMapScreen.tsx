@@ -60,7 +60,11 @@ import AnimatedReanimated, {
   withTiming,
   runOnJS,
 } from "react-native-reanimated";
+<<<<<<< HEAD
 import MapViewRNM from "react-native-maps";
+=======
+import MapView from "react-native-maps";
+>>>>>>> remotes/origin/gauravtest
 import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -602,6 +606,18 @@ export function PlacesMapScreen({ route, navigation }: any) {
       pulseHotspots.find((hotspot) => hotspot.id === selectedHotspotId) || null,
     [pulseHotspots, selectedHotspotId],
   );
+
+  // Onboarding progression for rec-center-item is user-action only.
+  const handleMapMarkerPress = useCallback(
+    (loc: CampusLocation) => {
+      handleSelectLocation(loc);
+      if (activeTargetName === "rec-center-item" && loc.type === "Rec") {
+        advanceStep("rec-center-item");
+      }
+    },
+    [activeTargetName, advanceStep, handleSelectLocation],
+  );
+
   const pulseTotals = useMemo(() => {
     return pulseHotspots.reduce(
       (totals, hotspot) => ({
@@ -1827,12 +1843,21 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   return (
     <View style={styles.container}>
+<<<<<<< HEAD
       <MapViewRNM
         ref={cameraRef}
         style={StyleSheet.absoluteFillObject}
         initialRegion={defaultCamera}
         showsUserLocation
         showsCompass={false}
+=======
+      <MapView
+        ref={cameraRef}
+        style={StyleSheet.absoluteFillObject}
+        initialRegion={defaultCamera}
+        showsCompass={false}
+        showsUserLocation
+>>>>>>> remotes/origin/gauravtest
         rotateEnabled={false}
         pitchEnabled
         onPress={(e) => {
@@ -1853,7 +1878,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
           }
         }}
       >
+<<<<<<< HEAD
 
+=======
+>>>>>>> remotes/origin/gauravtest
         {activeLayer === "Heatmap" &&
           CAMPUS_ZONES.map((zone) => {
             const density = getZoneDensity(zone);
@@ -2169,7 +2197,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   latitude: loc.coord.lat,
                   longitude: loc.coord.lng,
                 }}
-                onPress={() => handleSelectLocation(loc)}
+                onPress={() => handleMapMarkerPress(loc)}
                 anchor={{ x: 0.5, y: 1 }}
               >
                 {isTodayLayer ? (

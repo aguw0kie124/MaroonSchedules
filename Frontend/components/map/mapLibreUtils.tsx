@@ -1,6 +1,15 @@
 import React, { useMemo, useRef } from 'react';
-import { Dimensions, Pressable } from 'react-native';
-import MapView, { Marker, Polygon, Polyline, Region } from 'react-native-maps';
+import type { ReactElement } from 'react';
+import { Dimensions } from 'react-native';
+import MapView, {
+  Circle,
+  Marker,
+  Polyline,
+  type Camera,
+  type EdgePadding,
+  type LatLng,
+  type Region,
+} from 'react-native-maps';
 
 export type MapCoordinate = {
   latitude: number;
@@ -12,51 +21,65 @@ export type MapRegion = MapCoordinate & {
   longitudeDelta: number;
 };
 
-/** Kept for backward compat — react-native-maps uses {lat,lng} objects directly */
-export function toMapLibrePosition(coordinate: MapCoordinate): { latitude: number; longitude: number } {
-  return { latitude: coordinate.latitude, longitude: coordinate.longitude };
-}
+export const CAMPUS_MAP_STYLE_URL = null;
 
-const EARTH_RADIUS_METERS = 6371008.8;
-
-function degToRad(value: number) {
-  return (value * Math.PI) / 180;
-}
-
-function radToDeg(value: number) {
-  return (value * 180) / Math.PI;
-}
-
-export function createCirclePolygon(center: MapCoordinate, radiusMeters: number, steps = 48) {
-  const angularDistance = radiusMeters / EARTH_RADIUS_METERS;
-  const latitudeRad = degToRad(center.latitude);
-  const longitudeRad = degToRad(center.longitude);
-  const coordinates: { latitude: number; longitude: number }[] = [];
-
-  for (let step = 0; step <= steps; step += 1) {
-    const bearing = (step / steps) * Math.PI * 2;
-    const lat = Math.asin(
-      Math.sin(latitudeRad) * Math.cos(angularDistance) +
-        Math.cos(latitudeRad) * Math.sin(angularDistance) * Math.cos(bearing),
-    );
-    const lng =
-      longitudeRad +
-      Math.atan2(
-        Math.sin(bearing) * Math.sin(angularDistance) * Math.cos(latitudeRad),
-        Math.cos(angularDistance) - Math.sin(latitudeRad) * Math.sin(lat),
-      );
-    coordinates.push({ latitude: radToDeg(lat), longitude: radToDeg(lng) });
+function normalizePadding(
+  padding?:
+    | number
+    | [number, number]
+    | [number, number, number, number]
+    | { top?: number; right?: number; bottom?: number; left?: number },
+): EdgePadding | undefined {
+  if (padding == null) return undefined;
+  if (typeof padding === 'number') {
+    return { top: padding, right: padding, bottom: padding, left: padding };
   }
-
-  return coordinates;
+  if (Array.isArray(padding)) {
+    if (padding.length === 2) {
+      const [vertical, horizontal] = padding;
+      return { top: vertical, bottom: vertical, left: horizontal, right: horizontal };
+    }
+    const [top, right, bottom, left] = padding;
+    return { top, right, bottom, left };
+  }
+  return {
+    top: padding.top ?? 0,
+    right: padding.right ?? 0,
+    bottom: padding.bottom ?? 0,
+    left: padding.left ?? 0,
+  };
 }
 
-function isValidCoordinate(coordinate: MapCoordinate | null | undefined): coordinate is MapCoordinate {
-  return (
-    coordinate != null &&
-    Number.isFinite(coordinate.latitude) &&
-    Number.isFinite(coordinate.longitude)
+function toLatLng(coordinate: MapCoordinate): LatLng {
+  return {
+    latitude: coordinate.latitude,
+    longitude: coordinate.longitude,
+  };
+}
+
+function getCenterFromCoordinates(coordinates: MapCoordinate[]) {
+  const total = coordinates.reduce(
+    (acc, coordinate) => {
+      acc.latitude += coordinate.latitude;
+      acc.longitude += coordinate.longitude;
+      return acc;
+    },
+    { latitude: 0, longitude: 0 },
   );
+
+  return {
+    latitude: total.latitude / coordinates.length,
+    longitude: total.longitude / coordinates.length,
+  };
+}
+
+function regionDeltaFromZoom(zoom = 16) {
+  const normalizedZoom = Math.max(2, Math.min(zoom, 20));
+  const latitudeDelta = Math.max(0.0008, 360 / Math.pow(2, normalizedZoom));
+  return {
+    latitudeDelta,
+    longitudeDelta: latitudeDelta,
+  };
 }
 
 // ─── Camera hook ─────────────────────────────────────────────────────────────
@@ -64,26 +87,8 @@ function isValidCoordinate(coordinate: MapCoordinate | null | undefined): coordi
 export function useMapLibreCamera(initialRegion: MapRegion) {
   const cameraRef = useRef<MapView>(null);
 
-  const defaultCamera = useMemo(
-    (): Region => ({
-      latitude: initialRegion.latitude,
-      longitude: initialRegion.longitude,
-      latitudeDelta: initialRegion.latitudeDelta,
-      longitudeDelta: initialRegion.longitudeDelta,
-    }),
-    [initialRegion.latitude, initialRegion.longitude, initialRegion.latitudeDelta, initialRegion.longitudeDelta],
-  );
-
   const animateToRegion = (region: MapRegion, duration = 800) => {
-    cameraRef.current?.animateToRegion(
-      {
-        latitude: region.latitude,
-        longitude: region.longitude,
-        latitudeDelta: region.latitudeDelta,
-        longitudeDelta: region.longitudeDelta,
-      },
-      duration,
-    );
+    cameraRef.current?.animateToRegion(region, duration);
   };
 
   const animateCamera = (
@@ -95,25 +100,22 @@ export function useMapLibreCamera(initialRegion: MapRegion) {
     },
     options?: { duration?: number },
   ) => {
-    if (!config.center) return;
-    // Convert zoom level to approximate latitudeDelta
-    const zoomToLatDelta = (zoom?: number) => {
-      if (zoom == null) return 0.02;
-      // approx: latitudeDelta ≈ 360 / 2^zoom (rough)
-      return 360 / Math.pow(2, zoom);
-    };
-    const latDelta = zoomToLatDelta(config.zoom);
-    const { width } = Dimensions.get('window');
-    const lngDelta = latDelta * (width / (width || 1)); // aspect ratio ≈ 1 for narrow range
-    cameraRef.current?.animateToRegion(
-      {
-        latitude: config.center.latitude,
-        longitude: config.center.longitude,
-        latitudeDelta: latDelta,
-        longitudeDelta: lngDelta,
-      },
-      options?.duration ?? 700,
-    );
+    const camera: Partial<Camera> = {};
+    if (config.center) {
+      camera.center = toLatLng(config.center);
+    }
+    if (typeof config.pitch === 'number') {
+      camera.pitch = config.pitch;
+    }
+    if (typeof config.heading === 'number') {
+      camera.heading = config.heading;
+    }
+    if (typeof config.zoom === 'number') {
+      // Altitude conversion for react-native-maps camera
+      camera.altitude = Math.max(150, 800000 / Math.pow(2, Math.max(0, config.zoom - 2)));
+      camera.zoom = config.zoom;
+    }
+    cameraRef.current?.animateCamera(camera, { duration: options?.duration ?? 700 });
   };
 
   const fitToCoordinates = (
@@ -124,23 +126,46 @@ export function useMapLibreCamera(initialRegion: MapRegion) {
       duration?: number;
     },
   ) => {
-    if (!coordinates.length) return;
-
-    const edgePadding = {
-      top: options?.edgePadding?.top ?? 80,
-      right: options?.edgePadding?.right ?? 56,
-      bottom: options?.edgePadding?.bottom ?? 80,
-      left: options?.edgePadding?.left ?? 56,
-    };
-
-    cameraRef.current?.fitToCoordinates(
-      coordinates.map((c) => ({ latitude: c.latitude, longitude: c.longitude })),
-      {
-        edgePadding,
-        animated: options?.animated !== false,
-      },
+    const validCoordinates = coordinates.filter(
+      (coordinate) =>
+        Number.isFinite(coordinate.latitude) && Number.isFinite(coordinate.longitude),
     );
+    if (!validCoordinates.length) return;
+    if (validCoordinates.length === 1) {
+      const center = validCoordinates[0];
+      const delta = regionDeltaFromZoom(16);
+      cameraRef.current?.animateToRegion(
+        {
+          latitude: center.latitude,
+          longitude: center.longitude,
+          latitudeDelta: delta.latitudeDelta,
+          longitudeDelta: delta.longitudeDelta,
+        },
+        options?.duration ?? 700,
+      );
+      return;
+    }
+
+    cameraRef.current?.fitToCoordinates(validCoordinates.map(toLatLng), {
+      edgePadding: normalizePadding(options?.edgePadding),
+      animated: options?.animated !== false,
+    });
   };
+
+  const defaultCamera = useMemo(
+    (): Region => ({
+      latitude: initialRegion.latitude,
+      longitude: initialRegion.longitude,
+      latitudeDelta: initialRegion.latitudeDelta,
+      longitudeDelta: initialRegion.longitudeDelta,
+    }),
+    [
+      initialRegion.latitude,
+      initialRegion.longitude,
+      initialRegion.latitudeDelta,
+      initialRegion.longitudeDelta,
+    ],
+  );
 
   return {
     cameraRef,
@@ -154,11 +179,9 @@ export function useMapLibreCamera(initialRegion: MapRegion) {
 // ─── Overlay components ───────────────────────────────────────────────────────
 
 export function MapLibreCircleOverlay({
-  id,
   center,
   radiusMeters,
   fillColor,
-  fillOpacity = 0.22,
   strokeColor,
   strokeWidth = 1.5,
 }: {
@@ -170,39 +193,19 @@ export function MapLibreCircleOverlay({
   strokeColor: string;
   strokeWidth?: number;
 }) {
-  const coordinates = useMemo(
-    () => createCirclePolygon(center, radiusMeters),
-    [center.latitude, center.longitude, radiusMeters],
-  );
-
-  // Parse fillColor to extract RGBA components for fillColor + fillOpacity combo
-  const resolvedFillColor = useMemo(() => {
-    // If already rgba(...), blend opacity in
-    if (fillColor.startsWith('rgba')) return fillColor;
-    // If hex + separate opacity, build rgba
-    const hex = fillColor.replace('#', '');
-    if (hex.length === 6) {
-      const r = parseInt(hex.slice(0, 2), 16);
-      const g = parseInt(hex.slice(2, 4), 16);
-      const b = parseInt(hex.slice(4, 6), 16);
-      return `rgba(${r},${g},${b},${fillOpacity})`;
-    }
-    return fillColor;
-  }, [fillColor, fillOpacity]);
-
   return (
-    <Polygon
-      key={id}
-      coordinates={coordinates}
-      fillColor={resolvedFillColor}
+    <Circle
+      center={toLatLng(center)}
+      radius={radiusMeters}
+      fillColor={fillColor}
       strokeColor={strokeColor}
       strokeWidth={strokeWidth}
+      zIndex={1}
     />
   );
 }
 
 export function MapLibrePolylineOverlay({
-  id,
   coordinates,
   color,
   width = 4,
@@ -215,7 +218,11 @@ export function MapLibrePolylineOverlay({
   lineDasharray?: number[];
 }) {
   const sanitizedCoordinates = useMemo(
-    () => coordinates.filter(isValidCoordinate),
+    () =>
+      coordinates.filter(
+        (coordinate) =>
+          Number.isFinite(coordinate.latitude) && Number.isFinite(coordinate.longitude),
+      ),
     [coordinates],
   );
 
@@ -223,17 +230,16 @@ export function MapLibrePolylineOverlay({
 
   return (
     <Polyline
-      key={id}
-      coordinates={sanitizedCoordinates.map((c) => ({ latitude: c.latitude, longitude: c.longitude }))}
+      coordinates={sanitizedCoordinates.map(toLatLng)}
       strokeColor={color}
       strokeWidth={width}
       lineDashPattern={lineDasharray}
+      zIndex={2}
     />
   );
 }
 
 export function MapLibreMarker({
-  id,
   coordinate,
   anchor,
   onPress,
@@ -244,18 +250,40 @@ export function MapLibreMarker({
   anchor?: { x: number; y: number };
   onPress?: () => void;
   allowOverlap?: boolean;
-  children: React.ReactElement;
+  children: ReactElement;
 }) {
   return (
-    <Marker
-      key={id}
-      identifier={id}
-      coordinate={{ latitude: coordinate.latitude, longitude: coordinate.longitude }}
-      anchor={anchor}
-      onPress={onPress ? () => onPress() : undefined}
-      tracksViewChanges={false}
-    >
+    <Marker coordinate={toLatLng(coordinate)} anchor={anchor} onPress={onPress}>
       {children}
     </Marker>
   );
+}
+
+export function getMapRegionFromCoordinates(
+  coordinates: MapCoordinate[],
+  fallbackRegion: MapRegion,
+): MapRegion {
+  const validCoordinates = coordinates.filter(
+    (coordinate) => Number.isFinite(coordinate.latitude) && Number.isFinite(coordinate.longitude),
+  );
+  if (!validCoordinates.length) return fallbackRegion;
+  if (validCoordinates.length === 1) {
+    const delta = regionDeltaFromZoom(16);
+    return {
+      latitude: validCoordinates[0].latitude,
+      longitude: validCoordinates[0].longitude,
+      latitudeDelta: delta.latitudeDelta,
+      longitudeDelta: delta.longitudeDelta,
+    };
+  }
+
+  const center = getCenterFromCoordinates(validCoordinates);
+  const latitudes = validCoordinates.map((coordinate) => coordinate.latitude);
+  const longitudes = validCoordinates.map((coordinate) => coordinate.longitude);
+  return {
+    latitude: center.latitude,
+    longitude: center.longitude,
+    latitudeDelta: Math.max(0.01, (Math.max(...latitudes) - Math.min(...latitudes)) * 1.5),
+    longitudeDelta: Math.max(0.01, (Math.max(...longitudes) - Math.min(...longitudes)) * 1.5),
+  };
 }
