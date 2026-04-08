@@ -1447,13 +1447,10 @@ export function CampusPingsScreen() {
                         trackColor={{ false: COLORS.border, true: COLORS.success }}
                         thumbColor={Platform.OS === 'ios' ? undefined : '#FFFFFF'}
                       />
-                    </View>
                   </ScrollView>
                 </View>
-
-              <View style={{ height: 60 }} />
-            </ScrollView>
->>>>>>> b8f25e5a (Other fixes on maps and pings)
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
           </Animated.View>
         </Animated.View>
       </Modal>
