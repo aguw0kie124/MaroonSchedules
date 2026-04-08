@@ -137,7 +137,7 @@ def get_place_detail(request: Request, place_id: str):
 
 @router.get("/pulse/map")
 @limiter.limit("60/minute")
-def get_pulse_map(request: Request, limit: int = Query(12, ge=1, le=25)):
+def get_pulse_map(request: Request, limit: int = Query(12, ge=1, le=100)):
     return pulse_service.get_pulse_map(limit=limit)
 
 

@@ -270,6 +270,13 @@ def get_pulse_map(limit: int = 100) -> Dict[str, Any]:
         if not place:
             continue
 
+        # Finalize place_id from resolved place if it was missing (e.g. from fallback resolution)
+        if not place_id:
+            place_id = place.get("place_id") or place.get("id")
+        
+        if not place_id:
+            continue
+
         category = str(custom.get("ping_category") or ping.get("post_type") or "Popup")
         start_at = str(custom.get("start_at") or ping.get("created_at") or datetime.now(timezone.utc).isoformat())
 
