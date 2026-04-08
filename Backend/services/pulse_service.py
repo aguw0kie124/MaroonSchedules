@@ -234,6 +234,7 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
     for ping in pings:
         ping_id = ping["id"]
         custom = ping.get("custom_data") or {}
+        place = None
 
         # Resolve place_id: check custom_data first, then try location_tag fallback
         place_id = custom.get("place_id") or None
@@ -241,15 +242,20 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
         lat = ping.get("lat")
         lng = ping.get("lng")
 
-        if not place_id and location_tag:
-            resolved = place_registry_service.resolve_place(location_tag, lat, lng)
-            if resolved:
-                place_id = resolved["place_id"]
-
         if not place_id:
-            continue
+            if location_tag and lat is not None and lng is not None:
+                # Synthetic place for non-campus snaps (allows off-campus pings to be seen)
+                place = {
+                    "place_id": f"geo:{location_tag.lower().replace(' ', '-')}",
+                    "name": location_tag,
+                    "lat": lat,
+                    "lng": lng
+                }
+                place_id = place["place_id"]
+            else:
+                continue
 
-        place = place_registry_service.get_place_by_id(place_id)
+        place = place or place_registry_service.get_place_by_id(place_id)
         if not place:
             continue
 
@@ -367,6 +373,20 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
             reverse=True,
         )[0][0] if group["categoryWeights"] else "Campus"
 
+        # Resolution for Frontend CampusLocation model
+        resolved_place = place_registry_service.get_place_by_id(place_id)
+        if not resolved_place and place_id.startswith("geo:"):
+            resolved_place = {
+                "place_id": place_id,
+                "name": group["locationName"],
+                "lat": group["coord"]["lat"],
+                "lng": group["coord"]["lng"],
+                "type": "General",
+                "is_live": True,
+                "percent_full": 0,
+                "available_seats": None
+            }
+
         hotspots.append(
             {
                 "id": f"hotspot-{place_id}",
@@ -395,7 +415,7 @@ def get_pulse_map(limit: int = 12) -> Dict[str, Any]:
                     percent_full,
                 ),
                 "items": sorted(group["items"], key=lambda item: item["startAt"])[:6],
-                "place": place_registry_service.serialize_place(place_registry_service.get_place_by_id(place_id)),
+                "place": place_registry_service.serialize_place(resolved_place) if resolved_place else None,
             }
         )
 

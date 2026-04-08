@@ -2826,7 +2826,7 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       marginBottom: 2,
     },
     nextUpTimeBox: {
-      width: 32,
+      width: 68,
       height: 32,
       borderRadius: 8,
       backgroundColor: "rgba(128, 0, 0, 0.08)",

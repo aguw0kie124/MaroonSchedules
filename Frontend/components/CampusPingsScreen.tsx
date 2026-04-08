@@ -604,7 +604,7 @@ export function CampusPingsScreen() {
             return (!best || dist < best.dist) ? { item, dist } : best;
           }, null as any);
 
-          if (nearest && nearest.dist <= 220) {
+          if (nearest) {
             finalLocation = nearest.item.location;
             finalLat = nearest.item.coord.lat;
             finalLng = nearest.item.coord.lng;

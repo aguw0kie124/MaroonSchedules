@@ -245,8 +245,18 @@ export function useScheduleMap(
     activeScheduleOption.entries.forEach((entry: any) => {
       let building: any = resolveScheduleBuilding(entry.building, entry.locationLabel);
       if (!building && entry.lat && entry.lng) {
-        building = { name: entry.locationLabel, shortName: entry.name.slice(0, 8), latitude: entry.lat, longitude: entry.lng };
+        building = { 
+          location: entry.locationLabel, 
+          shortName: (entry.name || "").slice(0, 12), 
+          coord: { lat: entry.lat, lng: entry.lng },
+          type: "General",
+          source: "schedule",
+          percent_full: 0,
+          is_live: false,
+          available_seats: null
+        };
       }
+      
       if (!building) return;
       const canonicalName = getCanonicalLocationName(building.name);
       const existing = grouped.get(canonicalName);

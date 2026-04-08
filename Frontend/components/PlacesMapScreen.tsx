@@ -627,14 +627,30 @@ export function PlacesMapScreen({ route, navigation }: any) {
   } = usePlacesSelection({
     allMapLocations,
     setActiveLayer,
-    onAfterSelectLocation: () => {
+    onAfterSelectLocation: useCallback((loc: CampusLocation) => {
       setSelectedHotspotId(null);
       setSelectedStop(null);
       setSelectedBus(null);
       setIsSearchExpanded(false);
       setSearchQuery("");
       setShowSearchResults(false);
-    },
+      
+      // Center map on selected location
+      if (loc?.coord && mapRef.current) {
+        mapRef.current.animateCamera(
+          {
+            center: {
+              latitude: loc.coord.lat,
+              longitude: loc.coord.lng,
+            },
+            zoom: 16.6,
+            pitch: isMapTilted ? 55 : 0,
+            heading: 0,
+          },
+          { duration: 700 },
+        );
+      }
+    }, [isMapTilted]),
   });
   const selectedHotspot = useMemo(
     () =>
@@ -1033,29 +1049,21 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   const handleGetDirections = useCallback(
     (building: string) => {
-      // Find building in directory (e.g. "MSC", "ZEC")
+      // Find building in standard directory or Today schedule entries (e.g. Current Location)
       const code = building.split(/\s+/)[0]?.toUpperCase();
-      const loc = locations.find(
+      const allSearchable = [...locations, ...scheduleLocations];
+      const loc = allSearchable.find(
         (l) =>
           l.location.toUpperCase() === code ||
+          l.location.toUpperCase() === building.toUpperCase() ||
           (l.shortName && l.shortName.toUpperCase().includes(code)),
       );
       if (loc) {
-        setSelectedId(getLocationSelectionId(loc));
+        handleSelectLocation(loc);
         setIsTodayExpanded(false);
-        // Center map
-        mapRef.current?.animateToRegion(
-          {
-            latitude: loc.coord.lat - 0.0015,
-            longitude: loc.coord.lng,
-            latitudeDelta: 0.005,
-            longitudeDelta: 0.005,
-          },
-          600,
-        );
       }
     },
-    [locations],
+    [handleSelectLocation, locations, scheduleLocations],
   );
 
   const handleSelectHotspot = useCallback(

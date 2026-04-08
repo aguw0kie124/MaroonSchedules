@@ -201,8 +201,8 @@ const localStyles = StyleSheet.create({
   },
   timelineLine: {
     position: "absolute",
-    left: 87, // Center of dot container (74+13)
-    top: 0,
+    left: 108,
+    top: 50,
     bottom: 0,
     width: 2,
     backgroundColor: "rgba(255,255,255,0.08)",
@@ -214,7 +214,8 @@ const localStyles = StyleSheet.create({
     zIndex: 1,
   },
   timeContainer: {
-    width: 74, // Narrowed for 14pt labels
+    width: 95, 
+    // Widened to prevent "P M" wrap
     alignItems: "flex-start", // Left-align text with sheet header
     paddingRight: 0,
     justifyContent: "flex-start",
