@@ -92,7 +92,9 @@ function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const setTourCompleted = useAppShellStore((state) => state.setTourCompleted);
-  const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
+  const setEventPreferencesCompleted = useAppShellStore(
+    (state) => state.setEventPreferencesCompleted,
+  );
   const setSelectedMajor = useEventStore((state) => state.setSelectedMajor);
   const setMajorSpecific = useEventStore((state) => state.setMajorSpecific);
   const lastSyncedUserId = React.useRef<string | null>(null);
@@ -379,15 +381,21 @@ function RootNavigator() {
 
   let content: React.ReactNode;
 
-  if (false && isSignedIn && !isTOSAccepted && user?.id) {
+  if (isSignedIn && !isTOSAccepted && user?.id) {
     content = (
       <TOSScreen clerkId={user.id} onAccepted={() => setTOSAccepted(true)} />
     );
-  } else if (isSignedIn && !isNotificationPrompted) {
+  } else if (isSignedIn && isTOSAccepted && !isNotificationPrompted) {
     content = (
       <NotificationPromptScreen onDone={() => setNotificationPrompted(true)} />
     );
-  } else if (isSignedIn && isTOSAccepted && isNotificationPrompted && (!isEventPreferencesCompleted || showEventPreferencesOnboarding) && user?.id) {
+  } else if (
+    isSignedIn &&
+    isTOSAccepted &&
+    isNotificationPrompted &&
+    (!isEventPreferencesCompleted || showEventPreferencesOnboarding) &&
+    user?.id
+  ) {
     content = (
       <EventPreferenceOnboardingScreen
         clerkId={user.id}
@@ -649,7 +657,7 @@ function TabButtonWrapper({
       name={targetName}
       style={{ flex: 1 }}
       assistAction={() => {
-        (navigationRef as any).navigate('Main', { screen: screenName });
+        (navigationRef as any).navigate("Main", { screen: screenName });
         setTimeout(() => advanceStep(targetName), 350);
       }}
     >
