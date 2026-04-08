@@ -85,6 +85,7 @@ import {
   MapLibreMarker,
   useMapLibreCamera,
 } from './map/mapLibreUtils';
+import { TourTarget, useTour } from './onboarding/TourProvider';
 import { getPremiumName, getPremiumImage } from '../utils/userUtils';
 import { scheduleAdminEventReviewNotification } from '../services/notificationService';
 import { normalizeExternalUrl, normalizeImageUrl } from '../services/url';
@@ -333,6 +334,7 @@ function mapActivityToPing(activity: any): PingCard {
 
 export function CampusPingsScreen() {
   const { COLORS } = useTheme();
+  const { advanceStep, activeTargetName } = useTour();
   const styles = useMemo(() => getStyles(COLORS), [COLORS]);
   const navigation = useNavigation<any>();
   const { user } = useUser();
@@ -356,6 +358,24 @@ export function CampusPingsScreen() {
   const [categoryFilter, setCategoryFilter] = useState<'All' | PingCategory>('All');
 
   const [composerVisible, setComposerVisible] = useState(false);
+
+  // Onboarding logic: automatically advance if the tour is on the CTA step handled in the open composer call
+  // We added a 1s delay so the instructions and highlight appear AFTER the animation finishes
+  useEffect(() => {
+    if (activeTargetName === 'crowdping-cta' && composerVisible) {
+      const timer = setTimeout(() => {
+        advanceStep('crowdping-cta');
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTargetName, composerVisible, advanceStep]);
+
+  // Removed onboarding idle timer that was auto-advancing the tour
+  useEffect(() => {
+    if (activeTargetName === 'crowdping-cta' && !composerVisible) {
+      // Optional: Pulse or hint if they are just sitting there, but no forced advancement
+    }
+  }, [activeTargetName, composerVisible]);
 
   const [composerTitle, setComposerTitle] = useState('');
   const [composerBody, setComposerBody] = useState('');
@@ -1249,17 +1269,33 @@ export function CampusPingsScreen() {
         </View>
       </View>
 
-      <Pressable
-        style={styles.quickPostBar}
-        onPress={() => {
-          setComposerVisible(true);
-        }}
-      >
-        <View style={styles.quickPostIconWrap}>
-          <Megaphone size={16} color={COLORS.primary} />
+      <TourTarget name="crowdping-cta">
+        <View
+          style={[
+            activeTargetName === 'crowdping-cta' && {
+              borderWidth: 2,
+              borderColor: COLORS.primary,
+              borderRadius: 16,
+              padding: 2,
+            },
+          ]}
+        >
+          <Pressable 
+            style={styles.quickPostBar} 
+            onPress={() => {
+              setComposerVisible(true);
+              if (activeTargetName === 'crowdping-cta') {
+                advanceStep('crowdping-cta');
+              }
+            }}
+          >
+            <View style={styles.quickPostIconWrap}>
+              <Megaphone size={16} color={COLORS.primary} />
+            </View>
+            <Text style={styles.quickPostText}>What's happening at...</Text>
+          </Pressable>
         </View>
-        <Text style={styles.quickPostText}>What's happening at...</Text>
-      </Pressable>
+      </TourTarget>
 
       {streamError ? (
         <View style={styles.noticePill}>
@@ -1375,15 +1411,23 @@ export function CampusPingsScreen() {
                 >
                       <View style={styles.modalHeader}>
                         <Text style={styles.modalTitle}>Create a ping</Text>
-                        <Pressable
-                          onPress={() => {
-                            setComposerVisible(false);
-                            resetComposer();
-                          }}
-                          style={{ padding: 12, borderRadius: 20 }}
-                        >
-                          <X size={20} color={COLORS.textPrimary} />
-                        </Pressable>
+                        <TourTarget name="crowdping-close">
+                          <Pressable
+                            onPress={() => {
+                              setComposerVisible(false);
+                              resetComposer();
+                              if (activeTargetName === 'crowdping-close') {
+                                advanceStep('crowdping-close');
+                              }
+                            }}
+                            style={[
+                              { padding: 12, borderRadius: 20 },
+                              activeTargetName === 'crowdping-close' && { backgroundColor: `${COLORS.primary}15` }
+                            ]}
+                          >
+                            <X size={20} color={activeTargetName === 'crowdping-close' ? COLORS.primary : COLORS.textPrimary} />
+                          </Pressable>
+                        </TourTarget>
                       </View>
 
                       <ScrollView

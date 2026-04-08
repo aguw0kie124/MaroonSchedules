@@ -578,18 +578,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
       pulseHotspots.find((hotspot) => hotspot.id === selectedHotspotId) || null,
     [pulseHotspots, selectedHotspotId],
   );
-  const pulseTotals = useMemo(() => {
-    return pulseHotspots.reduce(
-      (totals, hotspot) => ({
-        hotspots: totals.hotspots + 1,
-        pings: totals.pings + hotspot.pingCount,
-        events: totals.events + hotspot.eventCount,
-      }),
-      { hotspots: 0, pings: 0, events: 0 },
-    );
-  }, [pulseHotspots]);
-  const hottestHotspot = pulseHotspots[0] || null;
-  const pulseHeroHotspot = selectedHotspot || hottestHotspot;
   const pulseMarkerHotspots = useMemo(() => {
     const base = pulseHotspots.slice(0, PULSE_MARKER_LIMIT);
     if (
@@ -2382,84 +2370,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   nearestBusInfo={nearestBusInfo}
                   handleStopPress={handleStopPress}
                 />
-              </View>
-            )}
-
-            {activeLayer === "Pulse" && (
-              <View style={{ marginTop: 12, width: "100%" }}>
-                <TouchableOpacity
-                  activeOpacity={pulseHeroHotspot ? 0.88 : 1}
-                  style={styles.pulseHeroCard}
-                  onPress={() => {
-                    if (pulseHeroHotspot) {
-                      handleSelectHotspot(pulseHeroHotspot);
-                    }
-                  }}
-                >
-                  <View style={styles.pulseHeroTopRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.pulseHeroEyebrow}>Live Campus Pulse</Text>
-                      <Text style={styles.pulseHeroTitle}>
-                        {isLoadingPulse && !pulseHotspots.length
-                          ? "Building the live heatmap"
-                          : pulseHeroHotspot
-                            ? `${pulseHeroHotspot.locationName} is buzzing`
-                            : "Campus energy map"}
-                      </Text>
-                      <Text style={styles.pulseHeroBody}>
-                        {isLoadingPulse && !pulseHotspots.length
-                          ? "Pulling in campus pings, events, and occupancy to paint the map."
-                          : pulseHeroHotspot
-                            ? `${pulseHeroHotspot.summary} Tap to zoom into the hottest zone.`
-                            : "Live pings now glow as a continuous heatmap. Tap a flame marker to dive into what is happening nearby."}
-                      </Text>
-                    </View>
-
-                    <View
-                      style={[
-                        styles.pulseHeroBadge,
-                        {
-                          backgroundColor:
-                            pulseHeroHotspot?.pulseColor || COLORS.primary,
-                        },
-                      ]}
-                    >
-                      {isLoadingPulse && !pulseHotspots.length ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <>
-                          <Text style={styles.pulseHeroBadgeValue}>
-                            {pulseTotals.hotspots}
-                          </Text>
-                          <Text style={styles.pulseHeroBadgeLabel}>zones</Text>
-                        </>
-                      )}
-                    </View>
-                  </View>
-
-                  <View style={styles.pulseHeroStatsRow}>
-                    <View style={styles.pulseHeroStat}>
-                      <Text style={styles.pulseHeroStatValue}>
-                        {pulseTotals.pings}
-                      </Text>
-                      <Text style={styles.pulseHeroStatLabel}>Live pings</Text>
-                    </View>
-                    <View style={styles.pulseHeroStat}>
-                      <Text style={styles.pulseHeroStatValue}>
-                        {pulseTotals.events}
-                      </Text>
-                      <Text style={styles.pulseHeroStatLabel}>Events</Text>
-                    </View>
-                    <View style={styles.pulseHeroStat}>
-                      <Text style={styles.pulseHeroStatValue}>
-                        {pulseHeroHotspot?.pulseLabel || "Quiet"}
-                      </Text>
-                      <Text style={styles.pulseHeroStatLabel}>
-                        {pulseHeroHotspot ? "Top zone" : "Status"}
-                      </Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
               </View>
             )}
 
