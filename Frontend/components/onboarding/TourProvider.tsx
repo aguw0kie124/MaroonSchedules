@@ -147,9 +147,9 @@ export const TOUR_SEQUENCE: TourStep[] = [
   {
     id: 'gyms-pill',
     title: 'Filter to gyms only',
-    instruction: "Tap the 'Rec' filter pill so the map focuses on recreation locations.",
+    instruction: "Tap the highlighted 'Gyms' pill (Rec) once so the map focuses on recreation locations.",
     where: 'Look across the pill row on the Places screen for the recreation filter.',
-    cue: 'Tap the highlighted Rec pill.',
+    cue: "Tap the highlighted Gyms (Rec) pill once.",
     celebrationTitle: 'There it is.',
     celebrationBody: 'You are now filtered into recreation spots.',
   },
@@ -211,15 +211,9 @@ export const TOUR_SEQUENCE: TourStep[] = [
   },
 ];
 
-const ENCOURAGEMENTS = [
-  'You are doing great.',
-  'One clear step at a time.',
-  'We will guide you through this.',
-  'You are almost there.',
-];
-
 const FREE_INTERACTION_STEPS = new Set([
   'add-gyms-toggle',
+  'gyms-pill',
   'rec-center-item',
   'crowdping-cta',
   'crowdping-close',
@@ -436,7 +430,8 @@ function CompletionConfetti({
 export function TourProvider({ children }: { children: React.ReactNode }) {
   const { isSignedIn, userId } = useAuth();
   const { user } = useUser();
-  const { COLORS } = useTheme();
+  const { COLORS, theme } = useTheme();
+  const isDark = theme === 'dark';
   const isTOSAccepted = useAppShellStore((state) => state.isTOSAccepted);
   const isNotificationPrompted = useAppShellStore((state) => state.isNotificationPrompted);
   const isTourCompleted = useAppShellStore((state) => state.isTourCompleted);
@@ -809,7 +804,6 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
   const stepLabel = currentDef ? `Step ${currentStep + 1} of ${TOUR_SEQUENCE.length}` : '';
   const regionHint = targetRect && currentDef ? `Highlighted in the ${getTargetRegion(targetRect, width, height)}.` : '';
-  const encouragement = ENCOURAGEMENTS[currentStep % ENCOURAGEMENTS.length];
   const allowFreeInteraction = currentDef ? FREE_INTERACTION_STEPS.has(currentDef.id) : false;
   const isCompactCoachStep = currentDef ? COMPACT_COACH_STEPS.has(currentDef.id) : false;
 
@@ -1130,52 +1124,64 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
               <Text style={[styles.regionHintText, { color: COLORS.textSecondary }]}>{regionHint}</Text>
             ) : null}
 
-            {!isCompactCoachStep && encouragement ? (
-              <View style={[styles.encouragementRow, { backgroundColor: 'rgba(255,255,255,0.56)' }]}>
-                <View style={[styles.encouragementDot, { backgroundColor: COLORS.primary }]} />
-                <Text style={[styles.encouragementText, { color: COLORS.textSecondary }]}>{encouragement}</Text>
-              </View>
-            ) : null}
+            <View style={styles.bottomActionGroup}>
+              {assistVisible ? (
+                <Pressable
+                  onPress={runAssist}
+                  style={({ pressed }) => [
+                    styles.assistButton,
+                    {
+                      backgroundColor: `${COLORS.primary}14`,
+                      borderColor: `${COLORS.primary}30`,
+                      opacity: pressed ? 0.88 : 1,
+                      transform: [{ scale: pressed ? 0.98 : 1 }],
+                    },
+                  ]}
+                >
+                  <Text style={[styles.assistButtonTitle, { color: COLORS.primary }]}>Confused? Click here for extra guidance.</Text>
+                  <Text style={[styles.assistButtonBody, { color: COLORS.textSecondary }]}>
+                    We will show the exact action, animate it on screen, and move you to the next step automatically.
+                  </Text>
+                </Pressable>
+              ) : null}
 
-            {assistVisible ? (
               <Pressable
-                onPress={runAssist}
+                onPress={() => endTour({ navigateToDashboard: true })}
                 style={({ pressed }) => [
-                  styles.assistButton,
+                  styles.finishTourButton,
                   {
+                    borderColor: `${COLORS.primary}2C`,
                     backgroundColor: `${COLORS.primary}12`,
-                    borderColor: `${COLORS.primary}26`,
-                    opacity: pressed ? 0.88 : 1,
-                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                    opacity: pressed ? 0.9 : 1,
                   },
                 ]}
               >
-                <Text style={[styles.assistButtonTitle, { color: COLORS.primary }]}>Confused? Click here for extra guidance.</Text>
-                <Text style={[styles.assistButtonBody, { color: COLORS.textSecondary }]}>
-                  We will show the exact action, animate it on screen, and move you to the next step automatically.
-                </Text>
+                <Text style={[styles.finishTourText, { color: COLORS.primary }]}>Finish tour now</Text>
               </Pressable>
-            ) : null}
 
-            <Pressable
-              onPress={() => endTour({ navigateToDashboard: true })}
-              style={({ pressed }) => [
-                styles.finishTourButton,
-                {
-                  borderColor: `${COLORS.primary}24`,
-                  backgroundColor: `${COLORS.primary}0D`,
-                  opacity: pressed ? 0.9 : 1,
-                },
-              ]}
-            >
-              <Text style={[styles.finishTourText, { color: COLORS.primary }]}>Finish tour now</Text>
-            </Pressable>
-
-            {blockedHint ? (
-              <Animated.View entering={FadeIn.duration(140)} exiting={FadeOut.duration(180)} style={styles.blockedHintBubble}>
-                <Text style={[styles.blockedHintText, { color: COLORS.textPrimary }]}>{blockedHint.message}</Text>
-              </Animated.View>
-            ) : null}
+              {blockedHint ? (
+                <Animated.View
+                  entering={FadeIn.duration(140)}
+                  exiting={FadeOut.duration(180)}
+                  style={[
+                    styles.blockedHintBubble,
+                    {
+                      backgroundColor: isDark ? 'rgba(17,24,39,0.96)' : 'rgba(255,255,255,0.96)',
+                      borderColor: isDark ? 'rgba(255,255,255,0.16)' : 'rgba(17,24,39,0.12)',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.blockedHintText,
+                      { color: isDark ? '#F9FAFB' : '#111827' },
+                    ]}
+                  >
+                    {blockedHint.message}
+                  </Text>
+                </Animated.View>
+              ) : null}
+            </View>
           </Animated.View>
 
           <CelebrationBurst
@@ -1459,6 +1465,10 @@ const styles = StyleSheet.create({
     lineHeight: 15,
     fontWeight: '600',
   },
+  bottomActionGroup: {
+    marginTop: 6,
+    gap: 10,
+  },
   finishTourButton: {
     alignSelf: 'stretch',
     borderRadius: 14,
@@ -1502,10 +1512,10 @@ const styles = StyleSheet.create({
   },
   assistButton: {
     borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
+    paddingHorizontal: 15,
+    paddingVertical: 14,
     borderWidth: 1,
-    gap: 4,
+    gap: 6,
   },
   assistButtonTitle: {
     fontSize: 13,
@@ -1518,9 +1528,9 @@ const styles = StyleSheet.create({
   },
   blockedHintBubble: {
     borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(255,255,255,0.96)',
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    backgroundColor: 'rgba(255,255,255,0.98)',
     borderWidth: 1,
     borderColor: 'rgba(17,24,39,0.08)',
   },

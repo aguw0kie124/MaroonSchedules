@@ -413,23 +413,7 @@ export function CampusPingsScreen() {
   const postCelebrationTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const postButtonPulse = React.useRef(new RNAnimated.Value(1)).current;
 
-  // Onboarding logic: automatically advance if the tour is on the CTA step handled in the open composer call
-  // We added a 1s delay so the instructions and highlight appear AFTER the animation finishes
-  useEffect(() => {
-    if (activeTargetName === 'crowdping-cta' && composerVisible) {
-      const timer = setTimeout(() => {
-        advanceStep('crowdping-cta');
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [activeTargetName, composerVisible, advanceStep]);
-
-  // Removed onboarding idle timer that was auto-advancing the tour
-  useEffect(() => {
-    if (activeTargetName === 'crowdping-cta' && !composerVisible) {
-      // Optional: Pulse or hint if they are just sitting there, but no forced advancement
-    }
-  }, [activeTargetName, composerVisible]);
+  // Onboarding progression is now user-action only for the CTA step.
 
   useEffect(() => {
     return () => {

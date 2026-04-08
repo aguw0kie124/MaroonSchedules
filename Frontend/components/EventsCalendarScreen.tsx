@@ -23,7 +23,6 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import * as Haptics from 'expo-haptics';
 import {
-  ArrowRight,
   BadgeCheck,
   BellOff,
   CircleAlert,
@@ -70,7 +69,8 @@ import { TagChips } from './common/TagChips';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.24;
-const HERO_CARD_WIDTH = SCREEN_WIDTH - 52;
+const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
+const HERO_CARD_HEIGHT = Math.min(Math.max(396, SCREEN_HEIGHT * 0.54), 452);
 const HERO_CARD_GAP = 14;
 const HERO_CARD_SNAP_INTERVAL = HERO_CARD_WIDTH + HERO_CARD_GAP;
 
@@ -820,7 +820,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [rewardToast, setRewardToast] = useState<{ title: string; body: string } | null>(null);
   const rewardToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
-  const swipeCtaScale = useRef(new Animated.Value(1)).current;
   const heroSparkleFloat = useRef(new Animated.Value(0)).current;
 
   const {
@@ -1047,22 +1046,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       setView('list');
     }
   }, [isGuest]);
-
-  useEffect(() => {
-    if (view !== 'discover' || loading) {
-      swipeCtaScale.stopAnimation();
-      swipeCtaScale.setValue(1);
-      return;
-    }
-    const animation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(swipeCtaScale, { toValue: 1.04, duration: 900, useNativeDriver: true }),
-        Animated.timing(swipeCtaScale, { toValue: 1, duration: 900, useNativeDriver: true }),
-      ]),
-    );
-    animation.start();
-    return () => animation.stop();
-  }, [loading, swipeCtaScale, view]);
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -1524,11 +1507,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               <Text style={s.loadingText}>Loading campus events...</Text>
             </View>
           ) : (
-            <ScrollView
-              contentContainerStyle={s.scrollContent}
-              showsVerticalScrollIndicator={false}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
-            >
+            <View style={s.discoverLayout}>
+              <ScrollView
+                style={s.discoverScroll}
+                contentContainerStyle={s.scrollContent}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
+              >
               <LinearGradient
                 colors={isDark ? ['rgba(80,0,0,0.92)', 'rgba(28,18,24,0.94)'] : ['#FFF2EA', '#F7F0FF']}
                 start={{ x: 0, y: 0 }}
@@ -1672,6 +1658,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled
+                directionalLockEnabled
                 contentContainerStyle={s.heroRail}
                 snapToOffsets={discoverEvents.map((_, index) => index * HERO_CARD_SNAP_INTERVAL)}
                 snapToAlignment="start"
@@ -1698,20 +1686,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   return card;
                 })}
               </ScrollView>
-
-              <Animated.View style={{ transform: [{ scale: swipeCtaScale }] }}>
-              <Pressable
-                style={s.swipeCta}
-                onPress={() => {
-                  setSwipeIndex(0);
-                  changeView('swipe');
-                }}
-              >
-                <ArrowRight size={18} color={COLORS.textPrimary} />
-                <Text style={s.swipeCtaText}>Swipe to explore</Text>
-              </Pressable>
-              </Animated.View>
-            </ScrollView>
+              </ScrollView>
+            </View>
           )}
         </>
       )}
@@ -2096,7 +2072,13 @@ function HeroEventCard({
         ) : null}
       </View>
 
-      <View style={stylesStatic.heroBottom}>
+      <ScrollView
+        style={stylesStatic.heroBottom}
+        contentContainerStyle={stylesStatic.heroBottomContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        nestedScrollEnabled
+      >
         <Text style={stylesStatic.heroTitle}>{event.title}</Text>
         <WhyItFitsRow reasons={reasons} light />
         {event.group_title ? (
@@ -2151,7 +2133,7 @@ function HeroEventCard({
                 : 'Add'}
           </Text>
         </Pressable>
-      </View>
+      </ScrollView>
     </Pressable>
   );
 }
@@ -2856,7 +2838,13 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     scrollContent: {
       paddingHorizontal: 20,
-      paddingBottom: 118,
+      paddingBottom: 38,
+    },
+    discoverLayout: {
+      flex: 1,
+    },
+    discoverScroll: {
+      flex: 1,
     },
     forYouHero: {
       borderRadius: 28,
@@ -3013,21 +3001,6 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       paddingTop: 18,
       paddingLeft: 0,
       paddingRight: 0,
-    },
-    swipeCta: {
-      marginTop: 16,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      paddingVertical: 8,
-      alignSelf: 'center',
-    },
-    swipeCtaText: {
-      color: COLORS.textPrimary,
-      fontSize: 16,
-      fontWeight: '700',
-      letterSpacing: -0.2,
     },
     listSearchRow: {
       flexDirection: 'row',
@@ -3329,11 +3302,11 @@ const stylesStatic = StyleSheet.create({
   },
   heroCard: {
     width: HERO_CARD_WIDTH,
-    height: 372,
+    height: HERO_CARD_HEIGHT,
     borderRadius: 34,
     overflow: 'hidden',
-    padding: 20,
-    justifyContent: 'space-between',
+    paddingHorizontal: 22,
+    paddingVertical: 24,
   },
   heroImage: {
     ...StyleSheet.absoluteFillObject,
@@ -3353,7 +3326,7 @@ const stylesStatic = StyleSheet.create({
   },
   heroGlowSmall: {
     position: 'absolute',
-    bottom: 70,
+    bottom: 86,
     left: -35,
     width: 120,
     height: 120,
@@ -3363,16 +3336,16 @@ const stylesStatic = StyleSheet.create({
   heroIconHalo: {
     position: 'absolute',
     right: 18,
-    bottom: 118,
+    bottom: Math.round(HERO_CARD_HEIGHT * 0.31),
     opacity: 0.55,
   },
   heroIconHaloWithImage: {
     opacity: 0.28,
   },
   heroTopRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   heroCategoryPill: {
     paddingHorizontal: 10,
@@ -3402,7 +3375,13 @@ const stylesStatic = StyleSheet.create({
     fontWeight: '700',
   },
   heroBottom: {
+    flex: 1,
+    marginTop: 'auto',
+    minHeight: 0,
+  },
+  heroBottomContent: {
     gap: 8,
+    paddingBottom: 2,
   },
   heroTitle: {
     color: '#FFFFFF',

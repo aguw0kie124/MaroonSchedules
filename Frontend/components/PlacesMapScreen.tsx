@@ -603,14 +603,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
     [pulseHotspots, selectedHotspotId],
   );
 
-  useEffect(() => {
-    if (activeTargetName === "rec-center-item" && selectedLoc?.type === "Rec") {
-      const timer = setTimeout(() => {
+  // Onboarding progression for rec-center-item is user-action only.
+  const handleMapMarkerPress = useCallback(
+    (loc: CampusLocation) => {
+      handleSelectLocation(loc);
+      if (activeTargetName === "rec-center-item" && loc.type === "Rec") {
         advanceStep("rec-center-item");
-      }, 220);
-      return () => clearTimeout(timer);
-    }
-  }, [activeTargetName, advanceStep, selectedLoc?.location, selectedLoc?.type]);
+      }
+    },
+    [activeTargetName, advanceStep, handleSelectLocation],
+  );
 
   const pulseTotals = useMemo(() => {
     return pulseHotspots.reduce(
@@ -2096,7 +2098,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   latitude: loc.coord.lat,
                   longitude: loc.coord.lng,
                 }}
-                onPress={() => handleSelectLocation(loc)}
+                onPress={() => handleMapMarkerPress(loc)}
                 anchor={{ x: 0.5, y: 1 }}
               >
                 {isTodayLayer ? (

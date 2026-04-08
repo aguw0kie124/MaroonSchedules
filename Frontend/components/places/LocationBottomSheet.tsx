@@ -194,13 +194,9 @@ export function LocationBottomSheet({
         mass: 0.9,
       }).start(() => {
         if (onDone) onDone();
-        // Onboarding: Instant advance on full expansion
-        if (toValue === SHEET_TOP_SNAP && activeTargetName === 'rec-center-item') {
-          advanceStep('rec-center-item');
-        }
       });
     },
-    [sheetY, activeTargetName, advanceStep],
+    [sheetY],
   );
 
   useEffect(() => {
