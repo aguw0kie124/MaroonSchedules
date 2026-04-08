@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MaroonLife Support</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --maroon: #500000;
+        --cream: #f7f1e8;
+        --ink: #1f2933;
+        --muted: #5b6670;
+        --card: #ffffff;
+        --border: rgba(80, 0, 0, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at top right, rgba(80, 0, 0, 0.12), transparent 28rem),
+          linear-gradient(180deg, #fffdfa 0%, var(--cream) 100%);
+        color: var(--ink);
+      }
+
+      main {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 64px 20px 80px;
+      }
+
+      .hero {
+        margin-bottom: 24px;
+      }
+
+      .eyebrow {
+        display: inline-block;
+        margin-bottom: 12px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(80, 0, 0, 0.08);
+        color: var(--maroon);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(2rem, 5vw, 3.5rem);
+        line-height: 1;
+      }
+
+      p {
+        margin: 0 0 14px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 24px;
+        box-shadow: 0 18px 40px rgba(31, 41, 51, 0.08);
+      }
+
+      .stack {
+        display: grid;
+        gap: 18px;
+      }
+
+      a {
+        color: var(--maroon);
+        font-weight: 700;
+      }
+
+      ul {
+        margin: 0;
+        padding-left: 20px;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .footer {
+        margin-top: 20px;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <div class="eyebrow">MaroonLife Support</div>
+        <h1>We can help.</h1>
+        <p>
+          Questions about MaroonLife, account access, event tools, schedules, or campus features can be sent through the
+          support options below.
+        </p>
+      </section>
+
+      <section class="card stack">
+        <div>
+          <h2>Contact</h2>
+          <p>
+            Support email: this must be replaced with your real monitored inbox before publishing this page,
+            for example <code>support@your-domain.com</code>.
+          </p>
+          <p>
+            Please include your device, iOS version, app version, and a short description of the issue so we can help faster.
+          </p>
+        </div>
+
+        <div>
+          <h2>What to include</h2>
+          <ul>
+            <li>Your campus email or the account email used to sign in</li>
+            <li>The feature you were using when the issue happened</li>
+            <li>A screenshot or screen recording if available</li>
+            <li>Whether you are on iPhone or iPad</li>
+          </ul>
+        </div>
+
+        <div>
+          <h2>Response times</h2>
+          <p>
+            We aim to respond within 2 business days for support requests and bug reports.
+          </p>
+        </div>
+      </section>
+
+      <p class="footer">
+        After you replace the placeholder support email and publish this page at
+        <a href="https://maroonschedules.tamu.edu/support">maroonschedules.tamu.edu/support</a>,
+        it will satisfy Apple’s Support URL requirement with a real support destination.
+      </p>
+    </main>
+  </body>
+</html>

@@ -53,6 +53,9 @@ def _user_select_clause() -> str:
         "major",
         "graduation_year",
         "preferred_time",
+        "preferred_event_categories",
+        "preferred_social_mode",
+        "event_preferences_completed",
         "max_credits",
         "avoid_friday",
         "show_online_first",
@@ -82,6 +85,9 @@ def _ensure_user_schema(conn: psycopg.Connection) -> None:
             major TEXT,
             graduation_year TEXT,
             preferred_time TEXT,
+            preferred_event_categories JSONB DEFAULT '[]'::jsonb,
+            preferred_social_mode TEXT,
+            event_preferences_completed BOOLEAN DEFAULT FALSE,
             max_credits TEXT,
             avoid_friday BOOLEAN DEFAULT FALSE,
             show_online_first BOOLEAN DEFAULT FALSE,
@@ -102,6 +108,9 @@ def _ensure_user_schema(conn: psycopg.Connection) -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS major TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS graduation_year TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_time TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_event_categories JSONB DEFAULT '[]'::jsonb",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_social_mode TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS event_preferences_completed BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS max_credits TEXT",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS avoid_friday BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS show_online_first BOOLEAN DEFAULT FALSE",
@@ -246,6 +255,7 @@ def update_profile(clerk_id: str, fields: dict) -> dict | None:
     """Update only the profile-preference columns for a user."""
     allowed = {
         "major", "graduation_year", "preferred_time",
+        "preferred_event_categories", "preferred_social_mode", "event_preferences_completed",
         "max_credits", "avoid_friday", "show_online_first",
         "profile_image_url",
     }
@@ -350,6 +360,9 @@ def _row_to_dict(row) -> dict:
             "major": row.get("major"),
             "graduation_year": row.get("graduation_year"),
             "preferred_time": row.get("preferred_time"),
+            "preferred_event_categories": row.get("preferred_event_categories") or [],
+            "preferred_social_mode": row.get("preferred_social_mode"),
+            "event_preferences_completed": row.get("event_preferences_completed", False),
             "max_credits": row.get("max_credits"),
             "avoid_friday": row.get("avoid_friday", False),
             "show_online_first": row.get("show_online_first", False),
@@ -366,7 +379,7 @@ def _row_to_dict(row) -> dict:
             "tags": [],
         }
 
-    schedules = row[11]
+    schedules = row[14]
     if isinstance(schedules, str):
         schedules = json.loads(schedules)
     return {
@@ -378,19 +391,22 @@ def _row_to_dict(row) -> dict:
         "major": row[5],
         "graduation_year": row[6],
         "preferred_time": row[7],
-        "max_credits": row[8],
-        "avoid_friday": row[9],
-        "show_online_first": row[10],
+        "preferred_event_categories": row[8] or [],
+        "preferred_social_mode": row[9],
+        "event_preferences_completed": row[10] or False,
+        "max_credits": row[11],
+        "avoid_friday": row[12],
+        "show_online_first": row[13],
         "schedules": schedules or [],
-        "created_at": str(row[12]) if row[12] else None,
-        "updated_at": str(row[13]) if row[13] else None,
-        "canvas_access_token": row[14],
-        "canvas_refresh_token": row[15],
-        "canvas_expires_at": str(row[16]) if row[16] else None,
-        "canvas_instance_url": row[17],
-        "tos_accepted": row[18],
-        "tour_completed": row[19],
-        "is_admin": row[20] if len(row) > 20 else False,
+        "created_at": str(row[15]) if row[15] else None,
+        "updated_at": str(row[16]) if row[16] else None,
+        "canvas_access_token": row[17],
+        "canvas_refresh_token": row[18],
+        "canvas_expires_at": str(row[19]) if row[19] else None,
+        "canvas_instance_url": row[20],
+        "tos_accepted": row[21],
+        "tour_completed": row[22],
+        "is_admin": row[23] if len(row) > 23 else False,
         "tags": [],
     }
 
