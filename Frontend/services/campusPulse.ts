@@ -1,3 +1,4 @@
+import { API_URL } from "../config";
 import type { CampusLocation } from "../components/places/types";
 import { fetchCampusPulseMap as apiFetchPulseMap } from "../api/client";
 
@@ -37,6 +38,16 @@ export interface CampusHotspot {
   userVote?: number; // -1, 0, or 1
 }
 
+function resolveMediaUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith('/uploads/')) return `${API_URL}${url}`;
+  if ((url.includes('127.0.0.1') || url.includes('localhost')) && url.includes('/uploads/')) {
+    const parts = url.split('/uploads/');
+    return `${API_URL}/uploads/${parts[1]}`;
+  }
+  return url;
+}
+
 const PULSE_CACHE_TTL_MS = 30_000;
 
 let _cachedHotspots: CampusHotspot[] | null = null;
@@ -65,8 +76,10 @@ export async function fetchCampusPulseMap(
   const mapped = hotspots.map((hotspot: any) => {
     const placeId = hotspot.placeId ?? hotspot.place_id ?? hotspot.place?.place_id ?? null;
     
-    // Debug log for specifically tracking radius and other Pulse metrics
-    console.log(`[Pulse] Mapping hotspot: ${hotspot.locationName}, ID: ${hotspot.id}, Radius: ${hotspot.radius}`);
+    const items = (Array.isArray(hotspot.items) ? hotspot.items : []).map((item: any) => ({
+      ...item,
+      imageUrl: resolveMediaUrl(item.imageUrl || item.image_url),
+    }));
 
     return {
       id: hotspot.id,
@@ -76,14 +89,14 @@ export async function fetchCampusPulseMap(
       score: hotspot.score,
       pulseLabel: hotspot.pulseLabel,
       pulseColor: hotspot.pulseColor,
-      radius: typeof hotspot.radius === 'number' ? hotspot.radius : 100, // Default to 100 if missing
+      radius: typeof hotspot.radius === 'number' ? hotspot.radius : 100,
       pingCount: hotspot.pingCount,
       eventCount: hotspot.eventCount,
       percentFull: hotspot.percentFull ?? null,
       dominantCategory: hotspot.dominantCategory,
       previewLabel: hotspot.previewLabel,
       summary: hotspot.summary,
-      items: Array.isArray(hotspot.items) ? hotspot.items : [],
+      items,
       place: null,
       userVote: 0,
     };
@@ -116,11 +129,11 @@ export async function voteHotspotItem(itemId: string, newUserVote: number) {
       
       // Update the parent hotspot's aggregate visual fields
       hotspot.score = (hotspot.score || 0) + delta;
-      if (delta > 0 && currentVote === 0) {
-        hotspot.pingCount = (hotspot.pingCount || 0) + 1;
-      } else if (delta < 0 && newUserVote === 0) {
-        hotspot.pingCount = Math.max(0, (hotspot.pingCount || 1) - 1);
-      }
+      
+      // The user wants "upvotes to be for each live ping". 
+      // We'll treat every upvote as a contribution to the "live" count metric.
+      const totalUpvotes = hotspot.items.reduce((acc, i) => acc + (i.itemScore || 0), 0);
+      hotspot.pingCount = Math.max(hotspot.items.length, totalUpvotes);
       return;
     }
   }
