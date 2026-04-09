@@ -1084,12 +1084,27 @@ export function CampusPingsScreen() {
       >
         {(['All', ...PING_CATEGORIES.map((entry) => entry.id)] as Array<'All' | PingCategory>).map((option) => {
           const active = categoryFilter === option;
+          const meta =
+            option === 'All'
+              ? {
+                  id: 'All',
+                  accent: COLORS.primary,
+                  Icon: Sparkles,
+                }
+              : categoryMeta(option);
+          const Icon = meta.Icon;
           return (
             <Pressable
               key={option}
-              style={[styles.categoryChip, active && styles.categoryChipActive]}
+              style={[
+                styles.categoryChip,
+                { borderColor: `${meta.accent}22`, backgroundColor: `${meta.accent}10` },
+                active && styles.categoryChipActive,
+                active && { backgroundColor: meta.accent, borderColor: meta.accent },
+              ]}
               onPress={() => setCategoryFilter(option)}
             >
+              <Icon size={14} color={active ? '#FFFFFF' : meta.accent} />
               <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>
                 {option}
               </Text>
@@ -1327,6 +1342,24 @@ export function CampusPingsScreen() {
                         </View>
                       )}
 
+                      {composerGeoLocation && (
+                        <View style={styles.selectedLocationBadge}>
+                          <LocateFixed size={14} color={COLORS.primary} />
+                          <View style={styles.selectedLocationCopy}>
+                            <Text style={styles.selectedLocationText}>{composerGeoLocation.label}</Text>
+                            <Text style={styles.selectedLocationSubtext}>Auto-selected from your current location</Text>
+                          </View>
+                          <Pressable
+                            onPress={() => {
+                              setUseCurrentLocation(false);
+                              setComposerGeoLocation(null);
+                            }}
+                          >
+                            <X size={14} color={COLORS.textSecondary} />
+                          </Pressable>
+                        </View>
+                      )}
+
                     </View>
 
                     <View style={styles.composerSectionBlock}>
@@ -1547,20 +1580,25 @@ const getStyles = (theme: any) => {
       gap: 8,
     },
     categoryChip: {
-      paddingHorizontal: 16,
-      paddingVertical: 9,
-      borderRadius: 14,
-      backgroundColor: COLORS.surface,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: COLORS.surfaceElevated,
       borderWidth: 1.5,
       borderColor: COLORS.border,
     },
     categoryChipActive: {
-      backgroundColor: COLORS.textPrimary,
-      borderColor: COLORS.textPrimary,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.16,
+      shadowRadius: 16,
+      elevation: 4,
     },
     categoryChipText: {
-      color: COLORS.textSecondary,
-      fontSize: 14,
+      color: COLORS.textPrimary,
+      fontSize: 13,
       fontWeight: '700',
     },
     categoryChipTextActive: {
