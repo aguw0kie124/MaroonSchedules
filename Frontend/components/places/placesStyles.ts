@@ -1050,7 +1050,11 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: 8,
+    },
+    menuCategoryHeaderRight: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
     },
     menuCategoryTitle: {
       color: COLORS.textPrimary,

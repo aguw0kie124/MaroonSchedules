@@ -30,6 +30,7 @@ import {
   CalendarDays,
   Check,
   ChevronLeft,
+  Funnel,
   Filter,
   GraduationCap,
   Heart,
@@ -40,7 +41,6 @@ import {
   Megaphone,
   Pizza,
   Search,
-  Settings,
   Share2,
 
   Ticket,
@@ -1271,7 +1271,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           <Text style={s.pageTitle}>{title}</Text>
         </View>
         <Pressable style={s.headerIconButton} onPress={() => setSettingsVisible(true)}>
-          <Settings size={18} color={COLORS.textPrimary} />
+          <Funnel size={24} color={COLORS.textPrimary} strokeWidth={2.2} />
         </Pressable>
       </View>
 
@@ -1414,6 +1414,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                     ))}
                   </View>
                 ) : null}
+              </View>
+
+              <View style={s.spotlightIntro}>
+                <Text style={s.spotlightEyebrow}>Discover</Text>
+                <Text style={s.spotlightTitle}>Spotlight events</Text>
               </View>
 
               <ScrollView
@@ -1722,8 +1727,6 @@ function HeroEventCard({
   onPress: () => void;
   onMap: () => void;
 }) {
-  const { COLORS, theme } = useTheme();
-  const isDark = theme === 'dark';
   const category = classifyCategory(event);
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
@@ -1780,40 +1783,44 @@ function HeroEventCard({
           <MapPin size={17} color="#FFFFFF" />
           <Text style={stylesStatic.heroMetaText}>{event.location || 'Campus'}</Text>
         </View>
-        {event.location_lat != null && event.location_lng != null ? (
-          <Pressable style={stylesStatic.heroMapButton} onPress={onMap}>
-            <Map size={15} color={COLORS.textPrimary} />
-            <Text style={stylesStatic.heroMapButtonText}>
-              Open in Places
+        <View style={stylesStatic.heroActionRow}>
+          <Pressable
+            style={[
+              stylesStatic.heroActionButton,
+              stylesStatic.heroActionPrimary,
+              scheduled && stylesStatic.heroActionDisabled,
+            ]}
+            onPress={() => {
+              if (!scheduled) onSchedule();
+            }}
+          >
+            <CalendarDays size={15} color="#174F2E" />
+            <Text style={[stylesStatic.heroActionText, stylesStatic.heroActionPrimaryText]}>
+              Add
             </Text>
           </Pressable>
-        ) : null}
-        <Pressable
-          style={[
-            stylesStatic.heroRsvpButton,
-            { backgroundColor: scheduled ? '#FFF1EA' : '#FFFFFF' },
-          ]}
-          onPress={onSchedule}
-        >
-          {scheduled ? <XIcon size={15} color="#E06A3E" /> : <CalendarDays size={15} color="#2A6F3E" />}
-          <Text
+          <Pressable
             style={[
-              stylesStatic.heroRsvpButtonText,
-              { color: scheduled ? '#C65A28' : '#174F2E' },
+              stylesStatic.heroActionButton,
+              stylesStatic.heroActionSecondary,
+              !scheduled && stylesStatic.heroActionDisabled,
             ]}
-            numberOfLines={!event.is_admin_event && !scheduled ? 2 : 1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.75}
+            onPress={() => {
+              if (scheduled) onSchedule();
+            }}
           >
-            {event.is_admin_event
-              ? scheduled
-                ? 'Remove RSVP'
-                : 'RSVP'
-              : scheduled
-                ? 'Remove from Schedule'
-                : 'Add'}
-          </Text>
-        </Pressable>
+            <XIcon size={15} color="#FFFFFF" />
+            <Text style={[stylesStatic.heroActionText, stylesStatic.heroActionSecondaryText]}>
+              Remove
+            </Text>
+          </Pressable>
+        </View>
+        {event.location_lat != null && event.location_lng != null ? (
+          <Pressable style={stylesStatic.heroInlineMapButton} onPress={onMap}>
+            <Map size={14} color="rgba(255,255,255,0.92)" />
+            <Text style={stylesStatic.heroInlineMapText}>Open in Places</Text>
+          </Pressable>
+        ) : null}
       </ScrollView>
     </Pressable>
   );
@@ -2388,9 +2395,9 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     pageTitle: {
       color: COLORS.textPrimary,
-      fontSize: 36,
+      fontSize: 42,
       fontWeight: '900',
-      letterSpacing: -1.05,
+      letterSpacing: -1.6,
     },
     pageSubtitle: {
       marginTop: 2,
@@ -2399,9 +2406,9 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       lineHeight: 20,
     },
     headerIconButton: {
-      width: 38,
-      height: 38,
-      borderRadius: 19,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: 'transparent',
@@ -2425,11 +2432,11 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     modeTabs: {
       flexDirection: 'row',
-      gap: 18,
+      gap: 22,
       paddingTop: 2,
     },
     modeTab: {
-      paddingVertical: 4,
+      paddingVertical: 2,
       position: 'relative',
     },
     modeTabActive: {
@@ -2437,16 +2444,17 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     modeTabText: {
       color: COLORS.textSecondary,
-      fontSize: 15,
-      fontWeight: '700',
+      fontSize: 18,
+      fontWeight: '800',
     },
     modeTabTextActive: {
       color: COLORS.textPrimary,
-      fontWeight: '800',
+      fontWeight: '900',
     },
     modeTabUnderline: {
-      marginTop: 6,
-      height: 2.5,
+      marginTop: 8,
+      width: 72,
+      height: 5,
       borderRadius: 999,
       backgroundColor: COLORS.primary,
     },
@@ -2532,6 +2540,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     categoryWrap: {
       gap: 12,
+      marginTop: 6,
     },
     categoryHeaderRow: {
       flexDirection: 'row',
@@ -2541,26 +2550,26 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     categorySectionLabel: {
       color: COLORS.textSecondary,
       fontSize: 11,
-      fontWeight: '800',
-      letterSpacing: 0.4,
+      fontWeight: '900',
+      letterSpacing: 1.5,
       textTransform: 'uppercase',
     },
     categoryToggleText: {
       color: COLORS.primary,
       fontSize: 12,
-      fontWeight: '800',
+      fontWeight: '900',
     },
     categoryCollapsedRow: {
-      gap: 8,
-      paddingRight: 8,
+      gap: 12,
+      paddingRight: 12,
     },
     categoryExpandedGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 8,
+      gap: 12,
     },
     inlineControls: {
-      marginTop: 14,
+      marginTop: 10,
       gap: 10,
     },
     inlineControl: {
@@ -2611,10 +2620,30 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     socialModeTextActive: {
       color: COLORS.textPrimary,
     },
-  heroRail: {
-      paddingTop: 18,
+    spotlightIntro: {
+      marginTop: 14,
+      marginBottom: 2,
+      gap: 4,
+    },
+    spotlightEyebrow: {
+      color: COLORS.textSecondary,
+      fontSize: 11,
+      fontWeight: '900',
+      letterSpacing: 1.5,
+      textTransform: 'uppercase',
+    },
+    spotlightTitle: {
+      color: COLORS.textPrimary,
+      fontSize: 24,
+      lineHeight: 28,
+      fontWeight: '900',
+      letterSpacing: -0.8,
+    },
+    heroRail: {
+      paddingTop: 14,
       paddingLeft: 0,
       paddingRight: 0,
+      paddingBottom: 6,
     },
     listSearchRow: {
       flexDirection: 'row',
@@ -2900,27 +2929,38 @@ const stylesStatic = StyleSheet.create({
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     borderRadius: 999,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 11,
+    borderWidth: 1.5,
+    shadowColor: '#000000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   categoryChipText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '800',
   },
   categoryChipCount: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     marginLeft: 2,
   },
   heroCard: {
     width: HERO_CARD_WIDTH,
     height: HERO_CARD_HEIGHT,
-    borderRadius: 34,
+    borderRadius: 40,
     overflow: 'hidden',
-    paddingHorizontal: 22,
-    paddingVertical: 24,
+    paddingHorizontal: 28,
+    paddingVertical: 28,
+    shadowColor: '#8392B0',
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
   },
   heroImage: {
     ...StyleSheet.absoluteFillObject,
@@ -2931,27 +2971,27 @@ const stylesStatic = StyleSheet.create({
   },
   heroGlow: {
     position: 'absolute',
-    top: -30,
-    right: -20,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    opacity: 0.55,
+    top: -24,
+    right: -14,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    opacity: 0.34,
   },
   heroGlowSmall: {
     position: 'absolute',
-    bottom: 86,
-    left: -35,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    opacity: 0.4,
+    bottom: 54,
+    left: -28,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    opacity: 0.18,
   },
   heroIconHalo: {
     position: 'absolute',
-    right: 18,
-    bottom: Math.round(HERO_CARD_HEIGHT * 0.31),
-    opacity: 0.55,
+    right: 30,
+    bottom: 100,
+    opacity: 0.2,
   },
   heroIconHaloWithImage: {
     opacity: 0.28,
@@ -2962,31 +3002,31 @@ const stylesStatic = StyleSheet.create({
     justifyContent: 'space-between',
   },
   heroCategoryPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   heroCategoryText: {
     color: '#FFFFFF',
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '900',
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    letterSpacing: 1.4,
   },
   verifiedPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   verifiedText: {
     color: '#FFFFFF',
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   heroBottom: {
     flex: 1,
@@ -2994,31 +3034,31 @@ const stylesStatic = StyleSheet.create({
     minHeight: 0,
   },
   heroBottomContent: {
-    gap: 8,
+    gap: 10,
     paddingBottom: 2,
   },
   heroTitle: {
     color: '#FFFFFF',
-    fontSize: 30,
-    lineHeight: 34,
-    fontWeight: '800',
-    letterSpacing: -0.8,
-    maxWidth: '92%',
+    fontSize: 25,
+    lineHeight: 30,
+    fontWeight: '900',
+    letterSpacing: -0.9,
+    maxWidth: '88%',
   },
   heroOrganizerPill: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.16)',
   },
   heroOrganizerText: {
     color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
     maxWidth: 240,
   },
   heroMetaRow: {
@@ -3028,42 +3068,58 @@ const stylesStatic = StyleSheet.create({
   },
   heroMetaText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 12,
     fontWeight: '600',
     flex: 1,
   },
-  heroMapButton: {
+  heroActionRow: {
+    flexDirection: 'row',
+    gap: 12,
     marginTop: 8,
-    alignSelf: 'flex-start',
+  },
+  heroActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderWidth: 1,
+  },
+  heroActionPrimary: {
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.12)',
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 999,
+    borderColor: 'rgba(255,255,255,0.36)',
   },
-  heroMapButtonText: {
-    color: '#0F172A',
-    fontSize: 13,
-    fontWeight: '800',
+  heroActionSecondary: {
+    backgroundColor: 'rgba(93,108,141,0.66)',
+    borderColor: 'rgba(255,255,255,0.12)',
   },
-  heroRsvpButton: {
-    marginTop: 6,
+  heroActionDisabled: {
+    opacity: 0.44,
+  },
+  heroActionText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  heroActionPrimaryText: {
+    color: '#174F2E',
+  },
+  heroActionSecondaryText: {
+    color: '#FFFFFF',
+  },
+  heroInlineMapButton: {
+    marginTop: 2,
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
     borderRadius: 999,
   },
-  heroRsvpButtonText: {
-    fontSize: 13,
+  heroInlineMapText: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 11,
     fontWeight: '800',
   },
   listRow: {
