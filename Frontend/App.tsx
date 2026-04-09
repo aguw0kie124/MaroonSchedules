@@ -53,7 +53,13 @@ import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './sto
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
 
-import { syncUser, requestJson, setApiAuthTokenProvider } from './api/client';
+import {
+  installApiFetchInterceptor,
+  requestJson,
+  setApiAuthTokenProvider,
+  setApiResponseHandlers,
+  syncUser,
+} from './api/client';
 import { TOSScreen } from './components/TOSScreen';
 import { NotificationPromptScreen } from './components/onboarding/NotificationPromptScreen';
 import { EventPreferenceOnboardingScreen } from './components/onboarding/EventPreferenceOnboardingScreen';
@@ -179,11 +185,32 @@ function ApiAuthBridge() {
   const { getToken } = useAuth();
 
   React.useLayoutEffect(() => {
-    setApiAuthTokenProvider(async () => {
-      const token = await getToken();
+    const removeInterceptor = installApiFetchInterceptor();
+
+    setApiAuthTokenProvider(async (options) => {
+      try {
+        const token = await getToken(options?.forceRefresh ? { skipCache: true } : undefined);
       return token || null;
+      } catch (error) {
+        console.warn('Failed to fetch Clerk token for API request', error);
+        return null;
+      }
     });
-    return () => setApiAuthTokenProvider(null);
+
+    setApiResponseHandlers({
+      onUnauthorized: async () => {
+        console.warn('Backend returned 401 after a Clerk token refresh attempt.');
+      },
+      onForbidden: async () => {
+        console.error('Backend rejected the configured API key.');
+      },
+    });
+
+    return () => {
+      setApiAuthTokenProvider(null);
+      setApiResponseHandlers({});
+      removeInterceptor();
+    };
   }, [getToken]);
 
   return null;
