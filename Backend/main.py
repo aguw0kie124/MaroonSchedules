@@ -19,13 +19,21 @@ from routers.annex import router as annex_router
 from routers.upload import router as upload_router
 from routers.upload import UPLOAD_DIR
 from routers.admin import router as admin_router
+from routers.clubs import router as clubs_router
+from routers.maps import router as maps_router
 
 from services import course_service, schedule_service, user_service
 from services import cache_service, snapshot_jobs
 from models.search import CourseSearchRequest
 from auth.clerk_middleware import require_auth, ensure_matching_user
 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from rate_limit import limiter
+
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 raw_cors_origins = os.getenv("CORS_ALLOW_ORIGINS", "")
 if raw_cors_origins.strip():
@@ -38,6 +46,7 @@ else:
         "http://127.0.0.1:8081",
         "http://localhost:19006",
         "http://127.0.0.1:19006",
+        "https://maroonlife-web-private.vercel.app",
     ]
 
 
@@ -83,6 +92,8 @@ app.include_router(grades_router)
 app.include_router(annex_router)
 app.include_router(upload_router)
 app.include_router(admin_router)
+app.include_router(clubs_router)
+app.include_router(maps_router)
 
 from fastapi.staticfiles import StaticFiles
 # Ensure uploads directory exists
@@ -186,6 +197,9 @@ class UpdateProfileRequest(BaseModel):
     major: Optional[str] = None
     graduation_year: Optional[str] = None
     preferred_time: Optional[str] = None
+    preferred_event_categories: Optional[list[str]] = None
+    preferred_social_mode: Optional[str] = None
+    event_preferences_completed: Optional[bool] = None
     max_credits: Optional[str] = None
     avoid_friday: Optional[bool] = None
     show_online_first: Optional[bool] = None

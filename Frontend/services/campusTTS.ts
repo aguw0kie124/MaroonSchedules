@@ -64,11 +64,13 @@ export async function speakRouteIntro(
   destinationName: string,
   distance: string,
   time: string,
-  mode: 'walk' | 'bus' = 'walk',
+  mode: 'walk' | 'drive' | 'bus' = 'walk',
 ): Promise<void> {
   const intro = mode === 'bus'
     ? `Bus directions to ${destinationName}. Total trip is ${distance}, estimated ${time}.`
-    : `Walking directions to ${destinationName}. Distance is ${distance}, estimated ${time} walk.`;
+    : mode === 'drive'
+      ? `Driving directions to ${destinationName}. Total trip is ${distance}, estimated ${time}.`
+      : `Walking directions to ${destinationName}. Distance is ${distance}, estimated ${time} walk.`;
   await speakText(intro);
 }
 

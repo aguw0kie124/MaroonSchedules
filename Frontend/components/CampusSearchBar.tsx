@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,12 +6,17 @@ import {
   StyleSheet,
   Pressable,
   Keyboard,
+  ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { Coffee, Library, MapPin, Search, Utensils, X } from 'lucide-react-native';
 import { useTheme } from './SharedUI';
 import { CampusSearchResult, searchCampus, getPinnedItems } from '../services/campusSearch';
-import { getAmenityIcon, getBuildingIcon } from '../data/campus';
-import { formatDistance } from '../services/campusDirections';
+import { computeDistanceMeters, formatDistance } from '../services/campusDirections';
+import { getCategoryIcon } from './places/utils';
+import { formatGlobalSearchSubtitle, searchGlobalPlaces } from '../services/globalMap';
+import { searchCampusLocations } from './places/searchUtils';
+import { getLocationSelectionId, mergeCampusLocations } from './places/campusData';
 
 interface CampusSearchBarProps {
   userCoord?: { latitude: number; longitude: number };
@@ -19,6 +24,7 @@ interface CampusSearchBarProps {
   placeholder?: string;
   showPinnedItems?: boolean;
   displayValue?: string;
+  enableGlobalSearch?: boolean;
 }
 
 export function CampusSearchBar({
@@ -27,32 +33,50 @@ export function CampusSearchBar({
   placeholder = 'Search buildings, dining, restrooms…',
   showPinnedItems = true,
   displayValue,
+  enableGlobalSearch = false,
 }: CampusSearchBarProps) {
-    const { COLORS, theme } = useTheme();
-    const styles = getStyles(COLORS, theme === 'dark');
+  const { COLORS, theme } = useTheme();
+  const styles = getStyles(COLORS, theme === 'dark');
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<CampusSearchResult[]>([]);
+  const [campusResults, setCampusResults] = useState<CampusSearchResult[]>([]);
+  const [globalResults, setGlobalResults] = useState<CampusSearchResult[]>([]);
+  const [isSearchingWorldwide, setIsSearchingWorldwide] = useState(false);
+  const [globalSearchError, setGlobalSearchError] = useState<string | null>(null);
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const selectingResultRef = useRef(false);
+  const requestIdRef = useRef(0);
+  const lastGlobalQueryRef = useRef('');
 
-  const handleChangeText = useCallback(
-    (text: string) => {
-      setQuery(text);
-      if (text.trim().length > 0) {
-        setResults(searchCampus(text, userCoord));
-      } else {
-        setResults([]);
-      }
-    },
+  const buildCampusResults = useCallback(
+    (text: string) => searchCampus(text, userCoord),
     [userCoord],
   );
 
-  const handleSelect = (item: CampusSearchResult) => {
+  const handleChangeText = useCallback(
+    (text: string) => {
+      requestIdRef.current += 1;
+      setQuery(text);
+      if (text.trim().length > 0) {
+        setCampusResults(buildCampusResults(text));
+      } else {
+        setCampusResults([]);
+      }
+      setGlobalResults([]);
+      setGlobalSearchError(null);
+      setIsSearchingWorldwide(false);
+      lastGlobalQueryRef.current = '';
+    },
+    [buildCampusResults],
+  );
+
+  const commitSelection = (item: CampusSearchResult) => {
     selectingResultRef.current = true;
     Keyboard.dismiss();
     setQuery('');
-    setResults([]);
+    setCampusResults([]);
+    setGlobalResults([]);
+    setGlobalSearchError(null);
     setIsFocused(false);
     onSelect(item);
     setTimeout(() => {
@@ -60,16 +84,73 @@ export function CampusSearchBar({
     }, 0);
   };
 
+  const runWorldwideSearch = useCallback(
+    async (rawQuery?: string) => {
+      const normalizedQuery = (rawQuery ?? query).trim();
+      if (!enableGlobalSearch || normalizedQuery.length < 2) return;
+
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+      setIsSearchingWorldwide(true);
+      setGlobalSearchError(null);
+      try {
+        const matches = await searchGlobalPlaces(normalizedQuery, { limit: 6 });
+        if (requestId !== requestIdRef.current) return;
+        lastGlobalQueryRef.current = normalizedQuery.toLowerCase();
+        setGlobalResults(
+          matches.map((location) => ({
+            id: `global:${location.placeId || `${location.location}:${location.coord.lat},${location.coord.lng}`}`,
+            label: location.location,
+            subtitle:
+              formatGlobalSearchSubtitle(location) ||
+              location.description ||
+              'Search result',
+            kind: 'location',
+            location,
+          })),
+        );
+        if (matches.length === 0) {
+          setGlobalSearchError(`No matches found for "${normalizedQuery}".`);
+        }
+      } catch (error: any) {
+        if (requestId !== requestIdRef.current) return;
+        setGlobalResults([]);
+        setGlobalSearchError(error?.message || 'Search is unavailable right now.');
+      } finally {
+        if (requestId === requestIdRef.current) {
+          setIsSearchingWorldwide(false);
+        }
+      }
+    },
+    [enableGlobalSearch, query],
+  );
+
+  const handleResultPress = useCallback(
+    async (item: CampusSearchResult) => {
+      if (item.kind === 'command' && item.commandType === 'search-worldwide') {
+        await runWorldwideSearch(item.query || query);
+        return;
+      }
+      commitSelection(item);
+    },
+    [query, runWorldwideSearch],
+  );
+
   const handleClear = () => {
     setQuery('');
-    setResults([]);
+    setCampusResults([]);
+    setGlobalResults([]);
+    setGlobalSearchError(null);
+    setIsSearchingWorldwide(false);
+    requestIdRef.current += 1;
+    lastGlobalQueryRef.current = '';
     inputRef.current?.focus();
   };
 
   const handleFocus = () => {
     if (!query && displayValue) {
       setQuery(displayValue);
-      setResults(searchCampus(displayValue, userCoord));
+      setCampusResults(buildCampusResults(displayValue));
     }
     setIsFocused(true);
   };
@@ -81,23 +162,101 @@ export function CampusSearchBar({
     }, 150);
   };
 
+  useEffect(() => {
+    if (!enableGlobalSearch) return;
+    const trimmed = query.trim();
+    if (trimmed.length < 2) return;
+    if (lastGlobalQueryRef.current === trimmed.toLowerCase()) return;
+
+    const timeoutId = setTimeout(() => {
+      runWorldwideSearch(trimmed);
+    }, 450);
+
+    return () => clearTimeout(timeoutId);
+  }, [enableGlobalSearch, query, runWorldwideSearch]);
+
   const pinnedItems = getPinnedItems();
-  const showDropdown = isFocused && (results.length > 0 || (query.length === 0 && showPinnedItems));
+  const normalizedQuery = query.trim().toLowerCase();
+  const combinedLocationResults = React.useMemo(() => {
+    if (normalizedQuery.length === 0) return [];
+
+    const campusLocations = campusResults
+      .map((item) => item.location)
+      .filter((location): location is NonNullable<CampusSearchResult['location']> => !!location);
+    const searchedGlobalLocations = globalResults
+      .map((item) => item.location)
+      .filter((location): location is NonNullable<CampusSearchResult['location']> => !!location);
+    const mergedLocations = mergeCampusLocations(campusLocations, searchedGlobalLocations);
+    const rankedLocations = searchCampusLocations(
+      mergedLocations,
+      query,
+      8,
+      { referenceCoord: userCoord ?? null },
+    );
+    const resultBySelectionId = new Map<string, CampusSearchResult>();
+
+    [...campusResults, ...globalResults].forEach((item) => {
+      if (!item.location) return;
+      resultBySelectionId.set(getLocationSelectionId(item.location), item);
+    });
+
+    return rankedLocations
+      .map((location) => {
+        const existing = resultBySelectionId.get(getLocationSelectionId(location));
+        if (existing) {
+          return {
+            ...existing,
+            distance:
+              existing.distance ??
+              (userCoord
+                ? computeDistanceMeters(userCoord, {
+                    latitude: location.coord.lat,
+                    longitude: location.coord.lng,
+                  })
+                : undefined),
+            location,
+            subtitle: existing.subtitle || formatGlobalSearchSubtitle(location) || location.type,
+          };
+        }
+        return {
+          id: `loc:${getLocationSelectionId(location)}`,
+          label: location.location,
+          subtitle: formatGlobalSearchSubtitle(location) || location.type,
+          kind: 'location' as const,
+          location,
+          distance: userCoord
+            ? computeDistanceMeters(userCoord, {
+                latitude: location.coord.lat,
+                longitude: location.coord.lng,
+              })
+            : undefined,
+        };
+      })
+      .slice(0, 8);
+  }, [campusResults, globalResults, normalizedQuery, query, userCoord]);
+  const showDropdown = isFocused && (
+    combinedLocationResults.length > 0 ||
+    isSearchingWorldwide ||
+    !!globalSearchError ||
+    (query.length === 0 && showPinnedItems)
+  );
   const inputValue = isFocused ? query : (query || displayValue || '');
 
-  const getItemIcon = (item: CampusSearchResult) => {
+  const renderItemIcon = (item: CampusSearchResult) => {
     if (item.kind === 'command') {
       switch (item.commandType) {
-        case 'nearest-restroom': return MapPin;
-        case 'nearest-coffee': return Coffee;
-        case 'nearest-library': return Library;
-        case 'nearest-dining': return Utensils;
-        default: return MapPin;
+        case 'nearest-restroom': return <MapPin size={18} color="#F3F1ED" />;
+        case 'nearest-coffee': return <Coffee size={18} color="#F3F1ED" />;
+        case 'nearest-library': return <Library size={18} color="#F3F1ED" />;
+        case 'nearest-dining': return <Utensils size={18} color="#F3F1ED" />;
+        case 'search-worldwide': return <Search size={18} color="#F3F1ED" />;
+        default: return <MapPin size={18} color="#F3F1ED" />;
       }
     }
-    if (item.building) return getBuildingIcon(item.building.type);
-    if (item.amenity) return getAmenityIcon(item.amenity.type);
-    return MapPin;
+    if (item.location) {
+      return getCategoryIcon(item.location?.type || 'General', '#F3F1ED', 18);
+    }
+    return <MapPin size={18} color="#F3F1ED" />;
   };
 
   return (
@@ -117,6 +276,14 @@ export function CampusSearchBar({
           returnKeyType="search"
           autoCorrect={false}
           selectTextOnFocus
+          multiline={false}
+          numberOfLines={1}
+          scrollEnabled
+          onSubmitEditing={() => {
+            if (enableGlobalSearch && query.trim().length >= 2) {
+              runWorldwideSearch(query);
+            }
+          }}
         />
         {inputValue.length > 0 && (
           <Pressable onPress={handleClear} style={styles.clearBtn}>
@@ -128,65 +295,70 @@ export function CampusSearchBar({
       {/* Dropdown */}
       {showDropdown && (
         <View style={styles.dropdown}>
-          {/* Quick actions when no query */}
-          {query.length === 0 && showPinnedItems && (
-            <>
-              <Text style={styles.sectionLabel}>Quick Actions</Text>
-              {pinnedItems.map((item) => (
-                (() => {
-                  const Icon = getItemIcon(item);
-                  return (
-                    <Pressable
-                      key={item.id}
-                      style={({ pressed }) => [styles.resultRow, pressed && styles.resultRowPressed]}
-                      onPress={() => handleSelect(item)}
-                      hitSlop={8}
-                    >
-                      <View style={styles.resultIconWrap}>
-                        <Icon size={18} color="#F3F1ED" />
-                      </View>
-                      <View style={styles.resultText}>
-                        <Text style={styles.resultLabel}>{item.label}</Text>
-                        <Text style={styles.resultSubtitle}>{item.subtitle}</Text>
-                      </View>
-                    </Pressable>
-                  );
-                })()
-              ))}
-            </>
-          )}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.dropdownScrollContent}
+          >
+            {query.length === 0 && showPinnedItems && (
+              <>
+                <Text style={styles.sectionLabel}>Quick Actions</Text>
+                {pinnedItems.map((item) => (
+                  <Pressable
+                    key={item.id}
+                    style={({ pressed }) => [styles.resultRow, pressed && styles.resultRowPressed]}
+                    onPress={() => handleResultPress(item)}
+                    hitSlop={8}
+                  >
+                    <View style={styles.resultIconWrap}>
+                      {renderItemIcon(item)}
+                    </View>
+                    <View style={styles.resultText}>
+                      <Text numberOfLines={1} style={styles.resultLabel}>{item.label}</Text>
+                      <Text numberOfLines={2} style={styles.resultSubtitle}>{item.subtitle}</Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </>
+            )}
 
-          {/* Search results */}
-          {results.length > 0 && (
-            <>
-              {query.length === 0 && <View style={styles.divider} />}
-              <Text style={styles.sectionLabel}>Results</Text>
-              {results.map((item) => (
-                (() => {
-                  const Icon = getItemIcon(item);
-                  return (
-                    <Pressable
-                      key={item.id}
-                      style={({ pressed }) => [styles.resultRow, pressed && styles.resultRowPressed]}
-                      onPress={() => handleSelect(item)}
-                      hitSlop={8}
-                    >
-                      <View style={styles.resultIconWrap}>
-                        <Icon size={18} color="#F3F1ED" />
-                      </View>
-                      <View style={styles.resultText}>
-                        <Text style={styles.resultLabel}>{item.label}</Text>
-                        <Text style={styles.resultSubtitle}>
-                          {item.subtitle}
-                          {item.distance != null ? ` • ${formatDistance(item.distance)}` : ''}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })()
-              ))}
-            </>
-          )}
+            {combinedLocationResults.length > 0 && (
+              <>
+                {query.length === 0 && <View style={styles.divider} />}
+                <Text style={styles.sectionLabel}>Results</Text>
+                {combinedLocationResults.map((item) => (
+                  <Pressable
+                    key={item.id}
+                    style={({ pressed }) => [styles.resultRow, pressed && styles.resultRowPressed]}
+                    onPress={() => handleResultPress(item)}
+                    hitSlop={8}
+                  >
+                    <View style={styles.resultIconWrap}>
+                      {renderItemIcon(item)}
+                    </View>
+                    <View style={styles.resultText}>
+                      <Text numberOfLines={1} style={styles.resultLabel}>{item.label}</Text>
+                      <Text numberOfLines={2} style={styles.resultSubtitle}>
+                        {item.subtitle}
+                        {item.distance != null ? ` • ${formatDistance(item.distance)}` : ''}
+                      </Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </>
+            )}
+
+            {isSearchingWorldwide && (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+                <Text style={styles.loadingText}>Searching for more matches…</Text>
+              </View>
+            )}
+
+            {globalSearchError ? (
+              <Text style={styles.emptyStateText}>{globalSearchError}</Text>
+            ) : null}
+          </ScrollView>
         </View>
       )}
     </View>
@@ -222,6 +394,7 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   },
   input: {
     flex: 1,
+    minWidth: 0,
     fontSize: 16,
     color: COLORS.textPrimary,
     height: '100%',
@@ -246,6 +419,10 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     shadowRadius: 12,
     elevation: 10,
     zIndex: 2001,
+    overflow: 'hidden',
+  },
+  dropdownScrollContent: {
+    paddingVertical: 8,
   },
   sectionLabel: {
     fontSize: 12,
@@ -260,6 +437,17 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     height: 1,
     backgroundColor: COLORS.border,
     marginVertical: 4,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  loadingText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
   },
   resultRow: {
     flexDirection: 'row',
@@ -281,6 +469,7 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   },
   resultText: {
     flex: 1,
+    minWidth: 0,
   },
   resultLabel: {
     fontSize: 15,
@@ -291,5 +480,12 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
+  },
+  emptyStateText: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
 });

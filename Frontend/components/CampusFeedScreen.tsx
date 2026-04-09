@@ -6,12 +6,13 @@ import {
     PanResponder, Animated
 } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
-import { Camera, Image as ImageIcon, Video, Heart, MapPin, X, MoreHorizontal, MessageCircle, Calendar, Send, Film, Plus } from 'lucide-react-native';
+import { Camera, Image as ImageIcon, Video, Heart, MapPin, X, MoreHorizontal, MessageCircle, Calendar, Send, Film, Plus, Share2 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useTheme } from './SharedUI';
 import { useDiningTheme } from './dining/DiningTheme';
+import { triggerNativeShare } from '../utils/share';
 import {
     connectFeedsUser,
     getCampusFeed,
@@ -36,6 +37,9 @@ interface Post {
     user_id: string;
     user_name: string;
     user_image: string | null;
+    post_type: 'post' | 'ping' | 'reel';
+    ping_title: string | null;
+    ping_category: string | null;
     caption: string | null;
     media_url: string | null;
     media_type: 'image' | 'video' | null;
@@ -53,13 +57,19 @@ function mapActivityToPost(activity: any): Post {
     const attachments = activity.attachments || [];
     const media = attachments[0] || {};
     const actor = activity.actor || {};
+    const verb = activity.verb === 'ping' ? 'ping' : activity.verb === 'reel' ? 'reel' : 'post';
+    const rawActorId = actor.id || activity.actor || custom.user_id || '';
+    const normalizedUserId = typeof rawActorId === 'string' ? rawActorId.replace(/^SU:/, '') : '';
     
     return {
         id: activity.id || Date.now().toString(),
-        user_id: actor.id || activity.actor || '',
+        user_id: normalizedUserId,
         user_name: actor.data?.name || actor.name || custom.user_name || actor.id || 'Aggie User',
         user_image: actor.data?.image || actor.image || custom.user_image || null,
-        caption: activity.text || null,
+        post_type: verb,
+        ping_title: custom.ping_title || null,
+        ping_category: custom.ping_category || null,
+        caption: activity.text || custom.ping_title || null,
         media_url: normalizeImageUrl(media.image_url || media.asset_url || null),
         media_type: media.type === 'video' ? 'video' : (media.type === 'image' ? 'image' : null),
         location_tag: custom.location_tag || null,
@@ -326,6 +336,7 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
 
     const PostCard = ({ item }: { item: Post }) => {
         const isLiked = user ? item.liked_by.includes(user.id) : false;
+        const isPing = item.post_type === 'ping';
         const date = new Date(item.created_at);
         const hoursAgo = Math.floor((new Date().getTime() - date.getTime()) / (1000 * 60 * 60));
         const timeStr = hoursAgo < 1 ? 'Just now' : hoursAgo < 24 ? `${hoursAgo}h ago` : `${Math.floor(hoursAgo/24)}d ago`;
@@ -358,6 +369,16 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
                 Animated.spring(swipeAnim, { toValue: 0, useNativeDriver: true }).start();
             },
         })).current;
+
+        const handleShare = () => {
+            triggerNativeShare({
+                title: item.ping_title || 'Campus Post',
+                message: item.caption || `Check out this ${item.post_type} from ${item.user_name}`,
+                url: `https://maroonschedules.com/posts/${item.id}`,
+                id: item.id,
+                type: 'post',
+            });
+        };
 
         const cardBg = swipeAnim.interpolate({
             inputRange: [-100, 0, 100],
@@ -481,7 +502,16 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
                     )}
                 </View>
 
-                {item.caption && <Text style={styles.postCaption}>{item.caption}</Text>}
+                {isPing && item.ping_category ? (
+                    <View style={styles.pingBadge}>
+                        <Text style={styles.pingBadgeText}>{item.ping_category}</Text>
+                    </View>
+                ) : null}
+
+                {isPing && item.ping_title ? <Text style={styles.postTitle}>{item.ping_title}</Text> : null}
+                {item.caption && (!isPing || item.caption !== item.ping_title) ? (
+                    <Text style={styles.postCaption}>{item.caption}</Text>
+                ) : null}
 
                 {item.media_url && item.media_type === 'image' && (
                     <Image source={{ uri: item.media_url }} style={styles.postImage} />
@@ -496,9 +526,13 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
                         <Heart color={isLiked ? '#FF453A' : T.text2} fill={isLiked ? '#FF453A' : 'transparent'} size={22} />
                         <Text style={[styles.actionText, isLiked && { color: '#FF453A' }]}>{item.likes}</Text>
                     </Pressable>
-                    <Pressable style={styles.actionBtn} onPress={() => openComments(item.id, item.caption || '')}>
+                    <Pressable style={styles.actionBtn} onPress={() => openComments(item.id, item.ping_title || item.caption || '')}>
                         <MessageCircle color={T.text2} size={22} />
                         <Text style={styles.actionText}>{item.reply_count} Replies</Text>
+                    </Pressable>
+                    <Pressable style={styles.actionBtn} onPress={handleShare}>
+                        <Share2 color={T.text2} size={20} />
+                        <Text style={styles.actionText}>Share</Text>
                     </Pressable>
                 </View>
             </Animated.View>
@@ -744,6 +778,9 @@ const getStyles = (COLORS: any, T: any) => StyleSheet.create({
     postLocation: { fontSize: 12, fontWeight: '600', color: T.roseGold },
     moreBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
     
+    pingBadge: { alignSelf: 'flex-start', backgroundColor: `${T.tamuMaroon}12`, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5, marginBottom: 10, borderWidth: 1, borderColor: `${T.tamuMaroon}26` },
+    pingBadgeText: { fontSize: 12, fontWeight: '800', color: T.tamuMaroon },
+    postTitle: { fontSize: 18, fontWeight: '800', color: T.text, lineHeight: 24, marginBottom: 8 },
     postCaption: { fontSize: 15, color: T.text, lineHeight: 22, marginBottom: 12 },
     postImage: { width: '100%', height: 250, borderRadius: 16, marginBottom: 16, backgroundColor: T.card },
     

@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, Body, UploadFile, File
+from fastapi import APIRouter, HTTPException, Body, UploadFile, File, Depends
 from typing import Dict, Any, List
+from auth.clerk_middleware import require_auth
 from services import openai_service
 from pydantic import BaseModel
 import shutil
@@ -14,7 +15,7 @@ class VoiceIntentRequest(BaseModel):
     # If sending audio, we'll need a different approach (e.g. UploadFile)
 
 @router.post("/voice-intent")
-async def extract_voice_intent(body: VoiceIntentRequest):
+async def extract_voice_intent(body: VoiceIntentRequest, auth_user_id: str = Depends(require_auth)):
     """
     Extract navigation intent from voice transcript using OpenAI GPT-5.
     """
@@ -42,7 +43,7 @@ async def extract_voice_intent(body: VoiceIntentRequest):
         return {"intent_type": "UNKNOWN", "query": body.text}
 
 @router.post("/process-voice")
-async def process_voice(file: UploadFile = File(...)):
+async def process_voice(file: UploadFile = File(...), auth_user_id: str = Depends(require_auth)):
     """
     Handle audio file, transcribe with Whisper, and extract intent with GPT-5.
     """

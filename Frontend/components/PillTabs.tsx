@@ -14,6 +14,7 @@ interface PillTabsProps {
   onChange: (key: string) => void;
   floating?: boolean;
   compact?: boolean;
+  subtle?: boolean;
   activeTextMode?: 'always' | 'active-only';
   layout?: 'row' | 'stacked';
 }
@@ -24,6 +25,7 @@ export function PillTabs({
   onChange,
   floating = false,
   compact = false,
+  subtle = false,
   activeTextMode = 'always',
   layout = 'row',
 }: PillTabsProps) {
@@ -61,15 +63,21 @@ export function PillTabs({
   );
 
   return (
-    <View style={[styles.shell, floating && styles.shellFloating, compact && styles.shellCompact]}>
+    <View style={[styles.shell, floating && styles.shellFloating, compact && styles.shellCompact, subtle && styles.shellSubtle]}>
       <View
-        style={[styles.track, floating && styles.trackFloating, compact && styles.trackCompact]}
+        style={[
+          styles.track,
+          floating && styles.trackFloating,
+          compact && styles.trackCompact,
+          subtle && styles.trackSubtle,
+        ]}
         onLayout={handleLayout}
       >
         <Animated.View
           style={[
             styles.indicator,
             compact && styles.indicatorCompact,
+            subtle && styles.indicatorSubtle,
             {
               width: indicatorWidth || undefined,
               transform: [{ translateX }],
@@ -132,6 +140,10 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     shellCompact: {
       minHeight: 46,
     },
+    shellSubtle: {
+      width: undefined,
+      alignSelf: 'flex-start',
+    },
     track: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -154,6 +166,13 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     trackCompact: {
       padding: 4,
     },
+    trackSubtle: {
+      backgroundColor: isDark ? 'rgba(22,22,24,0.82)' : 'rgba(246,247,250,0.96)',
+      borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(12,12,14,0.06)',
+      shadowOpacity: 0.04,
+      shadowRadius: 6,
+      elevation: 2,
+    },
     indicator: {
       position: 'absolute',
       left: 0,
@@ -165,6 +184,9 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     indicatorCompact: {
       top: 4,
       bottom: 4,
+    },
+    indicatorSubtle: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : '#FFFFFF',
     },
     tab: {
       flex: 1,

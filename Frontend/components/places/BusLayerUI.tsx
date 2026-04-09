@@ -250,7 +250,6 @@ export function BusStopInfoCard({
   COLORS,
   selectedStop,
   setSelectedStop,
-  selectedBus,
   nearestBusInfo,
 }: Pick<
   BusLayerUIProps,
@@ -258,7 +257,6 @@ export function BusStopInfoCard({
   | "COLORS"
   | "selectedStop"
   | "setSelectedStop"
-  | "selectedBus"
   | "nearestBusInfo"
 >) {
   if (!selectedStop) return null;
@@ -278,14 +276,6 @@ export function BusStopInfoCard({
           <Text style={styles.dockedStopName} numberOfLines={1}>
             {getStopLabel(selectedStop)}
           </Text>
-          {selectedBus && (
-            <Text style={styles.busStopHintText} numberOfLines={1}>
-              Tracking{" "}
-              {selectedBus.RouteShortName
-                ? `route ${selectedBus.RouteShortName}`
-                : `bus ${selectedBus.Name}`}
-            </Text>
-          )}
           <View style={styles.proximityRow}>
             <Clock
               size={12}
@@ -349,41 +339,6 @@ export function BusVehicleInfoCard({
               </Text>
             </View>
           )}
-
-          {selectedBus.Capacity > 0 &&
-            selectedBus.PassengersOnboard !== undefined &&
-            !isNaN(selectedBus.PassengersOnboard) && (
-              <View
-                style={[
-                  styles.loadBadge,
-                  {
-                    backgroundColor:
-                      selectedBus.PassengersOnboard / selectedBus.Capacity > 0.8
-                        ? "#FF3B3020"
-                        : "#32D74B20",
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.loadText,
-                    {
-                      color:
-                        selectedBus.PassengersOnboard / selectedBus.Capacity >
-                        0.8
-                          ? "#FF3B30"
-                          : "#32D74B",
-                    },
-                  ]}
-                >
-                  {Math.round(
-                    (selectedBus.PassengersOnboard / selectedBus.Capacity) *
-                      100,
-                  ) || 0}
-                  % Full
-                </Text>
-              </View>
-            )}
         </View>
         <Text style={styles.busInfoRouteName}>
           {selectedBus.RouteShortName ||

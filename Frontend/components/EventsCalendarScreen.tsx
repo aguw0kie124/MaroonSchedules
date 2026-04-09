@@ -1,4 +1,5 @@
 import React, { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   ActivityIndicator,
   Alert,
@@ -20,8 +21,8 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
+import * as Haptics from 'expo-haptics';
 import {
-  ArrowRight,
   BadgeCheck,
   BellOff,
   CircleAlert,
@@ -29,6 +30,7 @@ import {
   CalendarDays,
   Check,
   ChevronLeft,
+  Funnel,
   Filter,
   GraduationCap,
   Heart,
@@ -39,8 +41,8 @@ import {
   Megaphone,
   Pizza,
   Search,
-  Settings,
   Share2,
+
   Ticket,
   Trash2,
   Trophy,
@@ -48,13 +50,14 @@ import {
   UserX,
   X as XIcon,
 } from 'lucide-react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 
 import { API_URL } from '../config';
 import { fetchUserProfile, requestJson, saveCampusEventRsvp } from '../api/client';
 import { normalizeImageUrl } from '../services/url';
 import { TourTarget, useTour } from './onboarding/TourProvider';
-import { useShareStore } from '../store/shareStore';
+import { triggerNativeShare } from '../utils/share';
 import { useEventStore } from '../store/eventStore';
 import type { MajorOption, ScheduledEvent } from '../store/eventStore';
 import { useTheme } from './SharedUI';
@@ -63,10 +66,11 @@ import { useSessionStore } from '../store/sessionStore';
 import { scheduleAdminEventReviewNotification, scheduleEventNotification } from '../services/notificationService';
 import { promptGuestLogin } from '../utils/guestAccess';
 import { blockUser, reportContent } from '../services/streamFeeds';
+import { TagChips } from './common/TagChips';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.24;
-const HERO_CARD_WIDTH = SCREEN_WIDTH - 52;
+const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
+const HERO_CARD_HEIGHT = Math.min(Math.max(280, SCREEN_HEIGHT * 0.38), 340);
 const HERO_CARD_GAP = 14;
 const HERO_CARD_SNAP_INTERVAL = HERO_CARD_WIDTH + HERO_CARD_GAP;
 
@@ -85,6 +89,7 @@ interface CampusEventResponse {
   host_name?: string | null;
   source_name?: string | null;
   tags?: string[] | null;
+  access_tags?: string[] | null;
   has_food?: boolean;
   food_confidence?: number;
   food_type?: string | null;
@@ -110,6 +115,7 @@ interface TAMUEvent {
   description?: string | null;
   url?: string;
   tags?: string[] | null;
+  access_tags?: string[] | null;
   event_types?: string[] | null;
   group_title?: string;
   location_lat?: number | null;
@@ -167,6 +173,8 @@ const ALL_CATEGORIES: ExploreCategory[] = [
   'Miscellaneous',
 ];
 
+const PERSONALIZATION_CATEGORY_LIMIT = 3;
+
 const MAJOR_OPTIONS: MajorOption[] = [
   'Engineering',
   'Business',
@@ -179,6 +187,62 @@ const MAJOR_OPTIONS: MajorOption[] = [
   'Law',
   'Medicine',
 ];
+
+function isExploreCategory(value: string): value is ExploreCategory {
+  return ALL_CATEGORIES.includes(value as ExploreCategory);
+}
+
+function normalizePreferredCategories(categories: string[] | undefined) {
+  return (categories || []).filter(isExploreCategory).slice(0, PERSONALIZATION_CATEGORY_LIMIT);
+}
+
+function getTimePreferenceScore(event: TAMUEvent, preference: string | null) {
+  if (!preference || preference === 'Anytime') return 0;
+  const hour = new Date(event.date_ts * 1000).getHours();
+  if (preference === 'Morning') {
+    return hour >= 5 && hour < 12 ? 14 : hour >= 12 && hour < 17 ? 4 : 0;
+  }
+  if (preference === 'Afternoon') {
+    return hour >= 12 && hour < 17 ? 14 : hour >= 17 && hour < 22 ? 4 : 0;
+  }
+  if (preference === 'Evening') {
+    return hour >= 17 && hour < 24 ? 14 : hour >= 12 && hour < 17 ? 4 : 0;
+  }
+  return 0;
+}
+
+function getPersonalizationScore(
+  event: TAMUEvent,
+  preferredCategories: ExploreCategory[],
+  preferredSocialMode: SocialMode | null,
+  preferredTime: string | null,
+  selectedMajor: MajorOption,
+  useMajorSignal: boolean,
+) {
+  let score = 0;
+  const category = event._category || classifyCategory(event);
+  const categoryIndex = preferredCategories.indexOf(category);
+  if (categoryIndex >= 0) {
+    score += 34 - categoryIndex * 6;
+  }
+  if (category === 'Social' && preferredSocialMode) {
+    if ((event._socialMode || getSocialMode(event)) === preferredSocialMode) {
+      score += 16;
+    }
+  }
+  if (useMajorSignal && matchesMajor(event, selectedMajor)) {
+    score += 10;
+  }
+  score += getTimePreferenceScore(event, preferredTime);
+  if (event.is_admin_event || category === 'Featured') {
+    score += 6;
+  }
+  const hoursAway = Math.max(0, (event.date_ts - Math.floor(Date.now() / 1000)) / 3600);
+  score += Math.max(0, 10 - Math.min(hoursAway / 12, 10));
+  return score;
+}
+
+
 
 export const CATEGORY_META: Record<
   ExploreCategory,
@@ -290,6 +354,7 @@ function getSearchBlob(event: TAMUEvent) {
     event.location_title,
     event.group_title,
     ...(event.tags || []),
+    ...(event.access_tags || []),
     ...(event.event_types || []),
   ]
     .filter(Boolean)
@@ -311,7 +376,10 @@ function classifyCategory(event: TAMUEvent): ExploreCategory {
     if (event.categories.health_wellness) return 'Health & Wellness';
     if (event.categories.social) return 'Social';
     if (event.categories.miscellaneous || event.categories.religion) return 'Miscellaneous';
+    if (event.categories.featured || event.is_admin_event) return 'Featured';
   }
+
+  if (event.is_admin_event) return 'Featured';
 
   const blob = getSearchBlob(event);
   if (event.has_food || /\bfood\b|\bmeal\b|\bdinner\b|\blunch\b|\bbreakfast\b|\bpizza\b|\brefreshments\b/.test(blob)) return 'Food';
@@ -332,21 +400,136 @@ function getSocialMode(event: TAMUEvent): SocialMode {
   return 'casual';
 }
 
+const MAJOR_KEYWORDS: Record<MajorOption, string[]> = {
+  Engineering: [
+    'engineering',
+    'engineer',
+    'engr',
+    'mechanical',
+    'electrical',
+    'civil',
+    'industrial',
+    'biomedical',
+    'petroleum',
+    'aerospace',
+    'csce',
+    'computer science',
+    'coding',
+    'hackathon',
+    'robotics',
+  ],
+  Business: [
+    'business',
+    'mays',
+    'finance',
+    'accounting',
+    'marketing',
+    'consulting',
+    'entrepreneur',
+    'entrepreneurship',
+    'management',
+    'supply chain',
+    'economics',
+  ],
+  'Liberal Arts': [
+    'liberal arts',
+    'history',
+    'english',
+    'philosophy',
+    'communication',
+    'political science',
+    'polisci',
+    'journalism',
+    'writing',
+    'humanities',
+    'language',
+    'sociology',
+  ],
+  Agriculture: [
+    'agriculture',
+    'ag ',
+    'agriculture',
+    'animal science',
+    'horticulture',
+    'agronomy',
+    'ranch',
+    'livestock',
+    'soil',
+    'plant science',
+    'agribusiness',
+  ],
+  Science: [
+    'science',
+    'biology',
+    'biochem',
+    'chemistry',
+    'physics',
+    'math',
+    'mathematics',
+    'laboratory',
+    'lab',
+    'research',
+    'statistics',
+    'geology',
+  ],
+  Architecture: [
+    'architecture',
+    'arch ',
+    'arch.',
+    'urban planning',
+    'construction science',
+    'design studio',
+    'landscape',
+    'environment design',
+  ],
+  Education: [
+    'education',
+    'teaching',
+    'teacher',
+    'curriculum',
+    'classroom',
+    'pedagogy',
+    'educator',
+  ],
+  'Public Health': [
+    'public health',
+    'health policy',
+    'community health',
+    'epidemiology',
+    'global health',
+    'wellbeing',
+    'wellness',
+  ],
+  Law: [
+    'law',
+    'legal',
+    'pre-law',
+    'prelaw',
+    'attorney',
+    'mock trial',
+    'lsat',
+  ],
+  Medicine: [
+    'medicine',
+    'medical',
+    'premed',
+    'pre-med',
+    'nursing',
+    'clinical',
+    'healthcare',
+    'physician',
+    'patient care',
+    'dental',
+  ],
+};
+
+function normalizeMajorBlob(blob: string) {
+  return ` ${blob.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
+}
+
 function matchesMajor(event: TAMUEvent, major: MajorOption) {
-  const blob = event._searchBlob || getSearchBlob(event);
-  const aliases: Record<MajorOption, string[]> = {
-    Engineering: ['engineering', 'engr', 'mechanical', 'electrical', 'csce', 'computer science'],
-    Business: ['business', 'mays', 'finance', 'accounting', 'marketing'],
-    'Liberal Arts': ['liberal arts', 'history', 'english', 'philosophy', 'communication'],
-    Agriculture: ['agriculture', 'ag', 'animal science', 'horticulture'],
-    Science: ['science', 'biology', 'chemistry', 'physics', 'math'],
-    Architecture: ['architecture', 'arch', 'urban planning', 'construction science'],
-    Education: ['education', 'teaching', 'curriculum'],
-    'Public Health': ['public health', 'health', 'epidemiology'],
-    Law: ['law', 'legal', 'pre-law'],
-    Medicine: ['medicine', 'medical', 'premed', 'nursing', 'clinical'],
-  };
-  return aliases[major].some((term) => blob.includes(term));
+  const blob = normalizeMajorBlob(event._searchBlob || getSearchBlob(event));
+  return MAJOR_KEYWORDS[major]?.some((term) => blob.includes(` ${term.toLowerCase().trim()} `)) ?? false;
 }
 
 function matchesPreferredTime(event: TAMUEvent, preferredTime: PreferredTimeOption) {
@@ -452,6 +635,159 @@ function shortDescription(text?: string | null) {
   return `${clean.slice(0, 157).trim()}...`;
 }
 
+function EventRewardToast({
+  visible,
+  title,
+  body,
+}: {
+  visible: boolean;
+  title: string;
+  body: string;
+}) {
+  const progress = React.useRef(new Animated.Value(0)).current;
+  const confetti = React.useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, index) => ({
+        id: index,
+        left: 24 + index * 20,
+        color: ['#F9C74F', '#43AA8B', '#F94144', '#577590'][index % 4],
+      })),
+    [],
+  );
+
+  useEffect(() => {
+    if (!visible) {
+      progress.setValue(0);
+      return;
+    }
+    const animation = Animated.timing(progress, {
+      toValue: 1,
+      duration: 950,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [progress, visible]);
+
+  if (!visible) return null;
+
+  return (
+    <View pointerEvents="none" style={stylesStatic.rewardToastWrap}>
+      {confetti.map((piece, index) => (
+        <Animated.View
+          key={`${piece.id}-${title}`}
+          style={[
+            stylesStatic.rewardConfetti,
+            {
+              left: piece.left,
+              backgroundColor: piece.color,
+              opacity: progress.interpolate({
+                inputRange: [0, 0.8, 1],
+                outputRange: [0, 1, 0],
+              }),
+              transform: [
+                {
+                  translateY: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-8, 120 + (index % 3) * 14],
+                  }),
+                },
+                {
+                  translateX: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, ((index % 5) - 2) * 12],
+                  }),
+                },
+                {
+                  rotate: progress.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0deg', `${150 + index * 15}deg`],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      ))}
+      <Animated.View
+        style={[
+          stylesStatic.rewardToastCard,
+          {
+            opacity: progress.interpolate({
+              inputRange: [0, 0.1, 0.86, 1],
+              outputRange: [0, 1, 1, 0],
+            }),
+            transform: [
+              {
+                translateY: progress.interpolate({
+                  inputRange: [0, 0.12, 1],
+                  outputRange: [12, 0, -8],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <Text style={stylesStatic.rewardToastEyebrow}>Yay</Text>
+        <Text style={stylesStatic.rewardToastTitle}>{title}</Text>
+        <Text style={stylesStatic.rewardToastBody}>{body}</Text>
+      </Animated.View>
+    </View>
+  );
+}
+
+function StaggeredReveal({
+  children,
+  index,
+}: {
+  children: React.ReactNode;
+  index: number;
+}) {
+  const opacity = React.useRef(new Animated.Value(0)).current;
+  const translateY = React.useRef(new Animated.Value(18)).current;
+  const scale = React.useRef(new Animated.Value(0.98)).current;
+
+  useEffect(() => {
+    const delay = Math.min(index * 70, 420);
+    const animation = Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 360,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 0,
+        duration: 420,
+        delay,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scale, {
+        toValue: 1,
+        duration: 380,
+        delay,
+        useNativeDriver: true,
+      }),
+    ]);
+
+    animation.start();
+    return () => animation.stop();
+  }, [index, opacity, scale, translateY]);
+
+  return (
+    <Animated.View
+      style={{
+        opacity,
+        transform: [{ translateY }, { scale }],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+
+
 function handleGoogleCalendar(event: TAMUEvent) {
   const formatGCalDate = (ts: number) =>
     new Date(ts * 1000).toISOString().replace(/-|:|\.\d\d\d/g, '');
@@ -484,12 +820,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const navigation = useNavigation<any>();
   const { user } = useUser();
   const isGuest = useSessionStore((state) => state.isGuest);
+  const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
+  const preferredTime = useAppShellStore((state) => state.preferredTime);
+  const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
+  const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
   const s = useMemo(() => getStyles(COLORS, isDark, embedded), [COLORS, isDark, embedded]);
 
   const { advanceStep, activeTargetName } = useTour();
 
-  const [events, setEvents] = useState<TAMUEvent[]>([]);
-  const [loading, setLoading] = useState(true);
   const [view, setView] = useState<EventsView>(isGuest ? 'list' : 'discover');
 
   const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set());
@@ -499,7 +837,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [swipeIndex, setSwipeIndex] = useState(0);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [profilePreferences, setProfilePreferences] = useState<UserEventPreferences>(DEFAULT_USER_EVENT_PREFERENCES);
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
@@ -532,9 +869,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const hydratedProfileMajorForUser = useRef<string | null>(null);
   const nowTs = Math.floor(Date.now() / 1000);
 
-  const fetchEvents = useCallback(async () => {
-    try {
-      setLoading(true);
+  const {
+    data: events = [],
+    isLoading: loading,
+    refetch: fetchEvents,
+    isRefetching: refreshing,
+  } = useQuery({
+    queryKey: ['campus-events', user?.id],
+    queryFn: async () => {
       const params = new URLSearchParams({
         limit: '1000',
         student_relevant_only: 'false',
@@ -546,7 +888,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         `/campus/events?${params.toString()}`,
       )) as { events?: CampusEventResponse[] } | CampusEventResponse[];
       const raw = Array.isArray(payload) ? payload : payload.events || [];
-      const parsed: TAMUEvent[] = raw
+      return raw
         .filter((event) => event && event.event_id && event.title && event.start_time)
         .map((event) => {
           const startTs = Math.floor(new Date(event.start_time).getTime() / 1000);
@@ -562,6 +904,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             description: event.description || event.summary || null,
             url: event.link || event.source_url || '',
             tags: event.tags || null,
+            access_tags: event.access_tags || null,
             event_types: event.has_food ? ['Free Food'] : null,
             group_title: event.organization_name || event.host_name || event.source_name || '',
             location_lat: event.location_lat ?? null,
@@ -589,17 +932,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           };
         })
         .sort((a, b) => a.date_ts - b.date_ts);
-      setEvents(parsed);
-    } catch (error) {
-      console.error('[Events] Fetch error:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [user?.id]);
+    },
+    staleTime: 1000 * 60 * 15, // 15 mins for events
+  });
 
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+  const [view, setView] = useState<EventsView>(isGuest ? 'list' : 'discover');
+
+  const [rewardToast, setRewardToast] = useState<{ title: string; body: string } | null>(null);
+  const rewardToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -658,15 +998,57 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       fetchEvents();
     }, [fetchEvents]),
   );
+  const {
+    data: preferredEventCategories,
+  } = useQuery({
+    queryKey: ['user-event-categories', user?.id],
+    enabled: !!user?.id && !isGuest,
+    queryFn: async () => {
+      const profile = await fetchUserProfile(user!.id);
+      return profile?.preferred_event_categories || [];
+    },
+  });
+
+  const {
+    data: preferredSocialMode,
+  } = useQuery({
+    queryKey: ['user-social-mode', user?.id],
+    enabled: !!user?.id && !isGuest,
+    queryFn: async () => {
+      const profile = await fetchUserProfile(user!.id);
+      return profile?.social_mode as SocialMode || null;
+    },
+  });
+
+  const {
+    data: preferredTime,
+  } = useQuery({
+    queryKey: ['user-preferred-time', user?.id],
+    enabled: !!user?.id && !isGuest,
+    queryFn: async () => {
+      const profile = await fetchUserProfile(user!.id);
+      return profile?.preferred_time || null;
+    },
+  });
+
+  const normalizedPreferenceCategories = useMemo(
+    () => normalizePreferredCategories(preferredEventCategories),
+    [preferredEventCategories],
+  );
+
+  const isEventPreferencesCompleted = !!preferredEventCategories && preferredEventCategories.length > 0;
 
   const handleRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await fetchEvents();
-    } finally {
-      setRefreshing(false);
-    }
+    await fetchEvents();
   }, [fetchEvents]);
+
+  const triggerRewardToast = useCallback((title: string, body: string) => {
+    if (rewardToastTimerRef.current) {
+      clearTimeout(rewardToastTimerRef.current);
+    }
+    setRewardToast({ title, body });
+    rewardToastTimerRef.current = setTimeout(() => setRewardToast(null), 980);
+  }, []);
 
   const categoryCounts = useMemo(() => {
     const counts: Record<ExploreCategory, number> = {
@@ -738,13 +1120,38 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     }
 
     next = next.filter((event) => !dislikedEventIds.includes(String(event.id)));
+
     if (isForYouSelected) {
       next = [...next].sort((a, b) => {
         const scoreDiff = (b._forYouScore ?? 0) - (a._forYouScore ?? 0);
         if (scoreDiff !== 0) return scoreDiff;
         return a.date_ts - b.date_ts;
       });
+    } else {
+      next = [...next].sort((left, right) => {
+        const leftScore = getPersonalizationScore(
+          left,
+          normalizedPreferenceCategories,
+          preferredSocialMode,
+          preferredTime,
+          selectedMajor,
+          isMajorSpecific,
+        );
+        const rightScore = getPersonalizationScore(
+          right,
+          normalizedPreferenceCategories,
+          preferredSocialMode,
+          preferredTime,
+          selectedMajor,
+          isMajorSpecific,
+        );
+        if (rightScore !== leftScore) {
+          return rightScore - leftScore;
+        }
+        return left.date_ts - right.date_ts;
+      });
     }
+
     return next;
   }, [
     dislikedEventIds,
@@ -752,7 +1159,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     isMajorSpecific,
     isForYouSelected,
     nowTs,
+    normalizedPreferenceCategories,
     deferredSearchQuery,
+    preferredSocialMode,
+    preferredTime,
+    selectedCategories,
     selectedMajor,
     socialMode,
     standardSelectedCategories,
@@ -774,12 +1185,37 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   useEffect(() => {
     setSwipeIndex(0);
   }, [selectedCategories, socialMode, deferredSearchQuery, isMajorSpecific, selectedMajor, profileMajor, profilePreferences.avoidFriday, profilePreferences.preferredTime]);
-
   useEffect(() => {
     if (isGuest) {
       setView('list');
     }
   }, [isGuest]);
+
+
+
+  useEffect(() => {
+    if (isGuest || !isEventPreferencesCompleted) {
+      return;
+    }
+    const preferenceKey = JSON.stringify({
+      categories: normalizedPreferenceCategories,
+      socialMode: preferredSocialMode,
+      preferredTime,
+    });
+    if (lastAppliedPreferenceKey.current === preferenceKey) {
+      return;
+    }
+    lastAppliedPreferenceKey.current = preferenceKey;
+    setSelectedCategories(new Set(normalizedPreferenceCategories));
+    if (preferredSocialMode) {
+      setSocialMode(preferredSocialMode);
+    }
+    if (!embedded) {
+      setView('discover');
+    }
+  }, [embedded, isEventPreferencesCompleted, isGuest, normalizedPreferenceCategories, preferredSocialMode, preferredTime]);
+
+
 
   const changeView = useCallback((nextView: EventsView) => {
     startTransition(() => {
@@ -811,6 +1247,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       const isScheduled = scheduledEvents.some((scheduled) => String(scheduled.id) === eventId);
 
       if (isScheduled) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
         removeScheduledEvent(eventId);
         if (user?.id) {
           try {
@@ -823,6 +1260,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             console.error('[Events] RSVP remove error:', error);
           }
         }
+        triggerRewardToast('Removed from your plans', 'No problem. You can always add it back later.');
         return;
       }
       const scheduled: ScheduledEvent = {
@@ -839,6 +1277,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         categories: event.categories,
       };
       scheduleEvent(scheduled);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
 
       // Notification logic
       const prefs = useAppShellStore.getState();
@@ -880,21 +1319,20 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           console.error('[Events] RSVP error:', error);
         }
       }
+      triggerRewardToast('Added to your schedule', 'Nice. We will keep this one easy to come back to.');
       Alert.alert('Successfully RSVPed', `${event.title} is now in your schedule.`);
     },
-    [activeTargetName, advanceStep, isGuest, navigation, removeScheduledEvent, scheduleEvent, scheduledEvents, user],
+    [activeTargetName, advanceStep, isGuest, navigation, removeScheduledEvent, scheduleEvent, scheduledEvents, triggerRewardToast, user],
   );
 
   const handleShare = useCallback((event: TAMUEvent) => {
-    useShareStore.getState().openShare({
+    triggerNativeShare({
       title: event.title,
       message: `Check out this event: ${event.title} at ${event.location || 'TAMU'}!`,
       url: event.url || 'https://maroonschedules.tamu.edu',
+      id: event.id,
+      type: 'event',
     });
-
-    if (event.is_admin_event) {
-      fetch(`${API_URL}/admin/events/${event.id}/share`, { method: 'POST' }).catch(e => console.error(e));
-    }
   }, []);
 
   const handleMapOpen = useCallback(
@@ -933,16 +1371,28 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         return;
       }
       const id = String(event.id);
-      if (savedEventIds.includes(id)) unsaveEvent(id);
-      else saveEvent(id);
+      if (savedEventIds.includes(id)) {
+        unsaveEvent(id);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        triggerRewardToast('Saved event removed', 'Your shortlist just got a little cleaner.');
+      } else {
+        saveEvent(id);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        triggerRewardToast('Saved for later', 'Good pick. This one is waiting for you.');
+      }
     },
-    [isGuest, navigation, saveEvent, savedEventIds, unsaveEvent],
+    [isGuest, navigation, saveEvent, savedEventIds, triggerRewardToast, unsaveEvent],
   );
 
+  const queryClient = useQueryClient();
+
   const removeOrganizerEvents = useCallback((adminClerkId: string) => {
-    setEvents((current) => current.filter((event) => event.admin_clerk_id !== adminClerkId));
+    queryClient.setQueryData(['campus-events', user?.id], (current: TAMUEvent[] | undefined) => {
+      if (!current) return current;
+      return current.filter((event) => event.admin_clerk_id !== adminClerkId);
+    });
     setDetailEvent((current) => (current?.admin_clerk_id === adminClerkId ? null : current));
-  }, []);
+  }, [queryClient, user?.id]);
 
   const handleUnsubscribeOrganizer = useCallback(
     (event: TAMUEvent) => {
@@ -1042,32 +1492,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     ]);
   }, [user?.id]);
 
-  const handleSwipeAdvance = useCallback(() => {
-    pan.setValue({ x: 0, y: 0 });
-    opacity.setValue(1);
-    setSwipeIndex((prev) => prev + 1);
-  }, [opacity, pan]);
-
-  const handleSwipeLeft = useCallback(
-    (event: TAMUEvent) => {
-      if (isGuest) {
-        handleSwipeAdvance();
-        return;
-      }
-      dislikeEvent(String(event.id));
-      handleSwipeAdvance();
-    },
-    [dislikeEvent, handleSwipeAdvance, isGuest],
-  );
-
-  const handleSwipeRight = useCallback(
-    (event: TAMUEvent) => {
-      handleSchedule(event);
-      handleSwipeAdvance();
-    },
-    [handleSchedule, handleSwipeAdvance],
-  );
-
   const handleRestoreCategory = useCallback(
     (category?: ExploreCategory) => {
       if (!category) {
@@ -1089,15 +1513,13 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   );
 
   const renderHeader = (title: string) => (
-
-      <View style={s.headerBlock}>
-        <View style={s.headerTopRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={s.pageTitle}>{title}</Text>
-
+    <View style={s.headerBlock}>
+      <View style={s.headerTopRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={s.pageTitle}>{title}</Text>
         </View>
         <Pressable style={s.headerIconButton} onPress={() => setSettingsVisible(true)}>
-          <Settings size={18} color={COLORS.textPrimary} />
+          <Funnel size={24} color={COLORS.textPrimary} strokeWidth={2.2} />
         </Pressable>
       </View>
 
@@ -1105,7 +1527,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         {([
           { id: 'discover', label: 'Discover' },
           { id: 'list', label: 'List' },
-          { id: 'swipe', label: 'Swipe' },
         ] as const).map((tab) => {
           const active = view === tab.id;
           const tabItem = (
@@ -1126,7 +1547,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
           if (tab.id === 'list') {
             return (
-              <TourTarget key={tab.id} name="switch-to-list">
+              <TourTarget
+                key={tab.id}
+                name="switch-to-list"
+                assistAction={() => {
+                  changeView('list');
+                  setTimeout(() => advanceStep('switch-to-list'), 250);
+                }}
+              >
                 {tabItem}
               </TourTarget>
             );
@@ -1139,6 +1567,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   return (
     <View style={s.container}>
+      <EventRewardToast
+        visible={!!rewardToast}
+        title={rewardToast?.title || ''}
+        body={rewardToast?.body || ''}
+      />
       {view === 'discover' && (
         <>
           {renderHeader('Events')}
@@ -1150,11 +1583,16 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               <Text style={s.loadingText}>Loading campus events...</Text>
             </View>
           ) : (
-            <ScrollView
-              contentContainerStyle={s.scrollContent}
-              showsVerticalScrollIndicator={false}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
-            >
+            <View style={s.discoverLayout}>
+              <ScrollView
+                style={s.discoverScroll}
+                contentContainerStyle={s.scrollContent}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
+              >
+
+
               <View style={s.categoryWrap}>
                 {categoriesExpanded ? (
                   <>
@@ -1204,23 +1642,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               </View>
 
               <View style={s.inlineControls}>
-                <Pressable
-                  style={s.inlineControl}
-                  onPress={() => setMajorSpecific(!isMajorSpecific)}
-                >
-                  <Text
-                    style={[
-                      s.inlineControlTitle,
-                      isMajorSpecific && s.inlineControlTitleActive,
-                    ]}
-                  >
-                    Major specific
-                  </Text>
-                  <Text style={s.inlineControlValue}>
-                    {isMajorSpecific ? selectedMajor : 'Off'}
-                  </Text>
-                </Pressable>
-
                 {selectedCategories.has('Social') ? (
                   <View style={s.socialModeWrap}>
                     {(['casual', 'professional'] as SocialMode[]).map((mode) => (
@@ -1243,6 +1664,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 ) : null}
               </View>
 
+              <View style={s.spotlightIntro}>
+                <Text style={s.spotlightEyebrow}>Discover</Text>
+                <Text style={s.spotlightTitle}>Spotlight events</Text>
+              </View>
+
               {isForYouSelected ? (
                 <Text style={s.filterHintText}>
                   {hasForYouPrefs
@@ -1262,6 +1688,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
+                nestedScrollEnabled
+                directionalLockEnabled
                 contentContainerStyle={s.heroRail}
                 snapToOffsets={discoverEvents.map((_, index) => index * HERO_CARD_SNAP_INTERVAL)}
                 snapToAlignment="start"
@@ -1270,34 +1698,26 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               >
                 {discoverEvents.map((event, i) => {
                   const card = (
-                    <View
-                      key={String(event.id)}
-                      style={{ marginRight: i === discoverEvents.length - 1 ? 0 : HERO_CARD_GAP }}
-                    >
-                      <HeroEventCard
-                        event={event}
-                        scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
-                        onSchedule={() => handleSchedule(event)}
-                        onPress={() => setDetailEvent(event)}
-                        onMap={() => handleMapOpen(event)}
-                      />
-                    </View>
+                    <StaggeredReveal key={String(event.id)} index={i}>
+                      <View
+                        style={{ marginRight: i === discoverEvents.length - 1 ? 0 : HERO_CARD_GAP }}
+                      >
+                        <HeroEventCard
+                          event={event}
+
+                          scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
+                          onSchedule={() => handleSchedule(event)}
+                          onPress={() => setDetailEvent(event)}
+                          onMap={() => handleMapOpen(event)}
+                        />
+                      </View>
+                    </StaggeredReveal>
                   );
                   return card;
                 })}
               </ScrollView>
-
-              <Pressable
-                style={s.swipeCta}
-                onPress={() => {
-                  setSwipeIndex(0);
-                  changeView('swipe');
-                }}
-              >
-                <ArrowRight size={18} color={COLORS.textPrimary} />
-                <Text style={s.swipeCtaText}>Swipe to explore</Text>
-              </Pressable>
-            </ScrollView>
+              </ScrollView>
+            </View>
           )}
         </>
       )}
@@ -1360,25 +1780,35 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               removeClippedSubviews
               renderItem={({ item, index }) => {
                 const row = (
-                  <ListEventRow
-                    event={item}
-                    isGuest={isGuest}
-                    saved={savedEventIds.includes(String(item.id))}
-                    scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(item.id))}
-                    onPress={() => {
-                      if (index === 0 && activeTargetName === 'first-event-card') {
-                        advanceStep('first-event-card');
-                      }
-                      setDetailEvent(item);
-                    }}
-                    onDelete={() => dislikeEvent(String(item.id))}
-                    onShare={() => handleShare(item)}
-                    onSchedule={() => handleSchedule(item)}
+                  <StaggeredReveal index={index}>
+                    <ListEventRow
+                      event={item}
+                      isGuest={isGuest}
 
-                  />
+                      saved={savedEventIds.includes(String(item.id))}
+                      scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(item.id))}
+                      onPress={() => {
+                        if (index === 0 && activeTargetName === 'first-event-card') {
+                          advanceStep('first-event-card');
+                        }
+                        setDetailEvent(item);
+                      }}
+                      onDelete={() => dislikeEvent(String(item.id))}
+                      onShare={() => handleShare(item)}
+                      onSchedule={() => handleSchedule(item)}
+                    />
+                  </StaggeredReveal>
                 );
                 return index === 0 ? (
-                  <TourTarget key={String(item.id)} name="first-event-card" style={{ width: '100%' }}>
+                  <TourTarget
+                    key={String(item.id)}
+                    name="first-event-card"
+                    style={{ width: '100%' }}
+                    assistAction={() => {
+                      setDetailEvent(item);
+                      setTimeout(() => advanceStep('first-event-card'), 220);
+                    }}
+                  >
                     {row}
                   </TourTarget>
                 ) : row;
@@ -1395,88 +1825,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               }
             />
           )}
-        </>
-      )}
-
-      {view === 'swipe' && (
-        <>
-          <View style={s.swipeHeader}>
-            <Pressable style={s.headerIconButton} onPress={() => changeView('discover')}>
-              <ChevronLeft size={18} color={COLORS.textPrimary} />
-            </Pressable>
-            <Text style={s.swipeProgress}>
-              {activeSwipeEvent ? `${Math.min(swipeIndex + 1, swipeDeck.length)} of ${swipeDeck.length}` : 'Done'}
-            </Text>
-            <View style={s.swipeHeaderSpacer} />
-          </View>
-
-          {selectedCategories.has('Social') ? (
-            <View style={s.swipeSocialModeWrap}>
-              {(['casual', 'professional'] as SocialMode[]).map((mode) => (
-                <Pressable
-                  key={mode}
-                  style={[s.socialModePill, socialMode === mode && s.socialModePillActive]}
-                  onPress={() => setSocialMode(mode)}
-                >
-                  <Text
-                    style={[s.socialModeText, socialMode === mode && s.socialModeTextActive]}
-                  >
-                    {mode === 'casual' ? 'Casual' : 'Professional'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-
-          {activeSwipeEvent ? (
-            <SwipeEventCard
-              event={activeSwipeEvent}
-              pan={pan}
-              opacity={opacity}
-              onSwipeLeft={() => handleSwipeLeft(activeSwipeEvent)}
-              onSwipeRight={() => handleSwipeRight(activeSwipeEvent)}
-              onOpen={() => setDetailEvent(activeSwipeEvent)}
-            />
-          ) : (
-            <View style={s.finishedWrap}>
-              <Text style={s.finishedTitle}>All caught up</Text>
-              <Text style={s.finishedSubtitle}>
-                You have worked through every event in this deck.
-              </Text>
-              <Pressable
-                style={s.finishedButton}
-                onPress={() => {
-                  setSwipeIndex(0);
-                  changeView('discover');
-                }}
-              >
-                <Text style={s.finishedButtonText}>Back to discover</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {activeSwipeEvent ? (
-            <View style={s.swipeActions}>
-              <ActionButton color="#FF4D6D" onPress={() => handleSwipeLeft(activeSwipeEvent)}>
-                <XIcon size={28} color="#FFFFFF" />
-              </ActionButton>
-              <ActionButton
-                color="#2F80ED"
-                onPress={() => {
-                  handleSchedule(activeSwipeEvent);
-                  handleGoogleCalendar(activeSwipeEvent);
-                }}
-              >
-                <CalendarIcon size={24} color="#FFFFFF" />
-              </ActionButton>
-              <ActionButton color="#3CCB6C" onPress={() => handleSwipeRight(activeSwipeEvent)}>
-                <Check size={28} color="#FFFFFF" />
-              </ActionButton>
-              <ActionButton color="#FF9F0A" onPress={() => handleShare(activeSwipeEvent)}>
-                <Share2 size={24} color="#FFFFFF" />
-              </ActionButton>
-            </View>
-          ) : null}
         </>
       )}
 
@@ -1564,6 +1912,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         socialMode={socialMode}
         setSocialMode={setSocialMode}
         selectedCategories={selectedCategories}
+        setSelectedCategories={setSelectedCategories}
         dislikedEventIds={dislikedEventIds}
         events={personalizedEvents}
         onRestoreCategory={handleRestoreCategory}
@@ -1580,6 +1929,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           onUnsubscribeOrganizer={handleUnsubscribeOrganizer}
           onBlockOrganizer={handleBlockOrganizer}
           onReportOrganizer={handleReportOrganizer}
+
           saved={detailEvent ? savedEventIds.includes(String(detailEvent.id)) : false}
           scheduled={detailEvent ? scheduledEvents.some((scheduled) => String(scheduled.id) === String(detailEvent.id)) : false}
         />
@@ -1630,18 +1980,19 @@ function CategoryChip({
 
 function HeroEventCard({
   event,
+
   scheduled,
   onSchedule,
   onPress,
   onMap,
 }: {
   event: TAMUEvent;
+
   scheduled: boolean;
   onSchedule: () => void;
   onPress: () => void;
   onMap: () => void;
 }) {
-  const { COLORS } = useTheme();
   const category = classifyCategory(event);
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
@@ -1671,8 +2022,15 @@ function HeroEventCard({
         ) : null}
       </View>
 
-      <View style={stylesStatic.heroBottom}>
+      <ScrollView
+        style={stylesStatic.heroBottom}
+        contentContainerStyle={stylesStatic.heroBottomContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        nestedScrollEnabled
+      >
         <Text style={stylesStatic.heroTitle}>{event.title}</Text>
+
         {event.group_title ? (
           <View style={stylesStatic.heroOrganizerPill}>
             <BadgeCheck size={13} color="#FFFFFF" />
@@ -1691,41 +2049,45 @@ function HeroEventCard({
           <MapPin size={17} color="#FFFFFF" />
           <Text style={stylesStatic.heroMetaText}>{event.location || 'Campus'}</Text>
         </View>
-        {event.location_lat != null && event.location_lng != null ? (
-          <Pressable style={stylesStatic.heroMapButton} onPress={onMap}>
-            <Map size={15} color={COLORS.textPrimary} />
-            <Text style={stylesStatic.heroMapButtonText}>
-              Open in Places
+        <View style={stylesStatic.heroActionRow}>
+          <Pressable
+            style={[
+              stylesStatic.heroActionButton,
+              stylesStatic.heroActionPrimary,
+              scheduled && stylesStatic.heroActionDisabled,
+            ]}
+            onPress={() => {
+              if (!scheduled) onSchedule();
+            }}
+          >
+            <CalendarDays size={15} color="#174F2E" />
+            <Text style={[stylesStatic.heroActionText, stylesStatic.heroActionPrimaryText]}>
+              Add
             </Text>
           </Pressable>
-        ) : null}
-        <Pressable
-          style={[
-            stylesStatic.heroRsvpButton,
-            { backgroundColor: scheduled ? '#FFF1EA' : '#FFFFFF' },
-          ]}
-          onPress={onSchedule}
-        >
-          {scheduled ? <XIcon size={15} color="#E06A3E" /> : <CalendarDays size={15} color="#2A6F3E" />}
-          <Text
+          <Pressable
             style={[
-              stylesStatic.heroRsvpButtonText,
-              { color: scheduled ? '#C65A28' : '#174F2E' },
+              stylesStatic.heroActionButton,
+              stylesStatic.heroActionSecondary,
+              !scheduled && stylesStatic.heroActionDisabled,
             ]}
-            numberOfLines={!event.is_admin_event && !scheduled ? 2 : 1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.75}
+            onPress={() => {
+              if (scheduled) onSchedule();
+            }}
           >
-            {event.is_admin_event
-              ? scheduled
-                ? 'Remove RSVP'
-                : 'RSVP'
-              : scheduled
-                ? 'Remove from Schedule'
-                : 'Add'}
-          </Text>
-        </Pressable>
-      </View>
+            <XIcon size={15} color="#FFFFFF" />
+            <Text style={[stylesStatic.heroActionText, stylesStatic.heroActionSecondaryText]}>
+              Remove
+            </Text>
+          </Pressable>
+        </View>
+        {event.location_lat != null && event.location_lng != null ? (
+          <Pressable style={stylesStatic.heroInlineMapButton} onPress={onMap}>
+            <Map size={14} color="rgba(255,255,255,0.92)" />
+            <Text style={stylesStatic.heroInlineMapText}>Open in Places</Text>
+          </Pressable>
+        ) : null}
+      </ScrollView>
     </Pressable>
   );
 }
@@ -1733,6 +2095,7 @@ function HeroEventCard({
 function ListEventRow({
   event,
   isGuest,
+
   saved,
   scheduled,
   onPress,
@@ -1743,6 +2106,7 @@ function ListEventRow({
 
   event: TAMUEvent;
   isGuest: boolean;
+
   saved: boolean;
   scheduled: boolean;
   onPress: () => void;
@@ -1789,6 +2153,7 @@ function ListEventRow({
             {event.group_title}
           </Text>
         ) : null}
+
         <Text style={[stylesStatic.listMeta, { color: COLORS.textTertiary }]} numberOfLines={1}>
           {event.location || 'Campus'}
         </Text>
@@ -1820,113 +2185,6 @@ function ListEventRow({
         </Pressable>
       </View>
     </Pressable>
-  );
-}
-
-function SwipeEventCard({
-  event,
-  pan,
-  opacity,
-  onSwipeLeft,
-  onSwipeRight,
-  onOpen,
-}: {
-  event: TAMUEvent;
-  pan: Animated.ValueXY;
-  opacity: Animated.Value;
-  onSwipeLeft: () => void;
-  onSwipeRight: () => void;
-  onOpen: () => void;
-}) {
-  const category = classifyCategory(event);
-  const meta = CATEGORY_META[category];
-  const Icon = meta.icon;
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 10,
-      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
-        useNativeDriver: false,
-      }),
-      onPanResponderRelease: (_, gesture) => {
-        if (gesture.dx > SWIPE_THRESHOLD) {
-          Animated.parallel([
-            Animated.timing(pan.x, {
-              toValue: SCREEN_WIDTH + 80,
-              duration: 220,
-              useNativeDriver: false,
-            }),
-            Animated.timing(opacity, {
-              toValue: 0,
-              duration: 220,
-              useNativeDriver: false,
-            }),
-          ]).start(onSwipeRight);
-        } else if (gesture.dx < -SWIPE_THRESHOLD) {
-          Animated.parallel([
-            Animated.timing(pan.x, {
-              toValue: -(SCREEN_WIDTH + 80),
-              duration: 220,
-              useNativeDriver: false,
-            }),
-            Animated.timing(opacity, {
-              toValue: 0,
-              duration: 220,
-              useNativeDriver: false,
-            }),
-          ]).start(onSwipeLeft);
-        } else {
-          Animated.spring(pan, {
-            toValue: { x: 0, y: 0 },
-            useNativeDriver: false,
-          }).start();
-        }
-      },
-    }),
-  ).current;
-
-  const rotate = pan.x.interpolate({
-    inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
-    outputRange: ['-10deg', '0deg', '10deg'],
-  });
-
-  return (
-    <View style={stylesStatic.swipeWrap}>
-      <Animated.View
-        {...panResponder.panHandlers}
-        style={[
-          stylesStatic.swipeCard,
-          {
-            backgroundColor: meta.cardTint,
-            transform: [{ translateX: pan.x }, { translateY: pan.y }, { rotate }],
-            opacity,
-          },
-        ]}
-      >
-        <Pressable style={{ flex: 1 }} onPress={onOpen}>
-          {event.imageUrl ? <Image source={{ uri: event.imageUrl }} style={stylesStatic.swipeImage} resizeMode="cover" /> : null}
-          {event.imageUrl ? <View style={stylesStatic.swipeImageOverlay} /> : null}
-          <View style={stylesStatic.swipeGlow} />
-          <View style={[stylesStatic.swipeWatermark, event.imageUrl ? stylesStatic.swipeWatermarkWithImage : null]}>
-            <Icon size={108} color="rgba(255,255,255,0.13)" />
-          </View>
-          <View style={stylesStatic.swipeTopLabel}>
-            <Text style={stylesStatic.swipeTopLabelText}>{category}</Text>
-          </View>
-          <View style={stylesStatic.swipeBody}>
-            <Text style={stylesStatic.swipeTitle}>{event.title}</Text>
-            <Text style={stylesStatic.swipeMeta}>
-              {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
-            </Text>
-            <Text style={stylesStatic.swipeMeta}>{event.location || 'Campus'}</Text>
-            {shortDescription(event.description) ? (
-              <Text style={stylesStatic.swipeDescription}>{shortDescription(event.description)}</Text>
-            ) : null}
-          </View>
-        </Pressable>
-      </Animated.View>
-    </View>
   );
 }
 
@@ -1965,6 +2223,7 @@ function SettingsModal({
   socialMode,
   setSocialMode,
   selectedCategories,
+  setSelectedCategories,
   dislikedEventIds,
   events,
   onRestoreCategory,
@@ -1978,6 +2237,7 @@ function SettingsModal({
   socialMode: SocialMode;
   setSocialMode: (mode: SocialMode) => void;
   selectedCategories: Set<ExploreCategory>;
+  setSelectedCategories: (val: Set<ExploreCategory>) => void;
   dislikedEventIds: string[];
   events: TAMUEvent[];
   onRestoreCategory: (category?: ExploreCategory) => void;
@@ -1997,39 +2257,30 @@ function SettingsModal({
         >
           <ScrollView showsVerticalScrollIndicator={false}>
             <Text style={[stylesStatic.modalTitle, { color: COLORS.textPrimary }]}>Filters</Text>
-
-            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary }]}>
-              Major
+            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 12 }]}>
+              Categories
             </Text>
-            <Pressable
-              style={[
-                stylesStatic.modalToggleRow,
-                { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)' },
-              ]}
-              onPress={() => setMajorSpecific(!isMajorSpecific)}
-            >
-              <Text style={[stylesStatic.modalOptionText, { color: COLORS.textPrimary }]}>
-                Major specific
-              </Text>
-              <Text style={[stylesStatic.modalMetaText, { color: COLORS.primary }]}>
-                {isMajorSpecific ? 'On' : 'Off'}
-              </Text>
-            </Pressable>
-            {MAJOR_OPTIONS.map((major) => (
+
+            {ALL_CATEGORIES.map((category) => (
               <Pressable
-                key={major}
+                key={category}
                 style={stylesStatic.modalOption}
-                onPress={() => setSelectedMajor(major)}
+                onPress={() => {
+                  const next = new Set(selectedCategories);
+                  if (next.has(category)) next.delete(category);
+                  else next.add(category);
+                  setSelectedCategories(next);
+                }}
               >
                 <Text
                   style={[
                     stylesStatic.modalOptionText,
-                    { color: selectedMajor === major ? COLORS.primary : COLORS.textPrimary },
+                    { color: selectedCategories.has(category) ? COLORS.primary : COLORS.textPrimary },
                   ]}
                 >
-                  {major}
+                  {category}
                 </Text>
-                {selectedMajor === major ? <Check size={16} color={COLORS.primary} /> : null}
+                {selectedCategories.has(category) ? <Check size={16} color={COLORS.primary} /> : null}
               </Pressable>
             ))}
 
@@ -2056,6 +2307,53 @@ function SettingsModal({
                   </Pressable>
                 ))}
               </>
+            ) : null}
+
+            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary }]}>
+              Major filter
+            </Text>
+            <Pressable
+              style={stylesStatic.modalOption}
+              onPress={() => setMajorSpecific(!isMajorSpecific)}
+            >
+              <Text style={[stylesStatic.modalOptionText, { color: COLORS.textPrimary }]}>
+                Major specific events only
+              </Text>
+              <View
+                style={[
+                  { width: 34, height: 20, borderRadius: 10, padding: 2 },
+                  { backgroundColor: isMajorSpecific ? COLORS.primary : COLORS.border },
+                ]}
+              >
+                <View
+                  style={[
+                    { width: 16, height: 16, borderRadius: 8, backgroundColor: '#FFF' },
+                    isMajorSpecific && { alignSelf: 'flex-end' },
+                  ]}
+                />
+              </View>
+            </Pressable>
+
+            {isMajorSpecific ? (
+              <View style={{ marginTop: 8 }}>
+                {MAJOR_OPTIONS.map((major) => (
+                  <Pressable
+                    key={major}
+                    style={stylesStatic.modalOption}
+                    onPress={() => setSelectedMajor(major)}
+                  >
+                    <Text
+                      style={[
+                        stylesStatic.modalOptionText,
+                        { color: selectedMajor === major ? COLORS.primary : COLORS.textPrimary },
+                      ]}
+                    >
+                      {major}
+                    </Text>
+                    {selectedMajor === major ? <Check size={16} color={COLORS.primary} /> : null}
+                  </Pressable>
+                ))}
+              </View>
             ) : null}
 
             <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary }]}>
@@ -2105,6 +2403,7 @@ function DetailModal({
   onUnsubscribeOrganizer,
   onBlockOrganizer,
   onReportOrganizer,
+
   saved,
   scheduled,
 }: {
@@ -2118,6 +2417,7 @@ function DetailModal({
   onUnsubscribeOrganizer: (event: TAMUEvent) => void;
   onBlockOrganizer: (event: TAMUEvent) => void;
   onReportOrganizer: (event: TAMUEvent) => void;
+
   saved: boolean;
   scheduled: boolean;
 }) {
@@ -2166,6 +2466,7 @@ function DetailModal({
 
             <Text style={[stylesStatic.detailTitle, { color: COLORS.textPrimary }]}>{event.title}</Text>
 
+
             <View style={stylesStatic.detailMetaBlock}>
               <View style={stylesStatic.detailMetaRow}>
                 <CalendarIcon size={15} color={COLORS.textSecondary} />
@@ -2194,8 +2495,15 @@ function DetailModal({
                 {stripHtml(event.description)}
               </Text>
             ) : null}
+            <TagChips tags={event.access_tags} label="Audience tags" />
 
-            <TourTarget name="event-rsvp">
+            <TourTarget
+              name="event-rsvp"
+              assistAction={() => {
+                onSchedule(event);
+                onClose();
+              }}
+            >
               <Pressable
                 style={[stylesStatic.primaryDetailButton, { backgroundColor: scheduled ? '#E06A3E' : '#3CCB6C' }]}
                 onPress={() => {
@@ -2341,9 +2649,9 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       backgroundColor: COLORS.background,
     },
     headerBlock: {
-      paddingTop: embedded ? 10 : 56,
+      paddingTop: embedded ? 10 : 38,
       paddingHorizontal: 20,
-      paddingBottom: 8,
+      paddingBottom: 6,
       gap: 10,
     },
     headerTopRow: {
@@ -2353,9 +2661,9 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     pageTitle: {
       color: COLORS.textPrimary,
-      fontSize: 36,
+      fontSize: 34,
       fontWeight: '900',
-      letterSpacing: -1.05,
+      letterSpacing: -1.2,
     },
     pageSubtitle: {
       marginTop: 2,
@@ -2364,9 +2672,9 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       lineHeight: 20,
     },
     headerIconButton: {
-      width: 38,
-      height: 38,
-      borderRadius: 19,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: 'transparent',
@@ -2390,11 +2698,11 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     modeTabs: {
       flexDirection: 'row',
-      gap: 18,
+      gap: 22,
       paddingTop: 2,
     },
     modeTab: {
-      paddingVertical: 4,
+      paddingVertical: 2,
       position: 'relative',
     },
     modeTabActive: {
@@ -2402,25 +2710,105 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     modeTabText: {
       color: COLORS.textSecondary,
-      fontSize: 15,
-      fontWeight: '700',
+      fontSize: 18,
+      fontWeight: '800',
     },
     modeTabTextActive: {
       color: COLORS.textPrimary,
-      fontWeight: '800',
+      fontWeight: '900',
     },
     modeTabUnderline: {
-      marginTop: 6,
-      height: 2.5,
+      position: 'absolute',
+      bottom: -6,
+      left: 0,
+      right: 0,
+      height: 3.5,
       borderRadius: 999,
       backgroundColor: COLORS.primary,
     },
     scrollContent: {
       paddingHorizontal: 20,
-      paddingBottom: 118,
+      paddingBottom: 38,
+    },
+    discoverLayout: {
+      flex: 1,
+    },
+    discoverScroll: {
+      flex: 1,
+    },
+    forYouHero: {
+      borderRadius: 28,
+      paddingHorizontal: 18,
+      paddingVertical: 14,
+      marginTop: 6,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(80,0,0,0.06)',
+      shadowColor: '#000000',
+      shadowOpacity: isDark ? 0.18 : 0.08,
+      shadowRadius: 14,
+      shadowOffset: { width: 0, height: 10 },
+      elevation: 6,
+    },
+    forYouHeroTop: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 12,
+      marginBottom: 8,
+    },
+    forYouEyebrow: {
+      color: isDark ? 'rgba(255,255,255,0.76)' : COLORS.primary,
+      fontSize: 11,
+      fontWeight: '900',
+      letterSpacing: 0.8,
+      textTransform: 'uppercase',
+      marginBottom: 6,
+    },
+    forYouTitle: {
+      color: isDark ? '#FFFFFF' : COLORS.textPrimary,
+      fontSize: 21,
+      lineHeight: 24,
+      fontWeight: '900',
+      letterSpacing: -0.7,
+      maxWidth: 250,
+    },
+    forYouBody: {
+      color: isDark ? 'rgba(255,255,255,0.82)' : COLORS.textSecondary,
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: '600',
+    },
+    forYouSparkle: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.72)',
+    },
+    forYouChipRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      paddingTop: 10,
+    },
+    forYouChip: {
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.84)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(17,24,39,0.06)',
+    },
+    forYouChipText: {
+      color: isDark ? '#FFFFFF' : COLORS.textPrimary,
+      fontSize: 11,
+      fontWeight: '800',
     },
     categoryWrap: {
       gap: 12,
+      marginTop: 6,
     },
     categoryHeaderRow: {
       flexDirection: 'row',
@@ -2430,26 +2818,26 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     categorySectionLabel: {
       color: COLORS.textSecondary,
       fontSize: 11,
-      fontWeight: '800',
-      letterSpacing: 0.4,
+      fontWeight: '900',
+      letterSpacing: 1.5,
       textTransform: 'uppercase',
     },
     categoryToggleText: {
       color: COLORS.primary,
       fontSize: 12,
-      fontWeight: '800',
+      fontWeight: '900',
     },
     categoryCollapsedRow: {
-      gap: 8,
-      paddingRight: 8,
+      gap: 12,
+      paddingRight: 12,
     },
     categoryExpandedGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 8,
+      gap: 12,
     },
     inlineControls: {
-      marginTop: 14,
+      marginTop: 10,
       gap: 10,
     },
     inlineControl: {
@@ -2506,25 +2894,30 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     socialModeTextActive: {
       color: COLORS.textPrimary,
     },
-  heroRail: {
-      paddingTop: 18,
+    spotlightIntro: {
+      marginTop: 14,
+      marginBottom: 2,
+      gap: 4,
+    },
+    spotlightEyebrow: {
+      color: COLORS.textSecondary,
+      fontSize: 11,
+      fontWeight: '900',
+      letterSpacing: 1.5,
+      textTransform: 'uppercase',
+    },
+    spotlightTitle: {
+      color: COLORS.textPrimary,
+      fontSize: 24,
+      lineHeight: 28,
+      fontWeight: '900',
+      letterSpacing: -0.8,
+    },
+    heroRail: {
+      paddingTop: 14,
       paddingLeft: 0,
       paddingRight: 0,
-    },
-    swipeCta: {
-      marginTop: 16,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      paddingVertical: 8,
-      alignSelf: 'center',
-    },
-    swipeCtaText: {
-      color: COLORS.textPrimary,
-      fontSize: 16,
-      fontWeight: '700',
-      letterSpacing: -0.2,
+      paddingBottom: 6,
     },
     listSearchRow: {
       flexDirection: 'row',
@@ -2705,30 +3098,143 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
   });
 
 const stylesStatic = StyleSheet.create({
-  categoryChip: {
+  rewardToastWrap: {
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    top: 92,
+    alignItems: 'center',
+    zIndex: 200,
+    pointerEvents: 'none',
+  },
+  rewardToastCard: {
+    minWidth: 220,
+    maxWidth: 310,
+    borderRadius: 22,
+    backgroundColor: 'rgba(20,20,24,0.94)',
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 10,
+  },
+  rewardToastEyebrow: {
+    color: '#F9C74F',
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+    letterSpacing: 0.7,
+    marginBottom: 4,
+  },
+  rewardToastTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  rewardToastBody: {
+    color: 'rgba(255,255,255,0.84)',
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  rewardConfetti: {
+    position: 'absolute',
+    top: 6,
+    width: 8,
+    height: 14,
+    borderRadius: 3,
+  },
+  reasonRow: {
+    gap: 8,
+    paddingTop: 10,
+    paddingBottom: 2,
+    paddingRight: 8,
+  },
+  reasonRowCompact: {
+    gap: 6,
+    paddingTop: 6,
+    paddingBottom: 4,
+    paddingRight: 8,
+  },
+  reasonChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     borderRadius: 999,
-    paddingHorizontal: 11,
+    paddingHorizontal: 12,
     paddingVertical: 8,
+    backgroundColor: 'rgba(122,11,28,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(122,11,28,0.12)',
+  },
+  reasonChipCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(122,11,28,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(122,11,28,0.12)',
+  },
+  reasonChipLight: {
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  reasonChipText: {
+    color: '#7A0B1C',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  reasonChipTextCompact: {
+    color: '#7A0B1C',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  reasonChipTextLight: {
+    color: '#FFFFFF',
+  },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 999,
+    paddingHorizontal: 15,
+    paddingVertical: 11,
+    borderWidth: 1.5,
+    shadowColor: '#000000',
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   categoryChipText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '800',
   },
   categoryChipCount: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     marginLeft: 2,
   },
   heroCard: {
     width: HERO_CARD_WIDTH,
-    height: 372,
-    borderRadius: 34,
+    height: HERO_CARD_HEIGHT,
+    borderRadius: 40,
     overflow: 'hidden',
-    padding: 20,
-    justifyContent: 'space-between',
+    paddingHorizontal: 28,
+    paddingVertical: 28,
+    shadowColor: '#8392B0',
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8,
   },
   heroImage: {
     ...StyleSheet.absoluteFillObject,
@@ -2739,88 +3245,95 @@ const stylesStatic = StyleSheet.create({
   },
   heroGlow: {
     position: 'absolute',
-    top: -30,
-    right: -20,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    opacity: 0.55,
+    top: -24,
+    right: -14,
+    width: 240,
+    height: 240,
+    borderRadius: 120,
+    opacity: 0.34,
   },
   heroGlowSmall: {
     position: 'absolute',
-    bottom: 70,
-    left: -35,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    opacity: 0.4,
+    bottom: 54,
+    left: -28,
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    opacity: 0.18,
   },
   heroIconHalo: {
     position: 'absolute',
-    right: 18,
-    bottom: 118,
-    opacity: 0.55,
+    right: 30,
+    bottom: 100,
+    opacity: 0.2,
   },
   heroIconHaloWithImage: {
     opacity: 0.28,
   },
   heroTopRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   heroCategoryPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   heroCategoryText: {
     color: '#FFFFFF',
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '900',
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    letterSpacing: 1.4,
   },
   verifiedPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+    backgroundColor: 'rgba(255,255,255,0.16)',
   },
   verifiedText: {
     color: '#FFFFFF',
     fontSize: 11,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   heroBottom: {
-    gap: 8,
+    flex: 1,
+    marginTop: 'auto',
+    minHeight: 0,
+  },
+  heroBottomContent: {
+    gap: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
   },
   heroTitle: {
     color: '#FFFFFF',
-    fontSize: 30,
+    fontSize: 28,
     lineHeight: 34,
-    fontWeight: '800',
-    letterSpacing: -0.8,
-    maxWidth: '92%',
+    fontWeight: '900',
+    letterSpacing: -1.0,
+    maxWidth: '88%',
   },
   heroOrganizerPill: {
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     paddingVertical: 6,
     borderRadius: 999,
     backgroundColor: 'rgba(255,255,255,0.16)',
   },
   heroOrganizerText: {
     color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '800',
     maxWidth: 240,
   },
   heroMetaRow: {
@@ -2830,57 +3343,70 @@ const stylesStatic = StyleSheet.create({
   },
   heroMetaText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 12,
     fontWeight: '600',
     flex: 1,
   },
-  heroMapButton: {
-    marginTop: 8,
-    alignSelf: 'flex-start',
+  heroActionRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 18,
+  },
+  heroActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderWidth: 1,
+  },
+  heroActionPrimary: {
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.12)',
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 999,
+    borderColor: 'rgba(255,255,255,0.36)',
   },
-  heroMapButtonText: {
-    color: '#0F172A',
-    fontSize: 13,
-    fontWeight: '800',
+  heroActionSecondary: {
+    backgroundColor: 'rgba(93,108,141,0.66)',
+    borderColor: 'rgba(255,255,255,0.12)',
   },
-  heroRsvpButton: {
-    marginTop: 6,
+  heroActionDisabled: {
+    opacity: 0.44,
+  },
+  heroActionText: {
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  heroActionPrimaryText: {
+    color: '#174F2E',
+  },
+  heroActionSecondaryText: {
+    color: '#FFFFFF',
+  },
+  heroInlineMapButton: {
+    marginTop: 2,
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(15,23,42,0.1)',
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
     borderRadius: 999,
   },
-  heroRsvpButtonText: {
-    fontSize: 13,
+  heroInlineMapText: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 11,
     fontWeight: '800',
   },
   listRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    borderRadius: 0,
-    borderWidth: 0,
-    paddingVertical: 14,
-    paddingHorizontal: 2,
+    gap: 12,
+    paddingVertical: 12,
   },
   listThumb: {
-    width: 104,
-    height: 76,
-    borderRadius: 18,
+    width: 84,
+    height: 84,
+    borderRadius: 14,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2907,26 +3433,27 @@ const stylesStatic = StyleSheet.create({
   },
   listTitle: {
     flex: 1,
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: '800',
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: '700',
   },
   listMeta: {
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: '500',
   },
   listOrganizer: {
     fontWeight: '700',
   },
   listActions: {
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   listActionButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },

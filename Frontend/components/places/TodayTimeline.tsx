@@ -6,9 +6,8 @@ import {
   TouchableOpacity,
   Linking,
 } from "react-native";
-import { Compass, Calendar } from "lucide-react-native";
+import { Compass } from "lucide-react-native";
 import { TourTarget, useTour } from "../onboarding/TourProvider";
-import { useNavigation } from "@react-navigation/native";
 import type { ScheduleMeetingEntry, ScheduleMapOption } from "./types";
 
 interface TodayTimelineProps {
@@ -16,7 +15,7 @@ interface TodayTimelineProps {
   COLORS: any;
   isDark: boolean;
   activeScheduleOption: ScheduleMapOption | null;
-  onGetDirections?: (building: string) => void;
+  onGetDirections?: (entry: ScheduleMeetingEntry) => void;
 }
 
 export function TodayTimeline({
@@ -27,7 +26,6 @@ export function TodayTimeline({
   onGetDirections,
 }: TodayTimelineProps) {
   const { advanceStep, activeTargetName } = useTour();
-  const navigation = useNavigation<any>();
 
   // No internal timer; relies on Parent's Master Timer in PlacesMapScreen.tsx 
   // for synchronization of list collapse and tour step advancement.
@@ -58,6 +56,22 @@ export function TodayTimeline({
     });
   }, [activeScheduleOption]);
 
+  const palette = React.useMemo(
+    () => ({
+      timeline: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.12)",
+      time: isDark ? "#FFFFFF" : COLORS.textPrimary,
+      timeMuted: isDark ? "#AAA" : COLORS.textSecondary,
+      cardBg: isDark ? "rgba(255,255,255,0.04)" : "#FFFFFF",
+      cardBorder: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,12,14,0.09)",
+      title: isDark ? "#FFFFFF" : COLORS.textPrimary,
+      location: isDark ? "#AAA" : COLORS.textSecondary,
+      classBadgeBg: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,12,14,0.06)",
+      classBadgeText: isDark ? "#AAA" : COLORS.textSecondary,
+      dotBorder: isDark ? "rgba(12,12,14,1)" : "#FFFFFF",
+    }),
+    [COLORS.textPrimary, COLORS.textSecondary, isDark],
+  );
+
   if (!activeScheduleOption || !sortedEntries.length) {
     return (
       <View style={localStyles.emptyContainer}>
@@ -74,34 +88,14 @@ export function TodayTimeline({
   }
 
   const handleGetDirections = (entry: ScheduleMeetingEntry) => {
-    if (onGetDirections && entry.building) {
-      onGetDirections(entry.building);
-    } else {
-      const query = encodeURIComponent(`${entry.building || entry.locationLabel} TAMU`);
-      const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
-      Linking.openURL(url).catch((err) => console.error("Couldn't load page", err));
+    if (onGetDirections) {
+      onGetDirections(entry);
     }
   };
 
   const getDotColor = (type?: string) => {
     return type === "event" ? "#FF9500" : "#500000"; // Orange for events, Maroon for classes
   };
-
-  const palette = React.useMemo(
-    () => ({
-      timeline: isDark ? "rgba(255,255,255,0.08)" : "rgba(12,12,14,0.12)",
-      time: isDark ? "#FFFFFF" : COLORS.textPrimary,
-      timeMuted: isDark ? "#AAA" : COLORS.textSecondary,
-      cardBg: isDark ? "rgba(255,255,255,0.04)" : "#FFFFFF",
-      cardBorder: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,12,14,0.09)",
-      title: isDark ? "#FFFFFF" : COLORS.textPrimary,
-      location: isDark ? "#AAA" : COLORS.textSecondary,
-      classBadgeBg: isDark ? "rgba(255,255,255,0.06)" : "rgba(12,12,14,0.06)",
-      classBadgeText: isDark ? "#AAA" : COLORS.textSecondary,
-      dotBorder: isDark ? "rgba(12,12,14,1)" : "#FFFFFF",
-    }),
-    [COLORS.textPrimary, COLORS.textSecondary, isDark],
-  );
 
   return (
     <TourTarget name="schedule-preview">
@@ -203,8 +197,8 @@ const localStyles = StyleSheet.create({
   },
   timelineLine: {
     position: "absolute",
-    left: 87, // Center of dot container (74+13)
-    top: 0,
+    left: 108,
+    top: 50,
     bottom: 0,
     width: 2,
     backgroundColor: "rgba(255,255,255,0.08)",
@@ -216,7 +210,8 @@ const localStyles = StyleSheet.create({
     zIndex: 1,
   },
   timeContainer: {
-    width: 74, // Narrowed for 14pt labels
+    width: 95, 
+    // Widened to prevent "P M" wrap
     alignItems: "flex-start", // Left-align text with sheet header
     paddingRight: 0,
     justifyContent: "flex-start",

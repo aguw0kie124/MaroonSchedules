@@ -37,7 +37,7 @@ export function usePulseData(
   const fetchPulseHotspots = useCallback(async () => {
     setIsLoadingPulse(true);
     try {
-      const rawHotspots = await fetchCampusPulseMap(12);
+      const { hotspots: rawHotspots } = await fetchCampusPulseMap(60, { force: true });
       const placeLookup = new Map(
         pulsePlaces.flatMap((place) => {
           const keys = [place.location];
@@ -45,13 +45,28 @@ export function usePulseData(
           return keys.map((key) => [key, place] as const);
         }),
       );
-      const hotspots = rawHotspots.map((hotspot) => ({
-        ...hotspot,
-        place:
-          (hotspot.placeId ? placeLookup.get(hotspot.placeId) : null) ||
-          placeLookup.get(hotspot.locationName) ||
-          null,
-      }));
+      const hotspots = rawHotspots.map((hotspot) => {
+        let place = (hotspot.placeId ? placeLookup.get(hotspot.placeId) : null) ||
+                    placeLookup.get(hotspot.locationName) ||
+                    null;
+
+        // Fallback: If no building resolved but we have coords, make a synthetic place for the map pin
+        if (!place && hotspot.coord) {
+          place = {
+            placeId: hotspot.placeId || `geo:${hotspot.id}`,
+            location: hotspot.locationName || "Current Location",
+            shortName: (hotspot.locationName || "Location").slice(0, 10),
+            percent_full: 0,
+            type: "General",
+            is_live: true,
+            available_seats: null,
+            coord: hotspot.coord,
+            source: "pulse",
+          } as any;
+        }
+
+        return { ...hotspot, place };
+      });
 
       setPulseHotspots(hotspots);
       if (selectedHotspotId && !hotspots.some((h) => h.id === selectedHotspotId)) {

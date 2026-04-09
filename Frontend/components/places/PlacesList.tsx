@@ -49,7 +49,7 @@ interface PlacesListProps {
   isTodayExpanded?: boolean;
   setIsTodayExpanded?: (expanded: boolean) => void;
   onShare?: (content: ShareContent) => void;
-  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "bus") => void;
+  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "drive" | "bus") => void;
 }
 
 export function PlacesList({
@@ -365,7 +365,14 @@ export function PlacesList({
     return (
       <Card key={`list-${getLocationSelectionId(loc)}`} style={[styles.placesSheetItemCard, compact && styles.placesSheetItemCardCompact]}>
         {loc.location === "Student Recreation Center" ? (
-          <TourTarget name="rec-center-item" style={{ flex: 1 }}>
+          <TourTarget
+            name="rec-center-item"
+            style={{ flex: 1 }}
+            assistAction={() => {
+              handleSelectLocation(loc);
+              setTimeout(() => advanceStep('rec-center-item'), 700);
+            }}
+          >
             <TouchableOpacity
               activeOpacity={0.9}
               style={styles.placesSheetItemPressable}

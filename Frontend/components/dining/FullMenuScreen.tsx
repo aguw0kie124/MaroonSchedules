@@ -61,6 +61,10 @@ function buildFoodPayload(item: any, location: string, mealPeriod: DiningMealPer
   };
 }
 
+function buildCategoryKey(categoryName: string) {
+  return categoryName.trim().toLowerCase();
+}
+
 export default function FullMenuScreen({ navigation, route }: any) {
   const { user } = useUser();
   const { theme, wallpaperUri } = useTheme();
@@ -81,6 +85,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
   const [portionCounts, setPortionCounts] = useState<Record<string, { count: number; entryIds: number[] }>>({});
   const [syncingItemKey, setSyncingItemKey] = useState<string | null>(null);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [activeCategoryKey, setActiveCategoryKey] = useState('all');
 
   const toggleCategory = useCallback((categoryName: string) => {
     setCollapsedCategories((current) => {
@@ -119,7 +124,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
       } else {
         setError(result.message || 'No menu items available right now.');
       }
-    } catch (fetchError) {
+    } catch (_fetchError) {
       setError('Could not load the menu.');
     } finally {
       setLoading(false);
@@ -128,9 +133,13 @@ export default function FullMenuScreen({ navigation, route }: any) {
 
   useEffect(() => {
     load(activeMealPeriod);
-    // When meal period changes, clear collapsed categories to keep everything expanded
-    setCollapsedCategories(new Set());
+    setActiveCategoryKey('all');
   }, [activeMealPeriod, load]);
+
+  useEffect(() => {
+    const categoryNames = (menu?.categories || []).map((category: any) => category.name);
+    setCollapsedCategories(new Set(categoryNames));
+  }, [menu]);
 
   useEffect(() => {
     if (!location) return;
@@ -206,6 +215,15 @@ export default function FullMenuScreen({ navigation, route }: any) {
   }, [portionCounts, refreshTrackerCounts, user]);
 
   const categoryCount = menu?.categories?.length || 0;
+  const categoryOptions = (menu?.categories || []).map((category: any) => ({
+    key: buildCategoryKey(category.name),
+    label: category.name,
+    count: Array.isArray(category.items) ? category.items.length : 0,
+  }));
+  const visibleCategories = (menu?.categories || []).filter((category: any) => {
+    if (activeCategoryKey === 'all') return true;
+    return buildCategoryKey(category.name) === activeCategoryKey;
+  });
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
@@ -247,6 +265,63 @@ export default function FullMenuScreen({ navigation, route }: any) {
           />
         </View>
 
+        {categoryOptions.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={s.categoryFilterRow}
+            style={s.categoryFilterScroll}
+          >
+            <TouchableOpacity
+              style={[
+                s.categoryFilterChip,
+                activeCategoryKey === 'all' && [s.categoryFilterChipActive, { borderColor: T.text }],
+                { backgroundColor: T.bg2, borderColor: T.border },
+              ]}
+              onPress={() => setActiveCategoryKey('all')}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  s.categoryFilterLabel,
+                  { color: T.text2 },
+                  activeCategoryKey === 'all' && { color: T.text },
+                ]}
+              >
+                All stations
+              </Text>
+            </TouchableOpacity>
+
+            {categoryOptions.map((category) => (
+              <TouchableOpacity
+                key={category.key}
+                style={[
+                  s.categoryFilterChip,
+                  activeCategoryKey === category.key && [s.categoryFilterChipActive, { borderColor: T.text }],
+                  { backgroundColor: T.bg2, borderColor: T.border },
+                ]}
+                onPress={() => setActiveCategoryKey(category.key)}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    s.categoryFilterLabel,
+                    { color: T.text2 },
+                    activeCategoryKey === category.key && { color: T.text },
+                  ]}
+                >
+                  {category.label}
+                </Text>
+                <View style={[s.categoryFilterCount, { backgroundColor: T.bg3 }]}>
+                  <Text style={[s.categoryFilterCountText, { color: T.text3 }]}>
+                    {category.count}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : null}
+
         <View style={s.metaRow}>
           <Badge label={`${menu?.count ?? 0} items`} color={T.amber} />
           <Badge label={`${categoryCount} categories`} color={T.sky} />
@@ -276,7 +351,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
               </Card>
             )}
 
-            {(menu?.categories || []).map((category: any) => {
+            {visibleCategories.map((category: any) => {
               const isCollapsed = collapsedCategories.has(category.name);
               return (
                 <Card key={category.name} style={{ paddingHorizontal: 0 }}>
@@ -297,53 +372,50 @@ export default function FullMenuScreen({ navigation, route }: any) {
                     <View style={{ paddingHorizontal: 20 }}>
                       {category.items.map((item: any) => (
                         <View key={`${category.name}-${item.location || 'menu'}-${item.name}`} style={[s.itemRow, { borderBottomColor: T.border }]}>
-
-
-                    <View style={{ flex: 1, paddingRight: 12 }}>
-                      <Text style={[s.itemName, { color: T.text }]}>{item.name}</Text>
-                      <Text style={[s.itemMeta, { color: T.text3 }]}>
-                        {Math.round(item.calories || 0)} kcal
-                        {!!item.protein && ` • ${Math.round(item.protein)}g protein`}
-                        {!!item.location && menu.locations?.length > 1 && ` • ${item.location}`}
-                      </Text>
-                    </View>
-                    <View style={s.actionWrap}>
-                      <View style={s.countSlot}>
-                        {portionCounts[buildMenuItemKey(item)]?.count > 0 ? (
-                          <Text style={[s.countText, { color: T.text3 }]}>
-                            {portionCounts[buildMenuItemKey(item)]?.count}x
-                          </Text>
-                        ) : null}
-                      </View>
-                      {portionCounts[buildMenuItemKey(item)]?.count > 0 ? (
-                        <TouchableOpacity
-                          style={[s.actionButton, { borderColor: T.clay, backgroundColor: `${T.clay}18` }]}
-                          onPress={() => removePortion(item)}
-                          disabled={syncingItemKey === buildMenuItemKey(item)}
-                        >
-                          <Text style={[s.actionSymbol, { color: T.clay }]}>-</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                      <TouchableOpacity
-                        style={[s.actionButton, { borderColor: T.sage, backgroundColor: `${T.sage}18` }]}
-                        onPress={() => addPortion(item)}
-                        disabled={syncingItemKey === buildMenuItemKey(item)}
-                      >
-                        {syncingItemKey === buildMenuItemKey(item) ? (
-                          <ActivityIndicator color={T.sage} size="small" />
-                        ) : (
-                          <Text style={[s.actionSymbol, { color: T.sage }]}>+</Text>
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                  </View>
+                          <View style={{ flex: 1, paddingRight: 12 }}>
+                            <Text style={[s.itemName, { color: T.text }]}>{item.name}</Text>
+                            <Text style={[s.itemMeta, { color: T.text3 }]}>
+                              {Math.round(item.calories || 0)} kcal
+                              {!!item.protein && ` • ${Math.round(item.protein)}g protein`}
+                              {!!item.location && menu.locations?.length > 1 && ` • ${item.location}`}
+                            </Text>
+                          </View>
+                          <View style={s.actionWrap}>
+                            <View style={s.countSlot}>
+                              {portionCounts[buildMenuItemKey(item)]?.count > 0 ? (
+                                <Text style={[s.countText, { color: T.text3 }]}>
+                                  {portionCounts[buildMenuItemKey(item)]?.count}x
+                                </Text>
+                              ) : null}
+                            </View>
+                            {portionCounts[buildMenuItemKey(item)]?.count > 0 ? (
+                              <TouchableOpacity
+                                style={[s.actionButton, { borderColor: T.clay, backgroundColor: `${T.clay}18` }]}
+                                onPress={() => removePortion(item)}
+                                disabled={syncingItemKey === buildMenuItemKey(item)}
+                              >
+                                <Text style={[s.actionSymbol, { color: T.clay }]}>-</Text>
+                              </TouchableOpacity>
+                            ) : null}
+                            <TouchableOpacity
+                              style={[s.actionButton, { borderColor: T.sage, backgroundColor: `${T.sage}18` }]}
+                              onPress={() => addPortion(item)}
+                              disabled={syncingItemKey === buildMenuItemKey(item)}
+                            >
+                              {syncingItemKey === buildMenuItemKey(item) ? (
+                                <ActivityIndicator color={T.sage} size="small" />
+                              ) : (
+                                <Text style={[s.actionSymbol, { color: T.sage }]}>+</Text>
+                              )}
+                            </TouchableOpacity>
+                          </View>
+                        </View>
                       ))}
                     </View>
                   )}
                 </Card>
               );
             })}
-
           </>
         )}
       </ScrollView>
@@ -358,6 +430,29 @@ const s = StyleSheet.create({
   title: { fontSize: 30, fontWeight: '900', letterSpacing: -0.5 },
   subtitle: { fontSize: 12, marginTop: 2, fontWeight: '600' },
   mealTabsWrap: { marginBottom: 14 },
+  categoryFilterScroll: { marginBottom: 14 },
+  categoryFilterRow: { gap: 10, paddingRight: 8 },
+  categoryFilterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  categoryFilterChipActive: {
+    borderWidth: 1.5,
+  },
+  categoryFilterLabel: { fontSize: 13, fontWeight: '800' },
+  categoryFilterCount: {
+    minWidth: 26,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    alignItems: 'center',
+  },
+  categoryFilterCountText: { fontSize: 11, fontWeight: '800' },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
   emptyText: { fontSize: 14, textAlign: 'center', lineHeight: 21 },
   locationWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

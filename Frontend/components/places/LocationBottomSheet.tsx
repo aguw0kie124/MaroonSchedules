@@ -19,21 +19,19 @@ import {
   X,
   ExternalLink,
   Calendar,
-  Clock,
+  ChevronRight,
   Utensils,
-  Layers,
   Star,
   Navigation,
   Flag,
   Shield,
-  MoreVertical,
   Trash2,
 } from "lucide-react-native";
 import { useUser } from "@clerk/clerk-expo";
 import * as Linking from "expo-linking";
 import * as Haptics from "expo-haptics";
 import type { CampusLocation } from "./types";
-import { SNAP_PEEK, SNAP_FULL, SNAP_HIDDEN, SHEET_BOTTOM_OFFSET, SCREEN_HEIGHT } from "./types";
+import { SHEET_BOTTOM_OFFSET, SCREEN_HEIGHT } from "./types";
 import {
   getStatusColor,
   formatScheduleDays,
@@ -42,15 +40,100 @@ import {
 import { getCanonicalLocationName } from "./campusData";
 import {
   DiningMealPeriod,
-  getDiningMealOptionsForLocation,
-  getDiningMenuCandidates,
   isDiningHallMenuLocation,
 } from "../../services/diningMenuCache";
 import { reportContent, blockUser, deleteReview } from "../../services/streamFeeds";
 import { useSessionStore } from "../../store/sessionStore";
 import { promptGuestLogin } from "../../utils/guestAccess";
-import { PillTabs } from "../PillTabs";
 import { Alert } from "react-native";
+
+const SHEET_HEIGHT = SCREEN_HEIGHT * 0.94;
+const SHEET_TOP_VISIBLE_HEIGHT = SCREEN_HEIGHT * 0.84;
+const SHEET_TOP_SNAP = Math.max(SHEET_HEIGHT - SHEET_TOP_VISIBLE_HEIGHT, 0);
+const SHEET_MID_VISIBLE_HEIGHT = Math.min(440, SCREEN_HEIGHT * 0.48);
+const SHEET_DINING_HALL_VISIBLE_HEIGHT = Math.min(250, SCREEN_HEIGHT * 0.3);
+const SHEET_PEEK_VISIBLE_HEIGHT = Math.min(116, SCREEN_HEIGHT * 0.085);
+const SHEET_MID_SNAP = Math.max(SHEET_HEIGHT - SHEET_MID_VISIBLE_HEIGHT, 0);
+const SHEET_DINING_HALL_SNAP = Math.max(
+  SHEET_HEIGHT - SHEET_DINING_HALL_VISIBLE_HEIGHT,
+  0,
+);
+const SHEET_PEEK_SNAP = Math.max(SHEET_HEIGHT - SHEET_PEEK_VISIBLE_HEIGHT, 0);
+const SHEET_HIDDEN_SNAP = SCREEN_HEIGHT;
+
+type SheetMode = "peek" | "mid" | "top" | "hidden";
+
+function getSheetModeForSnap(toValue: number): SheetMode {
+  const topMidThreshold = (SHEET_TOP_SNAP + SHEET_MID_SNAP) / 2;
+  const midPeekThreshold = (SHEET_MID_SNAP + SHEET_PEEK_SNAP) / 2;
+  const peekHiddenThreshold = (SHEET_PEEK_SNAP + SHEET_HIDDEN_SNAP) / 2;
+
+  if (toValue >= peekHiddenThreshold) return "hidden";
+  if (toValue >= midPeekThreshold) return "peek";
+  if (toValue >= topMidThreshold) return "mid";
+  return "top";
+}
+
+function getNavigationPlaceType(type: CampusLocation["type"]) {
+  switch (type) {
+    case "Academic":
+      return "academic";
+    case "Library":
+      return "library";
+    case "Dining":
+      return "dining";
+    case "Rec":
+      return "recreation";
+    case "Housing":
+      return "housing";
+    case "Athletics":
+      return "athletics";
+    case "General":
+      return "general";
+    default:
+      return "landmark";
+  }
+}
+
+function getOccupancyLabel(percentFull: number) {
+  if (percentFull >= 80) return "Busy";
+  if (percentFull >= 55) return "Steady";
+  if (percentFull >= 30) return "Moderate";
+  return "Light";
+}
+
+function getOccupancyInsight(
+  percentFull: number,
+  trafficHistory?: number[],
+  fallback?: string | null,
+) {
+  const history = Array.isArray(trafficHistory)
+    ? trafficHistory.filter((value): value is number => Number.isFinite(value))
+    : [];
+
+  if (history.length >= 2) {
+    const previous = history[history.length - 2];
+    const delta = percentFull - previous;
+    if (delta >= 8) {
+      return "Traffic is climbing compared with the last update.";
+    }
+    if (delta <= -8) {
+      return "Traffic is easing compared with the last update.";
+    }
+  }
+
+  if (fallback) {
+    return fallback;
+  }
+
+  if (percentFull >= 80) {
+    return "Crowded right now, so expect tighter space.";
+  }
+  if (percentFull >= 55) {
+    return "Moderate traffic right now with steady turnover.";
+  }
+  return "Plenty of open space right now.";
+}
 
 interface LocationBottomSheetProps {
   styles: any;
@@ -74,7 +157,12 @@ interface LocationBottomSheetProps {
   isFetchingReviews: boolean;
   fetchReviews: (placeId: string, limit?: number) => void;
   // Dining
-  hubRestaurants: string[];
+  foodCourtVenues: Array<{
+    selectionId: string;
+    label: string;
+    menuCandidate: string | null;
+    location: CampusLocation;
+  }>;
   diningMenuOptions: string[];
   activeDiningMenu: string | null;
   setActiveDiningMenu: (v: string | null) => void;
@@ -83,7 +171,7 @@ interface LocationBottomSheetProps {
   diningMenuPreview: any | null;
   isFetchingDining: boolean;
   isPrimaryDiningHallSelection: boolean;
-  openFullMenu: (locationName: string) => void;
+  openFullMenu: (locationName: string, mealPeriod?: DiningMealPeriod) => void;
   // Schedule
   openScheduleList: () => void;
   // Recreation
@@ -96,7 +184,7 @@ interface LocationBottomSheetProps {
   // Bus state — to know when not to show
   selectedStop: any;
   selectedBus: any;
-  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "bus") => void;
+  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "drive" | "bus") => void;
 }
 
 export function LocationBottomSheet({
@@ -118,7 +206,7 @@ export function LocationBottomSheet({
   setAllReviewsModalVisible,
   isFetchingReviews,
   fetchReviews,
-  hubRestaurants,
+  foodCourtVenues,
   diningMenuOptions,
   activeDiningMenu,
   setActiveDiningMenu,
@@ -142,16 +230,12 @@ export function LocationBottomSheet({
   const { advanceStep, activeTargetName } = useTour();
   const selectedReviewId = selectedLoc?.placeId || selectedLoc?.location || null;
   const selectedLabel = selectedLoc?.location || selectedId || "";
-  const conciseDescription = useMemo(() => {
-    const raw = selectedLoc?.description?.trim();
-    if (!raw) return null;
-    return raw.replace(/\s+/g, " ");
-  }, [selectedLoc?.description]);
 
   // ── Bottom sheet animation ──────────────────────────────────
-  const sheetY = useRef(new Animated.Value(SNAP_HIDDEN)).current;
-  const sheetSnap = useRef<number>(SNAP_HIDDEN);
-  const panStartY = useRef<number>(SNAP_HIDDEN);
+  const sheetY = useRef(new Animated.Value(SHEET_HIDDEN_SNAP)).current;
+  const sheetSnap = useRef<number>(SHEET_HIDDEN_SNAP);
+  const panStartY = useRef<number>(SHEET_HIDDEN_SNAP);
+  const [sheetMode, setSheetMode] = useState<SheetMode>("hidden");
   const [diningDetailTab, setDiningDetailTab] = useState<"reviews" | "menus">(
     "reviews",
   );
@@ -159,6 +243,7 @@ export function LocationBottomSheet({
   const animateSheet = useCallback(
     (toValue: number, onDone?: () => void) => {
       sheetSnap.current = toValue;
+      setSheetMode(getSheetModeForSnap(toValue));
       Animated.spring(sheetY, {
         toValue,
         useNativeDriver: true,
@@ -167,36 +252,181 @@ export function LocationBottomSheet({
         mass: 0.9,
       }).start(() => {
         if (onDone) onDone();
-        // Onboarding: Instant advance on full expansion
-        if (toValue === SNAP_FULL && activeTargetName === 'rec-center-item') {
-          advanceStep('rec-center-item');
-        }
       });
     },
-    [sheetY, activeTargetName, advanceStep],
+    [sheetY],
   );
 
   useEffect(() => {
-    setDiningDetailTab("reviews");
-    if (selectedId) {
-      animateSheet(SNAP_PEEK);
-      
-      // Onboarding: Auto-advance after 3 seconds of viewing Rec Center
-      if (activeTargetName === 'rec-center-item' && selectedLoc?.type === 'Rec') {
-        const timer = setTimeout(() => {
-          advanceStep('rec-center-item');
-        }, 3000);
-        return () => clearTimeout(timer);
-      }
+    if (selectedLoc && (isDiningHallMenuLocation(selectedLoc.location) || foodCourtVenues.length > 0)) {
+      setDiningDetailTab("menus");
     } else {
-      animateSheet(SNAP_HIDDEN);
+      setDiningDetailTab("reviews");
     }
-  }, [selectedId, animateSheet, activeTargetName, selectedLoc?.type]);
+    if (selectedId) {
+      animateSheet(
+        selectedLoc && isDiningHallMenuLocation(selectedLoc.location) && isPrimaryDiningHallSelection
+          ? SHEET_DINING_HALL_SNAP
+          : SHEET_MID_SNAP,
+      );
+    } else {
+      animateSheet(SHEET_HIDDEN_SNAP);
+    }
+  }, [selectedId, animateSheet, activeTargetName, foodCourtVenues.length, selectedLoc?.location, selectedLoc?.type]);
 
   const isDiningHallCard =
     !!selectedLoc &&
     isDiningHallMenuLocation(selectedLoc.location) &&
     isPrimaryDiningHallSelection;
+  const isFoodCourtHub = foodCourtVenues.length > 0;
+  const isDiningMenuExperience = isDiningHallCard || isFoodCourtHub;
+  const preferredExpandedSnap = isDiningHallCard
+    ? SHEET_DINING_HALL_SNAP
+    : SHEET_MID_SNAP;
+
+  const isPeekSheet = sheetMode === "peek";
+  const isCapacityPlace =
+    selectedLoc?.type === "Library" || selectedLoc?.type === "Rec";
+  const occupancyPercent = selectedLoc
+    ? Math.max(
+        0,
+        Math.min(
+          100,
+          Number.isFinite(selectedLoc.percent_full) ? selectedLoc.percent_full : 0,
+        ),
+      )
+    : 0;
+  const occupancyToneColor = selectedLoc
+    ? getStatusColor(occupancyPercent)
+    : COLORS.primary;
+  const parkingRecommendation = useMemo(() => {
+    if (!selectedLoc || selectedLoc.type !== "Parking") return null;
+    const lower = selectedLoc.location.toLowerCase();
+    const isGarage = lower.includes("garage");
+    return isGarage
+      ? {
+          badge: "Recommended",
+          detail: "A strong all-around option for most valid permits.",
+        }
+      : {
+          badge: "Available",
+          detail: "Keep this as a fallback if your primary lots are full.",
+        };
+  }, [selectedLoc]);
+  const selectedHoursLabel = useMemo(() => {
+    if (!selectedLoc) return null;
+    if (selectedLoc.type === "Rec") {
+      return (
+        selectedRecreationFacility?.today_hours ||
+        selectedRecreationFacility?.hours_hint ||
+        selectedLoc.hours ||
+        null
+      );
+    }
+    return selectedLoc.hours || null;
+  }, [selectedLoc, selectedRecreationFacility]);
+  const peekMetaText = useMemo(() => {
+    if (!selectedLoc) return "";
+
+    if (isCapacityPlace) {
+      return `${occupancyPercent}% full`;
+    }
+    if (selectedHoursLabel) {
+      return selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel;
+    }
+    if (isFoodCourtHub) {
+      return `${foodCourtVenues.length} locations`;
+    }
+    if (selectedLoc.current_event) {
+      return selectedLoc.current_event;
+    }
+    if (selectedLoc.type !== "Dining" && selectedLoc.type !== "Hub") {
+      return selectedLoc.type;
+    }
+    if (selectedLoc.address) {
+      return selectedLoc.address;
+    }
+    return "";
+  }, [
+    foodCourtVenues.length,
+    isCapacityPlace,
+    isFoodCourtHub,
+    occupancyPercent,
+    selectedHoursLabel,
+    selectedLoc,
+  ]);
+  const contextLink = useMemo(
+    () => (selectedLoc ? getLocationContextLink(selectedLoc) : null),
+    [selectedLoc],
+  );
+  const externalLink = useMemo(
+    () => (selectedLoc ? getPlaceExternalLink(selectedLoc) : null),
+    [getPlaceExternalLink, selectedLoc],
+  );
+  const heroMetaText = useMemo(() => {
+    if (!selectedLoc) return "";
+
+    const bits: string[] = [];
+    if (selectedLoc.address) {
+      bits.push(selectedLoc.address);
+    }
+    if (selectedHoursLabel) {
+      bits.push(selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel);
+    } else if (selectedLoc.current_event) {
+      bits.push(selectedLoc.current_event);
+    }
+    if (!bits.length && isFoodCourtHub) {
+      bits.push(`${foodCourtVenues.length} dining locations inside`);
+    }
+    return bits.filter(Boolean).slice(0, 2).join(" • ");
+  }, [foodCourtVenues.length, isFoodCourtHub, selectedHoursLabel, selectedLoc]);
+  const officialFacilityUrl = useMemo(
+    () =>
+      selectedLoc?.type === "Rec"
+        ? selectedRecreationFacility?.source_url || null
+        : null,
+    [selectedLoc?.type, selectedRecreationFacility?.source_url],
+  );
+
+  const handleNavigatePress = useCallback(() => {
+    if (!selectedLoc) return;
+    if (openNavigationToLocation) {
+      openNavigationToLocation(selectedLoc);
+      return;
+    }
+    navigation.navigate("CampusNavigation", {
+      initialDestination: {
+        id: selectedLoc.location,
+        name: selectedLoc.location,
+        shortName: selectedLoc.shortName || selectedLoc.location,
+        latitude: selectedLoc.coord.lat,
+        longitude: selectedLoc.coord.lng,
+        type: getNavigationPlaceType(selectedLoc.type),
+      },
+    });
+  }, [navigation, openNavigationToLocation, selectedLoc]);
+
+  const handlePeekExpand = useCallback(() => {
+    animateSheet(preferredExpandedSnap);
+  }, [animateSheet, preferredExpandedSnap]);
+
+  const handleExternalLinkPress = useCallback(() => {
+    if (!selectedLoc || !externalLink) return;
+    if (externalLink.label === "Open in Maps" && openNavigationToLocation) {
+      openNavigationToLocation(selectedLoc);
+      return;
+    }
+    Linking.openURL(externalLink.url).catch((error) => {
+      console.warn("Unable to open place external link", error);
+    });
+  }, [externalLink, openNavigationToLocation, selectedLoc]);
+
+  const handleContextLinkPress = useCallback(() => {
+    if (!contextLink) return;
+    Linking.openURL(contextLink.url).catch((error) => {
+      console.warn("Unable to open place context link", error);
+    });
+  }, [contextLink]);
 
   const openReviewComposer = useCallback(() => {
     if (isGuest) {
@@ -218,38 +448,58 @@ export function LocationBottomSheet({
           sheetY.stopAnimation();
         },
         onPanResponderMove: (_, { dy }) => {
-          const next = Math.max(SNAP_FULL, panStartY.current + dy);
+          const next = Math.max(
+            SHEET_TOP_SNAP,
+            Math.min(SHEET_HIDDEN_SNAP, panStartY.current + dy),
+          );
           sheetY.setValue(next);
         },
         onPanResponderRelease: (_, { dy, vy }) => {
           const liveY = panStartY.current + dy;
 
+          const snapPoints = [
+            SHEET_TOP_SNAP,
+            preferredExpandedSnap,
+            SHEET_PEEK_SNAP,
+            SHEET_HIDDEN_SNAP,
+          ];
+          const currentIndex = snapPoints.reduce((bestIndex, point, index) => {
+            const bestDistance = Math.abs(snapPoints[bestIndex] - sheetSnap.current);
+            const nextDistance = Math.abs(point - sheetSnap.current);
+            return nextDistance < bestDistance ? index : bestIndex;
+          }, 0);
+
+          if (vy < -1.0) {
+            animateSheet(snapPoints[Math.max(0, currentIndex - 1)]);
+            return;
+          }
+
           if (vy > 1.0) {
-            if (sheetSnap.current < SNAP_PEEK - 20) {
-              animateSheet(SNAP_PEEK);
+            const nextSnap = snapPoints[Math.min(snapPoints.length - 1, currentIndex + 1)];
+            if (nextSnap === SHEET_HIDDEN_SNAP) {
+              animateSheet(SHEET_HIDDEN_SNAP, () => setSelectedId(null));
             } else {
-              animateSheet(SNAP_HIDDEN, () => setSelectedId(null));
+              animateSheet(nextSnap);
             }
             return;
           }
-          if (vy < -1.0) {
-            animateSheet(SNAP_FULL);
-            return;
-          }
 
-          const midPeekFull = (SNAP_PEEK + SNAP_FULL) / 2;
-          const midPeekHidden = (SNAP_PEEK + SNAP_HIDDEN) / 2;
+          const topMidThreshold = (SHEET_TOP_SNAP + preferredExpandedSnap) / 2;
+          const midPeekThreshold = (preferredExpandedSnap + SHEET_PEEK_SNAP) / 2;
+          const peekHiddenThreshold = (SHEET_PEEK_SNAP + SHEET_HIDDEN_SNAP) / 2;
 
-          if (liveY > midPeekHidden) {
-            animateSheet(SNAP_HIDDEN, () => setSelectedId(null));
-          } else if (liveY > midPeekFull) {
-            animateSheet(SNAP_PEEK);
+          if (liveY >= peekHiddenThreshold) {
+            animateSheet(SHEET_HIDDEN_SNAP, () => setSelectedId(null));
+          } else if (liveY >= midPeekThreshold) {
+            animateSheet(SHEET_PEEK_SNAP);
+          } else if (liveY >= topMidThreshold) {
+            animateSheet(preferredExpandedSnap);
           } else {
-            animateSheet(SNAP_FULL);
+            animateSheet(SHEET_TOP_SNAP);
           }
         },
       }),
-    [animateSheet, setSelectedId],
+    [animateSheet, preferredExpandedSnap, setSelectedId],
   );
 
     const handleReportReview = (rev: any) => {
@@ -339,330 +589,243 @@ export function LocationBottomSheet({
 
         {selectedLoc ? (
           <>
-            {/* Header */}
-            <View style={styles.sheetHeader}>
-              <View style={{ flex: 1, paddingRight: 12 }}>
-                <Text style={styles.locationName}>{selectedLoc.location}</Text>
-                <View style={styles.sheetBadgeRow}>
-                  {selectedLoc.type !== "Dining" && selectedLoc.type !== "Hub" && (
-                    <Text style={styles.typeTextSlim}>{selectedLoc.type}</Text>
-                  )}
-                  {selectedLoc.is_live ? (
-                    <View style={styles.liveBadgeSlim}>
-                      <Text style={styles.dotSeparator}>•</Text>
-                      <View style={styles.livePulse} />
-                      <Text style={styles.liveTextSlim}>Live Traffic</Text>
-                    </View>
-                  ) : selectedLoc.classMeetings?.length ? (
-                    <View style={styles.aiBadgeSlim}>
-                      <Text style={styles.dotSeparator}>•</Text>
-                      <Text style={styles.aiTextSlim}>Your events</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.aiBadgeSlim}>
-                      <Text style={styles.dotSeparator}>•</Text>
-                      <Text style={styles.aiTextSlim}>Directory</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-
-              <View style={{ alignItems: "center", gap: 12 }}>
-                <TouchableOpacity
-                  onPress={() => setSelectedId(null)}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  style={styles.dismissBtn}
-                >
-                  <X size={18} color="#888" />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.circularActionBtn}
-                  onPress={() =>
-                    navigation.navigate("CampusNavigation", {
-                      initialDestination: {
-                        id: selectedLoc.location,
-                        name: selectedLoc.location,
-                        shortName: selectedLoc.shortName || selectedLoc.location,
-                        latitude: selectedLoc.coord.lat,
-                        longitude: selectedLoc.coord.lng,
-                        type:
-                          selectedLoc.type === "Academic"
-                            ? "academic"
-                            : selectedLoc.type === "Library"
-                              ? "library"
-                              : selectedLoc.type === "Dining"
-                                ? "dining"
-                                : selectedLoc.type === "Rec"
-                                  ? "recreation"
-                                  : selectedLoc.type === "Housing"
-                                    ? "housing"
-                                    : selectedLoc.type === "Athletics"
-                                      ? "athletics"
-                                      : "landmark",
-                      },
-                    })
-                  }
-                >
-                  <Navigation size={20} fill="#FFF" color="#FFF" />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {conciseDescription ? (
-              <Text style={styles.descriptionText} numberOfLines={1}>
-                {conciseDescription}
-              </Text>
-            ) : null}
-
-            {/* Quick actions + context cards */}
-            {(() => {
-              const parkingRecommendation =
-                selectedLoc.type === "Parking"
-                  ? (() => {
-                      const lower = selectedLoc.location.toLowerCase();
-                      const isGarage = lower.includes("garage");
-                      return isGarage
-                        ? { badge: "Recommended", detail: "A strong all-around option for most valid permits." }
-                        : { badge: "Available", detail: "Keep this as a fallback if your primary lots are full." };
-                    })()
-                  : null;
-              const contextLink = getLocationContextLink(selectedLoc);
-              const externalLink = getPlaceExternalLink(selectedLoc);
-              return (
-                <>
-                  <View style={styles.quickActionRow}>
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={() => {
-                        if (externalLink.label === "Open in Maps" && openNavigationToLocation && selectedLoc) {
-                          openNavigationToLocation(selectedLoc);
-                        } else {
-                          Linking.openURL(externalLink.url).catch((error) => {
-                            console.warn("Unable to open place external link", error);
-                          });
-                        }
-                      }}
-                    >
-                      <ExternalLink size={14} color="#F3F1ED" />
-                        <Text style={styles.quickActionText}>
-                        {externalLink.label}
-                        </Text>
-                      </TouchableOpacity>
-
-                    {isDiningHallMenuLocation(selectedLoc.location) &&
-                    activeDiningMenu &&
-                    isPrimaryDiningHallSelection ? (
-                      <TouchableOpacity
-                        style={[styles.quickActionPill, styles.quickActionPrimary]}
-                        onPress={() => openFullMenu(activeDiningMenu)}
-                      >
-                        <Utensils size={14} color="#FFFFFF" />
-                        <Text style={styles.quickActionPrimaryText}>
-                          Menus
-                        </Text>
-                      </TouchableOpacity>
-                    ) : null}
-
-                    {selectedLoc.classMeetings?.length ? (
-                      <TouchableOpacity
-                        style={styles.quickActionPill}
-                        onPress={openScheduleList}
-                      >
-                        <Calendar size={14} color="#F3F1ED" />
-                        <Text style={styles.quickActionText}>Today</Text>
-                      </TouchableOpacity>
-                    ) : null}
-
-                    {contextLink ? (
-                      <TouchableOpacity
-                        style={styles.quickActionPill}
-                        onPress={() =>
-                          Linking.openURL(contextLink.url).catch((error) => {
-                            console.warn("Unable to open place context link", error);
-                          })
-                        }
-                      >
-                        <ExternalLink size={14} color="#F3F1ED" />
-                        <Text style={styles.quickActionText}>
-                          {contextLink.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ) : null}
-
-                  </View>
-
-                  {parkingRecommendation ? (
-                    <View style={styles.contextCard}>
-                      <Text style={styles.contextCardTitle}>
-                        {parkingRecommendation.badge}
-                      </Text>
-                      <Text style={styles.contextCardBody}>
-                        {parkingRecommendation.detail}
-                      </Text>
-                    </View>
-                  ) : null}
-
-                  {selectedLoc.current_event ? (
-                    <View style={styles.contextCard}>
-                      <Text style={styles.contextCardTitle}>
-                        Active at this place
-                      </Text>
-                      <Text style={styles.contextCardBody}>
-                        {selectedLoc.current_event}
-                      </Text>
-                    </View>
-                  ) : null}
-                </>
-              );
-            })()}
-
-            {/* Hub Restaurants / Occupancy / Hours */}
-            {hubRestaurants.length > 0 ? (
-              <View style={styles.infoBlock}>
-                <View style={{ marginBottom: 16 }}>
-                  <Text style={styles.sectionTitle}>Inside this Hub</Text>
-                  <View style={styles.restaurantChipList}>
-                    {hubRestaurants.map((r, i) => (
-                      <TouchableOpacity
-                        key={i}
-                        style={[
-                          styles.restaurantChip,
-                          activeDiningMenu === getDiningMenuCandidates(r)[0] &&
-                            styles.restaurantChipActive,
-                        ]}
-                        onPress={() => {
-                          const nextMenu = getDiningMenuCandidates(r)[0];
-                          if (nextMenu) {
-                            setActiveDiningMenu(nextMenu);
-                          }
-                        }}
-                      >
-                        <Text style={styles.restaurantChipText}>{r}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-                <View style={styles.hoursInfo}>
-                  <Clock size={12} color={COLORS.textTertiary} />
-                  <Text style={styles.hoursText}>
-                    {selectedLoc.hours || "Open Today · 7:00 AM – 10:00 PM"}
+            <View style={[styles.heroCard, isPeekSheet && styles.heroCardPeek]}>
+              <View style={[styles.heroHeadingRow, isPeekSheet && styles.heroHeadingRowPeek]}>
+                <View style={styles.heroHeadingText}>
+                  <Text
+                    style={[
+                      styles.locationName,
+                      isPeekSheet ? styles.locationNamePeek : styles.locationNameExpanded,
+                    ]}
+                    numberOfLines={isPeekSheet ? 1 : 3}
+                  >
+                    {selectedLoc.location}
                   </Text>
-                </View>
-              </View>
-            ) : (
-              <View style={styles.infoBlock}>
-                {selectedLoc.type === "Library" || selectedLoc.type === "Rec" ? (
-                  <View style={styles.occupancyBlock}>
-                    <View style={styles.occupancyHeaderRow}>
-                      <Layers
-                        size={18}
-                        color={getStatusColor(selectedLoc.percent_full)}
-                      />
-                      <View style={{ marginLeft: 8, flex: 1 }}>
-                        <Text style={styles.occupancyLiveLabel}>
-                          Live Occupancy
-                        </Text>
-                        <Text
-                          style={[
-                            styles.occupancyLiveText,
-                            {
-                              color: getStatusColor(selectedLoc.percent_full),
-                            },
-                          ]}
-                        >
-                          {selectedLoc.percent_full}% Full
-                        </Text>
-                      </View>
-                    </View>
-                    <View style={styles.occupancyTrack}>
-                      <View
-                        style={[
-                          styles.occupancyFill,
-                          {
-                            width: `${selectedLoc.percent_full}%` as any,
-                            backgroundColor: getStatusColor(
-                              selectedLoc.percent_full,
-                            ),
-                          },
-                        ]}
-                      />
-                    </View>
-                    <View style={styles.hoursInfo}>
-                      <Clock size={16} color={"#888"} />
-                      <Text style={styles.hoursText}>
-                        {selectedLoc.type === "Rec"
-                          ? `Today: ${selectedRecreationFacility?.today_hours || selectedRecreationFacility?.hours_hint || selectedLoc.hours || "Check official facility page"}`
-                          : selectedLoc.hours || "6:00 AM – 12:00 AM"}
-                      </Text>
-                    </View>
-                    {selectedLoc.type === "Rec" &&
-                    selectedRecreationFacility?.source_url ? (
-                      <TouchableOpacity
-                        style={styles.inlineLinkRow}
-                        onPress={() =>
-                          Linking.openURL(
-                            selectedRecreationFacility.source_url,
-                          ).catch(() => {})
-                        }
-                      >
-                        <ExternalLink size={14} color="#F3F1ED" />
-                        <Text style={styles.inlineLinkText}>
-                          Open official facility page
-                        </Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                ) : (
-                  <View style={styles.hoursInfoBlock}>
-                    <Clock size={16} color={"#888"} />
-                    <Text style={styles.hoursText}>
-                      {selectedLoc.hours || "6:00 AM – 12:00 AM"}
+
+                  {((isPeekSheet ? peekMetaText : heroMetaText) || "").length ? (
+                    <Text
+                      style={[
+                        styles.heroMetaText,
+                        isPeekSheet && styles.heroMetaTextPeek,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {isPeekSheet ? peekMetaText : heroMetaText}
                     </Text>
-                  </View>
+                  ) : null}
+                </View>
+
+                {isPeekSheet ? (
+                  <TouchableOpacity
+                    style={styles.peekPrimaryAction}
+                    activeOpacity={0.85}
+                    onPress={handlePeekExpand}
+                  >
+                    <ChevronRight size={18} color={COLORS.primary} />
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => setSelectedId(null)}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    style={styles.dismissBtn}
+                  >
+                    <X size={16} color="#888" />
+                  </TouchableOpacity>
                 )}
               </View>
-            )}
 
-            <View style={styles.sheetDivider} />
+              {!isPeekSheet ? (
+                <View style={styles.quickActionRow}>
+                  <TouchableOpacity
+                    style={styles.quickActionPill}
+                    onPress={handleNavigatePress}
+                  >
+                    <Navigation size={14} color={COLORS.textPrimary} />
+                    <Text style={styles.quickActionText}>Directions</Text>
+                  </TouchableOpacity>
+
+                  {externalLink && externalLink.label !== "Open in Maps" ? (
+                    <TouchableOpacity
+                      style={styles.quickActionPill}
+                      onPress={handleExternalLinkPress}
+                    >
+                      <ExternalLink size={14} color={COLORS.textPrimary} />
+                      <Text style={styles.quickActionText}>
+                        {externalLink.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {activeDiningMenu && isDiningHallCard ? (
+                    <TouchableOpacity
+                      style={styles.quickActionPill}
+                      onPress={() => openFullMenu(activeDiningMenu, activeDiningMealPeriod)}
+                    >
+                      <Utensils size={14} color={COLORS.textPrimary} />
+                      <Text style={styles.quickActionText}>Menus</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {selectedLoc.classMeetings?.length ? (
+                    <TouchableOpacity
+                      style={styles.quickActionPill}
+                      onPress={openScheduleList}
+                    >
+                      <Calendar size={14} color={COLORS.textPrimary} />
+                      <Text style={styles.quickActionText}>Today</Text>
+                    </TouchableOpacity>
+                  ) : null}
+
+                  {contextLink ? (
+                    <TouchableOpacity
+                      style={styles.quickActionPill}
+                      onPress={handleContextLinkPress}
+                    >
+                      <ExternalLink size={14} color={COLORS.textPrimary} />
+                      <Text style={styles.quickActionText}>
+                        {contextLink.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
+
+            {!isPeekSheet && parkingRecommendation ? (
+              <View style={styles.contextCard}>
+                <Text style={styles.contextCardTitle}>
+                  {parkingRecommendation.badge}
+                </Text>
+                <Text style={styles.contextCardBody}>
+                  {parkingRecommendation.detail}
+                </Text>
+              </View>
+            ) : null}
+
+            {!isPeekSheet && selectedLoc.current_event ? (
+              <View style={styles.contextCard}>
+                <Text style={styles.contextCardTitle}>
+                  Active at this place
+                </Text>
+                <Text style={styles.contextCardBody}>
+                  {selectedLoc.current_event}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Occupancy / links */}
+            {!isPeekSheet && isCapacityPlace ? (
+              <View style={styles.infoBlock}>
+                <View style={styles.occupancyBlock}>
+                  <View style={styles.occupancySummaryRow}>
+                    <Text style={styles.occupancyLiveLabel}>
+                      Live Occupancy
+                    </Text>
+                    <Text
+                      style={[
+                        styles.occupancyLiveText,
+                        { color: occupancyToneColor },
+                      ]}
+                    >
+                      {occupancyPercent}% Full
+                    </Text>
+                  </View>
+                  <View style={styles.occupancyTrack}>
+                    <View
+                      style={[
+                        styles.occupancyFill,
+                        {
+                          width: `${occupancyPercent}%` as any,
+                          backgroundColor: occupancyToneColor,
+                        },
+                        ]}
+                      />
+                    </View>
+                </View>
+
+                {officialFacilityUrl && officialFacilityUrl !== externalLink?.url ? (
+                  <TouchableOpacity
+                    style={styles.inlineLinkRow}
+                    onPress={() => Linking.openURL(officialFacilityUrl).catch(() => {})}
+                  >
+                    <ExternalLink size={14} color={COLORS.primary} />
+                    <Text style={styles.inlineLinkText}>
+                      Open official facility page
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : null}
+
+            {!isPeekSheet && !isDiningHallCard ? <View style={styles.sheetDivider} /> : null}
 
             {/* Scrollable detail content */}
+            {!isPeekSheet && !isDiningHallCard ? (
             <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingBottom: 40 }}
               scrollEventThrottle={16}
             >
-              {isDiningHallCard ? (
+              {isDiningMenuExperience ? (
                 <>
                   <View style={styles.detailTabsWrap}>
-                    <PillTabs
-                      items={[
+                    <View style={styles.mapsTabRow}>
+                      {[
                         { key: "reviews", label: "Reviews" },
-                        { key: "menus", label: "Menus" },
-                      ]}
-                      activeKey={diningDetailTab}
-                      onChange={(key) =>
-                        setDiningDetailTab(key as "reviews" | "menus")
-                      }
-                      floating
-                      compact
-                    />
+                        {
+                          key: "menus",
+                          label: isDiningHallCard ? "Menu" : "Locations",
+                        },
+                      ].map((tab) => {
+                        const isActive = diningDetailTab === tab.key;
+                        return (
+                          <TouchableOpacity
+                            key={tab.key}
+                            style={styles.mapsTabButton}
+                            onPress={() =>
+                              setDiningDetailTab(tab.key as "reviews" | "menus")
+                            }
+                            activeOpacity={0.75}
+                          >
+                            <Text
+                              style={[
+                                styles.mapsTabLabel,
+                                isActive && styles.mapsTabLabelActive,
+                              ]}
+                            >
+                              {tab.label}
+                            </Text>
+                            <View
+                              style={[
+                                styles.mapsTabUnderline,
+                                isActive && styles.mapsTabUnderlineActive,
+                              ]}
+                            />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
                   </View>
 
                   {diningDetailTab === "menus" ? (
                     <View style={styles.infoBlock}>
                       <View style={styles.reviewsHeader}>
                         <View>
-                          <Text style={styles.sectionTitle}>Live menus</Text>
+                          <Text style={styles.sectionTitle}>
+                            {isDiningHallCard ? "Menu" : "Inside this Food Court"}
+                          </Text>
                           <Text style={styles.menuIntroText}>
-                            Live dining hall menu.
+                            {isDiningHallCard
+                              ? "Use the Menus button above to open the full dining hall menu."
+                              : "Browse the dining locations available inside this hub."}
                           </Text>
                         </View>
-                        {activeDiningMenu ? (
+                        {isDiningHallCard && activeDiningMenu ? (
                           <TouchableOpacity
                             onPress={() =>
                               openFullMenu(
                                 activeDiningMenu || selectedLoc.location,
+                                activeDiningMealPeriod,
                               )
                             }
                           >
@@ -671,132 +834,51 @@ export function LocationBottomSheet({
                         ) : null}
                       </View>
 
-                      {diningMenuOptions.length > 1 ? (
+                      {!isDiningHallCard && foodCourtVenues.length > 0 ? (
+                        <View style={styles.foodCourtVenueList}>
+                          {foodCourtVenues.map((venue) => (
+                            <View key={venue.selectionId} style={styles.foodCourtVenueCard}>
+                              <View style={{ flex: 1, paddingRight: 12 }}>
+                                <Text style={styles.foodCourtVenueTitle}>
+                                  {venue.label}
+                                </Text>
+                                <Text style={styles.foodCourtVenueMeta}>
+                                  {venue.location.shortName &&
+                                  venue.location.shortName !== venue.location.location
+                                    ? venue.location.shortName
+                                    : "Dining location"}
+                                </Text>
+                              </View>
+                              <Text style={styles.foodCourtVenueAction}>Inside</Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
+
+                      {isDiningHallCard && diningMenuOptions.length > 1 ? (
                         <View style={styles.restaurantChipList}>
                           {diningMenuOptions.map((option) => (
                             <TouchableOpacity
                               key={option}
                               style={[
                                 styles.restaurantChip,
-                                activeDiningMenu === option &&
-                                  styles.restaurantChipActive,
+                                activeDiningMenu === option && styles.restaurantChipActive,
                               ]}
                               onPress={() => setActiveDiningMenu(option)}
                             >
-                              <Text style={styles.restaurantChipText}>
-                                {option}
-                              </Text>
+                              <Text style={styles.restaurantChipText}>{option}</Text>
                             </TouchableOpacity>
                           ))}
                         </View>
                       ) : null}
 
-                      {activeDiningMenu ? (
-                        <View style={styles.restaurantChipList}>
-                          {getDiningMealOptionsForLocation(activeDiningMenu).map(
-                            (mealPeriod) => (
-                              <TouchableOpacity
-                                key={mealPeriod}
-                                style={[
-                                  styles.restaurantChip,
-                                  activeDiningMealPeriod === mealPeriod &&
-                                    styles.restaurantChipActive,
-                                ]}
-                                onPress={() =>
-                                  setActiveDiningMealPeriod(
-                                    mealPeriod as DiningMealPeriod,
-                                  )
-                                }
-                              >
-                                <Text style={styles.restaurantChipText}>
-                                  {mealPeriod.charAt(0).toUpperCase() +
-                                    mealPeriod.slice(1)}
-                                </Text>
-                              </TouchableOpacity>
-                            ),
-                          )}
-                        </View>
-                      ) : null}
-
-                      <View style={styles.metaPillRow}>
-                        <View style={styles.metaPill}>
-                          <Text style={styles.metaPillText}>
-                            {diningMenuPreview?.count ?? 0} items
-                          </Text>
-                        </View>
-                        <View style={styles.metaPill}>
-                          <Text style={styles.metaPillText}>
-                            {diningMenuPreview?.categories?.length ?? 0} categories
-                          </Text>
-                        </View>
-                      </View>
-
-                      {isFetchingDining ? (
-                        <ActivityIndicator
-                          color={COLORS.primary}
-                          style={{ marginVertical: 18 }}
-                        />
-                      ) : diningMenuPreview?.categories?.length ? (
-                        <View style={styles.menuCategoryList}>
-                          {diningMenuPreview.categories.map((category: any) => (
-                            <View
-                              key={category.name}
-                              style={styles.menuCategoryCard}
-                            >
-                              <View style={styles.menuCategoryHeader}>
-                                <Text style={styles.menuCategoryTitle}>
-                                  {category.name}
-                                </Text>
-                                <Text style={styles.menuCategoryCount}>
-                                  {category.items.length}
-                                </Text>
-                              </View>
-
-                              <View style={styles.menuCategoryItems}>
-                                {category.items.slice(0, 2).map((item: any) => (
-                                  <View
-                                    key={`${activeDiningMenu}-${category.name}-${item.name}`}
-                                    style={styles.menuCategoryItem}
-                                  >
-                                    <View style={{ flex: 1 }}>
-                                      <Text style={styles.menuCategoryItemName}>
-                                        {item.name}
-                                      </Text>
-                                      {item.calories || item.protein ? (
-                                        <Text
-                                          style={styles.menuCategoryItemMeta}
-                                          numberOfLines={1}
-                                        >
-                                          {item.calories
-                                            ? `${Math.round(item.calories || 0)} kcal`
-                                            : ""}
-                                          {item.calories && item.protein
-                                            ? " · "
-                                            : ""}
-                                          {item.protein
-                                            ? `${Math.round(item.protein)}g protein`
-                                            : ""}
-                                        </Text>
-                                      ) : null}
-                                    </View>
-                                  </View>
-                                ))}
-                                {category.items.length > 2 ? (
-                                  <Text style={styles.menuCategoryMoreText}>
-                                    +{category.items.length - 2} more items
-                                  </Text>
-                                ) : null}
-                              </View>
-                            </View>
-                          ))}
-                        </View>
-                      ) : (
+                      {!isDiningHallCard && foodCourtVenues.length === 0 ? (
                         <View style={styles.emptyReviews}>
                           <Text style={styles.emptyReviewsText}>
-                            Menu not available yet for this meal period.
+                            No dining locations are listed inside this hub yet.
                           </Text>
                         </View>
-                      )}
+                      ) : null}
                     </View>
                   ) : (
                     <View style={styles.infoBlock}>
@@ -1030,6 +1112,7 @@ export function LocationBottomSheet({
                 </>
               )}
             </ScrollView>
+            ) : null}
           </>
         ) : null}
       </Animated.View>

@@ -32,10 +32,10 @@ export function LayerPillScroller({
   // Auto-scroll to highlight targets when they appear
   React.useEffect(() => {
     if ((activeTargetName === 'gyms-pill' || activeTargetName === 'places-settings') && scrollRef.current) {
-      // Find the Rec pill or just scroll to end if it's new
+      // Keep the right-side controls visible so the highlighted target is reliably tappable.
       setTimeout(() => {
         scrollRef.current?.scrollToEnd({ animated: true });
-      }, 500);
+      }, 120);
     }
   }, [activeTargetName]);
   return (
@@ -48,12 +48,20 @@ export function LayerPillScroller({
       >
         {layers.map((layer) => {
           const isActive = layer.id === activeLayer;
+          const isGymTourTarget = activeTargetName === 'gyms-pill' && layer.id === 'Rec';
           const Icon = getCategoryPillIcon(layer.id);
           const pill = (
             <TouchableOpacity
+              hitSlop={{ top: 8, right: 10, bottom: 8, left: 10 }}
+              activeOpacity={0.85}
               style={[
                 styles.layerPill,
                 isActive && styles.layerPillActive,
+                isGymTourTarget && {
+                  borderWidth: 2,
+                  borderColor: COLORS.primary,
+                  backgroundColor: `${COLORS.primary}1A`,
+                },
               ]}
               onPress={() => {
                 onSelectLayer(layer.id);
@@ -74,6 +82,7 @@ export function LayerPillScroller({
                 style={[
                   styles.layerPillText,
                   isActive && styles.layerPillTextActive,
+                  isGymTourTarget && { color: COLORS.primary, fontWeight: '800' },
                 ]}
               >
                 {layer.label}
@@ -81,13 +90,32 @@ export function LayerPillScroller({
             </TouchableOpacity>
           );
 
-          if (layer.id === 'Rec') return <TourTarget key={layer.id} name="gyms-pill">{pill}</TourTarget>;
+          if (layer.id === 'Rec') {
+            return (
+              <TourTarget
+                key={layer.id}
+                name="gyms-pill"
+                assistAction={() => {
+                  onSelectLayer('Rec');
+                  setTimeout(() => advanceStep('gyms-pill'), 250);
+                }}
+              >
+                {pill}
+              </TourTarget>
+            );
+          }
           if (layer.id === 'Bus') return <TourTarget key={layer.id} name="bus-routes">{pill}</TourTarget>;
           
           return <React.Fragment key={layer.id}>{pill}</React.Fragment>;
         })}
 
-        <TourTarget name="places-settings">
+        <TourTarget
+          name="places-settings"
+          assistAction={() => {
+            onOpenSettings();
+            setTimeout(() => advanceStep('places-settings'), 250);
+          }}
+        >
           <TouchableOpacity
             style={styles.layerSettingsPill}
             onPress={() => {

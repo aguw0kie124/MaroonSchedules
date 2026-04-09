@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from services import annex_service
@@ -12,7 +13,7 @@ def get_libraries():
 
 
 @router.get("/libraries/{library_id}")
-def get_library_detail(library_id: str, email: str | None = Query(None)):
+def get_library_detail(library_id: str, email: Optional[str] = Query(None)):
     try:
         return annex_service.get_library_detail(library_id, email=email)
     except ValueError as error:
@@ -25,7 +26,7 @@ def get_rentals():
 
 
 @router.get("/rentals/{rental_id}")
-def get_rental_detail(rental_id: str, email: str | None = Query(None)):
+def get_rental_detail(rental_id: str, email: Optional[str] = Query(None)):
     try:
         return annex_service.get_rental_detail(rental_id, email=email)
     except ValueError as error:

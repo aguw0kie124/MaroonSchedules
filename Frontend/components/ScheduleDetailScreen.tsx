@@ -4,7 +4,9 @@ import { useRoute, useNavigation, useIsFocused, CommonActions } from '@react-nav
 import { fetchSchedules, removeSectionFromSchedule } from '../api/client';
 import { useTheme, PrimaryButton, SectionRow, Card } from './SharedUI';
 import { useUser } from '@clerk/clerk-expo';
-import { ChevronLeft } from 'lucide-react-native';
+import { ChevronLeft, Share2 } from 'lucide-react-native';
+import { useShareStore } from '../store/shareStore';
+import { triggerNativeShare } from '../utils/share';
 
 export function ScheduleDetailScreen() {
     const { COLORS } = useTheme();
@@ -14,6 +16,7 @@ export function ScheduleDetailScreen() {
     const { scheduleId, scheduleObj } = route.params;
     const { user } = useUser();
     const userId = user?.id || 'anonymous';
+    const { openShare } = useShareStore();
     const [schedule, setSchedule] = useState<any>(scheduleObj);
     const { width } = useWindowDimensions();
 
@@ -48,6 +51,17 @@ export function ScheduleDetailScreen() {
         }
     };
 
+    const handleShare = () => {
+        if (!schedule) return;
+        triggerNativeShare({
+            title: schedule.name,
+            message: `Check out my ${getTermName(schedule.term_code)} schedule!`,
+            url: `https://maroonschedules.com/schedules/${schedule.schedule_id}`,
+            id: schedule.schedule_id,
+            type: 'schedule',
+        });
+    };
+
     React.useLayoutEffect(() => {
         navigation.setOptions({
             headerLeft: () => (
@@ -59,8 +73,16 @@ export function ScheduleDetailScreen() {
                     <Text style={{ color: COLORS.primary, fontSize: 17, marginLeft: -4, fontWeight: '500' }}>Schedules</Text>
                 </Pressable>
             ),
+            headerRight: () => (
+                <Pressable
+                    onPress={handleShare}
+                    style={{ marginRight: 16 }}
+                >
+                    <Share2 size={24} color={COLORS.primary} />
+                </Pressable>
+            ),
         });
-    }, [navigation, COLORS]);
+    }, [navigation, COLORS, schedule]);
 
     const hours = Array.from({ length: 13 }, (_, i) => i + 8); // 8am to 8pm
     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];

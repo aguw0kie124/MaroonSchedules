@@ -4,12 +4,12 @@ import { apiFetch } from '../api/client';
 let connectedUserId: string | null = null;
 let currentFullUser: any | null = null;
 
-async function feedFetch(path: string, init: RequestInit = {}) {
+async function feedFetch(path: string, init: RequestInit = {}, timeoutMs?: number) {
   const headers = {
     ...(init.headers || {}),
     ...(connectedUserId ? { 'X-Clerk-User-Id': connectedUserId } : {}),
   };
-  return apiFetch(path, { ...init, headers });
+  return apiFetch(path, { ...init, headers }, timeoutMs);
 }
 
 /**
@@ -102,7 +102,7 @@ export async function getCampusFeed(limit = 25): Promise<any[]> {
 
 export async function getPingFeed(limit = 40): Promise<any[]> {
   try {
-    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?limit=${limit}`);
+    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?limit=${limit}`, {}, 15000);
     if (!res.ok) throw new Error('Proxy Fetch Error');
     const data = await res.json();
     return data.results || [];
@@ -124,7 +124,12 @@ export async function addPing(params: {
   startAt: string;
   endAt?: string;
   mediaUrl?: string;
+  isAnonymous?: boolean;
+  latitude?: number;
+  longitude?: number;
+  anchorType?: 'place' | 'geo';
 }): Promise<any> {
+  const isAnonymous = params.isAnonymous === true;
   const attachments: any[] = [];
   if (params.mediaUrl) {
     attachments.push({
@@ -141,8 +146,8 @@ export async function addPing(params: {
     text: params.body,
     attachments,
     custom: {
-      user_name: params.userName || getPremiumName(currentFullUser),
-      user_image: params.userImage || getPremiumImage(currentFullUser),
+      user_name: isAnonymous ? 'Aggie User' : (params.userName || getPremiumName(currentFullUser)),
+      user_image: isAnonymous ? '' : (params.userImage ?? getPremiumImage(currentFullUser) ?? ''),
       ping_title: params.title,
       ping_category: params.category,
       location_tag: params.locationTag,
@@ -150,6 +155,10 @@ export async function addPing(params: {
       start_at: params.startAt,
       end_at: params.endAt || '',
       content_type: 'ping',
+      is_anonymous: isAnonymous,
+      anchor_type: params.anchorType || 'place',
+      place_lat: params.latitude,
+      place_lng: params.longitude,
     },
   };
 
@@ -157,7 +166,7 @@ export async function addPing(params: {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ activity }),
-  });
+  }, 30000);
 
   if (!res.ok) {
     const err = await res.text();
@@ -221,7 +230,7 @@ export async function addPost(params: {
   }
 }
 
-export async function toggleVote(activityId: string, kind: 'upvote' | 'downvote'): Promise<any> {
+export async function toggleVote(activityId: string, kind: 'upvote' | 'downvote' | 'none' | 'like'): Promise<any> {
     if (!connectedUserId) throw new Error('Must be logged in to vote.');
     const res = await feedFetch('/chat/feeds/proxy/reactions', {
         method: 'POST',

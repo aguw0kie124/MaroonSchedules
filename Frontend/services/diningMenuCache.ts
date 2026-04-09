@@ -221,6 +221,8 @@ async function pruneStaleMenus(dateKey: string) {
   await AsyncStorage.setItem(LAST_PRUNE_KEY, dateKey);
 }
 
+const MENU_STALE_TIME = 1000 * 60 * 60; // 60 minutes
+
 export async function fetchDiningFullMenuCached({
   location,
   mealPeriod = getCurrentMealPeriod(),
@@ -235,30 +237,28 @@ export async function fetchDiningFullMenuCached({
     return null;
   }
 
-  const diningHallMenu = isDiningHallMenuLocation(resolvedLocation);
-  if (diningHallMenu) {
-    forceRefresh = true;
-  }
-
   const dateKey = getLocalDateString();
   const cacheKey = getCacheKey(resolvedLocation, mealPeriod, dateKey);
   await pruneStaleMenus(dateKey);
 
-  if (!forceRefresh && !diningHallMenu) {
-    const cached = await AsyncStorage.getItem(cacheKey);
-    if (cached) {
-      const parsed: CachedMenuPayload = JSON.parse(cached);
+  const cached = await AsyncStorage.getItem(cacheKey);
+  if (cached) {
+    const parsed: CachedMenuPayload = JSON.parse(cached);
+    const fetchedAt = new Date(parsed.fetchedAt).getTime();
+    const now = Date.now();
+    const isStale = now - fetchedAt > MENU_STALE_TIME;
+
+    if (!forceRefresh && !isStale) {
       const cachedItemCount = getMenuItemCount(parsed?.data);
       const staleDiningHallPayload =
         isDiningHallMenuLocation(resolvedLocation) && cachedItemCount > 0 && cachedItemCount <= 2;
+
       if (
-        !parsed?.data?.success ||
-        !Array.isArray(parsed?.data?.categories) ||
-        parsed.data.categories.length === 0 ||
-        staleDiningHallPayload
+        parsed?.data?.success &&
+        Array.isArray(parsed?.data?.categories) &&
+        parsed.data.categories.length > 0 &&
+        !staleDiningHallPayload
       ) {
-        await AsyncStorage.removeItem(cacheKey);
-      } else {
         return {
           ...parsed.data,
           fromCache: true,
@@ -279,7 +279,8 @@ export async function fetchDiningFullMenuCached({
   }
   const data = await response.json();
 
-  if (!diningHallMenu && data?.success && Array.isArray(data?.categories) && data.categories.length > 0) {
+  const isDiningHall = isDiningHallMenuLocation(resolvedLocation);
+  if (!isDiningHall && data?.success && Array.isArray(data?.categories) && data.categories.length > 0) {
     const payload: CachedMenuPayload = {
       dateKey,
       fetchedAt: new Date().toISOString(),

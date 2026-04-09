@@ -1,12 +1,16 @@
 from fastapi import APIRouter, HTTPException, Body, Query, Depends
 from typing import List, Optional, Dict
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import psycopg
 from db_config import get_db_connection
 from services import dining_service
 from auth.clerk_middleware import require_auth, ensure_matching_user
 import json
 from datetime import datetime, timedelta
+
+from rate_limit import limiter
+from fastapi import Request
+from models.base import SanitizedBaseModel
 
 router = APIRouter(prefix="/dining", tags=["Dining"])
 
@@ -19,20 +23,20 @@ def dining_health():
 # Models
 # ============================================================
 
-class UpdateDiningProfileRequest(BaseModel):
-    gender: Optional[str] = None
+class UpdateDiningProfileRequest(SanitizedBaseModel):
+    gender: Optional[str] = Field(default=None, max_length=20)
     weight_lbs: Optional[float] = None
     height_in: Optional[float] = None
     waist_in: Optional[float] = None
     neck_in: Optional[float] = None
     hip_in: Optional[float] = None
     age: Optional[int] = None
-    activity_level: Optional[str] = None
+    activity_level: Optional[str] = Field(default=None, max_length=50)
     goal_weight_lbs: Optional[float] = None
-    goal_date: Optional[str] = None
+    goal_date: Optional[str] = Field(default=None, max_length=20)
     meal_split: Optional[Dict] = None
 
-class LogMealRequest(BaseModel):
+class LogMealRequest(SanitizedBaseModel):
     date: str
     meal_period: str
     label: Optional[str] = None
@@ -48,7 +52,8 @@ def require_clerk_user(clerk_id: str, user_id: str = Depends(require_auth)) -> s
 # ============================================================
 
 @router.get("/profile/{clerk_id}")
-def get_dining_profile(clerk_id: str, _auth_user_id: str = Depends(require_clerk_user)):
+@limiter.limit("60/minute")
+def get_dining_profile(request: Request, clerk_id: str, _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT * FROM dining_profiles WHERE clerk_id = %s", (clerk_id,))
@@ -79,7 +84,8 @@ def get_dining_profile(clerk_id: str, _auth_user_id: str = Depends(require_clerk
             return profile
 
 @router.post("/profile/{clerk_id}")
-def update_dining_profile(clerk_id: str, req: UpdateDiningProfileRequest = Body(...), _auth_user_id: str = Depends(require_clerk_user)):
+@limiter.limit("10/minute")
+def update_dining_profile(request: Request, clerk_id: str, req: UpdateDiningProfileRequest = Body(...), _auth_user_id: str = Depends(require_clerk_user)):
     fields = {k: v for k, v in req.dict().items() if v is not None}
     if not fields:
         return {"status": "no changes"}
@@ -105,7 +111,9 @@ def update_dining_profile(clerk_id: str, req: UpdateDiningProfileRequest = Body(
 
 
 @router.get("/full-menu")
+@limiter.limit("60/minute")
 def get_full_menu(
+    request: Request,
     location: str = Query(...),
     meal_period: str = Query("lunch"),
     date: Optional[str] = Query(None),
@@ -125,7 +133,9 @@ def get_full_menu(
     return result
 
 @router.post("/optimize/day")
+@limiter.limit("5/minute")
 def optimize_day(
+    request: Request,
     clerk_id: str = Query(...), 
     dining_hall: str = Query("Sbisa"), 
     options: Dict = Body(...),
@@ -279,11 +289,12 @@ def optimize_day(
         "liveMenu": {"fetched": menu_result.get('success', False), "count": len(all_foods), "hall": dining_hall}
     }
 
-class OptimizeComboRequest(BaseModel):
+class OptimizeComboRequest(SanitizedBaseModel):
     meal_period: str = "lunch"
 
 @router.post("/optimize/combo")
-def optimize_retail_combo(req: OptimizeComboRequest, clerk_id: str = Query(...), dining_hall: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
+@limiter.limit("10/minute")
+def optimize_retail_combo(request: Request, req: OptimizeComboRequest, clerk_id: str = Query(...), dining_hall: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
     # 1. Get Profile
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
@@ -341,7 +352,8 @@ def optimize_retail_combo(req: OptimizeComboRequest, clerk_id: str = Query(...),
 
 
 @router.post("/tracker/{clerk_id}")
-def log_meal(clerk_id: str, req: LogMealRequest = Body(...), _auth_user_id: str = Depends(require_clerk_user)):
+@limiter.limit("30/minute")
+def log_meal(request: Request, clerk_id: str, req: LogMealRequest = Body(...), _auth_user_id: str = Depends(require_clerk_user)):
     totals = dining_service.compute_totals(req.foods)
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor() as cur:
@@ -358,7 +370,8 @@ def log_meal(clerk_id: str, req: LogMealRequest = Body(...), _auth_user_id: str 
     return {"status": "success"}
 
 @router.delete("/tracker/{clerk_id}/{meal_id}")
-def delete_meal(clerk_id: str, meal_id: int, _auth_user_id: str = Depends(require_clerk_user)):
+@limiter.limit("30/minute")
+def delete_meal(request: Request, clerk_id: str, meal_id: int, _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM meal_log WHERE clerk_id = %s AND id = %s", (clerk_id, meal_id))
@@ -366,7 +379,8 @@ def delete_meal(clerk_id: str, meal_id: int, _auth_user_id: str = Depends(requir
     return {"status": "success"}
 
 @router.get("/foods")
-def search_foods(q: str = Query(""), source: str = Query("all")):
+@limiter.limit("60/minute")
+def search_foods(request: Request, q: str = Query(""), source: str = Query("all")):
     results = []
     
     # 1. DB Search
@@ -382,7 +396,8 @@ def search_foods(q: str = Query(""), source: str = Query("all")):
     return results
 
 @router.get("/swipes/{clerk_id}")
-def get_swipes(clerk_id: str, date: Optional[str] = Query(None), _auth_user_id: str = Depends(require_clerk_user)):
+@limiter.limit("60/minute")
+def get_swipes(request: Request, clerk_id: str, date: Optional[str] = Query(None), _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT * FROM swipe_log WHERE clerk_id = %s ORDER BY date DESC", (clerk_id,))
@@ -427,7 +442,8 @@ def delete_swipe(clerk_id: str, swipe_id: int, _auth_user_id: str = Depends(requ
     return {"status": "success"}
 
 @router.get("/history/{clerk_id}")
-def get_history(clerk_id: str, days: int = 30, _auth_user_id: str = Depends(require_clerk_user)):
+@limiter.limit("60/minute")
+def get_history(request: Request, clerk_id: str, days: int = 30, _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("""
@@ -442,7 +458,8 @@ def get_history(clerk_id: str, days: int = 30, _auth_user_id: str = Depends(requ
             return [{"date": str(r['date']), "calories": float(r['calories']), "protein": float(r['protein']), "carbs": float(r['carbs']), "fat": float(r['fat'])} for r in rows]
 
 @router.get("/tracker/{clerk_id}")
-def get_tracker(clerk_id: str, date: str = Query(None), _auth_user_id: str = Depends(require_clerk_user)):
+@limiter.limit("60/minute")
+def get_tracker(request: Request, clerk_id: str, date: str = Query(None), _auth_user_id: str = Depends(require_clerk_user)):
     if not date:
         date = datetime.now().strftime('%Y-%m-%d')
 
@@ -459,7 +476,8 @@ def get_tracker(clerk_id: str, date: str = Query(None), _auth_user_id: str = Dep
     return {"date": date, "entries": entries, "totals": totals}
 
 @router.get("/weights/{clerk_id}")
-def get_weights(clerk_id: str, _auth_user_id: str = Depends(require_clerk_user)):
+@limiter.limit("60/minute")
+def get_weights(request: Request, clerk_id: str, _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT date, weight_lbs FROM weight_log WHERE clerk_id = %s ORDER BY date ASC", (clerk_id,))
@@ -467,7 +485,8 @@ def get_weights(clerk_id: str, _auth_user_id: str = Depends(require_clerk_user))
             return [{"date": str(r['date']), "weight_lbs": float(r['weight_lbs'])} for r in rows]
 
 @router.post("/weights/{clerk_id}")
-def log_weight(clerk_id: str, entry: Dict = Body(...), _auth_user_id: str = Depends(require_clerk_user)):
+@limiter.limit("30/minute")
+def log_weight(request: Request, clerk_id: str, entry: Dict = Body(...), _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -486,7 +505,8 @@ def delete_weight(clerk_id: str, date: str, _auth_user_id: str = Depends(require
     return {"status": "success"}
 
 @router.get("/weight-stats/{clerk_id}")
-def get_weight_stats(clerk_id: str, _auth_user_id: str = Depends(require_clerk_user)):
+@limiter.limit("60/minute")
+def get_weight_stats(request: Request, clerk_id: str, _auth_user_id: str = Depends(require_clerk_user)):
     with psycopg.connect(get_db_connection()) as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT weight_lbs FROM weight_log WHERE clerk_id = %s ORDER BY date DESC LIMIT 2", (clerk_id,))
@@ -512,7 +532,8 @@ def get_weight_stats(clerk_id: str, _auth_user_id: str = Depends(require_clerk_u
             }
 
 @router.get("/hubs/{location_id}")
-def get_hub_restaurants(location_id: str):
+@limiter.limit("60/minute")
+def get_hub_restaurants(request: Request, location_id: str):
     hubs = {
         "Memorial Student Center": ["Chick-fil-A", "Panda Express", "Rev's American Grill", "Cabo Grill", "Abu Omar Halal", "Spin 'N Stone Pizza", "Houston Street Subs", "Shake Smart"],
         "Polo Road Garage Dining": ["Panda Express", "Houston Street Subs", "Shake Smart", "Salata", "Bagel Block"],

@@ -29,6 +29,8 @@ import {
   ScrollView,
   InteractionManager,
   ActivityIndicator,
+  Share,
+  Pressable,
 } from "react-native";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
@@ -60,26 +62,23 @@ import AnimatedReanimated, {
   withTiming,
   runOnJS,
 } from "react-native-reanimated";
-import MapView, { Marker, Circle, Polyline } from "react-native-maps";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import MapViewRNM from "react-native-maps";
+import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { connectFeedsUser } from "../services/streamFeeds";
+import { connectFeedsUser, toggleVote } from "../services/streamFeeds";
 import { API_URL } from "../config";
+
 import { useCampusHubStore } from "../store/campusHubStore";
 import { getOrderedItems, useAppShellStore } from "../store/appShellStore";
 import { useSessionStore } from "../store/sessionStore";
 import { useShareStore } from "../store/shareStore";
-import { fetchCampusPlaceDetail, fetchCampusPlacesMap } from "../api/client";
 import { promptGuestLogin } from "../utils/guestAccess";
 import {
-  DiningMealPeriod,
-  fetchDiningFullMenuCached,
-  getDiningMealOptionsForLocation,
+  type DiningMealPeriod,
   getDiningMealPeriodForLocation,
-  isDiningHallMenuLocation,
-  getDiningMenuCandidates,
 } from "../services/diningMenuCache";
 
 // ── Sub-components ────────────────────────────────────────────
@@ -98,6 +97,8 @@ import { LocationBottomSheet } from "./places/LocationBottomSheet";
 import { ScheduleHeader } from "./places/ScheduleHeader";
 import { PlacesList } from "./places/PlacesList";
 import { TodayTimeline } from "./places/TodayTimeline";
+import { useLocationData } from "./places/useLocationData";
+import { usePlacesSelection } from "./places/usePlacesSelection";
 import { useScheduleMap } from "./places/useScheduleMap";
 
 // ── Shared data / utilities ───────────────────────────────────
@@ -108,15 +109,16 @@ import {
   PARKING_INFO_URL,
   type CampusLocation,
   type LocationType,
+  type ScheduleMeetingEntry,
 } from "./places/types";
 import {
   CAMPUS_ZONES,
   CATEGORIES,
-  buildExpandedPlacesDirectory,
   getLocationSelectionId,
   getCanonicalLocationName,
   getZoneDensity,
   mergeCampusLocations,
+  shouldHideFoodCourtLocationInBrowse,
 } from "./places/campusData";
 import {
   getStatusColor,
@@ -129,8 +131,17 @@ import {
 import { getStyles } from "./places/placesStyles";
 import {
   fetchCampusPulseMap,
+  invalidateCampusPulseCache,
+  voteHotspotItem,
   type CampusHotspot,
 } from "../services/campusPulse";
+import {
+  MapLibreCircleOverlay,
+  MapLibreMarker,
+  MapLibrePolylineOverlay,
+  useMapLibreCamera,
+} from "./map/mapLibreUtils";
+import { searchGlobalPlaces } from "../services/globalMap";
 
 // ── Transitional: still uses inline hooks from original file
 //    (replace with useLocationData / useScheduleMap / useBusTransit
@@ -194,12 +205,22 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // ── Map ref ───────────────────────────────────────────────
   const mapRef = useRef<any>(null);
+  const { cameraRef, defaultCamera, animateToRegion, animateCamera, fitToCoordinates } =
+    useMapLibreCamera(TAMU_CENTER);
   const currentBusRouteFetchId = useRef<string | null>(null);
   const lastPlacesFitKey = useRef<string | null>(null);
   const [isListDroppedDown, setIsListDroppedDown] = useState(false);
   const { activeTargetName, advanceStep } = useTour();
 
   // Onboarding: Force expand list when targeting items inside it
+  useEffect(() => {
+    mapRef.current = {
+      animateToRegion,
+      animateCamera,
+      fitToCoordinates,
+    };
+  }, [animateCamera, animateToRegion, fitToCoordinates]);
+
   useEffect(() => {
     if (activeTargetName === "rec-center-item") {
       setIsListDroppedDown(true);
@@ -208,12 +229,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // ── UI state ──────────────────────────────────────────────
   const [activeLayer, setActiveLayer] = useState<string>("Pulse");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(
     null,
   );
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [dynamicSearchLocations, setDynamicSearchLocations] = useState<CampusLocation[]>([]);
+  const [isSearchingGlobal, setIsSearchingGlobal] = useState(false);
+  const [globalSearchError, setGlobalSearchError] = useState<string | null>(null);
   const [isTimetableSheetOpen, setIsTimetableSheetOpen] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [isEditorVisible, setIsEditorVisible] = useState(false);
@@ -232,31 +255,63 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const timelineHeight = useSharedValue(0);
 
   // ── Location data ─────────────────────────────────────────
-  const fullCampusIndex = useMemo(() => buildExpandedPlacesDirectory(), []);
-  const [locations, setLocations] = useState<CampusLocation[]>(fullCampusIndex);
-  const [loading, setLoading] = useState(false);
-  const [pulseHotspots, setPulseHotspots] = useState<CampusHotspot[]>([]);
+  const {
+    fullCampusIndex,
+    locations,
+    refreshLocations,
+  } = useLocationData({ autoFetch: true });
   const pulseHotspotsRef = useRef<CampusHotspot[]>([]);
   const pulsePlacesRef = useRef<CampusLocation[]>([]);
   const selectedHotspotIdRef = useRef<string | null>(null);
-  const [isLoadingPulse, setIsLoadingPulse] = useState(false);
 
-  const fetchData = useCallback(async () => {
-    try {
-      const payload = await fetchCampusPlacesMap();
-      const nextLocations = Array.isArray(payload?.locations)
-        ? (payload.locations as CampusLocation[])
-        : [];
-      setLocations(
-        nextLocations.length
-          ? mergeCampusLocations(fullCampusIndex, nextLocations)
-          : fullCampusIndex,
+  const queryClient = useQueryClient();
+  const {
+    data: pulseHotspots = [],
+    isLoading: isLoadingPulse,
+    refetch: refetchPulse,
+  } = useQuery({
+    queryKey: ['campus-pulse', user?.id],
+    queryFn: async () => {
+      const { hotspots: rawHotspots } = await fetchCampusPulseMap(60, { 
+        clerkId: user?.id || undefined,
+        force: true
+      });
+
+      const currentPulsePlaces = pulsePlacesRef.current;
+      const placeLookup = new Map(
+        currentPulsePlaces.flatMap((place) => {
+          const keys = [place.location];
+          if (place.placeId) keys.push(place.placeId);
+          return keys.map((key) => [key, place] as const);
+        }),
       );
-    } catch (err) {
-      console.warn("Failed to fetch places map snapshot", err);
-      setLocations(fullCampusIndex);
-    }
-  }, [fullCampusIndex]);
+
+      return rawHotspots.map((hotspot) => {
+        let place = (hotspot.placeId ? placeLookup.get(hotspot.placeId) : null) || placeLookup.get(hotspot.locationName) || null;
+        if (!place && hotspot.coord) {
+          place = {
+            placeId: hotspot.placeId || `geo:${hotspot.id}`,
+            location: hotspot.locationName || "Location",
+            shortName: (hotspot.locationName || "Location").slice(0, 10),
+            percent_full: 0,
+            type: "General" as any,
+            is_live: true,
+            available_seats: null,
+            coord: hotspot.coord,
+            source: "pulse",
+          } as any;
+        }
+        return { ...hotspot, place };
+      });
+    },
+    enabled: activeLayer === 'Pulse' || !!pulsePlacesRef.current.length,
+    staleTime: 1000 * 30,
+    refetchInterval: 15000,
+  });
+  // isLoadingPulse is now handled by useQuery
+  // const [isLoadingPulse, setIsLoadingPulse] = useState(false);
+  const lastGlobalSearchQueryRef = useRef('');
+  const globalSearchRequestIdRef = useRef(0);
 
   // ── Schedule state ────────────────────────────────────────
   const [activeScheduleId, setActiveScheduleId] = useState<string | null>(null);
@@ -396,16 +451,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const [isPostingReview, setIsPostingReview] = useState(false);
   const [allReviewsModalVisible, setAllReviewsModalVisible] = useState(false);
   const [isFetchingReviews, setIsFetchingReviews] = useState(false);
-  const [hubRestaurants, setHubRestaurants] = useState<string[]>([]);
-  const [isFetchingDining, setIsFetchingDining] = useState(false);
-  const [diningMenuOptions, setDiningMenuOptions] = useState<string[]>([]);
-  const [activeDiningMenu, setActiveDiningMenu] = useState<string | null>(null);
-  const [activeDiningMealPeriod, setActiveDiningMealPeriod] =
-    useState<DiningMealPeriod>("lunch");
-  const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
-  const [selectedPlaceDetail, setSelectedPlaceDetail] = useState<any | null>(
-    null,
-  );
 
   // ── Recreation facility map ───────────────────────────────
   const recreationFacilityMap = useMemo(() => {
@@ -473,8 +518,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
     return mergeCampusLocations(
       locations,
       scheduleLocations as CampusLocation[],
+      dynamicSearchLocations,
     );
-  }, [locations, scheduleLocations]);
+  }, [dynamicSearchLocations, locations, scheduleLocations]);
 
   const pulsePlaces = useMemo(() => {
     return mergeCampusLocations(fullCampusIndex, locations);
@@ -486,12 +532,18 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   const filteredLocations = useMemo(() => {
     const browsableLocations = allMapLocations.filter((l) => !l.searchOnly);
-    if (activeLayer === "Pulse") return [];
+    if (activeLayer === "Pulse") {
+      return pulseHotspots
+        .map((h) => h.place)
+        .filter((p): p is CampusLocation => !!p);
+    }
     if (activeLayer === "Heatmap") return [];
     if (activeLayer === "Today") return scheduleLocations;
     if (activeLayer === "Dining")
       return browsableLocations.filter(
-        (l) => l.type === "Dining" || l.type === "Hub",
+        (l) =>
+          (l.type === "Dining" || l.type === "Hub") &&
+          !shouldHideFoodCourtLocationInBrowse(l, allMapLocations),
       );
     if (activeLayer === "Academic")
       return browsableLocations.filter(
@@ -503,7 +555,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           l.type === "Rec" || (l.type === "Hub" && l.location.includes("Rec")),
       );
     return browsableLocations.filter((l) => l.type === activeLayer);
-  }, [activeLayer, allMapLocations, scheduleLocations]);
+  }, [activeLayer, allMapLocations, scheduleLocations, pulseHotspots]);
 
   const sortedFilteredLocations = useMemo(() => {
     return [...filteredLocations].sort((a, b) => {
@@ -535,8 +587,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   const searchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
-    return searchCampusLocations(allMapLocations, searchQuery, 8);
-  }, [allMapLocations, searchQuery]);
+    return searchCampusLocations(allMapLocations, searchQuery, 10, {
+      referenceCoord: userCoord ?? null,
+    });
+  }, [allMapLocations, searchQuery, userCoord]);
 
   const busRouteSearchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
@@ -550,12 +604,80 @@ export function PlacesMapScreen({ route, navigation }: any) {
       .slice(0, 4);
   }, [busRoutes, searchQuery]);
 
+  useEffect(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (!normalizedQuery) {
+      globalSearchRequestIdRef.current += 1;
+      setGlobalSearchError(null);
+      setIsSearchingGlobal(false);
+      lastGlobalSearchQueryRef.current = '';
+      return;
+    }
+
+    if (
+      lastGlobalSearchQueryRef.current &&
+      lastGlobalSearchQueryRef.current !== normalizedQuery
+    ) {
+      globalSearchRequestIdRef.current += 1;
+      setGlobalSearchError(null);
+      setIsSearchingGlobal(false);
+    }
+  }, [searchQuery]);
+
   const busPulseAnim = useRef(new Animated.Value(1)).current;
 
-  const selectedLoc = useMemo(
-    () => allMapLocations.find((l) => getLocationSelectionId(l) === selectedId),
-    [allMapLocations, selectedId],
-  );
+  const {
+    selectedId,
+    setSelectedId,
+    selectedLoc,
+    selectedPlaceDetail,
+    foodCourtVenues,
+    isFetchingDining,
+    diningMenuOptions,
+    activeDiningMenu,
+    setActiveDiningMenu,
+    activeDiningMealPeriod,
+    setActiveDiningMealPeriod,
+    diningMenuPreview,
+    isPrimaryDiningHallSelection,
+    handleSelectLocation,
+  } = usePlacesSelection({
+    allMapLocations,
+    setActiveLayer,
+    onAfterSelectLocation: useCallback((loc: CampusLocation) => {
+      // Integration for Pulse layer: selecting a location from the list or search
+      // should trigger the corresponding hotspot sheet if it exists
+      if (loc.source === "pulse") {
+        const hotspot = pulseHotspots.find((h) => h.place?.location === loc.location || h.placeId === loc.placeId);
+        if (hotspot) {
+          setSelectedHotspotId(hotspot.id);
+        }
+      } else {
+        setSelectedHotspotId(null);
+      }
+      setSelectedStop(null);
+      setSelectedBus(null);
+      setIsSearchExpanded(false);
+      setSearchQuery("");
+      setShowSearchResults(false);
+      
+      // Center map on selected location
+      if (loc?.coord && mapRef.current) {
+        mapRef.current.animateCamera(
+          {
+            center: {
+              latitude: loc.coord.lat,
+              longitude: loc.coord.lng,
+            },
+            zoom: 16.6,
+            pitch: isMapTilted ? 55 : 0,
+            heading: 0,
+          },
+          { duration: 700 },
+        );
+      }
+    }, [isMapTilted]),
+  });
   const selectedHotspot = useMemo(
     () =>
       pulseHotspots.find((hotspot) => hotspot.id === selectedHotspotId) || null,
@@ -573,6 +695,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   }, [pulseHotspots]);
   const hottestHotspot = pulseHotspots[0] || null;
   const markerLocations = useMemo(() => {
+    if (activeLayer === "Pulse") return [];
     if (activeLayer === "Heatmap" || activeLayer === "Bus")
       return selectedLoc ? [selectedLoc] : [];
     const merged = new Map<string, CampusLocation>();
@@ -613,13 +736,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
       null
     );
   }, [recreationFacilityMap, selectedLoc, selectedPlaceDetail?.recreation]);
-
-  const isPrimaryDiningHallSelection = useMemo(() => {
-    const ref = (activeDiningMenu || selectedLoc?.location || "").toLowerCase();
-    return (
-      ref.includes("sbisa") || ref.includes("commons") || ref.includes("duncan")
-    );
-  }, [activeDiningMenu, selectedLoc?.location]);
 
   const stopTimetable = useMemo(() => {
     if (activeLayer !== "Bus" || !selectedRoute || busStops.length === 0)
@@ -737,6 +853,49 @@ export function PlacesMapScreen({ route, navigation }: any) {
   }, [activeLayer, busStops, busVehicles, selectedRoute, userCoord]);
 
   // ── Callbacks ─────────────────────────────────────────────
+  const runGlobalSearch = useCallback(
+    async (queryOverride?: string) => {
+      const normalizedQuery = (queryOverride ?? searchQuery).trim();
+      if (normalizedQuery.length < 2) return;
+
+      const requestId = globalSearchRequestIdRef.current + 1;
+      globalSearchRequestIdRef.current = requestId;
+      setIsSearchingGlobal(true);
+      setGlobalSearchError(null);
+      try {
+        const results = await searchGlobalPlaces(normalizedQuery, { limit: 6 });
+        if (requestId !== globalSearchRequestIdRef.current) return;
+        lastGlobalSearchQueryRef.current = normalizedQuery.toLowerCase();
+        setDynamicSearchLocations((current) => mergeCampusLocations(current, results));
+        if (results.length === 0) {
+          setGlobalSearchError(`No matches found for "${normalizedQuery}".`);
+        }
+      } catch (error: any) {
+        if (requestId !== globalSearchRequestIdRef.current) return;
+        setGlobalSearchError(
+          error?.message || "Search is unavailable right now.",
+        );
+      } finally {
+        if (requestId === globalSearchRequestIdRef.current) {
+          setIsSearchingGlobal(false);
+        }
+      }
+    },
+    [searchQuery],
+  );
+
+  useEffect(() => {
+    const trimmed = searchQuery.trim();
+    if (trimmed.length < 2) return;
+    if (lastGlobalSearchQueryRef.current === trimmed.toLowerCase()) return;
+
+    const timeoutId = setTimeout(() => {
+      runGlobalSearch(trimmed);
+    }, 450);
+
+    return () => clearTimeout(timeoutId);
+  }, [runGlobalSearch, searchQuery]);
+
   const getPlaceExternalLink = useCallback(
     (loc: CampusLocation) => {
       const rec =
@@ -750,6 +909,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
         return { label: "Library Site", url: "https://library.tamu.edu/" };
       if (loc.type === "Parking")
         return { label: "Parking Guide", url: PARKING_INFO_URL };
+      if (loc.source === "global") {
+        return {
+          label: "Open in Maps",
+          url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+            loc.address ? `${loc.location}, ${loc.address}` : loc.location,
+          )}`,
+        };
+      }
       return {
         label: "Open in Maps",
         url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${loc.location} Texas A&M University`)}`,
@@ -759,12 +926,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
   );
 
   const openFullMenu = useCallback(
-    (locationName: string) => {
+    (locationName: string, mealPeriod?: DiningMealPeriod) => {
       const rootNav =
         navigation.getParent?.("RootStack") || navigation.getParent?.();
       const params = {
         location: locationName,
-        mealPeriod: getDiningMealPeriodForLocation(locationName),
+        mealPeriod: mealPeriod || getDiningMealPeriodForLocation(locationName),
         title: `${locationName} Menu`,
         sourceHint: "cached",
       };
@@ -827,11 +994,26 @@ export function PlacesMapScreen({ route, navigation }: any) {
   ]);
 
   const openNavigationToLocation = useCallback(
-    (loc: CampusLocation, mode: "walk" | "bus" = "walk") => {
+    (loc: CampusLocation, mode: "walk" | "drive" | "bus" = "walk") => {
       const rootNav =
         navigation.getParent?.("RootStack") || navigation.getParent?.();
+      const distanceFromUser = userCoord
+        ? haversineDistanceMeters(
+            userCoord.latitude,
+            userCoord.longitude,
+            loc.coord.lat,
+            loc.coord.lng,
+          )
+        : null;
+      const resolvedMode =
+        mode === "walk" &&
+        loc.source === "global" &&
+        distanceFromUser != null &&
+        distanceFromUser > 5000
+          ? "drive"
+          : mode;
       const params = {
-        initialTravelMode: mode,
+        initialTravelMode: resolvedMode,
         initialDestination: {
           id: loc.location,
           name: loc.location,
@@ -843,7 +1025,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       };
       (rootNav?.navigate || navigation.navigate)("CampusNavigation", params);
     },
-    [navigation],
+    [navigation, userCoord],
   );
 
   const fetchReviews = useCallback(async (placeId: string, limit = 5) => {
@@ -858,7 +1040,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setIsFetchingReviews(false);
     }
   }, []);
-
   const handlePostReview = useCallback(async () => {
     if (isGuest) {
       promptGuestLogin(
@@ -892,128 +1073,52 @@ export function PlacesMapScreen({ route, navigation }: any) {
     selectedLoc,
   ]);
 
-  const loadBestDiningPreview = useCallback(
-    async (locationName: string, preferredMeal: DiningMealPeriod) => {
-      const mealOptions = getDiningMealOptionsForLocation(locationName);
-      const firstMeal =
-        mealOptions.find((m) => m === preferredMeal) ||
-        mealOptions[0] ||
-        preferredMeal;
-      const orderedMeals: DiningMealPeriod[] = [
-        firstMeal,
-        ...mealOptions.filter((m) => m !== firstMeal),
-      ];
-      let fallbackPreview: any = null,
-        fallbackMeal = firstMeal;
-      for (const meal of orderedMeals) {
-        const preview = await fetchDiningFullMenuCached({
-          location: locationName,
-          mealPeriod: meal,
-        }).catch(() => null);
-        if (!fallbackPreview) {
-          fallbackPreview = preview;
-          fallbackMeal = meal;
-        }
-        if (preview?.success && preview?.categories?.length)
-          return { preview, meal };
-      }
-      return { preview: fallbackPreview, meal: fallbackMeal };
-    },
-    [],
-  );
-
-  const fetchDiningData = useCallback(async (loc: CampusLocation) => {
-    setIsFetchingDining(true);
-    try {
-      if (!isDiningHallMenuLocation(loc.location)) {
-        setHubRestaurants([]);
-        setDiningMenuOptions([]);
-        setActiveDiningMenu(null);
-        setActiveDiningMealPeriod("lunch");
-        setDiningMenuPreview(null);
+  const handleGetDirections = useCallback(
+    (item: ScheduleMeetingEntry | string) => {
+      const buildingName = typeof item === "string" ? item : (item.building || item.locationLabel);
+      
+      // If we have an entry with coordinates, use them directly for navigation
+      if (typeof item === "object" && item.lat && item.lng) {
+        const syntheticLoc: CampusLocation = {
+          location: item.locationLabel || item.name || "Target",
+          shortName: (item.name || item.locationLabel || "Target").slice(0, 12),
+          coord: { lat: item.lat, lng: item.lng },
+          type: "General",
+          percent_full: 0,
+          is_live: false,
+          available_seats: null,
+          source: "directory",
+        };
+        openNavigationToLocation(syntheticLoc);
+        setIsTodayExpanded(false);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         return;
       }
 
-      const menuCandidates = getDiningMenuCandidates(loc.location, []);
-      setHubRestaurants([]);
-      setDiningMenuOptions(menuCandidates);
-      const nextMenu = loc.location;
-      setActiveDiningMenu(nextMenu);
-      setActiveDiningMealPeriod(
-        getDiningMealPeriodForLocation(nextMenu) as DiningMealPeriod,
-      );
-      setDiningMenuPreview(null);
-    } catch (e) {
-      console.warn("Failed to fetch dining data", e);
-    } finally {
-      setIsFetchingDining(false);
-    }
-  }, []);
-
-  const handleSelectLocation = useCallback((loc: CampusLocation) => {
-    const nextLayer =
-      loc.type === "Dining" || loc.type === "Hub"
-        ? "Dining"
-        : loc.type === "Rec"
-          ? "Rec"
-          : loc.type === "Library"
-            ? "Library"
-            : loc.type === "Parking"
-              ? "Parking"
-              : "Academic";
-    setActiveLayer(nextLayer);
-    setSelectedHotspotId(null);
-    setSelectedId(getLocationSelectionId(loc));
-    setSelectedStop(null);
-    setSelectedBus(null);
-    setIsSearchExpanded(false);
-    setSearchQuery("");
-    setShowSearchResults(false);
-  }, []);
-
-  const handleGetDirections = useCallback(
-    (building: string) => {
-      // Find building in directory (e.g. "MSC", "ZEC")
-      const code = building.split(/\s+/)[0]?.toUpperCase();
-      const loc = locations.find(
-        (l) =>
-          l.location.toUpperCase() === code ||
-          (l.shortName && l.shortName.toUpperCase().includes(code)),
-      );
-      if (loc) {
-        setSelectedId(getLocationSelectionId(loc));
-        setIsTodayExpanded(false);
-        // Center map
-        mapRef.current?.animateToRegion(
-          {
-            latitude: loc.coord.lat - 0.0015,
-            longitude: loc.coord.lng,
-            latitudeDelta: 0.005,
-            longitudeDelta: 0.005,
-          },
-          600,
+      const allSearchable = [...fullCampusIndex, ...scheduleLocations];
+      const loc = allSearchable.find((l) => {
+        const canonical = getCanonicalLocationName(l.location);
+        const searchCanon = getCanonicalLocationName(buildingName);
+        return (
+          canonical === searchCanon ||
+          l.shortName === buildingName ||
+          l.location === buildingName
         );
+      });
+
+      if (loc) {
+        openNavigationToLocation(loc);
+        setIsTodayExpanded(false);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } else {
+        // Fallback to search query
+        setSearchQuery(buildingName);
+        setIsSearchExpanded(true);
+        setShowSearchResults(true);
       }
     },
-    [locations],
+    [fullCampusIndex, scheduleLocations, openNavigationToLocation]
   );
-
-  const getLayerForPlace = useCallback((loc: CampusLocation) => {
-    if (loc.type === "Dining" || loc.type === "Hub") return "Dining";
-    if (loc.type === "Rec") return "Rec";
-    if (loc.type === "Library") return "Library";
-    if (loc.type === "Parking") return "Parking";
-    if (
-      loc.type === "Academic" ||
-      loc.type === "Landmark" ||
-      loc.type === "Athletics" ||
-      loc.type === "Housing" ||
-      loc.type === "General"
-    ) {
-      return "Academic";
-    }
-    return "Academic";
-  }, []);
 
   const handleSelectHotspot = useCallback(
     (hotspot: CampusHotspot) => {
@@ -1041,87 +1146,103 @@ export function PlacesMapScreen({ route, navigation }: any) {
     [isMapTilted],
   );
 
-  const openHotspotPlace = useCallback(
-    (hotspot: CampusHotspot) => {
-      if (!hotspot.place) {
-        if (mapRef.current) {
-          mapRef.current.animateCamera(
-            {
-              center: {
-                latitude: hotspot.coord.lat,
-                longitude: hotspot.coord.lng,
-              },
-              zoom: 16.4,
-              pitch: isMapTilted ? 55 : 0,
-              heading: 0,
-            },
-            { duration: 650 },
-          );
-        }
-        return;
-      }
-
-      setActiveLayer(getLayerForPlace(hotspot.place));
-      handleSelectLocation(hotspot.place);
-    },
-    [getLayerForPlace, handleSelectLocation, isMapTilted],
-  );
-
   const openHotspotItem = useCallback(
-    async (hotspot: CampusHotspot, item: CampusHotspot["items"][number]) => {
+    async (_hotspot: CampusHotspot, item: CampusHotspot["items"][number]) => {
       if (item.source === "event" && item.link) {
         try {
           await Linking.openURL(item.link);
-          return;
         } catch (error) {
           console.warn("Failed to open event link", error);
         }
       }
-
-      openHotspotPlace(hotspot);
     },
-    [openHotspotPlace],
+    [],
   );
-
-  const fetchPulseHotspots = useCallback(async () => {
-    if (!pulseHotspotsRef.current.length) {
-      setIsLoadingPulse(true);
+ 
+  const toggleHotspotVote = useCallback(async (hotspotId: string, itemId: string, targetVote: number) => {
+    if (isGuest) {
+      promptGuestLogin(navigation);
+      return;
     }
+
+    const prevHotspots = pulseHotspots;
+    const hotspot = prevHotspots.find(h => h.id === hotspotId);
+    if (!hotspot) return;
+    
+    const item = hotspot.items?.find((i) => i.id === itemId);
+    if (!item) return;
+
+    // Toggle-to-undo logic
+    const finalVote = item.userVote === targetVote ? 0 : targetVote;
+    const currentVote = item.userVote || 0;
+    const scoreDelta = finalVote - currentVote;
+
+    // Dispatch real vote to backend using streamFeed's toggleVote mechanism
     try {
-      const rawHotspots = await fetchCampusPulseMap(12);
-      const currentPulsePlaces = pulsePlacesRef.current;
-      const placeLookup = new Map(
-        currentPulsePlaces.flatMap((place) => {
-          const keys = [place.location];
-          if (place.placeId) keys.push(place.placeId);
-          return keys.map((key) => [key, place] as const);
-        }),
-      );
-      const hotspots = rawHotspots.map((hotspot) => ({
-        ...hotspot,
-        place:
-          (hotspot.placeId ? placeLookup.get(hotspot.placeId) : null) ||
-          placeLookup.get(hotspot.locationName) ||
-          null,
-      }));
-
-      pulseHotspotsRef.current = hotspots;
-      setPulseHotspots(hotspots);
-      const currentSelectedId = selectedHotspotIdRef.current;
-      if (
-        currentSelectedId &&
-        !hotspots.some((hotspot) => hotspot.id === currentSelectedId)
-      ) {
-        setSelectedHotspotId(null);
-      }
-    } catch (error) {
-      console.warn("Failed to build pulse hotspots", error);
-      if (!selectedHotspotIdRef.current) setPulseHotspots([]);
-    } finally {
-      setIsLoadingPulse(false);
+      await toggleVote(itemId, finalVote === 1 ? 'upvote' : (finalVote === -1 ? 'downvote' : 'none'));
+    } catch (e) {
+      console.error("Failed to commit final item vote", e);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
+    // Process frontend cache instantly
+    queryClient.setQueryData(['campus-pulse', user?.id], (current: CampusHotspot[] | undefined) => {
+      if (!current) return current;
+      return current.map(h => {
+        if (h.id === hotspotId) {
+          const updatedItems = (h.items || []).map(i => {
+            if (i.id === itemId) {
+              return {
+                ...i,
+                itemScore: (i.itemScore || 0) + scoreDelta,
+                userVote: finalVote,
+              };
+            }
+            return i;
+          });
+          
+          return {
+            ...h,
+            items: updatedItems,
+            score: (h.score || 0) + scoreDelta,
+          };
+        }
+        return h;
+      });
+    });
+
+    if (finalVote !== 0) {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    
+    await voteHotspotItem(itemId, finalVote);
+  }, [isGuest, navigation, pulseHotspots, queryClient, user?.id]);
+
+
+  const fetchPulseHotspots = useCallback(async (options: { force?: boolean } = {}) => {
+    if (options.force) {
+      invalidateCampusPulseCache();
+    }
+    await refetchPulse();
+  }, [refetchPulse]);
+
+
+  const hasSeenPulseLayer = useRef(false);
+  useEffect(() => {
+    if (activeLayer !== "Pulse") return;
+    if (!hasSeenPulseLayer.current) {
+      hasSeenPulseLayer.current = true;
+      return;
+    }
+    fetchPulseHotspots({ force: true });
+  }, [activeLayer, fetchPulseHotspots]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (activeLayer !== "Pulse") return undefined;
+      fetchPulseHotspots({ force: true });
+      return undefined;
+    }, [activeLayer, fetchPulseHotspots]),
+  );
 
   const centerOnUserLocation = useCallback(async () => {
     try {
@@ -1192,91 +1313,201 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setAllRoutePatternsById(nextPatterns);
     const vehicles = await transitService.getVehicles();
     setBusVehicles(vehicles || []);
+
+    const routeCoords = Object.values(nextPatterns).flatMap((pattern: any) =>
+      Array.isArray(pattern?.points)
+        ? pattern.points.map((point: any) => ({
+            latitude: point.latitude,
+            longitude: point.longitude,
+          }))
+        : [],
+    );
+    const vehicleCoords = (vehicles || [])
+      .map((bus: any) => ({
+        latitude: bus.Latitude,
+        longitude: bus.Longitude,
+      }))
+      .filter(
+        (coord: { latitude?: number; longitude?: number }) =>
+          typeof coord.latitude === "number" && typeof coord.longitude === "number",
+      ) as { latitude: number; longitude: number }[];
+
+    const fitCoords = [...routeCoords, ...vehicleCoords];
+    if (mapRef.current && fitCoords.length > 1) {
+      mapRef.current.fitToCoordinates(fitCoords, {
+        edgePadding: { top: 180, right: 50, bottom: 220, left: 50 },
+        animated: true,
+      });
+    }
   }, []);
+
+  const fitMapToActiveOverview = useCallback(() => {
+    if (!mapRef.current) return;
+
+    const fitToCoords = (
+      coords: { latitude: number; longitude: number }[],
+      edgePadding = { top: 180, right: 48, bottom: 220, left: 48 },
+    ) => {
+      if (coords.length === 0) return;
+      if (coords.length === 1) {
+        mapRef.current.animateToRegion(
+          {
+            latitude: coords[0].latitude - 0.0018,
+            longitude: coords[0].longitude,
+            latitudeDelta: 0.008,
+            longitudeDelta: 0.008,
+          },
+          650,
+        );
+        return;
+      }
+      mapRef.current.fitToCoordinates(coords, {
+        edgePadding,
+        animated: true,
+      });
+    };
+
+    if (activeLayer === "Bus") {
+      if (isAllBusRoutesSelected) {
+        const routeCoords = Object.values(allRoutePatternsById).flatMap((pattern: any) =>
+          Array.isArray(pattern?.points)
+            ? pattern.points.map((point: any) => ({
+                latitude: point.latitude,
+                longitude: point.longitude,
+              }))
+            : [],
+        );
+        const vehicleCoords = busVehicles
+          .map((bus: any) => ({
+            latitude: bus.Latitude,
+            longitude: bus.Longitude,
+          }))
+          .filter(
+            (coord: { latitude?: number; longitude?: number }) =>
+              typeof coord.latitude === "number" && typeof coord.longitude === "number",
+          ) as { latitude: number; longitude: number }[];
+        fitToCoords([...routeCoords, ...vehicleCoords]);
+        return;
+      }
+
+      if (routePatterns.length > 0) {
+        fitToCoords(
+          routePatterns.map((point: any) => ({
+            latitude: point.latitude,
+            longitude: point.longitude,
+          })),
+        );
+        return;
+      }
+
+      if (busStops.length > 0) {
+        fitToCoords(
+          busStops.map((stop: any) => ({
+            latitude: stop.Latitude,
+            longitude: stop.Longitude,
+          })),
+        );
+      }
+      return;
+    }
+
+    if (activeLayer === "Pulse") {
+      const allPulseCoords = pulseHotspots.map((hotspot) => ({
+        latitude: hotspot.coord.lat,
+        longitude: hotspot.coord.lng,
+      }));
+
+      if (userCoord) {
+        const distanceFromCampus = haversineDistanceMeters(
+          userCoord.latitude,
+          userCoord.longitude,
+          TAMU_CENTER.latitude,
+          TAMU_CENTER.longitude,
+        );
+
+        // When the user is far from College Station, prioritize nearby hotspots
+        // so off-campus pings remain discoverable instead of being dwarfed by the campus cluster.
+        if (distanceFromCampus > 40_000) {
+          const nearbyPulseCoords = pulseHotspots
+            .map((hotspot) => ({
+              hotspot,
+              distanceMeters: haversineDistanceMeters(
+                userCoord.latitude,
+                userCoord.longitude,
+                hotspot.coord.lat,
+                hotspot.coord.lng,
+              ),
+            }))
+            .filter((entry) => entry.distanceMeters <= 120_000)
+            .sort((a, b) => a.distanceMeters - b.distanceMeters)
+            .slice(0, 10)
+            .map((entry) => ({
+              latitude: entry.hotspot.coord.lat,
+              longitude: entry.hotspot.coord.lng,
+            }));
+
+          if (nearbyPulseCoords.length > 0) {
+            fitToCoords(nearbyPulseCoords, {
+              top: 250,
+              right: 120,
+              bottom: 350,
+              left: 120,
+            });
+            return;
+          }
+        }
+      }
+
+      fitToCoords(
+        allPulseCoords,
+        { top: 250, right: 120, bottom: 350, left: 120 },
+      );
+      return;
+    }
+
+    if (activeLayer === "Today") {
+      fitToCoords(
+        sortedFilteredLocations.map((loc) => ({
+          latitude: loc.coord.lat,
+          longitude: loc.coord.lng,
+        })),
+        { top: 210, right: 40, bottom: 250, left: 40 },
+      );
+      return;
+    }
+
+    fitToCoords(
+      sortedFilteredLocations.slice(0, 18).map((loc) => ({
+        latitude: loc.coord.lat,
+        longitude: loc.coord.lng,
+      })),
+      { top: 210, right: 48, bottom: 250, left: 48 },
+    );
+  }, [
+    activeLayer,
+    allRoutePatternsById,
+    busStops,
+    busVehicles,
+    isAllBusRoutesSelected,
+    pulseHotspots,
+    routePatterns,
+    sortedFilteredLocations,
+    userCoord,
+  ]);
 
   // ── Auto-zoom and fitting logic ───────────────────────────
   useEffect(() => {
     if (!mapRef.current) return;
     if (selectedId || (activeLayer === "Pulse" && selectedHotspotId)) return;
-
-    let coords: { latitude: number; longitude: number }[] = [];
-
-    if (activeLayer === "Bus") {
-      // Intentionally bypassed: We no longer auto-fit based on the live vehicle positions or routes globally
-      // every single time the timer fires because it aggressively resets user zoom.
-      // Route fittings are handled manually on route selection instead inside handleSelectBusRoute!
-    } else if (activeLayer === "Pulse") {
-      // Bypassed: Let the map stay at the campus-wide TAMU_CENTER initialRegion when on the Pulse tab.
-      // Auto-zooming to hotspots bounds the camera incorrectly and breaks the intended overview.
-    } else if (activeLayer === "Today") {
-      // Only fit when there are multiple scheduled locations to show.
-      coords = sortedFilteredLocations
-        .filter((loc) => loc.coord)
-        .map((loc) => ({ latitude: loc.coord.lat, longitude: loc.coord.lng }));
-    } else {
-      // General map fit for other layers (Dining, Parking, Places)
-      if (filteredLocations.length > 0 && filteredLocations.length < 50) {
-        // Only fit to filtered list if it's manageable.
-        coords = filteredLocations
-          .filter((loc) => loc.coord)
-          .map((loc) => ({
-            latitude: loc.coord.lat,
-            longitude: loc.coord.lng,
-          }));
-      }
-    }
-
-    if (coords.length > 0) {
-      const { width, height } = Dimensions.get("window");
-      const isToday = activeLayer === "Today";
-      const isPulse = activeLayer === "Pulse";
-
-      if (isToday && coords.length < 2) {
-        return;
-      }
-
-      // Dynamic padding to ensure data is centered in the visible ~65% of the viewport
-      // Dynamic padding to ensure data is centered in the visible area below the Today box
-      // Today: Scale with screen height (roughly 58% on pro phones, less on smaller)
-      // pins have height (40px) and we want 20px margin.
-      const topPadding = isToday
-        ? Math.max(80, Math.min(height * 0.58, 540) - 200)
-        : isPulse
-          ? 250
-          : 120;
-      const bottomPadding = isPulse ? 220 : 120;
-      const sidePadding = isToday ? 20 : width * 0.15;
-
-      // Force 2D view (0 pitch) for Today to ensure padding logic is pixel-accurate
-      if (isToday && isMapTilted) {
-        setIsMapTilted(false);
-        mapRef.current.animateCamera(
-          { pitch: 0, heading: 0 },
-          { duration: 400 },
-        );
-      }
-
-      mapRef.current.fitToCoordinates(coords, {
-        edgePadding: {
-          top: topPadding,
-          right: sidePadding,
-          bottom: bottomPadding,
-          left: sidePadding,
-        },
-        animated: true,
-      });
-    }
+    fitMapToActiveOverview();
   }, [
     activeLayer,
-    filteredLocations,
-    isMapTilted,
+    fitMapToActiveOverview,
     busVehicles,
     routePatterns,
     selectedId,
     selectedHotspotId,
-    userCoord,
     isAllBusRoutesSelected,
-    selectedRoute,
     pulseHotspots,
   ]);
 
@@ -1400,7 +1631,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
         );
         return;
       }
-      setSelectedBus(nearest.bus);
       const eta = Math.max(1, Math.round(nearest.distanceMeters / 220));
       const label = nearest.bus.RouteShortName
         ? `Route ${nearest.bus.RouteShortName}`
@@ -1424,8 +1654,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
       if (sLat != null && sLng != null && mapRef.current) {
         mapRef.current.animateCamera(
           {
-            center: { latitude: sLat - 0.0018, longitude: sLng },
+            center: { latitude: sLat - 0.00075, longitude: sLng },
             zoom: 16.5,
+            pitch: isMapTilted ? 55 : 0,
+            heading: 0,
           },
           { duration: 600 },
         );
@@ -1433,7 +1665,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
       resolveNearestBusForStop(stop, busVehicles);
     },
-    [busVehicles, mapRef, resolveNearestBusForStop],
+    [busVehicles, isMapTilted, mapRef, resolveNearestBusForStop],
   );
 
   // ── Effects ───────────────────────────────────────────────
@@ -1519,6 +1751,32 @@ export function PlacesMapScreen({ route, navigation }: any) {
   }, [allMapLocations, pendingInitialLocation]);
 
   useEffect(() => {
+    if (!pendingInitialLocation || activeLayer !== "Pulse") return;
+    const targetName = getCanonicalLocationName(pendingInitialLocation);
+    const hotspotMatch = pulseHotspots.find(
+      (hotspot) => getCanonicalLocationName(hotspot.locationName) === targetName,
+    );
+    if (!hotspotMatch) return;
+
+    setSelectedHotspotId(hotspotMatch.id);
+    setPendingInitialLocation(null);
+
+    if (!mapRef.current) return;
+    mapRef.current.animateCamera(
+      {
+        center: {
+          latitude: hotspotMatch.coord.lat,
+          longitude: hotspotMatch.coord.lng,
+        },
+        zoom: 14.5,
+        pitch: isMapTilted ? 55 : 0,
+        heading: 0,
+      },
+      { duration: 700 },
+    );
+  }, [activeLayer, isMapTilted, pendingInitialLocation, pulseHotspots]);
+
+  useEffect(() => {
     if (activeLayer !== "Pulse" && selectedHotspotId) {
       setSelectedHotspotId(null);
     }
@@ -1544,14 +1802,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
     const task = InteractionManager.runAfterInteractions(() => {
       hasFetchedInit.current = true;
       Promise.allSettled([
-        fetchData(),
+        refreshLocations(),
         fetchPulseHotspots(),
         Promise.resolve(refreshSchedules()),
       ]).catch(() => {});
     });
     return () => task.cancel();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchPulseHotspots, refreshLocations, refreshSchedules]);
 
   useEffect(() => {
     if (activeLayer !== "Pulse") return;
@@ -1709,36 +1966,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
       fetchReviews(selectedReviewId);
     } else {
       setStreamReviews([]);
-      setHubRestaurants([]);
-      setDiningMenuOptions([]);
-      setActiveDiningMenu(null);
-      setActiveDiningMealPeriod("lunch");
-      setDiningMenuPreview(null);
-      setSelectedPlaceDetail(null);
     }
   }, [selectedId, selectedLoc, fetchReviews]);
-
-  useEffect(() => {
-    if (!selectedLoc) {
-      setSelectedPlaceDetail(null);
-      return;
-    }
-    let cancelled = false;
-    const identifier = selectedLoc.placeId || selectedLoc.location;
-    fetchCampusPlaceDetail(identifier)
-      .then((detail) => {
-        if (!cancelled) setSelectedPlaceDetail(detail);
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setSelectedPlaceDetail(null);
-          console.warn("Failed to fetch place detail snapshot", error);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedLoc?.location, selectedLoc?.placeId]);
 
   useEffect(() => {
     if (!selectedLoc || !mapRef.current) return;
@@ -1753,37 +1982,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
     );
   }, [selectedLoc?.location, selectedLoc?.coord.lat, selectedLoc?.coord.lng]);
 
-  useEffect(() => {
-    if (!selectedLoc || !isDiningHallMenuLocation(selectedLoc.location)) {
-      setHubRestaurants([]);
-      setDiningMenuOptions([]);
-      setActiveDiningMenu(null);
-      setDiningMenuPreview(null);
-      return;
-    }
-    fetchDiningData(selectedLoc);
-  }, [selectedLoc, fetchDiningData]);
-
-  useEffect(() => {
-    if (!activeDiningMenu) return;
-    let cancelled = false;
-    setIsFetchingDining(true);
-    loadBestDiningPreview(activeDiningMenu, activeDiningMealPeriod)
-      .then(({ preview, meal }) => {
-        if (!cancelled) {
-          if (meal !== activeDiningMealPeriod) setActiveDiningMealPeriod(meal);
-          setDiningMenuPreview(preview);
-        }
-      })
-      .catch((e) => console.warn("Failed to load dining menu preview", e))
-      .finally(() => {
-        if (!cancelled) setIsFetchingDining(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeDiningMealPeriod, activeDiningMenu, loadBestDiningPreview]);
-
   // Connect native social client for compatibility across feed surfaces
   useEffect(() => {
     if (!isGuest && user?.id) {
@@ -1797,31 +1995,46 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <MapView
-        ref={mapRef}
+      <MapViewRNM
+        ref={cameraRef}
         style={StyleSheet.absoluteFillObject}
-        initialRegion={TAMU_CENTER}
+        initialRegion={defaultCamera}
         showsUserLocation
-        showsMyLocationButton={false}
         showsCompass={false}
-        toolbarEnabled={false}
+        rotateEnabled={false}
+        pitchEnabled
+        onPress={(e) => {
+          // Only clear if we actually tapped the map background, not an annotation
+          if (e.nativeEvent.action !== 'marker-press') {
+            const hadSelection =
+              !!selectedId || !!selectedHotspotId || !!selectedStop || !!selectedBus;
+            setSelectedId(null);
+            setSelectedHotspotId(null);
+            setSelectedStop(null);
+            setSelectedBus(null);
+            setNearestBusInfo(null);
+            if (hadSelection) {
+              requestAnimationFrame(() => {
+                fitMapToActiveOverview();
+              });
+            }
+          }
+        }}
       >
-        {/* Heatmap circles */}
+
         {activeLayer === "Heatmap" &&
           CAMPUS_ZONES.map((zone) => {
             const density = getZoneDensity(zone);
             return (
-              <Circle
+              <MapLibreCircleOverlay
                 key={zone.name}
+                id={`heatmap-${zone.name}`}
                 center={{ latitude: zone.lat, longitude: zone.lng }}
-                radius={zone.radius}
+                radiusMeters={zone.radius}
                 fillColor={
-                  density >= 70
-                    ? "rgba(255,59,48,0.22)"
-                    : density >= 40
-                      ? "rgba(255,149,0,0.18)"
-                      : "rgba(50,215,75,0.14)"
+                  density >= 70 ? "#FF3B30" : density >= 40 ? "#FF9500" : "#32D74B"
                 }
+                fillOpacity={density >= 70 ? 0.22 : density >= 40 ? 0.18 : 0.14}
                 strokeColor={
                   density >= 70
                     ? "rgba(255,59,48,0.5)"
@@ -1836,20 +2049,21 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
         {activeLayer === "Pulse" &&
           pulseHotspots.map((hotspot) => (
-            <Circle
+            <MapLibreCircleOverlay
               key={`pulse-radius-${hotspot.id}`}
+              id={`pulse-radius-${hotspot.id}`}
               center={{
                 latitude: hotspot.coord.lat,
                 longitude: hotspot.coord.lng,
               }}
-              radius={hotspot.radius}
-              fillColor={`${hotspot.pulseColor}22`}
+              radiusMeters={(hotspot.radius || 100) * (1 + (hotspot.score || 0) * 0.15) * 0.05}
+              fillColor={hotspot.pulseColor}
+              fillOpacity={0.13}
               strokeColor={`${hotspot.pulseColor}66`}
               strokeWidth={1.5}
             />
           ))}
 
-        {/* Bus route polylines */}
         {activeLayer === "Bus" &&
           !isAllBusRoutesSelected &&
           (routePaths && routePaths.length > 0
@@ -1860,24 +2074,25 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     .toLowerCase()
                     .includes((selectedDirection || "All").toLowerCase());
                 return (path.points || []).length > 0 ? (
-                  <Polyline
+                  <MapLibrePolylineOverlay
                     key={`path-${idx}`}
+                    id={`path-${idx}`}
                     coordinates={path.points}
-                    strokeColor={
+                    color={
                       isSelected
                         ? getNeonColor(selectedRoute?.Color || "#007AFF")
                         : getNeonColor(selectedRoute?.Color || "#007AFF") + "40"
                     }
-                    strokeWidth={isSelected ? 4 : 2}
-                    zIndex={isSelected ? 10 : 5}
+                    width={isSelected ? 4 : 2}
                   />
                 ) : null;
               })
             : routePatterns.length > 0 && (
-                <Polyline
+                <MapLibrePolylineOverlay
+                  id="bus-route-pattern"
                   coordinates={routePatterns}
-                  strokeColor={getNeonColor(selectedRoute?.Color || "#007AFF")}
-                  strokeWidth={4}
+                  color={getNeonColor(selectedRoute?.Color || "#007AFF")}
+                  width={4}
                 />
               ))}
         {activeLayer === "Bus" &&
@@ -1885,16 +2100,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
           Object.entries(allRoutePatternsById).map(([routeKey, pattern]) => {
             const route = busRoutes.find((r) => r.Key === routeKey);
             return pattern?.points?.length > 0 ? (
-              <Polyline
+              <MapLibrePolylineOverlay
                 key={routeKey}
+                id={`all-route-${routeKey}`}
                 coordinates={pattern.points}
-                strokeColor={getNeonColor(route?.Color || "#007AFF")}
-                strokeWidth={4}
+                color={getNeonColor(route?.Color || "#007AFF")}
+                width={4}
               />
             ) : null;
           })}
 
-        {/* Bus stops */}
         {activeLayer === "Bus" &&
           busStops.map((stop) => {
             const sLat = stop.Latitude !== undefined ? stop.Latitude : stop.lat;
@@ -1911,15 +2126,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 .includes((selectedDirection || "All").toLowerCase());
 
             return (
-              <Marker
+              <MapLibreMarker
                 key={`stop-${stop.StopCode || stop.Name || sLat}`}
+                id={`stop-${stop.StopCode || stop.Name || sLat}`}
                 coordinate={{
                   latitude: sLat,
                   longitude: sLng,
                 }}
                 onPress={() => handleStopPress(stop)}
                 anchor={{ x: 0.5, y: 0.5 }}
-                zIndex={stopSelected ? 50 : 10}
               >
                 <View
                   style={[
@@ -1929,14 +2144,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 >
                   <View style={styles.busStopMarkerInner} />
                 </View>
-              </Marker>
+              </MapLibreMarker>
             );
           })}
 
-        {/* Bus vehicles */}
         {activeLayer === "Bus" &&
           !isAllBusRoutesSelected &&
-          busVehicles.map((bus, i) => {
+          busVehicles.map((bus) => {
             const isTrackedBus =
               selectedBus?.Key && bus.Key
                 ? selectedBus.Key === bus.Key
@@ -1952,12 +2166,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
               selectedRoute?.Color ||
               "#007AFF";
             const heading = bus.heading || bus.Heading || 0;
-            const busSpeedMs = bus.Speed || bus.speed || 0;
-            const busSpeedMph = Math.round(busSpeedMs * 2.23694); // Convert m/s to mph if it is in m/s, or just leave it. Assuming it's some raw unit. Let's just say Math.round(busSpeedMs).
             const busDir =
               bus.direction || bus.DirectionName || "Unknown Direction";
 
-            // Determine opacity based on selectedDirection
             const matchesDirection =
               selectedDirection === "All" ||
               (busDir || "")
@@ -1965,10 +2176,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 .includes((selectedDirection || "All").toLowerCase());
             const opacity = matchesDirection ? (isTrackedBus ? 1 : 0.9) : 0.3;
 
-            const hasDash = routeShortName.includes("-");
             return (
-              <Marker
+              <MapLibreMarker
                 key={`bus-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`}
+                id={`bus-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`}
                 coordinate={{
                   latitude: bus.Latitude || bus.lat,
                   longitude: bus.Longitude || bus.lng,
@@ -1984,19 +2195,20 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   if (bLat != null && bLng != null && mapRef.current) {
                     mapRef.current.animateCamera(
                       {
-                        center: { latitude: bLat - 0.0018, longitude: bLng },
+                        center: { latitude: bLat - 0.00075, longitude: bLng },
                         zoom: 16.5,
+                        pitch: isMapTilted ? 55 : 0,
+                        heading: 0,
                       },
                       { duration: 600 },
                     );
                   }
                 }}
                 anchor={{ x: 0.5, y: 0.5 }}
-                zIndex={isTrackedBus ? 501 : 500}
               >
                 <View
                   style={{
-                    opacity: opacity,
+                    opacity,
                     alignItems: "center",
                     justifyContent: "center",
                     transform: [{ rotate: `${heading}deg` }],
@@ -2006,7 +2218,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     shadowOffset: { width: 0, height: 2 },
                   }}
                 >
-                  {/* Pointer / Triangle facing Up directly toward the heading direction */}
                   <View
                     style={{
                       width: 0,
@@ -2022,7 +2233,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     }}
                   />
 
-                  {/* Core Bubble with shadow & board */}
                   <View
                     style={{
                       width: 32,
@@ -2036,7 +2246,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
                       zIndex: 1,
                     }}
                   >
-                    {/* Bus Icon from Lucide - reversed rotation to keep it upright */}
                     <View style={{ transform: [{ rotate: `-${heading}deg` }] }}>
                       <Bus
                         size={16}
@@ -2045,33 +2254,32 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     </View>
                   </View>
                 </View>
-              </Marker>
+              </MapLibreMarker>
             );
           })}
 
-        {/* Walking Route Polyline */}
         {activeLayer === "Today" && activeWalkingRoute && (
-          <Polyline
+          <MapLibrePolylineOverlay
+            id="walking-route"
             coordinates={activeWalkingRoute.polyline}
-            strokeColor="#500000"
-            strokeWidth={4}
-            lineDashPattern={[5, 10]}
+            color="#500000"
+            width={4}
+            lineDasharray={[1.5, 2.5]}
           />
         )}
-
         {activeLayer === "Pulse" &&
-          pulseHotspots.map((hotspot) => {
+          pulseHotspots.filter(h => h && h.coord).map((hotspot) => {
             const isSelected = hotspot.id === selectedHotspotId;
             return (
-              <Marker
+              <MapLibreMarker
                 key={hotspot.id}
+                id={`pulse-hotspot-${hotspot.id}`}
                 coordinate={{
                   latitude: hotspot.coord.lat,
                   longitude: hotspot.coord.lng,
                 }}
                 onPress={() => handleSelectHotspot(hotspot)}
-                anchor={{ x: 0.5, y: 0.66 }}
-                zIndex={isSelected ? 1100 : 900}
+                anchor={{ x: 0.5, y: 0.5 }}
               >
                 <View
                   style={[
@@ -2103,11 +2311,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     </Text>
                   </View>
                 </View>
-              </Marker>
+              </MapLibreMarker>
             );
           })}
 
-        {/* Campus location markers */}
         {activeLayer !== "Bus" &&
           markerLocations.map((loc) => {
             const isSelected = getLocationSelectionId(loc) === selectedId;
@@ -2124,8 +2331,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 : null;
 
             return (
-              <Marker
+              <MapLibreMarker
                 key={`loc-${getLocationSelectionId(loc)}`}
+                id={`loc-${getLocationSelectionId(loc)}`}
                 coordinate={{
                   latitude: loc.coord.lat,
                   longitude: loc.coord.lng,
@@ -2181,10 +2389,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     />
                   </View>
                 )}
-              </Marker>
+              </MapLibreMarker>
             );
           })}
-      </MapView>
+      </MapViewRNM>
 
       {/* Top UI Floating Elements */}
       <View
@@ -2201,12 +2409,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
           setShowSearchResults={setShowSearchResults}
           onOpenSettings={() => setIsEditorVisible(true)}
           onShare={() =>
-            useShareStore.getState().openShare({
+            Share.share({
               title: "Campus Map",
-              message: "Check out the live campus map on MaroonSchedules!",
-              url: "https://maroonschedules.tamu.edu/places",
+              message: "Check out the live campus map on MaroonSchedules! https://maroonschedules.tamu.edu/places",
             })
           }
+          onSubmitSearch={() => runGlobalSearch()}
         />
 
         {!isSearchExpanded && (
@@ -2433,6 +2641,19 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
       {/* Global Search Results Overlay moved to bottom for z-index priority */}
 
+      <PulseHotspotSheet
+        visible={activeLayer === "Pulse" && !!selectedHotspot}
+        hotspot={selectedHotspot}
+        onClose={() => {
+          setSelectedHotspotId(null);
+          requestAnimationFrame(() => {
+            fitMapToActiveOverview();
+          });
+        }}
+        onOpenItem={openHotspotItem}
+        onVote={toggleHotspotVote}
+      />
+
       <View style={styles.mapFabStack} pointerEvents="box-none">
         <TouchableOpacity style={styles.mapFab} onPress={centerOnUserLocation}>
           <LocateFixed size={22} color={COLORS.textPrimary} />
@@ -2449,8 +2670,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
         styles={styles}
         COLORS={COLORS}
         selectedStop={selectedStop}
-        setSelectedStop={setSelectedStop}
-        selectedBus={selectedBus}
+        setSelectedStop={(stop) => {
+          setSelectedStop(stop);
+          if (!stop) {
+            requestAnimationFrame(() => {
+              fitMapToActiveOverview();
+            });
+          }
+        }}
         nearestBusInfo={nearestBusInfo}
       />
 
@@ -2458,17 +2685,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
         styles={styles}
         COLORS={COLORS}
         selectedBus={selectedBus && !selectedStop ? selectedBus : null}
-        setSelectedBus={setSelectedBus}
+        setSelectedBus={(bus) => {
+          setSelectedBus(bus);
+          if (!bus) {
+            requestAnimationFrame(() => {
+              fitMapToActiveOverview();
+            });
+          }
+        }}
         selectedRoute={selectedRoute}
-      />
-
-      <PulseHotspotSheet
-        styles={styles}
-        COLORS={COLORS}
-        hotspot={activeLayer === "Pulse" ? selectedHotspot : null}
-        onClose={() => setSelectedHotspotId(null)}
-        onOpenPlace={openHotspotPlace}
-        onOpenItem={openHotspotItem}
       />
 
       {/* Slidable lists / Dropdowns removed per user request - handled by Top Dropdown */}
@@ -2493,7 +2718,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         setAllReviewsModalVisible={setAllReviewsModalVisible}
         isFetchingReviews={isFetchingReviews}
         fetchReviews={fetchReviews}
-        hubRestaurants={hubRestaurants}
+        foodCourtVenues={foodCourtVenues}
         diningMenuOptions={diningMenuOptions}
         activeDiningMenu={activeDiningMenu}
         setActiveDiningMenu={setActiveDiningMenu}
@@ -2537,6 +2762,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
         busRouteResults={busRouteSearchResults}
         isSearchExpanded={isSearchExpanded}
         showSearchResults={showSearchResults}
+        searchQuery={searchQuery}
+        isSearchingGlobal={isSearchingGlobal}
+        globalSearchError={globalSearchError}
         onSelectLocation={(loc) => {
           handleSelectLocation(loc);
           setIsSearchExpanded(false);
@@ -2560,21 +2788,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
           liveBusCount={busVehicles.length}
           stopTimetable={stopTimetable}
           onStopPress={(stop) => {
-            const sLat =
-              stop?.Latitude !== undefined ? stop.Latitude : stop?.lat;
-            const sLng =
-              stop?.Longitude !== undefined ? stop.Longitude : stop?.lng;
-            if (mapRef.current && sLat && sLng) {
-              mapRef.current.animateToRegion(
-                {
-                  latitude: sLat - 0.0018,
-                  longitude: sLng,
-                  latitudeDelta: 0.005,
-                  longitudeDelta: 0.005,
-                },
-                600,
-              );
-            }
+            setIsTimetableSheetOpen(false);
+            handleStopPress(stop);
           }}
         />
       )}

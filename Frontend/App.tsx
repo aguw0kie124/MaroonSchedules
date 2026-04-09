@@ -53,19 +53,51 @@ import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './sto
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
 
-import { syncUser, fetchUserProfile, requestJson, setApiAuthTokenProvider } from './api/client';
+import { syncUser, requestJson, setApiAuthTokenProvider } from './api/client';
 import { TOSScreen } from './components/TOSScreen';
 import { NotificationPromptScreen } from './components/onboarding/NotificationPromptScreen';
+import { EventPreferenceOnboardingScreen } from './components/onboarding/EventPreferenceOnboardingScreen';
 
 import { AdminApplicationScreen } from './components/admin/AdminApplicationScreen';
 import { AdminPortal } from './components/admin/AdminPortal';
 import { PendingReviewInterceptor } from './components/events/PendingReviewInterceptor';
 import { API_URL } from './config';
+import { ClubAccessScreen } from './components/ClubAccessScreen';
+import { useEventStore, type MajorOption } from './store/eventStore';
+
+const VALID_EVENT_MAJORS: MajorOption[] = [
+  'Engineering',
+  'Business',
+  'Liberal Arts',
+  'Agriculture',
+  'Science',
+  'Architecture',
+  'Education',
+  'Public Health',
+  'Law',
+  'Medicine',
+];
+
+function isMajorOption(value: unknown): value is MajorOption {
+  return typeof value === 'string' && VALID_EVENT_MAJORS.includes(value as MajorOption);
+}
 
 function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
+  const isTourCompleted = useAppShellStore((state) => state.isTourCompleted);
+  const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
+  const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
+  const preferredTime = useAppShellStore((state) => state.preferredTime);
+  const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const setTourCompleted = useAppShellStore((state) => state.setTourCompleted);
+  const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
+  const setPreferredEventCategories = useAppShellStore((state) => state.setPreferredEventCategories);
+  const setPreferredTime = useAppShellStore((state) => state.setPreferredTime);
+  const setPreferredSocialMode = useAppShellStore((state) => state.setPreferredSocialMode);
+  const setSelectedMajor = useEventStore((state) => state.setSelectedMajor);
+  const isMajorSpecific = useEventStore((state) => state.isMajorSpecific);
+  const setMajorSpecific = useEventStore((state) => state.setMajorSpecific);
   const lastSyncedUserId = React.useRef<string | null>(null);
 
   React.useEffect(() => {
@@ -82,12 +114,63 @@ function UserSync({ children }: { children: React.ReactNode }) {
             setTOSAccepted(data.tos_accepted);
           }
           if (typeof data.tour_completed === 'boolean') {
-            setTourCompleted(data.tour_completed);
+            setTourCompleted(isTourCompleted || data.tour_completed);
+          }
+          const hasLegacyPreferenceShape =
+            !('event_preferences_completed' in data) ||
+            (!Array.isArray(data.preferred_event_categories) &&
+              data.preferred_time == null &&
+              data.preferred_social_mode == null &&
+              !isMajorOption(data.major));
+          const nextEventPreferencesCompleted =
+            typeof data.event_preferences_completed === 'boolean'
+              ? data.event_preferences_completed
+              : hasLegacyPreferenceShape;
+          setEventPreferencesCompleted(
+            isEventPreferencesCompleted || nextEventPreferencesCompleted,
+          );
+          if (Array.isArray(data.preferred_event_categories)) {
+            setPreferredEventCategories(
+              data.preferred_event_categories.filter((entry: unknown): entry is string => typeof entry === 'string'),
+            );
+          } else if (!isEventPreferencesCompleted) {
+            setPreferredEventCategories([]);
+          } else if (preferredEventCategories.length > 0) {
+            setPreferredEventCategories(preferredEventCategories);
+          } else {
+            setPreferredEventCategories([]);
+          }
+          if (
+            data.preferred_time === 'Morning' ||
+            data.preferred_time === 'Afternoon' ||
+            data.preferred_time === 'Evening' ||
+            data.preferred_time === 'Anytime'
+          ) {
+            setPreferredTime(data.preferred_time);
+          } else if (isEventPreferencesCompleted && preferredTime) {
+            setPreferredTime(preferredTime);
+          } else {
+            setPreferredTime(null);
+          }
+          if (data.preferred_social_mode === 'casual' || data.preferred_social_mode === 'professional') {
+            setPreferredSocialMode(data.preferred_social_mode);
+          } else if (isEventPreferencesCompleted && preferredSocialMode) {
+            setPreferredSocialMode(preferredSocialMode);
+          } else {
+            setPreferredSocialMode(null);
+          }
+          if (isMajorOption(data.major)) {
+            setSelectedMajor(data.major);
+            setMajorSpecific(true);
+          } else if (!isEventPreferencesCompleted) {
+            setMajorSpecific(false);
+          } else {
+            setMajorSpecific(isMajorSpecific);
           }
         }
       }).catch((err: any) => console.warn('UserSync failed:', err));
     }
-  }, [user?.id, user?.primaryEmailAddress?.emailAddress, user?.fullName, user?.imageUrl]);
+  }, [isEventPreferencesCompleted, isMajorSpecific, isTourCompleted, preferredEventCategories, preferredSocialMode, preferredTime, setEventPreferencesCompleted, setMajorSpecific, setPreferredEventCategories, setPreferredSocialMode, setPreferredTime, setSelectedMajor, setTOSAccepted, setTourCompleted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
 
   return <>{children}</>;
 }
@@ -279,8 +362,13 @@ function RootNavigator() {
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const isNotificationPrompted = useAppShellStore((state) => state.isNotificationPrompted);
   const setNotificationPrompted = useAppShellStore((state) => state.setNotificationPrompted);
+  const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
+  const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
+  const showEventPreferencesOnboarding = useAppShellStore((state) => state.showEventPreferencesOnboarding);
+  const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
   const isAdmin = useAppShellStore((state) => state.adminAccessStatus);
   const setIsAdmin = useAppShellStore((state) => state.setAdminAccessStatus);
+  const isRegularUserFlow = isSignedIn && authMode !== 'admin';
 
   React.useEffect(() => {
     if (isSignedIn && user?.id) {
@@ -313,6 +401,25 @@ function RootNavigator() {
     content = (
       <NotificationPromptScreen 
         onDone={() => setNotificationPrompted(true)} 
+      />
+    );
+  } else if (isRegularUserFlow && isTOSAccepted && isNotificationPrompted && isAdmin === null) {
+    content = <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  } else if (
+    isRegularUserFlow &&
+    isTOSAccepted &&
+    isNotificationPrompted &&
+    isAdmin === false &&
+    (!isEventPreferencesCompleted || showEventPreferencesOnboarding) &&
+    user?.id
+  ) {
+    content = (
+      <EventPreferenceOnboardingScreen
+        clerkId={user.id}
+        onDone={() => {
+          setEventPreferencesCompleted(true);
+          setShowEventPreferencesOnboarding(false);
+        }}
       />
     );
   } else {
@@ -367,6 +474,7 @@ function RootNavigator() {
             <Stack.Screen name="AnnexHub" component={AnnexHubScreen} options={{ headerShown: false }} />
             <Stack.Screen name="AnnexLibraryDetail" component={AnnexLibraryDetailScreen} options={{ headerShown: false }} />
             <Stack.Screen name="AnnexRentalDetail" component={AnnexRentalDetailScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="ClubAccess" component={ClubAccessScreen} options={{ headerShown: true, title: 'Club Access' }} />
             <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
             <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
             <Stack.Screen
@@ -415,8 +523,17 @@ import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/
 import { navigationRef } from './navigation/Refs';
 import { registerRootComponent } from 'expo';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { setupQueryPersistence } from './services/queryCache';
 import { TourProvider } from './components/onboarding/TourProvider';
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      gcTime: 1000 * 60 * 60 * 24, // 24 hours
+      staleTime: 1000 * 60 * 5, // 5 minutes default
+    },
+  },
+});
+setupQueryPersistence(queryClient);
 
 function TabButtonWrapper({ screenName, props }: { screenName: string; props: any }) {
   const { advanceStep, activeTargetName } = useTour();
@@ -434,7 +551,14 @@ function TabButtonWrapper({ screenName, props }: { screenName: string; props: an
   };
 
   return (
-    <TourTarget name={targetName} style={{ flex: 1 }}>
+    <TourTarget
+      name={targetName}
+      style={{ flex: 1 }}
+      assistAction={() => {
+        (navigationRef as any).navigate('Main', { screen: screenName });
+        setTimeout(() => advanceStep(targetName), 350);
+      }}
+    >
       <View
         style={[
           { flex: 1, margin: 4, borderRadius: 12 },

@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon-v2.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "scheme": "maroonlife",
     "splash": {
       "image": "./assets/splash-icon-v2.png",
@@ -25,7 +25,8 @@
         "NSPhotoLibraryUsageDescription": "MaroonLife uses your photo library so you can choose a profile photo or attach an image to your campus posts.",
         "NSCameraUsageDescription": "MaroonLife uses the camera when you choose to capture a photo for your profile or a campus post.",
         "NSMicrophoneUsageDescription": "MaroonLife uses the microphone for optional voice commands during campus navigation."
-      }
+      },
+      "appleTeamId": "6Z77U736TK"
     },
     "android": {
       "package": "com.maroonlife.app",
@@ -34,7 +35,13 @@
         "foregroundImage": "./assets/adaptive-icon-v2.png",
         "backgroundColor": "#500000"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon-v2.png"

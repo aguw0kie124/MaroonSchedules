@@ -63,6 +63,17 @@ export function PageModuleEditor<T extends string>({
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark);
   const { activeTargetName, advanceStep } = useTour();
+  const scrollRef = React.useRef<ScrollView>(null);
+
+  React.useEffect(() => {
+    if (!visible) return;
+    if (activeTargetName === 'add-gyms-toggle' || activeTargetName === 'add-gyms-close') {
+      const timer = setTimeout(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }, 260);
+      return () => clearTimeout(timer);
+    }
+  }, [activeTargetName, visible]);
 
   if (!visible) return null;
 
@@ -80,7 +91,13 @@ export function PageModuleEditor<T extends string>({
               <Text style={styles.sheetEyebrow}>Page Modularity</Text>
               <Text style={styles.sheetTitle}>{title}</Text>
             </View>
-            <TourTarget name="add-gyms-close">
+            <TourTarget
+              name="add-gyms-close"
+              assistAction={() => {
+                onClose();
+                setTimeout(() => advanceStep('add-gyms-close'), 250);
+              }}
+            >
               <Pressable 
                 style={styles.closeButton} 
                 onPress={() => {
@@ -96,6 +113,7 @@ export function PageModuleEditor<T extends string>({
           </View>
 
           <ScrollView
+            ref={scrollRef}
             style={styles.sheetScroller}
             contentContainerStyle={styles.sheetContent}
             showsVerticalScrollIndicator={false}
@@ -145,7 +163,16 @@ export function PageModuleEditor<T extends string>({
 
               if (item.id === 'Rec') {
                 return (
-                  <TourTarget key={item.id} name="add-gyms-toggle">
+                  <TourTarget
+                    key={item.id}
+                    name="add-gyms-toggle"
+                    assistAction={() => {
+                      if (!item.visible) {
+                        onToggle(item.id);
+                      }
+                      setTimeout(() => advanceStep('add-gyms-toggle'), 250);
+                    }}
+                  >
                     {row}
                   </TourTarget>
                 );

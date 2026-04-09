@@ -8,8 +8,8 @@ from typing import Dict, Any, List, Optional
 import uuid
 import traceback
 
-from services import ping_service, cache_service
-from repositories import feed_repository, user_repository
+from services import ping_service, cache_service, campus_hub_service, pulse_service, tag_access_service
+from repositories import feed_repository, user_repository, tag_repository
 from db_config import CONNECTION_PARAMS
 from auth.clerk_middleware import require_auth, optional_auth, ensure_matching_user
 
@@ -17,23 +17,27 @@ from auth.clerk_middleware import require_auth, optional_auth, ensure_matching_u
 env_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(dotenv_path=env_path, override=True)
 
+from models.base import SanitizedBaseModel
+from rate_limit import limiter
+from fastapi import Request
+
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 # --- Models ---
 
-class FeedActivity(BaseModel):
+class FeedActivity(SanitizedBaseModel):
     activity: Dict[str, Any]
 
-class ReactionPayload(BaseModel):
+class ReactionPayload(SanitizedBaseModel):
     kind: str
     activity_id: str
     user_id: str
-    data: Dict[str, Any] | None = None
+    data: Optional[Dict[str, Any]] = None
 
-class BlockRequest(BaseModel):
+class BlockRequest(SanitizedBaseModel):
     target_id: str
 
-class ReportRequest(BaseModel):
+class ReportRequest(SanitizedBaseModel):
     reportee_id: str
     post_type: str
     post_id: str
@@ -41,10 +45,57 @@ class ReportRequest(BaseModel):
     comment: Optional[str] = None
     place_id: Optional[str] = None
 
+
+def _ensure_social_schema() -> None:
+    campus_hub_service._ensure_social_tables()
+
+
+def _invalidate_feed_cache(feed_group: str, feed_id: str) -> None:
+    cache_service.delete(f"feed:backbone:{feed_group}:{feed_id}")
+
+
+def _invalidate_ping_related_caches(feed_group: str, feed_id: str) -> None:
+    _invalidate_feed_cache(feed_group, feed_id)
+    if feed_group == "flat" and feed_id == "campus_pings":
+        _invalidate_feed_cache("flat", "campus_global")
+        pulse_service.invalidate_pulse_map_cache()
+
+
+def _coerce_access_tags(value: Any) -> List[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple, set)):
+        return [str(entry) for entry in value if entry]
+    return []
+
+
+def _resolve_access_scope(clerk_id: Optional[str]) -> tuple[List[str], bool]:
+    if not clerk_id:
+        return [], False
+
+    profile = user_repository.get_user(clerk_id) or {}
+    try:
+        user_tags = tag_repository.get_user_tags(clerk_id)
+    except Exception as exc:
+        print(f"[chat] failed to load user tags for {clerk_id}: {exc}")
+        user_tags = []
+    return user_tags, bool(profile.get("is_admin"))
+
+
+def _passes_access_filter(item: Dict[str, Any], user_tags: List[str], bypass_restrictions: bool) -> bool:
+    custom = item.get("custom_data") or {}
+    access_tags = _coerce_access_tags(custom.get("access_tags"))
+    return tag_access_service.has_matching_access_tag(
+        user_tags=user_tags,
+        access_tags=access_tags,
+        bypass_restrictions=bypass_restrictions,
+    )
+
 # --- User Management (Clerk) ---
 
 @router.get("/users")
-async def list_users(exclude_id: str = "", _auth_user_id: str = Depends(require_auth)):
+@limiter.limit("60/minute")
+async def list_users(request: Request, exclude_id: str = "", _auth_user_id: str = Depends(require_auth)):
     """Returns all Clerk users for messaging. Pass exclude_id to hide the current user."""
     clerk_secret = os.environ.get("CLERK_SECRET_KEY", "")
     if not clerk_secret:
@@ -77,7 +128,8 @@ async def list_users(exclude_id: str = "", _auth_user_id: str = Depends(require_
 
 @router.post("/token")
 @router.post("/feeds/token")
-async def get_noop_token(body: Dict[str, Any], auth_user_id: str = Depends(require_auth)):
+@limiter.limit("5/minute")
+async def get_noop_token(request: Request, body: Dict[str, Any], auth_user_id: str = Depends(require_auth)):
     """Actually sync the user to our DB during the connection phase to fix the Aggie bug."""
     clerk_id = body.get("clerk_user_id") or auth_user_id
     ensure_matching_user(auth_user_id, clerk_id, detail="You can only initialize chat as yourself")
@@ -97,18 +149,22 @@ async def get_noop_token(body: Dict[str, Any], auth_user_id: str = Depends(requi
 # --- Feed Proxy (Now 100% Native) ---
 
 @router.get("/feeds/proxy/{feed_group}/{feed_id}")
+@limiter.limit("120/minute")
 async def proxy_get_feed(
+    request: Request,
     feed_group: str,
     feed_id: str,
     limit: int = 25,
-    clerk_id: str = Header(None, alias="X-Clerk-User-Id"),
-    auth_user_id: str | None = Depends(optional_auth),
+    clerk_id: Optional[str] = Header(None, alias="X-Clerk-User-Id"),
+    auth_user_id: Optional[str] = Depends(optional_auth),
 ):
     """Fetch feed activities natively (Postgres) with Redis Backbone caching."""
     try:
+        _ensure_social_schema()
         if auth_user_id and clerk_id:
             ensure_matching_user(auth_user_id, clerk_id, detail="Feed identity header does not match the signed-in user")
         resolved_user_id = auth_user_id or clerk_id
+        user_access_tags, bypass_access_restrictions = _resolve_access_scope(resolved_user_id)
 
         # 1. Check Backbone Cache
         cache_key = f"feed:backbone:{feed_group}:{feed_id}"
@@ -136,7 +192,12 @@ async def proxy_get_feed(
         # 2. In-Memory Personalization (Filtering & Hydration)
         blocked_ids = _get_blocked_ids_cached(resolved_user_id) if resolved_user_id else []
         
-        filtered_items = [item for item in raw_items if item.get("user_id") not in blocked_ids]
+        filtered_items = [
+            item
+            for item in raw_items
+            if item.get("user_id") not in blocked_ids
+            and _passes_access_filter(item, user_access_tags, bypass_access_restrictions)
+        ]
         final_list = filtered_items[:limit]
         
         # 3. Hydrate with Scores & Own Reactions
@@ -165,7 +226,7 @@ async def proxy_get_feed(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _transform_review_to_activity(r: Dict[str, Any], counts: Dict[str, Any], own_reactions: Dict[str, Any] = None) -> Dict[str, Any]:
+def _transform_review_to_activity(r: Dict[str, Any], counts: Dict[str, Any], own_reactions: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     return {
         "id": r["id"],
         "actor": {
@@ -191,7 +252,7 @@ def _transform_review_to_activity(r: Dict[str, Any], counts: Dict[str, Any], own
         "own_reactions": own_reactions or {}
     }
 
-def _transform_post_to_activity(p: Dict[str, Any], counts: Dict[str, Any], own_reactions: Dict[str, Any] = None) -> Dict[str, Any]:
+def _transform_post_to_activity(p: Dict[str, Any], counts: Dict[str, Any], own_reactions: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     attachments = []
     for img in p["images"]:
         attachments.append({
@@ -228,9 +289,11 @@ def _transform_post_to_activity(p: Dict[str, Any], counts: Dict[str, Any], own_r
     return activity
 
 @router.post("/feeds/proxy/{feed_group}/{feed_id}")
-async def proxy_add_activity(feed_group: str, feed_id: str, body: FeedActivity, auth_user_id: str = Depends(require_auth)):
+@limiter.limit("10/minute")
+async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, body: FeedActivity, auth_user_id: str = Depends(require_auth)):
     """Add an activity to the feed (100% Native Postgres)."""
     try:
+        _ensure_social_schema()
         activity = body.activity
         user_id = activity["actor"].replace("SU:", "")
         ensure_matching_user(auth_user_id, user_id, detail="You can only create activity as yourself")
@@ -258,20 +321,24 @@ async def proxy_add_activity(feed_group: str, feed_id: str, body: FeedActivity, 
             if not images and "attachments" in activity:
                 images = [att.get("image_url") or att.get("asset_url") for att in activity["attachments"] if att.get("image_url") or att.get("asset_url")]
 
+            lat = custom.get("lat") or custom.get("place_lat") or custom.get("location_lat")
+            lng = custom.get("lng") or custom.get("place_lng") or custom.get("location_lng")
+
             feed_repository.add_crowdping_post(
                 user_id=user_id,
                 content=content,
                 post_type=verb,
                 user_name=custom.get("user_name", "Aggie"),
                 user_image=custom.get("user_image", ""),
-                lat=custom.get("lat") or custom.get("place_lat"),
-                lng=custom.get("lng") or custom.get("place_lng"),
+                lat=float(lat) if lat is not None else None,
+                lng=float(lng) if lng is not None else None,
                 location_tag=custom.get("location_tag", ""),
                 images=images,
+                is_anonymous=bool(custom.get("is_anonymous", False)),
                 custom_data=custom
             )
         
-        cache_service.delete(f"feed:backbone:{feed_group}:{feed_id}")
+        _invalidate_ping_related_caches(feed_group, feed_id)
         return {"status": "success", "message": "Activity recorded natively"}
     except Exception as e:
         print(f"Native Write Error: {e}\n{traceback.format_exc()}")
@@ -288,6 +355,7 @@ async def proxy_delete_activity(
 ):
     """Delete activity from native storage (Postgres)."""
     try:
+        _ensure_social_schema()
         if clerk_id:
             ensure_matching_user(auth_user_id, clerk_id, detail="Delete identity header does not match the signed-in user")
         if user_id:
@@ -301,7 +369,7 @@ async def proxy_delete_activity(
         else:
             deleted = feed_repository.delete_crowdping_post(activity_id, final_user_id)
         if deleted:
-            cache_service.delete(f"feed:backbone:{feed_group}:{feed_id}")
+            _invalidate_ping_related_caches(feed_group, feed_id)
             return {"status": "success"}
         else:
             raise HTTPException(status_code=404, detail="Activity not found or unauthorized")
@@ -312,9 +380,11 @@ async def proxy_delete_activity(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/feeds/proxy/reactions")
-async def proxy_add_reaction(body: ReactionPayload, auth_user_id: str = Depends(require_auth)):
+@limiter.limit("20/minute")
+async def proxy_add_reaction(request: Request, body: ReactionPayload, auth_user_id: str = Depends(require_auth)):
     """Add a reaction (Like/Comment/Upvote/Downvote) natively with toggle support."""
     try:
+        _ensure_social_schema()
         ensure_matching_user(auth_user_id, body.user_id, detail="You can only react as yourself")
         # 1. Resolve naming/image from DB if possible to fix "Aggie" bug
         user_profile = user_repository.get_user(body.user_id)
@@ -355,6 +425,7 @@ async def proxy_add_reaction(body: ReactionPayload, auth_user_id: str = Depends(
 async def proxy_get_reactions(activity_id: str, kind: str):
     """Fetch reactions natively from Postgres."""
     try:
+        _ensure_social_schema()
         interactions = feed_repository.get_post_interactions(activity_id, "crowdping", interaction_type=kind)
         # Transform to Stream reaction format for frontend compatibility
         results = []
@@ -379,7 +450,8 @@ async def proxy_get_reactions(activity_id: str, kind: str):
 # --- Block & Report Endpoints ---
 
 @router.post("/users/{clerk_id}/block")
-async def proxy_block_user(clerk_id: str, body: BlockRequest = Body(...), auth_user_id: str = Depends(require_auth)):
+@limiter.limit("10/minute")
+async def proxy_block_user(request: Request, clerk_id: str, body: BlockRequest = Body(...), auth_user_id: str = Depends(require_auth)):
     """Block another user for the current account only."""
     try:
         ensure_matching_user(auth_user_id, clerk_id, detail="You can only block users from your own account")
@@ -455,7 +527,8 @@ async def proxy_unblock_user(clerk_id: str, target_id: str, auth_user_id: str = 
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/reports")
-async def proxy_report_content(body: ReportRequest, auth_user_id: str = Depends(require_auth)):
+@limiter.limit("5/minute")
+async def proxy_report_content(request: Request, body: ReportRequest, auth_user_id: str = Depends(require_auth)):
     """Submit a report for content."""
     try:
         report_id = feed_repository.add_content_report(

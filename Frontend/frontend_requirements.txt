@@ -23,6 +23,5 @@ react-native-svg
 react-native-worklets
 react-native-worklets-core
 stream-chat
-stream-chat-react-native
 zustand
 react-native-maps

@@ -41,6 +41,7 @@ export interface CampusEventResponse {
   host_name?: string | null;
   source_name?: string | null;
   tags?: string[] | null;
+  access_tags?: string[] | null;
   has_food?: boolean;
   food_confidence?: number;
   food_type?: string | null;
@@ -62,6 +63,7 @@ export interface TAMUEvent {
   description?: string | null;
   url?: string;
   tags?: string[] | null;
+  access_tags?: string[] | null;
   event_types?: string[] | null;
   group_title?: string;
   location_lat?: number | null;
@@ -203,6 +205,7 @@ export function getSearchBlob(event: TAMUEvent) {
     event.location_title,
     event.group_title,
     ...(event.tags || []),
+    ...(event.access_tags || []),
     ...(event.event_types || []),
   ]
     .filter(Boolean)

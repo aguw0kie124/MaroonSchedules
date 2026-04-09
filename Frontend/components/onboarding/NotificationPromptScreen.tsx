@@ -5,7 +5,7 @@ import {
   StyleSheet,
   Pressable,
   ActivityIndicator,
-  Animated,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Bell, BellRing, BellOff, ChevronRight, Bus, Calendar, Radio } from 'lucide-react-native';
@@ -50,86 +50,92 @@ export function NotificationPromptScreen({ onDone }: NotificationPromptScreenPro
         style={StyleSheet.absoluteFill}
       />
 
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <View style={[styles.iconContainer, { backgroundColor: COLORS.primary + '15' }]}>
-            <BellRing size={40} color={COLORS.primary} strokeWidth={2.5} />
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <View style={[styles.iconContainer, { backgroundColor: COLORS.primary + '15' }]}>
+              <BellRing size={40} color={COLORS.primary} strokeWidth={2.5} />
+            </View>
+            <Text style={[styles.title, { color: COLORS.textPrimary }]}>Stay in the Loop</Text>
+            <Text style={[styles.subtitle, { color: COLORS.textSecondary }]}>
+              Get helpful reminders for your classes, buses, and campus activity.
+            </Text>
           </View>
-          <Text style={[styles.title, { color: COLORS.textPrimary }]}>Stay in the Loop</Text>
-          <Text style={[styles.subtitle, { color: COLORS.textSecondary }]}>
-            Get helpful reminders for your classes, buses, and campus activity.
-          </Text>
+
+          <View style={styles.features}>
+            <View style={styles.featureItem}>
+              <View style={[styles.featureIcon, { backgroundColor: 'rgba(52, 199, 89, 0.1)' }]}>
+                <Bus size={20} color="#32D74B" />
+              </View>
+              <View style={styles.featureText}>
+                <Text style={[styles.featureTitle, { color: COLORS.textPrimary }]}>Transit Alerts</Text>
+                <Text style={[styles.featureDesc, { color: COLORS.textSecondary }]}>
+                  5-minute warnings before your bus arrives at the stop.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.featureItem}>
+              <View style={[styles.featureIcon, { backgroundColor: 'rgba(255, 149, 0, 0.1)' }]}>
+                <Calendar size={20} color="#FF9500" />
+              </View>
+              <View style={styles.featureText}>
+                <Text style={[styles.featureTitle, { color: COLORS.textPrimary }]}>Event Reminders</Text>
+                <Text style={[styles.featureDesc, { color: COLORS.textSecondary }]}>
+                  Never miss a club meeting or campus event you've saved.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.featureItem}>
+              <View style={[styles.featureIcon, { backgroundColor: 'rgba(0, 122, 255, 0.1)' }]}>
+                <Radio size={20} color="#007AFF" />
+              </View>
+              <View style={styles.featureText}>
+                <Text style={[styles.featureTitle, { color: COLORS.textPrimary }]}>Social Pings</Text>
+                <Text style={[styles.featureDesc, { color: COLORS.textSecondary }]}>
+                  Real-time updates on upvotes and comments for your pings.
+                </Text>
+              </View>
+            </View>
+          </View>
         </View>
 
-        <View style={styles.features}>
-          <View style={styles.featureItem}>
-            <View style={[styles.featureIcon, { backgroundColor: 'rgba(52, 199, 89, 0.1)' }]}>
-              <Bus size={20} color="#32D74B" />
-            </View>
-            <View style={styles.featureText}>
-              <Text style={[styles.featureTitle, { color: COLORS.textPrimary }]}>Transit Alerts</Text>
-              <Text style={[styles.featureDesc, { color: COLORS.textSecondary }]}>
-                5-minute warnings before your bus arrives at the stop.
-              </Text>
-            </View>
-          </View>
+        <View style={[styles.footer, { borderTopColor: COLORS.border }]}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.enableButton,
+              { backgroundColor: COLORS.primary, opacity: pressed || loading ? 0.9 : 1 }
+            ]}
+            onPress={handleEnable}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" size="small" />
+            ) : (
+              <>
+                <Text style={styles.enableButtonText}>Enable Notifications</Text>
+                <ChevronRight size={18} color="#FFFFFF" strokeWidth={3} />
+              </>
+            )}
+          </Pressable>
 
-          <View style={styles.featureItem}>
-            <View style={[styles.featureIcon, { backgroundColor: 'rgba(255, 149, 0, 0.1)' }]}>
-              <Calendar size={20} color="#FF9500" />
-            </View>
-            <View style={styles.featureText}>
-              <Text style={[styles.featureTitle, { color: COLORS.textPrimary }]}>Event Reminders</Text>
-              <Text style={[styles.featureDesc, { color: COLORS.textSecondary }]}>
-                Never miss a club meeting or campus event you've saved.
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.featureItem}>
-            <View style={[styles.featureIcon, { backgroundColor: 'rgba(0, 122, 255, 0.1)' }]}>
-              <Radio size={20} color="#007AFF" />
-            </View>
-            <View style={styles.featureText}>
-              <Text style={[styles.featureTitle, { color: COLORS.textPrimary }]}>Social Pings</Text>
-              <Text style={[styles.featureDesc, { color: COLORS.textSecondary }]}>
-                Real-time updates on upvotes and comments for your pings.
-              </Text>
-            </View>
-          </View>
+          <Pressable
+            style={({ pressed }) => [
+              styles.skipButton,
+              { opacity: pressed ? 0.6 : 1 }
+            ]}
+            onPress={handleSkip}
+            disabled={loading}
+          >
+            <Text style={[styles.skipButtonText, { color: COLORS.textTertiary }]}>Maybe Later</Text>
+          </Pressable>
         </View>
-      </View>
-
-      <View style={[styles.footer, { borderTopColor: COLORS.border }]}>
-        <Pressable
-          style={({ pressed }) => [
-            styles.enableButton,
-            { backgroundColor: COLORS.primary, opacity: pressed || loading ? 0.9 : 1 }
-          ]}
-          onPress={handleEnable}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" size="small" />
-          ) : (
-            <>
-              <Text style={styles.enableButtonText}>Enable Notifications</Text>
-              <ChevronRight size={18} color="#FFFFFF" strokeWidth={3} />
-            </>
-          )}
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.skipButton,
-            { opacity: pressed ? 0.6 : 1 }
-          ]}
-          onPress={handleSkip}
-          disabled={loading}
-        >
-          <Text style={[styles.skipButtonText, { color: COLORS.textTertiary }]}>Maybe Later</Text>
-        </Pressable>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -138,10 +144,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  content: {
+  scrollView: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+  },
+  content: {
     paddingHorizontal: 28,
     paddingTop: 100,
+    paddingBottom: 32,
   },
   header: {
     alignItems: 'center',
@@ -200,6 +212,7 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: 48,
     gap: 16,
+    marginTop: 'auto',
   },
   enableButton: {
     height: 60,

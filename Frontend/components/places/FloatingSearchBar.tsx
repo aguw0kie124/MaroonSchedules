@@ -22,6 +22,7 @@ interface FloatingSearchBarProps {
   setShowSearchResults: (value: boolean) => void;
   onOpenSettings: () => void;
   onShare: () => void;
+  onSubmitSearch?: () => void;
 }
 
 export function FloatingSearchBar({
@@ -34,6 +35,7 @@ export function FloatingSearchBar({
   setShowSearchResults,
   onOpenSettings,
   onShare,
+  onSubmitSearch,
 }: FloatingSearchBarProps) {
   return (
     <View style={styles.floatingSearchStack}>
@@ -48,35 +50,42 @@ export function FloatingSearchBar({
           <Search size={18} color={COLORS.textTertiary} />
         </TouchableOpacity>
 
-        {isSearchExpanded ? (
-          <TextInput
-            style={styles.floatingSearchInput}
-            placeholder="Search Texas A&M area places..."
-            placeholderTextColor={COLORS.textTertiary}
-            value={searchQuery}
-            onFocus={() => {
-              setIsSearchExpanded(true);
-              setShowSearchResults(true);
-            }}
-            onChangeText={(value) => {
-              setSearchQuery(value);
-              setShowSearchResults(true);
-            }}
-            autoFocus
-          />
-        ) : (
-          <TouchableOpacity
-            style={styles.floatingSearchPrompt}
-            onPress={() => {
-              setIsSearchExpanded(true);
-              setShowSearchResults(true);
-            }}
-          >
-            <Text style={styles.floatingSearchPromptText}>
-              Search places, dining, routes...
-            </Text>
-          </TouchableOpacity>
-        )}
+        <View style={styles.floatingSearchInputWrap}>
+          {isSearchExpanded ? (
+            <TextInput
+              style={styles.floatingSearchInput}
+              placeholder="Search places and bus routes"
+              placeholderTextColor={COLORS.textTertiary}
+              value={searchQuery}
+              onFocus={() => {
+                setIsSearchExpanded(true);
+                setShowSearchResults(true);
+              }}
+              onChangeText={(value) => {
+                setSearchQuery(value);
+                setShowSearchResults(true);
+              }}
+              autoFocus
+              returnKeyType="search"
+              onSubmitEditing={() => onSubmitSearch?.()}
+              multiline={false}
+              numberOfLines={1}
+              scrollEnabled
+            />
+          ) : (
+            <TouchableOpacity
+              style={styles.floatingSearchPrompt}
+              onPress={() => {
+                setIsSearchExpanded(true);
+                setShowSearchResults(true);
+              }}
+            >
+              <Text numberOfLines={1} style={styles.floatingSearchPromptText}>
+                Search places and bus routes
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         {isSearchExpanded && searchQuery.length > 0 ? (
           <TouchableOpacity

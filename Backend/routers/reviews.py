@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Depends
 from pydantic import BaseModel
+from auth.clerk_middleware import require_auth, ensure_matching_user
 from typing import Optional, List
 import uuid
 from db_config import get_db_connection
@@ -65,7 +66,8 @@ def get_review_stats(location: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/")
-def create_review(review: ReviewCreate):
+def create_review(review: ReviewCreate, auth_user_id: str = Depends(require_auth)):
+    ensure_matching_user(auth_user_id, review.user_id, detail="Cannot create reviews on behalf of another user")
     if review.rating < 1 or review.rating > 5:
         raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
         

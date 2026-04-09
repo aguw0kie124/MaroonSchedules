@@ -47,7 +47,7 @@ import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
 
-import { fetchCampusOverview } from '../api/client';
+import { fetchCampusOverview, fetchUserProfile } from '../api/client';
 import { PARKING_PERMIT_OPTIONS, useAppShellStore } from '../store/appShellStore';
 import { useSessionStore } from '../store/sessionStore';
 import { deleteAccount, getBlockedUsers, unblockUser } from '../services/streamFeeds';
@@ -55,6 +55,7 @@ import { useTour, TourTarget } from './onboarding/TourProvider';
 import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme } from './SharedUI';
 import { navigateToLogin } from '../utils/guestAccess';
+import { TagChips } from './common/TagChips';
 
 const SUPPORT_CONTACT_URL = 'mailto:tejtalluri1@gmail.com?subject=MaroonLife%20Support';
 
@@ -158,7 +159,7 @@ export function Profile() {
   } = useTheme();
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark, accentColor);
-  const { startTour, endTour, activeTargetName } = useTour();
+  const { startTour, advanceStep, activeTargetName } = useTour();
 
   const [academicStatus, setAcademicStatus] = useState<any | null>(null);
   const [loadingAcademicStatus, setLoadingAcademicStatus] = useState(true);
@@ -177,12 +178,31 @@ export function Profile() {
   const setNotificationLeadTime = useAppShellStore((state) => state.setNotificationLeadTime);
   const notificationsEnabled = useAppShellStore((state) => state.notificationsEnabled);
   const setNotificationsEnabled = useAppShellStore((state) => state.setNotificationsEnabled);
+  const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
+  const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
+  const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
+  const preferredTime = useAppShellStore((state) => state.preferredTime);
+  const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
+  const [profileTags, setProfileTags] = useState<string[]>([]);
 
   const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
   const accentRatio = useMemo(() => getRatioFromColor(accentColor), [accentColor]);
   const accentPreviewColor = useMemo(() => getSpectrumColorFromRatio(accentRatio), [accentRatio]);
+  const preferenceSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (preferredEventCategories.length > 0) {
+      parts.push(preferredEventCategories.join(', '));
+    }
+    if (preferredTime) {
+      parts.push(preferredTime);
+    }
+    if (preferredSocialMode) {
+      parts.push(preferredSocialMode === 'casual' ? 'Casual social vibe' : 'Professional social vibe');
+    }
+    return parts.length > 0 ? parts.join(' • ') : 'Currently broad and open-ended.';
+  }, [preferredEventCategories, preferredSocialMode, preferredTime]);
 
   const updateAccentFromPosition = React.useCallback((locationX: number) => {
     if (!accentSliderWidth) return;
@@ -218,6 +238,14 @@ export function Profile() {
           setLoadingAcademicStatus(false);
         }
       });
+
+    fetchUserProfile(user.id)
+      .then((data) => {
+        if (!cancelled) {
+          setProfileTags(Array.isArray(data?.tags) ? data.tags : []);
+        }
+      })
+      .catch((error) => console.warn('Failed to load profile tags:', error));
 
     return () => {
       cancelled = true;
@@ -265,6 +293,8 @@ export function Profile() {
     try {
       const data = await fetchCampusOverview(user.id);
       setAcademicStatus(data?.academic || null);
+      const profile = await fetchUserProfile(user.id);
+      setProfileTags(Array.isArray(profile?.tags) ? profile.tags : []);
       if (activeTab === 'personal') {
         await loadBlockedUsers();
       }
@@ -425,6 +455,7 @@ export function Profile() {
             </Text>
           </View>
         </View>
+        <TagChips tags={profileTags} label="Your access tags" />
       </View>
 
 
@@ -458,7 +489,7 @@ export function Profile() {
             Welcome to MaroonLife. Your personalized campus experience is ready for you to explore.
           </Text>
 
-          <TourTarget name="tour-finish">
+          <TourTarget name="tour-finish" assistAction={() => advanceStep('tour-finish')}>
             <Pressable 
               style={({ pressed }) => ({ 
                 backgroundColor: '#FFF', 
@@ -471,7 +502,7 @@ export function Profile() {
                 opacity: pressed ? 0.9 : 1,
                 transform: [{ scale: pressed ? 0.98 : 1 }]
               })}
-              onPress={() => endTour()}
+              onPress={() => advanceStep('tour-finish')}
             >
               <Text style={{ color: COLORS.primary, fontWeight: '900', fontSize: 17, letterSpacing: -0.2 }}>Launch MaroonLife</Text>
               <ChevronRight size={20} color={COLORS.primary} strokeWidth={3} />
@@ -504,6 +535,20 @@ export function Profile() {
         </Pressable>
 
         
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Club Access</Text>
+
+        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('ClubAccess')}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(80, 0, 0, 0.12)' }]}>
+            <Shield size={20} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Request club event access</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
       </View>
 
       <View style={styles.section}>
@@ -541,8 +586,35 @@ export function Profile() {
           <Compass size={24} color={COLORS.primary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Restart Interactive Tour</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Replay the guided onboarding tutorial.</Text>
+          <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Restart App Tour</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Replay the guided walkthrough for Events, Places, and Pings.</Text>
+        </View>
+        <ChevronRight size={20} color={COLORS.textTertiary} />
+      </Pressable>
+
+      <Pressable 
+        style={[styles.heroCard, { 
+          padding: 16, 
+          backgroundColor: isDark ? COLORS.surface : '#F8FAFC', 
+          borderColor: '#2F80ED', 
+          borderWidth: 1.5,
+          flexDirection: 'row', 
+          alignItems: 'center', 
+          gap: 12,
+          marginTop: 10
+        }]} 
+        onPress={() => {
+          setEventPreferencesCompleted(false);
+          setShowEventPreferencesOnboarding(true);
+        }}
+      >
+        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(47, 128, 237, 0.12)', alignItems: 'center', justifyContent: 'center' }}>
+          <Sparkles size={24} color="#2F80ED" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Redo Preference Questions</Text>
+          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Reopen the 4 Events setup questions.</Text>
+          <Text style={{ color: COLORS.textTertiary, fontSize: 12, marginTop: 6, lineHeight: 17 }}>{preferenceSummary}</Text>
         </View>
         <ChevronRight size={20} color={COLORS.textTertiary} />
       </Pressable>
@@ -1288,6 +1360,11 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       fontWeight: '700',
       color: COLORS.textPrimary,
       marginBottom: 4,
+    },
+    toolSubtitle: {
+      fontSize: 13,
+      lineHeight: 18,
+      color: COLORS.textSecondary,
     },
     accentSliderCard: {
       borderRadius: 22,

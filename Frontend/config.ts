@@ -6,12 +6,12 @@ import { Platform } from 'react-native';
  * Falls back to localhost if not set
  */
 const rawApiUrl = Platform.select({
-    android: process.env.EXPO_PUBLIC_API_URL || 'http://10.244.1.82:8000', // Host machine IP
-    ios: process.env.EXPO_PUBLIC_API_URL || 'http://10.244.1.82:8000',
-    default: process.env.EXPO_PUBLIC_API_URL || 'http://10.244.1.82:8000',
+    android: process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:8005',
+    ios: process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:8005',
+    default: process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:8005',
 });
 
-export const API_URL = (rawApiUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+export const API_URL = (rawApiUrl || 'http://127.0.0.1:8005').replace(/\/+$/, '');
 
 export const AGGIESPIRIT_TRIP_PLANNER_URL =
   process.env.EXPO_PUBLIC_AGGIESPIRIT_TRIP_PLANNER_URL ||

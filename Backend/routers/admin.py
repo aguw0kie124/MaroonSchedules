@@ -1,13 +1,27 @@
 from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List, Dict, Any
+import os
 import psycopg
 
 from db_config import CONNECTION_PARAMS
 from auth.clerk_middleware import require_auth, ensure_matching_user
-from services import cache_service
+from services import cache_service, encryption_service
+from repositories import tag_repository
+from routers.upload import UPLOAD_DIR
+
+from models.base import SanitizedBaseModel
+from rate_limit import limiter
+from fastapi import Request
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
+
+
+def _safe_decrypt(value: Optional[str]) -> Optional[str]:
+    """Decrypt if it's an encrypted payload, otherwise return as is."""
+    if not value or not isinstance(value, str):
+        return value
+    return encryption_service.decrypt_string(value)
 
 
 def _ensure_admin_review_schema(conn: psycopg.Connection) -> None:
@@ -80,16 +94,17 @@ def _ensure_admin_review_schema(conn: psycopg.Connection) -> None:
             )
             """
         )
+    tag_repository._ensure_tag_schema(conn)
 
 
-class AdminApplicationRequest(BaseModel):
+class AdminApplicationRequest(SanitizedBaseModel):
     clerk_id: str
-    email: str = Field(..., min_length=3, max_length=320)
-    organization_name: str = Field(..., min_length=2, max_length=120)
-    reason: str = Field(..., min_length=10, max_length=2000)
+    email: Optional[str] = Field(default=None, max_length=320)
+    organization_name: Optional[str] = Field(default=None, max_length=120)
+    reason: Optional[str] = Field(default=None, max_length=2000)
 
 
-class AdminEventCreateRequest(BaseModel):
+class AdminEventCreateRequest(SanitizedBaseModel):
     clerk_id: str
     title: str = Field(..., min_length=1, max_length=140)
     description: str = Field(..., max_length=4000)
@@ -100,24 +115,41 @@ class AdminEventCreateRequest(BaseModel):
     end_time: str
     google_review_url: Optional[str] = Field(default=None, max_length=2048)
     image_url: Optional[str] = Field(default=None, max_length=2048)
+    tags: list[str] = Field(default_factory=list)
 
 
 class AdminEventUpdateRequest(AdminEventCreateRequest):
     pass
 
 
-class AdminEventReviewRequest(BaseModel):
+class AdminEventReviewRequest(SanitizedBaseModel):
     clerk_id: str
     rating: int = Field(..., ge=1, le=5)
     feedback: Optional[str] = Field(default=None, max_length=2000)
 
 
-class AdminEventReviewDismissRequest(BaseModel):
+class AdminEventReviewDismissRequest(SanitizedBaseModel):
     clerk_id: str
 
 
-class AdminOrganizerPreferenceRequest(BaseModel):
+class AdminOrganizerPreferenceRequest(SanitizedBaseModel):
     clerk_id: str
+
+
+class AdminUserTagsRequest(SanitizedBaseModel):
+    clerk_id: str
+    tags: list[str] = Field(default_factory=list)
+
+
+class AdminClubSettingsRequest(SanitizedBaseModel):
+    clerk_id: str
+    club_tag: Optional[str] = Field(default=None, max_length=80)
+    auto_approve_join_requests: bool = False
+
+
+class ClubJoinReviewRequest(SanitizedBaseModel):
+    clerk_id: str
+    assign_club_tag: bool = True
 
 
 def require_clerk_user(clerk_id: str, user_id: str = Depends(require_auth)) -> str:
@@ -158,20 +190,66 @@ def _invalidate_admin_event_caches() -> None:
         cache_service.delete(key)
 
 
+def _resolve_image_url(image_url: Optional[str]) -> Optional[str]:
+    """Return the image_url only if the backing file actually exists on disk.
+
+    When the server restarts or files are uploaded from a different machine,
+    the URL in the DB may point to a file that no longer exists locally.
+    Returning None avoids guaranteed 404s on the client.
+    """
+    if not image_url:
+        return None
+    # Extract the filename from a URL like "http://host/uploads/<filename>"
+    if "/uploads/" in image_url:
+        filename = image_url.rsplit("/uploads/", 1)[-1]
+        file_path = os.path.join(UPLOAD_DIR, filename)
+        if not os.path.exists(file_path):
+            return None
+    return image_url
+
+
+def _ensure_admin_application_schema(conn: psycopg.Connection) -> None:
+    tag_repository._ensure_tag_schema(conn)
+
+
+def _normalize_admin_application(req: AdminApplicationRequest) -> Dict[str, Optional[str]]:
+    organization_name = (req.organization_name or "").strip()
+    if len(organization_name) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="Organization name must be at least 2 characters.",
+        )
+
+    reason = (req.reason or "").strip()
+    if len(reason) < 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Tell us a little more about why you need admin access.",
+        )
+
+    email = (req.email or "").strip() or None
+    return {
+        "email": email,
+        "organization_name": organization_name,
+        "reason": reason,
+    }
+
+
 @router.get("/status")
+@limiter.limit("60/minute")
 def get_admin_status(
+    request: Request,
     clerk_id: str = Query(...),
     _auth_user_id: str = Depends(require_clerk_user),
 ):
     from repositories import user_repository
 
-    user = user_repository.get_user(clerk_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = user_repository.get_user(clerk_id) or {"is_admin": False}
 
     application_status = None
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_application_schema(conn)
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(
                     "SELECT status FROM admin_applications WHERE clerk_id = %s",
@@ -189,8 +267,158 @@ def get_admin_status(
     }
 
 
+@router.get("/tags")
+@limiter.limit("60/minute")
+def get_available_tags(
+    request: Request,
+    clerk_id: str = Query(...),
+    query: Optional[str] = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    _auth_user_id: str = Depends(require_clerk_user),
+):
+    _require_admin_user(clerk_id)
+    return {"tags": tag_repository.list_tags(query=query, limit=limit)}
+
+
+@router.get("/users")
+def get_users_for_tag_management(
+    clerk_id: str = Query(...),
+    query: Optional[str] = Query(default=None),
+    limit: int = Query(default=25, ge=1, le=100),
+    _auth_user_id: str = Depends(require_clerk_user),
+):
+    _require_admin_user(clerk_id)
+    return tag_repository.search_users(query=query, limit=limit)
+
+
+@router.put("/users/{target_clerk_id}/tags")
+def update_user_tags(
+    target_clerk_id: str,
+    req: AdminUserTagsRequest,
+    auth_user_id: str = Depends(require_auth),
+):
+    ensure_matching_user(
+        auth_user_id,
+        req.clerk_id,
+        detail="You can only manage user tags as yourself",
+    )
+    _require_admin_user(req.clerk_id)
+    from repositories import user_repository
+
+    user = user_repository.get_user(target_clerk_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    updated_tags = tag_repository.set_user_tags(target_clerk_id, req.tags)
+    user["tags"] = updated_tags
+    return user
+
+
+@router.get("/club/settings")
+def get_club_tag_settings(
+    clerk_id: str = Query(...),
+    _auth_user_id: str = Depends(require_clerk_user),
+):
+    admin_user = _require_admin_user(clerk_id)
+    settings = tag_repository.get_club_settings(clerk_id)
+    return {
+        "clerk_id": clerk_id,
+        "organization_name": settings.get("organization_name") or admin_user.get("full_name") or "Campus organizer",
+        "club_tag": settings.get("club_tag"),
+        "auto_approve_join_requests": bool(settings.get("auto_approve_join_requests")),
+    }
+
+
+@router.put("/club/settings")
+def update_club_tag_settings(
+    req: AdminClubSettingsRequest,
+    auth_user_id: str = Depends(require_auth),
+):
+    ensure_matching_user(
+        auth_user_id,
+        req.clerk_id,
+        detail="You can only manage your own club settings",
+    )
+    admin_user = _require_admin_user(req.clerk_id)
+    organization_name = admin_user.get("full_name") or "Campus organizer"
+    current = tag_repository.get_club_settings(req.clerk_id)
+    if current.get("organization_name"):
+        organization_name = current["organization_name"]
+
+    settings = tag_repository.update_club_settings(
+        admin_clerk_id=req.clerk_id,
+        organization_name=organization_name,
+        email=admin_user.get("email") or f"{req.clerk_id}@example.com",
+        club_tag=req.club_tag,
+        auto_approve_join_requests=req.auto_approve_join_requests,
+    )
+    return {
+        "clerk_id": req.clerk_id,
+        "organization_name": settings.get("organization_name") or organization_name,
+        "club_tag": settings.get("club_tag"),
+        "auto_approve_join_requests": bool(settings.get("auto_approve_join_requests")),
+    }
+
+
+@router.get("/club-join-requests")
+def get_club_join_requests(
+    clerk_id: str = Query(...),
+    status: Optional[str] = Query(default=None),
+    _auth_user_id: str = Depends(require_clerk_user),
+):
+    _require_admin_user(clerk_id)
+    return tag_repository.list_club_join_requests(clerk_id, status=status)
+
+
+@router.post("/club-join-requests/{request_id}/approve")
+def approve_club_join_request(
+    request_id: str,
+    req: ClubJoinReviewRequest,
+    auth_user_id: str = Depends(require_auth),
+):
+    ensure_matching_user(
+        auth_user_id,
+        req.clerk_id,
+        detail="You can only approve club requests as yourself",
+    )
+    _require_admin_user(req.clerk_id)
+    try:
+        return tag_repository.review_club_join_request(
+            request_id=request_id,
+            admin_clerk_id=req.clerk_id,
+            approve=True,
+            assign_club_tag=req.assign_club_tag,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/club-join-requests/{request_id}/reject")
+def reject_club_join_request(
+    request_id: str,
+    req: ClubJoinReviewRequest,
+    auth_user_id: str = Depends(require_auth),
+):
+    ensure_matching_user(
+        auth_user_id,
+        req.clerk_id,
+        detail="You can only reject club requests as yourself",
+    )
+    _require_admin_user(req.clerk_id)
+    try:
+        return tag_repository.review_club_join_request(
+            request_id=request_id,
+            admin_clerk_id=req.clerk_id,
+            approve=False,
+            assign_club_tag=False,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.post("/apply")
+@limiter.limit("5/minute")
 def submit_admin_application(
+    request: Request,
     req: AdminApplicationRequest,
     auth_user_id: str = Depends(require_auth),
 ):
@@ -199,8 +427,25 @@ def submit_admin_application(
         req.clerk_id,
         detail="You can only submit your own admin application",
     )
+    normalized = _normalize_admin_application(req)
     try:
+        from repositories import user_repository
+
+        existing_user = user_repository.get_user(req.clerk_id) or {}
+        application_email = (
+            normalized["email"]
+            or existing_user.get("email")
+            or f"{req.clerk_id}@users.clerk.local"
+        )
+        user_repository.upsert_user(
+            req.clerk_id,
+            email=application_email,
+            full_name=existing_user.get("full_name"),
+            profile_image_url=existing_user.get("profile_image_url"),
+        )
+
         with psycopg.connect(CONNECTION_PARAMS) as conn:
+            _ensure_admin_application_schema(conn)
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -213,18 +458,27 @@ def submit_admin_application(
                     created_at = NOW()
                     RETURNING id
                     """,
-                    (req.clerk_id, req.email, req.organization_name, req.reason),
+                    (
+                        req.clerk_id,
+                        encryption_service.encrypt_string(application_email),
+                        encryption_service.encrypt_string(normalized["organization_name"]),
+                        encryption_service.encrypt_string(normalized["reason"]),
+                    ),
                 )
                 app_id = cur.fetchone()[0]
                 conn.commit()
                 return {"status": "success", "application_id": app_id}
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error applying for admin: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/events")
+@limiter.limit("30/minute")
 def create_admin_event(
+    request: Request,
     req: AdminEventCreateRequest,
     auth_user_id: str = Depends(require_auth),
 ):
@@ -253,8 +507,8 @@ def create_admin_event(
                     """,
                     (
                         req.clerk_id,
-                        req.title,
-                        req.description,
+                        encryption_service.encrypt_string(req.title),
+                        encryption_service.encrypt_string(req.description),
                         req.lat,
                         req.lng,
                         req.location_name,
@@ -265,6 +519,7 @@ def create_admin_event(
                     ),
                 )
                 event_id = cur.fetchone()[0]
+                tag_repository.set_event_tags(str(event_id), req.tags, conn=conn)
                 conn.commit()
                 _invalidate_admin_event_caches()
                 print(
@@ -310,8 +565,8 @@ def update_admin_event(
                     RETURNING id
                     """,
                     (
-                        req.title,
-                        req.description,
+                        encryption_service.encrypt_string(req.title),
+                        encryption_service.encrypt_string(req.description),
                         req.lat,
                         req.lng,
                         req.location_name,
@@ -323,6 +578,7 @@ def update_admin_event(
                     ),
                 )
                 updated = cur.fetchone()
+                tag_repository.set_event_tags(str(event_id), req.tags, conn=conn)
                 conn.commit()
                 _invalidate_admin_event_caches()
                 return {"status": "success", "event_id": str(updated["id"])}
@@ -347,6 +603,7 @@ def delete_admin_event(
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 _require_owned_admin_event(cur, event_id, clerk_id)
                 cur.execute("DELETE FROM campus_event_rsvps WHERE event_id = %s", (event_id,))
+                cur.execute("DELETE FROM event_tags WHERE event_id = %s", (event_id,))
                 cur.execute("DELETE FROM admin_events WHERE id = %s RETURNING id", (event_id,))
                 deleted = cur.fetchone()
                 conn.commit()
@@ -374,6 +631,15 @@ def get_my_admin_events(
                     """
                     SELECT e.id, e.title, e.description, e.lat, e.lng, e.location_name,
                            e.start_time, e.end_time, e.shares_count, e.created_at, e.google_review_url, e.image_url,
+                           COALESCE(
+                               (
+                                   SELECT json_agg(t.label ORDER BY t.label)
+                                   FROM event_tags et
+                                   JOIN tags t ON t.id = et.tag_id
+                                   WHERE et.event_id = e.id::TEXT
+                               ),
+                               '[]'::json
+                           ) AS access_tags,
                            (SELECT COUNT(*) FROM campus_event_rsvps r WHERE r.event_id = e.id::TEXT) as rsvp_count,
                            (SELECT COALESCE(AVG(r3.rating), 0) FROM admin_event_reviews r3 WHERE r3.event_id = e.id) as avg_rating,
                            (SELECT json_agg(json_build_object('rating', r2.rating, 'feedback', r2.feedback, 'created_at', r2.created_at)) FROM admin_event_reviews r2 WHERE r2.event_id = e.id AND r2.rating <= 3) as private_feedbacks
@@ -386,10 +652,14 @@ def get_my_admin_events(
                 events = cur.fetchall()
                 for event in events:
                     event["id"] = str(event["id"])
+                    event["title"] = _safe_decrypt(event.get("title"))
+                    event["description"] = _safe_decrypt(event.get("description"))
                     event["start_time"] = event["start_time"].isoformat() if event["start_time"] else None
                     event["end_time"] = event["end_time"].isoformat() if event["end_time"] else None
                     event["created_at"] = event["created_at"].isoformat() if event["created_at"] else None
+                    event["access_tags"] = event.get("access_tags") or []
                     event["private_feedbacks"] = event["private_feedbacks"] or []
+                    event["image_url"] = _resolve_image_url(event.get("image_url"))
                 return events
     except Exception as e:
         print(f"Error fetching admin events: {e}")
@@ -397,7 +667,8 @@ def get_my_admin_events(
 
 
 @router.post("/events/{event_id}/share")
-def track_admin_event_share(event_id: str):
+@limiter.limit("5/minute")
+def track_admin_event_share(request: Request, event_id: str):
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
             _ensure_admin_review_schema(conn)
@@ -470,7 +741,9 @@ def get_pending_reviews(
 
 
 @router.post("/events/{event_id}/reviews")
+@limiter.limit("10/minute")
 def submit_event_review(
+    request: Request,
     event_id: str,
     req: AdminEventReviewRequest,
     auth_user_id: str = Depends(require_auth),

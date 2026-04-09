@@ -30,6 +30,28 @@ export type MajorOption =
   | 'Law'
   | 'Medicine';
 
+export const ALL_MAJOR_OPTIONS: MajorOption[] = [
+  'Engineering',
+  'Business',
+  'Liberal Arts',
+  'Agriculture',
+  'Science',
+  'Architecture',
+  'Education',
+  'Public Health',
+  'Law',
+  'Medicine',
+];
+
+const VALID_MAJOR_OPTIONS = ALL_MAJOR_OPTIONS;
+
+function isMajorOption(value: unknown): value is MajorOption {
+  return typeof value === 'string' && (VALID_MAJOR_OPTIONS as string[]).includes(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+}
 export interface ScheduledEvent extends BaseEvent {
   id: string;
   endDate_ts?: number | null;
@@ -174,6 +196,31 @@ export const useEventStore = create<EventState>()(
     {
       name: 'event-storage',
       storage: createJSONStorage(() => AsyncStorage),
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState as Partial<EventState>) || {};
+        return {
+          ...currentState,
+          legacyPersonalEvents: Array.isArray(persisted.legacyPersonalEvents)
+            ? persisted.legacyPersonalEvents
+            : currentState.legacyPersonalEvents,
+          scheduledEvents: Array.isArray(persisted.scheduledEvents)
+            ? persisted.scheduledEvents
+            : currentState.scheduledEvents,
+          savedEventIds: isStringArray(persisted.savedEventIds)
+            ? persisted.savedEventIds
+            : currentState.savedEventIds,
+          dislikedEventIds: isStringArray(persisted.dislikedEventIds)
+            ? persisted.dislikedEventIds
+            : currentState.dislikedEventIds,
+          receivedInvites: Array.isArray(persisted.receivedInvites)
+            ? persisted.receivedInvites
+            : currentState.receivedInvites,
+          isMajorSpecific: false,
+          selectedMajor: isMajorOption(persisted.selectedMajor)
+            ? persisted.selectedMajor
+            : currentState.selectedMajor,
+        };
+      },
     },
   ),
 );

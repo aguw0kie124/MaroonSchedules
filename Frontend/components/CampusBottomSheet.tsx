@@ -10,7 +10,7 @@ import { Coffee, Library, MapPin, Utensils } from 'lucide-react-native';
 import { useTheme } from './SharedUI';
 import { CampusSearchResult } from '../services/campusSearch';
 import { formatDistance } from '../services/campusDirections';
-import { getBuildingIcon, getAmenityIcon } from '../data/campus';
+import { getCategoryIcon } from './places/utils';
 
 interface CampusBottomSheetProps {
   nearbyItems: CampusSearchResult[];
@@ -18,7 +18,7 @@ interface CampusBottomSheetProps {
   onSelect: (item: CampusSearchResult) => void;
   hasRoute: boolean;
   destinationName?: string;
-  routeMode?: 'walk' | 'bus';
+  routeMode?: 'walk' | 'drive' | 'bus';
   routeTitle?: string;
   distanceLabel?: string;
   etaLabel?: string;
@@ -49,19 +49,18 @@ export function CampusBottomSheet({
 }: CampusBottomSheetProps) {
     const { COLORS, theme } = useTheme();
     const styles = getStyles(COLORS, theme === 'dark');
-  const getIcon = (item: CampusSearchResult) => {
+  const renderIcon = (item: CampusSearchResult) => {
     if (item.kind === 'command') {
       switch (item.commandType) {
-        case 'nearest-restroom': return MapPin;
-        case 'nearest-coffee': return Coffee;
-        case 'nearest-library': return Library;
-        case 'nearest-dining': return Utensils;
-        default: return MapPin;
+        case 'nearest-restroom': return <MapPin size={18} color="#F3F1ED" />;
+        case 'nearest-coffee': return <Coffee size={18} color="#F3F1ED" />;
+        case 'nearest-library': return <Library size={18} color="#F3F1ED" />;
+        case 'nearest-dining': return <Utensils size={18} color="#F3F1ED" />;
+        default: return <MapPin size={18} color="#F3F1ED" />;
       }
     }
-    if (item.building) return getBuildingIcon(item.building.type);
-    if (item.amenity) return getAmenityIcon(item.amenity.type);
-    return MapPin;
+    if (item.location) return getCategoryIcon(item.location.type, '#F3F1ED', 18);
+    return <MapPin size={18} color="#F3F1ED" />;
   };
 
   return (
@@ -72,7 +71,9 @@ export function CampusBottomSheet({
         <View style={[styles.routeCard, routeAccentColor ? { borderColor: routeAccentColor } : null]}>
           <View style={styles.routeHeader}>
             <View style={[styles.routeModeBadge, routeAccentColor ? { backgroundColor: routeAccentColor } : null]}>
-              <Text style={styles.routeModeBadgeText}>{routeMode === 'bus' ? 'Bus Route' : 'Walk Route'}</Text>
+              <Text style={styles.routeModeBadgeText}>
+                {routeMode === 'bus' ? 'Bus Route' : routeMode === 'drive' ? 'Drive Route' : 'Walk Route'}
+              </Text>
             </View>
             <Pressable
               style={({ pressed }) => [styles.clearBtn, pressed && styles.btnPressed]}
@@ -83,7 +84,7 @@ export function CampusBottomSheet({
           </View>
           <View style={styles.routeInfo}>
             <Text style={styles.routeTitle} numberOfLines={2}>
-              {routeTitle || `${routeMode === 'bus' ? 'Bus' : 'Walk'} to ${destinationName}`}
+              {routeTitle || `${routeMode === 'bus' ? 'Bus' : routeMode === 'drive' ? 'Drive' : 'Walk'} to ${destinationName}`}
             </Text>
             <Text style={styles.routeSub}>{distanceLabel} • {etaLabel}</Text>
             {routeMeta ? (
@@ -104,7 +105,7 @@ export function CampusBottomSheet({
               disabled={isLoadingRoute}
             >
               <Text style={styles.startBtnText}>
-                {isLoadingRoute ? 'Loading…' : routeMode === 'bus' ? 'Start Trip' : 'Start Walk'}
+                {isLoadingRoute ? 'Loading…' : routeMode === 'bus' ? 'Start Trip' : routeMode === 'drive' ? 'Start Drive' : 'Start Walk'}
               </Text>
             </Pressable>
           </View>
@@ -116,54 +117,65 @@ export function CampusBottomSheet({
           showsVerticalScrollIndicator={false}
         >
           {/* Pinned quick actions */}
-          <>
-            <Text style={styles.sectionLabel}>Quick Actions</Text>
-            <View style={styles.quickRow}>
-              {pinnedItems.map((item) => (
+          {pinnedItems.length > 0 ? (
+            <>
+              <Text style={styles.sectionLabel}>Quick Actions</Text>
+              <View style={styles.quickRow}>
+                {pinnedItems.map((item) => (
+                  (() => {
+                    return (
+                      <Pressable
+                        key={item.id}
+                        style={({ pressed }) => [styles.quickCard, pressed && styles.quickCardPressed]}
+                        onPress={() => onSelect(item)}
+                      >
+                        <View style={styles.quickIconWrap}>
+                          {renderIcon(item)}
+                        </View>
+                        <Text style={styles.quickLabel} numberOfLines={2}>{item.label}</Text>
+                      </Pressable>
+                    );
+                  })()
+                ))}
+              </View>
+            </>
+          ) : null}
+
+          {/* Nearby */}
+          {nearbyItems.length > 0 ? (
+            <>
+              <Text style={styles.sectionLabel}>Nearby</Text>
+              {nearbyItems.map((item) => (
                 (() => {
-                  const Icon = getIcon(item);
                   return (
                     <Pressable
                       key={item.id}
-                      style={({ pressed }) => [styles.quickCard, pressed && styles.quickCardPressed]}
+                      style={({ pressed }) => [styles.nearbyRow, pressed && styles.nearbyRowPressed]}
                       onPress={() => onSelect(item)}
                     >
-                      <View style={styles.quickIconWrap}>
-                        <Icon size={18} color="#F3F1ED" />
+                      <View style={styles.nearbyIconWrap}>
+                        {renderIcon(item)}
                       </View>
-                      <Text style={styles.quickLabel} numberOfLines={2}>{item.label}</Text>
+                      <View style={styles.nearbyText}>
+                        <Text style={styles.nearbyLabel} numberOfLines={1}>{item.label}</Text>
+                        <Text style={styles.nearbySub}>
+                          {item.subtitle}
+                          {item.distance != null ? ` • ${formatDistance(item.distance)}` : ''}
+                        </Text>
+                      </View>
                     </Pressable>
                   );
                 })()
               ))}
+            </>
+          ) : (
+            <View style={styles.emptyBrowseCard}>
+              <Text style={styles.emptyBrowseTitle}>Search Anywhere</Text>
+              <Text style={styles.emptyBrowseBody}>
+                Search for any city, campus, address, or landmark worldwide to start directions.
+              </Text>
             </View>
-          </>
-
-          {/* Nearby */}
-          <Text style={styles.sectionLabel}>Nearby</Text>
-          {nearbyItems.map((item) => (
-            (() => {
-              const Icon = getIcon(item);
-              return (
-                <Pressable
-                  key={item.id}
-                  style={({ pressed }) => [styles.nearbyRow, pressed && styles.nearbyRowPressed]}
-                  onPress={() => onSelect(item)}
-                >
-                  <View style={styles.nearbyIconWrap}>
-                    <Icon size={18} color="#F3F1ED" />
-                  </View>
-                  <View style={styles.nearbyText}>
-                    <Text style={styles.nearbyLabel} numberOfLines={1}>{item.label}</Text>
-                    <Text style={styles.nearbySub}>
-                      {item.subtitle}
-                      {item.distance != null ? ` • ${formatDistance(item.distance)}` : ''}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })()
-          ))}
+          )}
         </ScrollView>
       )}
     </View>
@@ -373,5 +385,24 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     fontSize: 12,
     color: COLORS.textSecondary,
     marginTop: 2,
+  },
+  emptyBrowseCard: {
+    marginTop: 8,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(12,12,14,0.04)',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: 6,
+  },
+  emptyBrowseTitle: {
+    color: COLORS.textPrimary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  emptyBrowseBody: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
   },
 });
