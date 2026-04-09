@@ -70,7 +70,7 @@ import { TagChips } from './common/TagChips';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
-const HERO_CARD_HEIGHT = Math.min(Math.max(280, SCREEN_HEIGHT * 0.38), 340);
+const HERO_CARD_HEIGHT = 380;
 const HERO_CARD_GAP = 14;
 const HERO_CARD_SNAP_INTERVAL = HERO_CARD_WIDTH + HERO_CARD_GAP;
 
@@ -547,8 +547,8 @@ function isFridayEvent(event: TAMUEvent) {
 function hasUserEventPreferences(preferences: UserEventPreferences) {
   return Boolean(
     preferences.major ||
-      (preferences.preferredTime && preferences.preferredTime !== 'No Preference') ||
-      preferences.avoidFriday,
+    (preferences.preferredTime && preferences.preferredTime !== 'No Preference') ||
+    preferences.avoidFriday,
   );
 }
 
@@ -1242,7 +1242,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       const isScheduled = scheduledEvents.some((scheduled) => String(scheduled.id) === eventId);
 
       if (isScheduled) {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
         removeScheduledEvent(eventId);
         if (user?.id) {
           try {
@@ -1272,29 +1272,29 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         categories: event.categories,
       };
       scheduleEvent(scheduled);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
 
       // Notification logic
       const prefs = useAppShellStore.getState();
       const leadTime = prefs.notificationLeadTime;
-        if (prefs.eventNotifications) {
-          scheduleEventNotification(
-            event.title,
-            `Starting at ${event.location || 'TAMU'} in ${leadTime} minutes.`,
-            new Date(event.date_ts * 1000),
-            leadTime
-          );
+      if (prefs.eventNotifications) {
+        scheduleEventNotification(
+          event.title,
+          `Starting at ${event.location || 'TAMU'} in ${leadTime} minutes.`,
+          new Date(event.date_ts * 1000),
+          leadTime
+        );
 
-          if (event.is_admin_event && event.date2_ts) {
-            scheduleAdminEventReviewNotification(
-              event.title,
-              event.location,
-              new Date(event.date2_ts * 1000),
-              event.google_review_url,
-              String(event.id),
-            );
-          }
+        if (event.is_admin_event && event.date2_ts) {
+          scheduleAdminEventReviewNotification(
+            event.title,
+            event.location,
+            new Date(event.date2_ts * 1000),
+            event.google_review_url,
+            String(event.id),
+          );
         }
+      }
 
       if (user?.id) {
         try {
@@ -1303,7 +1303,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             event_id: String(event.id),
             response: 'going',
           });
-          
+
           // Onboarding: The tour now requires the user to manually navigate to the Places tab
           if (activeTargetName === 'event-rsvp') {
             // Optimistic update for local store so it shows up in TodayTimeline instantly
@@ -1368,11 +1368,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       const id = String(event.id);
       if (savedEventIds.includes(id)) {
         unsaveEvent(id);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
         triggerRewardToast('Saved event removed', 'Your shortlist just got a little cleaner.');
       } else {
         saveEvent(id);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
         triggerRewardToast('Saved for later', 'Good pick. This one is waiting for you.');
       }
     },
@@ -1588,86 +1588,86 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               >
 
 
-              <View style={s.categoryWrap}>
-                {categoriesExpanded ? (
-                  <>
-                    <View style={s.categoryHeaderRow}>
-                      <Text style={s.categorySectionLabel}>Filters</Text>
-                      <Pressable onPress={() => setCategoriesExpanded(false)}>
-                        <Text style={s.categoryToggleText}>Less</Text>
-                      </Pressable>
-                    </View>
-                    <View style={s.categoryExpandedGrid}>
-                      {ALL_CATEGORIES.map((category) => (
-                        <CategoryChip
-                          key={category}
-                          category={category}
-                          count={categoryCounts[category] || 0}
-                          active={selectedCategories.has(category)}
-                          onPress={() => toggleCategory(category)}
-                        />
-                      ))}
-                    </View>
-                  </>
-                ) : (
-                  <>
-                    <View style={s.categoryHeaderRow}>
-                      <Text style={s.categorySectionLabel}>Filters</Text>
-                      <Pressable onPress={() => setCategoriesExpanded(true)}>
-                        <Text style={s.categoryToggleText}>More</Text>
-                      </Pressable>
-                    </View>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={s.categoryCollapsedRow}
-                    >
-                      {collapsedCategories.map((category) => (
-                        <CategoryChip
-                          key={category}
-                          category={category}
-                          count={categoryCounts[category] || 0}
-                          active={selectedCategories.has(category)}
-                          onPress={() => toggleCategory(category)}
-                        />
-                      ))}
-                    </ScrollView>
-                  </>
-                )}
-              </View>
-
-              <View style={s.inlineControls}>
-                {selectedCategories.has('Social') ? (
-                  <View style={s.socialModeWrap}>
-                    {(['casual', 'professional'] as SocialMode[]).map((mode) => (
-                      <Pressable
-                        key={mode}
-                        style={[s.socialModePill, socialMode === mode && s.socialModePillActive]}
-                        onPress={() => setSocialMode(mode)}
+                <View style={s.categoryWrap}>
+                  {categoriesExpanded ? (
+                    <>
+                      <View style={s.categoryHeaderRow}>
+                        <Text style={s.categorySectionLabel}>Filters</Text>
+                        <Pressable onPress={() => setCategoriesExpanded(false)}>
+                          <Text style={s.categoryToggleText}>Less</Text>
+                        </Pressable>
+                      </View>
+                      <View style={s.categoryExpandedGrid}>
+                        {ALL_CATEGORIES.map((category) => (
+                          <CategoryChip
+                            key={category}
+                            category={category}
+                            count={categoryCounts[category] || 0}
+                            active={selectedCategories.has(category)}
+                            onPress={() => toggleCategory(category)}
+                          />
+                        ))}
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <View style={s.categoryHeaderRow}>
+                        <Text style={s.categorySectionLabel}>Filters</Text>
+                        <Pressable onPress={() => setCategoriesExpanded(true)}>
+                          <Text style={s.categoryToggleText}>More</Text>
+                        </Pressable>
+                      </View>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={s.categoryCollapsedRow}
                       >
-                        <Text
-                          style={[
-                            s.socialModeText,
-                            socialMode === mode && s.socialModeTextActive,
-                          ]}
+                        {collapsedCategories.map((category) => (
+                          <CategoryChip
+                            key={category}
+                            category={category}
+                            count={categoryCounts[category] || 0}
+                            active={selectedCategories.has(category)}
+                            onPress={() => toggleCategory(category)}
+                          />
+                        ))}
+                      </ScrollView>
+                    </>
+                  )}
+                </View>
+
+                <View style={s.inlineControls}>
+                  {selectedCategories.has('Social') ? (
+                    <View style={s.socialModeWrap}>
+                      {(['casual', 'professional'] as SocialMode[]).map((mode) => (
+                        <Pressable
+                          key={mode}
+                          style={[s.socialModePill, socialMode === mode && s.socialModePillActive]}
+                          onPress={() => setSocialMode(mode)}
                         >
-                          {mode === 'casual' ? 'Casual' : 'Professional'}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                ) : null}
-              </View>
+                          <Text
+                            style={[
+                              s.socialModeText,
+                              socialMode === mode && s.socialModeTextActive,
+                            ]}
+                          >
+                            {mode === 'casual' ? 'Casual' : 'Professional'}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
 
-              <View style={s.spotlightIntro}>
-                <Text style={s.spotlightEyebrow}>Discover</Text>
-                <Text style={s.spotlightTitle}>Spotlight events</Text>
-              </View>
+                <View style={s.spotlightIntro}>
+                  <Text style={s.spotlightEyebrow}>Discover</Text>
+                  <Text style={s.spotlightTitle}>Spotlight events</Text>
+                </View>
 
-              {isForYouSelected ? (
-                <Text style={s.filterHintText}>
-                  {hasForYouPrefs
-                    ? `For U is personalized using your saved ${[
+                {isForYouSelected ? (
+                  <Text style={s.filterHintText}>
+                    {hasForYouPrefs
+                      ? `For U is personalized using your saved ${[
                         profileMajor ? `${profileMajor} major` : null,
                         profilePreferences.preferredTime && profilePreferences.preferredTime !== 'No Preference'
                           ? `${profilePreferences.preferredTime.toLowerCase()} time preference`
@@ -1676,41 +1676,41 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                       ]
                         .filter(Boolean)
                         .join(', ')}.`
-                    : 'For U needs saved onboarding or planner preferences before it can personalize events.'}
-                </Text>
-              ) : null}
+                      : 'For U needs saved onboarding or planner preferences before it can personalize events.'}
+                  </Text>
+                ) : null}
 
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                nestedScrollEnabled
-                directionalLockEnabled
-                contentContainerStyle={s.heroRail}
-                snapToOffsets={discoverEvents.map((_, index) => index * HERO_CARD_SNAP_INTERVAL)}
-                snapToAlignment="start"
-                disableIntervalMomentum
-                decelerationRate="fast"
-              >
-                {discoverEvents.map((event, i) => {
-                  const card = (
-                    <StaggeredReveal key={String(event.id)} index={i}>
-                      <View
-                        style={{ marginRight: i === discoverEvents.length - 1 ? 0 : HERO_CARD_GAP }}
-                      >
-                        <HeroEventCard
-                          event={event}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  nestedScrollEnabled
+                  directionalLockEnabled
+                  contentContainerStyle={s.heroRail}
+                  snapToOffsets={discoverEvents.map((_, index) => index * HERO_CARD_SNAP_INTERVAL)}
+                  snapToAlignment="start"
+                  disableIntervalMomentum
+                  decelerationRate="fast"
+                >
+                  {discoverEvents.map((event, i) => {
+                    const card = (
+                      <StaggeredReveal key={String(event.id)} index={i}>
+                        <View
+                          style={{ marginRight: i === discoverEvents.length - 1 ? 0 : HERO_CARD_GAP }}
+                        >
+                          <HeroEventCard
+                            event={event}
 
-                          scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
-                          onSchedule={() => handleSchedule(event)}
-                          onPress={() => setDetailEvent(event)}
-                          onMap={() => handleMapOpen(event)}
-                        />
-                      </View>
-                    </StaggeredReveal>
-                  );
-                  return card;
-                })}
-              </ScrollView>
+                            scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
+                            onSchedule={() => handleSchedule(event)}
+                            onPress={() => setDetailEvent(event)}
+                            onMap={() => handleMapOpen(event)}
+                          />
+                        </View>
+                      </StaggeredReveal>
+                    );
+                    return card;
+                  })}
+                </ScrollView>
               </ScrollView>
             </View>
           )}
@@ -1913,21 +1913,21 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         onRestoreCategory={handleRestoreCategory}
       />
 
-        <DetailModal
-          event={detailEvent}
-          onClose={() => setDetailEvent(null)}
-          isGuest={isGuest}
-          onSaveToggle={handleSaveToggle}
-          onSchedule={handleSchedule}
-          onShare={handleShare}
-          onMap={handleMapOpen}
-          onUnsubscribeOrganizer={handleUnsubscribeOrganizer}
-          onBlockOrganizer={handleBlockOrganizer}
-          onReportOrganizer={handleReportOrganizer}
+      <DetailModal
+        event={detailEvent}
+        onClose={() => setDetailEvent(null)}
+        isGuest={isGuest}
+        onSaveToggle={handleSaveToggle}
+        onSchedule={handleSchedule}
+        onShare={handleShare}
+        onMap={handleMapOpen}
+        onUnsubscribeOrganizer={handleUnsubscribeOrganizer}
+        onBlockOrganizer={handleBlockOrganizer}
+        onReportOrganizer={handleReportOrganizer}
 
-          saved={detailEvent ? savedEventIds.includes(String(detailEvent.id)) : false}
-          scheduled={detailEvent ? scheduledEvents.some((scheduled) => String(scheduled.id) === String(detailEvent.id)) : false}
-        />
+        saved={detailEvent ? savedEventIds.includes(String(detailEvent.id)) : false}
+        scheduled={detailEvent ? scheduledEvents.some((scheduled) => String(scheduled.id) === String(detailEvent.id)) : false}
+      />
     </View>
   );
 }
@@ -2024,7 +2024,7 @@ function HeroEventCard({
         bounces={false}
         nestedScrollEnabled
       >
-        <Text style={stylesStatic.heroTitle}>{event.title}</Text>
+        <Text style={stylesStatic.heroTitle} numberOfLines={3} ellipsizeMode="tail">{event.title}</Text>
 
         {event.group_title ? (
           <View style={stylesStatic.heroOrganizerPill}>
@@ -2044,45 +2044,47 @@ function HeroEventCard({
           <MapPin size={17} color="#FFFFFF" />
           <Text style={stylesStatic.heroMetaText}>{event.location || 'Campus'}</Text>
         </View>
-        <View style={stylesStatic.heroActionRow}>
-          <Pressable
-            style={[
-              stylesStatic.heroActionButton,
-              stylesStatic.heroActionPrimary,
-              scheduled && stylesStatic.heroActionDisabled,
-            ]}
-            onPress={() => {
-              if (!scheduled) onSchedule();
-            }}
-          >
-            <CalendarDays size={15} color="#174F2E" />
-            <Text style={[stylesStatic.heroActionText, stylesStatic.heroActionPrimaryText]}>
-              Add
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[
-              stylesStatic.heroActionButton,
-              stylesStatic.heroActionSecondary,
-              !scheduled && stylesStatic.heroActionDisabled,
-            ]}
-            onPress={() => {
-              if (scheduled) onSchedule();
-            }}
-          >
-            <XIcon size={15} color="#FFFFFF" />
-            <Text style={[stylesStatic.heroActionText, stylesStatic.heroActionSecondaryText]}>
-              Remove
-            </Text>
-          </Pressable>
-        </View>
+      </ScrollView>
+
+      <View style={stylesStatic.heroActionRow}>
+        <Pressable
+          style={[
+            stylesStatic.heroActionButton,
+            stylesStatic.heroActionPrimary,
+            scheduled && stylesStatic.heroActionDisabled,
+          ]}
+          onPress={() => {
+            if (!scheduled) onSchedule();
+          }}
+        >
+          <CalendarDays size={15} color="#174F2E" />
+          <Text style={[stylesStatic.heroActionText, stylesStatic.heroActionPrimaryText]}>
+            Add
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[
+            stylesStatic.heroActionButton,
+            stylesStatic.heroActionSecondary,
+            !scheduled && stylesStatic.heroActionDisabled,
+          ]}
+          onPress={() => {
+            if (scheduled) onSchedule();
+          }}
+        >
+          <XIcon size={15} color="#FFFFFF" />
+          <Text style={[stylesStatic.heroActionText, stylesStatic.heroActionSecondaryText]}>
+            Remove
+          </Text>
+        </Pressable>
+
         {event.location_lat != null && event.location_lng != null ? (
           <Pressable style={stylesStatic.heroInlineMapButton} onPress={onMap}>
             <Map size={14} color="rgba(255,255,255,0.92)" />
-            <Text style={stylesStatic.heroInlineMapText}>Open in Places</Text>
+            <Text style={stylesStatic.heroInlineMapText}>Map</Text>
           </Pressable>
         ) : null}
-      </ScrollView>
+      </View>
     </Pressable>
   );
 }
@@ -2123,7 +2125,7 @@ function ListEventRow({
         stylesStatic.listRow,
         { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border },
       ]}
-      >
+    >
       <View style={[stylesStatic.listThumb, { backgroundColor: meta.cardTint }]}>
         {event.imageUrl ? (
           <Image source={{ uri: event.imageUrl }} style={stylesStatic.listThumbImage} resizeMode="cover" />
@@ -2248,7 +2250,7 @@ function SettingsModal({
             stylesStatic.modalSheet,
             { backgroundColor: COLORS.surface, borderColor: COLORS.border },
           ]}
-          onPress={() => {}}
+          onPress={() => { }}
         >
           <ScrollView showsVerticalScrollIndicator={false}>
             <Text style={[stylesStatic.modalTitle, { color: COLORS.textPrimary }]}>Filters</Text>
@@ -2430,98 +2432,114 @@ function DetailModal({
           { backgroundColor: COLORS.surface, borderColor: COLORS.border, maxHeight: '85%' },
         ]}
       >
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {event.imageUrl ? (
-              <View style={stylesStatic.detailImageWrap}>
-                <Image source={{ uri: event.imageUrl }} style={stylesStatic.detailImage} resizeMode="cover" />
-              </View>
-            ) : null}
-            <View style={stylesStatic.detailHeader}>
-              <View
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {event.imageUrl ? (
+            <View style={stylesStatic.detailImageWrap}>
+              <Image source={{ uri: event.imageUrl }} style={stylesStatic.detailImage} resizeMode="cover" />
+            </View>
+          ) : null}
+          <View style={stylesStatic.detailHeader}>
+            <View
+              style={[
+                stylesStatic.detailCategoryPill,
+                { backgroundColor: CATEGORY_META[classifyCategory(event)].chipBg },
+              ]}
+            >
+              <Text
                 style={[
-                  stylesStatic.detailCategoryPill,
-                  { backgroundColor: CATEGORY_META[classifyCategory(event)].chipBg },
+                  stylesStatic.detailCategoryText,
+                  { color: CATEGORY_META[classifyCategory(event)].chipText },
                 ]}
               >
-                <Text
-                  style={[
-                    stylesStatic.detailCategoryText,
-                    { color: CATEGORY_META[classifyCategory(event)].chipText },
-                  ]}
-                >
-                  {classifyCategory(event)}
-                </Text>
-              </View>
-              {!isGuest ? (
-                <Pressable onPress={() => onSaveToggle(event)} style={stylesStatic.detailSaveButton}>
-                  <Heart size={18} color={saved ? '#FF4D6D' : COLORS.textSecondary} fill={saved ? '#FF4D6D' : 'none'} />
-                </Pressable>
-              ) : null}
-            </View>
-
-            <Text style={[stylesStatic.detailTitle, { color: COLORS.textPrimary }]}>{event.title}</Text>
-
-
-            <View style={stylesStatic.detailMetaBlock}>
-              <View style={stylesStatic.detailMetaRow}>
-                <CalendarIcon size={15} color={COLORS.textSecondary} />
-                <Text style={[stylesStatic.detailMetaText, { color: COLORS.textSecondary }]}>
-                  {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
-                </Text>
-              </View>
-              <View style={stylesStatic.detailMetaRow}>
-                <MapPin size={15} color={COLORS.textSecondary} />
-                <Text style={[stylesStatic.detailMetaText, { color: COLORS.textSecondary }]}>
-                  {event.location || 'Campus'}
-                </Text>
-              </View>
-              {event.group_title ? (
-                <View style={stylesStatic.detailMetaRow}>
-                  <BadgeCheck size={15} color="#2F80ED" />
-                  <Text style={[stylesStatic.detailMetaText, { color: COLORS.textSecondary }]}>
-                    {event.group_title}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
-            {event.description ? (
-              <Text style={[stylesStatic.detailDescription, { color: COLORS.textSecondary }]}>
-                {stripHtml(event.description)}
+                {classifyCategory(event)}
               </Text>
+            </View>
+            {!isGuest ? (
+              <Pressable onPress={() => onSaveToggle(event)} style={stylesStatic.detailSaveButton}>
+                <Heart size={18} color={saved ? '#FF4D6D' : COLORS.textSecondary} fill={saved ? '#FF4D6D' : 'none'} />
+              </Pressable>
             ) : null}
-            <TagChips tags={event.access_tags} label="Audience tags" />
+          </View>
 
-            <TourTarget
-              name="event-rsvp"
-              assistAction={() => {
+          <Text style={[stylesStatic.detailTitle, { color: COLORS.textPrimary }]}>{event.title}</Text>
+
+
+          <View style={stylesStatic.detailMetaBlock}>
+            <View style={stylesStatic.detailMetaRow}>
+              <CalendarIcon size={15} color={COLORS.textSecondary} />
+              <Text style={[stylesStatic.detailMetaText, { color: COLORS.textSecondary }]}>
+                {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
+              </Text>
+            </View>
+            <View style={stylesStatic.detailMetaRow}>
+              <MapPin size={15} color={COLORS.textSecondary} />
+              <Text style={[stylesStatic.detailMetaText, { color: COLORS.textSecondary }]}>
+                {event.location || 'Campus'}
+              </Text>
+            </View>
+            {event.group_title ? (
+              <View style={stylesStatic.detailMetaRow}>
+                <BadgeCheck size={15} color="#2F80ED" />
+                <Text style={[stylesStatic.detailMetaText, { color: COLORS.textSecondary }]}>
+                  {event.group_title}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          {event.description ? (
+            <Text style={[stylesStatic.detailDescription, { color: COLORS.textSecondary }]}>
+              {stripHtml(event.description)}
+            </Text>
+          ) : null}
+          <TagChips tags={event.access_tags} label="Audience tags" />
+
+          <TourTarget
+            name="event-rsvp"
+            assistAction={() => {
+              onSchedule(event);
+              onClose();
+            }}
+          >
+            <Pressable
+              style={[stylesStatic.primaryDetailButton, { backgroundColor: scheduled ? '#E06A3E' : '#3CCB6C' }]}
+              onPress={() => {
                 onSchedule(event);
                 onClose();
               }}
             >
-              <Pressable
-                style={[stylesStatic.primaryDetailButton, { backgroundColor: scheduled ? '#E06A3E' : '#3CCB6C' }]}
-                onPress={() => {
-                  onSchedule(event);
-                  onClose();
-                }}
-              >
-                {scheduled ? (
-                  <XIcon size={18} color="#FFFFFF" strokeWidth={3} />
-                ) : (
-                  <Check size={18} color="#FFFFFF" strokeWidth={3} />
-                )}
-                <Text style={stylesStatic.primaryDetailButtonText}>
-                  {isGuest
-                    ? 'Log in to RSVP or save'
-                    : event.is_admin_event
-                      ? (scheduled ? 'Remove RSVP' : 'RSVP to Featured Event')
-                      : (scheduled ? 'Remove from current schedule' : 'Add')}
-                </Text>
-              </Pressable>
-            </TourTarget>
+              {scheduled ? (
+                <XIcon size={18} color="#FFFFFF" strokeWidth={3} />
+              ) : (
+                <Check size={18} color="#FFFFFF" strokeWidth={3} />
+              )}
+              <Text style={stylesStatic.primaryDetailButtonText}>
+                {isGuest
+                  ? 'Log in to RSVP or save'
+                  : event.is_admin_event
+                    ? (scheduled ? 'Remove RSVP' : 'RSVP to Featured Event')
+                    : (scheduled ? 'Remove from current schedule' : 'Add')}
+              </Text>
+            </Pressable>
+          </TourTarget>
 
-            <View style={stylesStatic.detailActionRow}>
+          <View style={stylesStatic.detailActionRow}>
+            <Pressable
+              style={[
+                stylesStatic.secondaryDetailButton,
+                {
+                  borderColor: COLORS.border,
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.03)',
+                },
+              ]}
+              onPress={() => onShare(event)}
+            >
+              <Share2 size={18} color={COLORS.textPrimary} />
+              <Text style={[stylesStatic.secondaryDetailButtonText, { color: COLORS.textPrimary }]}>
+                Share
+              </Text>
+            </Pressable>
+            {event.location_lat != null && event.location_lng != null ? (
               <Pressable
                 style={[
                   stylesStatic.secondaryDetailButton,
@@ -2530,109 +2548,93 @@ function DetailModal({
                     backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.03)',
                   },
                 ]}
-                onPress={() => onShare(event)}
+                onPress={() => onMap(event)}
               >
-                <Share2 size={18} color={COLORS.textPrimary} />
+                <Map size={18} color={COLORS.textPrimary} />
                 <Text style={[stylesStatic.secondaryDetailButtonText, { color: COLORS.textPrimary }]}>
-                  Share
+                  Places
                 </Text>
               </Pressable>
-              {event.location_lat != null && event.location_lng != null ? (
-                <Pressable
-                  style={[
-                    stylesStatic.secondaryDetailButton,
-                    {
-                      borderColor: COLORS.border,
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.03)',
-                    },
-                  ]}
-                  onPress={() => onMap(event)}
-                >
-                  <Map size={18} color={COLORS.textPrimary} />
-                  <Text style={[stylesStatic.secondaryDetailButtonText, { color: COLORS.textPrimary }]}>
-                    Places
-                  </Text>
-                </Pressable>
-              ) : event.location_lat != null && event.location_lng != null ? null : (
-                <Pressable
-                  style={[
-                    stylesStatic.secondaryDetailButton,
-                    {
-                      borderColor: COLORS.border,
-                      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.03)',
-                    },
-                  ]}
-                  onPress={() => {
-                    if (event.location_lat != null && event.location_lng != null) {
-                      openNativeMaps(event.location_lat, event.location_lng, event.location || event.title);
-                    }
-                  }}
-                >
-                  <MapPin size={18} color={COLORS.textPrimary} />
-                  <Text style={[stylesStatic.secondaryDetailButtonText, { color: COLORS.textPrimary }]}>
-                    Map
-                  </Text>
-                </Pressable>
-              )}
-            </View>
-            {event.is_admin_event && event.admin_clerk_id ? (
-              <View
+            ) : event.location_lat != null && event.location_lng != null ? null : (
+              <Pressable
                 style={[
-                  stylesStatic.organizerSafetyCard,
+                  stylesStatic.secondaryDetailButton,
                   {
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC',
                     borderColor: COLORS.border,
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.03)',
                   },
                 ]}
+                onPress={() => {
+                  if (event.location_lat != null && event.location_lng != null) {
+                    openNativeMaps(event.location_lat, event.location_lng, event.location || event.title);
+                  }
+                }}
               >
-                <Text style={[stylesStatic.organizerSafetyTitle, { color: COLORS.textPrimary }]}>
-                  Organizer controls
+                <MapPin size={18} color={COLORS.textPrimary} />
+                <Text style={[stylesStatic.secondaryDetailButtonText, { color: COLORS.textPrimary }]}>
+                  Map
                 </Text>
-                <Text style={[stylesStatic.organizerSafetyText, { color: COLORS.textSecondary }]}>
-                  Manage {event.group_title || 'this organizer'} directly from this event.
-                </Text>
-                <View style={stylesStatic.organizerSafetyActions}>
-                  <Pressable
-                    style={[
-                      stylesStatic.organizerSafetyButton,
-                      { borderColor: COLORS.border, backgroundColor: COLORS.surface },
-                    ]}
-                    onPress={() => onUnsubscribeOrganizer(event)}
-                  >
-                    <BellOff size={16} color={COLORS.textPrimary} />
-                    <Text style={[stylesStatic.organizerSafetyButtonText, { color: COLORS.textPrimary }]}>
-                      Unsubscribe
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      stylesStatic.organizerSafetyButton,
-                      { borderColor: COLORS.border, backgroundColor: COLORS.surface },
-                    ]}
-                    onPress={() => onReportOrganizer(event)}
-                  >
-                    <CircleAlert size={16} color={COLORS.textPrimary} />
-                    <Text style={[stylesStatic.organizerSafetyButtonText, { color: COLORS.textPrimary }]}>
-                      Report
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      stylesStatic.organizerSafetyButton,
-                      { borderColor: '#FFD2BE', backgroundColor: '#FFF4EE' },
-                    ]}
-                    onPress={() => onBlockOrganizer(event)}
-                  >
-                    <UserX size={16} color="#C65A28" />
-                    <Text style={[stylesStatic.organizerSafetyButtonText, { color: '#C65A28' }]}>
-                      Block
-                    </Text>
-                  </Pressable>
-                </View>
+              </Pressable>
+            )}
+          </View>
+          {event.is_admin_event && event.admin_clerk_id ? (
+            <View
+              style={[
+                stylesStatic.organizerSafetyCard,
+                {
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC',
+                  borderColor: COLORS.border,
+                },
+              ]}
+            >
+              <Text style={[stylesStatic.organizerSafetyTitle, { color: COLORS.textPrimary }]}>
+                Organizer controls
+              </Text>
+              <Text style={[stylesStatic.organizerSafetyText, { color: COLORS.textSecondary }]}>
+                Manage {event.group_title || 'this organizer'} directly from this event.
+              </Text>
+              <View style={stylesStatic.organizerSafetyActions}>
+                <Pressable
+                  style={[
+                    stylesStatic.organizerSafetyButton,
+                    { borderColor: COLORS.border, backgroundColor: COLORS.surface },
+                  ]}
+                  onPress={() => onUnsubscribeOrganizer(event)}
+                >
+                  <BellOff size={16} color={COLORS.textPrimary} />
+                  <Text style={[stylesStatic.organizerSafetyButtonText, { color: COLORS.textPrimary }]}>
+                    Unsubscribe
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    stylesStatic.organizerSafetyButton,
+                    { borderColor: COLORS.border, backgroundColor: COLORS.surface },
+                  ]}
+                  onPress={() => onReportOrganizer(event)}
+                >
+                  <CircleAlert size={16} color={COLORS.textPrimary} />
+                  <Text style={[stylesStatic.organizerSafetyButtonText, { color: COLORS.textPrimary }]}>
+                    Report
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    stylesStatic.organizerSafetyButton,
+                    { borderColor: '#FFD2BE', backgroundColor: '#FFF4EE' },
+                  ]}
+                  onPress={() => onBlockOrganizer(event)}
+                >
+                  <UserX size={16} color="#C65A28" />
+                  <Text style={[stylesStatic.organizerSafetyButtonText, { color: '#C65A28' }]}>
+                    Block
+                  </Text>
+                </Pressable>
               </View>
-            ) : null}
-          </ScrollView>
-        </View>
+            </View>
+          ) : null}
+        </ScrollView>
+      </View>
     </Animated.View>
   );
 }
@@ -3461,7 +3463,7 @@ const stylesStatic = StyleSheet.create({
   },
   swipeCard: {
     width: SCREEN_WIDTH - 44,
-    height: SCREEN_HEIGHT * 0.6,
+    height: SCREEN_HEIGHT * 0.76,
     borderRadius: 34,
     overflow: 'hidden',
   },

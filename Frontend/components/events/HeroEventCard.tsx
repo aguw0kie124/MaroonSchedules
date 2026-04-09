@@ -10,7 +10,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const styles = StyleSheet.create({
   heroCard: {
     width: SCREEN_WIDTH - 52,
-    height: 310,
+    height: 360,
     borderRadius: 34,
     overflow: 'hidden',
     padding: 20,
@@ -37,7 +37,7 @@ const styles = StyleSheet.create({
   heroIconHalo: {
     position: 'absolute',
     right: 18,
-    bottom: 118,
+    bottom: 135,
     opacity: 0.55,
   },
   heroTopRow: {
@@ -111,6 +111,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
+  heroActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 10,
+  },
+  rsvpButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  rsvpButtonActive: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  rsvpButtonText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
   shareCircle: {
     width: 36,
     height: 36,
@@ -128,10 +152,14 @@ const styles = StyleSheet.create({
 
 export function HeroEventCard({
   event,
+  scheduled,
+  onSchedule,
   onPress,
   onMap,
 }: {
   event: TAMUEvent;
+  scheduled: boolean;
+  onSchedule: () => void;
   onPress: () => void;
   onMap: () => void;
 }) {
@@ -140,15 +168,9 @@ export function HeroEventCard({
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
 
-  const handleShare = (e: any) => {
+  const handleSchedule = (e: any) => {
     e.stopPropagation();
-    triggerNativeShare({
-      title: event.title,
-      message: `Check out this event: ${event.title} at ${event.location || 'Campus'}`,
-      url: `https://maroonschedules.com/events/${event.id}`,
-      id: event.id,
-      type: 'event',
-    });
+    onSchedule();
   };
 
   return (
@@ -175,7 +197,7 @@ export function HeroEventCard({
       </View>
 
       <View style={styles.heroBottom}>
-        <Text style={styles.heroTitle} numberOfLines={2}>{event.title}</Text>
+        <Text style={styles.heroTitle} numberOfLines={3} ellipsizeMode="tail">{event.title}</Text>
         <View style={styles.heroMetaRow}>
           <CalendarIcon size={17} color="#FFFFFF" />
           <Text style={styles.heroMetaText}>
@@ -186,14 +208,26 @@ export function HeroEventCard({
           <MapPin size={17} color="#FFFFFF" />
           <Text style={styles.heroMetaText} numberOfLines={1}>{event.location || 'Campus'}</Text>
         </View>
-        {event.location_lat != null && event.location_lng != null ? (
-          <Pressable style={styles.heroMapButton} onPress={onMap}>
-            <Map size={15} color={COLORS.textPrimary} />
-            <Text style={[styles.heroMapButtonText, { color: COLORS.textPrimary }]}>
-              Open in Places
+        <View style={styles.heroActionRow}>
+          {event.location_lat != null && event.location_lng != null ? (
+            <Pressable style={styles.heroMapButton} onPress={onMap}>
+              <Map size={15} color={COLORS.textPrimary} />
+              <Text style={[styles.heroMapButtonText, { color: COLORS.textPrimary }]}>
+                Map
+              </Text>
+            </Pressable>
+          ) : null}
+
+          <Pressable
+            style={[styles.rsvpButton, scheduled && styles.rsvpButtonActive]}
+            onPress={handleSchedule}
+          >
+            <CalendarIcon size={15} color={scheduled ? '#FFFFFF' : COLORS.textPrimary} />
+            <Text style={[styles.rsvpButtonText, { color: scheduled ? '#FFFFFF' : COLORS.textPrimary }]}>
+              {scheduled ? 'RSVPed' : 'RSVP'}
             </Text>
           </Pressable>
-        ) : null}
+        </View>
       </View>
     </Pressable>
   );
