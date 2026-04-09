@@ -84,6 +84,11 @@ function isMajorOption(value: unknown): value is MajorOption {
 
 function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
+  const isTourCompleted = useAppShellStore((state) => state.isTourCompleted);
+  const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
+  const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
+  const preferredTime = useAppShellStore((state) => state.preferredTime);
+  const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const setTourCompleted = useAppShellStore((state) => state.setTourCompleted);
   const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
@@ -91,6 +96,7 @@ function UserSync({ children }: { children: React.ReactNode }) {
   const setPreferredTime = useAppShellStore((state) => state.setPreferredTime);
   const setPreferredSocialMode = useAppShellStore((state) => state.setPreferredSocialMode);
   const setSelectedMajor = useEventStore((state) => state.setSelectedMajor);
+  const isMajorSpecific = useEventStore((state) => state.isMajorSpecific);
   const setMajorSpecific = useEventStore((state) => state.setMajorSpecific);
   const lastSyncedUserId = React.useRef<string | null>(null);
 
@@ -108,7 +114,7 @@ function UserSync({ children }: { children: React.ReactNode }) {
             setTOSAccepted(data.tos_accepted);
           }
           if (typeof data.tour_completed === 'boolean') {
-            setTourCompleted(data.tour_completed);
+            setTourCompleted(isTourCompleted || data.tour_completed);
           }
           const hasLegacyPreferenceShape =
             !('event_preferences_completed' in data) ||
@@ -116,15 +122,21 @@ function UserSync({ children }: { children: React.ReactNode }) {
               data.preferred_time == null &&
               data.preferred_social_mode == null &&
               !isMajorOption(data.major));
-          setEventPreferencesCompleted(
+          const nextEventPreferencesCompleted =
             typeof data.event_preferences_completed === 'boolean'
               ? data.event_preferences_completed
-              : hasLegacyPreferenceShape,
+              : hasLegacyPreferenceShape;
+          setEventPreferencesCompleted(
+            isEventPreferencesCompleted || nextEventPreferencesCompleted,
           );
           if (Array.isArray(data.preferred_event_categories)) {
             setPreferredEventCategories(
               data.preferred_event_categories.filter((entry: unknown): entry is string => typeof entry === 'string'),
             );
+          } else if (!isEventPreferencesCompleted) {
+            setPreferredEventCategories([]);
+          } else if (preferredEventCategories.length > 0) {
+            setPreferredEventCategories(preferredEventCategories);
           } else {
             setPreferredEventCategories([]);
           }
@@ -135,24 +147,30 @@ function UserSync({ children }: { children: React.ReactNode }) {
             data.preferred_time === 'Anytime'
           ) {
             setPreferredTime(data.preferred_time);
+          } else if (isEventPreferencesCompleted && preferredTime) {
+            setPreferredTime(preferredTime);
           } else {
             setPreferredTime(null);
           }
           if (data.preferred_social_mode === 'casual' || data.preferred_social_mode === 'professional') {
             setPreferredSocialMode(data.preferred_social_mode);
+          } else if (isEventPreferencesCompleted && preferredSocialMode) {
+            setPreferredSocialMode(preferredSocialMode);
           } else {
             setPreferredSocialMode(null);
           }
           if (isMajorOption(data.major)) {
             setSelectedMajor(data.major);
             setMajorSpecific(true);
-          } else {
+          } else if (!isEventPreferencesCompleted) {
             setMajorSpecific(false);
+          } else {
+            setMajorSpecific(isMajorSpecific);
           }
         }
       }).catch((err: any) => console.warn('UserSync failed:', err));
     }
-  }, [setEventPreferencesCompleted, setMajorSpecific, setPreferredEventCategories, setPreferredSocialMode, setPreferredTime, setSelectedMajor, setTOSAccepted, setTourCompleted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
+  }, [isEventPreferencesCompleted, isMajorSpecific, isTourCompleted, preferredEventCategories, preferredSocialMode, preferredTime, setEventPreferencesCompleted, setMajorSpecific, setPreferredEventCategories, setPreferredSocialMode, setPreferredTime, setSelectedMajor, setTOSAccepted, setTourCompleted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
 
   return <>{children}</>;
 }
