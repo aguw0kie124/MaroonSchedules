@@ -51,7 +51,7 @@ import {
 
 
 import { API_URL } from '../config';
-import { requestJson, saveCampusEventRsvp } from '../api/client';
+import { fetchUserProfile, requestJson, saveCampusEventRsvp } from '../api/client';
 import { normalizeImageUrl } from '../services/url';
 import { TourTarget, useTour } from './onboarding/TourProvider';
 import { useShareStore } from '../store/shareStore';
@@ -125,7 +125,7 @@ interface TAMUEvent {
 }
 
 type ExploreCategory =
-  | 'Featured'
+  | 'For U'
   | 'Food'
   | 'Sports'
   | 'Social'
@@ -134,12 +134,13 @@ type ExploreCategory =
   | 'Academic'
   | 'Entertainment'
   | 'Health & Wellness';
+type StandardExploreCategory = Exclude<ExploreCategory, 'For U'>;
 
 type SocialMode = 'casual' | 'professional';
 type EventsView = 'discover' | 'list' | 'swipe' | 'inbox';
 
 const ALL_CATEGORIES: ExploreCategory[] = [
-  'Featured',
+  'For U',
   'Sports',
   'Academic',
   'Food',
@@ -173,12 +174,12 @@ export const CATEGORY_META: Record<
     icon: React.ComponentType<any>;
   }
 > = {
-  Featured: {
-    accent: '#FFD700',
-    chipBg: '#FFF9C4',
-    chipText: '#F57F17',
-    cardTint: '#FBC02D',
-    icon: BadgeCheck,
+  'For U': {
+    accent: '#F6A4B2',
+    chipBg: '#FFE3E8',
+    chipText: '#8C2746',
+    cardTint: '#F28BA1',
+    icon: Heart,
   },
   Sports: {
     accent: '#71B7FF',
@@ -271,8 +272,6 @@ function resolveEventImageUrl(value?: string | null) {
 }
 
 function classifyCategory(event: TAMUEvent): ExploreCategory {
-  if (event.is_admin_event || event.categories?.featured) return 'Featured';
-
   if (event.categories) {
     if (event.categories.food) return 'Food';
     if (event.categories.sports) return 'Sports';
@@ -397,6 +396,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [swipeIndex, setSwipeIndex] = useState(0);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [profileMajor, setProfileMajor] = useState<MajorOption | null>(null);
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const {
@@ -425,6 +425,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const pan = useRef(new Animated.ValueXY()).current;
   const opacity = useRef(new Animated.Value(1)).current;
+  const hydratedProfileMajorForUser = useRef<string | null>(null);
   const nowTs = Math.floor(Date.now() / 1000);
 
   const fetchEvents = useCallback(async () => {
@@ -493,6 +494,45 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     fetchEvents();
   }, [fetchEvents]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!user?.id || isGuest) {
+      setProfileMajor(null);
+      hydratedProfileMajorForUser.current = null;
+      return;
+    }
+
+    fetchUserProfile(user.id)
+      .then((profile) => {
+        if (cancelled) return;
+        const nextMajor = MAJOR_OPTIONS.find((major) => major === profile?.major) ?? null;
+        setProfileMajor(nextMajor);
+        if (nextMajor && hydratedProfileMajorForUser.current !== user.id) {
+          setSelectedMajor(nextMajor);
+          hydratedProfileMajorForUser.current = user.id;
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn('[Events] Failed to load user profile for personalization:', error);
+          setProfileMajor(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isGuest, setSelectedMajor, user?.id]);
+
+  const matchesForYou = useCallback(
+    (event: TAMUEvent) => {
+      if (!profileMajor) return false;
+      return matchesMajor(event, profileMajor);
+    },
+    [profileMajor],
+  );
+
   useFocusEffect(
     useCallback(() => {
       fetchEvents();
@@ -510,7 +550,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const categoryCounts = useMemo(() => {
     const counts: Record<ExploreCategory, number> = {
-      Featured: 0,
+      'For U': 0,
       Sports: 0,
       Academic: 0,
       Food: 0,
@@ -525,12 +565,25 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       const isOngoing = (event.date2_ts != null && event.date2_ts > nowTs) || (event.date_ts >= nowTs - 7200);
       if (!isOngoing) return;
       if (isMajorSpecific && !matchesMajor(event, selectedMajor)) return;
+      if (matchesForYou(event)) {
+        counts['For U'] += 1;
+      }
       const category = event._category || classifyCategory(event);
       counts[category] += 1;
     });
 
     return counts;
-  }, [events, isMajorSpecific, nowTs, selectedMajor]);
+  }, [events, isMajorSpecific, matchesForYou, nowTs, selectedMajor]);
+
+  const standardSelectedCategories = useMemo(
+    () =>
+      Array.from(selectedCategories).filter(
+        (category): category is StandardExploreCategory => category !== 'For U',
+      ),
+    [selectedCategories],
+  );
+
+  const isForYouSelected = selectedCategories.has('For U');
 
   const filteredUpcomingEvents = useMemo(() => {
     let next = events.filter((event) => {
@@ -546,11 +599,18 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       next = next.filter((event) => matchesMajor(event, selectedMajor));
     }
 
-    if (selectedCategories.size > 0) {
-      next = next.filter((event) => selectedCategories.has(event._category || classifyCategory(event)));
+    if (isForYouSelected) {
+      next = next.filter((event) => matchesForYou(event));
     }
 
-    if (selectedCategories.has('Social')) {
+    if (standardSelectedCategories.length > 0) {
+      next = next.filter((event) => {
+        const category = event._category || classifyCategory(event);
+        return category !== 'For U' && standardSelectedCategories.includes(category);
+      });
+    }
+
+    if (standardSelectedCategories.includes('Social')) {
       next = next.filter((event) => {
         const category = event._category || classifyCategory(event);
         return category !== 'Social' || (event._socialMode || getSocialMode(event)) === socialMode;
@@ -563,20 +623,25 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     dislikedEventIds,
     events,
     isMajorSpecific,
+    isForYouSelected,
+    matchesForYou,
     nowTs,
     deferredSearchQuery,
-    selectedCategories,
     selectedMajor,
     socialMode,
+    standardSelectedCategories,
   ]);
 
   const discoverEvents = useMemo(() => filteredUpcomingEvents.slice(0, 8), [filteredUpcomingEvents]);
   const collapsedCategories = useMemo(() => ALL_CATEGORIES.slice(0, 5), []);
 
   const swipeDeck = useMemo(() => {
-    if (selectedCategories.size === 0) return filteredUpcomingEvents;
-    return filteredUpcomingEvents.filter((event) => selectedCategories.has(event._category || classifyCategory(event)));
-  }, [filteredUpcomingEvents, selectedCategories]);
+    if (standardSelectedCategories.length === 0) return filteredUpcomingEvents;
+    return filteredUpcomingEvents.filter((event) => {
+      const category = event._category || classifyCategory(event);
+      return category !== 'For U' && standardSelectedCategories.includes(category);
+    });
+  }, [filteredUpcomingEvents, standardSelectedCategories]);
 
   const activeSwipeEvent = swipeDeck[swipeIndex] ?? null;
 
@@ -1052,6 +1117,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 ) : null}
               </View>
 
+              {isForYouSelected ? (
+                <Text style={s.filterHintText}>
+                  {profileMajor
+                    ? `For U is personalized using your ${profileMajor} onboarding preference.`
+                    : 'For U needs a saved major from onboarding or planner settings to personalize events.'}
+                </Text>
+              ) : null}
+
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -1180,7 +1253,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 <View style={s.emptyState}>
                   <Text style={s.emptyTitle}>Nothing matches right now</Text>
                   <Text style={s.emptySubtitle}>
-                    Try another category, turn off major-specific filtering, or clear hidden events.
+                    {isForYouSelected && !profileMajor
+                      ? 'Add your major in onboarding or planner settings, then try For U again.'
+                      : 'Try another category, turn off major-specific filtering, or clear hidden events.'}
                   </Text>
                 </View>
               }
@@ -2267,6 +2342,12 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       color: COLORS.textSecondary,
       fontSize: 12,
       fontWeight: '600',
+    },
+    filterHintText: {
+      marginTop: 6,
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      lineHeight: 18,
     },
     socialModeWrap: {
       flexDirection: 'row',
