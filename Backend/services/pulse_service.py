@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import psycopg
 
-from services import cache_service, campus_hub_service, place_registry_service
-from repositories import feed_repository
+from services import cache_service, campus_hub_service, place_registry_service, tag_access_service
+from repositories import feed_repository, tag_repository, user_repository
 from db_config import CONNECTION_PARAMS
 
 
@@ -124,9 +124,31 @@ def _build_summary(location_name: str, ping_count: int, event_count: int, percen
     return f"{location_name} has {' · '.join(parts)}."
 
 
+def _coerce_access_tags(value: Any) -> List[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple, set)):
+        return [str(entry) for entry in value if entry]
+    return []
+
+
+def _resolve_access_scope(clerk_id: Optional[str]) -> tuple[List[str], bool]:
+    if not clerk_id:
+        return [], False
+
+    profile = user_repository.get_user(clerk_id) or {}
+    try:
+        user_tags = tag_repository.get_user_tags(clerk_id)
+    except Exception as exc:
+        print(f"[pulse_service] failed to load user tags for {clerk_id}: {exc}")
+        user_tags = []
+    return user_tags, bool(profile.get("is_admin"))
+
+
 def _load_admin_events() -> List[Dict[str, Any]]:
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
+            tag_repository._ensure_access_dependencies(conn)
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(
                     """
@@ -139,6 +161,15 @@ def _load_admin_events() -> List[Dict[str, Any]]:
                         e.start_time,
                         e.end_time,
                         e.image_url,
+                        COALESCE(
+                            (
+                                SELECT json_agg(t.label ORDER BY t.label)
+                                FROM event_tags et
+                                JOIN tags t ON t.id = et.tag_id
+                                WHERE et.event_id = e.id::TEXT
+                            ),
+                            '[]'::json
+                        ) AS access_tags,
                         app.organization_name
                     FROM admin_events e
                     LEFT JOIN admin_applications app ON app.clerk_id = e.clerk_id
@@ -183,11 +214,14 @@ def invalidate_pulse_map_cache() -> None:
         cache_service.delete(f"campus:pulse:map:v2:{limit}")
 
 
-def get_pulse_map(limit: int = 60) -> Dict[str, Any]:
+def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None) -> Dict[str, Any]:
     cache_key = f"campus:pulse:map:v2:{limit}"
-    cached = cache_service.get_json(cache_key)
-    if cached is not None:
-        return cached
+    if not clerk_id:
+        cached = cache_service.get_json(cache_key)
+        if cached is not None:
+            return cached
+
+    user_access_tags, bypass_access_restrictions = _resolve_access_scope(clerk_id)
 
     status = "live"
     try:
@@ -209,7 +243,16 @@ def get_pulse_map(limit: int = 60) -> Dict[str, Any]:
     
     try:
         raw_pings = feed_repository.get_crowdping_feed(post_types=["ping", "post"], limit=500)
-        pings = [ping for ping in raw_pings if _is_pulse_ping_post(ping)]
+        pings = [
+            ping
+            for ping in raw_pings
+            if _is_pulse_ping_post(ping)
+            and tag_access_service.has_matching_access_tag(
+                user_tags=user_access_tags,
+                access_tags=_coerce_access_tags((ping.get("custom_data") or {}).get("access_tags")),
+                bypass_restrictions=bypass_access_restrictions,
+            )
+        ]
     except Exception as exc:
         print(f"[pulse_service] DB query failed for crowdping feed: {exc}")
         pings = []
@@ -354,6 +397,13 @@ def get_pulse_map(limit: int = 60) -> Dict[str, Any]:
         )
 
     for event in _load_admin_events():
+        if not tag_access_service.has_matching_access_tag(
+            user_tags=user_access_tags,
+            access_tags=_coerce_access_tags(event.get("access_tags")),
+            bypass_restrictions=bypass_access_restrictions,
+        ):
+            continue
+
         start_at = event["start_time"].isoformat() if event.get("start_time") else datetime.now(timezone.utc).isoformat()
         target_time = _parse_iso(start_at)
         if target_time:
@@ -475,5 +525,6 @@ def get_pulse_map(limit: int = 60) -> Dict[str, Any]:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "hotspots": ordered_hotspots,
     }
-    cache_service.set_json(cache_key, payload, PULSE_SNAPSHOT_TTL_SECONDS)
+    if not clerk_id:
+        cache_service.set_json(cache_key, payload, PULSE_SNAPSHOT_TTL_SECONDS)
     return payload

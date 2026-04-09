@@ -610,9 +610,32 @@ export function CampusPingsScreen() {
 
   const handlePickPingImage = useCallback(async () => {
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const existingPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
+      const permission =
+        existingPermission.granted || !existingPermission.canAskAgain
+          ? existingPermission
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
       if (!permission.granted) {
-        Alert.alert('Photos unavailable', 'Allow photo access to attach an image to your ping.');
+        if (permission.canAskAgain) {
+          Alert.alert('Photos unavailable', 'Allow photo access to attach an image to your ping.');
+        } else {
+          Alert.alert(
+            'Photos unavailable',
+            'Photo access is turned off for MaroonLife. Open Settings to allow image uploads.',
+            [
+              { text: 'Not now', style: 'cancel' },
+              {
+                text: 'Open Settings',
+                onPress: () => {
+                  Linking.openSettings().catch((settingsError) => {
+                    console.warn('[Pings] could not open settings', settingsError);
+                  });
+                },
+              },
+            ],
+          );
+        }
         return;
       }
 

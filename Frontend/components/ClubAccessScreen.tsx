@@ -37,11 +37,11 @@ export function ClubAccessScreen() {
   const loadClubs = useCallback(async () => {
     if (!user?.id) return;
     try {
-      const data = await requestJson(`/clubs?clerk_id=${encodeURIComponent(user.id)}`);
+      const data = await requestJson(`/clubs?clerk_id=${encodeURIComponent(user.id)}`, {}, 15000);
       setClubs(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error(error);
-      Alert.alert('Could not load clubs', 'Please try again in a moment.');
+      Alert.alert('Could not load clubs', error instanceof Error ? error.message : 'Please try again in a moment.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -70,7 +70,7 @@ export function ClubAccessScreen() {
       const result = await requestJson(`/clubs/${encodeURIComponent(club.clerk_id)}/join-requests`, {
         method: 'POST',
         body: JSON.stringify({ clerk_id: user.id }),
-      });
+      }, 15000);
       setClubs((current) =>
         current.map((item) =>
           item.clerk_id === club.clerk_id
@@ -174,9 +174,7 @@ export function ClubAccessScreen() {
         <View style={styles.heroCard}>
           <Text style={styles.eyebrow}>Club Access</Text>
           <Text style={styles.title}>Request Event Access</Text>
-          <Text style={styles.subtitle}>
-            Join organization access groups to unlock tagged events in your feed, dashboard, and featured listings.
-          </Text>
+          <Text style={styles.subtitle}>Join organization access groups and review your active tags.</Text>
         </View>
 
         {clubs.length ? (

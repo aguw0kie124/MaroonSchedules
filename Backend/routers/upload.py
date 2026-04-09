@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Request
 import os
 import uuid
 from typing import Dict
@@ -14,7 +14,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Base URL for serving files (in production this should be the public domain)
 # For local dev/internal use, we return the relative path or host-based URL
-BASE_URL = os.getenv("APP_URL", "http://127.0.0.1:8000").rstrip("/")
+BASE_URL = os.getenv("APP_URL", "").rstrip("/")
 MAX_IMAGE_BYTES = int(os.getenv("MAX_IMAGE_UPLOAD_BYTES", str(10 * 1024 * 1024)))
 MAX_VIDEO_BYTES = int(os.getenv("MAX_VIDEO_UPLOAD_BYTES", str(50 * 1024 * 1024)))
 
@@ -36,7 +36,7 @@ def get_file_extension(filename: str) -> str:
     return os.path.splitext(filename)[1].lower()
 
 
-async def _save_upload(file: UploadFile, allowed_types: dict[str, str], max_bytes: int) -> Dict[str, str]:
+async def _save_upload(request: Request, file: UploadFile, allowed_types: dict[str, str], max_bytes: int) -> Dict[str, str]:
     content_type = (file.content_type or "").lower()
     if content_type not in allowed_types:
         raise HTTPException(status_code=400, detail="Unsupported file type")
@@ -67,13 +67,14 @@ async def _save_upload(file: UploadFile, allowed_types: dict[str, str], max_byte
     finally:
         await file.close()
 
-    return {"status": "success", "url": f"{BASE_URL}/uploads/{unique_filename}", "filename": unique_filename}
+    public_base_url = BASE_URL or str(request.base_url).rstrip("/")
+    return {"status": "success", "url": f"{public_base_url}/uploads/{unique_filename}", "filename": unique_filename}
 
 @router.post("/image")
-async def upload_image(file: UploadFile = File(...), _auth_user_id: str = Depends(require_auth)) -> Dict[str, str]:
-    return await _save_upload(file, ALLOWED_IMAGE_TYPES, MAX_IMAGE_BYTES)
+async def upload_image(request: Request, file: UploadFile = File(...), _auth_user_id: str = Depends(require_auth)) -> Dict[str, str]:
+    return await _save_upload(request, file, ALLOWED_IMAGE_TYPES, MAX_IMAGE_BYTES)
 
 @router.post("/file")
 @router.post("/video")
-async def upload_video(file: UploadFile = File(...), _auth_user_id: str = Depends(require_auth)) -> Dict[str, str]:
-    return await _save_upload(file, ALLOWED_VIDEO_TYPES, MAX_VIDEO_BYTES)
+async def upload_video(request: Request, file: UploadFile = File(...), _auth_user_id: str = Depends(require_auth)) -> Dict[str, str]:
+    return await _save_upload(request, file, ALLOWED_VIDEO_TYPES, MAX_VIDEO_BYTES)

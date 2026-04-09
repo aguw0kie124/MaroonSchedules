@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Text, TextInput, ScrollView, Alert, Platform, Image } from 'react-native';
+import { View, StyleSheet, Text, TextInput, ScrollView, Alert, Platform, Image, Linking } from 'react-native';
 import { Pressable } from 'react-native';
 import { useUser, useAuth } from '@clerk/clerk-expo';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
@@ -34,6 +34,7 @@ export function AdminMapPoster() {
   const [address, setAddress] = useState('');
   const [googleReviewUrl, setGoogleReviewUrl] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [postKind, setPostKind] = useState<'event' | 'ping'>('event');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [startTime, setStartTime] = useState(() => roundToNearestFiveMinutes(new Date()));
@@ -49,7 +50,7 @@ export function AdminMapPoster() {
 
   useEffect(() => {
     if (!user?.id) return;
-    requestJson(`/admin/tags?clerk_id=${encodeURIComponent(user.id)}`)
+    requestJson(`/admin/tags?clerk_id=${encodeURIComponent(user.id)}`, {}, 15000)
       .then((data) => setAvailableTags(data.tags || []))
       .catch((error) => console.error('Failed to load tag suggestions', error));
   }, [user?.id]);
@@ -99,9 +100,32 @@ export function AdminMapPoster() {
   };
 
   const handlePickImage = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const existingPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
+    const permission =
+      existingPermission.granted || !existingPermission.canAskAgain
+        ? existingPermission
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
     if (!permission.granted) {
-      Alert.alert('Photos unavailable', 'Allow photo access to add an event image.');
+      if (permission.canAskAgain) {
+        Alert.alert('Photos unavailable', 'Allow photo access to add an event image.');
+      } else {
+        Alert.alert(
+          'Photos unavailable',
+          'Photo access is turned off for MaroonLife. Open Settings to allow event image uploads.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            {
+              text: 'Open Settings',
+              onPress: () => {
+                Linking.openSettings().catch((settingsError) => {
+                  console.warn('Failed to open settings for image access', settingsError);
+                });
+              },
+            },
+          ],
+        );
+      }
       return;
     }
 
@@ -119,7 +143,7 @@ export function AdminMapPoster() {
 
   const handleSubmit = async () => {
     if (!title.trim()) {
-      Alert.alert('Incomplete', 'Please provide an event title.');
+      Alert.alert('Incomplete', `Please provide a ${postKind} title.`);
       return;
     }
 
@@ -135,24 +159,60 @@ export function AdminMapPoster() {
       const resolvedLocation = resolveAdminEventLocation(address);
       const uploadedImageUrl = imageUri ? await uploadStreamImage(imageUri) : null;
 
-      await requestJson('/admin/events', {
-        method: 'POST',
-        body: JSON.stringify({
-          clerk_id: user?.id,
-          title: title.trim(),
-          description: description.trim(),
-          lat: resolvedLocation.lat,
-          lng: resolvedLocation.lng,
-          location_name: resolvedLocation.location_name,
-          start_time: startTime.toISOString(),
-          end_time: endTime.toISOString(),
-          google_review_url: normalizedReviewUrl,
-          image_url: uploadedImageUrl,
-          tags: selectedTags,
-        })
-      });
+      if (postKind === 'event') {
+        await requestJson('/admin/events', {
+          method: 'POST',
+          body: JSON.stringify({
+            clerk_id: user?.id,
+            title: title.trim(),
+            description: description.trim(),
+            lat: resolvedLocation.lat,
+            lng: resolvedLocation.lng,
+            location_name: resolvedLocation.location_name,
+            start_time: startTime.toISOString(),
+            end_time: endTime.toISOString(),
+            google_review_url: normalizedReviewUrl,
+            image_url: uploadedImageUrl,
+            tags: selectedTags,
+          }),
+        }, 30000);
+      } else {
+        await requestJson('/chat/feeds/proxy/flat/campus_pings', {
+          method: 'POST',
+          body: JSON.stringify({
+            activity: {
+              actor: `SU:${user?.id}`,
+              verb: 'ping',
+              object: `admin-ping:${Date.now()}`,
+              text: description.trim(),
+              attachments: uploadedImageUrl
+                ? [
+                    {
+                      type: 'image',
+                      image_url: uploadedImageUrl,
+                    },
+                  ]
+                : [],
+              custom: {
+                user_name: user?.fullName || user?.firstName || 'Campus organizer',
+                user_image: user?.imageUrl || '',
+                ping_title: title.trim(),
+                ping_category: 'Popup',
+                location_tag: resolvedLocation.location_name,
+                place_lat: resolvedLocation.lat,
+                place_lng: resolvedLocation.lng,
+                start_at: startTime.toISOString(),
+                end_at: endTime.toISOString(),
+                content_type: 'ping',
+                access_tags: selectedTags,
+                is_anonymous: false,
+              },
+            },
+          }),
+        }, 30000);
+      }
 
-      Alert.alert('Success', 'Event posted to the featured tab!');
+      Alert.alert('Success', postKind === 'event' ? 'Event posted to the featured tab!' : 'Ping posted to Pulse.');
       setTitle('');
       setDescription('');
       setAddress('');
@@ -285,6 +345,33 @@ export function AdminMapPoster() {
       color: '#FFFFFF',
       fontSize: 12,
       fontWeight: '700',
+    },
+    typeToggleRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginBottom: 14,
+    },
+    typeTogglePill: {
+      flex: 1,
+      borderRadius: 16,
+      paddingVertical: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surface,
+    },
+    typeTogglePillActive: {
+      borderColor: COLORS.primary,
+      backgroundColor: COLORS.primary + '12',
+    },
+    typeToggleLabel: {
+      color: COLORS.textSecondary,
+      fontSize: 14,
+      fontWeight: '800',
+    },
+    typeToggleLabelActive: {
+      color: COLORS.primary,
     },
     label: {
       fontSize: 14,
@@ -444,8 +531,12 @@ export function AdminMapPoster() {
         <View style={styles.topBar}>
           <View style={styles.topBarCopy}>
             <Text style={styles.topEyebrow}>Admin Portal</Text>
-            <Text style={styles.title}>Post New Event</Text>
-            <Text style={styles.subtitle}>Create a featured event and set up the student review flow in one place.</Text>
+            <Text style={styles.title}>{postKind === 'event' ? 'Post New Event' : 'Post New Ping'}</Text>
+            <Text style={styles.subtitle}>
+              {postKind === 'event'
+                ? 'Create a featured event and set up the student review flow in one place.'
+                : 'Publish a Pulse pin with optional audience tags so only the right members see it.'}
+            </Text>
           </View>
           <Pressable
             style={styles.signOutButton}
@@ -459,13 +550,38 @@ export function AdminMapPoster() {
           </Pressable>
         </View>
 
+        <View style={styles.typeToggleRow}>
+          {[
+            { id: 'event', label: 'Event' },
+            { id: 'ping', label: 'Ping' },
+          ].map((option) => {
+            const active = postKind === option.id;
+            return (
+              <Pressable
+                key={option.id}
+                style={[styles.typeTogglePill, active && styles.typeTogglePillActive]}
+                onPress={() => setPostKind(option.id as 'event' | 'ping')}
+              >
+                <Text style={[styles.typeToggleLabel, active && styles.typeToggleLabelActive]}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+
         <View style={styles.heroCard}>
           {imageUri ? <Image source={{ uri: imageUri }} style={styles.heroImage} resizeMode="cover" /> : null}
           <View style={styles.heroOverlay} />
           <View style={styles.heroContent}>
             <View>
-              <Text style={styles.heroEyebrow}>Featured Event Studio</Text>
-              <Text style={styles.heroHeadline}>{title.trim() || 'Make your next event impossible to ignore.'}</Text>
+              <Text style={styles.heroEyebrow}>{postKind === 'event' ? 'Featured Event Studio' : 'Pulse Studio'}</Text>
+              <Text style={styles.heroHeadline}>
+                {title.trim() ||
+                  (postKind === 'event'
+                    ? 'Make your next event impossible to ignore.'
+                    : 'Drop a members-only pulse exactly where it matters.')}
+              </Text>
               <View style={{ marginTop: 12 }}>
                 <TagChips tags={selectedTags} />
               </View>
@@ -473,11 +589,13 @@ export function AdminMapPoster() {
             <View style={styles.heroBadgeRow}>
               <View style={styles.heroBadge}>
                 <Sparkles size={14} color="#FFFFFF" />
-                <Text style={styles.heroBadgeText}>Discover ready</Text>
+                <Text style={styles.heroBadgeText}>{postKind === 'event' ? 'Discover ready' : 'Pulse ready'}</Text>
               </View>
               <View style={styles.heroBadge}>
                 <MapPinned size={14} color="#FFFFFF" />
-                <Text style={styles.heroBadgeText}>Pulse boosted</Text>
+                <Text style={styles.heroBadgeText}>
+                  {selectedTags.length ? 'Audience filtered' : 'Campus visible'}
+                </Text>
               </View>
             </View>
           </View>
@@ -486,29 +604,35 @@ export function AdminMapPoster() {
         <View style={styles.helperCard}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <PlusCircle size={16} color={COLORS.primary} />
-          <Text style={styles.helperTitle}>Student review flow</Text>
+            <Text style={styles.helperTitle}>
+              {postKind === 'event' ? 'Student review flow' : 'Audience targeting'}
+            </Text>
           </View>
           <Text style={styles.helperText}>
-            Students get an in-app survey after the event ends, with both public and private review options still visible.
+            {postKind === 'event'
+              ? 'Students get an in-app survey after the event ends, with both public and private review options still visible.'
+              : 'Add audience tags to make this ping exclusive to matching users and club members.'}
           </Text>
         </View>
         
-        <Text style={styles.label}>Event Title</Text>
+        <Text style={styles.label}>{postKind === 'event' ? 'Event Title' : 'Ping Title'}</Text>
         <TextInput 
           style={styles.input} 
-          placeholder="e.g. Free Pizza at Rudder" 
+          placeholder={postKind === 'event' ? 'e.g. Free Pizza at Rudder' : 'e.g. Officers meeting moved upstairs'} 
           placeholderTextColor={COLORS.textTertiary}
           value={title}
           onChangeText={setTitle}
         />
 
-        <Text style={styles.label}>Event Image (Optional)</Text>
+        <Text style={styles.label}>{postKind === 'event' ? 'Event Image (Optional)' : 'Ping Image (Optional)'}</Text>
         <Pressable style={styles.imagePicker} onPress={handlePickImage}>
           <View style={styles.imagePickerRow}>
             <View style={styles.imagePickerCopy}>
               <Text style={styles.imagePickerTitle}>{imageUri ? 'Change cover image' : 'Add cover image'}</Text>
               <Text style={styles.imagePickerMeta}>
-                Use a strong photo so the featured card feels polished in Discover.
+                {postKind === 'event'
+                  ? 'Use a strong photo so the featured card feels polished in Discover.'
+                  : 'Add a flyer or snapshot so the pulse pin is easy to recognize.'}
               </Text>
             </View>
             <ImagePlus size={18} color={COLORS.primary} />
@@ -553,26 +677,34 @@ export function AdminMapPoster() {
           </View>
         ) : null}
         <Text style={[styles.helperText, { marginTop: 6 }]}>
-          Choose a campus place for map linking. Off-map or virtual events anchor to MSC so they still appear in Places and Pulse.
+          Choose a campus place for map linking. Off-map or virtual posts anchor to MSC so they still appear in Places and Pulse.
         </Text>
 
-        <Text style={styles.label}>Google Review URL (Optional)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="https://g.page/r/.../review"
-          placeholderTextColor={COLORS.textTertiary}
-          value={googleReviewUrl}
-          onChangeText={setGoogleReviewUrl}
-          autoCapitalize="none"
-          keyboardType="url"
-        />
-        <Text style={[styles.helperText, { marginTop: 6 }]}>
-          Paste the full review URL. If you leave off `https://`, we’ll add it automatically.
-        </Text>
+        {postKind === 'event' ? (
+          <>
+            <Text style={styles.label}>Google Review URL (Optional)</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="https://g.page/r/.../review"
+              placeholderTextColor={COLORS.textTertiary}
+              value={googleReviewUrl}
+              onChangeText={setGoogleReviewUrl}
+              autoCapitalize="none"
+              keyboardType="url"
+            />
+            <Text style={[styles.helperText, { marginTop: 6 }]}>
+              Paste the full review URL. If you leave off `https://`, we’ll add it automatically.
+            </Text>
+          </>
+        ) : null}
 
         <TagSelector
           label="Audience Tags"
-          helperText="Students with matching user tags will see this event alongside public campus events."
+          helperText={
+            postKind === 'event'
+              ? 'Students with matching user tags will see this event alongside public campus events.'
+              : 'Students with matching user tags will see this ping on Pulse and in the feed.'
+          }
           selectedTags={selectedTags}
           availableTags={availableTags}
           placeholder="Add audience tag"
@@ -646,10 +778,10 @@ export function AdminMapPoster() {
           />
         </View>
 
-        <Text style={styles.label}>Description</Text>
+        <Text style={styles.label}>{postKind === 'event' ? 'Description' : 'What is happening?'}</Text>
         <TextInput 
           style={[styles.input, styles.textArea]} 
-          placeholder="Stop by for free pizza!" 
+          placeholder={postKind === 'event' ? 'Stop by for free pizza!' : 'Share the important details people should know.'} 
           placeholderTextColor={COLORS.textTertiary}
           multiline
           value={description}
@@ -657,7 +789,9 @@ export function AdminMapPoster() {
         />
 
         <View style={{ marginTop: 32, marginBottom: 60 }}>
-          <Button onPress={handleSubmit}>{loading ? "Posting..." : "Post Event"}</Button>
+          <Button onPress={handleSubmit}>
+            {loading ? "Posting..." : postKind === 'event' ? "Post Event" : "Post Ping"}
+          </Button>
         </View>
       </ScrollView>
     </View>

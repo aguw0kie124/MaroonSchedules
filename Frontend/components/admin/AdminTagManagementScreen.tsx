@@ -68,13 +68,13 @@ export function AdminTagManagementScreen() {
 
   const loadTagLibrary = useCallback(async () => {
     if (!user?.id) return;
-    const data = await requestJson(`/admin/tags?clerk_id=${encodeURIComponent(user.id)}`);
+    const data = await requestJson(`/admin/tags?clerk_id=${encodeURIComponent(user.id)}`, {}, 15000);
     setAvailableTags(data.tags || []);
   }, [user?.id]);
 
   const loadClubSettings = useCallback(async () => {
     if (!user?.id) return;
-    const data = await requestJson(`/admin/club/settings?clerk_id=${encodeURIComponent(user.id)}`);
+    const data = await requestJson(`/admin/club/settings?clerk_id=${encodeURIComponent(user.id)}`, {}, 15000);
     setClubSettings(data);
     setClubTagDraft(data.club_tag ? [data.club_tag] : []);
     setAutoApprove(!!data.auto_approve_join_requests);
@@ -82,7 +82,7 @@ export function AdminTagManagementScreen() {
 
   const loadJoinRequests = useCallback(async () => {
     if (!user?.id) return;
-    const data = await requestJson(`/admin/club-join-requests?clerk_id=${encodeURIComponent(user.id)}&status=pending`);
+    const data = await requestJson(`/admin/club-join-requests?clerk_id=${encodeURIComponent(user.id)}&status=pending`, {}, 15000);
     setJoinRequests(Array.isArray(data) ? data : []);
   }, [user?.id]);
 
@@ -97,7 +97,7 @@ export function AdminTagManagementScreen() {
       if (query && query.trim()) {
         params.set('query', query.trim());
       }
-      const data = await requestJson(`/admin/users?${params.toString()}`);
+      const data = await requestJson(`/admin/users?${params.toString()}`, {}, 15000);
       setUsers(Array.isArray(data) ? data : []);
     } finally {
       setLoadingUsers(false);
@@ -156,7 +156,7 @@ export function AdminTagManagementScreen() {
           club_tag: clubTagDraft[0] || null,
           auto_approve_join_requests: autoApprove,
         }),
-      });
+      }, 15000);
       setClubSettings(response);
       setClubTagDraft(response.club_tag ? [response.club_tag] : []);
       await Promise.all([loadTagLibrary(), loadJoinRequests()]);
@@ -178,7 +178,7 @@ export function AdminTagManagementScreen() {
           clerk_id: user.id,
           assign_club_tag: approve,
         }),
-      });
+      }, 15000);
       setJoinRequests((current) => current.filter((request) => request.id !== requestId));
       if (approve) {
         await loadUsers(userQuery);
@@ -210,7 +210,7 @@ export function AdminTagManagementScreen() {
           clerk_id: user.id,
           tags: editingTags,
         }),
-      });
+      }, 15000);
       setUsers((current) =>
         current.map((item) =>
           item.clerk_id === editingUser.clerk_id

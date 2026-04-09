@@ -104,9 +104,16 @@ def _ensure_tags(cur: psycopg.Cursor, labels: Sequence[str]) -> Dict[str, str]:
     return tag_ids
 
 
+def _ensure_access_dependencies(conn: psycopg.Connection) -> None:
+    _ensure_tag_schema(conn)
+    from repositories import user_repository
+
+    user_repository._ensure_user_schema(conn)
+
+
 def _run_with_connection(callback):
     with psycopg.connect(CONNECTION_PARAMS) as conn:
-        _ensure_tag_schema(conn)
+        _ensure_access_dependencies(conn)
         result = callback(conn)
         conn.commit()
         return result
@@ -128,7 +135,7 @@ def get_user_tags(clerk_id: str, conn: Optional[psycopg.Connection] = None) -> L
             return [row[0] for row in cur.fetchall() or []]
 
     if conn is not None:
-        _ensure_tag_schema(conn)
+        _ensure_access_dependencies(conn)
         return _read(conn)
     return _run_with_connection(_read)
 
@@ -154,7 +161,7 @@ def add_user_tags(clerk_id: str, tags: Sequence[str], conn: Optional[psycopg.Con
         return get_user_tags(clerk_id, conn=active_conn)
 
     if conn is not None:
-        _ensure_tag_schema(conn)
+        _ensure_access_dependencies(conn)
         return _write(conn)
     return _run_with_connection(_write)
 
@@ -177,7 +184,7 @@ def set_user_tags(clerk_id: str, tags: Sequence[str], conn: Optional[psycopg.Con
         return normalized
 
     if conn is not None:
-        _ensure_tag_schema(conn)
+        _ensure_access_dependencies(conn)
         return _write(conn)
     return _run_with_connection(_write)
 
@@ -198,7 +205,7 @@ def get_event_tags(event_id: str, conn: Optional[psycopg.Connection] = None) -> 
             return [row[0] for row in cur.fetchall() or []]
 
     if conn is not None:
-        _ensure_tag_schema(conn)
+        _ensure_access_dependencies(conn)
         return _read(conn)
     return _run_with_connection(_read)
 
@@ -221,7 +228,7 @@ def set_event_tags(event_id: str, tags: Sequence[str], conn: Optional[psycopg.Co
         return normalized
 
     if conn is not None:
-        _ensure_tag_schema(conn)
+        _ensure_access_dependencies(conn)
         return _write(conn)
     return _run_with_connection(_write)
 
@@ -255,7 +262,7 @@ def list_tags(query: Optional[str] = None, limit: int = 50, conn: Optional[psyco
             return [row[0] for row in cur.fetchall() or []]
 
     if conn is not None:
-        _ensure_tag_schema(conn)
+        _ensure_access_dependencies(conn)
         return _read(conn)
     return _run_with_connection(_read)
 
@@ -280,7 +287,7 @@ def get_club_settings(admin_clerk_id: str, conn: Optional[psycopg.Connection] = 
             return cur.fetchone() or {}
 
     if conn is not None:
-        _ensure_tag_schema(conn)
+        _ensure_access_dependencies(conn)
         return _read(conn)
     return _run_with_connection(_read)
 
@@ -330,7 +337,7 @@ def update_club_settings(
         return get_club_settings(admin_clerk_id, conn=active_conn)
 
     if conn is not None:
-        _ensure_tag_schema(conn)
+        _ensure_access_dependencies(conn)
         return _write(conn)
     return _run_with_connection(_write)
 
@@ -362,7 +369,7 @@ def list_clubs_for_user(requester_clerk_id: str, conn: Optional[psycopg.Connecti
             return cur.fetchall() or []
 
     if conn is not None:
-        _ensure_tag_schema(conn)
+        _ensure_access_dependencies(conn)
         return _read(conn)
     return _run_with_connection(_read)
 
@@ -426,7 +433,7 @@ def create_club_join_request(
         }
 
     if conn is not None:
-        _ensure_tag_schema(conn)
+        _ensure_access_dependencies(conn)
         return _write(conn)
     return _run_with_connection(_write)
 
@@ -469,7 +476,7 @@ def list_club_join_requests(
             return cur.fetchall() or []
 
     if conn is not None:
-        _ensure_tag_schema(conn)
+        _ensure_access_dependencies(conn)
         return _read(conn)
     return _run_with_connection(_read)
 
@@ -526,7 +533,7 @@ def review_club_join_request(
         }
 
     if conn is not None:
-        _ensure_tag_schema(conn)
+        _ensure_access_dependencies(conn)
         return _write(conn)
     return _run_with_connection(_write)
 
@@ -593,6 +600,6 @@ def search_users(query: Optional[str] = None, limit: int = 50, conn: Optional[ps
             return rows
 
     if conn is not None:
-        _ensure_tag_schema(conn)
+        _ensure_access_dependencies(conn)
         return _read(conn)
     return _run_with_connection(_read)

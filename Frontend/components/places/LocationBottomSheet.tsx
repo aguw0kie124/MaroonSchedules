@@ -40,6 +40,7 @@ import {
 import { getCanonicalLocationName } from "./campusData";
 import {
   DiningMealPeriod,
+  getDiningMealOptionsForLocation,
   isDiningHallMenuLocation,
 } from "../../services/diningMenuCache";
 import { reportContent, blockUser, deleteReview } from "../../services/streamFeeds";
@@ -166,7 +167,7 @@ interface LocationBottomSheetProps {
   diningMenuPreview: any | null;
   isFetchingDining: boolean;
   isPrimaryDiningHallSelection: boolean;
-  openFullMenu: (locationName: string) => void;
+  openFullMenu: (locationName: string, mealPeriod?: DiningMealPeriod) => void;
   // Schedule
   openScheduleList: () => void;
   // Recreation
@@ -253,13 +254,17 @@ export function LocationBottomSheet({
   );
 
   useEffect(() => {
-    setDiningDetailTab("reviews");
+    if (selectedLoc && (isDiningHallMenuLocation(selectedLoc.location) || foodCourtVenues.length > 0)) {
+      setDiningDetailTab("menus");
+    } else {
+      setDiningDetailTab("reviews");
+    }
     if (selectedId) {
       animateSheet(SHEET_MID_SNAP);
     } else {
       animateSheet(SHEET_HIDDEN_SNAP);
     }
-  }, [selectedId, animateSheet, activeTargetName, selectedLoc?.type]);
+  }, [selectedId, animateSheet, activeTargetName, foodCourtVenues.length, selectedLoc?.location, selectedLoc?.type]);
 
   const isDiningHallCard =
     !!selectedLoc &&
@@ -642,7 +647,7 @@ export function LocationBottomSheet({
                   {activeDiningMenu && isDiningHallCard ? (
                     <TouchableOpacity
                       style={styles.quickActionPill}
-                      onPress={() => openFullMenu(activeDiningMenu)}
+                      onPress={() => openFullMenu(activeDiningMenu, activeDiningMealPeriod)}
                     >
                       <Utensils size={14} color={COLORS.textPrimary} />
                       <Text style={styles.quickActionText}>Menus</Text>
@@ -751,86 +756,223 @@ export function LocationBottomSheet({
             >
               {isDiningMenuExperience ? (
                 <>
-                  {isFoodCourtHub ? (
-                    <>
-                      <View style={styles.detailTabsWrap}>
-                        <View style={styles.mapsTabRow}>
-                          {[
-                            { key: "reviews", label: "Reviews" },
-                            { key: "menus", label: "Locations" },
-                          ].map((tab) => {
-                            const isActive = diningDetailTab === tab.key;
-                            return (
-                              <TouchableOpacity
-                                key={tab.key}
-                                style={styles.mapsTabButton}
-                                onPress={() =>
-                                  setDiningDetailTab(tab.key as "reviews" | "menus")
-                                }
-                                activeOpacity={0.75}
-                              >
-                                <Text
-                                  style={[
-                                    styles.mapsTabLabel,
-                                    isActive && styles.mapsTabLabelActive,
-                                  ]}
-                                >
-                                  {tab.label}
-                                </Text>
-                                <View
-                                  style={[
-                                    styles.mapsTabUnderline,
-                                    isActive && styles.mapsTabUnderlineActive,
-                                  ]}
-                                />
-                              </TouchableOpacity>
-                            );
-                          })}
+                  <View style={styles.detailTabsWrap}>
+                    <View style={styles.mapsTabRow}>
+                      {[
+                        { key: "reviews", label: "Reviews" },
+                        {
+                          key: "menus",
+                          label: isDiningHallCard ? "Menu" : "Locations",
+                        },
+                      ].map((tab) => {
+                        const isActive = diningDetailTab === tab.key;
+                        return (
+                          <TouchableOpacity
+                            key={tab.key}
+                            style={styles.mapsTabButton}
+                            onPress={() =>
+                              setDiningDetailTab(tab.key as "reviews" | "menus")
+                            }
+                            activeOpacity={0.75}
+                          >
+                            <Text
+                              style={[
+                                styles.mapsTabLabel,
+                                isActive && styles.mapsTabLabelActive,
+                              ]}
+                            >
+                              {tab.label}
+                            </Text>
+                            <View
+                              style={[
+                                styles.mapsTabUnderline,
+                                isActive && styles.mapsTabUnderlineActive,
+                              ]}
+                            />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  {diningDetailTab === "menus" ? (
+                    <View style={styles.infoBlock}>
+                      <View style={styles.reviewsHeader}>
+                        <View>
+                          <Text style={styles.sectionTitle}>
+                            {isDiningHallCard ? "Live menus" : "Inside this Food Court"}
+                          </Text>
+                          <Text style={styles.menuIntroText}>
+                            {isDiningHallCard
+                              ? "Live dining hall menu."
+                              : "Browse the dining locations available inside this hub."}
+                          </Text>
                         </View>
+                        {isDiningHallCard && activeDiningMenu ? (
+                          <TouchableOpacity
+                            onPress={() =>
+                              openFullMenu(
+                                activeDiningMenu || selectedLoc.location,
+                                activeDiningMealPeriod,
+                              )
+                            }
+                          >
+                            <Text style={styles.seeAllText}>Open full menu</Text>
+                          </TouchableOpacity>
+                        ) : null}
                       </View>
 
-                      {diningDetailTab === "menus" ? (
-                        <View style={styles.infoBlock}>
-                          <View style={styles.reviewsHeader}>
-                            <View>
-                              <Text style={styles.sectionTitle}>
-                                Inside this Food Court
+                      {!isDiningHallCard && foodCourtVenues.length > 0 ? (
+                        <View style={styles.foodCourtVenueList}>
+                          {foodCourtVenues.map((venue) => (
+                            <View key={venue.selectionId} style={styles.foodCourtVenueCard}>
+                              <View style={{ flex: 1, paddingRight: 12 }}>
+                                <Text style={styles.foodCourtVenueTitle}>
+                                  {venue.label}
+                                </Text>
+                                <Text style={styles.foodCourtVenueMeta}>
+                                  {venue.location.shortName &&
+                                  venue.location.shortName !== venue.location.location
+                                    ? venue.location.shortName
+                                    : "Dining location"}
+                                </Text>
+                              </View>
+                              <Text style={styles.foodCourtVenueAction}>Inside</Text>
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
+
+                      {isDiningHallCard && diningMenuOptions.length > 1 ? (
+                        <View style={styles.restaurantChipList}>
+                          {diningMenuOptions.map((option) => (
+                            <TouchableOpacity
+                              key={option}
+                              style={[
+                                styles.restaurantChip,
+                                activeDiningMenu === option && styles.restaurantChipActive,
+                              ]}
+                              onPress={() => setActiveDiningMenu(option)}
+                            >
+                              <Text style={styles.restaurantChipText}>{option}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      ) : null}
+
+                      {isDiningHallCard && activeDiningMenu ? (
+                        <View style={styles.restaurantChipList}>
+                          {getDiningMealOptionsForLocation(activeDiningMenu).map(
+                            (mealPeriod) => (
+                              <TouchableOpacity
+                                key={mealPeriod}
+                                style={[
+                                  styles.restaurantChip,
+                                  activeDiningMealPeriod === mealPeriod &&
+                                    styles.restaurantChipActive,
+                                ]}
+                                onPress={() =>
+                                  setActiveDiningMealPeriod(mealPeriod as DiningMealPeriod)
+                                }
+                              >
+                                <Text style={styles.restaurantChipText}>
+                                  {mealPeriod.charAt(0).toUpperCase() + mealPeriod.slice(1)}
+                                </Text>
+                              </TouchableOpacity>
+                            ),
+                          )}
+                        </View>
+                      ) : null}
+
+                      {isDiningHallCard ? (
+                        <>
+                          <View style={styles.metaPillRow}>
+                            <View style={styles.metaPill}>
+                              <Text style={styles.metaPillText}>
+                                {diningMenuPreview?.count ?? 0} items
                               </Text>
-                              <Text style={styles.menuIntroText}>
-                                Browse the dining locations available inside this hub.
+                            </View>
+                            <View style={styles.metaPill}>
+                              <Text style={styles.metaPillText}>
+                                {diningMenuPreview?.categories?.length ?? 0} categories
                               </Text>
                             </View>
                           </View>
 
-                          <View style={styles.foodCourtVenueList}>
-                            {foodCourtVenues.map((venue) => (
-                              <View
-                                key={venue.selectionId}
-                                style={styles.foodCourtVenueCard}
-                              >
-                                <View style={{ flex: 1, paddingRight: 12 }}>
-                                  <Text style={styles.foodCourtVenueTitle}>
-                                    {venue.label}
-                                  </Text>
-                                  <Text style={styles.foodCourtVenueMeta}>
-                                    {venue.location.shortName &&
-                                    venue.location.shortName !== venue.location.location
-                                      ? venue.location.shortName
-                                      : "Dining location"}
-                                  </Text>
+                          {isFetchingDining ? (
+                            <ActivityIndicator
+                              color={COLORS.primary}
+                              style={{ marginVertical: 18 }}
+                            />
+                          ) : diningMenuPreview?.categories?.length ? (
+                            <View style={styles.menuCategoryList}>
+                              {diningMenuPreview.categories.map((category: any) => (
+                                <View
+                                  key={category.name}
+                                  style={styles.menuCategoryCard}
+                                >
+                                  <View style={styles.menuCategoryHeader}>
+                                    <Text style={styles.menuCategoryTitle}>
+                                      {category.name}
+                                    </Text>
+                                    <Text style={styles.menuCategoryCount}>
+                                      {category.items.length}
+                                    </Text>
+                                  </View>
+
+                                  <View style={styles.menuCategoryItems}>
+                                    {category.items.slice(0, 2).map((item: any) => (
+                                      <View
+                                        key={`${activeDiningMenu}-${category.name}-${item.name}`}
+                                        style={styles.menuCategoryItem}
+                                      >
+                                        <View style={{ flex: 1 }}>
+                                          <Text style={styles.menuCategoryItemName}>
+                                            {item.name}
+                                          </Text>
+                                          {item.calories || item.protein ? (
+                                            <Text
+                                              style={styles.menuCategoryItemMeta}
+                                              numberOfLines={1}
+                                            >
+                                              {item.calories
+                                                ? `${Math.round(item.calories || 0)} kcal`
+                                                : ""}
+                                              {item.calories && item.protein ? " · " : ""}
+                                              {item.protein
+                                                ? `${Math.round(item.protein)}g protein`
+                                                : ""}
+                                            </Text>
+                                          ) : null}
+                                        </View>
+                                      </View>
+                                    ))}
+                                    {category.items.length > 2 ? (
+                                      <Text style={styles.menuCategoryMoreText}>
+                                        +{category.items.length - 2} more items
+                                      </Text>
+                                    ) : null}
+                                  </View>
                                 </View>
-                                <Text style={styles.foodCourtVenueAction}>
-                                  Inside
-                                </Text>
-                              </View>
-                            ))}
-                          </View>
+                              ))}
+                            </View>
+                          ) : (
+                            <View style={styles.emptyReviews}>
+                              <Text style={styles.emptyReviewsText}>
+                                Menu not available yet for this meal period.
+                              </Text>
+                            </View>
+                          )}
+                        </>
+                      ) : foodCourtVenues.length === 0 ? (
+                        <View style={styles.emptyReviews}>
+                          <Text style={styles.emptyReviewsText}>
+                            No dining locations are listed inside this hub yet.
+                          </Text>
                         </View>
                       ) : null}
-                    </>
-                  ) : null}
-
-                  {!isFoodCourtHub || diningDetailTab === "reviews" ? (
+                    </View>
+                  ) : (
                     <View style={styles.infoBlock}>
                       <View style={styles.reviewsHeader}>
                         <Text style={styles.sectionTitle}>Reviews</Text>
@@ -911,7 +1053,7 @@ export function LocationBottomSheet({
                         </View>
                       )}
                     </View>
-                  ) : null}
+                  )}
                 </>
               ) : (
                 <>

@@ -8,8 +8,8 @@ from typing import Dict, Any, List, Optional
 import uuid
 import traceback
 
-from services import ping_service, cache_service, campus_hub_service, pulse_service
-from repositories import feed_repository, user_repository
+from services import ping_service, cache_service, campus_hub_service, pulse_service, tag_access_service
+from repositories import feed_repository, user_repository, tag_repository
 from db_config import CONNECTION_PARAMS
 from auth.clerk_middleware import require_auth, optional_auth, ensure_matching_user
 
@@ -59,6 +59,37 @@ def _invalidate_ping_related_caches(feed_group: str, feed_id: str) -> None:
     if feed_group == "flat" and feed_id == "campus_pings":
         _invalidate_feed_cache("flat", "campus_global")
         pulse_service.invalidate_pulse_map_cache()
+
+
+def _coerce_access_tags(value: Any) -> List[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, (list, tuple, set)):
+        return [str(entry) for entry in value if entry]
+    return []
+
+
+def _resolve_access_scope(clerk_id: Optional[str]) -> tuple[List[str], bool]:
+    if not clerk_id:
+        return [], False
+
+    profile = user_repository.get_user(clerk_id) or {}
+    try:
+        user_tags = tag_repository.get_user_tags(clerk_id)
+    except Exception as exc:
+        print(f"[chat] failed to load user tags for {clerk_id}: {exc}")
+        user_tags = []
+    return user_tags, bool(profile.get("is_admin"))
+
+
+def _passes_access_filter(item: Dict[str, Any], user_tags: List[str], bypass_restrictions: bool) -> bool:
+    custom = item.get("custom_data") or {}
+    access_tags = _coerce_access_tags(custom.get("access_tags"))
+    return tag_access_service.has_matching_access_tag(
+        user_tags=user_tags,
+        access_tags=access_tags,
+        bypass_restrictions=bypass_restrictions,
+    )
 
 # --- User Management (Clerk) ---
 
@@ -133,6 +164,7 @@ async def proxy_get_feed(
         if auth_user_id and clerk_id:
             ensure_matching_user(auth_user_id, clerk_id, detail="Feed identity header does not match the signed-in user")
         resolved_user_id = auth_user_id or clerk_id
+        user_access_tags, bypass_access_restrictions = _resolve_access_scope(resolved_user_id)
 
         # 1. Check Backbone Cache
         cache_key = f"feed:backbone:{feed_group}:{feed_id}"
@@ -160,7 +192,12 @@ async def proxy_get_feed(
         # 2. In-Memory Personalization (Filtering & Hydration)
         blocked_ids = _get_blocked_ids_cached(resolved_user_id) if resolved_user_id else []
         
-        filtered_items = [item for item in raw_items if item.get("user_id") not in blocked_ids]
+        filtered_items = [
+            item
+            for item in raw_items
+            if item.get("user_id") not in blocked_ids
+            and _passes_access_filter(item, user_access_tags, bypass_access_restrictions)
+        ]
         final_list = filtered_items[:limit]
         
         # 3. Hydrate with Scores & Own Reactions

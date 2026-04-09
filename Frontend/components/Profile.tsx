@@ -546,7 +546,6 @@ export function Profile() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.toolTitle}>Request club event access</Text>
-            <Text style={styles.toolSubtitle}>Join organization access groups and review your active tags.</Text>
           </View>
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>

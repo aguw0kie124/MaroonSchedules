@@ -138,8 +138,21 @@ def get_place_detail(request: Request, place_id: str):
 
 @router.get("/pulse/map")
 @limiter.limit("60/minute")
-def get_pulse_map(request: Request, limit: int = Query(60, ge=1, le=100)):
-    return pulse_service.get_pulse_map(limit=limit)
+def get_pulse_map(
+    request: Request,
+    limit: int = Query(60, ge=1, le=100),
+    clerk_id: Optional[str] = Query(default=None),
+    auth_user_id: Optional[str] = Depends(optional_auth),
+):
+    if clerk_id:
+        if not auth_user_id:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        ensure_matching_user(
+            auth_user_id,
+            clerk_id,
+            detail="You can only request your own personalized pulse map",
+        )
+    return pulse_service.get_pulse_map(limit=limit, clerk_id=clerk_id)
 
 
 @router.post("/events/rsvp")

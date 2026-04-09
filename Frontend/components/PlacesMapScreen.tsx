@@ -77,6 +77,7 @@ import { useSessionStore } from "../store/sessionStore";
 import { useShareStore } from "../store/shareStore";
 import { promptGuestLogin } from "../utils/guestAccess";
 import {
+  type DiningMealPeriod,
   getDiningMealPeriodForLocation,
 } from "../services/diningMenuCache";
 
@@ -925,12 +926,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
   );
 
   const openFullMenu = useCallback(
-    (locationName: string) => {
+    (locationName: string, mealPeriod?: DiningMealPeriod) => {
       const rootNav =
         navigation.getParent?.("RootStack") || navigation.getParent?.();
       const params = {
         location: locationName,
-        mealPeriod: getDiningMealPeriodForLocation(locationName),
+        mealPeriod: mealPeriod || getDiningMealPeriodForLocation(locationName),
         title: `${locationName} Menu`,
         sourceHint: "cached",
       };
