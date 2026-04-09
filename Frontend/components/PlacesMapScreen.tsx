@@ -41,7 +41,6 @@ import {
   Navigation,
   Compass,
   Calendar,
-  Flame,
   LocateFixed,
   Orbit,
   Plus,
@@ -2283,26 +2282,48 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 >
                   <View
                     style={[
-                      styles.pulseMarkerRing,
+                      styles.pulseMarkerGlowOuter,
                       {
-                        backgroundColor: `${hotspot.pulseColor}22`,
-                        borderColor: `${hotspot.pulseColor}66`,
+                        backgroundColor: `${hotspot.pulseColor}${isSelected ? "20" : "16"}`,
                       },
                     ]}
-                  >
+                  />
+                  <View style={styles.pulseMarkerCluster}>
                     <View
                       style={[
-                        styles.pulseMarkerCore,
-                        { backgroundColor: hotspot.pulseColor },
+                        styles.pulseMarkerGlowMid,
+                        {
+                          backgroundColor: `${hotspot.pulseColor}${isSelected ? "2E" : "24"}`,
+                        },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.pulseMarkerGlowInner,
+                        {
+                          backgroundColor: `${hotspot.pulseColor}${isSelected ? "45" : "36"}`,
+                        },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.pulseMarkerCenterHalo,
+                        {
+                          backgroundColor: isDark
+                            ? "rgba(255,255,255,0.16)"
+                            : "rgba(255,255,255,0.34)",
+                          borderColor: `${hotspot.pulseColor}${isSelected ? "70" : "58"}`,
+                        },
                       ]}
                     >
-                      <Flame size={14} color="#FFFFFF" />
+                      <View
+                        style={[
+                          styles.pulseMarkerCore,
+                          { backgroundColor: hotspot.pulseColor },
+                        ]}
+                      />
+                      <View style={styles.pulseMarkerHighlight} />
                     </View>
-                  </View>
-                  <View style={styles.pulseMarkerCount}>
-                    <Text style={styles.pulseMarkerCountText}>
-                      {hotspot.pingCount + hotspot.eventCount} LIVE
-                    </Text>
                   </View>
                 </View>
               </MapLibreMarker>
