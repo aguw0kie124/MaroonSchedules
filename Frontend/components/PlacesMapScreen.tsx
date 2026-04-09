@@ -176,6 +176,32 @@ const getNeonColor = (hex: string) => {
     .join("")}`;
 };
 
+const PULSE_OVERVIEW_EDGE_PADDING = {
+  top: 250,
+  right: 120,
+  bottom: 350,
+  left: 120,
+};
+const PULSE_OVERVIEW_RADIUS_METERS = 30_000;
+const PULSE_SELECTION_REGION = {
+  latitudeDelta: 0.02,
+  longitudeDelta: 0.02,
+};
+
+const isPulseCoordNearCollegeStation = (latitude: number, longitude: number) =>
+  haversineDistanceMeters(
+    latitude,
+    longitude,
+    TAMU_CENTER.latitude,
+    TAMU_CENTER.longitude,
+  ) <= PULSE_OVERVIEW_RADIUS_METERS;
+
+const getPulseFocusRegion = (latitude: number, longitude: number) => ({
+  latitude: latitude - 0.0025,
+  longitude,
+  ...PULSE_SELECTION_REGION,
+});
+
 export function PlacesMapScreen({ route, navigation }: any) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === "dark";
@@ -663,18 +689,25 @@ export function PlacesMapScreen({ route, navigation }: any) {
       
       // Center map on selected location
       if (loc?.coord && mapRef.current) {
-        mapRef.current.animateCamera(
-          {
-            center: {
-              latitude: loc.coord.lat,
-              longitude: loc.coord.lng,
+        if (loc.source === "pulse") {
+          mapRef.current.animateToRegion(
+            getPulseFocusRegion(loc.coord.lat, loc.coord.lng),
+            700,
+          );
+        } else {
+          mapRef.current.animateCamera(
+            {
+              center: {
+                latitude: loc.coord.lat,
+                longitude: loc.coord.lng,
+              },
+              zoom: 16.6,
+              pitch: isMapTilted ? 55 : 0,
+              heading: 0,
             },
-            zoom: 16.6,
-            pitch: isMapTilted ? 55 : 0,
-            heading: 0,
-          },
-          { duration: 700 },
-        );
+            { duration: 700 },
+          );
+        }
       }
     }, [isMapTilted]),
   });
@@ -1130,20 +1163,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setIsRouteDropdownOpen(false);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       if (!mapRef.current) return;
-      mapRef.current.animateCamera(
-        {
-          center: {
-            latitude: hotspot.coord.lat,
-            longitude: hotspot.coord.lng,
-          },
-          zoom: 16.2,
-          pitch: isMapTilted ? 55 : 0,
-          heading: 0,
-        },
-        { duration: 700 },
+      mapRef.current.animateToRegion(
+        getPulseFocusRegion(hotspot.coord.lat, hotspot.coord.lng),
+        700,
       );
     },
-    [isMapTilted],
+    [],
   );
 
   const openHotspotItem = useCallback(
@@ -1412,56 +1437,34 @@ export function PlacesMapScreen({ route, navigation }: any) {
     }
 
     if (activeLayer === "Pulse") {
+      const campusPulseCoords = pulseHotspots
+        .map((hotspot) => ({
+          latitude: hotspot.coord.lat,
+          longitude: hotspot.coord.lng,
+        }))
+        .filter((coord) =>
+          isPulseCoordNearCollegeStation(coord.latitude, coord.longitude),
+        );
+
+      if (campusPulseCoords.length > 0) {
+        fitToCoords(campusPulseCoords, PULSE_OVERVIEW_EDGE_PADDING);
+        return;
+      }
+
       const allPulseCoords = pulseHotspots.map((hotspot) => ({
         latitude: hotspot.coord.lat,
         longitude: hotspot.coord.lng,
       }));
 
-      if (userCoord) {
-        const distanceFromCampus = haversineDistanceMeters(
-          userCoord.latitude,
-          userCoord.longitude,
-          TAMU_CENTER.latitude,
-          TAMU_CENTER.longitude,
+      if (allPulseCoords.length === 0) {
+        fitToCoords(
+          [{ latitude: TAMU_CENTER.latitude, longitude: TAMU_CENTER.longitude }],
+          PULSE_OVERVIEW_EDGE_PADDING,
         );
-
-        // When the user is far from College Station, prioritize nearby hotspots
-        // so off-campus pings remain discoverable instead of being dwarfed by the campus cluster.
-        if (distanceFromCampus > 40_000) {
-          const nearbyPulseCoords = pulseHotspots
-            .map((hotspot) => ({
-              hotspot,
-              distanceMeters: haversineDistanceMeters(
-                userCoord.latitude,
-                userCoord.longitude,
-                hotspot.coord.lat,
-                hotspot.coord.lng,
-              ),
-            }))
-            .filter((entry) => entry.distanceMeters <= 120_000)
-            .sort((a, b) => a.distanceMeters - b.distanceMeters)
-            .slice(0, 10)
-            .map((entry) => ({
-              latitude: entry.hotspot.coord.lat,
-              longitude: entry.hotspot.coord.lng,
-            }));
-
-          if (nearbyPulseCoords.length > 0) {
-            fitToCoords(nearbyPulseCoords, {
-              top: 250,
-              right: 120,
-              bottom: 350,
-              left: 120,
-            });
-            return;
-          }
-        }
+        return;
       }
 
-      fitToCoords(
-        allPulseCoords,
-        { top: 250, right: 120, bottom: 350, left: 120 },
-      );
+      fitToCoords(allPulseCoords, PULSE_OVERVIEW_EDGE_PADDING);
       return;
     }
 
@@ -1762,19 +1765,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setPendingInitialLocation(null);
 
     if (!mapRef.current) return;
-    mapRef.current.animateCamera(
-      {
-        center: {
-          latitude: hotspotMatch.coord.lat,
-          longitude: hotspotMatch.coord.lng,
-        },
-        zoom: 14.5,
-        pitch: isMapTilted ? 55 : 0,
-        heading: 0,
-      },
-      { duration: 700 },
+    mapRef.current.animateToRegion(
+      getPulseFocusRegion(hotspotMatch.coord.lat, hotspotMatch.coord.lng),
+      700,
     );
-  }, [activeLayer, isMapTilted, pendingInitialLocation, pulseHotspots]);
+  }, [activeLayer, pendingInitialLocation, pulseHotspots]);
 
   useEffect(() => {
     if (activeLayer !== "Pulse" && selectedHotspotId) {
