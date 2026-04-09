@@ -234,7 +234,7 @@ function getPersonalizationScore(
     score += 10;
   }
   score += getTimePreferenceScore(event, preferredTime);
-  if (event.is_admin_event || category === 'Featured') {
+  if (event.is_admin_event || category === 'For U') {
     score += 6;
   }
   const hoursAway = Math.max(0, (event.date_ts - Math.floor(Date.now() / 1000)) / 3600);
@@ -376,10 +376,10 @@ function classifyCategory(event: TAMUEvent): ExploreCategory {
     if (event.categories.health_wellness) return 'Health & Wellness';
     if (event.categories.social) return 'Social';
     if (event.categories.miscellaneous || event.categories.religion) return 'Miscellaneous';
-    if (event.categories.featured || event.is_admin_event) return 'Featured';
+    if (event.categories.featured || event.is_admin_event) return 'For U';
   }
 
-  if (event.is_admin_event) return 'Featured';
+  if (event.is_admin_event) return 'For U';
 
   const blob = getSearchBlob(event);
   if (event.has_food || /\bfood\b|\bmeal\b|\bdinner\b|\blunch\b|\bbreakfast\b|\bpizza\b|\brefreshments\b/.test(blob)) return 'Food';
@@ -820,10 +820,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const navigation = useNavigation<any>();
   const { user } = useUser();
   const isGuest = useSessionStore((state) => state.isGuest);
-  const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
-  const preferredTime = useAppShellStore((state) => state.preferredTime);
-  const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
-  const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
   const s = useMemo(() => getStyles(COLORS, isDark, embedded), [COLORS, isDark, embedded]);
 
   const { advanceStep, activeTargetName } = useTour();
@@ -866,6 +862,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const pan = useRef(new Animated.ValueXY()).current;
   const opacity = useRef(new Animated.Value(1)).current;
+  const lastAppliedPreferenceKey = useRef<string | null>(null);
   const hydratedProfileMajorForUser = useRef<string | null>(null);
   const nowTs = Math.floor(Date.now() / 1000);
 
@@ -935,8 +932,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     },
     staleTime: 1000 * 60 * 15, // 15 mins for events
   });
-
-  const [view, setView] = useState<EventsView>(isGuest ? 'list' : 'discover');
 
   const [rewardToast, setRewardToast] = useState<{ title: string; body: string } | null>(null);
   const rewardToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
