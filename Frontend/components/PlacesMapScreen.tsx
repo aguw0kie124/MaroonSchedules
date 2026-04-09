@@ -1653,8 +1653,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
       if (sLat != null && sLng != null && mapRef.current) {
         mapRef.current.animateCamera(
           {
-            center: { latitude: sLat - 0.0018, longitude: sLng },
+            center: { latitude: sLat - 0.00075, longitude: sLng },
             zoom: 16.5,
+            pitch: isMapTilted ? 55 : 0,
+            heading: 0,
           },
           { duration: 600 },
         );
@@ -1662,7 +1664,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
       resolveNearestBusForStop(stop, busVehicles);
     },
-    [busVehicles, mapRef, resolveNearestBusForStop],
+    [busVehicles, isMapTilted, mapRef, resolveNearestBusForStop],
   );
 
   // ── Effects ───────────────────────────────────────────────
@@ -2192,8 +2194,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   if (bLat != null && bLng != null && mapRef.current) {
                     mapRef.current.animateCamera(
                       {
-                        center: { latitude: bLat - 0.0018, longitude: bLng },
+                        center: { latitude: bLat - 0.00075, longitude: bLng },
                         zoom: 16.5,
+                        pitch: isMapTilted ? 55 : 0,
+                        heading: 0,
                       },
                       { duration: 600 },
                     );
@@ -2783,21 +2787,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
           liveBusCount={busVehicles.length}
           stopTimetable={stopTimetable}
           onStopPress={(stop) => {
-            const sLat =
-              stop?.Latitude !== undefined ? stop.Latitude : stop?.lat;
-            const sLng =
-              stop?.Longitude !== undefined ? stop.Longitude : stop?.lng;
-            if (mapRef.current && sLat && sLng) {
-              mapRef.current.animateToRegion(
-                {
-                  latitude: sLat - 0.0018,
-                  longitude: sLng,
-                  latitudeDelta: 0.005,
-                  longitudeDelta: 0.005,
-                },
-                600,
-              );
-            }
+            setIsTimetableSheetOpen(false);
+            handleStopPress(stop);
           }}
         />
       )}
