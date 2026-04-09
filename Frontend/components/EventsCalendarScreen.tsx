@@ -1957,7 +1957,7 @@ function CategoryChip({
         },
       ]}
     >
-      <Icon size={17} color={active ? '#FFFFFF' : chipText} />
+      <Icon size={15} color={active ? '#FFFFFF' : chipText} />
       <Text style={[stylesStatic.categoryChipText, { color: active ? '#FFFFFF' : chipText }]}>
         {category}
       </Text>
@@ -2695,11 +2695,11 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     modeTabs: {
       flexDirection: 'row',
-      gap: 22,
-      paddingTop: 2,
+      gap: 16,
+      paddingTop: 0,
     },
     modeTab: {
-      paddingVertical: 2,
+      paddingVertical: 1,
       position: 'relative',
     },
     modeTabActive: {
@@ -2707,7 +2707,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     modeTabText: {
       color: COLORS.textSecondary,
-      fontSize: 18,
+      fontSize: 16,
       fontWeight: '800',
     },
     modeTabTextActive: {
@@ -2716,10 +2716,10 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     modeTabUnderline: {
       position: 'absolute',
-      bottom: -6,
+      bottom: -5,
       left: 0,
       right: 0,
-      height: 3.5,
+      height: 3,
       borderRadius: 999,
       backgroundColor: COLORS.primary,
     },
@@ -2804,8 +2804,8 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       fontWeight: '800',
     },
     categoryWrap: {
-      gap: 12,
-      marginTop: 6,
+      gap: 10,
+      marginTop: 4,
     },
     categoryHeaderRow: {
       flexDirection: 'row',
@@ -2814,24 +2814,24 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     categorySectionLabel: {
       color: COLORS.textSecondary,
-      fontSize: 11,
+      fontSize: 10,
       fontWeight: '900',
-      letterSpacing: 1.5,
+      letterSpacing: 1.3,
       textTransform: 'uppercase',
     },
     categoryToggleText: {
       color: COLORS.primary,
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: '900',
     },
     categoryCollapsedRow: {
-      gap: 12,
-      paddingRight: 12,
+      gap: 10,
+      paddingRight: 10,
     },
     categoryExpandedGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 12,
+      gap: 10,
     },
     inlineControls: {
       marginTop: 10,
@@ -3200,23 +3200,23 @@ const stylesStatic = StyleSheet.create({
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 7,
     borderRadius: 999,
-    paddingHorizontal: 15,
-    paddingVertical: 11,
-    borderWidth: 1.5,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderWidth: 1.25,
     shadowColor: '#000000',
     shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
   categoryChipText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
   },
   categoryChipCount: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     marginLeft: 2,
   },
