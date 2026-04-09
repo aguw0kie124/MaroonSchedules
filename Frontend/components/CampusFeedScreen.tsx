@@ -6,12 +6,13 @@ import {
     PanResponder, Animated
 } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
-import { Camera, Image as ImageIcon, Video, Heart, MapPin, X, MoreHorizontal, MessageCircle, Calendar, Send, Film, Plus } from 'lucide-react-native';
+import { Camera, Image as ImageIcon, Video, Heart, MapPin, X, MoreHorizontal, MessageCircle, Calendar, Send, Film, Plus, Share2 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useTheme } from './SharedUI';
 import { useDiningTheme } from './dining/DiningTheme';
+import { triggerNativeShare } from '../utils/share';
 import {
     connectFeedsUser,
     getCampusFeed,
@@ -369,6 +370,16 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
             },
         })).current;
 
+        const handleShare = () => {
+            triggerNativeShare({
+                title: item.ping_title || 'Campus Post',
+                message: item.caption || `Check out this ${item.post_type} from ${item.user_name}`,
+                url: `https://maroonschedules.com/posts/${item.id}`,
+                id: item.id,
+                type: 'post',
+            });
+        };
+
         const cardBg = swipeAnim.interpolate({
             inputRange: [-100, 0, 100],
             outputRange: ['rgba(255,69,58,0.08)', 'transparent', 'rgba(255,69,58,0.08)'],
@@ -518,6 +529,10 @@ export function CampusFeedScreen({ embedded = false }: { embedded?: boolean } = 
                     <Pressable style={styles.actionBtn} onPress={() => openComments(item.id, item.ping_title || item.caption || '')}>
                         <MessageCircle color={T.text2} size={22} />
                         <Text style={styles.actionText}>{item.reply_count} Replies</Text>
+                    </Pressable>
+                    <Pressable style={styles.actionBtn} onPress={handleShare}>
+                        <Share2 color={T.text2} size={20} />
+                        <Text style={styles.actionText}>Share</Text>
                     </Pressable>
                 </View>
             </Animated.View>

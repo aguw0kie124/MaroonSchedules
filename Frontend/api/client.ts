@@ -260,6 +260,16 @@ export const saveCampusEventRsvp = async (payload: { clerk_id: string; event_id:
     });
 };
 
+export const trackShare = async (id: string | number, type: string) => {
+    // Only admin events have a specific tracking endpoint for now
+    if (type === 'event') {
+        return requestJson(`/admin/events/${id}/share`, {
+            method: 'POST',
+        });
+    }
+    return { status: 'noop' };
+};
+
 export const discoverCampusNetwork = async (clerkId: string, query?: string, major?: string, limit = 8) => {
     const params = new URLSearchParams({
         clerk_id: clerkId,

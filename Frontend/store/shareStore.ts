@@ -5,6 +5,8 @@ export interface ShareContent {
   message?: string;
   url?: string;
   subject?: string;
+  id?: string | number;
+  type?: 'event' | 'place' | 'post' | 'schedule';
 }
 
 interface ShareStore {

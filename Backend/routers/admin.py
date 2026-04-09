@@ -17,6 +17,13 @@ from fastapi import Request
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
+def _safe_decrypt(value: Optional[str]) -> Optional[str]:
+    """Decrypt if it's an encrypted payload, otherwise return as is."""
+    if not value or not isinstance(value, str):
+        return value
+    return encryption_service.decrypt_string(value)
+
+
 def _ensure_admin_review_schema(conn: psycopg.Connection) -> None:
     with conn.cursor() as cur:
         cur.execute(
@@ -453,9 +460,9 @@ def submit_admin_application(
                     """,
                     (
                         req.clerk_id,
-                        application_email,
-                        normalized["organization_name"],
-                        normalized["reason"],
+                        encryption_service.encrypt_string(application_email),
+                        encryption_service.encrypt_string(normalized["organization_name"]),
+                        encryption_service.encrypt_string(normalized["reason"]),
                     ),
                 )
                 app_id = cur.fetchone()[0]
@@ -645,6 +652,8 @@ def get_my_admin_events(
                 events = cur.fetchall()
                 for event in events:
                     event["id"] = str(event["id"])
+                    event["title"] = _safe_decrypt(event.get("title"))
+                    event["description"] = _safe_decrypt(event.get("description"))
                     event["start_time"] = event["start_time"].isoformat() if event["start_time"] else None
                     event["end_time"] = event["end_time"].isoformat() if event["end_time"] else None
                     event["created_at"] = event["created_at"].isoformat() if event["created_at"] else None

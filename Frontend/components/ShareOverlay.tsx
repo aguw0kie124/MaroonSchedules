@@ -16,6 +16,7 @@ import { Instagram, Link as LinkIcon, MoreHorizontal, Phone } from 'lucide-react
 import { useTheme } from './SharedUI';
 import { useShareStore } from '../store/shareStore';
 import { ScalePressable } from './common/Motion';
+import { trackShare } from '../api/client';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -88,6 +89,9 @@ export function ShareOverlay() {
     } catch (error) {
       console.error('System share failed', error);
     } finally {
+      if (content.id && content.type) {
+        trackShare(content.id, content.type).catch(e => console.warn('Tracking failed', e));
+      }
       closeShare();
     }
   };

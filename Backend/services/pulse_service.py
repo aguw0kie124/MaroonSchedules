@@ -7,6 +7,7 @@ import psycopg
 from services import cache_service, campus_hub_service, place_registry_service, tag_access_service
 from repositories import feed_repository, tag_repository, user_repository
 from db_config import CONNECTION_PARAMS
+from services import encryption_service
 
 
 HOT_COLOR = "#FF6B57"
@@ -27,6 +28,13 @@ def _parse_iso(iso_value: Optional[str]) -> Optional[datetime]:
         return parsed
     except ValueError:
         return None
+
+
+def _safe_decrypt(value: Optional[str]) -> Optional[str]:
+    """Decrypt if it's an encrypted payload, otherwise return as is."""
+    if not value or not isinstance(value, str):
+        return value
+    return encryption_service.decrypt_string(value)
 
 
 def _format_time_label(iso_value: str) -> str:
@@ -177,7 +185,11 @@ def _load_admin_events() -> List[Dict[str, Any]]:
                     ORDER BY e.start_time ASC
                     """
                 )
-                return cur.fetchall()
+                rows = cur.fetchall()
+                for row in rows:
+                    row["title"] = _safe_decrypt(row.get("title"))
+                    row["organization_name"] = _safe_decrypt(row.get("organization_name"))
+                return rows
     except Exception as exc:
         if isinstance(exc, psycopg.errors.UndefinedTable):
             return []

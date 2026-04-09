@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, FlatList } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { Star, MapPin, Users, Clock, MessageCircle } from 'lucide-react-native';
+import { Star, MapPin, Users, Clock, MessageCircle, Share2 } from 'lucide-react-native';
 import { useTheme, Card, SectionRow } from './SharedUI';
 import { ReviewModal } from './ReviewModal';
+import { useShareStore } from '../store/shareStore';
+import { triggerNativeShare } from '../utils/share';
 
 export const LocationDetailScreen = () => {
   const { COLORS } = useTheme();
@@ -15,6 +17,7 @@ export const LocationDetailScreen = () => {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const { openShare } = useShareStore();
 
   const fetchData = async () => {
     setLoading(true);
@@ -40,6 +43,16 @@ export const LocationDetailScreen = () => {
     fetchData();
   }, [locationName]);
 
+  const handleShare = () => {
+    triggerNativeShare({
+      title: locationName,
+      message: `Check out ${locationName} on MaroonSchedules! ${initialData?.percent_full ? `Currently ${initialData.percent_full}% full.` : ''}`,
+      url: `https://maroonschedules.com/places/${encodeURIComponent(locationName)}`,
+      id: locationName,
+      type: 'place',
+    });
+  };
+
   const renderReviewItem = ({ item }: { item: any }) => (
     <Card style={styles.reviewCard}>
       <View style={styles.reviewHeader}>
@@ -63,7 +76,15 @@ export const LocationDetailScreen = () => {
     <View style={[styles.container, { backgroundColor: COLORS.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.heroSection}>
-          <Text style={[styles.title, { color: COLORS.textPrimary }]}>{locationName}</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <Text style={[styles.title, { color: COLORS.textPrimary, flex: 1 }]}>{locationName}</Text>
+            <TouchableOpacity 
+              onPress={handleShare}
+              style={{ padding: 8, marginTop: 4 }}
+            >
+              <Share2 size={24} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          </View>
           {stats && (
             <View style={styles.ratingOverview}>
               <Star size={24} fill="#FFD700" color="#FFD700" />

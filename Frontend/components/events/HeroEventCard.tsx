@@ -1,15 +1,16 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
-import { BadgeCheck, Calendar as CalendarIcon, MapPin, Map } from 'lucide-react-native';
+import { BadgeCheck, Calendar as CalendarIcon, MapPin, Map, Share2 } from 'lucide-react-native';
 import { TAMUEvent, CATEGORY_META, classifyCategory, formatDate, formatTime } from './EventUtils';
 import { useTheme } from '../SharedUI';
+import { triggerNativeShare } from '../../utils/share';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
   heroCard: {
     width: SCREEN_WIDTH - 52,
-    height: 372,
+    height: 310,
     borderRadius: 34,
     overflow: 'hidden',
     padding: 20,
@@ -72,15 +73,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   heroBottom: {
-    gap: 8,
+    gap: 12,
+    paddingTop: 10,
   },
   heroTitle: {
     color: '#FFFFFF',
-    fontSize: 30,
+    fontSize: 28,
     lineHeight: 34,
-    fontWeight: '800',
-    letterSpacing: -0.8,
+    fontWeight: '900',
+    letterSpacing: -1.0,
     maxWidth: '92%',
+    marginBottom: 4,
   },
   heroMetaRow: {
     flexDirection: 'row',
@@ -94,7 +97,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   heroMapButton: {
-    marginTop: 8,
+    marginTop: 14,
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
@@ -107,6 +110,19 @@ const styles = StyleSheet.create({
   heroMapButtonText: {
     fontSize: 13,
     fontWeight: '800',
+  },
+  shareCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
 });
 
@@ -123,6 +139,17 @@ export function HeroEventCard({
   const category = classifyCategory(event);
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
+
+  const handleShare = (e: any) => {
+    e.stopPropagation();
+    triggerNativeShare({
+      title: event.title,
+      message: `Check out this event: ${event.title} at ${event.location || 'Campus'}`,
+      url: `https://maroonschedules.com/events/${event.id}`,
+      id: event.id,
+      type: 'event',
+    });
+  };
 
   return (
     <Pressable

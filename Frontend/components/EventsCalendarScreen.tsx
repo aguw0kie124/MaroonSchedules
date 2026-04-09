@@ -57,7 +57,7 @@ import { API_URL } from '../config';
 import { requestJson, saveCampusEventRsvp } from '../api/client';
 import { normalizeImageUrl } from '../services/url';
 import { TourTarget, useTour } from './onboarding/TourProvider';
-import { useShareStore } from '../store/shareStore';
+import { triggerNativeShare } from '../utils/share';
 import { useEventStore } from '../store/eventStore';
 import type { MajorOption, ScheduledEvent } from '../store/eventStore';
 import { useTheme } from './SharedUI';
@@ -70,7 +70,7 @@ import { TagChips } from './common/TagChips';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
-const HERO_CARD_HEIGHT = Math.min(Math.max(396, SCREEN_HEIGHT * 0.54), 452);
+const HERO_CARD_HEIGHT = Math.min(Math.max(280, SCREEN_HEIGHT * 0.38), 340);
 const HERO_CARD_GAP = 14;
 const HERO_CARD_SNAP_INTERVAL = HERO_CARD_WIDTH + HERO_CARD_GAP;
 
@@ -1076,15 +1076,13 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   );
 
   const handleShare = useCallback((event: TAMUEvent) => {
-    useShareStore.getState().openShare({
+    triggerNativeShare({
       title: event.title,
       message: `Check out this event: ${event.title} at ${event.location || 'TAMU'}!`,
       url: event.url || 'https://maroonschedules.tamu.edu',
+      id: event.id,
+      type: 'event',
     });
-
-    if (event.is_admin_event) {
-      fetch(`${API_URL}/admin/events/${event.id}/share`, { method: 'POST' }).catch(e => console.error(e));
-    }
   }, []);
 
   const handleMapOpen = useCallback(
@@ -2383,9 +2381,9 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       backgroundColor: COLORS.background,
     },
     headerBlock: {
-      paddingTop: embedded ? 10 : 56,
+      paddingTop: embedded ? 10 : 38,
       paddingHorizontal: 20,
-      paddingBottom: 8,
+      paddingBottom: 6,
       gap: 10,
     },
     headerTopRow: {
@@ -2395,9 +2393,9 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     pageTitle: {
       color: COLORS.textPrimary,
-      fontSize: 42,
+      fontSize: 34,
       fontWeight: '900',
-      letterSpacing: -1.6,
+      letterSpacing: -1.2,
     },
     pageSubtitle: {
       marginTop: 2,
@@ -2452,9 +2450,11 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       fontWeight: '900',
     },
     modeTabUnderline: {
-      marginTop: 8,
-      width: 72,
-      height: 5,
+      position: 'absolute',
+      bottom: -6,
+      left: 0,
+      right: 0,
+      height: 3.5,
       borderRadius: 999,
       backgroundColor: COLORS.primary,
     },
@@ -3034,15 +3034,16 @@ const stylesStatic = StyleSheet.create({
     minHeight: 0,
   },
   heroBottomContent: {
-    gap: 10,
-    paddingBottom: 2,
+    gap: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
   },
   heroTitle: {
     color: '#FFFFFF',
-    fontSize: 25,
-    lineHeight: 30,
+    fontSize: 28,
+    lineHeight: 34,
     fontWeight: '900',
-    letterSpacing: -0.9,
+    letterSpacing: -1.0,
     maxWidth: '88%',
   },
   heroOrganizerPill: {
@@ -3075,7 +3076,7 @@ const stylesStatic = StyleSheet.create({
   heroActionRow: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 8,
+    marginTop: 18,
   },
   heroActionButton: {
     flexDirection: 'row',
@@ -3125,16 +3126,13 @@ const stylesStatic = StyleSheet.create({
   listRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    borderRadius: 0,
-    borderWidth: 0,
-    paddingVertical: 14,
-    paddingHorizontal: 2,
+    gap: 12,
+    paddingVertical: 12,
   },
   listThumb: {
-    width: 104,
-    height: 76,
-    borderRadius: 18,
+    width: 84,
+    height: 84,
+    borderRadius: 14,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -3161,26 +3159,27 @@ const stylesStatic = StyleSheet.create({
   },
   listTitle: {
     flex: 1,
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: '800',
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: '700',
   },
   listMeta: {
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: '500',
   },
   listOrganizer: {
     fontWeight: '700',
   },
   listActions: {
-    justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   listActionButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
