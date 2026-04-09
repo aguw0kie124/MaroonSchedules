@@ -38,6 +38,51 @@ export interface CampusHotspot {
   userVote?: number; // -1, 0, or 1
 }
 
+function toSafeNumber(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return 0;
+}
+
+function normalizeVoteValue(value: unknown): -1 | 0 | 1 {
+  const numeric = toSafeNumber(value);
+  if (numeric > 0) return 1;
+  if (numeric < 0) return -1;
+  return 0;
+}
+
+export function getCampusHotspotItemVoteScore(
+  item: Pick<CampusHotspotItem, "upvotes" | "downvotes">,
+): number {
+  return toSafeNumber(item.upvotes) - toSafeNumber(item.downvotes);
+}
+
+export function applyCampusHotspotItemVote(
+  item: CampusHotspotItem,
+  newUserVote: number,
+): CampusHotspotItem {
+  const currentVote = normalizeVoteValue(item.userVote);
+  const nextVote = normalizeVoteValue(newUserVote);
+  let upvotes = toSafeNumber(item.upvotes);
+  let downvotes = toSafeNumber(item.downvotes);
+
+  if (currentVote === 1) upvotes = Math.max(0, upvotes - 1);
+  if (currentVote === -1) downvotes = Math.max(0, downvotes - 1);
+  if (nextVote === 1) upvotes += 1;
+  if (nextVote === -1) downvotes += 1;
+
+  return {
+    ...item,
+    upvotes,
+    downvotes,
+    itemScore: toSafeNumber(item.itemScore) + (nextVote - currentVote),
+    userVote: nextVote,
+  };
+}
+
 function resolveMediaUrl(url: string | null | undefined): string | null {
   if (!url) return null;
   if (url.startsWith('/uploads/')) return `${API_URL}${url}`;
@@ -158,6 +203,10 @@ export async function fetchCampusPulseMap(
     
     const items = (Array.isArray(hotspot.items) ? hotspot.items : []).map((item: any) => ({
       ...item,
+      upvotes: toSafeNumber(item.upvotes),
+      downvotes: toSafeNumber(item.downvotes),
+      itemScore: toSafeNumber(item.itemScore),
+      userVote: normalizeVoteValue(item.userVote),
       imageUrl: resolveMediaUrl(item.imageUrl || item.image_url),
     }));
 
@@ -202,19 +251,15 @@ export async function voteHotspotItem(itemId: string, newUserVote: number) {
     
     const item = hotspot.items.find((i) => i.id === itemId);
     if (item) {
-      const currentVote = item.userVote || 0;
-      const delta = newUserVote - currentVote;
+      const currentVote = normalizeVoteValue(item.userVote);
+      const nextVote = normalizeVoteValue(newUserVote);
+      const delta = nextVote - currentVote;
+      const updatedItem = applyCampusHotspotItemVote(item, nextVote);
       
-      item.itemScore = (item.itemScore || 0) + delta;
-      item.userVote = newUserVote;
-      
+      Object.assign(item, updatedItem);
+
       // Update the parent hotspot's aggregate visual fields
-      hotspot.score = (hotspot.score || 0) + delta;
-      
-      // The user wants "upvotes to be for each live ping". 
-      // We'll treat every upvote as a contribution to the "live" count metric.
-      const totalUpvotes = hotspot.items.reduce((acc, i) => acc + (i.itemScore || 0), 0);
-      hotspot.pingCount = Math.max(hotspot.items.length, totalUpvotes);
+      hotspot.score = toSafeNumber(hotspot.score) + delta;
       return;
     }
   }

@@ -19,7 +19,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import * as Haptics from 'expo-haptics';
 import {
@@ -931,6 +931,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         .sort((a, b) => a.date_ts - b.date_ts);
     },
     staleTime: 1000 * 60 * 15, // 15 mins for events
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const [rewardToast, setRewardToast] = useState<{ title: string; body: string } | null>(null);
@@ -988,11 +991,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const hasForYouPrefs = useMemo(() => hasUserEventPreferences(profilePreferences), [profilePreferences]);
   const profileMajor = profilePreferences.major;
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchEvents();
-    }, [fetchEvents]),
-  );
   const {
     data: preferredEventCategories,
   } = useQuery({

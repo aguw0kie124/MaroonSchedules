@@ -130,6 +130,7 @@ import {
 } from "./places/utils";
 import { getStyles } from "./places/placesStyles";
 import {
+  applyCampusHotspotItemVote,
   fetchCampusPulseMap,
   invalidateCampusPulseCache,
   voteHotspotItem,
@@ -184,9 +185,10 @@ const PULSE_OVERVIEW_EDGE_PADDING = {
 };
 const PULSE_OVERVIEW_RADIUS_METERS = 30_000;
 const PULSE_SELECTION_REGION = {
-  latitudeDelta: 0.02,
-  longitudeDelta: 0.02,
+  latitudeDelta: 0.03,
+  longitudeDelta: 0.03,
 };
+const PULSE_SELECTION_ANIMATION_MS = 520;
 
 const isPulseCoordNearCollegeStation = (latitude: number, longitude: number) =>
   haversineDistanceMeters(
@@ -197,7 +199,7 @@ const isPulseCoordNearCollegeStation = (latitude: number, longitude: number) =>
   ) <= PULSE_OVERVIEW_RADIUS_METERS;
 
 const getPulseFocusRegion = (latitude: number, longitude: number) => ({
-  latitude: latitude - 0.0025,
+  latitude: latitude + 0.0045,
   longitude,
   ...PULSE_SELECTION_REGION,
 });
@@ -692,7 +694,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         if (loc.source === "pulse") {
           mapRef.current.animateToRegion(
             getPulseFocusRegion(loc.coord.lat, loc.coord.lng),
-            700,
+            PULSE_SELECTION_ANIMATION_MS,
           );
         } else {
           mapRef.current.animateCamera(
@@ -727,6 +729,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     );
   }, [pulseHotspots]);
   const hottestHotspot = pulseHotspots[0] || null;
+
   const markerLocations = useMemo(() => {
     if (activeLayer === "Pulse") return [];
     if (activeLayer === "Heatmap" || activeLayer === "Bus")
@@ -1165,7 +1168,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       if (!mapRef.current) return;
       mapRef.current.animateToRegion(
         getPulseFocusRegion(hotspot.coord.lat, hotspot.coord.lng),
-        700,
+        PULSE_SELECTION_ANIMATION_MS,
       );
     },
     [],
@@ -1216,11 +1219,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         if (h.id === hotspotId) {
           const updatedItems = (h.items || []).map(i => {
             if (i.id === itemId) {
-              return {
-                ...i,
-                itemScore: (i.itemScore || 0) + scoreDelta,
-                userVote: finalVote,
-              };
+              return applyCampusHotspotItemVote(i, finalVote);
             }
             return i;
           });
@@ -1767,7 +1766,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (!mapRef.current) return;
     mapRef.current.animateToRegion(
       getPulseFocusRegion(hotspotMatch.coord.lat, hotspotMatch.coord.lng),
-      700,
+      PULSE_SELECTION_ANIMATION_MS,
     );
   }, [activeLayer, pendingInitialLocation, pulseHotspots]);
 
