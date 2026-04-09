@@ -27,12 +27,10 @@ from services import cache_service, snapshot_jobs
 from models.search import CourseSearchRequest
 from auth.clerk_middleware import require_auth, ensure_matching_user
 
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from rate_limit import limiter
 
-# Global rate limiter setup
-limiter = Limiter(key_func=get_remote_address, default_limits=["200 per minute"])
 app = FastAPI()
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

@@ -18,7 +18,7 @@ env_path = os.path.join(os.path.dirname(__file__), '.env')
 load_dotenv(dotenv_path=env_path, override=True)
 
 from models.base import SanitizedBaseModel
-from main import limiter
+from rate_limit import limiter
 from fastapi import Request
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -32,7 +32,7 @@ class ReactionPayload(SanitizedBaseModel):
     kind: str
     activity_id: str
     user_id: str
-    data: Dict[str, Any] | None = None
+    data: Optional[Dict[str, Any]] = None
 
 class BlockRequest(SanitizedBaseModel):
     target_id: str
@@ -124,8 +124,8 @@ async def proxy_get_feed(
     feed_group: str,
     feed_id: str,
     limit: int = 25,
-    clerk_id: str = Header(None, alias="X-Clerk-User-Id"),
-    auth_user_id: str | None = Depends(optional_auth),
+    clerk_id: Optional[str] = Header(None, alias="X-Clerk-User-Id"),
+    auth_user_id: Optional[str] = Depends(optional_auth),
 ):
     """Fetch feed activities natively (Postgres) with Redis Backbone caching."""
     try:
@@ -189,7 +189,7 @@ async def proxy_get_feed(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _transform_review_to_activity(r: Dict[str, Any], counts: Dict[str, Any], own_reactions: Dict[str, Any] = None) -> Dict[str, Any]:
+def _transform_review_to_activity(r: Dict[str, Any], counts: Dict[str, Any], own_reactions: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     return {
         "id": r["id"],
         "actor": {
@@ -215,7 +215,7 @@ def _transform_review_to_activity(r: Dict[str, Any], counts: Dict[str, Any], own
         "own_reactions": own_reactions or {}
     }
 
-def _transform_post_to_activity(p: Dict[str, Any], counts: Dict[str, Any], own_reactions: Dict[str, Any] = None) -> Dict[str, Any]:
+def _transform_post_to_activity(p: Dict[str, Any], counts: Dict[str, Any], own_reactions: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     attachments = []
     for img in p["images"]:
         attachments.append({
@@ -284,14 +284,17 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
             if not images and "attachments" in activity:
                 images = [att.get("image_url") or att.get("asset_url") for att in activity["attachments"] if att.get("image_url") or att.get("asset_url")]
 
+            lat = custom.get("lat") or custom.get("place_lat") or custom.get("location_lat")
+            lng = custom.get("lng") or custom.get("place_lng") or custom.get("location_lng")
+
             feed_repository.add_crowdping_post(
                 user_id=user_id,
                 content=content,
                 post_type=verb,
                 user_name=custom.get("user_name", "Aggie"),
                 user_image=custom.get("user_image", ""),
-                lat=custom.get("lat") if custom.get("lat") is not None else custom.get("place_lat"),
-                lng=custom.get("lng") if custom.get("lng") is not None else custom.get("place_lng"),
+                lat=float(lat) if lat is not None else None,
+                lng=float(lng) if lng is not None else None,
                 location_tag=custom.get("location_tag", ""),
                 images=images,
                 is_anonymous=bool(custom.get("is_anonymous", False)),

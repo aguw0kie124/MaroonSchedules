@@ -6,14 +6,13 @@ import html
 import json
 import re
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Union
 from urllib.request import Request, urlopen
 
 import psycopg
 
 from db_config import CONNECTION_PARAMS
 from repositories import course_repository, tag_repository, user_repository
-from routers.traffic import tracker
 from services import (
     cache_service,
     campus_events_service,
@@ -56,14 +55,14 @@ PLACE_DETAIL_CACHE_VERSION = "v2"
 REC_PAGE_CACHE_TTL_SECONDS = 60 * 60 * 6
 REC_PAGE_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
 REC_NOTICES_CACHE_TTL_SECONDS = 60 * 30
-REC_NOTICES_CACHE: tuple[float, List[Dict[str, Any]]] | None = None
+REC_NOTICES_CACHE: Optional[Union[float, List[Dict[str, Any]]]] = None
 
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _parse_event_datetime(value: Any) -> datetime | None:
+def _parse_event_datetime(value: Any) -> Optional[datetime]:
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -86,7 +85,7 @@ def _parse_event_datetime(value: Any) -> datetime | None:
     return parsed
 
 
-def _is_event_upcoming(event: Dict[str, Any], now: datetime | None = None) -> bool:
+def _is_event_upcoming(event: Dict[str, Any], now: Optional[datetime] = None) -> bool:
     reference_time = now or datetime.now(timezone.utc)
     relevant_time = _parse_event_datetime(event.get("end_time")) or _parse_event_datetime(event.get("start_time"))
     if relevant_time is None:
@@ -101,7 +100,7 @@ def _event_start_sort_key(event: Dict[str, Any]) -> tuple[int, float]:
     return (0, start_time.timestamp())
 
 
-def _safe_db_fetchone(query: str, params: tuple = (), conn: psycopg.Connection | None = None) -> Dict[str, Any] | None:
+def _safe_db_fetchone(query: str, params: tuple = (), conn: Optional[psycopg.Connection] = None) -> Optional[Dict[str, Any]]:
     try:
         if conn:
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
@@ -115,7 +114,7 @@ def _safe_db_fetchone(query: str, params: tuple = (), conn: psycopg.Connection |
         return None
 
 
-def _safe_db_fetchall(query: str, params: tuple = (), conn: psycopg.Connection | None = None) -> List[Dict[str, Any]]:
+def _safe_db_fetchall(query: str, params: tuple = (), conn: Optional[psycopg.Connection] = None) -> List[Dict[str, Any]]:
     try:
         if conn:
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
@@ -129,7 +128,7 @@ def _safe_db_fetchall(query: str, params: tuple = (), conn: psycopg.Connection |
         return []
 
 
-def _ensure_social_tables(conn: psycopg.Connection | None = None) -> None:
+def _ensure_social_tables(conn: Optional[psycopg.Connection] = None) -> None:
     try:
         def run_schema(c):
             with c.cursor() as cur:
@@ -273,12 +272,12 @@ def _ensure_social_tables(conn: psycopg.Connection | None = None) -> None:
         pass
 
 
-def _extract_money(text: str) -> str | None:
+def _extract_money(text: str) -> Optional[str]:
     match = re.search(r"\$[\d,]+(?:\.\d{2})?", text)
     return match.group(0) if match else None
 
 
-def _extract_value_after_keywords(text: str, keywords: List[str]) -> str | None:
+def _extract_value_after_keywords(text: str, keywords: List[str]) -> Optional[str]:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     for index, line in enumerate(lines):
         lowered = line.lower()
@@ -315,7 +314,7 @@ def _extract_section_html(source_html: str, start_marker: str, end_markers: List
     return remainder[:end_index]
 
 
-def _extract_hours_hint_from_html(source_html: str) -> str | None:
+def _extract_hours_hint_from_html(source_html: str) -> Optional[str]:
     hours_section = _extract_section_html(
         source_html,
         "Hours of Operation",
@@ -369,7 +368,7 @@ def _extract_amenities_from_html(source_html: str) -> List[str]:
     return amenities
 
 
-def _extract_summary_from_html(source_html: str) -> str | None:
+def _extract_summary_from_html(source_html: str) -> Optional[str]:
     paragraphs = re.findall(r"<p[^>]*>(.*?)</p>", source_html, flags=re.IGNORECASE | re.DOTALL)
     for paragraph in paragraphs:
         cleaned = _clean_html_text(paragraph)
@@ -512,9 +511,9 @@ def _fetch_rec_notices() -> List[Dict[str, Any]]:
 
 def _is_likely_authenticated_capture(
     system_id: str,
-    source_url: str | None,
-    page_title: str | None,
-    page_text: str | None,
+    source_url: Optional[str],
+    page_title: Optional[str],
+    page_text: Optional[str],
 ) -> bool:
     connector = CONNECTOR_SYSTEMS.get(system_id) or {}
     login_url = (connector.get("login_url") or "").rstrip("/")
@@ -562,7 +561,7 @@ def _connector_row_to_dict(row: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def get_connector_snapshots(clerk_id: str, conn: psycopg.Connection | None = None) -> List[Dict[str, Any]]:
+def get_connector_snapshots(clerk_id: str, conn: Optional[psycopg.Connection] = None) -> List[Dict[str, Any]]:
     _ensure_social_tables(conn)
     rows = _safe_db_fetchall(
         """
@@ -595,7 +594,7 @@ def get_connector_snapshots(clerk_id: str, conn: psycopg.Connection | None = Non
     return snapshots
 
 
-def _latest_connector_snapshot(clerk_id: str, system_id: str, conn: psycopg.Connection | None = None) -> Dict[str, Any] | None:
+def _latest_connector_snapshot(clerk_id: str, system_id: str, conn: Optional[psycopg.Connection] = None) -> Optional[Dict[str, Any]]:
     _ensure_social_tables(conn)
     row = _safe_db_fetchone(
         """
@@ -613,10 +612,10 @@ def capture_connector_snapshot(
     clerk_id: str,
     system_id: str,
     source_url: str,
-    page_title: str | None,
-    page_html: str | None,
-    page_text: str | None,
-    cookie_names: List[str] | None,
+    page_title: Optional[str],
+    page_html: Optional[str],
+    page_text: Optional[str],
+    cookie_names: Optional[List[str]],
 ) -> Dict[str, Any]:
     _ensure_social_tables()
     if system_id not in CONNECTOR_SYSTEMS:
@@ -751,7 +750,7 @@ def _parse_symplicity_snapshot(snapshot: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def parse_connector_snapshot(clerk_id: str, system_id: str, conn: psycopg.Connection | None = None) -> Dict[str, Any]:
+def parse_connector_snapshot(clerk_id: str, system_id: str, conn: Optional[psycopg.Connection] = None) -> Dict[str, Any]:
     snapshot = _latest_connector_snapshot(clerk_id, system_id, conn=conn)
     if not snapshot or snapshot.get("status") != "connected":
         return {}
@@ -769,7 +768,7 @@ def _event_id_for(event: Dict[str, Any]) -> str:
     return hashlib.sha1(seed.encode("utf-8")).hexdigest()[:16]
 
 
-def _time_to_minutes(time_string: str | None) -> int:
+def _time_to_minutes(time_string: Optional[str]) -> int:
     if not time_string or " " not in time_string:
         return 10**9
     clock, period = time_string.split(" ", 1)
@@ -822,7 +821,7 @@ def _normalize_academic_courses(sections: List[Dict[str, Any]]) -> List[Dict[str
     return courses
 
 
-def _pick_next_course(courses: List[Dict[str, Any]]) -> Dict[str, Any] | None:
+def _pick_next_course(courses: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     today = ["U", "M", "T", "W", "R", "F", "S"][datetime.now().weekday() + 1 if datetime.now().weekday() < 6 else 0]
     now_minutes = datetime.now().hour * 60 + datetime.now().minute
     sorted_courses = sorted(
@@ -835,7 +834,7 @@ def _pick_next_course(courses: List[Dict[str, Any]]) -> Dict[str, Any] | None:
     return None
 
 
-def get_auth_status(clerk_id: str, conn: psycopg.Connection | None = None) -> Dict[str, Any]:
+def get_auth_status(clerk_id: str, conn: Optional[psycopg.Connection] = None) -> Dict[str, Any]:
     connector_states = get_connector_snapshots(clerk_id, conn=conn)
     return {
         "status": "app_authenticated",
@@ -851,7 +850,7 @@ def get_auth_status(clerk_id: str, conn: psycopg.Connection | None = None) -> Di
     }
 
 
-def get_academic_snapshot(clerk_id: str, conn: psycopg.Connection | None = None) -> Dict[str, Any]:
+def get_academic_snapshot(clerk_id: str, conn: Optional[psycopg.Connection] = None) -> Dict[str, Any]:
     profile = user_repository.get_user(clerk_id) or {}
     schedules = user_repository.get_schedules(clerk_id) or []
     primary_schedule = schedules[0] if schedules else {"name": "Schedule unavailable", "section_ids": []}
@@ -892,7 +891,7 @@ def get_academic_snapshot(clerk_id: str, conn: psycopg.Connection | None = None)
     }
 
 
-def get_dining_snapshot(clerk_id: str, conn: psycopg.Connection | None = None) -> Dict[str, Any]:
+def get_dining_snapshot(clerk_id: str, conn: Optional[psycopg.Connection] = None) -> Dict[str, Any]:
     profile = _safe_db_fetchone("SELECT * FROM dining_profiles WHERE clerk_id = %s", (clerk_id,), conn=conn)
     transact_snapshot = parse_connector_snapshot(clerk_id, "transact", conn=conn)
 
@@ -948,7 +947,7 @@ def get_dining_snapshot(clerk_id: str, conn: psycopg.Connection | None = None) -
     }
 
 
-def discover_network(clerk_id: str, query: str | None = None, major: str | None = None, limit: int = 8, conn: psycopg.Connection | None = None) -> Dict[str, Any]:
+def discover_network(clerk_id: str, query: Optional[str] = None, major: Optional[str] = None, limit: int = 8, conn: Optional[psycopg.Connection] = None) -> Dict[str, Any]:
     _ensure_social_tables(conn)
     profile = user_repository.get_user(clerk_id) or {}
     query_text = f"%{(query or '').strip()}%"
@@ -1034,11 +1033,11 @@ def create_connection_request(requester_id: str, recipient_id: str) -> Dict[str,
 
 
 def get_events_snapshot(
-    clerk_id: str | None = None,
+    clerk_id: Optional[str] = None,
     limit: int = 8,
-    category: str | None = None,
+    category: Optional[str] = None,
     student_relevant_only: bool = True,
-    conn: psycopg.Connection | None = None,
+    conn: Optional[psycopg.Connection] = None,
 ) -> List[Dict[str, Any]]:
     _ensure_social_tables(conn)
     rsvp_lookup: Dict[str, str] = {}
@@ -1175,6 +1174,7 @@ def get_events_snapshot(
             ],
         }
 
+    from routers.traffic import tracker
     raw_events = tracker.fetch_event_data(limit=limit)
     events = []
     for event in raw_events:
@@ -1250,6 +1250,7 @@ def get_recreation_snapshot() -> Dict[str, Any]:
     if cached is not None:
         return cached
 
+    from routers.traffic import tracker
     occupancy_rows = tracker.fetch_rec_data() or []
     notices = _fetch_rec_notices()
     
@@ -1435,7 +1436,7 @@ def get_services_snapshot() -> Dict[str, Any]:
     }
 
 
-def get_career_snapshot(clerk_id: str, conn: psycopg.Connection | None = None) -> Dict[str, Any]:
+def get_career_snapshot(clerk_id: str, conn: Optional[psycopg.Connection] = None) -> Dict[str, Any]:
     network = discover_network(clerk_id, limit=4, conn=conn)
     alumni_count = len([suggestion for suggestion in network.get("suggestions", []) if suggestion.get("relationship") == "alumni"])
     symplicity_snapshot = parse_connector_snapshot(clerk_id, "symplicity", conn=conn)
@@ -1460,11 +1461,11 @@ def get_career_snapshot(clerk_id: str, conn: psycopg.Connection | None = None) -
 
 def get_notification_hub(
     clerk_id: str,
-    academic_data: Dict[str, Any] | None = None,
-    dining_data: Dict[str, Any] | None = None,
-    events_data: List[Dict[str, Any]] | None = None,
-    network_data: Dict[str, Any] | None = None,
-    conn: psycopg.Connection | None = None,
+    academic_data: Optional[Dict[str, Any]] = None,
+    dining_data: Optional[Dict[str, Any]] = None,
+    events_data: Optional[List[Dict[str, Any]]] = None,
+    network_data: Optional[Dict[str, Any]] = None,
+    conn: Optional[psycopg.Connection] = None,
 ) -> List[Dict[str, Any]]:
     academic = academic_data or get_academic_snapshot(clerk_id, conn=conn)
     dining = dining_data or get_dining_snapshot(clerk_id, conn=conn)

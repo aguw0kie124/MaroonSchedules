@@ -18,7 +18,7 @@ try:
 except ImportError:
     Perplexity = None
 
-from main import limiter
+from rate_limit import limiter
 
 router = APIRouter()
 

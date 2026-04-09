@@ -1,7 +1,8 @@
 from __future__ import annotations
+from typing import Optional
 
 
-def normalize_place_type(value: str | None) -> str:
+def normalize_place_type(value: Optional[str]) -> str:
     normalized = (value or "").strip().lower()
 
     if normalized in {"hub"}:

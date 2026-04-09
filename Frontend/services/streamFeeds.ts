@@ -4,12 +4,12 @@ import { apiFetch } from '../api/client';
 let connectedUserId: string | null = null;
 let currentFullUser: any | null = null;
 
-async function feedFetch(path: string, init: RequestInit = {}) {
+async function feedFetch(path: string, init: RequestInit = {}, timeoutMs?: number) {
   const headers = {
     ...(init.headers || {}),
     ...(connectedUserId ? { 'X-Clerk-User-Id': connectedUserId } : {}),
   };
-  return apiFetch(path, { ...init, headers });
+  return apiFetch(path, { ...init, headers }, timeoutMs);
 }
 
 /**
@@ -102,7 +102,7 @@ export async function getCampusFeed(limit = 25): Promise<any[]> {
 
 export async function getPingFeed(limit = 40): Promise<any[]> {
   try {
-    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?limit=${limit}`);
+    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?limit=${limit}`, {}, 15000);
     if (!res.ok) throw new Error('Proxy Fetch Error');
     const data = await res.json();
     return data.results || [];
@@ -166,7 +166,7 @@ export async function addPing(params: {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ activity }),
-  });
+  }, 30000);
 
   if (!res.ok) {
     const err = await res.text();

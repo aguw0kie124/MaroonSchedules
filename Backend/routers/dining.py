@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Body, Query, Depends
 from typing import List, Optional, Dict
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import psycopg
 from db_config import get_db_connection
 from services import dining_service
@@ -8,7 +8,7 @@ from auth.clerk_middleware import require_auth, ensure_matching_user
 import json
 from datetime import datetime, timedelta
 
-from main import limiter
+from rate_limit import limiter
 from fastapi import Request
 from models.base import SanitizedBaseModel
 

@@ -6,7 +6,7 @@ from db_config import CONNECTION_PARAMS
 from auth.clerk_middleware import require_auth, ensure_matching_user
 from models.base import SanitizedBaseModel
 
-from main import limiter
+from rate_limit import limiter
 
 router = APIRouter(prefix="/posts", tags=["posts"])
 

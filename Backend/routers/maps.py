@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Optional
 from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -18,8 +19,8 @@ class RouteRequest(BaseModel):
     origin: RouteCoordinate
     destination: RouteCoordinate
     mode: str = Field("drive")
-    origin_name: str | None = None
-    destination_name: str | None = None
+    origin_name: Optional[str] = None
+    destination_name: Optional[str] = None
 
 
 @router.get("/search")

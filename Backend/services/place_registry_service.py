@@ -2,8 +2,8 @@ import sqlite3
 import re
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List
 import json
+from typing import Any, Dict, List, Optional, Union
 
 from services.place_type_service import normalize_place_type
 
@@ -12,7 +12,7 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BACKEND_DIR / "Data" / "campus_registry.db"
 
 
-def _normalize_key(value: str | None) -> str:
+def _normalize_key(value: Optional[str]) -> str:
     text = (value or "").strip().lower()
     text = text.replace("&", " and ")
     return re.sub(r"[^a-z0-9]+", " ", text).strip()
@@ -78,13 +78,13 @@ def get_all_places() -> List[Dict[str, Any]]:
     return [serialize_place(place) for place in _build_registry()["records"]]
 
 
-def get_place_by_id(place_id: str | None) -> Dict[str, Any] | None:
+def get_place_by_id(place_id: Optional[str]) -> Optional[Dict[str, Any]]:
     if not place_id:
         return None
     return _build_registry()["by_id"].get(place_id)
 
 
-def serialize_place(place: Dict[str, Any] | None) -> Dict[str, Any] | None:
+def serialize_place(place: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     if not place:
         return None
     excluded_aliases = {
@@ -114,11 +114,11 @@ def serialize_place(place: Dict[str, Any] | None) -> Dict[str, Any] | None:
 
 
 def resolve_place(
-    location_name: str | None = None,
-    lat: float | None = None,
-    lng: float | None = None,
+    location_name: Optional[str] = None,
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
     max_coord_delta: float = 0.0015,
-) -> Dict[str, Any] | None:
+) -> Optional[Dict[str, Any]]:
     registry = _build_registry()
 
     normalized_name = _normalize_key(location_name)

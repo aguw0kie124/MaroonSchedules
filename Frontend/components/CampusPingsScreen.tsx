@@ -360,9 +360,13 @@ export function CampusPingsScreen() {
     setSelectedLocation(null);
     setComposerGeoLocation(null);
     setComposerImageUri(null);
+    setUseCurrentLocation(true);
   }, []);
 
-  const openComposer = useCallback(() => setComposerVisible(true), []);
+  const openComposer = useCallback(() => {
+    setUseCurrentLocation(true);
+    setComposerVisible(true);
+  }, []);
   const closeComposer = useCallback(() => {
     setComposerVisible(false);
     resetComposer();
@@ -521,23 +525,33 @@ export function CampusPingsScreen() {
   }, [loadAll]);
 
   const handleSelectLocation = useCallback((locationName: string) => {
+    setUseCurrentLocation(false);
     setSelectedLocation(locationName);
     setComposerGeoLocation(null);
     setLocationQuery(locationName);
   }, []);
 
   const handleUseCurrentLocation = useCallback(async () => {
+    setUseCurrentLocation(true);
     setIsResolvingCurrentLocation(true);
     try {
       const permission = await Location.requestForegroundPermissionsAsync();
       if (!permission.granted) {
         Alert.alert('Location unavailable', 'Allow location access to pin your current spot.');
-        return;
+        return null;
       }
 
-      const current = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      let current;
+      try {
+        current = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+      } catch (_error) {
+        current = await Location.getLastKnownPositionAsync();
+      }
+      if (!current) {
+        throw new Error('Could not determine your location.');
+      }
       const latitude = current.coords.latitude;
       const longitude = current.coords.longitude;
 
@@ -562,21 +576,38 @@ export function CampusPingsScreen() {
           ? `Near ${nearest.item.location}`
           : 'Pinned location';
 
-      setComposerGeoLocation({
+      const nextLocation = {
         latitude,
         longitude,
         label,
-      });
+      };
+      setComposerGeoLocation(nextLocation);
       setSelectedLocation(null);
       setLocationQuery('');
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      return nextLocation;
     } catch (error) {
       console.warn('[Pings] current location failed', error);
       Alert.alert('Could not pin location', 'Try again in a moment.');
+      return null;
     } finally {
       setIsResolvingCurrentLocation(false);
     }
   }, [directory]);
+
+  useEffect(() => {
+    if (!composerVisible || !useCurrentLocation || composerGeoLocation || isResolvingCurrentLocation) return;
+    if (selectedLocation || locationQuery.trim().length > 0) return;
+    handleUseCurrentLocation();
+  }, [
+    composerVisible,
+    useCurrentLocation,
+    composerGeoLocation,
+    isResolvingCurrentLocation,
+    selectedLocation,
+    locationQuery,
+    handleUseCurrentLocation,
+  ]);
 
   const handlePickPingImage = useCallback(async () => {
     try {
@@ -643,58 +674,21 @@ export function CampusPingsScreen() {
     let anchorType: PingAnchorType = 'place';
 
     if (useCurrentLocation) {
-      setIsResolvingCurrentLocation(true);
-      try {
-        const permission = await Location.requestForegroundPermissionsAsync();
-        if (permission.granted) {
-          let current;
-          try {
-            // Use Balanced accuracy to avoid hanging in simulators or indoor locations
-            current = await Location.getCurrentPositionAsync({ 
-              accuracy: Location.Accuracy.Balanced 
-            });
-          } catch (gpsError) {
-            current = await Location.getLastKnownPositionAsync();
-          }
-
-          if (!current) throw new Error("Could not determine your location.");
-
-          let friendlyName = 'Current Location';
-          try {
-            const results = await Location.reverseGeocodeAsync({
-              latitude: current.coords.latitude,
-              longitude: current.coords.longitude
-            });
-            if (results && results[0]) {
-              const { name, street, city, region } = results[0];
-              const genericNames = ["Current", "Unknown", "Unnamed Road"];
-              if (name && !genericNames.includes(name)) {
-                friendlyName = name;
-              } else if (street) {
-                friendlyName = street;
-              } else if (city && region) {
-                friendlyName = `${city}, ${region}`;
-              } else if (city) {
-                friendlyName = city;
-              }
-            }
-          } catch (e) {}
-
-          finalLocation = friendlyName;
-          finalLat = current.coords.latitude;
-          finalLng = current.coords.longitude;
-          anchorType = 'geo';
-        } else {
-          Alert.alert("Permission Denied", "Enable location access to use your live location.");
-          setIsResolvingCurrentLocation(false);
+      if (composerGeoLocation) {
+        finalLocation = composerGeoLocation.label;
+        finalLat = composerGeoLocation.latitude;
+        finalLng = composerGeoLocation.longitude;
+        anchorType = 'geo';
+      } else {
+        const resolvedLocation = await handleUseCurrentLocation();
+        if (!resolvedLocation) {
+          Alert.alert('Location unavailable', 'We could not lock onto your current location yet.');
           return;
         }
-      } catch (e: any) {
-        Alert.alert("Location Failure", e.message || "Could not resolve your live location.");
-        setIsResolvingCurrentLocation(false);
-        return;
-      } finally {
-        setIsResolvingCurrentLocation(false);
+        finalLocation = resolvedLocation.label;
+        finalLat = resolvedLocation.latitude;
+        finalLng = resolvedLocation.longitude;
+        anchorType = 'geo';
       }
     } else {
       const lookup = locationLookup.get(getCanonicalLocationName(finalLocation));
@@ -766,10 +760,12 @@ export function CampusPingsScreen() {
     composerGeoLocation,
     selectedLocation,
     feedConnected,
+    handleUseCurrentLocation,
     handleRefresh,
     resetComposer,
     user,
     locationLookup,
+    useCurrentLocation,
   ]);
 
   const handleVotePing = useCallback(
@@ -1306,6 +1302,7 @@ export function CampusPingsScreen() {
                         <TextInput
                           value={locationQuery}
                           onChangeText={(text) => {
+                            setUseCurrentLocation(false);
                             setLocationQuery(text);
                             setSelectedLocation(null);
                             setComposerGeoLocation(null);
@@ -1358,6 +1355,7 @@ export function CampusPingsScreen() {
                           </View>
                           <Pressable
                             onPress={() => {
+                              setUseCurrentLocation(false);
                               setSelectedLocation(null);
                               setLocationQuery('');
                             }}
@@ -1374,7 +1372,12 @@ export function CampusPingsScreen() {
                             <Text style={styles.selectedLocationText}>{composerGeoLocation.label}</Text>
                             <Text style={styles.selectedLocationSubtext}>Pinned to your current geolocation</Text>
                           </View>
-                          <Pressable onPress={() => setComposerGeoLocation(null)}>
+                          <Pressable
+                            onPress={() => {
+                              setUseCurrentLocation(false);
+                              setComposerGeoLocation(null);
+                            }}
+                          >
                             <X size={14} color={COLORS.textSecondary} />
                           </Pressable>
                         </View>

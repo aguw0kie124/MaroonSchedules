@@ -271,10 +271,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
   } = useQuery({
     queryKey: ['campus-pulse', user?.id],
     queryFn: async () => {
-      const rawHotspots = await fetchCampusPulseMap(100, { 
-        clerkId: user?.id || undefined
+      const { hotspots: rawHotspots } = await fetchCampusPulseMap(60, { 
+        clerkId: user?.id || undefined,
+        force: true
       });
-      
+
       const currentPulsePlaces = pulsePlacesRef.current;
       const placeLookup = new Map(
         currentPulsePlaces.flatMap((place) => {
@@ -530,7 +531,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   const filteredLocations = useMemo(() => {
     const browsableLocations = allMapLocations.filter((l) => !l.searchOnly);
-    if (activeLayer === "Pulse") return [];
+    if (activeLayer === "Pulse") {
+      return pulseHotspots
+        .map((h) => h.place)
+        .filter((p): p is CampusLocation => !!p);
+    }
     if (activeLayer === "Heatmap") return [];
     if (activeLayer === "Today") return scheduleLocations;
     if (activeLayer === "Dining")
@@ -639,7 +644,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
     allMapLocations,
     setActiveLayer,
     onAfterSelectLocation: useCallback((loc: CampusLocation) => {
-      setSelectedHotspotId(null);
+      // Integration for Pulse layer: selecting a location from the list or search
+      // should trigger the corresponding hotspot sheet if it exists
+      if (loc.source === "pulse") {
+        const hotspot = pulseHotspots.find((h) => h.place?.location === loc.location || h.placeId === loc.placeId);
+        if (hotspot) {
+          setSelectedHotspotId(hotspot.id);
+        }
+      } else {
+        setSelectedHotspotId(null);
+      }
       setSelectedStop(null);
       setSelectedBus(null);
       setIsSearchExpanded(false);
@@ -1397,11 +1411,54 @@ export function PlacesMapScreen({ route, navigation }: any) {
     }
 
     if (activeLayer === "Pulse") {
+      const allPulseCoords = pulseHotspots.map((hotspot) => ({
+        latitude: hotspot.coord.lat,
+        longitude: hotspot.coord.lng,
+      }));
+
+      if (userCoord) {
+        const distanceFromCampus = haversineDistanceMeters(
+          userCoord.latitude,
+          userCoord.longitude,
+          TAMU_CENTER.latitude,
+          TAMU_CENTER.longitude,
+        );
+
+        // When the user is far from College Station, prioritize nearby hotspots
+        // so off-campus pings remain discoverable instead of being dwarfed by the campus cluster.
+        if (distanceFromCampus > 40_000) {
+          const nearbyPulseCoords = pulseHotspots
+            .map((hotspot) => ({
+              hotspot,
+              distanceMeters: haversineDistanceMeters(
+                userCoord.latitude,
+                userCoord.longitude,
+                hotspot.coord.lat,
+                hotspot.coord.lng,
+              ),
+            }))
+            .filter((entry) => entry.distanceMeters <= 120_000)
+            .sort((a, b) => a.distanceMeters - b.distanceMeters)
+            .slice(0, 10)
+            .map((entry) => ({
+              latitude: entry.hotspot.coord.lat,
+              longitude: entry.hotspot.coord.lng,
+            }));
+
+          if (nearbyPulseCoords.length > 0) {
+            fitToCoords(nearbyPulseCoords, {
+              top: 250,
+              right: 120,
+              bottom: 350,
+              left: 120,
+            });
+            return;
+          }
+        }
+      }
+
       fitToCoords(
-        pulseHotspots.map((hotspot) => ({
-          latitude: hotspot.coord.lat,
-          longitude: hotspot.coord.lng,
-        })),
+        allPulseCoords,
         { top: 250, right: 120, bottom: 350, left: 120 },
       );
       return;
@@ -1434,6 +1491,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     pulseHotspots,
     routePatterns,
     sortedFilteredLocations,
+    userCoord,
   ]);
 
   // ── Auto-zoom and fitting logic ───────────────────────────
@@ -1688,6 +1746,32 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setSelectedId(getLocationSelectionId(match));
     setPendingInitialLocation(null);
   }, [allMapLocations, pendingInitialLocation]);
+
+  useEffect(() => {
+    if (!pendingInitialLocation || activeLayer !== "Pulse") return;
+    const targetName = getCanonicalLocationName(pendingInitialLocation);
+    const hotspotMatch = pulseHotspots.find(
+      (hotspot) => getCanonicalLocationName(hotspot.locationName) === targetName,
+    );
+    if (!hotspotMatch) return;
+
+    setSelectedHotspotId(hotspotMatch.id);
+    setPendingInitialLocation(null);
+
+    if (!mapRef.current) return;
+    mapRef.current.animateCamera(
+      {
+        center: {
+          latitude: hotspotMatch.coord.lat,
+          longitude: hotspotMatch.coord.lng,
+        },
+        zoom: 14.5,
+        pitch: isMapTilted ? 55 : 0,
+        heading: 0,
+      },
+      { duration: 700 },
+    );
+  }, [activeLayer, isMapTilted, pendingInitialLocation, pulseHotspots]);
 
   useEffect(() => {
     if (activeLayer !== "Pulse" && selectedHotspotId) {
@@ -2178,12 +2262,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
             lineDasharray={[1.5, 2.5]}
           />
         )}
-
-
-
-
         {activeLayer === "Pulse" &&
-          pulseHotspots.map((hotspot) => {
+          pulseHotspots.filter(h => h && h.coord).map((hotspot) => {
             const isSelected = hotspot.id === selectedHotspotId;
             return (
               <MapLibreMarker

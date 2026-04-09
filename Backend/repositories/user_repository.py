@@ -6,7 +6,7 @@ from functools import lru_cache
 import psycopg
 from psycopg.rows import dict_row
 from db_config import CONNECTION_PARAMS
-
+from typing import Any, Dict, Optional, Tuple, Union
 
 # ---------------------------------------------------------------------------
 # User CRUD
@@ -24,7 +24,7 @@ def _execute_optional_ddl(conn: psycopg.Connection, sql: str) -> None:
 
 
 @lru_cache(maxsize=8)
-def _get_table_columns(table_name: str) -> tuple[str, ...]:
+def _get_table_columns(table_name: str) -> Tuple[str, ...]:
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -228,7 +228,7 @@ def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile
     return result
 
 
-def get_user(clerk_id: str) -> dict | None:
+def get_user(clerk_id: str) -> Optional[dict]:
     """Return full user record by Clerk ID, or None."""
     select_clause = _user_select_clause()
     with psycopg.connect(CONNECTION_PARAMS) as conn:
@@ -251,7 +251,7 @@ def get_user(clerk_id: str) -> dict | None:
     return result
 
 
-def update_profile(clerk_id: str, fields: dict) -> dict | None:
+def update_profile(clerk_id: str, fields: dict) -> Optional[dict]:
     """Update only the profile-preference columns for a user."""
     allowed = {
         "major", "graduation_year", "preferred_time",

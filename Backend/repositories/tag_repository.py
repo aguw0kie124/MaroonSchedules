@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import psycopg
 
@@ -112,7 +112,7 @@ def _run_with_connection(callback):
         return result
 
 
-def get_user_tags(clerk_id: str, conn: psycopg.Connection | None = None) -> List[str]:
+def get_user_tags(clerk_id: str, conn: Optional[psycopg.Connection] = None) -> List[str]:
     def _read(active_conn: psycopg.Connection) -> List[str]:
         with active_conn.cursor() as cur:
             cur.execute(
@@ -133,7 +133,7 @@ def get_user_tags(clerk_id: str, conn: psycopg.Connection | None = None) -> List
     return _run_with_connection(_read)
 
 
-def add_user_tags(clerk_id: str, tags: Sequence[str], conn: psycopg.Connection | None = None) -> List[str]:
+def add_user_tags(clerk_id: str, tags: Sequence[str], conn: Optional[psycopg.Connection] = None) -> List[str]:
     normalized = normalize_tag_list(tags)
 
     def _write(active_conn: psycopg.Connection) -> List[str]:
@@ -159,7 +159,7 @@ def add_user_tags(clerk_id: str, tags: Sequence[str], conn: psycopg.Connection |
     return _run_with_connection(_write)
 
 
-def set_user_tags(clerk_id: str, tags: Sequence[str], conn: psycopg.Connection | None = None) -> List[str]:
+def set_user_tags(clerk_id: str, tags: Sequence[str], conn: Optional[psycopg.Connection] = None) -> List[str]:
     normalized = normalize_tag_list(tags)
 
     def _write(active_conn: psycopg.Connection) -> List[str]:
@@ -182,7 +182,7 @@ def set_user_tags(clerk_id: str, tags: Sequence[str], conn: psycopg.Connection |
     return _run_with_connection(_write)
 
 
-def get_event_tags(event_id: str, conn: psycopg.Connection | None = None) -> List[str]:
+def get_event_tags(event_id: str, conn: Optional[psycopg.Connection] = None) -> List[str]:
     def _read(active_conn: psycopg.Connection) -> List[str]:
         with active_conn.cursor() as cur:
             cur.execute(
@@ -203,7 +203,7 @@ def get_event_tags(event_id: str, conn: psycopg.Connection | None = None) -> Lis
     return _run_with_connection(_read)
 
 
-def set_event_tags(event_id: str, tags: Sequence[str], conn: psycopg.Connection | None = None) -> List[str]:
+def set_event_tags(event_id: str, tags: Sequence[str], conn: Optional[psycopg.Connection] = None) -> List[str]:
     normalized = normalize_tag_list(tags)
 
     def _write(active_conn: psycopg.Connection) -> List[str]:
@@ -226,7 +226,7 @@ def set_event_tags(event_id: str, tags: Sequence[str], conn: psycopg.Connection 
     return _run_with_connection(_write)
 
 
-def list_tags(query: str | None = None, limit: int = 50, conn: psycopg.Connection | None = None) -> List[str]:
+def list_tags(query: Optional[str] = None, limit: int = 50, conn: Optional[psycopg.Connection] = None) -> List[str]:
     search = f"%{query.strip()}%" if query and query.strip() else None
 
     def _read(active_conn: psycopg.Connection) -> List[str]:
@@ -260,7 +260,7 @@ def list_tags(query: str | None = None, limit: int = 50, conn: psycopg.Connectio
     return _run_with_connection(_read)
 
 
-def get_club_settings(admin_clerk_id: str, conn: psycopg.Connection | None = None) -> Dict[str, Any]:
+def get_club_settings(admin_clerk_id: str, conn: Optional[psycopg.Connection] = None) -> Dict[str, Any]:
     def _read(active_conn: psycopg.Connection) -> Dict[str, Any]:
         with active_conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute(
@@ -289,9 +289,9 @@ def update_club_settings(
     admin_clerk_id: str,
     organization_name: str,
     email: str,
-    club_tag: str | None,
+    club_tag: Optional[str],
     auto_approve_join_requests: bool,
-    conn: psycopg.Connection | None = None,
+    conn: Optional[psycopg.Connection] = None,
 ) -> Dict[str, Any]:
     normalized_tag = normalize_tag_list([club_tag] if club_tag else [])
 
@@ -335,7 +335,7 @@ def update_club_settings(
     return _run_with_connection(_write)
 
 
-def list_clubs_for_user(requester_clerk_id: str, conn: psycopg.Connection | None = None) -> List[Dict[str, Any]]:
+def list_clubs_for_user(requester_clerk_id: str, conn: Optional[psycopg.Connection] = None) -> List[Dict[str, Any]]:
     def _read(active_conn: psycopg.Connection) -> List[Dict[str, Any]]:
         with active_conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute(
@@ -370,7 +370,7 @@ def list_clubs_for_user(requester_clerk_id: str, conn: psycopg.Connection | None
 def create_club_join_request(
     admin_clerk_id: str,
     requester_clerk_id: str,
-    conn: psycopg.Connection | None = None,
+    conn: Optional[psycopg.Connection] = None,
 ) -> Dict[str, Any]:
     def _write(active_conn: psycopg.Connection) -> Dict[str, Any]:
         club_settings = get_club_settings(admin_clerk_id, conn=active_conn)
@@ -433,8 +433,8 @@ def create_club_join_request(
 
 def list_club_join_requests(
     admin_clerk_id: str,
-    status: str | None = None,
-    conn: psycopg.Connection | None = None,
+    status: Optional[str] = None,
+    conn: Optional[psycopg.Connection] = None,
 ) -> List[Dict[str, Any]]:
     def _read(active_conn: psycopg.Connection) -> List[Dict[str, Any]]:
         with active_conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
@@ -479,7 +479,7 @@ def review_club_join_request(
     admin_clerk_id: str,
     approve: bool,
     assign_club_tag: bool = True,
-    conn: psycopg.Connection | None = None,
+    conn: Optional[psycopg.Connection] = None,
 ) -> Dict[str, Any]:
     def _write(active_conn: psycopg.Connection) -> Dict[str, Any]:
         club_settings = get_club_settings(admin_clerk_id, conn=active_conn)
@@ -531,7 +531,7 @@ def review_club_join_request(
     return _run_with_connection(_write)
 
 
-def search_users(query: str | None = None, limit: int = 50, conn: psycopg.Connection | None = None) -> List[Dict[str, Any]]:
+def search_users(query: Optional[str] = None, limit: int = 50, conn: Optional[psycopg.Connection] = None) -> List[Dict[str, Any]]:
     search = f"%{query.strip()}%" if query and query.strip() else None
 
     def _read(active_conn: psycopg.Connection) -> List[Dict[str, Any]]:

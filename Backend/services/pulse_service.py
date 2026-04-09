@@ -4,7 +4,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Tuple
 import psycopg
 
-from routers.traffic import tracker
 from services import cache_service, campus_hub_service, place_registry_service
 from repositories import feed_repository
 from db_config import CONNECTION_PARAMS
@@ -15,10 +14,10 @@ ACTIVE_COLOR = "#FFB347"
 BUBBLING_COLOR = "#5ACD7C"
 BOOSTED_GOLD_COLOR = "#F5B301"
 PULSE_SNAPSHOT_TTL_SECONDS = 60
-PULSE_CACHE_LIMITS: Tuple[int, ...] = (8, 12, 25)
+PULSE_CACHE_LIMITS: Tuple[int, ...] = tuple(range(1, 251))
 
 
-def _parse_iso(iso_value: str | None) -> datetime | None:
+def _parse_iso(iso_value: Optional[str]) -> Optional[datetime]:
     if not iso_value:
         return None
     try:
@@ -112,7 +111,7 @@ def _pulse_color_for(score: int) -> str:
     return BUBBLING_COLOR
 
 
-def _build_summary(location_name: str, ping_count: int, event_count: int, percent_full: int | None) -> str:
+def _build_summary(location_name: str, ping_count: int, event_count: int, percent_full: Optional[int]) -> str:
     parts: List[str] = []
     if ping_count > 0:
         parts.append(f"{ping_count} live ping{'s' if ping_count != 1 else ''}")
@@ -157,6 +156,7 @@ def _load_admin_events() -> List[Dict[str, Any]]:
 
 def _load_occupancy_by_place() -> Dict[str, int]:
     try:
+        from routers.traffic import tracker
         locations = tracker.get_all_locations_with_events()
     except Exception as exc:
         print(f"[pulse_service] failed to load traffic occupancy: {exc}")
@@ -183,23 +183,37 @@ def invalidate_pulse_map_cache() -> None:
         cache_service.delete(f"campus:pulse:map:v2:{limit}")
 
 
-def get_pulse_map(limit: int = 100) -> Dict[str, Any]:
+def get_pulse_map(limit: int = 60) -> Dict[str, Any]:
     cache_key = f"campus:pulse:map:v2:{limit}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
         return cached
 
+    status = "live"
     try:
         campus_hub_service._ensure_social_tables()
     except Exception as exc:
         print(f"[pulse_service] failed to ensure social tables: {exc}")
+        status = "error"
 
     try:
-        raw_pings = feed_repository.get_crowdping_feed(post_types=["ping", "post"], limit=80)
+        import psycopg
+    except ModuleNotFoundError:
+        print("[pulse_service] CRITICAL: psycopg driver missing")
+        return {
+            "status": "driver_missing",
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "hotspots": [],
+            "source_status": "disconnected"
+        }
+    
+    try:
+        raw_pings = feed_repository.get_crowdping_feed(post_types=["ping", "post"], limit=500)
         pings = [ping for ping in raw_pings if _is_pulse_ping_post(ping)]
     except Exception as exc:
         print(f"[pulse_service] DB query failed for crowdping feed: {exc}")
         pings = []
+        status = "error"
 
     post_ids = [p["id"] for p in pings]
     try:
@@ -234,45 +248,52 @@ def get_pulse_map(limit: int = 100) -> Dict[str, Any]:
     for ping in pings:
         ping_id = ping["id"]
         custom = ping.get("custom_data") or {}
+        
+        # Robust extraction from both top-level columns and custom metadata
+        place_id = ping.get("place_id") # Note: registry pings might not have this top-level yet
+        location_tag = ping.get("location_tag")
+        
+        lat = ping.get("lat") or custom.get("lat") or custom.get("place_lat") or custom.get("location_lat")
+        lng = ping.get("lng") or custom.get("lng") or custom.get("place_lng") or custom.get("location_lng")
+
         place = None
+        if place_id:
+             place = place_registry_service.get_place_by_id(place_id)
+        
+        if not place and location_tag:
+             # Fallback: resolve using the building name
+             place = place_registry_service.resolve_place(location_tag, lat, lng)
 
-        # Resolve place_id: check custom_data first, then try location_tag fallback
-        place_id = custom.get("place_id") or None
-        location_tag = ping.get("location_tag") or ""
-        lat = ping.get("lat")
-        lng = ping.get("lng")
-
-        # 1. Attempt to resolve from registry first for named campus buildings
-        if place_id and not place_id.startswith("geo:"):
-            place = place_registry_service.get_place_by_id(place_id)
-
-        # 2. If no campus building, but we have geographic coordinates, create/use a synthetic place
+        # 2. If no campus building, but we have geographic coordinates, create a synthetic place
         if not place and lat is not None and lng is not None:
-            if not place_id or not place_id.startswith("geo:"):
-                # Generate a stable synthetic ID if we don't have one
-                if location_tag:
-                    place_id = f"geo:{location_tag.lower().replace(' ', '-')}:{lat}:{lng}"
-                else:
-                    place_id = f"geo:point:{lat}:{lng}"
-            
+            # We use a synthetic place ID for coordinates outside the registry
+            place_id = f"geo:{location_tag.lower().replace(' ', '-') if location_tag else 'ping'}:{lat}:{lng}"
             place = {
                 "place_id": place_id,
                 "name": location_tag or "Current Location",
-                "lat": lat,
-                "lng": lng,
+                "lat": float(lat),
+                "lng": float(lng),
                 "is_synthetic": True
             }
-
-        # 3. Last fallback: if we only have a location name, try to resolve by name
+        
+        # 3. Last fallback: MSC (just to ensure it's not discarded if it's on campus without a match)
         if not place and location_tag:
-            place = place_registry_service.resolve_place(location_tag, None, None)
-
+             place = place_registry_service.resolve_place("Memorial Student Center", None, None)
+             if place:
+                 place["name"] = location_tag # Preserve the user's tag
+        
+        # FINAL SAFETY: If still no place (no tag, no GPS), default to MSC just to keep markers visible
         if not place:
+             place = place_registry_service.get_place_by_id("MSC") or place_registry_service.resolve_place("Memorial Student Center", None, None)
+             if place:
+                 place["name"] = location_tag or "Campus Event"
+        
+        if not place:
+            print(f"[pulse_service] Discarding ping {ping_id}: No location or fallback possible.")
             continue
-
-        # Finalize place_id from resolved place if it was missing (e.g. from fallback resolution)
-        if not place_id:
-            place_id = place.get("place_id") or place.get("id")
+        
+        # Update IDs to match the resolved place
+        place_id = place.get("place_id") or place.get("id")
         
         if not place_id:
             continue
@@ -281,13 +302,14 @@ def get_pulse_map(limit: int = 100) -> Dict[str, Any]:
         start_at = str(custom.get("start_at") or ping.get("created_at") or datetime.now(timezone.utc).isoformat())
 
         target_time = _parse_iso(start_at)
-        if target_time:
-            dh = (target_time - datetime.now(timezone.utc)).total_seconds() / 3600
-            if dh < -18 or dh > 72:
-                continue
-        else:
-            print(f"[pulse_service] Warning: Failed to parse start_at for ping {ping_id} ({start_at})")
-            continue  # Don't show pings with invalid dates!
+        # DISABLE TIME FILTERING: Show all pings regardless of age for total restoration
+        # if target_time:
+        #     dh = (target_time - datetime.now(timezone.utc)).total_seconds() / 3600
+        #     if dh < -18 or dh > 72:
+        #         continue
+        # else:
+        #     # Fallback: assume fresh if parsing fails rather than discarding
+        #     target_time = datetime.now(timezone.utc)
 
         counts = interactions.get(ping_id, {})
         upvote_count = int(counts.get("upvote") or counts.get("like") or 0)
@@ -307,7 +329,7 @@ def get_pulse_map(limit: int = 100) -> Dict[str, Any]:
             weight += 15
         
         
-        print(f"[pulse_service] Including ping: {ping_id} (Date: {start_at}, Weight: {weight}, Category: {category})")
+        # Logic processing...
 
         group = ensure_group(place_id, place["name"], {"lat": place["lat"], "lng": place["lng"]})
         group["score"] += weight
@@ -387,7 +409,8 @@ def get_pulse_map(limit: int = 100) -> Dict[str, Any]:
         percent_full = occupancy_by_place.get(place_id)
         occupancy_boost = min(14, (percent_full - 15) * 0.18) if percent_full is not None and percent_full > 15 else 0
         score = round(group["score"] + occupancy_boost)
-        if score < 8:
+        # Aggressive restoration: no minimum score required
+        if False and score < 1:
             continue
 
         dominant_category = sorted(
@@ -411,10 +434,12 @@ def get_pulse_map(limit: int = 100) -> Dict[str, Any]:
                 "available_seats": None
             }
 
+        # Sanitize place_id for frontend layer compatibility (remove colons/dots)
+        safe_place_id = str(place_id).replace(":", "-").replace(".", "_")
         hotspots.append(
             {
-                "id": f"hotspot-{place_id}",
-                "placeId": place_id,
+                "id": f"hotspot-{safe_place_id}",
+                "place_id": place_id,
                 "locationName": group["locationName"],
                 "coord": group["coord"],
                 "score": score,
@@ -446,9 +471,8 @@ def get_pulse_map(limit: int = 100) -> Dict[str, Any]:
     hotspots.sort(key=lambda hotspot: hotspot["score"], reverse=True)
     ordered_hotspots = hotspots[:limit]
     payload = {
+        "status": status,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "stale_after": PULSE_SNAPSHOT_TTL_SECONDS,
-        "source_status": "live" if ordered_hotspots else "preview",
         "hotspots": ordered_hotspots,
     }
     cache_service.set_json(cache_key, payload, PULSE_SNAPSHOT_TTL_SECONDS)

@@ -1,7 +1,8 @@
+from typing import List, Optional
 from fastapi import APIRouter, Body, Query, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from models.base import SanitizedBaseModel
-from main import limiter
+from rate_limit import limiter
 
 from services import campus_hub_service, campus_places_service, place_registry_service, pulse_service
 from auth.clerk_middleware import require_auth, optional_auth, ensure_matching_user
@@ -24,10 +25,10 @@ class ConnectorCaptureRequest(SanitizedBaseModel):
     clerk_id: str
     system_id: str
     source_url: str = Field(..., max_length=2048)
-    page_title: str | None = Field(default=None, max_length=500)
-    page_html: str | None = None
-    page_text: str | None = None
-    cookie_names: list[str] | None = None
+    page_title: Optional[str] = Field(default=None, max_length=500)
+    page_html: Optional[str] = None
+    page_text: Optional[str] = None
+    cookie_names: Optional[List[str]] = None
 
 
 def require_clerk_user(clerk_id: str, user_id: str = Depends(require_auth)) -> str:
@@ -80,8 +81,8 @@ def get_career(request: Request, clerk_id: str = Query(...), _auth_user_id: str 
 def discover_network(
     request: Request,
     clerk_id: str = Query(...),
-    query: str | None = Query(None),
-    major: str | None = Query(None),
+    query: Optional[str] = Query(None),
+    major: Optional[str] = Query(None),
     limit: int = Query(8, ge=1, le=25),
     _auth_user_id: str = Depends(require_clerk_user),
 ):
@@ -99,11 +100,11 @@ def create_connection_request(request: Request, connection_req: ConnectionReques
 @limiter.limit("100/minute")
 def get_events(
     request: Request,
-    clerk_id: str | None = Query(None),
+    clerk_id: Optional[str] = Query(None),
     limit: int = Query(250, ge=1, le=1000),
-    category: str | None = Query(None),
+    category: Optional[str] = Query(None),
     student_relevant_only: bool = Query(True),
-    auth_user_id: str | None = Depends(optional_auth),
+    auth_user_id: Optional[str] = Depends(optional_auth),
 ):
     if clerk_id is not None:
         if auth_user_id is None:
@@ -137,7 +138,7 @@ def get_place_detail(request: Request, place_id: str):
 
 @router.get("/pulse/map")
 @limiter.limit("60/minute")
-def get_pulse_map(request: Request, limit: int = Query(12, ge=1, le=100)):
+def get_pulse_map(request: Request, limit: int = Query(60, ge=1, le=100)):
     return pulse_service.get_pulse_map(limit=limit)
 
 

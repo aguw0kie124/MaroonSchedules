@@ -91,6 +91,7 @@ export interface CampusLocation {
     | "directory"
     | "schedule"
     | "snapshot"
+    | "pulse"
     | "osm"
     | "global"
     | "amenity"

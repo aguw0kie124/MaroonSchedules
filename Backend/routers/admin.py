@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List, Dict, Any
 import psycopg
 
 from db_config import CONNECTION_PARAMS
@@ -9,7 +9,7 @@ from services import cache_service, encryption_service
 from repositories import tag_repository
 
 from models.base import SanitizedBaseModel
-from main import limiter
+from rate_limit import limiter
 from fastapi import Request
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -185,7 +185,7 @@ def _ensure_admin_application_schema(conn: psycopg.Connection) -> None:
     tag_repository._ensure_tag_schema(conn)
 
 
-def _normalize_admin_application(req: AdminApplicationRequest) -> dict[str, str | None]:
+def _normalize_admin_application(req: AdminApplicationRequest) -> Dict[str, Optional[str]]:
     organization_name = (req.organization_name or "").strip()
     if len(organization_name) < 2:
         raise HTTPException(
