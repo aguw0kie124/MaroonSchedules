@@ -1,10 +1,11 @@
 import { Linking, Platform } from 'react-native';
-import { Trophy, GraduationCap, Pizza, Users, HeartPulse, Ticket, Megaphone, CalendarDays } from 'lucide-react-native';
+import { Trophy, GraduationCap, Pizza, Users, Heart, HeartPulse, Ticket, Megaphone, CalendarDays } from 'lucide-react-native';
 import { API_URL } from '../../config';
 
 export const TAMU_EVENTS_API = `${API_URL}/campus/events?limit=1000`;
 
 export type ExploreCategory =
+  | 'For U'
   | 'Food'
   | 'Sports'
   | 'Social'
@@ -16,6 +17,14 @@ export type ExploreCategory =
 
 export type SocialMode = 'casual' | 'professional';
 export type EventsView = 'discover' | 'list' | 'swipe';
+export type StandardExploreCategory = Exclude<ExploreCategory, 'For U'>;
+export type PreferredTimeOption = 'Morning' | 'Afternoon' | 'Evening' | 'No Preference' | null;
+
+export interface UserEventPreferences {
+  major: string | null;
+  preferredTime: PreferredTimeOption;
+  avoidFriday: boolean;
+}
 
 export interface CampusEventResponse {
   event_id: string;
@@ -37,6 +46,9 @@ export interface CampusEventResponse {
   food_type?: string | null;
   categories?: Record<string, number>;
   is_admin_event?: boolean;
+  campus_interest_score?: number | null;
+  campus_interest_label?: 'low' | 'medium' | 'high' | null;
+  campus_interest_reasons?: string[] | null;
 }
 
 export interface TAMUEvent {
@@ -62,9 +74,16 @@ export interface TAMUEvent {
   _category?: ExploreCategory;
   _socialMode?: SocialMode;
   is_admin_event?: boolean;
+  campus_interest_score?: number | null;
+  campus_interest_label?: 'low' | 'medium' | 'high' | null;
+  campus_interest_reasons?: string[] | null;
+  _forYouScore?: number;
+  _forYouMatched?: boolean;
+  _forYouReasons?: string[];
 }
 
 export const ALL_CATEGORIES: ExploreCategory[] = [
+  'For U',
   'Sports',
   'Academic',
   'Food',
@@ -98,6 +117,13 @@ export const CATEGORY_META: Record<
     icon: any;
   }
 > = {
+  'For U': {
+    accent: '#F6A4B2',
+    chipBg: '#FFE3E8',
+    chipText: '#8C2746',
+    cardTint: '#F28BA1',
+    icon: Heart,
+  },
   Sports: {
     accent: '#71B7FF',
     chipBg: '#CFE7FF',
@@ -230,6 +256,88 @@ export function matchesMajor(event: TAMUEvent, major: string) {
     Medicine: ['medicine', 'medical', 'premed', 'nursing', 'clinical'],
   };
   return aliases[major]?.some((term) => blob.includes(term)) ?? false;
+}
+
+export function normalizePreferredTime(value?: string | null): PreferredTimeOption {
+  if (!value) return null;
+  if (value === 'Morning' || value === 'Afternoon' || value === 'Evening' || value === 'No Preference') {
+    return value;
+  }
+  return null;
+}
+
+export function matchesPreferredTime(event: TAMUEvent, preferredTime: PreferredTimeOption) {
+  if (!preferredTime || preferredTime === 'No Preference') return true;
+  const hour = new Date(event.date_ts * 1000).getHours();
+  if (preferredTime === 'Morning') return hour >= 5 && hour < 11;
+  if (preferredTime === 'Afternoon') return hour >= 11 && hour < 17;
+  return hour >= 17 || hour < 1;
+}
+
+export function isFridayEvent(event: TAMUEvent) {
+  return new Date(event.date_ts * 1000).getDay() === 5;
+}
+
+export function hasUserEventPreferences(preferences: UserEventPreferences) {
+  return Boolean(
+    preferences.major ||
+      (preferences.preferredTime && preferences.preferredTime !== 'No Preference') ||
+      preferences.avoidFriday,
+  );
+}
+
+export function getForYouMeta(event: TAMUEvent, preferences: UserEventPreferences) {
+  if (!hasUserEventPreferences(preferences)) {
+    return { matched: false, score: 0, reasons: [] as string[] };
+  }
+
+  const reasons: string[] = [];
+  let score = event.campus_interest_score ?? 40;
+
+  if (preferences.major) {
+    if (matchesMajor(event, preferences.major)) {
+      score += 30;
+      reasons.push('major_match');
+    } else {
+      score -= 8;
+    }
+  }
+
+  if (preferences.preferredTime && preferences.preferredTime !== 'No Preference') {
+    if (matchesPreferredTime(event, preferences.preferredTime)) {
+      score += 18;
+      reasons.push('time_match');
+    } else {
+      score -= 12;
+    }
+  }
+
+  if (preferences.avoidFriday) {
+    if (isFridayEvent(event)) {
+      score -= 22;
+      reasons.push('friday_filtered');
+    } else {
+      score += 6;
+      reasons.push('weekday_match');
+    }
+  }
+
+  if (event.campus_interest_label === 'high') {
+    reasons.push('high_interest');
+  } else if (event.campus_interest_label === 'medium') {
+    reasons.push('medium_interest');
+  }
+
+  const normalizedScore = Math.max(0, Math.min(100, score));
+  const matched =
+    normalizedScore >= 55 &&
+    (!preferences.avoidFriday || !isFridayEvent(event));
+
+  return {
+    matched,
+    score: normalizedScore,
+    reasons,
+  };
 }
 
 export function formatTime(ts: number) {

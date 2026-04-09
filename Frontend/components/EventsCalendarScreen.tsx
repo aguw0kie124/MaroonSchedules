@@ -94,6 +94,9 @@ interface CampusEventResponse {
   google_review_url?: string | null;
   admin_clerk_id?: string | null;
   organization_name?: string | null;
+  campus_interest_score?: number | null;
+  campus_interest_label?: 'low' | 'medium' | 'high' | null;
+  campus_interest_reasons?: string[] | null;
 }
 
 interface TAMUEvent {
@@ -119,9 +122,15 @@ interface TAMUEvent {
   is_admin_event?: boolean;
   google_review_url?: string | null;
   admin_clerk_id?: string | null;
+  campus_interest_score?: number | null;
+  campus_interest_label?: 'low' | 'medium' | 'high' | null;
+  campus_interest_reasons?: string[] | null;
   _searchBlob?: string;
   _category?: ExploreCategory;
   _socialMode?: SocialMode;
+  _forYouScore?: number;
+  _forYouMatched?: boolean;
+  _forYouReasons?: string[];
 }
 
 type ExploreCategory =
@@ -138,6 +147,13 @@ type StandardExploreCategory = Exclude<ExploreCategory, 'For U'>;
 
 type SocialMode = 'casual' | 'professional';
 type EventsView = 'discover' | 'list' | 'swipe' | 'inbox';
+type PreferredTimeOption = 'Morning' | 'Afternoon' | 'Evening' | 'No Preference' | null;
+
+interface UserEventPreferences {
+  major: MajorOption | null;
+  preferredTime: PreferredTimeOption;
+  avoidFriday: boolean;
+}
 
 const ALL_CATEGORIES: ExploreCategory[] = [
   'For U',
@@ -239,6 +255,20 @@ export const CATEGORY_META: Record<
   },
 };
 
+const DEFAULT_USER_EVENT_PREFERENCES: UserEventPreferences = {
+  major: null,
+  preferredTime: null,
+  avoidFriday: false,
+};
+
+function normalizePreferredTime(value?: string | null): PreferredTimeOption {
+  if (!value) return null;
+  if (value === 'Morning' || value === 'Afternoon' || value === 'Evening' || value === 'No Preference') {
+    return value;
+  }
+  return null;
+}
+
 function stripHtml(html: string) {
   return html
     .replace(/<br\s*\/?>/gi, '\n')
@@ -319,6 +349,80 @@ function matchesMajor(event: TAMUEvent, major: MajorOption) {
   return aliases[major].some((term) => blob.includes(term));
 }
 
+function matchesPreferredTime(event: TAMUEvent, preferredTime: PreferredTimeOption) {
+  if (!preferredTime || preferredTime === 'No Preference') return true;
+  const hour = new Date(event.date_ts * 1000).getHours();
+  if (preferredTime === 'Morning') return hour >= 5 && hour < 11;
+  if (preferredTime === 'Afternoon') return hour >= 11 && hour < 17;
+  return hour >= 17 || hour < 1;
+}
+
+function isFridayEvent(event: TAMUEvent) {
+  return new Date(event.date_ts * 1000).getDay() === 5;
+}
+
+function hasUserEventPreferences(preferences: UserEventPreferences) {
+  return Boolean(
+    preferences.major ||
+      (preferences.preferredTime && preferences.preferredTime !== 'No Preference') ||
+      preferences.avoidFriday,
+  );
+}
+
+function getForYouMeta(event: TAMUEvent, preferences: UserEventPreferences) {
+  if (!hasUserEventPreferences(preferences)) {
+    return { matched: false, score: 0, reasons: [] as string[] };
+  }
+
+  const reasons: string[] = [];
+  let score = event.campus_interest_score ?? 40;
+
+  if (preferences.major) {
+    if (matchesMajor(event, preferences.major)) {
+      score += 30;
+      reasons.push('major_match');
+    } else {
+      score -= 8;
+    }
+  }
+
+  if (preferences.preferredTime && preferences.preferredTime !== 'No Preference') {
+    if (matchesPreferredTime(event, preferences.preferredTime)) {
+      score += 18;
+      reasons.push('time_match');
+    } else {
+      score -= 12;
+    }
+  }
+
+  if (preferences.avoidFriday) {
+    if (isFridayEvent(event)) {
+      score -= 22;
+      reasons.push('friday_filtered');
+    } else {
+      score += 6;
+      reasons.push('weekday_match');
+    }
+  }
+
+  if (event.campus_interest_label === 'high') {
+    reasons.push('high_interest');
+  } else if (event.campus_interest_label === 'medium') {
+    reasons.push('medium_interest');
+  }
+
+  const normalizedScore = Math.max(0, Math.min(100, score));
+  const matched =
+    normalizedScore >= 55 &&
+    (!preferences.avoidFriday || !isFridayEvent(event));
+
+  return {
+    matched,
+    score: normalizedScore,
+    reasons,
+  };
+}
+
 function formatTime(ts: number) {
   return new Date(ts * 1000).toLocaleTimeString('en-US', {
     hour: 'numeric',
@@ -396,7 +500,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [swipeIndex, setSwipeIndex] = useState(0);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [profileMajor, setProfileMajor] = useState<MajorOption | null>(null);
+  const [profilePreferences, setProfilePreferences] = useState<UserEventPreferences>(DEFAULT_USER_EVENT_PREFERENCES);
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const {
@@ -470,6 +574,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             is_admin_event: !!event.is_admin_event,
             google_review_url: event.google_review_url ?? null,
             admin_clerk_id: event.admin_clerk_id ?? null,
+            campus_interest_score: event.campus_interest_score ?? null,
+            campus_interest_label: event.campus_interest_label ?? null,
+            campus_interest_reasons: event.campus_interest_reasons ?? null,
           };
         })
         .map((event) => {
@@ -498,7 +605,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     let cancelled = false;
 
     if (!user?.id || isGuest) {
-      setProfileMajor(null);
+      setProfilePreferences(DEFAULT_USER_EVENT_PREFERENCES);
       hydratedProfileMajorForUser.current = null;
       return;
     }
@@ -507,7 +614,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       .then((profile) => {
         if (cancelled) return;
         const nextMajor = MAJOR_OPTIONS.find((major) => major === profile?.major) ?? null;
-        setProfileMajor(nextMajor);
+        setProfilePreferences({
+          major: nextMajor,
+          preferredTime: normalizePreferredTime(profile?.preferred_time),
+          avoidFriday: Boolean(profile?.avoid_friday),
+        });
         if (nextMajor && hydratedProfileMajorForUser.current !== user.id) {
           setSelectedMajor(nextMajor);
           hydratedProfileMajorForUser.current = user.id;
@@ -516,7 +627,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       .catch((error) => {
         if (!cancelled) {
           console.warn('[Events] Failed to load user profile for personalization:', error);
-          setProfileMajor(null);
+          setProfilePreferences(DEFAULT_USER_EVENT_PREFERENCES);
         }
       });
 
@@ -525,13 +636,22 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     };
   }, [isGuest, setSelectedMajor, user?.id]);
 
-  const matchesForYou = useCallback(
-    (event: TAMUEvent) => {
-      if (!profileMajor) return false;
-      return matchesMajor(event, profileMajor);
-    },
-    [profileMajor],
+  const personalizedEvents = useMemo(
+    () =>
+      events.map((event) => {
+        const meta = getForYouMeta(event, profilePreferences);
+        return {
+          ...event,
+          _forYouMatched: meta.matched,
+          _forYouScore: meta.score,
+          _forYouReasons: meta.reasons,
+        };
+      }),
+    [events, profilePreferences],
   );
+
+  const hasForYouPrefs = useMemo(() => hasUserEventPreferences(profilePreferences), [profilePreferences]);
+  const profileMajor = profilePreferences.major;
 
   useFocusEffect(
     useCallback(() => {
@@ -561,11 +681,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       Miscellaneous: 0,
     };
 
-    events.forEach((event) => {
+    personalizedEvents.forEach((event) => {
       const isOngoing = (event.date2_ts != null && event.date2_ts > nowTs) || (event.date_ts >= nowTs - 7200);
       if (!isOngoing) return;
       if (isMajorSpecific && !matchesMajor(event, selectedMajor)) return;
-      if (matchesForYou(event)) {
+      if (event._forYouMatched) {
         counts['For U'] += 1;
       }
       const category = event._category || classifyCategory(event);
@@ -573,7 +693,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     });
 
     return counts;
-  }, [events, isMajorSpecific, matchesForYou, nowTs, selectedMajor]);
+  }, [isMajorSpecific, nowTs, personalizedEvents, selectedMajor]);
 
   const standardSelectedCategories = useMemo(
     () =>
@@ -586,7 +706,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const isForYouSelected = selectedCategories.has('For U');
 
   const filteredUpcomingEvents = useMemo(() => {
-    let next = events.filter((event) => {
+    let next = personalizedEvents.filter((event) => {
       return (event.date2_ts != null && event.date2_ts > nowTs) || (event.date_ts >= nowTs - 7200);
     });
 
@@ -600,7 +720,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     }
 
     if (isForYouSelected) {
-      next = next.filter((event) => matchesForYou(event));
+      next = next.filter((event) => event._forYouMatched);
     }
 
     if (standardSelectedCategories.length > 0) {
@@ -618,13 +738,19 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     }
 
     next = next.filter((event) => !dislikedEventIds.includes(String(event.id)));
+    if (isForYouSelected) {
+      next = [...next].sort((a, b) => {
+        const scoreDiff = (b._forYouScore ?? 0) - (a._forYouScore ?? 0);
+        if (scoreDiff !== 0) return scoreDiff;
+        return a.date_ts - b.date_ts;
+      });
+    }
     return next;
   }, [
     dislikedEventIds,
-    events,
+    personalizedEvents,
     isMajorSpecific,
     isForYouSelected,
-    matchesForYou,
     nowTs,
     deferredSearchQuery,
     selectedMajor,
@@ -647,7 +773,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   useEffect(() => {
     setSwipeIndex(0);
-  }, [selectedCategories, socialMode, deferredSearchQuery, isMajorSpecific, selectedMajor]);
+  }, [selectedCategories, socialMode, deferredSearchQuery, isMajorSpecific, selectedMajor, profileMajor, profilePreferences.avoidFriday, profilePreferences.preferredTime]);
 
   useEffect(() => {
     if (isGuest) {
@@ -951,7 +1077,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       }
 
       const idsToRestore = dislikedEventIds.filter((id) => {
-        const event = events.find((candidate) => String(candidate.id) === id);
+        const event = personalizedEvents.find((candidate) => String(candidate.id) === id);
         return event && classifyCategory(event) === category;
       });
       if (idsToRestore.length > 0) {
@@ -959,7 +1085,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       }
       setSettingsVisible(false);
     },
-    [clearDisliked, dislikedEventIds, events, removeIdsFromDisliked],
+    [clearDisliked, dislikedEventIds, personalizedEvents, removeIdsFromDisliked],
   );
 
   const renderHeader = (title: string) => (
@@ -1119,9 +1245,17 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
               {isForYouSelected ? (
                 <Text style={s.filterHintText}>
-                  {profileMajor
-                    ? `For U is personalized using your ${profileMajor} onboarding preference.`
-                    : 'For U needs a saved major from onboarding or planner settings to personalize events.'}
+                  {hasForYouPrefs
+                    ? `For U is personalized using your saved ${[
+                        profileMajor ? `${profileMajor} major` : null,
+                        profilePreferences.preferredTime && profilePreferences.preferredTime !== 'No Preference'
+                          ? `${profilePreferences.preferredTime.toLowerCase()} time preference`
+                          : null,
+                        profilePreferences.avoidFriday ? 'avoid Friday preference' : null,
+                      ]
+                        .filter(Boolean)
+                        .join(', ')}.`
+                    : 'For U needs saved onboarding or planner preferences before it can personalize events.'}
                 </Text>
               ) : null}
 
@@ -1253,8 +1387,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 <View style={s.emptyState}>
                   <Text style={s.emptyTitle}>Nothing matches right now</Text>
                   <Text style={s.emptySubtitle}>
-                    {isForYouSelected && !profileMajor
-                      ? 'Add your major in onboarding or planner settings, then try For U again.'
+                    {isForYouSelected && !hasForYouPrefs
+                      ? 'Add your profile preferences in onboarding or planner settings, then try For U again.'
                       : 'Try another category, turn off major-specific filtering, or clear hidden events.'}
                   </Text>
                 </View>
@@ -1431,7 +1565,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         setSocialMode={setSocialMode}
         selectedCategories={selectedCategories}
         dislikedEventIds={dislikedEventIds}
-        events={events}
+        events={personalizedEvents}
         onRestoreCategory={handleRestoreCategory}
       />
 
