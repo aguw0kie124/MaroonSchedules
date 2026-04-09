@@ -4,7 +4,9 @@ import json
 import os
 import threading
 import time
+from base64 import urlsafe_b64decode
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -15,7 +17,9 @@ from fastapi import HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.algorithms import RSAAlgorithm
 
-load_dotenv(override=False)
+_THIS_DIR = Path(__file__).resolve().parent
+load_dotenv(_THIS_DIR.parent / ".env", override=False)
+load_dotenv(_THIS_DIR.parent.parent / ".env", override=False)
 
 security = HTTPBearer(auto_error=False)
 _JWKS_CACHE_TTL_SECONDS = int(os.getenv("CLERK_JWKS_CACHE_TTL_SECONDS", "3600"))
@@ -55,19 +59,87 @@ def _get_required_env(name: str) -> str:
     return value
 
 
-def get_clerk_jwks_url() -> str:
-    return _get_required_env("CLERK_JWKS_URL")
+def _get_optional_env(*names: str) -> Optional[str]:
+    for name in names:
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    return None
 
 
-def _get_expected_issuer() -> str:
-    explicit_issuer = os.getenv("CLERK_ISSUER", "").strip()
+def _decode_publishable_key_host(publishable_key: str) -> Optional[str]:
+    parts = publishable_key.split("_", 2)
+    if len(parts) < 3:
+        return None
+
+    encoded = parts[2]
+    padding = "=" * ((4 - len(encoded) % 4) % 4)
+    try:
+        decoded = urlsafe_b64decode(f"{encoded}{padding}").decode("utf-8").strip()
+    except Exception:
+        return None
+
+    if decoded.endswith("$"):
+        decoded = decoded[:-1]
+
+    return decoded or None
+
+
+def _derive_clerk_issuer() -> Optional[str]:
+    explicit_issuer = _get_optional_env("CLERK_ISSUER")
     if explicit_issuer:
         return explicit_issuer.rstrip("/")
 
-    parsed = urlparse(get_clerk_jwks_url())
-    if not parsed.scheme or not parsed.netloc:
-        raise HTTPException(status_code=500, detail="CLERK_JWKS_URL must be a valid absolute URL")
-    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+    frontend_api = _get_optional_env("CLERK_FRONTEND_API", "CLERK_DOMAIN")
+    if frontend_api:
+        frontend_api = frontend_api.rstrip("/")
+        if frontend_api.startswith("http://") or frontend_api.startswith("https://"):
+            return frontend_api
+        return f"https://{frontend_api}"
+
+    publishable_key = _get_optional_env("CLERK_PUBLISHABLE_KEY", "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY")
+    if publishable_key:
+        host = _decode_publishable_key_host(publishable_key)
+        if host:
+            if host.startswith("http://") or host.startswith("https://"):
+                return host.rstrip("/")
+            return f"https://{host}".rstrip("/")
+
+    return None
+
+
+def get_clerk_jwks_url() -> str:
+    configured = _get_optional_env("CLERK_JWKS_URL")
+    if configured:
+        return configured
+
+    issuer = _derive_clerk_issuer()
+    if issuer:
+        return f"{issuer.rstrip('/')}/.well-known/jwks.json"
+
+    clerk_secret = _get_optional_env("CLERK_SECRET_KEY")
+    if clerk_secret:
+        return "https://api.clerk.com/v1/jwks"
+
+    raise HTTPException(
+        status_code=500,
+        detail="Missing Clerk configuration. Set CLERK_JWKS_URL or provide Clerk issuer/publishable key env vars.",
+    )
+
+
+def _get_expected_issuer() -> Optional[str]:
+    derived = _derive_clerk_issuer()
+    if derived:
+        return derived.rstrip("/")
+
+    configured_jwks_url = _get_optional_env("CLERK_JWKS_URL")
+    if configured_jwks_url:
+        parsed = urlparse(configured_jwks_url)
+        if not parsed.scheme or not parsed.netloc:
+            raise HTTPException(status_code=500, detail="CLERK_JWKS_URL must be a valid absolute URL")
+        return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+
+    return None
 
 
 def _get_expected_audience() -> Optional[str]:
@@ -87,7 +159,15 @@ def _get_cached_jwks(force_refresh: bool = False) -> dict[str, Any]:
         if not force_refresh and _JWKS_CACHE and now < _JWKS_CACHE_EXPIRES_AT:
             return _JWKS_CACHE
 
-        response = _JWKS_SESSION.get(get_clerk_jwks_url(), timeout=_JWKS_TIMEOUT_SECONDS)
+        jwks_url = get_clerk_jwks_url()
+        headers = {}
+        if jwks_url == "https://api.clerk.com/v1/jwks":
+            clerk_secret = _get_optional_env("CLERK_SECRET_KEY")
+            if not clerk_secret:
+                raise HTTPException(status_code=500, detail="CLERK_SECRET_KEY is required when using Clerk API JWKS fallback")
+            headers["Authorization"] = f"Bearer {clerk_secret}"
+
+        response = _JWKS_SESSION.get(jwks_url, headers=headers, timeout=_JWKS_TIMEOUT_SECONDS)
         response.raise_for_status()
         jwks = response.json()
         if not isinstance(jwks, dict) or not isinstance(jwks.get("keys"), list):
@@ -123,6 +203,8 @@ def _get_signing_key(token: str):
 
 def _validate_issuer(payload: dict[str, Any]) -> None:
     expected = _get_expected_issuer()
+    if not expected:
+        return
     actual = str(payload.get("iss") or "").rstrip("/")
     if not actual or actual != expected:
         raise _unauthorized("Token issuer is invalid")

@@ -2,16 +2,19 @@ from __future__ import annotations
 
 import os
 import secrets
+from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import Header, HTTPException, Request
 
-load_dotenv(override=False)
+_THIS_DIR = Path(__file__).resolve().parent
+load_dotenv(_THIS_DIR / ".env", override=False)
+load_dotenv(_THIS_DIR.parent / ".env", override=False)
 
 
 def _get_expected_api_key() -> str:
-    api_key = os.getenv("API_KEY", "").strip()
+    api_key = os.getenv("API_KEY", "").strip() or os.getenv("EXPO_PUBLIC_API_KEY", "").strip()
     if not api_key:
         raise HTTPException(status_code=500, detail="Missing required environment variable: API_KEY")
     return api_key
