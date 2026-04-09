@@ -1,12 +1,7 @@
-import { API_URL } from '../config';
+import { requestJson } from '../api/client';
 
 async function requestAnnexJson<T>(path: string) {
-  const response = await fetch(`${API_URL}${path}`);
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(payload?.detail || `Request failed for ${path}`);
-  }
-  return payload as T;
+  return requestJson(path) as Promise<T>;
 }
 
 export interface AnnexLibrary {

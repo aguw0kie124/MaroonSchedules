@@ -12,6 +12,7 @@ const rawApiUrl = Platform.select({
 });
 
 export const API_URL = (rawApiUrl || 'http://127.0.0.1:8005').replace(/\/+$/, '');
+export const API_KEY = (process.env.EXPO_PUBLIC_API_KEY || '').trim();
 
 export const AGGIESPIRIT_TRIP_PLANNER_URL =
   process.env.EXPO_PUBLIC_AGGIESPIRIT_TRIP_PLANNER_URL ||
@@ -27,6 +28,7 @@ export const TAMU_LIBCAL_EQUIPMENT_URL =
 
 export const config = {
     apiUrl: API_URL,
+    apiKey: API_KEY,
     aggieSpiritTripPlannerUrl: AGGIESPIRIT_TRIP_PLANNER_URL,
     tamuLibcalSearchUrl: TAMU_LIBCAL_SEARCH_URL,
     tamuLibcalEquipmentUrl: TAMU_LIBCAL_EQUIPMENT_URL,

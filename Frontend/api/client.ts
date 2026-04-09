@@ -1,10 +1,43 @@
-import { API_URL } from '../config';
+import { API_KEY, API_URL } from '../config';
 
 const DEFAULT_TIMEOUT_MS = 10000;
-let authTokenProvider: null | (() => Promise<string | null>) = null;
+const API_BASE = API_URL.replace(/\/+$/, '');
 
-export function setApiAuthTokenProvider(provider: null | (() => Promise<string | null>)) {
+type TokenProviderOptions = {
+    forceRefresh?: boolean;
+};
+
+type AuthTokenProvider = (options?: TokenProviderOptions) => Promise<string | null>;
+type ResponseHandler = (response: Response) => void | Promise<void>;
+
+let authTokenProvider: AuthTokenProvider | null = null;
+let unauthorizedHandler: ResponseHandler | null = null;
+let forbiddenHandler: ResponseHandler | null = null;
+let originalFetch: typeof globalThis.fetch | null = null;
+let hasWarnedAboutMissingApiKey = false;
+
+export class ApiError extends Error {
+    status: number;
+    data: unknown;
+
+    constructor(message: string, status: number, data: unknown) {
+        super(message);
+        this.name = 'ApiError';
+        this.status = status;
+        this.data = data;
+    }
+}
+
+export function setApiAuthTokenProvider(provider: AuthTokenProvider | null) {
     authTokenProvider = provider;
+}
+
+export function setApiResponseHandlers(handlers: {
+    onUnauthorized?: ResponseHandler | null;
+    onForbidden?: ResponseHandler | null;
+}) {
+    unauthorizedHandler = handlers.onUnauthorized ?? null;
+    forbiddenHandler = handlers.onForbidden ?? null;
 }
 
 function headersToObject(headers?: HeadersInit): Record<string, string> {
@@ -22,15 +55,30 @@ function headersToObject(headers?: HeadersInit): Record<string, string> {
     return { ...headers };
 }
 
-async function buildHeaders(init: RequestInit = {}): Promise<Record<string, string>> {
+function warnMissingApiKeyOnce() {
+    if (!API_KEY && !hasWarnedAboutMissingApiKey) {
+        hasWarnedAboutMissingApiKey = true;
+        console.warn('[API] EXPO_PUBLIC_API_KEY is not configured. Protected backend routes will reject requests.');
+    }
+}
+
+async function buildHeaders(init: RequestInit = {}, options: TokenProviderOptions = {}): Promise<Record<string, string>> {
     const headers = headersToObject(init.headers);
-    const token = authTokenProvider ? await authTokenProvider() : null;
+    warnMissingApiKeyOnce();
+
+    if (API_KEY && !headers['x-api-key'] && !headers['X-API-Key']) {
+        headers['x-api-key'] = API_KEY;
+    }
+
+    const token = authTokenProvider ? await authTokenProvider(options) : null;
     if (token && !headers.Authorization && !headers.authorization) {
         headers.Authorization = `Bearer ${token}`;
     }
+
     if (init.body && !(init.body instanceof FormData) && !headers['Content-Type'] && !headers['content-type']) {
         headers['Content-Type'] = 'application/json';
     }
+
     return headers;
 }
 
@@ -70,26 +118,93 @@ function formatApiErrorMessage(value: unknown): string | null {
     return String(value);
 }
 
-export async function apiFetch(path: string, init: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
+function isApiUrl(url: string) {
+    return url.replace(/\/+$/, '').startsWith(API_BASE);
+}
+
+function resolveUrl(input: string | URL | Request) {
+    if (typeof input === 'string') return input;
+    if (input instanceof URL) return input.toString();
+    return input.url;
+}
+
+function getBaseFetch() {
+    return originalFetch ?? globalThis.fetch.bind(globalThis);
+}
+
+async function handleSecurityResponse(response: Response) {
+    if (response.status === 401 && unauthorizedHandler) {
+        await unauthorizedHandler(response.clone());
+        return;
+    }
+
+    if (response.status === 403) {
+        console.error('[API] Backend rejected the request with 403. Check EXPO_PUBLIC_API_KEY and backend API_KEY.');
+        if (forbiddenHandler) {
+            await forbiddenHandler(response.clone());
+        }
+    }
+}
+
+async function performFetch(
+    url: string,
+    init: RequestInit = {},
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    isRetry = false,
+) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-        console.debug(`[API] ${init.method || 'GET'} ${path}`);
-        const headers = await buildHeaders(init);
-        return await fetch(`${API_URL}${path}`, {
+        console.debug(`[API] ${init.method || 'GET'} ${url}`);
+        const headers = await buildHeaders(init, { forceRefresh: isRetry });
+        const response = await getBaseFetch()(url, {
             ...init,
             signal: controller.signal,
             headers,
         });
+
+        if (response.status === 401 && authTokenProvider && !isRetry) {
+            return performFetch(url, init, timeoutMs, true);
+        }
+
+        await handleSecurityResponse(response);
+        return response;
     } catch (error: any) {
         if (error?.name === 'AbortError') {
-            throw new Error(`Request timed out for ${path}`);
+            throw new Error(`Request timed out for ${url}`);
         }
         throw error;
     } finally {
         clearTimeout(timeoutId);
     }
+}
+
+export function installApiFetchInterceptor() {
+    if (originalFetch) {
+        return () => undefined;
+    }
+
+    originalFetch = globalThis.fetch.bind(globalThis);
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        const resolvedUrl = resolveUrl(input);
+        if (!isApiUrl(resolvedUrl)) {
+            return originalFetch!(input as never, init as never);
+        }
+        return performFetch(resolvedUrl, init ?? {}, DEFAULT_TIMEOUT_MS);
+    }) as typeof globalThis.fetch;
+
+    return () => {
+        if (originalFetch) {
+            globalThis.fetch = originalFetch;
+            originalFetch = null;
+        }
+    };
+}
+
+export async function apiFetch(path: string, init: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
+    const url = isApiUrl(path) ? path : `${API_URL}${path}`;
+    return performFetch(url, init, timeoutMs);
 }
 
 export async function requestJson(path: string, init: RequestInit = {}, timeoutMs = DEFAULT_TIMEOUT_MS) {
@@ -101,18 +216,18 @@ export async function requestJson(path: string, init: RequestInit = {}, timeoutM
     } catch (err) {
         if (!response.ok) {
             const preview = rawBody.slice(0, 100).replace(/\n/g, ' ');
-            throw new Error(`${init.method || 'GET'} ${path} failed with status ${response.status}: ${preview}`);
+            throw new ApiError(`${init.method || 'GET'} ${path} failed with status ${response.status}: ${preview}`, response.status, rawBody);
         }
         throw new Error(`Failed to parse response as JSON: ${err}`);
     }
 
     if (!response.ok) {
         const message =
-            formatApiErrorMessage(data?.detail) ||
-            formatApiErrorMessage(data?.message) ||
+            formatApiErrorMessage((data as any)?.detail) ||
+            formatApiErrorMessage((data as any)?.message) ||
             formatApiErrorMessage(data) ||
             `${init.method || 'GET'} ${path} failed with status ${response.status}`;
-        throw new Error(message);
+        throw new ApiError(message, response.status, data);
     }
 
     return data;
@@ -261,7 +376,6 @@ export const saveCampusEventRsvp = async (payload: { clerk_id: string; event_id:
 };
 
 export const trackShare = async (id: string | number, type: string) => {
-    // Only admin events have a specific tracking endpoint for now
     if (type === 'event') {
         return requestJson(`/admin/events/${id}/share`, {
             method: 'POST',

@@ -2,9 +2,8 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, StyleSheet, SafeAreaView, Dimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useCanvasDashboard } from '../../api/canvasApi';
-import { useAuth } from '@clerk/clerk-expo';
 import * as WebBrowser from 'expo-web-browser';
-import { API_URL } from '../../config';
+import { requestJson } from '../../api/client';
 import { useTheme } from '../SharedUI';
 import { AlertCircle, BookOpen, Calendar, CheckCircle, Clock } from 'lucide-react-native';
 
@@ -12,17 +11,12 @@ const { width } = Dimensions.get('window');
 
 export function CanvasDashboardScreen() {
   const { data, isLoading, error, refetch } = useCanvasDashboard();
-  const { getToken } = useAuth();
   const { COLORS, theme } = useTheme();
   const navigation = useNavigation<any>();
 
   const handleConnect = async () => {
     try {
-      const token = await getToken();
-      const res = await fetch(`${API_URL}/canvas/auth`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const authData = await res.json();
+      const authData = await requestJson('/canvas/auth');
       
       if (authData.oauth_url) {
         // In Expo dev, use localhost:8081. In prod, your app scheme.

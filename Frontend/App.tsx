@@ -190,7 +190,7 @@ function ApiAuthBridge() {
     setApiAuthTokenProvider(async (options) => {
       try {
         const token = await getToken(options?.forceRefresh ? { skipCache: true } : undefined);
-      return token || null;
+        return token || null;
       } catch (error) {
         console.warn('Failed to fetch Clerk token for API request', error);
         return null;

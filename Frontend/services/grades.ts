@@ -5,16 +5,12 @@
 // If the backend isn't reachable it falls back to the local mock JSON so
 // the frontend always has data to display during dev.
 
-import { API_URL } from '../config';
+import { requestJson } from '../api/client';
 import { GradeRow, GradeSearchResult } from '../types/grades';
 import {
     aggregateCourseStats,
     groupByInstructorAndSection,
 } from '../utils/grades';
-
-// ──────────────────────────────────────────────────────────────
-// Live API call
-// ──────────────────────────────────────────────────────────────
 
 async function fetchFromBackend(
     subject: string,
@@ -31,20 +27,10 @@ async function fetchFromBackend(
     if (semester) params.append('semester', semester);
     if (year) params.append('year', String(year));
 
-    const url = `${API_URL}/grades/search?${params.toString()}`;
-    console.log('[grades] fetching:', url);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-    const resp = await fetch(url, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    if (!resp.ok) throw new Error(`Backend returned ${resp.status}`);
-    const data: GradeRow[] = await resp.json();
-    return data;
+    const path = `/grades/search?${params.toString()}`;
+    console.log('[grades] fetching:', path);
+    return requestJson(path) as Promise<GradeRow[]>;
 }
-
-// ──────────────────────────────────────────────────────────────
-// Main exported function
-// ──────────────────────────────────────────────────────────────
 
 /**
  * Search for grade-distribution data for a given course.
@@ -68,7 +54,7 @@ export async function searchCourseGrades(
         rows = await fetchFromBackend(subject, course, instructor, semester, year);
     } catch (err) {
         console.warn('[grades service] backend fetch failed:', err);
-        throw err; // re-throw so GradesScreen can show the real error
+        throw err;
     }
 
     const stats = aggregateCourseStats(rows);
