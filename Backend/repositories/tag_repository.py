@@ -1,11 +1,28 @@
 from __future__ import annotations
 
+import threading
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import psycopg
 
 from db_config import CONNECTION_PARAMS
 from services.tag_access_service import normalize_tag_list, normalize_tag_slug
+
+# ---------------------------------------------------------------------------
+# Schema init guard – run DDL exactly once per process
+# ---------------------------------------------------------------------------
+_tag_schema_lock = threading.Lock()
+_tag_schema_initialized = False
+
+
+def _ensure_tag_schema_once(conn: psycopg.Connection) -> None:
+    global _tag_schema_initialized
+    if _tag_schema_initialized:
+        return
+    with _tag_schema_lock:
+        if not _tag_schema_initialized:
+            _ensure_tag_schema(conn)
+            _tag_schema_initialized = True
 
 
 def _ensure_tag_schema(conn: psycopg.Connection) -> None:
@@ -105,10 +122,10 @@ def _ensure_tags(cur: psycopg.Cursor, labels: Sequence[str]) -> Dict[str, str]:
 
 
 def _ensure_access_dependencies(conn: psycopg.Connection) -> None:
-    _ensure_tag_schema(conn)
+    _ensure_tag_schema_once(conn)
     from repositories import user_repository
 
-    user_repository._ensure_user_schema(conn)
+    user_repository._ensure_user_schema_once(conn)
 
 
 def _run_with_connection(callback):

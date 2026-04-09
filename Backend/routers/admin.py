@@ -1,12 +1,14 @@
 from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
+import os
 import psycopg
 
 from db_config import CONNECTION_PARAMS
 from auth.clerk_middleware import require_auth, ensure_matching_user
 from services import cache_service, encryption_service
 from repositories import tag_repository
+from routers.upload import UPLOAD_DIR
 
 from models.base import SanitizedBaseModel
 from rate_limit import limiter
@@ -179,6 +181,24 @@ def _invalidate_admin_event_caches() -> None:
         "campus:pulse:map:v2:8",
     ]:
         cache_service.delete(key)
+
+
+def _resolve_image_url(image_url: Optional[str]) -> Optional[str]:
+    """Return the image_url only if the backing file actually exists on disk.
+
+    When the server restarts or files are uploaded from a different machine,
+    the URL in the DB may point to a file that no longer exists locally.
+    Returning None avoids guaranteed 404s on the client.
+    """
+    if not image_url:
+        return None
+    # Extract the filename from a URL like "http://host/uploads/<filename>"
+    if "/uploads/" in image_url:
+        filename = image_url.rsplit("/uploads/", 1)[-1]
+        file_path = os.path.join(UPLOAD_DIR, filename)
+        if not os.path.exists(file_path):
+            return None
+    return image_url
 
 
 def _ensure_admin_application_schema(conn: psycopg.Connection) -> None:
@@ -630,6 +650,7 @@ def get_my_admin_events(
                     event["created_at"] = event["created_at"].isoformat() if event["created_at"] else None
                     event["access_tags"] = event.get("access_tags") or []
                     event["private_feedbacks"] = event["private_feedbacks"] or []
+                    event["image_url"] = _resolve_image_url(event.get("image_url"))
                 return events
     except Exception as e:
         print(f"Error fetching admin events: {e}")

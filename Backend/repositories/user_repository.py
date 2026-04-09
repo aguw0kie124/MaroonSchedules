@@ -2,11 +2,30 @@
 PostgreSQL-backed repository for user data (profile + schedules).
 """
 import json
+import threading
 from functools import lru_cache
 import psycopg
 from psycopg.rows import dict_row
 from db_config import CONNECTION_PARAMS
 from typing import Any, Dict, Optional, Tuple, Union
+
+# ---------------------------------------------------------------------------
+# Schema init guard – run DDL exactly once per process to avoid table-level
+# lock contention when concurrent requests arrive at startup.
+# ---------------------------------------------------------------------------
+_schema_lock = threading.Lock()
+_schema_initialized = False
+
+
+def _ensure_user_schema_once(conn: psycopg.Connection) -> None:
+    """Call _ensure_user_schema only the first time, protected by a lock."""
+    global _schema_initialized
+    if _schema_initialized:
+        return
+    with _schema_lock:
+        if not _schema_initialized:  # double-checked locking
+            _ensure_user_schema(conn)
+            _schema_initialized = True
 
 # ---------------------------------------------------------------------------
 # User CRUD
@@ -207,7 +226,7 @@ def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile
     select_clause = _user_select_clause()
     placeholders = ", ".join(["%s"] * len(insert_columns))
     with psycopg.connect(CONNECTION_PARAMS) as conn:
-        _ensure_user_schema(conn)
+        _ensure_user_schema_once(conn)
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 f"""
@@ -232,7 +251,7 @@ def get_user(clerk_id: str) -> Optional[dict]:
     """Return full user record by Clerk ID, or None."""
     select_clause = _user_select_clause()
     with psycopg.connect(CONNECTION_PARAMS) as conn:
-        _ensure_user_schema(conn)
+        _ensure_user_schema_once(conn)
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 f"""
@@ -271,7 +290,7 @@ def update_profile(clerk_id: str, fields: dict) -> Optional[dict]:
     select_clause = _user_select_clause()
 
     with psycopg.connect(CONNECTION_PARAMS) as conn:
-        _ensure_user_schema(conn)
+        _ensure_user_schema_once(conn)
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 f"""
@@ -301,7 +320,7 @@ def get_schedules(clerk_id: str) -> list:
     if "schedules" not in _user_columns():
         return []
     with psycopg.connect(CONNECTION_PARAMS) as conn:
-        _ensure_user_schema(conn)
+        _ensure_user_schema_once(conn)
         with conn.cursor() as cur:
             cur.execute("SELECT schedules FROM users WHERE clerk_id = %s", (clerk_id,))
             row = cur.fetchone()
@@ -319,7 +338,7 @@ def save_schedules(clerk_id: str, schedules: list) -> None:
     if "schedules" not in columns:
         return
     with psycopg.connect(CONNECTION_PARAMS) as conn:
-        _ensure_user_schema(conn)
+        _ensure_user_schema_once(conn)
         with conn.cursor() as cur:
             insert_columns = ["clerk_id", "schedules"]
             values = [clerk_id, json.dumps(schedules)]
@@ -418,7 +437,7 @@ def save_canvas_tokens(clerk_id: str, access_token: str, refresh_token: str, exp
     if not required.issubset(columns):
         return
     with psycopg.connect(CONNECTION_PARAMS) as conn:
-        _ensure_user_schema(conn)
+        _ensure_user_schema_once(conn)
         with conn.cursor() as cur:
             update_clause = "canvas_access_token = %s, canvas_refresh_token = %s, canvas_expires_at = %s, canvas_instance_url = %s"
             if "updated_at" in columns:
@@ -440,7 +459,7 @@ def set_tour_completed(clerk_id: str) -> None:
     if "tour_completed" not in columns:
         return
     with psycopg.connect(CONNECTION_PARAMS) as conn:
-        _ensure_user_schema(conn)
+        _ensure_user_schema_once(conn)
         with conn.cursor() as cur:
             update_clause = "tour_completed = TRUE"
             if "updated_at" in columns:
@@ -458,7 +477,7 @@ def set_tos_accepted(clerk_id: str) -> None:
     if "tos_accepted" not in columns:
         return
     with psycopg.connect(CONNECTION_PARAMS) as conn:
-        _ensure_user_schema(conn)
+        _ensure_user_schema_once(conn)
         with conn.cursor() as cur:
             update_clause = "tos_accepted = TRUE"
             if "updated_at" in columns:
