@@ -106,6 +106,8 @@ export interface RecreationFacility {
   percent_full?: number | null;
   current_count?: number | null;
   capacity?: number | null;
+  occupancy_name?: string | null;
+  last_updated?: string | null;
 }
 
 export interface RecreationSnapshot {
@@ -286,7 +288,7 @@ function normalizeCampusHubSnapshot(userId: string, raw: any): CampusHubSnapshot
         if (f.current_count != null && f.capacity != null && f.capacity > 0) {
           return {
             ...f,
-            percent_full: Math.round((f.current_count / f.capacity) * 100)
+            percent_full: Math.round((f.current_count / f.capacity) * 1000) / 10
           };
         }
         return f;

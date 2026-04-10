@@ -9,7 +9,6 @@ import pytz
 import json
 import re
 from threading import Lock
-from collections import defaultdict
 
 from services import cache_service, place_registry_service
 
@@ -21,6 +20,40 @@ except ImportError:
 from rate_limit import limiter
 
 router = APIRouter()
+
+REC_OCCUPANCY_LOCATION_PREFERENCES: Dict[str, tuple[str, ...]] = {
+    "rec": (
+        "student rec center strength conditioning",
+    ),
+    "southside-rec": (
+        "southside strength conditioning",
+        "southside strength conditioning area",
+    ),
+    "polo-rec": (
+        "polo road strength conditioning",
+    ),
+}
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_location_name(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).strip()
+
+
+def _parse_goboard_timestamp(value: Any) -> datetime:
+    raw = str(value or "").strip()
+    if not raw:
+        return datetime.min
+    try:
+        return datetime.fromisoformat(raw)
+    except ValueError:
+        return datetime.min
 
 
 class TAMUFacilityTracker:
@@ -48,6 +81,71 @@ class TAMUFacilityTracker:
     def fetch_rec_data(self) -> List[Dict]:
         """Returns raw sub-location list from GoBoard."""
         return self._get_json(self.rec_api) or []
+
+    def _resolve_rec_place(self, row: Dict[str, Any]) -> Dict[str, Any] | None:
+        for candidate in (row.get("FacilityName"), row.get("LocationName")):
+            resolved = place_registry_service.resolve_place(candidate)
+            if resolved and resolved.get("type") == "Rec":
+                return resolved
+        return None
+
+    def _pick_rec_display_row(self, place_id: str, rows: List[Dict[str, Any]]) -> Dict[str, Any] | None:
+        if not rows:
+            return None
+
+        preferred_names = REC_OCCUPANCY_LOCATION_PREFERENCES.get(place_id, ())
+
+        def rank(row: Dict[str, Any]) -> tuple[int, int, int, datetime]:
+            location_name = _normalize_location_name(row.get("LocationName"))
+            preferred_rank = 0
+            for index, preferred_name in enumerate(preferred_names):
+                if location_name == preferred_name:
+                    preferred_rank = len(preferred_names) - index
+                    break
+            return (
+                preferred_rank,
+                1 if ("strength" in location_name and "conditioning" in location_name) else 0,
+                0 if row.get("IsClosed") else 1,
+                _safe_int(row.get("TotalCapacity")),
+                _parse_goboard_timestamp(row.get("LastUpdatedDateAndTime")),
+            )
+
+        return max(rows, key=rank)
+
+    def get_rec_center_live_counts(self, rec_rows: List[Dict] | None = None) -> Dict[str, Dict[str, Any]]:
+        rows = rec_rows if rec_rows is not None else self.fetch_rec_data()
+        grouped: Dict[str, Dict[str, Any]] = {}
+
+        for row in rows:
+            place = self._resolve_rec_place(row)
+            if not place:
+                continue
+            grouped.setdefault(place["place_id"], {"place": place, "rows": []})["rows"].append(row)
+
+        summaries: Dict[str, Dict[str, Any]] = {}
+        for place_id, payload in grouped.items():
+            display_row = self._pick_rec_display_row(place_id, payload["rows"])
+            if not display_row:
+                continue
+
+            current_count = _safe_int(display_row.get("LastCount"))
+            capacity = _safe_int(display_row.get("TotalCapacity"))
+            percent_full = round((current_count / capacity) * 100, 1) if capacity > 0 else None
+
+            summaries[place_id] = {
+                "place": payload["place"],
+                "row": display_row,
+                "location_name": display_row.get("LocationName") or payload["place"]["name"],
+                "facility_name": display_row.get("FacilityName") or payload["place"]["name"],
+                "current_count": current_count,
+                "capacity": capacity,
+                "percent_full": percent_full,
+                "available_seats": max(0, capacity - current_count) if capacity > 0 else None,
+                "last_updated": display_row.get("LastUpdatedDateAndTime"),
+                "is_closed": bool(display_row.get("IsClosed")),
+            }
+
+        return summaries
 
     def fetch_library_data(self) -> Dict[str, Any]:
         """Returns the full library API dict (keyed by abbreviation)."""
@@ -141,30 +239,27 @@ class TAMUFacilityTracker:
         resolved_ids = set()
 
         # ── 1. Rec Centers ───────────────────────────────────────────────────
-        rec_raw = self.fetch_rec_data()
-        facility_totals: Dict[str, Dict] = defaultdict(lambda: {"count": 0, "capacity": 0})
-        for entry in rec_raw:
-            fname = entry.get("FacilityName", "")
-            facility_totals[fname]["count"] += entry.get("LastCount", 0)
-            facility_totals[fname]["capacity"] += entry.get("TotalCapacity", 1)
-
-        for api_name, totals in facility_totals.items():
-            place = place_registry_service.resolve_place(api_name)
-            if not place or place["type"] != "Rec" or totals["capacity"] == 0:
+        rec_live_counts = self.get_rec_center_live_counts()
+        for live_count in rec_live_counts.values():
+            place = live_count["place"]
+            percent = live_count.get("percent_full")
+            if percent is None:
                 continue
-                
-            percent = round((totals["count"] / totals["capacity"]) * 100, 1)
             live_percents.append(percent)
             meta = self.get_mock_metadata(place["name"], "Rec")
             resolved_ids.add(place["place_id"])
-            
+
             result.append({
                 "location": place["name"],
                 "percent_full": percent,
                 "type": "Rec",
                 "is_live": True,
-                "available_seats": totals["capacity"] - totals["count"],
+                "available_seats": live_count.get("available_seats"),
                 "coord": {"lat": place["lat"], "lng": place["lng"]},
+                "current_count": live_count.get("current_count"),
+                "capacity": live_count.get("capacity"),
+                "last_updated": live_count.get("last_updated"),
+                "occupancy_name": live_count.get("location_name"),
                 **meta,
             })
 
