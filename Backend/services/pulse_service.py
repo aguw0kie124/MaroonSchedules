@@ -357,14 +357,10 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None) -> Dict[str, 
         start_at = str(custom.get("start_at") or ping.get("created_at") or datetime.now(timezone.utc).isoformat())
 
         target_time = _parse_iso(start_at)
-        # DISABLE TIME FILTERING: Show all pings regardless of age for total restoration
-        # if target_time:
-        #     dh = (target_time - datetime.now(timezone.utc)).total_seconds() / 3600
-        #     if dh < -18 or dh > 72:
-        #         continue
-        # else:
-        #     # Fallback: assume fresh if parsing fails rather than discarding
-        #     target_time = datetime.now(timezone.utc)
+        if target_time:
+            age_hours = (datetime.now(timezone.utc) - target_time).total_seconds() / 3600
+            if age_hours > 24:
+                continue
 
         counts = interactions.get(ping_id, {})
         upvote_count = int(counts.get("upvote") or counts.get("like") or 0)

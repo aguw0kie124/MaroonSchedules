@@ -1718,6 +1718,12 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   ) : null}
                 </View>
 
+                {isForYouSelected ? (
+                  <Text style={s.filterHintText}>
+                    Picks matched to your interests and saved preferences.
+                  </Text>
+                ) : null}
+
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -2694,7 +2700,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       backgroundColor: COLORS.background,
     },
     headerBlock: {
-      paddingTop: embedded ? 10 : 38,
+      paddingTop: embedded ? 10 : 54,
       paddingHorizontal: 20,
       paddingBottom: 6,
       gap: 10,
@@ -2932,6 +2938,12 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     socialModeTextActive: {
       color: COLORS.textPrimary,
+    },
+    filterHintText: {
+      marginTop: 6,
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      lineHeight: 18,
     },
     heroRail: {
       paddingTop: 14,
