@@ -9,7 +9,7 @@ import {
     View,
 } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
-import { ArrowLeft, ChevronRight, Clock3, Dumbbell, ExternalLink, Users } from 'lucide-react-native';
+import { ArrowLeft, Clock3, Dumbbell, ExternalLink, Users } from 'lucide-react-native';
 import { useUser } from '@clerk/clerk-expo';
 
 import { useTheme } from './SharedUI';
@@ -36,6 +36,19 @@ export function RecreationFacilitiesScreen() {
         } catch (error) {
             console.warn('Unable to open recreation URL', url, error);
         }
+    };
+
+    const formatLiveTimestamp = (value?: string | null) => {
+        if (!value) return null;
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return null;
+        return date.toLocaleString(undefined, {
+            month: 'numeric',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        });
     };
 
     return (
@@ -77,6 +90,16 @@ export function RecreationFacilitiesScreen() {
 
                             {facility.summary ? (
                                 <Text style={styles.summary}>{facility.summary}</Text>
+                            ) : null}
+
+                            {facility.percent_full != null && facility.occupancy_name ? (
+                                <Text style={styles.liveMeta}>Live count source: {facility.occupancy_name}</Text>
+                            ) : null}
+
+                            {facility.percent_full != null && facility.last_updated ? (
+                                <Text style={styles.liveMeta}>
+                                    Updated: {formatLiveTimestamp(facility.last_updated) || facility.last_updated}
+                                </Text>
                             ) : null}
 
                             <View style={styles.infoRow}>
@@ -223,6 +246,11 @@ const getStyles = (COLORS: any) => StyleSheet.create({
         color: COLORS.textPrimary,
         fontSize: 14,
         lineHeight: 20,
+    },
+    liveMeta: {
+        color: COLORS.textSecondary,
+        fontSize: 12,
+        lineHeight: 18,
     },
     infoRow: {
         flexDirection: 'row',

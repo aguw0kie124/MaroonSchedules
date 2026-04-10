@@ -1252,18 +1252,8 @@ def get_recreation_snapshot() -> Dict[str, Any]:
 
     from routers.traffic import tracker
     occupancy_rows = tracker.fetch_rec_data() or []
+    live_counts_by_place_id = tracker.get_rec_center_live_counts(occupancy_rows)
     notices = _fetch_rec_notices()
-    
-    # Map GoBoard "LocationName" or "FacilityName" to Registry Place
-    occupancy_by_place_id: Dict[str, Any] = {}
-    for row in occupancy_rows:
-        # Try both LocationName and FacilityName for matching
-        name_to_resolve = row.get("LocationName") or row.get("FacilityName")
-        resolved = place_registry_service.resolve_place(name_to_resolve)
-        if resolved and resolved.get("type") == "Rec":
-            pid = resolved["place_id"]
-            if pid not in occupancy_by_place_id:
-                occupancy_by_place_id[pid] = row
 
     facilities = []
     # Major Aggie Rec IDs for the Hub Snapshot
@@ -1280,11 +1270,11 @@ def get_recreation_snapshot() -> Dict[str, Any]:
     
     for place in rec_places:
         pid = place["place_id"]
-        source_row = occupancy_by_place_id.get(pid)
+        live_count = live_counts_by_place_id.get(pid)
         
         # Determine source URL (some might have them in features, fallback to Google search or hardcoded common ones)
         source_url = f"https://recsports.tamu.edu/facilities/{pid}/" # Guessing URL pattern
-        if pid == "srec":
+        if pid == "rec":
             source_url = "https://recsports.tamu.edu/facilities/student-rec-center/"
         elif pid == "southside-rec":
             source_url = "https://recsports.tamu.edu/facilities/southside-rec/"
@@ -1299,14 +1289,9 @@ def get_recreation_snapshot() -> Dict[str, Any]:
             for n in notices if pid in n.get("facility_ids", []) or pid.replace("-rec", "") in n.get("facility_ids", [])
         ]
 
-        current_count = source_row.get("LastCount") if source_row else None
-        capacity = source_row.get("TotalCapacity") if source_row else None
-        percent_full = None
-        if current_count is not None and capacity:
-            try:
-                percent_full = round((float(current_count) / float(capacity)) * 100, 1)
-            except Exception:
-                percent_full = None
+        current_count = live_count.get("current_count") if live_count else None
+        capacity = live_count.get("capacity") if live_count else None
+        percent_full = live_count.get("percent_full") if live_count else None
 
         facilities.append({
             "id": pid,
@@ -1318,6 +1303,8 @@ def get_recreation_snapshot() -> Dict[str, Any]:
             "percent_full": percent_full,
             "current_count": current_count,
             "capacity": capacity,
+            "occupancy_name": live_count.get("location_name") if live_count else None,
+            "last_updated": live_count.get("last_updated") if live_count else None,
             "source_url": source_url
         })
 
