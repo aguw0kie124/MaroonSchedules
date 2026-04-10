@@ -164,9 +164,9 @@ export const TOUR_SEQUENCE: TourStep[] = [
   },
   {
     id: 'social-tab',
-    title: 'Head to CrowdPings',
-    instruction: "Tap the 'Pings' tab in the bottom navigation to see what other students are sharing right now.",
-    where: 'Look in the bottom tab bar for the Pings tab.',
+    title: 'Head to Campus Pulse',
+    instruction: "Tap the 'Pings' tab in the bottom navigation to open the live campus pulse feed.",
+    where: 'Look in the bottom tab bar for the tab labeled Pings.',
     cue: 'Tap Pings in the bottom navigation.',
     celebrationTitle: 'Nice move.',
     celebrationBody: 'Welcome to the live campus pulse.',
@@ -175,26 +175,17 @@ export const TOUR_SEQUENCE: TourStep[] = [
   {
     id: 'crowdping-cta',
     title: 'Open the quick post composer',
-    instruction: "Tap the quick post bar that says 'What's happening at...' to start creating a ping.",
-    where: 'It sits near the top of the CrowdPings screen just below the main heading.',
+    instruction: "Tap the quick post bar so you know where posting starts on the Campus Pulse screen.",
+    where: "It sits near the top of the Campus Pulse screen and currently says 'Post what's happening...'.",
     cue: 'Tap the highlighted quick post bar.',
     celebrationTitle: 'Yay! Composer opened.',
     celebrationBody: 'That is how you start posting to the community.',
   },
   {
-    id: 'crowdping-close',
-    title: 'Close the composer',
-    instruction: 'Tap the X so you can leave the composer and continue exploring the app.',
-    where: 'Use the X button in the top-right corner of the create-a-ping sheet.',
-    cue: 'Tap the highlighted X button.',
-    celebrationTitle: 'Perfect.',
-    celebrationBody: 'You now know how to open and dismiss a ping composer.',
-  },
-  {
     id: 'settings-tab',
     title: 'Finish in Settings',
-    instruction: "Tap the 'Settings' tab in the bottom navigation to finish onboarding.",
-    where: 'Look along the bottom tab bar for the Settings tab.',
+    instruction: "Tap the 'Settings' tab in the bottom navigation so we can wrap up the tour in your profile area.",
+    where: 'Look along the bottom tab bar for the tab labeled Settings.',
     cue: 'Tap Settings in the bottom navigation.',
     celebrationTitle: 'Almost there.',
     celebrationBody: 'One last tap and the app is fully yours.',
@@ -216,7 +207,6 @@ const FREE_INTERACTION_STEPS = new Set([
   'gyms-pill',
   'rec-center-item',
   'crowdping-cta',
-  'crowdping-close',
   'tour-finish',
 ]);
 
@@ -227,7 +217,6 @@ const COMPACT_COACH_STEPS = new Set([
   'gyms-pill',
   'rec-center-item',
   'crowdping-cta',
-  'crowdping-close',
   'tour-finish',
 ]);
 
@@ -442,6 +431,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
   const [isTourActive, setIsTourActive] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
+  const currentStepRef = useRef(0);
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
   const [celebration, setCelebration] = useState<CelebrationState | null>(null);
   const [assistVisible, setAssistVisible] = useState(false);
@@ -538,6 +528,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
   const beginTour = useCallback((source: 'auto' | 'manual') => {
     setCurrentStep(0);
+    currentStepRef.current = 0;
     setTargetRect(null);
     setCelebration(null);
     setAssistVisible(false);
@@ -566,6 +557,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   const endTour = useCallback(async (options?: { navigateToDashboard?: boolean }) => {
     setIsTourActive(false);
     setCurrentStep(0);
+    currentStepRef.current = 0;
     setTargetRect(null);
     setCelebration(null);
     setAssistVisible(false);
@@ -598,6 +590,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
       if (isTourActive) {
         setIsTourActive(false);
         setCurrentStep(0);
+        currentStepRef.current = 0;
         setTargetRect(null);
         setCelebration(null);
         setAssistVisible(false);
@@ -651,20 +644,25 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const advanceStep = useCallback((expectedStepName: string) => {
-    if (!isTourActive || activeTargetName !== expectedStepName) {
+    // Compute current active target using our ref to ensure we don't process stale/duplicate requests
+    const actualTargetName = isTourActive && currentStepRef.current < TOUR_SEQUENCE.length ? TOUR_SEQUENCE[currentStepRef.current].id : null;
+
+    if (!isTourActive || actualTargetName !== expectedStepName) {
       return;
     }
 
-    const completedStep = TOUR_SEQUENCE[currentStep];
+    const completedStep = TOUR_SEQUENCE[currentStepRef.current];
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     triggerCelebration(completedStep);
 
-    if (currentStep < TOUR_SEQUENCE.length - 1) {
-      setCurrentStep((prev) => prev + 1);
+    if (currentStepRef.current < TOUR_SEQUENCE.length - 1) {
+      currentStepRef.current += 1;
+      setCurrentStep(currentStepRef.current);
       setTargetRect(null);
       return;
     }
 
+    currentStepRef.current += 1;
     setCompletionCelebration({
       title: 'Congrats! You are all set.',
       body: 'Your MaroonLife tour is complete. Your campus app is ready to explore.',
@@ -673,7 +671,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     completionTimerRef.current = setTimeout(() => {
       endTour({ navigateToDashboard: true });
     }, 2800);
-  }, [activeTargetName, currentStep, endTour, isTourActive, triggerCelebration]);
+  }, [endTour, isTourActive, triggerCelebration]);
 
   const haloScale = useSharedValue(1);
   const haloOpacity = useSharedValue(0.16);

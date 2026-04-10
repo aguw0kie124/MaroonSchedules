@@ -68,7 +68,7 @@ import { API_URL } from '../config';
 import { useTheme } from './SharedUI';
 import { useAppShellStore } from '../store/appShellStore';
 import { useEventStore } from '../store/eventStore';
-import { useTour } from './onboarding/TourProvider';
+import { TourTarget, useTour } from './onboarding/TourProvider';
 import {
   addComment,
   addPing,
@@ -341,6 +341,7 @@ export function CampusPingsScreen() {
   const navigation = useNavigation<any>();
   const isGuest = useSessionStore((s) => s.isGuest);
   const isDark = theme.theme === 'dark';
+  const { activeTargetName, advanceStep } = useTour();
 
   const directory = useMemo(() => buildCampusDirectory(), []);
   const locationLookup = useMemo(
@@ -1093,12 +1094,28 @@ export function CampusPingsScreen() {
         </View>
       </View>
 
-      <Pressable style={styles.quickPostBar} onPress={openComposer}>
-        <View style={styles.quickPostIconWrap}>
-          <Megaphone size={16} color={COLORS.primary} />
-        </View>
-        <Text style={styles.quickPostText}>Post what's happening...</Text>
-      </Pressable>
+      <TourTarget
+        name="crowdping-cta"
+        assistAction={() => {
+          advanceStep('crowdping-cta');
+        }}
+      >
+        <Pressable
+          style={styles.quickPostBar}
+          onPress={() => {
+            if (activeTargetName === 'crowdping-cta') {
+              advanceStep('crowdping-cta');
+              return;
+            }
+            openComposer();
+          }}
+        >
+          <View style={styles.quickPostIconWrap}>
+            <Megaphone size={16} color={COLORS.primary} />
+          </View>
+          <Text style={styles.quickPostText}>Post what's happening...</Text>
+        </Pressable>
+      </TourTarget>
 
       <ScrollView
         horizontal
@@ -1185,9 +1202,25 @@ export function CampusPingsScreen() {
               <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                 <View style={[styles.composerScreen, { paddingTop: Math.max(insets.top + 8, 20) }]}>
                   <View style={styles.composerTopBar}>
-                    <Pressable onPress={closeComposer} style={styles.composerTopIconButton}>
-                      <X size={20} color={COLORS.textPrimary} />
-                    </Pressable>
+                    <TourTarget
+                      name="crowdping-close"
+                      assistAction={() => {
+                        closeComposer();
+                        setTimeout(() => advanceStep('crowdping-close'), 250);
+                      }}
+                    >
+                      <Pressable
+                        onPress={() => {
+                          closeComposer();
+                          if (activeTargetName === 'crowdping-close') {
+                            setTimeout(() => advanceStep('crowdping-close'), 150);
+                          }
+                        }}
+                        style={styles.composerTopIconButton}
+                      >
+                        <X size={20} color={COLORS.textPrimary} />
+                      </Pressable>
+                    </TourTarget>
 
                     <Text style={styles.composerTopTitle}>Create</Text>
 
