@@ -5,8 +5,6 @@ node_modules
 __pycache__/
 *.py[cod]
 *$py.class
-*.swp
-*.tmp
 
 # iOS generated files
 ios/
@@ -24,23 +22,9 @@ ios/*.xcodeproj/project.xcworkspace/
 tsc_errors.log
 tsc_output.txt
 tsc_final.log
-*.log
 
 # System Files
 .DS_Store
 **/.DS_Store
-.vscode/
-
-# Local databases
-*.db
-*.sqlite
-*.sqlite3
-!Backend/Data/campus_registry.db
-
-# Crawler generated artifacts
-TamuEventsCrawler/data/raw/
-TamuEventsCrawler/data/normalized/
-TamuEventsCrawler/data/state/
-TamuEventsCrawler/output/
 
 data_architecture_plan.md
