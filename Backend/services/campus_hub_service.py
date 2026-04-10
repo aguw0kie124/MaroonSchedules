@@ -1038,6 +1038,7 @@ def get_events_snapshot(
     limit: int = 8,
     category: Optional[str] = None,
     student_relevant_only: bool = True,
+    campus: str = "tamu",
     conn: Optional[psycopg.Connection] = None,
 ) -> List[Dict[str, Any]]:
     _ensure_social_tables(conn)
@@ -1077,7 +1078,7 @@ def get_events_snapshot(
             if row.get("admin_clerk_id")
         }
 
-    crawler_events = campus_events_service.load_campus_events()
+    crawler_events = campus_events_service.load_campus_events(campus=campus)
     events = crawler_events.get("events") if isinstance(crawler_events, dict) else crawler_events
     source_status = crawler_events.get("source_status") if isinstance(crawler_events, dict) else "live"
     events_copy = list(events) if events else []

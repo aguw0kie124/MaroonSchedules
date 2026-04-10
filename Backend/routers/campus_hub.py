@@ -104,6 +104,7 @@ def get_events(
     limit: int = Query(250, ge=1, le=1000),
     category: Optional[str] = Query(None),
     student_relevant_only: bool = Query(True),
+    campus: str = Query("tamu"),
     auth_user_id: Optional[str] = Depends(optional_auth),
 ):
     if clerk_id is not None:
@@ -115,6 +116,7 @@ def get_events(
         limit=limit,
         category=category,
         student_relevant_only=student_relevant_only,
+        campus=campus,
     )
 
 
