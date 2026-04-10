@@ -26,8 +26,13 @@ import {
   Flag,
   Shield,
   Trash2,
+  ChevronUp,
+  ChevronDown,
+  Leaf,
 } from "lucide-react-native";
 import { useUser } from "@clerk/clerk-expo";
+import { PillTabs } from "../PillTabs";
+import { ALL_DINING_MEAL_PERIODS } from "../../services/diningMenuCache";
 import * as Linking from "expo-linking";
 import * as Haptics from "expo-haptics";
 import type { CampusLocation } from "./types";
@@ -153,6 +158,7 @@ interface LocationBottomSheetProps {
   allReviewsModalVisible: boolean;
   setAllReviewsModalVisible: (v: boolean) => void;
   isFetchingReviews: boolean;
+  isDark: boolean;
   fetchReviews: (placeId: string, limit?: number) => void;
   // Dining
   foodCourtVenues: Array<{
@@ -188,6 +194,7 @@ interface LocationBottomSheetProps {
 export function LocationBottomSheet({
   styles,
   COLORS,
+  isDark,
   selectedId,
   setSelectedId,
   selectedLoc,
@@ -233,9 +240,26 @@ export function LocationBottomSheet({
   const sheetSnap = useRef<number>(SHEET_HIDDEN_SNAP);
   const panStartY = useRef<number>(SHEET_HIDDEN_SNAP);
   const [sheetMode, setSheetMode] = useState<SheetMode>("hidden");
-  const [diningDetailTab, setDiningDetailTab] = useState<"reviews" | "menus">(
-    "reviews",
-  );
+  const [diningDetailTab, setDiningDetailTab] = useState<"reviews" | "menus">("reviews");
+
+  const [activeCategoryKey, setActiveCategoryKey] = useState("all");
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+
+  const toggleCategory = useCallback((categoryName: string) => {
+    setCollapsedCategories((current) => {
+      const next = new Set(current);
+      if (next.has(categoryName)) next.delete(categoryName);
+      else next.add(categoryName);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (diningMenuPreview?.categories) {
+      const categoryNames = diningMenuPreview.categories.map((c: any) => c.name);
+      setCollapsedCategories(new Set(categoryNames));
+    }
+  }, [diningMenuPreview]);
 
   const animateSheet = useCallback(
     (toValue: number, onDone?: () => void) => {
@@ -1100,6 +1124,226 @@ export function LocationBottomSheet({
                 </>
               )}
             </ScrollView>
+            ) : null}
+
+            {!isPeekSheet && isDiningHallCard ? (
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 60, paddingTop: 12 }}
+                scrollEventThrottle={16}
+              >
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={styles.sectionTitle}>Menu</Text>
+                </View>
+
+                <View style={{ marginBottom: 16, flexDirection: 'row', gap: 24 }}>
+                  {ALL_DINING_MEAL_PERIODS.map((period) => {
+                    const isActive = activeDiningMealPeriod === period;
+                    return (
+                      <TouchableOpacity
+                        key={period}
+                        onPress={() => setActiveDiningMealPeriod(period)}
+                        style={{
+                          paddingBottom: 6,
+                          borderBottomWidth: 2,
+                          borderBottomColor: isActive ? COLORS.primary : 'transparent',
+                        }}
+                      >
+                        <Text style={{
+                          fontSize: 15,
+                          fontWeight: isActive ? '700' : '600',
+                          color: isActive ? COLORS.textPrimary : COLORS.textTertiary,
+                        }}>
+                          {period.charAt(0).toUpperCase() + period.slice(1)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {diningMenuPreview?.categories?.length > 0 ? (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 10, paddingHorizontal: 18, paddingRight: 30 }}
+                    style={{ marginBottom: 20, marginHorizontal: -18 }}
+                  >
+                    <TouchableOpacity
+                      style={[
+                        {
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                          borderWidth: 1,
+                          borderRadius: 999,
+                          paddingHorizontal: 14,
+                          paddingVertical: 10,
+                          backgroundColor: COLORS.card,
+                          borderColor: COLORS.border,
+                        },
+                        activeCategoryKey === "all" && {
+                          borderWidth: 1.5,
+                          borderColor: "transparent",
+                          backgroundColor: "#E8EEF9",
+                        },
+                      ]}
+                      onPress={() => {
+                        setActiveCategoryKey("all");
+                        const categoryNames = diningMenuPreview.categories.map((c: any) => c.name);
+                        setCollapsedCategories(new Set(categoryNames));
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          { fontSize: 13, fontWeight: "600", color: COLORS.textSecondary },
+                          activeCategoryKey === "all" && { color: "#4A6FA5", fontWeight: "800" },
+                        ]}
+                      >
+                        All stations
+                      </Text>
+                    </TouchableOpacity>
+
+                    {diningMenuPreview.categories.map((category: any) => (
+                      <TouchableOpacity
+                        key={category.name}
+                        style={[
+                          {
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 8,
+                            borderWidth: 1,
+                            borderRadius: 999,
+                            paddingHorizontal: 14,
+                            paddingVertical: 10,
+                            backgroundColor: COLORS.card,
+                            borderColor: COLORS.border,
+                          },
+                          activeCategoryKey === category.name && {
+                            borderWidth: 1.5,
+                            borderColor: "transparent",
+                            backgroundColor: "#E8EEF9",
+                          },
+                        ]}
+                        onPress={() => {
+                          setActiveCategoryKey(category.name);
+                          setCollapsedCategories(new Set());
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text
+                          style={[
+                            { fontSize: 13, fontWeight: "600", color: COLORS.textSecondary },
+                            activeCategoryKey === category.name && { color: "#4A6FA5", fontWeight: "800" },
+                          ]}
+                        >
+                          {category.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                ) : null}
+
+                {isFetchingDining ? (
+                  <View style={{ paddingTop: 40, alignItems: "center" }}>
+                    <ActivityIndicator color={COLORS.primary} size="large" />
+                  </View>
+                ) : !diningMenuPreview?.categories || diningMenuPreview.categories.length === 0 ? (
+                  <View style={{ paddingVertical: 40, alignItems: "center" }}>
+                    <Utensils size={32} color={COLORS.textTertiary} style={{ marginBottom: 12, opacity: 0.5 }} />
+                    <Text style={{ fontSize: 16, fontWeight: "600", color: COLORS.textSecondary }}>
+                      No stations available right now
+                    </Text>
+                    <Text style={{ fontSize: 13, color: COLORS.textTertiary, marginTop: 6 }}>
+                      Check another meal period.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ paddingHorizontal: 0 }}>
+                    {(diningMenuPreview?.categories || [])
+                      .filter((c: any) => activeCategoryKey === "all" || c.name === activeCategoryKey)
+                      .map((category: any) => {
+                        const isAllSelected = activeCategoryKey === "all";
+                        const isCollapsed = isAllSelected && collapsedCategories.has(category.name);
+                        
+                        return (
+                          <View key={category.name} style={isAllSelected ? { marginBottom: 12, backgroundColor: COLORS.card, borderRadius: 16, overflow: "hidden" } : {}}>
+                            {isAllSelected && (
+                              <TouchableOpacity
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  paddingHorizontal: 16,
+                                  paddingVertical: 18,
+                                }}
+                                onPress={() => toggleCategory(category.name)}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={{ fontSize: 18, fontWeight: "800", color: COLORS.textPrimary }}>
+                                  {category.name}
+                                </Text>
+                                {!isCollapsed ? (
+                                  <ChevronUp size={20} color={COLORS.primary} />
+                                ) : (
+                                  <ChevronDown size={20} color={COLORS.primary} />
+                                )}
+                              </TouchableOpacity>
+                            )}
+
+                            {!isCollapsed && (
+                              <View style={isAllSelected ? { paddingHorizontal: 16, paddingBottom: 16 } : {}}>
+                                {category.items.map((item: any, idx: number) => (
+                                  <View
+                                    key={`${category.name}-${item.name}-${idx}`}
+                                    style={{
+                                      paddingVertical: 14,
+                                      borderBottomWidth: idx === category.items.length - 1 ? 0 : 1,
+                                      borderBottomColor: COLORS.border,
+                                    }}
+                                  >
+                                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                      <View style={{ flex: 1, paddingRight: 12 }}>
+                                        <Text style={{ fontSize: 15, fontWeight: "700", color: COLORS.textPrimary, marginBottom: 8, lineHeight: 20 }}>
+                                          {item.name}
+                                        </Text>
+                                        <View style={{ flexDirection: "row", gap: 16 }}>
+                                          <View>
+                                            <Text style={{ fontSize: 9, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 2 }}>
+                                              Energy
+                                            </Text>
+                                            <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.textPrimary }}>
+                                              {Math.round(item.calories || 0)} kcal
+                                            </Text>
+                                          </View>
+                                          {item.protein ? (
+                                            <View>
+                                              <Text style={{ fontSize: 9, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 2 }}>
+                                                Protein
+                                              </Text>
+                                              <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.textPrimary }}>
+                                                {Math.round(item.protein)}g
+                                              </Text>
+                                            </View>
+                                          ) : null}
+                                        </View>
+                                      </View>
+                                      {item.dietary?.includes("Vegetarian") || item.dietary?.includes("Vegan") ? (
+                                        <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#E6EFDE", alignItems: "center", justifyContent: "center", marginTop: 2 }}>
+                                          <Leaf size={13} color="#5B9A68" />
+                                        </View>
+                                      ) : null}
+                                    </View>
+                                  </View>
+                                ))}
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
+                  </View>
+                )}
+              </ScrollView>
             ) : null}
           </>
         ) : null}

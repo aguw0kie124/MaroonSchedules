@@ -2785,6 +2785,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       <LocationBottomSheet
         styles={styles}
         COLORS={COLORS}
+        isDark={isDark}
         selectedId={selectedId}
         setSelectedId={setSelectedId}
         selectedLoc={selectedLoc}
