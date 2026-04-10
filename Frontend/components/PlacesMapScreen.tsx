@@ -187,6 +187,9 @@ const PULSE_SELECTION_REGION = {
   longitudeDelta: 0.03,
 };
 const PULSE_SELECTION_ANIMATION_MS = 520;
+const DEFAULT_USER_CAMERA_ZOOM = 15.15;
+const MAX_RESTORE_CAMERA_ZOOM = 15.45;
+const MIN_RESTORE_CAMERA_ZOOM = 14.2;
 
 const isPulseCoordNearCollegeStation = (latitude: number, longitude: number) =>
   haversineDistanceMeters(
@@ -201,6 +204,13 @@ const getPulseFocusRegion = (latitude: number, longitude: number) => ({
   longitude,
   ...PULSE_SELECTION_REGION,
 });
+
+const zoomFromLatitudeDelta = (latitudeDelta?: number) => {
+  if (!latitudeDelta || !Number.isFinite(latitudeDelta) || latitudeDelta <= 0) {
+    return DEFAULT_USER_CAMERA_ZOOM;
+  }
+  return Math.log2(360 / latitudeDelta);
+};
 
 export function PlacesMapScreen({ route, navigation }: any) {
   const { COLORS, theme } = useTheme();
@@ -234,6 +244,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
     useMapLibreCamera(TAMU_CENTER);
   const currentBusRouteFetchId = useRef<string | null>(null);
   const lastPlacesFitKey = useRef<string | null>(null);
+  const currentMapZoomRef = useRef(DEFAULT_USER_CAMERA_ZOOM);
+  const currentMapCenterRef = useRef(TAMU_CENTER);
+  const suppressNextOverviewFitRef = useRef(false);
   const [isListDroppedDown, setIsListDroppedDown] = useState(false);
   const listDropdownScrollRef = useRef<ScrollView | null>(null);
   const recCenterDropdownYRef = useRef(0);
@@ -1280,7 +1293,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
       mapRef.current.animateCamera(
         {
           center: nextCoord,
-          zoom: 16.4,
           pitch: isMapTilted ? 55 : 0,
           heading: 0,
         },
@@ -1295,17 +1307,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
     const nextTilted = !isMapTilted;
     setIsMapTilted(nextTilted);
     if (!mapRef.current) return;
-    const center = userCoord || TAMU_CENTER;
     mapRef.current.animateCamera(
       {
-        center,
+        center: currentMapCenterRef.current,
         pitch: nextTilted ? 55 : 0,
-        zoom: userCoord ? 16.4 : 15.2,
         heading: 0,
       },
       { duration: 500 },
     );
-  }, [isMapTilted, userCoord]);
+  }, [isMapTilted]);
 
   // ── Transit handlers ──────────────────────────────────────
   const { transitService } = require("../services/transitService");
@@ -1496,6 +1506,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
   useEffect(() => {
     if (!mapRef.current) return;
     if (selectedId || (activeLayer === "Pulse" && selectedHotspotId)) return;
+    if (suppressNextOverviewFitRef.current) {
+      suppressNextOverviewFitRef.current = false;
+      return;
+    }
     fitMapToActiveOverview();
   }, [
     activeLayer,
@@ -1991,20 +2005,35 @@ export function PlacesMapScreen({ route, navigation }: any) {
         showsCompass={false}
         rotateEnabled={false}
         pitchEnabled
+        onRegionChangeComplete={(region) => {
+          currentMapCenterRef.current = {
+            latitude: region.latitude,
+            longitude: region.longitude,
+          };
+          currentMapZoomRef.current = Math.min(
+            MAX_RESTORE_CAMERA_ZOOM,
+            Math.max(MIN_RESTORE_CAMERA_ZOOM, zoomFromLatitudeDelta(region.latitudeDelta)),
+          );
+        }}
         onPress={(e) => {
           // Only clear if we actually tapped the map background, not an annotation
           if (e.nativeEvent.action !== 'marker-press') {
             const hadSelection =
               !!selectedId || !!selectedHotspotId || !!selectedStop || !!selectedBus;
+            const hadPulseHotspotSelection = !!selectedHotspotId;
             setSelectedId(null);
             setSelectedHotspotId(null);
             setSelectedStop(null);
             setSelectedBus(null);
             setNearestBusInfo(null);
             if (hadSelection) {
-              requestAnimationFrame(() => {
-                fitMapToActiveOverview();
-              });
+              if (hadPulseHotspotSelection) {
+                suppressNextOverviewFitRef.current = true;
+              } else {
+                requestAnimationFrame(() => {
+                  fitMapToActiveOverview();
+                });
+              }
             }
           }
         }}
@@ -2701,10 +2730,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
         visible={activeLayer === "Pulse" && !!selectedHotspot}
         hotspot={selectedHotspot}
         onClose={() => {
+          suppressNextOverviewFitRef.current = true;
           setSelectedHotspotId(null);
-          requestAnimationFrame(() => {
-            fitMapToActiveOverview();
-          });
         }}
         onOpenItem={openHotspotItem}
         onVote={toggleHotspotVote}
