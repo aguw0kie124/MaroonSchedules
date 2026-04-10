@@ -1718,27 +1718,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   ) : null}
                 </View>
 
-                <View style={s.spotlightIntro}>
-                  <Text style={s.spotlightEyebrow}>Discover</Text>
-                  <Text style={s.spotlightTitle}>Spotlight events</Text>
-                </View>
-
-                {isForYouSelected ? (
-                  <Text style={s.filterHintText}>
-                    {hasForYouPrefs
-                      ? `For U is personalized using your saved ${[
-                        profileMajor ? `${profileMajor} major` : null,
-                        profilePreferences.preferredTime && profilePreferences.preferredTime !== 'No Preference'
-                          ? `${profilePreferences.preferredTime.toLowerCase()} time preference`
-                          : null,
-                        profilePreferences.avoidFriday ? 'avoid Friday preference' : null,
-                      ]
-                        .filter(Boolean)
-                        .join(', ')}.`
-                      : 'For U needs saved onboarding or planner preferences before it can personalize events.'}
-                  </Text>
-                ) : null}
-
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -2931,12 +2910,6 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       fontSize: 12,
       fontWeight: '600',
     },
-    filterHintText: {
-      marginTop: 6,
-      color: COLORS.textSecondary,
-      fontSize: 12,
-      lineHeight: 18,
-    },
     socialModeWrap: {
       flexDirection: 'row',
       gap: 8,
@@ -2959,25 +2932,6 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     socialModeTextActive: {
       color: COLORS.textPrimary,
-    },
-    spotlightIntro: {
-      marginTop: 14,
-      marginBottom: 2,
-      gap: 4,
-    },
-    spotlightEyebrow: {
-      color: COLORS.textSecondary,
-      fontSize: 11,
-      fontWeight: '900',
-      letterSpacing: 1.5,
-      textTransform: 'uppercase',
-    },
-    spotlightTitle: {
-      color: COLORS.textPrimary,
-      fontSize: 24,
-      lineHeight: 28,
-      fontWeight: '900',
-      letterSpacing: -0.8,
     },
     heroRail: {
       paddingTop: 14,
