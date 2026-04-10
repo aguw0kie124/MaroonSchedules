@@ -7,7 +7,16 @@ import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
-from rapidfuzz import fuzz
+try:
+    from rapidfuzz import fuzz
+
+    def _ratio(left: str, right: str) -> float:
+        return float(fuzz.ratio(left, right))
+except Exception:
+    from difflib import SequenceMatcher
+
+    def _ratio(left: str, right: str) -> float:
+        return SequenceMatcher(None, left, right).ratio() * 100.0
 
 from models import Event
 
@@ -48,6 +57,17 @@ VENUE_ALIASES: Dict[str, str] = {
     "12th man": "12th man hall",
     "wehner": "wehner building",
     "harrington": "harrington tower",
+    "su": "student union",
+    "slc": "science learning center",
+    "ssb": "student services building",
+    "ab": "activity center",
+    "fn": "founders north",
+    "jo": "jonsson academic center",
+    "jsom": "naveen jindal school of management",
+    "ecss": "engineering and computer science south",
+    "ecsn": "engineering and computer science north",
+    "atec": "arts, technology, and emerging communication",
+    "ssa": "student services addition",
 }
 
 
@@ -61,7 +81,7 @@ def _time_close(dt1: datetime, dt2: datetime, hours: int = TIME_WINDOW_HOURS) ->
 
 def _title_similar(t1: str, t2: str) -> float:
     """Return title similarity ratio (0-100)."""
-    return fuzz.ratio(t1.lower().strip(), t2.lower().strip())
+    return _ratio(t1.lower().strip(), t2.lower().strip())
 
 
 def _normalize_venue(location: str | None) -> str:
@@ -83,7 +103,7 @@ def _location_similar(l1: str | None, l2: str | None) -> float:
     # Normalize venue names before comparison
     n1 = _normalize_venue(l1)
     n2 = _normalize_venue(l2)
-    return fuzz.ratio(n1, n2)
+    return _ratio(n1, n2)
 
 
 def _generate_group_id(event: Event) -> str:

@@ -164,6 +164,39 @@ class CampusEventAccessTests(unittest.TestCase):
         event_ids = [event["event_id"] for event in result["events"]]
         self.assertEqual(event_ids, ["ongoing", "future"])
 
+    @mock.patch.object(campus_hub_service, "_ensure_social_tables")
+    @mock.patch.object(campus_hub_service.tag_repository, "get_user_tags")
+    @mock.patch.object(campus_hub_service.user_repository, "get_user")
+    @mock.patch.object(campus_hub_service.campus_events_service, "load_campus_events")
+    @mock.patch.object(campus_hub_service, "_safe_db_fetchall")
+    def test_get_events_snapshot_passes_campus_to_loader(
+        self,
+        mock_fetchall,
+        mock_load_events,
+        mock_get_user,
+        mock_get_user_tags,
+        _mock_ensure_tables,
+    ):
+        mock_get_user.return_value = {"is_admin": False}
+        mock_get_user_tags.return_value = []
+        mock_fetchall.side_effect = [[], [], [], []]
+        mock_load_events.return_value = {
+            "source_status": "live",
+            "events": [
+                {"event_id": "utd_1", "title": "UTD Event", "start_time": "2099-04-06T12:00:00Z", "access_tags": []},
+            ],
+        }
+
+        result = campus_hub_service.get_events_snapshot(
+            clerk_id="user_1",
+            limit=20,
+            student_relevant_only=False,
+            campus="utd",
+        )
+
+        self.assertEqual([event["event_id"] for event in result["events"]], ["utd_1"])
+        mock_load_events.assert_called_once_with(campus="utd")
+
 
 class AdminTagRouteTests(unittest.TestCase):
     @mock.patch("repositories.user_repository.upsert_user")
