@@ -259,6 +259,18 @@ function getInitials(name: string) {
   return parts.map((part) => part[0]?.toUpperCase() || '').join('');
 }
 
+/**
+ * Heuristic to check if a string looks like an AES-encrypted base64 payload
+ * from our backend (typically length > 40 and not human-readable).
+ */
+function isEncryptedString(s: string | null | undefined): boolean {
+  if (!s || s.length < 40) return false;
+  // If it contains spaces or lowercase letters without being a long base64 string, it's likely human
+  if (s.includes(' ')) return false;
+  // Common check for base64 with potential padding
+  return /^[a-zA-Z0-9+/]+={0,2}$/.test(s);
+}
+
 function isPingActiveNow(startAt: string, endAt?: string | null) {
   const start = new Date(startAt).getTime();
   const end = endAt ? new Date(endAt).getTime() : start + 2 * 60 * 60 * 1000;
@@ -285,9 +297,24 @@ function mapOfficialEventCategory(event: FeaturedEvent): PingCategory {
   return 'Popup';
 }
 
-function mapActivityToPing(activity: any): PingCard {
+function mapActivityToPing(activity: any, currentUser: any, userMap: Map<string, string>): PingCard {
   const custom = activity.custom || {};
   const actor = activity.actor || {};
+  const userId = (actor.id || activity.actor || '').replace('SU:', '');
+  const rawName = custom.is_anonymous ? 'Aggie User' : (actor.name || actor.data?.name || custom.user_name || 'Aggie User');
+
+  // Resolve name: Current User match > User Directory match > Raw Name (if not encrypted) > 'Aggie User'
+  let resolvedName = rawName;
+  if (!custom.is_anonymous) {
+    if (userId === currentUser?.id) {
+      resolvedName = currentUser.username || currentUser.firstName || currentUser.fullName || 'Shreyaan';
+    } else if (userMap.has(userId)) {
+      resolvedName = userMap.get(userId)!;
+    } else if (isEncryptedString(rawName)) {
+      resolvedName = 'Aggie User';
+    }
+  }
+
   const attachments = activity.attachments || [];
   const media = attachments[0] || {};
   const imageUrl = resolveMediaUrl(custom.image_url || custom.imageUrl || media.original || media.image_url);
@@ -315,8 +342,8 @@ function mapActivityToPing(activity: any): PingCard {
     startAt: custom.start_at || activity.time || new Date().toISOString(),
     endAt: custom.end_at || null,
     createdAt: activity.time || activity.created_at || new Date().toISOString(),
-    userId: (actor.id || activity.actor || '').replace('SU:', ''),
-    userName: custom.is_anonymous ? 'Aggie User' : (actor.name || actor.data?.name || custom.user_name || 'Aggie User'),
+    userId,
+    userName: resolvedName,
     userImage: custom.is_anonymous ? null : (actor.image || actor.data?.image || custom.user_image || null),
     score: activity.reaction_counts?.score ?? activity.reaction_counts?.upvote ?? 0,
     userVote: activity.own_reactions?.upvote ? 1 : (activity.own_reactions?.downvote ? -1 : 0),
@@ -398,6 +425,30 @@ export function CampusPingsScreen() {
   });
 
   const {
+    data: userProfiles = [],
+  } = useQuery({
+    queryKey: ['campus-chat-directory'],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`${API_URL}/chat/users`);
+        if (!res.ok) return [];
+        return await res.json();
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 1000 * 60 * 30, // 30 mins
+  });
+
+  const userMap = useMemo(() => {
+    const m = new Map<string, string>();
+    userProfiles.forEach((u: any) => {
+      if (u.id && u.name) m.set(u.id, u.name);
+    });
+    return m;
+  }, [userProfiles]);
+
+  const {
     data: userPings = [],
     isLoading: loadingPings,
     refetch: refetchPings,
@@ -406,7 +457,7 @@ export function CampusPingsScreen() {
     queryKey: ['campus-pings'],
     queryFn: async () => {
       const activities = await getPingFeed(60);
-      return activities.map(mapActivityToPing);
+      return (activities || []).map((a: any) => mapActivityToPing(a, user, userMap));
     },
     refetchInterval: 15000,
     staleTime: 1000 * 30,
