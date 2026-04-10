@@ -21,8 +21,6 @@ export type MapRegion = MapCoordinate & {
   longitudeDelta: number;
 };
 
-export const CAMPUS_MAP_STYLE_URL = null;
-
 function normalizePadding(
   padding?:
     | number
@@ -84,7 +82,7 @@ function regionDeltaFromZoom(zoom = 16) {
 
 // ─── Camera hook ─────────────────────────────────────────────────────────────
 
-export function useMapLibreCamera(initialRegion: MapRegion) {
+export function useMapCamera(initialRegion: MapRegion) {
   const cameraRef = useRef<MapView>(null);
 
   const animateToRegion = (region: MapRegion, duration = 800) => {
@@ -178,7 +176,7 @@ export function useMapLibreCamera(initialRegion: MapRegion) {
 
 // ─── Overlay components ───────────────────────────────────────────────────────
 
-export function MapLibreCircleOverlay({
+export function MapCircleOverlay({
   center,
   radiusMeters,
   fillColor,
@@ -206,7 +204,7 @@ export function MapLibreCircleOverlay({
   );
 }
 
-export function MapLibrePolylineOverlay({
+export function MapPolylineOverlay({
   coordinates,
   color,
   width = 4,
@@ -240,7 +238,7 @@ export function MapLibrePolylineOverlay({
   );
 }
 
-export function MapLibreMarker({
+export function MapMarker({
   coordinate,
   anchor,
   onPress,
