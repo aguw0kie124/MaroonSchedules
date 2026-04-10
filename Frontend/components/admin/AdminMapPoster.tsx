@@ -11,7 +11,7 @@ import { requestJson } from '../../api/client';
 import { normalizeExternalUrl } from '../../services/url';
 import { getAdminLocationSuggestions, resolveAdminEventLocation } from '../../services/adminEventLocation';
 import { LogOut, PlusCircle, ImagePlus, Sparkles, MapPinned } from 'lucide-react-native';
-import { uploadStreamImage } from '../../services/streamFeeds';
+import { uploadMediaImage } from '../../services/socialFeedService';
 import { useSessionStore } from '../../store/sessionStore';
 import { TagSelector } from './TagSelector';
 import { TagChips } from '../common/TagChips';
@@ -157,7 +157,7 @@ export function AdminMapPoster() {
       }
       const normalizedReviewUrl = normalizeExternalUrl(googleReviewUrl);
       const resolvedLocation = resolveAdminEventLocation(address);
-      const uploadedImageUrl = imageUri ? await uploadStreamImage(imageUri) : null;
+      const uploadedImageUrl = imageUri ? await uploadMediaImage(imageUri) : null;
 
       if (postKind === 'event') {
         await requestJson('/admin/events', {

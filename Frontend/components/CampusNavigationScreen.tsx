@@ -61,10 +61,10 @@ import { buildExpandedPlacesDirectory, getLocationSelectionId } from './places/c
 import { getCategoryColor, getCategoryIcon } from './places/utils';
 import { buildGlobalRoute, isCoordinateNearTexasAM, searchGlobalPlaces } from '../services/globalMap';
 import {
-  MapLibreMarker,
-  MapLibrePolylineOverlay,
-  useMapLibreCamera,
-} from './map/mapLibreUtils';
+  MapMarker,
+  MapPolylineOverlay,
+  useMapCamera,
+} from './map/mapUtils';
 
 type NavMode = 'idle' | 'selected' | 'navigating';
 type TravelMode = 'walk' | 'drive' | 'bus';
@@ -312,7 +312,7 @@ export function CampusNavigationScreen() {
     latitude: DEFAULT_USER_LOCATION.latitude,
     longitude: DEFAULT_USER_LOCATION.longitude,
   });
-  const { cameraRef, defaultCamera, animateToRegion, animateCamera, fitToCoordinates } = useMapLibreCamera(TAMU_CENTER);
+  const { cameraRef, defaultCamera, animateToRegion, animateCamera, fitToCoordinates } = useMapCamera(TAMU_CENTER);
   const mapRef = useRef<{
     animateToRegion: typeof animateToRegion;
     animateCamera: typeof animateCamera;
@@ -971,7 +971,7 @@ export function CampusNavigationScreen() {
         >
           {/* Route polyline */}
           {(activeTransitPlan || activeRoute) && (
-            <MapLibrePolylineOverlay
+            <MapPolylineOverlay
               id="campus-navigation-route"
               coordinates={activeTransitPlan?.polyline || activeRoute?.polyline || []}
               color={activeTransitPlan?.routeColor || COLORS.primary}
@@ -981,7 +981,7 @@ export function CampusNavigationScreen() {
           )}
 
           {/* User location marker */}
-          <MapLibreMarker
+          <MapMarker
             id="campus-navigation-user"
             coordinate={userCoord}
             anchor={{ x: 0.5, y: 0.5 }}
@@ -989,9 +989,9 @@ export function CampusNavigationScreen() {
             <Animated.View style={[styles.userMarker, { transform: [{ scale: pulseAnim }] }]}>
               <MapPin size={18} color="#FFFFFF" />
             </Animated.View>
-          </MapLibreMarker>
+          </MapMarker>
           {manualOrigin && (
-            <MapLibreMarker
+            <MapMarker
               id="campus-navigation-origin"
               coordinate={manualOrigin.coordinate}
               anchor={{ x: 0.5, y: 0.5 }}
@@ -999,10 +999,10 @@ export function CampusNavigationScreen() {
               <View style={styles.startMarker}>
                 <Text style={styles.startMarkerText}>S</Text>
               </View>
-            </MapLibreMarker>
+            </MapMarker>
           )}
           {transitStopMarkers.map((stop) => (
-            <MapLibreMarker
+            <MapMarker
               key={stop.key}
               id={`campus-navigation-stop-${stop.key}`}
               coordinate={stop.coordinate}
@@ -1023,10 +1023,10 @@ export function CampusNavigationScreen() {
                   stop.badge === 'Board' ? styles.transitStopPinBoard : styles.transitStopPinExit,
                 ]} />
               </View>
-            </MapLibreMarker>
+            </MapMarker>
           ))}
           {destinationCoord ? (
-            <MapLibreMarker
+            <MapMarker
               id="campus-navigation-destination"
               coordinate={destinationCoord}
               anchor={{ x: 0.5, y: 0.5 }}
@@ -1034,9 +1034,9 @@ export function CampusNavigationScreen() {
               <View style={styles.destinationMarker}>
                 <Text style={styles.destinationMarkerText}>E</Text>
               </View>
-            </MapLibreMarker>
+            </MapMarker>
           ) : null}
-          <MapLibreMarker
+          <MapMarker
             id="campus-navigation-user-label"
             coordinate={{ latitude: userCoord.latitude + 0.00012, longitude: userCoord.longitude }}
             anchor={{ x: 0.5, y: 1 }}
@@ -1044,13 +1044,13 @@ export function CampusNavigationScreen() {
             <View style={styles.youBadge}>
               <Text style={styles.youBadgeText}>You are here</Text>
             </View>
-          </MapLibreMarker>
+          </MapMarker>
 
           {/* Discovery markers */}
           {discoveryMarkers.map((location) => {
             const markerColor = getCategoryColor(location.type);
             return (
-              <MapLibreMarker
+              <MapMarker
                 key={getLocationSelectionId(location)}
                 id={`campus-navigation-discovery-${getLocationSelectionId(location)}`}
                 coordinate={toCoordinateFromLocation(location)}
@@ -1068,7 +1068,7 @@ export function CampusNavigationScreen() {
                 >
                   {getCategoryIcon(location.type, '#FFFFFF', 18)}
                 </View>
-              </MapLibreMarker>
+              </MapMarker>
             );
           })}
         </MapView>

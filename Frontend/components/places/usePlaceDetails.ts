@@ -10,7 +10,7 @@ import type { CampusLocation } from "./types";
 
 export function usePlaceDetails(selectedId: string | null, locations: CampusLocation[]) {
   const { user } = useUser();
-  const [streamReviews, setStreamReviews] = useState<any[]>([]);
+  const [reviews, setReviews] = useState<any[]>([]);
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
   const [newRating, setNewRating] = useState(5);
   const [newReviewText, setNewReviewText] = useState("");
@@ -28,11 +28,11 @@ export function usePlaceDetails(selectedId: string | null, locations: CampusLoca
   const fetchReviews = useCallback(async (placeId: string, limit = 5) => {
     if (limit > 5) setIsFetchingReviews(true);
     try {
-      const { getPlaceReviews } = require("../../services/streamFeeds");
+      const { getPlaceReviews } = require("../../services/socialFeedService");
       const revs = await getPlaceReviews(placeId, limit);
-      setStreamReviews(revs);
+      setReviews(revs);
     } catch (e) {
-      console.warn("Failed to fetch stream reviews", e);
+      console.warn("Failed to fetch reviews", e);
     } finally {
       setIsFetchingReviews(false);
     }
@@ -42,7 +42,7 @@ export function usePlaceDetails(selectedId: string | null, locations: CampusLoca
     if (!selectedId || !newReviewText.trim() || newRating === 0) return;
     setIsPostingReview(true);
     try {
-      const { postPlaceReview } = require("../../services/streamFeeds");
+      const { postPlaceReview } = require("../../services/socialFeedService");
       await postPlaceReview({
         userId: user?.id || "anonymous",
         userName: user?.fullName || user?.username || "Aggie User",
@@ -131,7 +131,7 @@ export function usePlaceDetails(selectedId: string | null, locations: CampusLoca
   }, [activeDiningMealPeriod, activeDiningMenu, loadBestDiningPreview]);
 
   return {
-    streamReviews,
+    reviews,
     reviewModalVisible,
     setReviewModalVisible,
     newRating,

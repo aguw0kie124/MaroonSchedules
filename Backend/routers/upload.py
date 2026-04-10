@@ -20,6 +20,7 @@ MAX_VIDEO_BYTES = int(os.getenv("MAX_VIDEO_UPLOAD_BYTES", str(50 * 1024 * 1024))
 
 ALLOWED_IMAGE_TYPES = {
     "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
     "image/png": ".png",
     "image/webp": ".webp",
     "image/heic": ".heic",
@@ -29,8 +30,10 @@ ALLOWED_IMAGE_TYPES = {
 ALLOWED_VIDEO_TYPES = {
     "video/mp4": ".mp4",
     "video/quicktime": ".mov",
+    "video/mov": ".mov",
     "video/webm": ".webm",
 }
+
 
 def get_file_extension(filename: str) -> str:
     return os.path.splitext(filename)[1].lower()

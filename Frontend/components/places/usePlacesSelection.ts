@@ -70,33 +70,11 @@ export function usePlacesSelection({
 
   const loadBestDiningPreview = useCallback(
     async (locationName: string, preferredMeal: DiningMealPeriod) => {
-      const mealOptions = getDiningMealOptionsForLocation(locationName);
-      const firstMeal =
-        mealOptions.find((meal) => meal === preferredMeal) ||
-        mealOptions[0] ||
-        preferredMeal;
-      const orderedMeals: DiningMealPeriod[] = [
-        firstMeal,
-        ...mealOptions.filter((meal) => meal !== firstMeal),
-      ];
-      let fallbackPreview: any = null;
-      let fallbackMeal = firstMeal;
-
-      for (const meal of orderedMeals) {
-        const preview = await fetchDiningFullMenuCached({
-          location: locationName,
-          mealPeriod: meal,
-        }).catch(() => null);
-        if (!fallbackPreview) {
-          fallbackPreview = preview;
-          fallbackMeal = meal;
-        }
-        if (preview?.success && preview?.categories?.length) {
-          return { preview, meal };
-        }
-      }
-
-      return { preview: fallbackPreview, meal: fallbackMeal };
+      const preview = await fetchDiningFullMenuCached({
+        location: locationName,
+        mealPeriod: preferredMeal,
+      }).catch(() => null);
+      return { preview, meal: preferredMeal };
     },
     [],
   );

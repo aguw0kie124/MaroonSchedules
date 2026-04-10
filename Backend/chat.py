@@ -126,26 +126,6 @@ async def list_users(request: Request, exclude_id: str = "", _auth_user_id: str 
         print(f"Clerk API Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/token")
-@router.post("/feeds/token")
-@limiter.limit("5/minute")
-async def get_noop_token(request: Request, body: Dict[str, Any], auth_user_id: str = Depends(require_auth)):
-    """Actually sync the user to our DB during the connection phase to fix the Aggie bug."""
-    clerk_id = body.get("clerk_user_id") or auth_user_id
-    ensure_matching_user(auth_user_id, clerk_id, detail="You can only initialize chat as yourself")
-    if clerk_id:
-        user_repository.upsert_user(
-            clerk_id=clerk_id,
-            full_name=body.get("name"),
-            profile_image_url=body.get("image")
-        )
-    
-    return {
-        "stream_user_id": clerk_id or "native_user",
-        "stream_user_token": "native_flow_no_stream_needed",
-        "stream_api_key": "native"
-    }
-
 # --- Feed Proxy (Now 100% Native) ---
 
 @router.get("/feeds/proxy/{feed_group}/{feed_id}")
@@ -321,8 +301,23 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
             if not images and "attachments" in activity:
                 images = [att.get("image_url") or att.get("asset_url") for att in activity["attachments"] if att.get("image_url") or att.get("asset_url")]
 
-            lat = custom.get("lat") or custom.get("place_lat") or custom.get("location_lat")
-            lng = custom.get("lng") or custom.get("place_lng") or custom.get("location_lng")
+            lat = custom.get("lat")
+            if lat in (None, ""): lat = custom.get("place_lat")
+            if lat in (None, ""): lat = custom.get("location_lat")
+            
+            lng = custom.get("lng")
+            if lng in (None, ""): lng = custom.get("place_lng")
+            if lng in (None, ""): lng = custom.get("location_lng")
+
+            try:
+                fl_lat = float(lat) if lat not in (None, "") else None
+            except ValueError:
+                fl_lat = None
+
+            try:
+                fl_lng = float(lng) if lng not in (None, "") else None
+            except ValueError:
+                fl_lng = None
 
             feed_repository.add_crowdping_post(
                 user_id=user_id,
@@ -330,8 +325,8 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
                 post_type=verb,
                 user_name=custom.get("user_name", "Aggie"),
                 user_image=custom.get("user_image", ""),
-                lat=float(lat) if lat is not None else None,
-                lng=float(lng) if lng is not None else None,
+                lat=fl_lat,
+                lng=fl_lng,
                 location_tag=custom.get("location_tag", ""),
                 images=images,
                 is_anonymous=bool(custom.get("is_anonymous", False)),

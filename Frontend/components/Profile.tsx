@@ -50,7 +50,7 @@ import * as Linking from 'expo-linking';
 import { fetchCampusOverview, fetchUserProfile } from '../api/client';
 import { PARKING_PERMIT_OPTIONS, useAppShellStore } from '../store/appShellStore';
 import { useSessionStore } from '../store/sessionStore';
-import { deleteAccount, getBlockedUsers, unblockUser } from '../services/streamFeeds';
+import { deleteAccount, getBlockedUsers, unblockUser } from '../services/socialFeedService';
 import { useTour, TourTarget } from './onboarding/TourProvider';
 import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme } from './SharedUI';
