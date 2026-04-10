@@ -185,6 +185,8 @@ export function Profile() {
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
   const [profileTags, setProfileTags] = useState<string[]>([]);
+  const scrollRef = React.useRef<ScrollView | null>(null);
+  const finishCardYRef = React.useRef(0);
 
   const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
   const accentRatio = useMemo(() => getRatioFromColor(accentColor), [accentColor]);
@@ -219,6 +221,14 @@ export function Profile() {
       }),
     [updateAccentFromPosition],
   );
+
+  const scrollToFinishCard = React.useCallback((animated = true) => {
+    if (!scrollRef.current) return;
+    scrollRef.current.scrollTo({
+      y: Math.max(0, finishCardYRef.current - 140),
+      animated,
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -256,6 +266,22 @@ export function Profile() {
         loadBlockedUsers();
     }
   }, [activeTab, isGuest, user]);
+
+  useEffect(() => {
+    if ((activeTargetName === 'tour-finish' || activeTargetName === 'settings-tab') && activeTab !== 'personal') {
+      setActiveTab('personal');
+    }
+  }, [activeTab, activeTargetName, setActiveTab]);
+
+  useEffect(() => {
+    if (activeTargetName !== 'tour-finish' || activeTab !== 'personal') {
+      return;
+    }
+    const timer = setTimeout(() => {
+      scrollToFinishCard();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [activeTab, activeTargetName, scrollToFinishCard]);
 
   const loadBlockedUsers = async () => {
     if (!user) return;
@@ -461,6 +487,14 @@ export function Profile() {
           colors={[COLORS.primary, '#9B2C2C']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
+          onLayout={(event) => {
+            finishCardYRef.current = event.nativeEvent.layout.y;
+            if (activeTargetName === 'tour-finish') {
+              setTimeout(() => {
+                scrollToFinishCard();
+              }, 0);
+            }
+          }}
           style={{ 
             marginTop: 24, 
             padding: 24, 
@@ -1131,6 +1165,7 @@ export function Profile() {
       ) : null}
 
       <ScrollView
+        ref={scrollRef}
         style={[styles.container, useWallpaper && styles.transparentContainer]}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}

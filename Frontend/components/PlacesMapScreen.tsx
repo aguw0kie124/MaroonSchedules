@@ -100,7 +100,7 @@ import { usePlacesSelection } from "./places/usePlacesSelection";
 import { useScheduleMap } from "./places/useScheduleMap";
 
 // ── Shared data / utilities ───────────────────────────────────
-import { TourProvider, useTour } from "./onboarding/TourProvider";
+import { TourProvider, TourTarget, useTour } from "./onboarding/TourProvider";
 import {
   TAMU_CENTER,
   ALL_BUS_ROUTES_KEY,
@@ -235,7 +235,17 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const currentBusRouteFetchId = useRef<string | null>(null);
   const lastPlacesFitKey = useRef<string | null>(null);
   const [isListDroppedDown, setIsListDroppedDown] = useState(false);
+  const listDropdownScrollRef = useRef<ScrollView | null>(null);
+  const recCenterDropdownYRef = useRef(0);
   const { activeTargetName, advanceStep } = useTour();
+
+  const scrollToRecCenterDropdownItem = useCallback(() => {
+    if (!listDropdownScrollRef.current) return;
+    listDropdownScrollRef.current.scrollTo({
+      y: Math.max(0, recCenterDropdownYRef.current - 16),
+      animated: true,
+    });
+  }, []);
 
   // Onboarding: Force expand list when targeting items inside it
   useEffect(() => {
@@ -251,6 +261,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setIsListDroppedDown(true);
     }
   }, [activeTargetName]);
+
+  useEffect(() => {
+    if (activeTargetName !== "rec-center-item" || !isListDroppedDown) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      scrollToRecCenterDropdownItem();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [activeTargetName, isListDroppedDown, scrollToRecCenterDropdownItem]);
 
   // ── UI state ──────────────────────────────────────────────
   const [activeLayer, setActiveLayer] = useState<string>("Pulse");
@@ -685,6 +705,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setIsSearchExpanded(false);
       setSearchQuery("");
       setShowSearchResults(false);
+
+      if (
+        activeTargetName === "rec-center-item" &&
+        getCanonicalLocationName(loc.location) ===
+          getCanonicalLocationName("Student Recreation Center")
+      ) {
+        InteractionManager.runAfterInteractions(() => {
+          advanceStep("rec-center-item");
+        });
+      }
       
       // Center map on selected location
       if (loc?.coord && mapRef.current) {
@@ -708,7 +738,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           );
         }
       }
-    }, [isMapTilted]),
+    }, [activeTargetName, advanceStep, isMapTilted, pulseHotspots]),
   });
   const selectedHotspot = useMemo(
     () =>
@@ -2569,18 +2599,43 @@ export function PlacesMapScreen({ route, navigation }: any) {
                       ]}
                     >
                       <ScrollView
+                        ref={listDropdownScrollRef}
                         style={{ maxHeight: 320 }}
                         showsVerticalScrollIndicator={false}
                       >
-                        {sortedFilteredLocations.map((loc) => (
-                          <TouchableOpacity
-                            key={loc.location}
-                            style={(styles as any).listDropdownItem}
-                            onPress={() => {
-                              handleSelectLocation(loc);
-                              setIsListDroppedDown(false);
-                            }}
-                          >
+                        {sortedFilteredLocations.map((loc) => {
+                          const isRecCenterTourItem =
+                            getCanonicalLocationName(loc.location) ===
+                            getCanonicalLocationName("Student Recreation Center");
+
+                          const item = (
+                            <TouchableOpacity
+                              key={loc.location}
+                              style={(styles as any).listDropdownItem}
+                              onLayout={
+                                isRecCenterTourItem
+                                  ? (event) => {
+                                      recCenterDropdownYRef.current =
+                                        event.nativeEvent.layout.y;
+                                      if (activeTargetName === "rec-center-item") {
+                                        setTimeout(scrollToRecCenterDropdownItem, 0);
+                                      }
+                                    }
+                                  : undefined
+                              }
+                              onPress={() => {
+                                handleSelectLocation(loc);
+                                setIsListDroppedDown(false);
+                                if (
+                                  isRecCenterTourItem &&
+                                  activeTargetName === "rec-center-item"
+                                ) {
+                                  setTimeout(() => {
+                                    advanceStep("rec-center-item");
+                                  }, 0);
+                                }
+                              }}
+                            >
                             <View style={{ flex: 1 }}>
                               <Text
                                 style={(styles as any).listDropdownItemTitle}
@@ -2606,8 +2661,29 @@ export function PlacesMapScreen({ route, navigation }: any) {
                               size={16}
                               color={COLORS.textTertiary}
                             />
-                          </TouchableOpacity>
-                        ))}
+                            </TouchableOpacity>
+                          );
+
+                          if (!isRecCenterTourItem) {
+                            return item;
+                          }
+
+                          return (
+                            <TourTarget
+                              key={`tour-${loc.location}`}
+                              name="rec-center-item"
+                              assistAction={() => {
+                                handleSelectLocation(loc);
+                                setIsListDroppedDown(false);
+                                setTimeout(() => {
+                                  advanceStep("rec-center-item");
+                                }, 0);
+                              }}
+                            >
+                              {item}
+                            </TourTarget>
+                          );
+                        })}
                       </ScrollView>
                     </View>
                   )}

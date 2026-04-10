@@ -12,7 +12,7 @@ import { ShareContent } from "../../store/shareStore";
 import { Card } from "../SharedUI";
 import type { CampusLocation } from "./types";
 import { SCREEN_HEIGHT } from "./types";
-import type { ScheduleMapOption } from "./types";
+import type { ScheduleMapOption, ScheduleMeetingEntry } from "./types";
 import {
   getCategoryIcon,
   getDistanceLabel,
@@ -278,8 +278,9 @@ export function PlacesList({
       );
     }
 
-    const handleTimelineGetDirections = (building: string) => {
+    const handleTimelineGetDirections = (entry: ScheduleMeetingEntry) => {
       if (!openNavigationToLocation) return;
+      const building = entry.locationLabel || entry.building || "";
 
       // Try to find full location data
       const loc = sortedFilteredLocations.find(l =>
@@ -295,7 +296,7 @@ export function PlacesList({
         openNavigationToLocation({
           location: building,
           type: "Building",
-          coord: (nextEntry && (nextEntry as any).lat) ? { lat: (nextEntry as any).lat, lng: (nextEntry as any).lng } : { lat: 30.6181, lng: -96.3365 }
+          coord: (entry.lat && entry.lng) ? { lat: entry.lat, lng: entry.lng } : { lat: 30.6181, lng: -96.3365 }
         } as any);
       }
     };
@@ -364,74 +365,7 @@ export function PlacesList({
 
     return (
       <Card key={`list-${getLocationSelectionId(loc)}`} style={[styles.placesSheetItemCard, compact && styles.placesSheetItemCardCompact]}>
-        {loc.location === "Student Recreation Center" ? (
-          <TourTarget
-            name="rec-center-item"
-            style={{ flex: 1 }}
-            assistAction={() => {
-              handleSelectLocation(loc);
-              setTimeout(() => advanceStep('rec-center-item'), 700);
-            }}
-          >
-            <TouchableOpacity
-              activeOpacity={0.9}
-              style={styles.placesSheetItemPressable}
-              onPress={() => {
-                handleSelectLocation(loc);
-              }}
-            >
-              <View style={styles.placesSheetItemIcon}>
-                {React.cloneElement(
-                  getCategoryIcon(loc.type) as React.ReactElement<any>,
-                  {
-                    size: compact ? 16 : 18,
-                    color: "#F3F1ED",
-                  },
-                )}
-              </View>
-              <View style={styles.placesSheetItemBody}>
-                <View style={styles.placesSheetItemTagRow}>
-                  {(loc.type !== "Dining" && loc.type !== "Hub") ? (
-                    <View style={styles.placesSheetItemTag}>
-                      <Text style={styles.placesSheetItemTagText}>{loc.type}</Text>
-                    </View>
-                  ) : null}
-                  {secondaryMeta && secondaryMeta !== loc.type ? (
-                    <Text style={styles.placesSheetItemTagMeta} numberOfLines={1}>
-                      {secondaryMeta}
-                    </Text>
-                  ) : null}
-                </View>
-                <View style={styles.placesSheetItemHeader}>
-                  <Text style={styles.placesSheetItemTitle} numberOfLines={1}>
-                    {loc.location}
-                  </Text>
-                  <Text style={styles.placesSheetItemDistance}>
-                    {getDistanceLabel(distanceMeters)}
-                  </Text>
-                </View>
-                <Text style={styles.placesSheetItemMeta} numberOfLines={compact ? 1 : 2}>
-                  {primaryMeta}
-                </Text>
-                {statusChips.length ? (
-                  <View style={styles.placesSheetItemStatusRow}>
-                    {statusChips.slice(0, 3).map((chip) => (
-                      <View key={`${getLocationSelectionId(loc)}-${chip}`} style={styles.placesSheetItemStatusChip}>
-                        <Text style={styles.placesSheetItemStatusChipText}>{chip}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-                {parkingRecommendation ? (
-                  <Text style={styles.placesSheetItemHint} numberOfLines={1}>
-                    {parkingRecommendation.badge} · {parkingRecommendation.detail}
-                  </Text>
-                ) : null}
-              </View>
-              <ChevronRight size={16} color={COLORS.textTertiary} />
-            </TouchableOpacity>
-          </TourTarget>
-        ) : (
+
           <TouchableOpacity
             activeOpacity={0.9}
             style={styles.placesSheetItemPressable}
@@ -487,7 +421,6 @@ export function PlacesList({
             </View>
             <ChevronRight size={16} color={COLORS.textTertiary} />
           </TouchableOpacity>
-        )}
       </Card>
     );
   };
