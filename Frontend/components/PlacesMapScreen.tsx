@@ -67,7 +67,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { connectFeedsUser, toggleVote } from "../services/streamFeeds";
+import { initializeFeedUser, toggleVote } from "../services/socialFeedService";
 import { API_URL } from "../config";
 
 import { useCampusHubStore } from "../store/campusHubStore";
@@ -502,7 +502,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const isFetchingRef = useRef(false);
 
   // ── Review / dining state ─────────────────────────────────
-  const [streamReviews, setStreamReviews] = useState<any[]>([]);
+  const [reviews, setReviews] = useState<any[]>([]);
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
   const [newRating, setNewRating] = useState(5);
   const [newReviewText, setNewReviewText] = useState("");
@@ -1093,11 +1093,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const fetchReviews = useCallback(async (placeId: string, limit = 5) => {
     if (limit > 5) setIsFetchingReviews(true);
     try {
-      const { getPlaceReviews } = require("../services/streamFeeds");
+      const { getPlaceReviews } = require("../services/socialFeedService");
       const revs = await getPlaceReviews(placeId, limit);
-      setStreamReviews(revs);
+      setReviews(revs);
     } catch (e) {
-      console.warn("Failed to fetch stream reviews", e);
+      console.warn("Failed to fetch reviews", e);
     } finally {
       setIsFetchingReviews(false);
     }
@@ -1108,7 +1108,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (!selectedReviewId || !newReviewText.trim() || newRating === 0) return;
     setIsPostingReview(true);
     try {
-      const { postPlaceReview } = require("../services/streamFeeds");
+      const { postPlaceReview } = require("../services/socialFeedService");
       await postPlaceReview(selectedReviewId, newRating, newReviewText.trim());
       setReviewModalVisible(false);
       setNewReviewText("");
@@ -1967,7 +1967,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (selectedId && selectedReviewId) {
       fetchReviews(selectedReviewId);
     } else {
-      setStreamReviews([]);
+      setReviews([]);
     }
   }, [selectedId, selectedLoc, fetchReviews]);
 
@@ -1988,7 +1988,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   useEffect(() => {
     if (user?.id) {
       try {
-        connectFeedsUser(user);
+        initializeFeedUser(user);
       } catch (_) {}
     }
   }, [user]);
@@ -2788,7 +2788,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         selectedId={selectedId}
         setSelectedId={setSelectedId}
         selectedLoc={selectedLoc}
-        streamReviews={streamReviews}
+        reviews={reviews}
         reviewModalVisible={reviewModalVisible}
         setReviewModalVisible={setReviewModalVisible}
         newRating={newRating}

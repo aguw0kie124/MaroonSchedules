@@ -126,26 +126,6 @@ async def list_users(request: Request, exclude_id: str = "", _auth_user_id: str 
         print(f"Clerk API Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/token")
-@router.post("/feeds/token")
-@limiter.limit("5/minute")
-async def get_noop_token(request: Request, body: Dict[str, Any], auth_user_id: str = Depends(require_auth)):
-    """Actually sync the user to our DB during the connection phase to fix the Aggie bug."""
-    clerk_id = body.get("clerk_user_id") or auth_user_id
-    ensure_matching_user(auth_user_id, clerk_id, detail="You can only initialize chat as yourself")
-    if clerk_id:
-        user_repository.upsert_user(
-            clerk_id=clerk_id,
-            full_name=body.get("name"),
-            profile_image_url=body.get("image")
-        )
-    
-    return {
-        "stream_user_id": clerk_id or "native_user",
-        "stream_user_token": "native_flow_no_stream_needed",
-        "stream_api_key": "native"
-    }
-
 # --- Feed Proxy (Now 100% Native) ---
 
 @router.get("/feeds/proxy/{feed_group}/{feed_id}")

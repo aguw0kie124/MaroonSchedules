@@ -42,7 +42,7 @@ import {
   DiningMealPeriod,
   isDiningHallMenuLocation,
 } from "../../services/diningMenuCache";
-import { reportContent, blockUser, deleteReview } from "../../services/streamFeeds";
+import { reportContent, blockUser, deleteReview } from "../../services/socialFeedService";
 import { Alert } from "react-native";
 
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.94;
@@ -141,7 +141,7 @@ interface LocationBottomSheetProps {
   selectedLoc: CampusLocation | undefined;
   // Sheet state is managed internally
   // Reviews
-  streamReviews: any[];
+  reviews: any[];
   reviewModalVisible: boolean;
   setReviewModalVisible: (v: boolean) => void;
   newRating: number;
@@ -191,7 +191,7 @@ export function LocationBottomSheet({
   selectedId,
   setSelectedId,
   selectedLoc,
-  streamReviews,
+  reviews,
   reviewModalVisible,
   setReviewModalVisible,
   newRating,
@@ -893,8 +893,8 @@ export function LocationBottomSheet({
                         </View>
                       </View>
 
-                      {streamReviews.length > 0 ? (
-                        streamReviews.slice(0, 3).map((rev, i) => (
+                      {reviews.length > 0 ? (
+                        reviews.slice(0, 3).map((rev, i) => (
                           <View key={rev.id || i} style={styles.reviewItem}>
                             <View style={styles.reviewMeta}>
                               <View style={styles.reviewUserRow}>
@@ -1046,8 +1046,8 @@ export function LocationBottomSheet({
                     </View>
                   </View>
 
-                  {streamReviews.length > 0 ? (
-                    streamReviews.slice(0, 3).map((rev, i) => (
+                  {reviews.length > 0 ? (
+                    reviews.slice(0, 3).map((rev, i) => (
                       <View key={rev.id || i} style={styles.reviewItem}>
                         <View style={styles.reviewMeta}>
                           <View style={styles.reviewUserRow}>
@@ -1234,8 +1234,8 @@ export function LocationBottomSheet({
                     contentContainerStyle={styles.fullReviewsScroll}
                     showsVerticalScrollIndicator={false}
                   >
-                    {streamReviews.length > 0 ? (
-                      streamReviews.map((rev, i) => (
+                    {reviews.length > 0 ? (
+                      reviews.map((rev, i) => (
                         <View key={i} style={styles.reviewItem}>
                           <View style={styles.reviewMeta}>
                             <Text style={styles.reviewUser}>{rev.user}</Text>

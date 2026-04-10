@@ -72,14 +72,14 @@ import { TourTarget, useTour } from './onboarding/TourProvider';
 import {
   addComment,
   addPing,
-  connectFeedsUser,
+  initializeFeedUser,
   deletePing,
   getComments,
   getPingFeed,
   toggleLike,
   toggleVote,
-  uploadStreamImage,
-} from '../services/streamFeeds';
+  uploadMediaImage,
+} from '../services/socialFeedService';
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
 import { useSessionStore } from '../store/sessionStore';
 
@@ -413,7 +413,7 @@ export function CampusPingsScreen() {
   });
 
   const [feedConnected, setFeedConnected] = useState(false);
-  const [streamError, setStreamError] = useState<string | null>(null);
+  const [feedError, setFeedError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<'All' | PingCategory>('All');
@@ -492,7 +492,7 @@ export function CampusPingsScreen() {
     setRefreshing(true);
     try {
       if (user) {
-        connectFeedsUser(user);
+        initializeFeedUser(user);
         setFeedConnected(true);
       }
       await Promise.all([refetchFeatured(), refetchPings()]);
@@ -506,10 +506,10 @@ export function CampusPingsScreen() {
   useEffect(() => {
     if (user && !feedConnected) {
       try {
-        connectFeedsUser(user);
+        initializeFeedUser(user);
         setFeedConnected(true);
       } catch (e) {
-        setStreamError('Live pings are unavailable.');
+        setFeedError('Live pings are unavailable.');
       }
     }
   }, [user, feedConnected]);
@@ -715,7 +715,7 @@ export function CampusPingsScreen() {
     try {
       let uploadedImageUrl: string | undefined;
       if (composerImageUri) {
-        uploadedImageUrl = await uploadStreamImage(composerImageUri);
+        uploadedImageUrl = await uploadMediaImage(composerImageUri);
       }
 
       await addPing({

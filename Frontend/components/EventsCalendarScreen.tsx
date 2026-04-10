@@ -65,7 +65,7 @@ import { useAppShellStore } from '../store/appShellStore';
 import { useSessionStore } from '../store/sessionStore';
 import { scheduleAdminEventReviewNotification, scheduleEventNotification } from '../services/notificationService';
 import { promptGuestLogin } from '../utils/guestAccess';
-import { blockUser, reportContent } from '../services/streamFeeds';
+import { blockUser, reportContent } from '../services/socialFeedService';
 import { TagChips } from './common/TagChips';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');

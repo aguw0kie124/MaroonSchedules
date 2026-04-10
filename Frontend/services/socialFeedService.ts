@@ -12,10 +12,7 @@ async function feedFetch(path: string, init: RequestInit = {}, timeoutMs?: numbe
   return apiFetch(path, { ...init, headers }, timeoutMs);
 }
 
-/**
- * Connect the current Clerk user to the feed system.
- */
-export function connectFeedsUser(
+export function initializeFeedUser(
     clerkUser: any, 
     _forceRefresh = false
 ): { id: string } {
@@ -28,7 +25,7 @@ export function connectFeedsUser(
   return { id: clerkUserId };
 }
 
-export async function uploadStreamImage(uri: string): Promise<string> {
+export async function uploadMediaImage(uri: string): Promise<string> {
   try {
     const filename = uri.split('/').pop() || 'upload.jpg';
     const match = /\.(\w+)$/.exec(filename);
@@ -58,7 +55,7 @@ export async function uploadStreamImage(uri: string): Promise<string> {
   }
 }
 
-export async function uploadStreamFile(uri: string): Promise<string> {
+export async function uploadMediaFile(uri: string): Promise<string> {
   try {
     const filename = uri.split('/').pop() || 'video.mp4';
     const match = /\.(\w+)$/.exec(filename);
