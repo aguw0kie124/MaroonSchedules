@@ -250,9 +250,9 @@ function getPersonalizationScore(
 function isInternalSourceName(name: string | undefined | null): boolean {
   if (!name) return true;
   return /^(feeds?|transport_rss|rss_directory)[:\-_]/.test(name) ||
-         /^[a-z_]+:feed_\d+$/i.test(name) ||
-         name === 'legacy_tracker' ||
-         name === 'admin_portal';
+    /^[a-z_]+:feed_\d+$/i.test(name) ||
+    name === 'legacy_tracker' ||
+    name === 'admin_portal';
 }
 
 export const CATEGORY_META: Record<
@@ -385,7 +385,9 @@ function resolveEventImageUrl(value?: string | null) {
 }
 
 function classifyCategory(event: TAMUEvent): ExploreCategory {
+  if (event.is_admin_event) return 'Featured';
   if (event.categories) {
+    if (event.categories.featured) return 'Featured';
     if (event.categories.food) return 'Food';
     if (event.categories.sports) return 'Sports';
     if (event.categories.entertainment) return 'Entertainment';
@@ -835,6 +837,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const navigation = useNavigation<any>();
   const { user } = useUser();
   const s = useMemo(() => getStyles(COLORS, isDark, embedded), [COLORS, isDark, embedded]);
+  const isGuest = useSessionStore((state) => state.isGuest);
 
   const { advanceStep, activeTargetName } = useTour();
 
@@ -1078,9 +1081,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       if (event._forYouMatched) {
         counts['For U'] += 1;
       }
-      if (event.is_admin_event) {
-        counts.Featured += 1;
-      }
       const category = event._category || classifyCategory(event);
       counts[category] += 1;
     });
@@ -1208,7 +1208,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     if (standardSelectedCategories.length === 0) return filteredUpcomingEvents;
     return filteredUpcomingEvents.filter((event) => {
       const category = event._category || classifyCategory(event);
-      return category !== 'For U' && standardSelectedCategories.includes(category);
+      return category !== 'For U' && (standardSelectedCategories as ExploreCategory[]).includes(category);
     });
   }, [filteredUpcomingEvents, standardSelectedCategories]);
 
@@ -1808,7 +1808,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   <StaggeredReveal index={index}>
                     <ListEventRow
                       event={item}
-
+                      isGuest={isGuest}
                       saved={savedEventIds.includes(String(item.id))}
                       scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(item.id))}
                       onPress={() => {
@@ -1955,6 +1955,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
         saved={detailEvent ? savedEventIds.includes(String(detailEvent.id)) : false}
         scheduled={detailEvent ? scheduledEvents.some((scheduled) => String(scheduled.id) === String(detailEvent.id)) : false}
+        isGuest={isGuest}
       />
     </View>
   );
@@ -2430,6 +2431,7 @@ function DetailModal({
 
   saved,
   scheduled,
+  isGuest,
 }: {
   event: TAMUEvent | null;
   onClose: () => void;
@@ -2443,6 +2445,7 @@ function DetailModal({
 
   saved: boolean;
   scheduled: boolean;
+  isGuest: boolean;
 }) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
@@ -2581,23 +2584,29 @@ function DetailModal({
                   Places
                 </Text>
               </Pressable>
-            ) : event.location_lat != null && event.location_lng != null ? null : (
+            ) : (
               <Pressable
+                disabled={!event.location || event.location === 'TBA'}
                 style={[
                   stylesStatic.secondaryDetailButton,
                   {
                     borderColor: COLORS.border,
                     backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.03)',
+                    opacity: (!event.location || event.location === 'TBA') ? 0.35 : 1,
                   },
                 ]}
                 onPress={() => {
-                  if (event.location_lat != null && event.location_lng != null) {
-                    openNativeMaps(event.location_lat, event.location_lng, event.location || event.title);
+                  if (event.location && event.location !== 'TBA') {
+                    const query = encodeURIComponent(event.location);
+                    const url = Platform.OS === 'ios' ? `maps:0,0?q=${query}` : `geo:0,0?q=${query}`;
+                    Linking.openURL(url).catch(() => {
+                      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
+                    });
                   }
                 }}
               >
-                <MapPin size={18} color={COLORS.textPrimary} />
-                <Text style={[stylesStatic.secondaryDetailButtonText, { color: COLORS.textPrimary }]}>
+                <MapPin size={18} color={(!event.location || event.location === 'TBA') ? COLORS.textTertiary : COLORS.textPrimary} />
+                <Text style={[stylesStatic.secondaryDetailButtonText, { color: (!event.location || event.location === 'TBA') ? COLORS.textTertiary : COLORS.textPrimary }]}>
                   Map
                 </Text>
               </Pressable>

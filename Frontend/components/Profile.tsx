@@ -143,6 +143,7 @@ export function Profile() {
   const { user } = useUser();
   const { signOut } = useClerk();
   const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
+  const isGuest = useSessionStore((state) => state.isGuest);
   const {
     COLORS,
     theme,
@@ -402,6 +403,11 @@ export function Profile() {
   };
 
   const handleLogout = async () => {
+    resetSessionMode();
+    await signOut();
+  };
+
+  const handleLogin = async () => {
     resetSessionMode();
     await signOut();
   };

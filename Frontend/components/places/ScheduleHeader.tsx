@@ -20,8 +20,6 @@ interface ScheduleHeaderProps {
   setSelectedId: (id: string | null) => void;
   openScheduleList: () => void;
   openNewCourseSearch: () => void;
-  openScheduleList: () => void;
-  openNewCourseSearch: () => void;
 }
 
 export function ScheduleHeader({

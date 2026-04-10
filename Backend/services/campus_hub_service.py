@@ -19,6 +19,7 @@ from services import (
     place_registry_service,
     campus_places_service,
     tag_access_service,
+    encryption_service,
 )
 
 HOWDY_URL = "https://howdy.tamu.edu/main/home/card-view"
@@ -1121,13 +1122,13 @@ def get_events_snapshot(
         organization_name = ad_ev.get("organization_name") or "Campus organizer"
         admin_events_list.append({
             "event_id": str(ad_ev["id"]),
-            "title": ad_ev["title"],
+            "title": encryption_service.decrypt_string(ad_ev["title"]),
             "location": ad_ev["location_name"],
             "location_lat": ad_ev["lat"],
             "location_lng": ad_ev["lng"],
             "start_time": ad_ev["start_time"].isoformat() if ad_ev["start_time"] else None,
             "end_time": ad_ev["end_time"].isoformat() if ad_ev["end_time"] else None,
-            "description": ad_ev["description"],
+            "description": encryption_service.decrypt_string(ad_ev["description"]),
             "google_review_url": ad_ev.get("google_review_url"),
             "image_url": ad_ev.get("image_url"),
             "access_tags": ad_ev.get("access_tags") or [],

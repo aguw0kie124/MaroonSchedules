@@ -310,5 +310,4 @@ const styles = StyleSheet.create({
   oauthLabelTextSecondary: {
     color: COLORS.primary,
   },
-  },
 });

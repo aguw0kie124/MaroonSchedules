@@ -192,7 +192,19 @@ def _normalize_event_row(raw: Dict[str, Any]) -> Dict[str, Any] | None:
     except (TypeError, ValueError):
         lat, lng = None, None
 
-    raw_location = _clean_location_label(raw.get("location"), lat, lng)
+    raw_location = raw.get("location")
+    if not raw_location and int(raw.get("sports", 0) or 0) == 1:
+        title = raw.get("title") or ""
+        at_match = re.search(r'\s+at\s+(.+)$', title, re.IGNORECASE)
+        if at_match:
+            raw_location = at_match.group(1).strip()
+        elif re.search(r'\s+vs\.?\s+', title, re.IGNORECASE):
+            raw_location = "College Station, TX"
+            if lat is None and lng is None:
+                lat = TAMU_CENTER_LAT
+                lng = TAMU_CENTER_LNG
+
+    raw_location = _clean_location_label(raw_location, lat, lng)
     resolved_place = place_registry_service.resolve_place(raw_location, lat, lng)
     location = resolved_place["name"] if resolved_place else raw_location
 
