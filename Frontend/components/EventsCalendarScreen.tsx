@@ -1275,15 +1275,15 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const toggleCategory = useCallback((category: ExploreCategory) => {
     setSelectedCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(category)) {
-        next.delete(category);
+      if (prev.has(category) && prev.size === 1) {
+        // Toggle off the only selected category -> reset to defaults
         toggleCategoryDeselection(category, true);
-      } else {
-        next.add(category);
-        toggleCategoryDeselection(category, false);
+        return new Set(['Featured', 'For U']);
       }
-      return next;
+      
+      // Select exactly this one category (implicitly unselecting others)
+      toggleCategoryDeselection(category, false);
+      return new Set([category]);
     });
   }, [toggleCategoryDeselection]);
 
@@ -1649,7 +1649,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
 
                 <View style={s.categoryWrap}>
-                  {categoriesExpanded ? (
+                    {categoriesExpanded ? (
                     <>
                       <View style={s.categoryHeaderRow}>
                         <Text style={s.categorySectionLabel}>Filters</Text>
@@ -2035,19 +2035,35 @@ function HeroEventCard({
   const category = classifyCategory(event);
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
+  const eventImage = getEventImage(event as any);
+
+  // DEBUG: remove after fixing
+  if (!eventImage) {
+    const { classifyCategory: cc } = require('./events/EventUtils');
+    console.log('NO IMAGE:', event.title, '| category:', cc(event), '| has categories:', !!event.categories);
+  }
 
   return (
     <Pressable
       onPress={onPress}
       style={[stylesStatic.heroCard, { backgroundColor: meta.cardTint }]}
     >
-      <Image source={getEventImage(event as any)} style={StyleSheet.absoluteFill} resizeMode="stretch" />
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.82)']}
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={[stylesStatic.heroIconHalo, { opacity: 0.22 }]}>
-        <Icon size={88} color="rgba(255,255,255,0.3)" />
+      {eventImage ? (
+        <>
+          <Image source={eventImage} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.82)']}
+            style={StyleSheet.absoluteFill}
+          />
+        </>
+      ) : (
+        <>
+          <View style={[stylesStatic.heroGlow, { backgroundColor: 'rgba(255,255,255,0.18)' }]} />
+          <View style={[stylesStatic.heroGlowSmall, { backgroundColor: 'rgba(255,255,255,0.12)' }]} />
+        </>
+      )}
+      <View style={[stylesStatic.heroIconHalo, eventImage ? { opacity: 0.22 } : null]}>
+        <Icon size={88} color={eventImage ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.12)'} />
       </View>
 
       <View style={stylesStatic.heroTopRow}>
