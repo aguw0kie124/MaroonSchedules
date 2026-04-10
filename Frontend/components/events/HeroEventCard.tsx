@@ -1,7 +1,9 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Dimensions, Image } from 'react-native';
 import { BadgeCheck, Calendar as CalendarIcon, MapPin, Map, Share2 } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { TAMUEvent, CATEGORY_META, classifyCategory, formatDate, formatTime } from './EventUtils';
+import { getEventImage } from './EventImages';
 import { useTheme } from '../SharedUI';
 import { triggerNativeShare } from '../../utils/share';
 
@@ -178,10 +180,18 @@ export function HeroEventCard({
       onPress={onPress}
       style={[styles.heroCard, { backgroundColor: meta.cardTint }]}
     >
-      <View style={[styles.heroGlow, { backgroundColor: 'rgba(255,255,255,0.18)' }]} />
-      <View style={[styles.heroGlowSmall, { backgroundColor: 'rgba(255,255,255,0.12)' }]} />
+      <View style={StyleSheet.absoluteFill}>
+        <Image
+          source={getEventImage(event)}
+          style={[StyleSheet.absoluteFill, { borderRadius: 34 }]}
+        />
+        <LinearGradient
+          colors={['transparent', 'rgba(0,0,0,0.85)']}
+          style={[StyleSheet.absoluteFill, { borderRadius: 34 }]}
+        />
+      </View>
       <View style={styles.heroIconHalo}>
-        <Icon size={88} color="rgba(255,255,255,0.12)" />
+        <Icon size={88} color="rgba(255,255,255,0.18)" />
       </View>
 
       <View style={styles.heroTopRow}>

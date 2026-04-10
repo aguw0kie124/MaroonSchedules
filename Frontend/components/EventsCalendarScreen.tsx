@@ -67,6 +67,7 @@ import { scheduleAdminEventReviewNotification, scheduleEventNotification } from 
 import { promptGuestLogin } from '../utils/guestAccess';
 import { blockUser, reportContent } from '../services/socialFeedService';
 import { TagChips } from './common/TagChips';
+import { getEventImage } from './events/EventImages';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
@@ -2040,12 +2041,13 @@ function HeroEventCard({
       onPress={onPress}
       style={[stylesStatic.heroCard, { backgroundColor: meta.cardTint }]}
     >
-      {event.imageUrl ? <Image source={{ uri: event.imageUrl }} style={stylesStatic.heroImage} resizeMode="cover" /> : null}
-      {event.imageUrl ? <View style={stylesStatic.heroImageOverlay} /> : null}
-      <View style={[stylesStatic.heroGlow, { backgroundColor: 'rgba(255,255,255,0.18)' }]} />
-      <View style={[stylesStatic.heroGlowSmall, { backgroundColor: 'rgba(255,255,255,0.12)' }]} />
-      <View style={[stylesStatic.heroIconHalo, event.imageUrl ? stylesStatic.heroIconHaloWithImage : null]}>
-        <Icon size={88} color="rgba(255,255,255,0.12)" />
+      <Image source={getEventImage(event as any)} style={StyleSheet.absoluteFill} resizeMode="stretch" />
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.82)']}
+        style={StyleSheet.absoluteFill}
+      />
+      <View style={[stylesStatic.heroIconHalo, { opacity: 0.22 }]}>
+        <Icon size={88} color="rgba(255,255,255,0.3)" />
       </View>
 
       <View style={stylesStatic.heroTopRow}>
