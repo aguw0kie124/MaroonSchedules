@@ -204,10 +204,12 @@ export function HeroEventCard({
             {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
           </Text>
         </View>
-        <View style={styles.heroMetaRow}>
-          <MapPin size={17} color="#FFFFFF" />
-          <Text style={styles.heroMetaText} numberOfLines={1}>{event.location || 'Campus'}</Text>
-        </View>
+        {event.location ? (
+          <View style={styles.heroMetaRow}>
+            <MapPin size={17} color="#FFFFFF" />
+            <Text style={styles.heroMetaText} numberOfLines={1}>{event.location}</Text>
+          </View>
+        ) : null}
         <View style={styles.heroActionRow}>
           {event.location_lat != null && event.location_lng != null ? (
             <Pressable style={styles.heroMapButton} onPress={onMap}>

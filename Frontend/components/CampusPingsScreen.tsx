@@ -82,7 +82,6 @@ import {
 } from '../services/streamFeeds';
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
 import { useSessionStore } from '../store/sessionStore';
-import { promptGuestLogin } from '../utils/guestAccess';
 
 type PingCategory =
   | 'Free Food'
@@ -339,7 +338,6 @@ export function CampusPingsScreen() {
   const styles = getStyles(theme);
   const COLORS = theme.COLORS;
   const navigation = useNavigation<any>();
-  const isGuest = useSessionStore((s) => s.isGuest);
   const isDark = theme.theme === 'dark';
 
   const directory = useMemo(() => buildCampusDirectory(), []);
@@ -767,10 +765,6 @@ export function CampusPingsScreen() {
 
   const handleVotePing = useCallback(
     async (ping: PingCard, direction: number) => {
-      if (isGuest) {
-        promptGuestLogin(navigation);
-        return;
-      }
       if (!ping.activityId) return;
 
       const currentVote = ping.userVote || 0;
@@ -814,7 +808,7 @@ export function CampusPingsScreen() {
         }
       }
     },
-    [isGuest, navigation, queryClient],
+    [navigation, queryClient],
   );
 
   const handleDeletePing = useCallback(

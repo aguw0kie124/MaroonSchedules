@@ -74,7 +74,6 @@ import { useCampusHubStore } from "../store/campusHubStore";
 import { getOrderedItems, useAppShellStore } from "../store/appShellStore";
 import { useSessionStore } from "../store/sessionStore";
 import { useShareStore } from "../store/shareStore";
-import { promptGuestLogin } from "../utils/guestAccess";
 import {
   type DiningMealPeriod,
   getDiningMealPeriodForLocation,
@@ -208,7 +207,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const isDark = theme === "dark";
   const styles = getStyles(COLORS, isDark);
   const { user } = useUser();
-  const isGuest = useSessionStore((state) => state.isGuest);
   const insets = useSafeAreaInsets();
   const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -976,30 +974,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
   );
 
   const openScheduleList = useCallback(() => {
-    if (isGuest) {
-      promptGuestLogin(
-        navigation,
-        "Saved schedules are only available once you log in.",
-      );
-      return;
-    }
     const rootNav =
       navigation.getParent?.("RootStack") || navigation.getParent?.();
     (rootNav?.navigate || navigation.navigate)("ScheduleList");
-  }, [isGuest, navigation]);
+  }, [navigation]);
 
   const openNewCourseSearch = useCallback(() => {
-    if (isGuest) {
-      promptGuestLogin(
-        navigation,
-        "Adding classes to your map requires a signed-in account.",
-      );
-      return;
-    }
     const rootNav =
       navigation.getParent?.("RootStack") || navigation.getParent?.();
     (rootNav?.navigate || navigation.navigate)("NewCourseSearch");
-  }, [isGuest, navigation]);
+  }, [navigation]);
 
   const openBusTimetable = useCallback(() => {
     const params = isAllBusRoutesSelected
@@ -1076,13 +1060,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
     }
   }, []);
   const handlePostReview = useCallback(async () => {
-    if (isGuest) {
-      promptGuestLogin(
-        navigation,
-        "Guest mode can browse reviews, but posting one needs a signed-in account.",
-      );
-      return;
-    }
     const selectedReviewId =
       selectedLoc?.placeId || selectedLoc?.location || null;
     if (!selectedReviewId || !newReviewText.trim() || newRating === 0) return;
@@ -1101,8 +1078,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
     }
   }, [
     fetchReviews,
-    isGuest,
-    navigation,
     newRating,
     newReviewText,
     selectedLoc,
@@ -1187,11 +1162,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
   );
  
   const toggleHotspotVote = useCallback(async (hotspotId: string, itemId: string, targetVote: number) => {
-    if (isGuest) {
-      promptGuestLogin(navigation);
-      return;
-    }
-
     const prevHotspots = pulseHotspots;
     const hotspot = prevHotspots.find(h => h.id === hotspotId);
     if (!hotspot) return;
@@ -1233,12 +1203,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
       });
     });
 
-    if (finalVote !== 0) {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    
     await voteHotspotItem(itemId, finalVote);
-  }, [isGuest, navigation, pulseHotspots, queryClient, user?.id]);
+  }, [pulseHotspots, queryClient, user?.id]);
 
 
   const fetchPulseHotspots = useCallback(async (options: { force?: boolean } = {}) => {
@@ -1778,7 +1744,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
   // Hydrate hub when tab needs it
   useEffect(() => {
     if (
-      !isGuest &&
       user?.id &&
       (activeLayer === "Rec" ||
         activeLayer === "Library" ||
@@ -1786,7 +1751,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     ) {
       hydrateCampusHub(user.id).catch(() => {});
     }
-  }, [activeLayer, hydrateCampusHub, isGuest, user?.id]);
+  }, [activeLayer, hydrateCampusHub, user?.id]);
 
   const hasFetchedInit = useRef(false);
   useEffect(() => {
@@ -1977,12 +1942,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // Connect native social client for compatibility across feed surfaces
   useEffect(() => {
-    if (!isGuest && user?.id) {
+    if (user?.id) {
       try {
         connectFeedsUser(user);
       } catch (_) {}
     }
-  }, [isGuest, user]);
+  }, [user]);
 
   // ── Render ────────────────────────────────────────────────
 

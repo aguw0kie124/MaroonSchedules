@@ -140,6 +140,7 @@ interface TAMUEvent {
 }
 
 type ExploreCategory =
+  | 'Featured'
   | 'For U'
   | 'Food'
   | 'Sports'
@@ -149,7 +150,7 @@ type ExploreCategory =
   | 'Academic'
   | 'Entertainment'
   | 'Health & Wellness';
-type StandardExploreCategory = Exclude<ExploreCategory, 'For U'>;
+type StandardExploreCategory = Exclude<ExploreCategory, 'For U' | 'Featured'>;
 
 type SocialMode = 'casual' | 'professional';
 type EventsView = 'discover' | 'list' | 'swipe' | 'inbox';
@@ -162,6 +163,7 @@ interface UserEventPreferences {
 }
 
 const ALL_CATEGORIES: ExploreCategory[] = [
+  'Featured',
   'For U',
   'Sports',
   'Academic',
@@ -244,6 +246,15 @@ function getPersonalizationScore(
 
 
 
+/** Returns true if a host/source name looks like an internal feed identifier. */
+function isInternalSourceName(name: string | undefined | null): boolean {
+  if (!name) return true;
+  return /^(feeds?|transport_rss|rss_directory)[:\-_]/.test(name) ||
+         /^[a-z_]+:feed_\d+$/i.test(name) ||
+         name === 'legacy_tracker' ||
+         name === 'admin_portal';
+}
+
 export const CATEGORY_META: Record<
   ExploreCategory,
   {
@@ -254,6 +265,13 @@ export const CATEGORY_META: Record<
     icon: React.ComponentType<any>;
   }
 > = {
+  Featured: {
+    accent: '#FFD700',
+    chipBg: '#FFF4CC',
+    chipText: '#6B4F00',
+    cardTint: '#D4A017',
+    icon: BadgeCheck,
+  },
   'For U': {
     accent: '#F6A4B2',
     chipBg: '#FFE3E8',
@@ -376,10 +394,7 @@ function classifyCategory(event: TAMUEvent): ExploreCategory {
     if (event.categories.health_wellness) return 'Health & Wellness';
     if (event.categories.social) return 'Social';
     if (event.categories.miscellaneous || event.categories.religion) return 'Miscellaneous';
-    if (event.categories.featured || event.is_admin_event) return 'For U';
   }
-
-  if (event.is_admin_event) return 'For U';
 
   const blob = getSearchBlob(event);
   if (event.has_food || /\bfood\b|\bmeal\b|\bdinner\b|\blunch\b|\bbreakfast\b|\bpizza\b|\brefreshments\b/.test(blob)) return 'Food';
@@ -819,14 +834,13 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const isDark = theme === 'dark';
   const navigation = useNavigation<any>();
   const { user } = useUser();
-  const isGuest = useSessionStore((state) => state.isGuest);
   const s = useMemo(() => getStyles(COLORS, isDark, embedded), [COLORS, isDark, embedded]);
 
   const { advanceStep, activeTargetName } = useTour();
 
-  const [view, setView] = useState<EventsView>(isGuest ? 'list' : 'discover');
+  const [view, setView] = useState<EventsView>('discover');
 
-  const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set());
+  const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set(['Featured']));
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [searchQuery, setSearchQuery] = useState('');
   const [detailEvent, setDetailEvent] = useState<TAMUEvent | null>(null);
@@ -855,10 +869,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     acceptInvite,
     rejectInvite,
   } = useEventStore();
-  const scheduledEvents = isGuest ? [] : persistedScheduledEvents;
-  const savedEventIds = isGuest ? [] : persistedSavedEventIds;
-  const dislikedEventIds = isGuest ? [] : persistedDislikedEventIds;
-  const receivedInvites = isGuest ? [] : persistedReceivedInvites;
+  const scheduledEvents = persistedScheduledEvents;
+  const savedEventIds = persistedSavedEventIds;
+  const dislikedEventIds = persistedDislikedEventIds;
+  const receivedInvites = persistedReceivedInvites;
 
   const pan = useRef(new Animated.ValueXY()).current;
   const opacity = useRef(new Animated.Value(1)).current;
@@ -903,7 +917,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             tags: event.tags || null,
             access_tags: event.access_tags || null,
             event_types: event.has_food ? ['Free Food'] : null,
-            group_title: event.organization_name || event.host_name || event.source_name || '',
+            group_title: event.organization_name || (isInternalSourceName(event.host_name) ? '' : event.host_name) || '',
             location_lat: event.location_lat ?? null,
             location_lng: event.location_lng ?? null,
             has_food: !!event.has_food,
@@ -942,7 +956,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   useEffect(() => {
     let cancelled = false;
 
-    if (!user?.id || isGuest) {
+    if (!user?.id) {
       setProfilePreferences(DEFAULT_USER_EVENT_PREFERENCES);
       hydratedProfileMajorForUser.current = null;
       return;
@@ -972,7 +986,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     return () => {
       cancelled = true;
     };
-  }, [isGuest, setSelectedMajor, user?.id]);
+  }, [setSelectedMajor, user?.id]);
 
   const personalizedEvents = useMemo(
     () =>
@@ -995,7 +1009,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     data: preferredEventCategories,
   } = useQuery({
     queryKey: ['user-event-categories', user?.id],
-    enabled: !!user?.id && !isGuest,
+    enabled: !!user?.id,
     queryFn: async () => {
       const profile = await fetchUserProfile(user!.id);
       return profile?.preferred_event_categories || [];
@@ -1006,7 +1020,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     data: preferredSocialMode,
   } = useQuery({
     queryKey: ['user-social-mode', user?.id],
-    enabled: !!user?.id && !isGuest,
+    enabled: !!user?.id,
     queryFn: async () => {
       const profile = await fetchUserProfile(user!.id);
       return profile?.social_mode as SocialMode || null;
@@ -1017,7 +1031,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     data: preferredTime,
   } = useQuery({
     queryKey: ['user-preferred-time', user?.id],
-    enabled: !!user?.id && !isGuest,
+    enabled: !!user?.id,
     queryFn: async () => {
       const profile = await fetchUserProfile(user!.id);
       return profile?.preferred_time || null;
@@ -1045,6 +1059,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const categoryCounts = useMemo(() => {
     const counts: Record<ExploreCategory, number> = {
+      Featured: 0,
       'For U': 0,
       Sports: 0,
       Academic: 0,
@@ -1063,6 +1078,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       if (event._forYouMatched) {
         counts['For U'] += 1;
       }
+      if (event.is_admin_event) {
+        counts.Featured += 1;
+      }
       const category = event._category || classifyCategory(event);
       counts[category] += 1;
     });
@@ -1073,12 +1091,13 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const standardSelectedCategories = useMemo(
     () =>
       Array.from(selectedCategories).filter(
-        (category): category is StandardExploreCategory => category !== 'For U',
+        (category): category is StandardExploreCategory => category !== 'For U' && category !== 'Featured',
       ),
     [selectedCategories],
   );
 
   const isForYouSelected = selectedCategories.has('For U');
+  const isFeaturedSelected = selectedCategories.has('Featured');
 
   const filteredUpcomingEvents = useMemo(() => {
     let next = personalizedEvents.filter((event) => {
@@ -1091,18 +1110,31 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     }
 
     if (isMajorSpecific) {
-      next = next.filter((event) => matchesMajor(event, selectedMajor));
+      next = next.filter((event) => matchesMajor(event, selectedMajor) || (isFeaturedSelected && event.is_admin_event));
     }
 
-    if (isForYouSelected) {
-      next = next.filter((event) => event._forYouMatched);
-    }
+    // Apply category filters with Featured union semantics:
+    // When Featured is active, admin events always pass through regardless of other filters
+    const hasNonFeaturedFilters = isForYouSelected || standardSelectedCategories.length > 0;
 
-    if (standardSelectedCategories.length > 0) {
+    if (hasNonFeaturedFilters) {
       next = next.filter((event) => {
+        // Featured events always pass when Featured is selected
+        if (isFeaturedSelected && event.is_admin_event) return true;
+
         const category = event._category || classifyCategory(event);
-        return category !== 'For U' && standardSelectedCategories.includes(category);
+
+        if (isForYouSelected && event._forYouMatched) return true;
+
+        if (standardSelectedCategories.length > 0) {
+          return category !== 'For U' && category !== 'Featured' && standardSelectedCategories.includes(category);
+        }
+
+        return false;
       });
+    } else if (isFeaturedSelected) {
+      // Only Featured is selected — show admin events only
+      next = next.filter((event) => event.is_admin_event);
     }
 
     if (standardSelectedCategories.includes('Social')) {
@@ -1122,6 +1154,12 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       });
     } else {
       next = [...next].sort((left, right) => {
+        // Pin admin events to top when Featured is selected
+        if (isFeaturedSelected) {
+          const leftAdmin = left.is_admin_event ? 1 : 0;
+          const rightAdmin = right.is_admin_event ? 1 : 0;
+          if (leftAdmin !== rightAdmin) return rightAdmin - leftAdmin;
+        }
         const leftScore = getPersonalizationScore(
           left,
           normalizedPreferenceCategories,
@@ -1149,6 +1187,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   }, [
     dislikedEventIds,
     personalizedEvents,
+    isFeaturedSelected,
     isMajorSpecific,
     isForYouSelected,
     nowTs,
@@ -1178,16 +1217,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   useEffect(() => {
     setSwipeIndex(0);
   }, [selectedCategories, socialMode, deferredSearchQuery, isMajorSpecific, selectedMajor, profileMajor, profilePreferences.avoidFriday, profilePreferences.preferredTime]);
-  useEffect(() => {
-    if (isGuest) {
-      setView('list');
-    }
-  }, [isGuest]);
-
-
 
   useEffect(() => {
-    if (isGuest || !isEventPreferencesCompleted) {
+    if (!isEventPreferencesCompleted) {
       return;
     }
     const preferenceKey = JSON.stringify({
@@ -1206,7 +1238,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     if (!embedded) {
       setView('discover');
     }
-  }, [embedded, isEventPreferencesCompleted, isGuest, normalizedPreferenceCategories, preferredSocialMode, preferredTime]);
+  }, [embedded, isEventPreferencesCompleted, normalizedPreferenceCategories, preferredSocialMode, preferredTime]);
 
 
 
@@ -1227,7 +1259,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const handleSchedule = useCallback(
     async (event: TAMUEvent) => {
-      if (isGuest) {
+      if (!user) {
         promptGuestLogin(
           navigation,
           event.is_admin_event
@@ -1315,7 +1347,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       triggerRewardToast('Added to your schedule', 'Nice. We will keep this one easy to come back to.');
       Alert.alert('Successfully RSVPed', `${event.title} is now in your schedule.`);
     },
-    [activeTargetName, advanceStep, isGuest, navigation, removeScheduledEvent, scheduleEvent, scheduledEvents, triggerRewardToast, user],
+    [activeTargetName, advanceStep, navigation, removeScheduledEvent, scheduleEvent, scheduledEvents, triggerRewardToast, user],
   );
 
   const handleShare = useCallback((event: TAMUEvent) => {
@@ -1356,7 +1388,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const handleSaveToggle = useCallback(
     (event: TAMUEvent) => {
-      if (isGuest) {
+      if (!user) {
         promptGuestLogin(
           navigation,
           'Saving events requires a signed-in account.',
@@ -1374,7 +1406,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         triggerRewardToast('Saved for later', 'Good pick. This one is waiting for you.');
       }
     },
-    [isGuest, navigation, saveEvent, savedEventIds, triggerRewardToast, unsaveEvent],
+    [navigation, saveEvent, savedEventIds, triggerRewardToast, unsaveEvent, user],
   );
 
   const queryClient = useQueryClient();
@@ -1776,7 +1808,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   <StaggeredReveal index={index}>
                     <ListEventRow
                       event={item}
-                      isGuest={isGuest}
 
                       saved={savedEventIds.includes(String(item.id))}
                       scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(item.id))}
@@ -1914,7 +1945,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       <DetailModal
         event={detailEvent}
         onClose={() => setDetailEvent(null)}
-        isGuest={isGuest}
         onSaveToggle={handleSaveToggle}
         onSchedule={handleSchedule}
         onShare={handleShare}
@@ -2390,7 +2420,6 @@ function SettingsModal({
 function DetailModal({
   event,
   onClose,
-  isGuest,
   onSaveToggle,
   onSchedule,
   onShare,
@@ -2404,7 +2433,6 @@ function DetailModal({
 }: {
   event: TAMUEvent | null;
   onClose: () => void;
-  isGuest: boolean;
   onSaveToggle: (event: TAMUEvent) => void;
   onSchedule: (event: TAMUEvent) => void;
   onShare: (event: TAMUEvent) => void;
@@ -2469,12 +2497,14 @@ function DetailModal({
                 {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
               </Text>
             </View>
-            <View style={stylesStatic.detailMetaRow}>
-              <MapPin size={15} color={COLORS.textSecondary} />
-              <Text style={[stylesStatic.detailMetaText, { color: COLORS.textSecondary }]}>
-                {event.location || 'Campus'}
-              </Text>
-            </View>
+            {event.location ? (
+              <View style={stylesStatic.detailMetaRow}>
+                <MapPin size={15} color={COLORS.textSecondary} />
+                <Text style={[stylesStatic.detailMetaText, { color: COLORS.textSecondary }]}>
+                  {event.location}
+                </Text>
+              </View>
+            ) : null}
             {event.group_title ? (
               <View style={stylesStatic.detailMetaRow}>
                 <BadgeCheck size={15} color="#2F80ED" />
@@ -2512,11 +2542,9 @@ function DetailModal({
                 <Check size={18} color="#FFFFFF" strokeWidth={3} />
               )}
               <Text style={stylesStatic.primaryDetailButtonText}>
-                {isGuest
-                  ? 'Log in to RSVP or save'
-                  : event.is_admin_event
-                    ? (scheduled ? 'Remove RSVP' : 'RSVP to Featured Event')
-                    : (scheduled ? 'Remove from current schedule' : 'Add')}
+                {event.is_admin_event
+                  ? (scheduled ? 'Remove RSVP' : 'RSVP to Featured Event')
+                  : (scheduled ? 'Remove from current schedule' : 'Add')}
               </Text>
             </Pressable>
           </TourTarget>

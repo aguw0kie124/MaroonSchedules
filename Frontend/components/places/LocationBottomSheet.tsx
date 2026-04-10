@@ -43,8 +43,6 @@ import {
   isDiningHallMenuLocation,
 } from "../../services/diningMenuCache";
 import { reportContent, blockUser, deleteReview } from "../../services/streamFeeds";
-import { useSessionStore } from "../../store/sessionStore";
-import { promptGuestLogin } from "../../utils/guestAccess";
 import { Alert } from "react-native";
 
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.94;
@@ -226,7 +224,6 @@ export function LocationBottomSheet({
   openNavigationToLocation,
 }: LocationBottomSheetProps) {
   const { user } = useUser();
-  const isGuest = useSessionStore((state) => state.isGuest);
   const { advanceStep, activeTargetName } = useTour();
   const selectedReviewId = selectedLoc?.placeId || selectedLoc?.location || null;
   const selectedLabel = selectedLoc?.location || selectedId || "";
@@ -429,15 +426,8 @@ export function LocationBottomSheet({
   }, [contextLink]);
 
   const openReviewComposer = useCallback(() => {
-    if (isGuest) {
-      promptGuestLogin(
-        navigation,
-        "Guest mode can read reviews, but posting one needs a signed-in account.",
-      );
-      return;
-    }
     setReviewModalVisible(true);
-  }, [isGuest, navigation, setReviewModalVisible]);
+  }, [setReviewModalVisible]);
 
   const panResponder = useMemo(
     () =>
@@ -889,7 +879,7 @@ export function LocationBottomSheet({
                             onPress={openReviewComposer}
                           >
                             <Text style={styles.addReviewText}>
-                              {isGuest ? "Log in to review" : "+ Add Review"}
+                              + Add Review
                             </Text>
                           </TouchableOpacity>
                           <TouchableOpacity
@@ -1042,7 +1032,7 @@ export function LocationBottomSheet({
                         onPress={openReviewComposer}
                       >
                         <Text style={styles.addReviewText}>
-                          {isGuest ? "Log in to review" : "+ Add Review"}
+                          + Add Review
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
@@ -1082,7 +1072,6 @@ export function LocationBottomSheet({
                         <Text style={styles.reviewComment} numberOfLines={3}>
                           {rev.comment}
                         </Text>
-                        {!isGuest ? (
                           <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
                             {rev.userId === user?.id ? (
                               <TouchableOpacity onPress={() => handleDeleteReview(rev)}>
@@ -1099,7 +1088,6 @@ export function LocationBottomSheet({
                               </>
                             )}
                           </View>
-                        ) : null}
                       </View>
                     ))
                   ) : (
@@ -1118,7 +1106,7 @@ export function LocationBottomSheet({
       </Animated.View>
 
       {/* Review Modal */}
-      <Modal visible={reviewModalVisible && !isGuest} animationType="fade" transparent>
+      <Modal visible={reviewModalVisible} animationType="fade" transparent>
         <TouchableWithoutFeedback
           onPress={() => setReviewModalVisible(false)}
         >

@@ -21,7 +21,6 @@ const APPLE_LABEL = '\uF8FF';
 export function AuthLanding() {
   const { startOAuthFlow: startGoogleOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
   const { startOAuthFlow: startAppleOAuthFlow } = useOAuth({ strategy: 'oauth_apple' });
-  const enterGuestMode = useSessionStore((state) => state.enterGuestMode);
   const exitGuestMode = useSessionStore((state) => state.exitGuestMode);
   const setAuthMode = useSessionStore((state) => state.setAuthMode);
   const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
@@ -72,10 +71,7 @@ export function AuthLanding() {
     }
   };
 
-  const handleGuestContinue = () => {
-    resetSessionMode();
-    enterGuestMode();
-  };
+
 
   const renderGoogleLabel = (prefix: string, variant: 'primary' | 'secondary') => (
     <View style={styles.oauthLabel}>
@@ -181,14 +177,7 @@ export function AuthLanding() {
               </View>
             </View>
 
-            <Button
-              variant="secondary"
-              style={styles.guestButton}
-              onPress={handleGuestContinue}
-              disabled={isLoading}
-            >
-              Continue as Guest
-            </Button>
+
           </View>
 
           <View style={styles.colorAccentBottom} />
@@ -321,10 +310,5 @@ const styles = StyleSheet.create({
   oauthLabelTextSecondary: {
     color: COLORS.primary,
   },
-  guestButton: {
-    width: '100%',
-    backgroundColor: COLORS.white,
-    borderWidth: 1,
-    borderColor: COLORS.border,
   },
 });

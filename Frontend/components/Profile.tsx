@@ -54,7 +54,7 @@ import { deleteAccount, getBlockedUsers, unblockUser } from '../services/streamF
 import { useTour, TourTarget } from './onboarding/TourProvider';
 import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme } from './SharedUI';
-import { navigateToLogin } from '../utils/guestAccess';
+
 import { TagChips } from './common/TagChips';
 
 const SUPPORT_CONTACT_URL = 'mailto:tejtalluri1@gmail.com?subject=MaroonLife%20Support';
@@ -142,7 +142,6 @@ export function Profile() {
   const isFocused = useIsFocused();
   const { user } = useUser();
   const { signOut } = useClerk();
-  const isGuest = useSessionStore((state) => state.isGuest);
   const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
   const {
     COLORS,
@@ -223,7 +222,7 @@ export function Profile() {
 
   useEffect(() => {
     let cancelled = false;
-    if (!user || !isFocused || isGuest) return;
+    if (!user || !isFocused) return;
 
     setLoadingAcademicStatus(true);
     fetchCampusOverview(user.id)
@@ -253,13 +252,13 @@ export function Profile() {
   }, [isFocused, isGuest, user]);
 
   useEffect(() => {
-    if (activeTab === 'personal' && user && !isGuest) {
+    if (activeTab === 'personal' && user) {
         loadBlockedUsers();
     }
   }, [activeTab, isGuest, user]);
 
   const loadBlockedUsers = async () => {
-    if (!user || isGuest) return;
+    if (!user) return;
     setLoadingBlocked(true);
     try {
         const data = await getBlockedUsers(user.id);
@@ -288,7 +287,7 @@ export function Profile() {
   };
 
   const handleRefresh = async () => {
-    if (!user || isGuest) return;
+    if (!user) return;
     setRefreshing(true);
     try {
       const data = await fetchCampusOverview(user.id);
@@ -381,9 +380,7 @@ export function Profile() {
     await signOut();
   };
 
-  const handleLogin = () => {
-    navigateToLogin(navigation);
-  };
+
 
   const openGuestRecCapacity = () => {
     const rootNav =

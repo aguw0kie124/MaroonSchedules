@@ -99,9 +99,11 @@ export function ListEventRow({
         <Text style={[styles.listMeta, { color: COLORS.textSecondary }]}>
           {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
         </Text>
-        <Text style={[styles.listMeta, { color: COLORS.textTertiary }]} numberOfLines={1}>
-          {event.location || 'Campus'}
-        </Text>
+        {event.location ? (
+          <Text style={[styles.listMeta, { color: COLORS.textTertiary }]} numberOfLines={1}>
+            {event.location}
+          </Text>
+        ) : null}
       </View>
       <View style={styles.listActions}>
         <Pressable onPress={onSave} style={styles.listActionButton}>

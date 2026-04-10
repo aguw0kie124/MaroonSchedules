@@ -171,7 +171,9 @@ export function SwipeEventCard({
             <Text style={styles.swipeMeta}>
               {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
             </Text>
-            <Text style={styles.swipeMeta}>{event.location || 'Campus'}</Text>
+            {event.location ? (
+              <Text style={styles.swipeMeta}>{event.location}</Text>
+            ) : null}
             {shortDescription(event.description) ? (
               <Text style={styles.swipeDescription}>{shortDescription(event.description)}</Text>
             ) : null}

@@ -175,12 +175,17 @@ async def parse_rss_feed(
     feed = feedparser.parse(body)
     events: List[Dict[str, Any]] = []
 
+    # Attempt to extract a better source name from the feed title
+    better_source_name = source_name
+    if hasattr(feed, "feed") and hasattr(feed.feed, "title") and feed.feed.title:
+        better_source_name = _clean_html(feed.feed.title)
+
     for entry in feed.entries:
-        event = _parse_feed_entry(entry, source_name, feed_url)
+        event = _parse_feed_entry(entry, better_source_name, feed_url)
         if event:
             events.append(event)
 
-    logger.info("Parsed %d entries from RSS feed %s", len(events), feed_url)
+    logger.info("Parsed %d entries from RSS feed %s (Source: %s)", len(events), feed_url, better_source_name)
     return events
 
 

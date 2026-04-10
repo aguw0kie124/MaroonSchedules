@@ -15,10 +15,9 @@ export function useScheduleMap(
   options: { skipInitialLoad?: boolean } = {}
 ) {
   const { user } = useUser();
-  const isGuest = useSessionStore((state) => state.isGuest);
   const campusHubSnapshot = useCampusHubStore((state) => state.snapshot);
   const persistedScheduledEvents = useEventStore((state) => state.scheduledEvents);
-  const scheduledEvents = isGuest ? [] : persistedScheduledEvents;
+  const scheduledEvents = persistedScheduledEvents;
 
   const [savedSchedules, setSavedSchedules] = useState<any[]>([]);
   const [isLoadingSchedules, setIsLoadingSchedules] = useState(false);
@@ -91,7 +90,7 @@ export function useScheduleMap(
   }, [scheduledEvents, userGpsResolved]);
 
   const loadSchedules = useCallback(async () => {
-    if (!user?.id || isGuest) {
+    if (!user?.id) {
       setSavedSchedules([]);
       setIsLoadingSchedules(false);
       return;
@@ -109,7 +108,7 @@ export function useScheduleMap(
       .finally(() => {
         setIsLoadingSchedules(false);
       });
-  }, [isGuest, user?.id]);
+  }, [user?.id]);
 
   useEffect(() => {
     if (options.skipInitialLoad) return;
@@ -144,7 +143,7 @@ export function useScheduleMap(
 
   const scheduleOptions = useMemo(() => {
     const options: ScheduleMapOption[] = [];
-    const uploadedCourses = isGuest ? [] : campusHubSnapshot?.academic?.courses || [];
+    const uploadedCourses = campusHubSnapshot?.academic?.courses || [];
     
     const dayMap: Record<number, string> = { 1: "M", 2: "T", 3: "W", 4: "R", 5: "F" };
     const currentDayChar = dayMap[selectedDate.getDay()];
@@ -276,7 +275,7 @@ export function useScheduleMap(
     });
 
     return options;
-  }, [campusHubSnapshot?.academic?.courses, campusHubSnapshot?.academic?.scheduleName, isGuest, savedSchedules, scheduledEvents, selectedDate, resolvedNames, resolvedCoords]);
+  }, [campusHubSnapshot?.academic?.courses, campusHubSnapshot?.academic?.scheduleName, savedSchedules, scheduledEvents, selectedDate, resolvedNames, resolvedCoords]);
 
   useEffect(() => {
     if (scheduleOptions.length === 0) {

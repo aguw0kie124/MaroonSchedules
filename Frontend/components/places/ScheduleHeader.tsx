@@ -12,7 +12,6 @@ interface ScheduleHeaderProps {
   styles: any;
   COLORS: any;
   activeLayer: string;
-  isGuest?: boolean;
   scheduleOptions: ScheduleMapOption[];
   activeScheduleOption: ScheduleMapOption | null;
   scheduleSummaryLabel: string;
@@ -21,14 +20,14 @@ interface ScheduleHeaderProps {
   setSelectedId: (id: string | null) => void;
   openScheduleList: () => void;
   openNewCourseSearch: () => void;
-  openLogin?: () => void;
+  openScheduleList: () => void;
+  openNewCourseSearch: () => void;
 }
 
 export function ScheduleHeader({
   styles,
   COLORS,
   activeLayer,
-  isGuest = false,
   scheduleOptions,
   activeScheduleOption,
   scheduleSummaryLabel,
@@ -37,7 +36,6 @@ export function ScheduleHeader({
   setSelectedId,
   openScheduleList,
   openNewCourseSearch,
-  openLogin,
 }: ScheduleHeaderProps) {
   if (activeLayer !== "Today" && activeLayer !== "Schedule") return null;
 
@@ -56,16 +54,14 @@ export function ScheduleHeader({
               ? `${scheduleSummaryLabel}. Tap a building to see the classes meeting there.`
               : isLoadingSchedules
                 ? "Loading your saved schedules and uploaded class data."
-                : isGuest
-                  ? "Log in to see saved schedules, RSVP'd events, and your class map."
-                  : "Upload a schedule or add classes manually to pin your day onto the map."}
+                : "Upload a schedule or add classes manually to pin your day onto the map."}
           </Text>
         </View>
         <TouchableOpacity
           style={styles.scheduleHeaderButton}
-          onPress={isGuest ? (openLogin || openScheduleList) : openScheduleList}
+          onPress={openScheduleList}
         >
-          <Text style={styles.scheduleHeaderButtonText}>{isGuest ? 'Log In' : 'Schedules'}</Text>
+          <Text style={styles.scheduleHeaderButtonText}>Schedules</Text>
         </TouchableOpacity>
       </View>
 
@@ -131,9 +127,7 @@ export function ScheduleHeader({
             No classes on the map yet
           </Text>
           <Text style={styles.scheduleEmptyStateBody}>
-            {isGuest
-              ? 'Guest mode keeps this view read-only. Log in to save schedules or add classes to Today.'
-              : 'Keep Places centered on your day by adding a saved schedule or choosing sections manually.'}
+            Keep Places centered on your day by adding a saved schedule or choosing sections manually.
           </Text>
           <View style={styles.scheduleEmptyActionRow}>
             <TouchableOpacity
@@ -141,17 +135,17 @@ export function ScheduleHeader({
                 styles.scheduleEmptyAction,
                 styles.scheduleEmptyActionPrimary,
               ]}
-              onPress={isGuest ? (openLogin || openScheduleList) : openScheduleList}
+              onPress={openScheduleList}
             >
               <Text style={styles.scheduleEmptyActionPrimaryText}>
-                {isGuest ? 'Log In' : 'My Schedules'}
+                My Schedules
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.scheduleEmptyAction}
-              onPress={isGuest ? (openLogin || openNewCourseSearch) : openNewCourseSearch}
+              onPress={openNewCourseSearch}
             >
-              <Text style={styles.scheduleEmptyActionText}>{isGuest ? 'Learn More' : 'Add Class'}</Text>
+              <Text style={styles.scheduleEmptyActionText}>Add Class</Text>
             </TouchableOpacity>
           </View>
         </View>

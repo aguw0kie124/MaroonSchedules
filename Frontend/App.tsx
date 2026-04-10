@@ -471,8 +471,8 @@ function RootNavigator() {
       />
     );
   } else {
-    const hasAppAccess = isSignedIn || isGuest;
-    const isAdminRoute = isSignedIn && authMode === 'admin';
+    const hasAppAccess = !!isSignedIn;
+    const isAdminRoute = !!isSignedIn && authMode === 'admin';
     const navigatorMode = isAdminRoute ? 'admin' : hasAppAccess ? 'app' : 'auth';
 
     content = (
@@ -540,9 +540,6 @@ function RootNavigator() {
             <Stack.Screen name="TrackerHub" component={TrackerHubScreen} options={{ headerShown: false }} />
             <Stack.Screen name="StreakHub" component={StreakHubScreen} options={{ headerShown: false }} />
             <Stack.Screen name="GradesScreen" component={GradesScreen} options={{ headerShown: true, title: 'Grade Distributions' }} />
-            <Stack.Screen name="GuestLogin">
-              {(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />}
-            </Stack.Screen>
           </>
         ) : (
           <>
