@@ -71,7 +71,7 @@ import { getEventImage } from './events/EventImages';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
-const HERO_CARD_HEIGHT = 380;
+const HERO_CARD_HEIGHT = HERO_CARD_WIDTH * (4/3);
 const HERO_CARD_GAP = 14;
 const HERO_CARD_SNAP_INTERVAL = HERO_CARD_WIDTH + HERO_CARD_GAP;
 
@@ -2049,22 +2049,24 @@ function HeroEventCard({
       style={[stylesStatic.heroCard, { backgroundColor: meta.cardTint }]}
     >
       {eventImage ? (
-        <>
-          <Image source={eventImage} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        <View style={StyleSheet.absoluteFill}>
+          <Image source={eventImage} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
           <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.82)']}
+            colors={['transparent', 'transparent', 'rgba(0,0,0,0.7)']}
+            locations={[0, 0.5, 1]}
             style={StyleSheet.absoluteFill}
+            pointerEvents="none"
           />
-        </>
+        </View>
       ) : (
         <>
           <View style={[stylesStatic.heroGlow, { backgroundColor: 'rgba(255,255,255,0.18)' }]} />
           <View style={[stylesStatic.heroGlowSmall, { backgroundColor: 'rgba(255,255,255,0.12)' }]} />
+          <View style={[stylesStatic.heroIconHalo]}>
+            <Icon size={88} color="rgba(255,255,255,0.12)" />
+          </View>
         </>
       )}
-      <View style={[stylesStatic.heroIconHalo, eventImage ? { opacity: 0.22 } : null]}>
-        <Icon size={88} color={eventImage ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.12)'} />
-      </View>
 
       <View style={stylesStatic.heroTopRow}>
         <View style={stylesStatic.heroCategoryPill}>
@@ -3337,6 +3339,9 @@ const stylesStatic = StyleSheet.create({
     fontWeight: '900',
     textTransform: 'uppercase',
     letterSpacing: 1.4,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   verifiedPill: {
     flexDirection: 'row',
@@ -3351,6 +3356,9 @@ const stylesStatic = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '800',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   heroBottom: {
     flex: 1,
@@ -3369,6 +3377,9 @@ const stylesStatic = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: -1.0,
     maxWidth: '88%',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   heroOrganizerPill: {
     alignSelf: 'flex-start',
@@ -3396,6 +3407,9 @@ const stylesStatic = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     flex: 1,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   heroActionRow: {
     flexDirection: 'row',
