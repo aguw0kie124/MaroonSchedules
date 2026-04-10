@@ -9,7 +9,7 @@ const CATEGORY_FALLBACKS: Record<string, any> = {
   'Health & Wellness': require('../../assets/images/events/fallbacks/health_wellness.jpg'),
   Entertainment:      require('../../assets/images/events/fallbacks/entertainment.jpg'),
   Advocacy:           require('../../assets/images/events/fallbacks/advocacy.jpg'),
-
+  Miscellaneous:      require('../../assets/images/events/fallbacks/miscellaneous.jpg'),
 };
 
 // ─── Keyword images ──────────────────────────────────────────────────

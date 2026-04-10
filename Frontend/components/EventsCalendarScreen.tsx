@@ -71,7 +71,7 @@ import { getEventImage } from './events/EventImages';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
-const HERO_CARD_HEIGHT = HERO_CARD_WIDTH * (4/3);
+const HERO_CARD_HEIGHT = 380;
 const HERO_CARD_GAP = 14;
 const HERO_CARD_SNAP_INTERVAL = HERO_CARD_WIDTH + HERO_CARD_GAP;
 
