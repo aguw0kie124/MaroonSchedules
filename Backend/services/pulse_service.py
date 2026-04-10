@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
+import math
 import psycopg
 
 from services import cache_service, campus_hub_service, place_registry_service, tag_access_service
@@ -87,6 +88,14 @@ def _ping_category_boost(category: str) -> int:
     if "hangout" in normalized or "popup" in normalized:
         return 5
     return 3
+
+
+def _haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 6371000.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    delta_phi, delta_lambda = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
+    a = math.sin(delta_phi / 2.0)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0)**2
+    return R * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
 
 
 def _is_pulse_ping_post(ping: Dict[str, Any]) -> bool:
@@ -319,17 +328,36 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None) -> Dict[str, 
              # Fallback: resolve using the building name
              place = place_registry_service.resolve_place(location_tag, lat, lng)
 
-        # 2. If no campus building, but we have geographic coordinates, create a synthetic place
+        # 2. If no campus building, but we have geographic coordinates, create a synthetic place (or cluster with nearby)
         if not place and lat is not None and lng is not None:
-            # We use a synthetic place ID for coordinates outside the registry
-            place_id = f"geo:{location_tag.lower().replace(' ', '-') if location_tag else 'ping'}:{lat}:{lng}"
-            place = {
-                "place_id": place_id,
-                "name": location_tag or "Current Location",
-                "lat": float(lat),
-                "lng": float(lng),
-                "is_synthetic": True
-            }
+            fl_lat, fl_lng = float(lat), float(lng)
+            
+            nearby_place = None
+            for g_place_id, g_group in grouped.items():
+                if g_place_id.startswith("geo:"):
+                    dist = _haversine_distance(fl_lat, fl_lng, g_group["coord"]["lat"], g_group["coord"]["lng"])
+                    if dist <= 120.0:  # 120 meters cluster radius
+                        nearby_place = {
+                            "place_id": g_place_id,
+                            "name": g_group["locationName"],
+                            "lat": g_group["coord"]["lat"],
+                            "lng": g_group["coord"]["lng"],
+                            "is_synthetic": True
+                        }
+                        break
+            
+            if nearby_place:
+                place = nearby_place
+            else:
+                # We use a synthetic place ID for coordinates outside the registry
+                place_id = f"geo:{location_tag.lower().replace(' ', '-') if location_tag else 'ping'}:{fl_lat}:{fl_lng}"
+                place = {
+                    "place_id": place_id,
+                    "name": location_tag or "Current Location",
+                    "lat": fl_lat,
+                    "lng": fl_lng,
+                    "is_synthetic": True
+                }
         
         # 3. Last fallback: MSC (just to ensure it's not discarded if it's on campus without a match)
         if not place and location_tag:
@@ -357,14 +385,10 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None) -> Dict[str, 
         start_at = str(custom.get("start_at") or ping.get("created_at") or datetime.now(timezone.utc).isoformat())
 
         target_time = _parse_iso(start_at)
-        # DISABLE TIME FILTERING: Show all pings regardless of age for total restoration
-        # if target_time:
-        #     dh = (target_time - datetime.now(timezone.utc)).total_seconds() / 3600
-        #     if dh < -18 or dh > 72:
-        #         continue
-        # else:
-        #     # Fallback: assume fresh if parsing fails rather than discarding
-        #     target_time = datetime.now(timezone.utc)
+        if target_time:
+            age_hours = (datetime.now(timezone.utc) - target_time).total_seconds() / 3600
+            if age_hours > 24:
+                continue
 
         counts = interactions.get(ping_id, {})
         upvote_count = int(counts.get("upvote") or counts.get("like") or 0)

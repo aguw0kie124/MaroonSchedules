@@ -67,7 +67,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
-import { connectFeedsUser, toggleVote } from "../services/streamFeeds";
+import { initializeFeedUser, toggleVote } from "../services/socialFeedService";
 import { API_URL } from "../config";
 
 import { useCampusHubStore } from "../store/campusHubStore";
@@ -135,11 +135,11 @@ import {
   type CampusHotspot,
 } from "../services/campusPulse";
 import {
-  MapLibreCircleOverlay,
-  MapLibreMarker,
-  MapLibrePolylineOverlay,
-  useMapLibreCamera,
-} from "./map/mapLibreUtils";
+  MapCircleOverlay,
+  MapMarker,
+  MapPolylineOverlay,
+  useMapCamera,
+} from "./map/mapUtils";
 import { searchGlobalPlaces } from "../services/globalMap";
 
 // ── Transitional: still uses inline hooks from original file
@@ -241,7 +241,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   // ── Map ref ───────────────────────────────────────────────
   const mapRef = useRef<any>(null);
   const { cameraRef, defaultCamera, animateToRegion, animateCamera, fitToCoordinates } =
-    useMapLibreCamera(TAMU_CENTER);
+    useMapCamera(TAMU_CENTER);
   const currentBusRouteFetchId = useRef<string | null>(null);
   const lastPlacesFitKey = useRef<string | null>(null);
   const currentMapZoomRef = useRef(DEFAULT_USER_CAMERA_ZOOM);
@@ -502,7 +502,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const isFetchingRef = useRef(false);
 
   // ── Review / dining state ─────────────────────────────────
-  const [streamReviews, setStreamReviews] = useState<any[]>([]);
+  const [reviews, setReviews] = useState<any[]>([]);
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
   const [newRating, setNewRating] = useState(5);
   const [newReviewText, setNewReviewText] = useState("");
@@ -1093,11 +1093,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const fetchReviews = useCallback(async (placeId: string, limit = 5) => {
     if (limit > 5) setIsFetchingReviews(true);
     try {
-      const { getPlaceReviews } = require("../services/streamFeeds");
+      const { getPlaceReviews } = require("../services/socialFeedService");
       const revs = await getPlaceReviews(placeId, limit);
-      setStreamReviews(revs);
+      setReviews(revs);
     } catch (e) {
-      console.warn("Failed to fetch stream reviews", e);
+      console.warn("Failed to fetch reviews", e);
     } finally {
       setIsFetchingReviews(false);
     }
@@ -1108,7 +1108,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (!selectedReviewId || !newReviewText.trim() || newRating === 0) return;
     setIsPostingReview(true);
     try {
-      const { postPlaceReview } = require("../services/streamFeeds");
+      const { postPlaceReview } = require("../services/socialFeedService");
       await postPlaceReview(selectedReviewId, newRating, newReviewText.trim());
       setReviewModalVisible(false);
       setNewReviewText("");
@@ -1967,7 +1967,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (selectedId && selectedReviewId) {
       fetchReviews(selectedReviewId);
     } else {
-      setStreamReviews([]);
+      setReviews([]);
     }
   }, [selectedId, selectedLoc, fetchReviews]);
 
@@ -1988,7 +1988,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   useEffect(() => {
     if (user?.id) {
       try {
-        connectFeedsUser(user);
+        initializeFeedUser(user);
       } catch (_) {}
     }
   }, [user]);
@@ -2043,7 +2043,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           CAMPUS_ZONES.map((zone) => {
             const density = getZoneDensity(zone);
             return (
-              <MapLibreCircleOverlay
+              <MapCircleOverlay
                 key={zone.name}
                 id={`heatmap-${zone.name}`}
                 center={{ latitude: zone.lat, longitude: zone.lng }}
@@ -2066,7 +2066,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
         {activeLayer === "Pulse" &&
           pulseHotspots.map((hotspot) => (
-            <MapLibreCircleOverlay
+            <MapCircleOverlay
               key={`pulse-radius-${hotspot.id}`}
               id={`pulse-radius-${hotspot.id}`}
               center={{
@@ -2091,7 +2091,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     .toLowerCase()
                     .includes((selectedDirection || "All").toLowerCase());
                 return (path.points || []).length > 0 ? (
-                  <MapLibrePolylineOverlay
+                  <MapPolylineOverlay
                     key={`path-${idx}`}
                     id={`path-${idx}`}
                     coordinates={path.points}
@@ -2105,7 +2105,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 ) : null;
               })
             : routePatterns.length > 0 && (
-                <MapLibrePolylineOverlay
+                <MapPolylineOverlay
                   id="bus-route-pattern"
                   coordinates={routePatterns}
                   color={getNeonColor(selectedRoute?.Color || "#007AFF")}
@@ -2117,7 +2117,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           Object.entries(allRoutePatternsById).map(([routeKey, pattern]) => {
             const route = busRoutes.find((r) => r.Key === routeKey);
             return pattern?.points?.length > 0 ? (
-              <MapLibrePolylineOverlay
+              <MapPolylineOverlay
                 key={routeKey}
                 id={`all-route-${routeKey}`}
                 coordinates={pattern.points}
@@ -2143,7 +2143,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 .includes((selectedDirection || "All").toLowerCase());
 
             return (
-              <MapLibreMarker
+              <MapMarker
                 key={`stop-${stop.StopCode || stop.Name || sLat}`}
                 id={`stop-${stop.StopCode || stop.Name || sLat}`}
                 coordinate={{
@@ -2161,7 +2161,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 >
                   <View style={styles.busStopMarkerInner} />
                 </View>
-              </MapLibreMarker>
+              </MapMarker>
             );
           })}
 
@@ -2194,7 +2194,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
             const opacity = matchesDirection ? (isTrackedBus ? 1 : 0.9) : 0.3;
 
             return (
-              <MapLibreMarker
+              <MapMarker
                 key={`bus-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`}
                 id={`bus-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`}
                 coordinate={{
@@ -2271,12 +2271,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     </View>
                   </View>
                 </View>
-              </MapLibreMarker>
+              </MapMarker>
             );
           })}
 
         {activeLayer === "Today" && activeWalkingRoute && (
-          <MapLibrePolylineOverlay
+          <MapPolylineOverlay
             id="walking-route"
             coordinates={activeWalkingRoute.polyline}
             color="#500000"
@@ -2288,7 +2288,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           pulseHotspots.filter(h => h && h.coord).map((hotspot) => {
             const isSelected = hotspot.id === selectedHotspotId;
             return (
-              <MapLibreMarker
+              <MapMarker
                 key={hotspot.id}
                 id={`pulse-hotspot-${hotspot.id}`}
                 coordinate={{
@@ -2350,7 +2350,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     </View>
                   </View>
                 </View>
-              </MapLibreMarker>
+              </MapMarker>
             );
           })}
 
@@ -2370,7 +2370,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 : null;
 
             return (
-              <MapLibreMarker
+              <MapMarker
                 key={`loc-${getLocationSelectionId(loc)}`}
                 id={`loc-${getLocationSelectionId(loc)}`}
                 coordinate={{
@@ -2428,7 +2428,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     />
                   </View>
                 )}
-              </MapLibreMarker>
+              </MapMarker>
             );
           })}
       </MapViewRNM>
@@ -2785,10 +2785,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
       <LocationBottomSheet
         styles={styles}
         COLORS={COLORS}
+        isDark={isDark}
         selectedId={selectedId}
         setSelectedId={setSelectedId}
         selectedLoc={selectedLoc}
-        streamReviews={streamReviews}
+        reviews={reviews}
         reviewModalVisible={reviewModalVisible}
         setReviewModalVisible={setReviewModalVisible}
         newRating={newRating}

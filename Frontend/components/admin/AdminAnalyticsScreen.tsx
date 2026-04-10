@@ -24,7 +24,7 @@ import { requestJson } from '../../api/client';
 import { Users, Share2, MapPin, Star, Pencil, Trash2, MessageSquare, LogOut, ImagePlus } from 'lucide-react-native';
 import { normalizeExternalUrl, normalizeImageUrl } from '../../services/url';
 import { getAdminLocationSuggestions, resolveAdminEventLocation } from '../../services/adminEventLocation';
-import { uploadStreamImage } from '../../services/streamFeeds';
+import { uploadMediaImage } from '../../services/socialFeedService';
 import { useSessionStore } from '../../store/sessionStore';
 import { TagSelector } from './TagSelector';
 import { TagChips } from '../common/TagChips';
@@ -203,7 +203,7 @@ export function AdminAnalyticsScreen() {
 
     setUploadingImage(true);
     try {
-      const uploaded = await uploadStreamImage(result.assets[0].uri);
+      const uploaded = await uploadMediaImage(result.assets[0].uri);
       setDraft({ ...draft, image_url: uploaded });
     } catch (error) {
       console.error(error);

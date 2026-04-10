@@ -5,6 +5,7 @@ node_modules
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
 
 # iOS generated files
 ios/
@@ -23,7 +24,22 @@ tsc_errors.log
 tsc_output.txt
 tsc_final.log
 
-# System Files
+# Local artifacts
+*.log
+crawler.log
+campus_posts.db
+Backend/campus_posts.db
+Backend/location_cache.json
+Backend/csv_output/
+TamuEventsCrawler/crawler.log
+TamuEventsCrawler/data/raw/
+TamuEventsCrawler/data/normalized/
+TamuEventsCrawler/data/state/
+test.json
+test2.json
+test_event.html
+
+# System files
 .DS_Store
 **/.DS_Store
 
