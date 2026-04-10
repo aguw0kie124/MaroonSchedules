@@ -99,6 +99,9 @@ interface EventState {
   selectedMajor: MajorOption;
   setMajorSpecific: (val: boolean) => void;
   setSelectedMajor: (major: MajorOption) => void;
+  /* Persistent category deselections (Manual overrides) */
+  deselectedCategories: string[];
+  toggleCategoryDeselection: (category: string, isDeselected: boolean) => void;
 }
 
 export const useEventStore = create<EventState>()(
@@ -192,6 +195,15 @@ export const useEventStore = create<EventState>()(
       selectedMajor: 'Engineering',
       setMajorSpecific: (val) => set({ isMajorSpecific: val }),
       setSelectedMajor: (major) => set({ selectedMajor: major }),
+      /* Category deselection tracking */
+      deselectedCategories: [],
+      toggleCategoryDeselection: (category, isDeselected) =>
+        set((state) => {
+          const next = new Set(state.deselectedCategories);
+          if (isDeselected) next.add(category);
+          else next.delete(category);
+          return { deselectedCategories: Array.from(next) };
+        }),
     }),
     {
       name: 'event-storage',
@@ -221,6 +233,9 @@ export const useEventStore = create<EventState>()(
           selectedMajor: isMajorOption(persisted.selectedMajor)
             ? persisted.selectedMajor
             : currentState.selectedMajor,
+          deselectedCategories: isStringArray(persisted.deselectedCategories)
+            ? persisted.deselectedCategories
+            : currentState.deselectedCategories,
         };
       },
     },
