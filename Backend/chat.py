@@ -301,8 +301,23 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
             if not images and "attachments" in activity:
                 images = [att.get("image_url") or att.get("asset_url") for att in activity["attachments"] if att.get("image_url") or att.get("asset_url")]
 
-            lat = custom.get("lat") or custom.get("place_lat") or custom.get("location_lat")
-            lng = custom.get("lng") or custom.get("place_lng") or custom.get("location_lng")
+            lat = custom.get("lat")
+            if lat in (None, ""): lat = custom.get("place_lat")
+            if lat in (None, ""): lat = custom.get("location_lat")
+            
+            lng = custom.get("lng")
+            if lng in (None, ""): lng = custom.get("place_lng")
+            if lng in (None, ""): lng = custom.get("location_lng")
+
+            try:
+                fl_lat = float(lat) if lat not in (None, "") else None
+            except ValueError:
+                fl_lat = None
+
+            try:
+                fl_lng = float(lng) if lng not in (None, "") else None
+            except ValueError:
+                fl_lng = None
 
             feed_repository.add_crowdping_post(
                 user_id=user_id,
@@ -310,8 +325,8 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
                 post_type=verb,
                 user_name=custom.get("user_name", "Aggie"),
                 user_image=custom.get("user_image", ""),
-                lat=float(lat) if lat is not None else None,
-                lng=float(lng) if lng is not None else None,
+                lat=fl_lat,
+                lng=fl_lng,
                 location_tag=custom.get("location_tag", ""),
                 images=images,
                 is_anonymous=bool(custom.get("is_anonymous", False)),
