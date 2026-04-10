@@ -330,7 +330,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   } = useQuery({
     queryKey: ['campus-pulse', user?.id],
     queryFn: async () => {
-      const { hotspots: rawHotspots } = await fetchCampusPulseMap(60, { 
+      const { hotspots: rawHotspots } = await fetchCampusPulseMap(60, {
         clerkId: user?.id || undefined,
         force: true
       });
@@ -619,19 +619,19 @@ export function PlacesMapScreen({ route, navigation }: any) {
     return [...filteredLocations].sort((a, b) => {
       const aD = userCoord
         ? haversineDistanceMeters(
-            userCoord.latitude,
-            userCoord.longitude,
-            a.coord.lat,
-            a.coord.lng,
-          )
+          userCoord.latitude,
+          userCoord.longitude,
+          a.coord.lat,
+          a.coord.lng,
+        )
         : null;
       const bD = userCoord
         ? haversineDistanceMeters(
-            userCoord.latitude,
-            userCoord.longitude,
-            b.coord.lat,
-            b.coord.lng,
-          )
+          userCoord.latitude,
+          userCoord.longitude,
+          b.coord.lat,
+          b.coord.lng,
+        )
         : null;
       if (activeLayer === "Parking") {
         const aP = getParkingRecommendation(a.location, parkingPermit);
@@ -722,13 +722,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
       if (
         activeTargetName === "rec-center-item" &&
         getCanonicalLocationName(loc.location) ===
-          getCanonicalLocationName("Student Recreation Center")
+        getCanonicalLocationName("Student Recreation Center")
       ) {
         InteractionManager.runAfterInteractions(() => {
           advanceStep("rec-center-item");
         });
       }
-      
+
       // Center map on selected location
       if (loc?.coord && mapRef.current) {
         if (loc.source === "pulse") {
@@ -1031,17 +1031,17 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const openBusTimetable = useCallback(() => {
     const params = isAllBusRoutesSelected
       ? {
-          mode: "all",
-          boards: allRouteBoards,
-          liveBusCount: busVehicles.length,
-        }
+        mode: "all",
+        boards: allRouteBoards,
+        liveBusCount: busVehicles.length,
+      }
       : {
-          mode: "single",
-          route: selectedRoute,
-          entries: stopTimetable,
-          liveBusCount: busVehicles.length,
-          nearbyTransitInsight,
-        };
+        mode: "single",
+        route: selectedRoute,
+        entries: stopTimetable,
+        liveBusCount: busVehicles.length,
+        nearbyTransitInsight,
+      };
     const rootNav =
       navigation.getParent?.("RootStack") || navigation.getParent?.();
     (rootNav?.navigate || navigation.navigate)("BusTimetable", params);
@@ -1061,17 +1061,17 @@ export function PlacesMapScreen({ route, navigation }: any) {
         navigation.getParent?.("RootStack") || navigation.getParent?.();
       const distanceFromUser = userCoord
         ? haversineDistanceMeters(
-            userCoord.latitude,
-            userCoord.longitude,
-            loc.coord.lat,
-            loc.coord.lng,
-          )
+          userCoord.latitude,
+          userCoord.longitude,
+          loc.coord.lat,
+          loc.coord.lng,
+        )
         : null;
       const resolvedMode =
         mode === "walk" &&
-        loc.source === "global" &&
-        distanceFromUser != null &&
-        distanceFromUser > 5000
+          loc.source === "global" &&
+          distanceFromUser != null &&
+          distanceFromUser > 5000
           ? "drive"
           : mode;
       const params = {
@@ -1129,7 +1129,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const handleGetDirections = useCallback(
     (item: ScheduleMeetingEntry | string) => {
       const buildingName = typeof item === "string" ? item : (item.building || item.locationLabel);
-      
+
       // If we have an entry with coordinates, use them directly for navigation
       if (typeof item === "object" && item.lat && item.lng) {
         const syntheticLoc: CampusLocation = {
@@ -1203,12 +1203,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
     },
     [],
   );
- 
+
   const toggleHotspotVote = useCallback(async (hotspotId: string, itemId: string, targetVote: number) => {
     const prevHotspots = pulseHotspots;
     const hotspot = prevHotspots.find(h => h.id === hotspotId);
     if (!hotspot) return;
-    
+
     const item = hotspot.items?.find((i) => i.id === itemId);
     if (!item) return;
 
@@ -1235,7 +1235,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
             }
             return i;
           });
-          
+
           return {
             ...h,
             items: updatedItems,
@@ -1346,9 +1346,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
     const routeCoords = Object.values(nextPatterns).flatMap((pattern: any) =>
       Array.isArray(pattern?.points)
         ? pattern.points.map((point: any) => ({
-            latitude: point.latitude,
-            longitude: point.longitude,
-          }))
+          latitude: point.latitude,
+          longitude: point.longitude,
+        }))
         : [],
     );
     const vehicleCoords = (vehicles || [])
@@ -1401,9 +1401,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
         const routeCoords = Object.values(allRoutePatternsById).flatMap((pattern: any) =>
           Array.isArray(pattern?.points)
             ? pattern.points.map((point: any) => ({
-                latitude: point.latitude,
-                longitude: point.longitude,
-              }))
+              latitude: point.latitude,
+              longitude: point.longitude,
+            }))
             : [],
         );
         const vehicleCoords = busVehicles
@@ -1505,7 +1505,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   // ── Auto-zoom and fitting logic ───────────────────────────
   useEffect(() => {
     if (!mapRef.current) return;
-    if (selectedId || (activeLayer === "Pulse" && selectedHotspotId)) return;
+    if (selectedId || (activeLayer === "Pulse" && selectedHotspotId) || selectedStop || selectedBus) return;
     if (suppressNextOverviewFitRef.current) {
       suppressNextOverviewFitRef.current = false;
       return;
@@ -1520,6 +1520,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
     selectedHotspotId,
     isAllBusRoutesSelected,
     pulseHotspots,
+    selectedStop,
+    selectedBus,
   ]);
 
   const handleSelectBusRoute = useCallback(
@@ -1540,7 +1542,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       try {
         const { points, stops, paths } =
           await transitService.getRoutePattern(routeId);
-          
+
         if (currentBusRouteFetchId.current !== routeId) return; // Prevent race condition crashes
 
         setRoutePatterns(points?.length ? points : []);
@@ -1551,7 +1553,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
             edgePadding: { top: 220, right: 60, bottom: 80, left: 60 },
             animated: true,
           });
-        
+
         const vehicles = await transitService.getVehicles(routeId);
         if (currentBusRouteFetchId.current === routeId) {
           setBusVehicles(vehicles);
@@ -1660,23 +1662,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setNearestBusInfo("Finding closest bus...");
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-      const sLat = stop.Latitude !== undefined ? stop.Latitude : stop.lat;
-      const sLng = stop.Longitude !== undefined ? stop.Longitude : stop.lng;
-      if (sLat != null && sLng != null && mapRef.current) {
-        mapRef.current.animateCamera(
-          {
-            center: { latitude: sLat - 0.00075, longitude: sLng },
-            zoom: 16.5,
-            pitch: isMapTilted ? 55 : 0,
-            heading: 0,
-          },
-          { duration: 600 },
-        );
-      }
-
       resolveNearestBusForStop(stop, busVehicles);
     },
-    [busVehicles, isMapTilted, mapRef, resolveNearestBusForStop],
+    [busVehicles, resolveNearestBusForStop],
   );
 
   // ── Effects ───────────────────────────────────────────────
@@ -1793,7 +1781,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         activeLayer === "Library" ||
         activeLayer === "Schedule")
     ) {
-      hydrateCampusHub(user.id).catch(() => {});
+      hydrateCampusHub(user.id).catch(() => { });
     }
   }, [activeLayer, hydrateCampusHub, user?.id]);
 
@@ -1807,7 +1795,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         refreshLocations(),
         fetchPulseHotspots(),
         Promise.resolve(refreshSchedules()),
-      ]).catch(() => {});
+      ]).catch(() => { });
     });
     return () => task.cancel();
   }, [fetchPulseHotspots, refreshLocations, refreshSchedules]);
@@ -1989,7 +1977,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (user?.id) {
       try {
         initializeFeedUser(user);
-      } catch (_) {}
+      } catch (_) { }
     }
   }, [user]);
 
@@ -2085,33 +2073,33 @@ export function PlacesMapScreen({ route, navigation }: any) {
           !isAllBusRoutesSelected &&
           (routePaths && routePaths.length > 0
             ? routePaths.map((path, idx) => {
-                const isSelected =
-                  selectedDirection === "All" ||
-                  (path.DirectionName || "")
-                    .toLowerCase()
-                    .includes((selectedDirection || "All").toLowerCase());
-                return (path.points || []).length > 0 ? (
-                  <MapPolylineOverlay
-                    key={`path-${idx}`}
-                    id={`path-${idx}`}
-                    coordinates={path.points}
-                    color={
-                      isSelected
-                        ? getNeonColor(selectedRoute?.Color || "#007AFF")
-                        : getNeonColor(selectedRoute?.Color || "#007AFF") + "40"
-                    }
-                    width={isSelected ? 4 : 2}
-                  />
-                ) : null;
-              })
-            : routePatterns.length > 0 && (
+              const isSelected =
+                selectedDirection === "All" ||
+                (path.DirectionName || "")
+                  .toLowerCase()
+                  .includes((selectedDirection || "All").toLowerCase());
+              return (path.points || []).length > 0 ? (
                 <MapPolylineOverlay
-                  id="bus-route-pattern"
-                  coordinates={routePatterns}
-                  color={getNeonColor(selectedRoute?.Color || "#007AFF")}
-                  width={4}
+                  key={`path-${idx}`}
+                  id={`path-${idx}`}
+                  coordinates={path.points}
+                  color={
+                    isSelected
+                      ? getNeonColor(selectedRoute?.Color || "#007AFF")
+                      : getNeonColor(selectedRoute?.Color || "#007AFF") + "40"
+                  }
+                  width={isSelected ? 4 : 2}
                 />
-              ))}
+              ) : null;
+            })
+            : routePatterns.length > 0 && (
+              <MapPolylineOverlay
+                id="bus-route-pattern"
+                coordinates={routePatterns}
+                color={getNeonColor(selectedRoute?.Color || "#007AFF")}
+                width={4}
+              />
+            ))}
         {activeLayer === "Bus" &&
           isAllBusRoutesSelected &&
           Object.entries(allRoutePatternsById).map(([routeKey, pattern]) => {
@@ -2204,22 +2192,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 onPress={() => {
                   setSelectedBus(bus);
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-                  const bLat =
-                    bus.Latitude !== undefined ? bus.Latitude : bus.lat;
-                  const bLng =
-                    bus.Longitude !== undefined ? bus.Longitude : bus.lng;
-                  if (bLat != null && bLng != null && mapRef.current) {
-                    mapRef.current.animateCamera(
-                      {
-                        center: { latitude: bLat - 0.00075, longitude: bLng },
-                        zoom: 16.5,
-                        pitch: isMapTilted ? 55 : 0,
-                        heading: 0,
-                      },
-                      { duration: 600 },
-                    );
-                  }
+                  // Camera centering removed per user request
                 }}
                 anchor={{ x: 0.5, y: 0.5 }}
               >
@@ -2601,7 +2574,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     style={[
                       (styles as any).listDropdownHeader,
                       isListDroppedDown &&
-                        (styles as any).listDropdownHeaderOpen,
+                      (styles as any).listDropdownHeaderOpen,
                     ]}
                     onPress={() => setIsListDroppedDown(!isListDroppedDown)}
                   >
@@ -2644,12 +2617,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
                               onLayout={
                                 isRecCenterTourItem
                                   ? (event) => {
-                                      recCenterDropdownYRef.current =
-                                        event.nativeEvent.layout.y;
-                                      if (activeTargetName === "rec-center-item") {
-                                        setTimeout(scrollToRecCenterDropdownItem, 0);
-                                      }
+                                    recCenterDropdownYRef.current =
+                                      event.nativeEvent.layout.y;
+                                    if (activeTargetName === "rec-center-item") {
+                                      setTimeout(scrollToRecCenterDropdownItem, 0);
                                     }
+                                  }
                                   : undefined
                               }
                               onPress={() => {
@@ -2665,31 +2638,31 @@ export function PlacesMapScreen({ route, navigation }: any) {
                                 }
                               }}
                             >
-                            <View style={{ flex: 1 }}>
-                              <Text
-                                style={(styles as any).listDropdownItemTitle}
-                                numberOfLines={1}
-                              >
-                                {loc.location}
-                              </Text>
-                              <Text
-                                style={(styles as any).listDropdownItemSub}
-                                numberOfLines={1}
-                              >
-                                {(loc.type === "Library" ||
-                                  loc.type === "Rec") &&
-                                loc.percent_full != null
-                                  ? `${loc.percent_full}% full · `
-                                  : ""}
-                                {loc.type !== "Dining" && loc.type !== "Hub"
-                                  ? loc.type
-                                  : ""}
-                              </Text>
-                            </View>
-                            <ChevronRight
-                              size={16}
-                              color={COLORS.textTertiary}
-                            />
+                              <View style={{ flex: 1 }}>
+                                <Text
+                                  style={(styles as any).listDropdownItemTitle}
+                                  numberOfLines={1}
+                                >
+                                  {loc.location}
+                                </Text>
+                                <Text
+                                  style={(styles as any).listDropdownItemSub}
+                                  numberOfLines={1}
+                                >
+                                  {(loc.type === "Library" ||
+                                    loc.type === "Rec") &&
+                                    loc.percent_full != null
+                                    ? `${loc.percent_full}% full · `
+                                    : ""}
+                                  {loc.type !== "Dining" && loc.type !== "Hub"
+                                    ? loc.type
+                                    : ""}
+                                </Text>
+                              </View>
+                              <ChevronRight
+                                size={16}
+                                color={COLORS.textTertiary}
+                              />
                             </TouchableOpacity>
                           );
 
