@@ -57,7 +57,7 @@ import { getDefaultAccentColor, useTheme } from './SharedUI';
 
 import { TagChips } from './common/TagChips';
 
-const SUPPORT_CONTACT_URL = 'mailto:tejtalluri1@gmail.com?subject=MaroonLife%20Support';
+const SUPPORT_CONTACT_URL = 'https://maroonlife-web-private.vercel.app/support';
 
 const SETTINGS_TABS = [
   { key: 'personal', label: 'Personal', icon: UserRound },
@@ -1058,7 +1058,7 @@ export function Profile() {
           <LifeBuoy size={20} color="#F59E0B" />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={styles.toolTitle}>Contact Support</Text>
+            <Text style={styles.toolTitle}>Support</Text>
         </View>
         <ExternalLink size={18} color={COLORS.textTertiary} />
       </Pressable>
@@ -1144,7 +1144,7 @@ export function Profile() {
             <LifeBuoy size={20} color="#F59E0B" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Contact Support</Text>
+            <Text style={styles.toolTitle}>Support</Text>
           </View>
           <ExternalLink size={18} color={COLORS.textTertiary} />
         </Pressable>

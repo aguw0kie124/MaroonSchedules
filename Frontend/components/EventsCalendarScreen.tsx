@@ -843,7 +843,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const [view, setView] = useState<EventsView>('discover');
 
-  const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set(['Featured']));
+  const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set(['Featured', 'For U']));
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [searchQuery, setSearchQuery] = useState('');
   const [detailEvent, setDetailEvent] = useState<TAMUEvent | null>(null);
@@ -871,6 +871,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     receivedInvites: persistedReceivedInvites,
     acceptInvite,
     rejectInvite,
+    deselectedCategories,
+    toggleCategoryDeselection,
   } = useEventStore();
   const scheduledEvents = persistedScheduledEvents;
   const savedEventIds = persistedSavedEventIds;
@@ -1047,6 +1049,19 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   );
 
   const isEventPreferencesCompleted = !!preferredEventCategories && preferredEventCategories.length > 0;
+
+  // On mount, ensure we respect persistent deselections for the default set
+  useEffect(() => {
+    setSelectedCategories((prev) => {
+      const next = new Set(prev);
+      deselectedCategories.forEach((cat) => {
+        if (isExploreCategory(cat)) {
+          next.delete(cat as ExploreCategory);
+        }
+      });
+      return next;
+    });
+  }, []); // Only on mount to apply stored manual overrides to the default session state
 
   const handleRefresh = useCallback(async () => {
     await fetchEvents();
@@ -1231,7 +1246,16 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       return;
     }
     lastAppliedPreferenceKey.current = preferenceKey;
-    setSelectedCategories(new Set(normalizedPreferenceCategories));
+    setSelectedCategories((prev) => {
+      const next = new Set(normalizedPreferenceCategories);
+      if (prev.has('For U') && !deselectedCategories.includes('For U')) {
+        next.add('For U');
+      }
+      if (prev.has('Featured')) {
+        next.add('Featured');
+      }
+      return next;
+    });
     if (preferredSocialMode) {
       setSocialMode(preferredSocialMode);
     }
@@ -1251,11 +1275,16 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const toggleCategory = useCallback((category: ExploreCategory) => {
     setSelectedCategories((prev) => {
       const next = new Set(prev);
-      if (next.has(category)) next.delete(category);
-      else next.add(category);
+      if (next.has(category)) {
+        next.delete(category);
+        toggleCategoryDeselection(category, true);
+      } else {
+        next.add(category);
+        toggleCategoryDeselection(category, false);
+      }
       return next;
     });
-  }, []);
+  }, [toggleCategoryDeselection]);
 
   const handleSchedule = useCallback(
     async (event: TAMUEvent) => {
@@ -2293,8 +2322,13 @@ function SettingsModal({
                 style={stylesStatic.modalOption}
                 onPress={() => {
                   const next = new Set(selectedCategories);
-                  if (next.has(category)) next.delete(category);
-                  else next.add(category);
+                  if (next.has(category)) {
+                    next.delete(category);
+                    toggleCategoryDeselection(category, true);
+                  } else {
+                    next.add(category);
+                    toggleCategoryDeselection(category, false);
+                  }
                   setSelectedCategories(next);
                 }}
               >

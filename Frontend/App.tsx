@@ -168,11 +168,8 @@ function UserSync({ children }: { children: React.ReactNode }) {
           }
           if (isMajorOption(data.major)) {
             setSelectedMajor(data.major);
-            setMajorSpecific(true);
           } else if (!isEventPreferencesCompleted) {
             setMajorSpecific(false);
-          } else {
-            setMajorSpecific(isMajorSpecific);
           }
         }
       }).catch((err: any) => console.warn('UserSync failed:', err));
