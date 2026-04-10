@@ -215,7 +215,9 @@ export const useEventStore = create<EventState>()(
           receivedInvites: Array.isArray(persisted.receivedInvites)
             ? persisted.receivedInvites
             : currentState.receivedInvites,
-          isMajorSpecific: false,
+          isMajorSpecific: typeof persisted.isMajorSpecific === 'boolean'
+            ? persisted.isMajorSpecific
+            : currentState.isMajorSpecific,
           selectedMajor: isMajorOption(persisted.selectedMajor)
             ? persisted.selectedMajor
             : currentState.selectedMajor,
