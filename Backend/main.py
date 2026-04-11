@@ -49,6 +49,7 @@ else:
         "http://localhost:19006",
         "http://127.0.0.1:19006",
         "https://maroonlife-web-private.vercel.app",
+        "https://maroon-life-web-private.vercel.app",
     ]
 
 public_router = APIRouter()
