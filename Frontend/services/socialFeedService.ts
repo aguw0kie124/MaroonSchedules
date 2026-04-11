@@ -1,6 +1,12 @@
 import { getPremiumName, getPremiumImage } from '../utils/userUtils';
 import { apiFetch } from '../api/client';
 
+function warnFeedRead(scope: string, e: unknown) {
+  if (__DEV__) {
+    console.warn(scope, e);
+  }
+}
+
 let connectedUserId: string | null = null;
 let currentFullUser: any | null = null;
 
@@ -92,7 +98,7 @@ export async function getCampusFeed(limit = 25): Promise<any[]> {
     const data = await res.json();
     return data.results || [];
   } catch (e) {
-    console.error('[NativeFeeds] getCampusFeed error:', e);
+    warnFeedRead('[NativeFeeds] getCampusFeed', e);
     return [];
   }
 }
@@ -104,7 +110,7 @@ export async function getPingFeed(limit = 40): Promise<any[]> {
     const data = await res.json();
     return data.results || [];
   } catch (e) {
-    console.error('[NativeFeeds] getPingFeed error:', e);
+    warnFeedRead('[NativeFeeds] getPingFeed', e);
     return [];
   }
 }
@@ -393,7 +399,7 @@ export async function getPlaceReviews(placeId: string, limit = 5): Promise<any[]
     const slugify = (text: string) => text.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
     try {
         const slug = slugify(placeId);
-        const res = await feedFetch(`/chat/feeds/proxy/flat/place_review_${slug}?limit=${limit}`);
+        const res = await feedFetch(`/chat/feeds/proxy/flat/place_review_${slug}?limit=${limit}`, {}, 6000);
         if (!res.ok) throw new Error(`Proxy Fetch Error: ${res.status}`);
         const data = await res.json();
         const results = data.results || [];
@@ -497,7 +503,9 @@ export async function getBlockedUsers(userId: string): Promise<any[]> {
         if (!res.ok) return [];
         return await res.json();
     } catch (e) {
-        console.error('[NativeFeeds] getBlockedUsers error:', e);
+        if (__DEV__) {
+            console.warn('[NativeFeeds] getBlockedUsers: network error, returning empty list', e);
+        }
         return [];
     }
 }

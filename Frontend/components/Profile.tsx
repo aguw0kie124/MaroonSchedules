@@ -178,8 +178,6 @@ export function Profile() {
   const setNotificationLeadTime = useAppShellStore((state) => state.setNotificationLeadTime);
   const notificationsEnabled = useAppShellStore((state) => state.notificationsEnabled);
   const setNotificationsEnabled = useAppShellStore((state) => state.setNotificationsEnabled);
-  const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
-  const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
   const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
   const preferredTime = useAppShellStore((state) => state.preferredTime);
   const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
@@ -291,7 +289,9 @@ export function Profile() {
         const data = await getBlockedUsers(user.id);
         setBlockedUsers(data);
     } catch (err) {
-        console.error('Failed to load blocked users', err);
+        if (__DEV__) {
+          console.warn('Failed to load blocked users', err);
+        }
     } finally {
         setLoadingBlocked(false);
     }
@@ -641,8 +641,10 @@ export function Profile() {
           marginTop: 10
         }]} 
         onPress={() => {
-          setEventPreferencesCompleted(false);
-          setShowEventPreferencesOnboarding(true);
+          useAppShellStore.setState({
+            isEventPreferencesCompleted: false,
+            showEventPreferencesOnboarding: true,
+          });
         }}
       >
         <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(47, 128, 237, 0.12)', alignItems: 'center', justifyContent: 'center' }}>

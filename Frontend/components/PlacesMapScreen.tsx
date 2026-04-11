@@ -1997,6 +1997,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
           currentMapCenterRef.current = {
             latitude: region.latitude,
             longitude: region.longitude,
+            latitudeDelta: region.latitudeDelta,
+            longitudeDelta: region.longitudeDelta,
           };
           currentMapZoomRef.current = Math.min(
             MAX_RESTORE_CAMERA_ZOOM,

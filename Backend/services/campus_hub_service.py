@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import hashlib
 import html
 import json
@@ -91,7 +91,8 @@ def _is_event_upcoming(event: Dict[str, Any], now: Optional[datetime] = None) ->
     relevant_time = _parse_event_datetime(event.get("end_time")) or _parse_event_datetime(event.get("start_time"))
     if relevant_time is None:
         return True
-    return relevant_time >= reference_time
+    # Allow events that started/ended within the last 12 hours for discovery and timezone padding
+    return relevant_time >= (reference_time - timedelta(hours=12))
 
 
 def _event_start_sort_key(event: Dict[str, Any]) -> tuple[int, float]:
@@ -99,6 +100,17 @@ def _event_start_sort_key(event: Dict[str, Any]) -> tuple[int, float]:
     if start_time is None:
         return (1, float("inf"))
     return (0, start_time.timestamp())
+
+
+def _merge_admin_events_before_limit(events: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
+    """Keep admin portal events in the payload when trimming — plain [:limit] can drop them behind thousands of crawler rows."""
+    if not limit or len(events) <= limit:
+        return events
+    admin_events = [e for e in events if e.get("is_admin_event")]
+    regular_events = [e for e in events if not e.get("is_admin_event")]
+    if len(admin_events) >= limit:
+        return admin_events[:limit]
+    return admin_events + regular_events[: limit - len(admin_events)]
 
 
 def _safe_db_fetchone(query: str, params: tuple = (), conn: Optional[psycopg.Connection] = None) -> Optional[Dict[str, Any]]:
@@ -1082,6 +1094,7 @@ def get_events_snapshot(
     events = crawler_events.get("events") if isinstance(crawler_events, dict) else crawler_events
     source_status = crawler_events.get("source_status") if isinstance(crawler_events, dict) else "live"
     events_copy = list(events) if events else []
+    print(f"[EVENTS_DEBUG] crawler events: {len(events_copy)}, source: {source_status}")
     admin_events_list = []
     
     # Fetch Admin Events
@@ -1115,40 +1128,64 @@ def get_events_snapshot(
         """,
         conn=conn,
     )
+    print(f"[EVENTS_DEBUG] admin_events_raw from DB: {len(admin_events_raw)}")
     for ad_ev in admin_events_raw:
         admin_clerk_id = ad_ev.get("clerk_id")
         if admin_clerk_id and (admin_clerk_id in blocked_ids or admin_clerk_id in muted_admin_ids):
             continue
 
-        organization_name = ad_ev.get("organization_name") or "Campus organizer"
-        admin_events_list.append({
-            "event_id": str(ad_ev["id"]),
-            "title": encryption_service.decrypt_string(ad_ev["title"]),
-            "location": ad_ev["location_name"],
-            "location_lat": ad_ev["lat"],
-            "location_lng": ad_ev["lng"],
-            "start_time": ad_ev["start_time"].isoformat() if ad_ev["start_time"] else None,
-            "end_time": ad_ev["end_time"].isoformat() if ad_ev["end_time"] else None,
-            "description": encryption_service.decrypt_string(ad_ev["description"]),
-            "google_review_url": ad_ev.get("google_review_url"),
-            "image_url": ad_ev.get("image_url"),
-            "access_tags": ad_ev.get("access_tags") or [],
-            "has_food": False,
-            "source_name": "admin_portal",
-            "host_name": organization_name,
-            "organization_name": organization_name,
-            "admin_clerk_id": admin_clerk_id,
-            "categories": {"featured": 1},
-            "is_admin_event": True
-        })
+        try:
+            organization_name = ad_ev.get("organization_name") or "Campus organizer"
+            admin_events_list.append({
+                "event_id": str(ad_ev["id"]),
+                "title": encryption_service.decrypt_string(ad_ev["title"]),
+                "location": ad_ev["location_name"],
+                "location_lat": ad_ev["lat"],
+                "location_lng": ad_ev["lng"],
+                "start_time": ad_ev["start_time"].isoformat() if ad_ev["start_time"] else None,
+                "end_time": ad_ev["end_time"].isoformat() if ad_ev["end_time"] else None,
+                "date_ts": int(ad_ev["start_time"].timestamp()) if ad_ev["start_time"] else 0,
+                "date2_ts": int(ad_ev["end_time"].timestamp()) if ad_ev["end_time"] else None,
+                "description": encryption_service.decrypt_string(ad_ev["description"]),
+                "google_review_url": ad_ev.get("google_review_url"),
+                "image_url": ad_ev.get("image_url"),
+                "access_tags": ad_ev.get("access_tags") or [],
+                "has_food": False,
+                "source_name": "admin_portal",
+                "host_name": organization_name,
+                "organization_name": organization_name,
+                "admin_clerk_id": admin_clerk_id,
+                "categories": {"featured": 1},
+                "is_admin_event": True,
+                "campus_interest_score": 100,
+                "campus_interest_label": "high",
+                "campus_interest_reasons": ["Administrative Event", "Official"],
+            })
+        except Exception as e:
+            print(f"Error processing admin event {ad_ev.get('id')}: {e}")
+            continue
 
-    events = admin_events_list + events_copy
+    print(f"[EVENTS_DEBUG] admin_events_list after build: {len(admin_events_list)}")
+    for ae in admin_events_list:
+        print(f"[EVENTS_DEBUG]   admin event: {ae.get('title')} | date_ts={ae.get('date_ts')} | start={ae.get('start_time')}")
+
     events = tag_access_service.filter_events_for_access_tags(
-        events,
+        events_copy,
         user_tags=user_access_tags,
         bypass_restrictions=bypass_tag_restrictions,
     )
-    events = [event for event in events if _is_event_upcoming(event)]
+    print(f"[EVENTS_DEBUG] after tag filter: {len(events)} crawler events")
+    # Re-integrate admin events AFTER tag filtering to ensure they bypass it entirely
+    events = admin_events_list + events
+    print(f"[EVENTS_DEBUG] after merge: {len(events)} total events")
+    # Filter for upcoming events, but apply a "Steel Curtain" for admin events 
+    # ensuring they stay visible for at least 24 hours after starting.
+    events = [
+        event for event in events 
+        if _is_event_upcoming(event) or (event.get("is_admin_event") and _parse_event_datetime(event.get("start_time")) >= (datetime.now(timezone.utc) - timedelta(hours=24)))
+    ]
+    admin_after_upcoming = [e for e in events if e.get('is_admin_event')]
+    print(f"[EVENTS_DEBUG] after upcoming filter: {len(events)} total, {len(admin_after_upcoming)} admin")
     events.sort(key=_event_start_sort_key)
 
     if events:
@@ -1162,7 +1199,7 @@ def get_events_snapshot(
                 e for e in events
                 if e.get("categories", {}).get(category.lower()) == 1
             ]
-        limited = events[:limit] if limit else events
+        limited = _merge_admin_events_before_limit(events, limit) if limit else events
         return {
             "generated_at": _utc_now_iso(),
             "stale_after": 300,
@@ -1194,6 +1231,8 @@ def get_events_snapshot(
                 "place_id": resolved_place["place_id"] if resolved_place else None,
                 "start_time": event.get("start_time"),
                 "end_time": event.get("end_time"),
+                "date_ts": int(_parse_event_datetime(event.get("start_time")).timestamp()) if _parse_event_datetime(event.get("start_time")) else 0,
+                "date2_ts": int(_parse_event_datetime(event.get("end_time")).timestamp()) if _parse_event_datetime(event.get("end_time")) else None,
                 "summary": event.get("summary", ""),
                 "description": event.get("summary", ""),
                 "link": event.get("link"),
@@ -1216,9 +1255,14 @@ def get_events_snapshot(
                 "place": place_registry_service.serialize_place(resolved_place),
             }
         )
-    events = [event for event in events if _is_event_upcoming(event)]
+    # Filter for upcoming events, but apply a "Steel Curtain" for admin events 
+    # ensuring they stay visible for at least 24 hours after starting.
+    events = [
+        event for event in events 
+        if _is_event_upcoming(event) or (event.get("is_admin_event") and _parse_event_datetime(event.get("start_time")) >= (datetime.now(timezone.utc) - timedelta(hours=24)))
+    ]
     events.sort(key=_event_start_sort_key)
-    events = events[:limit] if limit else events
+    events = _merge_admin_events_before_limit(events, limit) if limit else events
     return {
         "generated_at": _utc_now_iso(),
         "stale_after": 300,

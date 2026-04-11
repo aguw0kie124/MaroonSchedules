@@ -36,8 +36,10 @@ export function PendingReviewInterceptor() {
         setPendingEvent((current: any) => current && submitting ? current : null);
         return null;
       })
-      .catch(err => {
-        console.log('Pending review fetch failed', err);
+      .catch((err) => {
+        if (__DEV__) {
+          console.debug('[PendingReview] fetch skipped or failed', err);
+        }
         return null;
       });
   }, [submitting, user?.id]);

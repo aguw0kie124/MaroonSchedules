@@ -113,6 +113,7 @@ def serialize_place(place: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]
     }
 
 
+@lru_cache(maxsize=512)
 def resolve_place(
     location_name: Optional[str] = None,
     lat: Optional[float] = None,

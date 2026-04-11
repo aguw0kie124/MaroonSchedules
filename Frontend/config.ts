@@ -12,6 +12,11 @@ const rawApiUrl = Platform.select({
 });
 
 export const API_URL = (rawApiUrl || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+
+/** Abort API requests after this many ms (prevents hung UI when the backend host is wrong or offline). Override with EXPO_PUBLIC_API_TIMEOUT_MS. */
+const parsedTimeout = parseInt(process.env.EXPO_PUBLIC_API_TIMEOUT_MS || '', 10);
+export const API_REQUEST_TIMEOUT_MS =
+    Number.isFinite(parsedTimeout) && parsedTimeout >= 3000 ? parsedTimeout : 8000;
 export const API_KEY = (process.env.EXPO_PUBLIC_API_KEY || '').trim();
 
 export const AGGIESPIRIT_TRIP_PLANNER_URL =
