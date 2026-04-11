@@ -48,6 +48,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
 
 import { fetchCampusOverview, fetchUserProfile } from '../api/client';
+import { SUPPORT_CONTACT_URL } from '../config';
 import { PARKING_PERMIT_OPTIONS, useAppShellStore } from '../store/appShellStore';
 import { useSessionStore } from '../store/sessionStore';
 import { deleteAccount, getBlockedUsers, unblockUser } from '../services/socialFeedService';
@@ -57,7 +58,6 @@ import { getDefaultAccentColor, useTheme } from './SharedUI';
 
 import { TagChips } from './common/TagChips';
 
-const SUPPORT_CONTACT_URL = 'https://maroonlife-web-private.vercel.app/support';
 
 const SETTINGS_TABS = [
   { key: 'personal', label: 'Personal', icon: UserRound },

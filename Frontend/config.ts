@@ -31,8 +31,13 @@ export const TAMU_LIBCAL_EQUIPMENT_URL =
   process.env.EXPO_PUBLIC_TAMU_LIBCAL_EQUIPMENT_URL ||
   'https://tamu.libcal.com/equipment';
 
+/** Public support page (App Store Guideline 1.5). */
+export const SUPPORT_CONTACT_URL =
+  process.env.EXPO_PUBLIC_SUPPORT_URL || 'https://cooked-creature-cbf.notion.site/MaroonLife-Support-33f932bf7d5780daa966f059c750cc8d';
+
 export const config = {
     apiUrl: API_URL,
+    supportUrl: SUPPORT_CONTACT_URL,
     apiKey: API_KEY,
     aggieSpiritTripPlannerUrl: AGGIESPIRIT_TRIP_PLANNER_URL,
     tamuLibcalSearchUrl: TAMU_LIBCAL_SEARCH_URL,
