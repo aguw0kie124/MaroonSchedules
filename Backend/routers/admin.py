@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Any
 import os
 import psycopg
 
-from db_config import CONNECTION_PARAMS
+from db_config import CONNECTION_PARAMS, get_pool
 from auth.clerk_middleware import require_auth, ensure_matching_user
 from services import cache_service, encryption_service
 from repositories import tag_repository
@@ -17,12 +17,27 @@ from fastapi import Request
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
+import threading
+
 def _safe_decrypt(value: Optional[str]) -> Optional[str]:
     """Decrypt if it's an encrypted payload, otherwise return as is."""
     if not value or not isinstance(value, str):
         return value
     return encryption_service.decrypt_string(value)
 
+_admin_schema_lock = threading.Lock()
+_admin_schema_initialized = False
+
+import threading
+
+def _ensure_admin_review_schema_once(conn: psycopg.Connection) -> None:
+    global _admin_schema_initialized
+    if _admin_schema_initialized:
+        return
+    with _admin_schema_lock:
+        if not _admin_schema_initialized:
+            _ensure_admin_review_schema(conn)
+            _admin_schema_initialized = True
 
 def _ensure_admin_review_schema(conn: psycopg.Connection) -> None:
     with conn.cursor() as cur:
@@ -250,7 +265,8 @@ def get_admin_status(
 
     application_status = None
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        pool = get_pool()
+        with pool.connection() as conn:
             _ensure_admin_application_schema(conn)
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(
@@ -497,8 +513,9 @@ def create_admin_event(
         )
 
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
-            _ensure_admin_review_schema(conn)
+        pool = get_pool()
+        with pool.connection() as conn:
+            _ensure_admin_review_schema_once(conn)
             with conn.cursor() as cur:
                 cur.execute(
                     """

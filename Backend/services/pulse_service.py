@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -54,9 +53,11 @@ def _format_time_label(iso_value: str) -> str:
 
     tomorrow = now.astimezone().date() + timedelta(days=1)
     if local_time.date() == tomorrow:
-        return local_time.strftime("Tomorrow · %I:%M %p").replace("· 0", "· ")
+        return local_time.strftime("Tomorrow · %#I:%M %p")
+        return local_time.strftime("Tomorrow · %#I:%M %p")
 
-    return local_time.strftime("%b %d · %I:%M %p").replace("· 0", "· ")
+    return local_time.strftime("%b %#d · %#I:%M %p")
+    return local_time.strftime("%b %#d · %#I:%M %p")
 
 
 def _recency_weight(iso_value: str) -> float:

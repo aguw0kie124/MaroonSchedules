@@ -28,7 +28,6 @@ from routers.traffic import router as traffic_router
 from routers.upload import UPLOAD_DIR
 from routers.upload import router as upload_router
 from services import cache_service, course_service, schedule_service, snapshot_jobs, user_service
-from db_config import init_pool, close_pool
 
 load_dotenv(override=True)
 
@@ -59,7 +58,6 @@ protected_router = APIRouter(dependencies=[Depends(require_protected_request)])
 
 @app.on_event("startup")
 def log_redis_status():
-    init_pool()   # Initialize DB pool
     cache_service.get_json("__redis_startup_probe__")
 
 
@@ -72,7 +70,6 @@ async def start_background_snapshot_jobs():
 async def stop_background_snapshot_jobs():
     await snapshot_jobs.stop_snapshot_jobs(getattr(app.state, "snapshot_job_tasks", []))
     cache_service.close_client()
-    close_pool()  # Close DB pool
 
 
 app.add_middleware(

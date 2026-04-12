@@ -58,14 +58,19 @@ export function AdminMapPoster() {
   }, [user?.id]);
 
   const updateDatePart = (nextValue: Date) => {
+    const year = nextValue.getFullYear();
+    const month = nextValue.getMonth();
+    const date = nextValue.getDate();
+
     setStartTime((current) => {
       const next = new Date(current);
-      next.setFullYear(nextValue.getFullYear(), nextValue.getMonth(), nextValue.getDate());
+      next.setFullYear(year, month, date);
       return next;
     });
+
     setEndTime((current) => {
       const next = new Date(current);
-      next.setFullYear(nextValue.getFullYear(), nextValue.getMonth(), nextValue.getDate());
+      next.setFullYear(year, month, date);
       return next;
     });
   };

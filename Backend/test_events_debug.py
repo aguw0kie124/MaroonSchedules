@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Direct test of get_events_snapshot to verify admin events are present."""
 import sys
 import json

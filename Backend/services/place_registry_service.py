@@ -1,3 +1,4 @@
+from __future__ import annotations
 import sqlite3
 import re
 from functools import lru_cache

@@ -18,6 +18,7 @@ DB_PASS = os.getenv("DB_PASS", "admin")
 DB_PORT = os.getenv("DB_PORT", "5432")
 DB_CONNECT_TIMEOUT = os.getenv("DB_CONNECT_TIMEOUT", "8")
 
+from typing import Optional
 from psycopg_pool import ConnectionPool
 
 CONNECTION_PARAMS = (
@@ -30,7 +31,7 @@ CONNECTION_PARAMS = (
     f"options='-c statement_timeout=5000'"
 )
 
-_db_pool: ConnectionPool | None = None
+_db_pool: Optional[ConnectionPool] = None
 
 def get_db_connection():
     """Returns the connection string for backward compatibility."""

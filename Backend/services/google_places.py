@@ -6,7 +6,6 @@ Used for:
 - Runtime dining discovery (venue -> restaurants + opening hours)
 """
 
-from __future__ import annotations
 
 import json
 import os

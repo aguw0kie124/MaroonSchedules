@@ -1,11 +1,10 @@
-from __future__ import annotations
 
 import threading
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 import psycopg
 
-from db_config import CONNECTION_PARAMS
+from db_config import CONNECTION_PARAMS, get_pool
 from services.tag_access_service import normalize_tag_list, normalize_tag_slug
 from services import encryption_service
 
@@ -136,10 +135,10 @@ def _ensure_access_dependencies(conn: psycopg.Connection) -> None:
 
 
 def _run_with_connection(callback):
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    pool = get_pool()
+    with pool.connection() as conn:
         _ensure_access_dependencies(conn)
         result = callback(conn)
-        conn.commit()
         return result
 
 

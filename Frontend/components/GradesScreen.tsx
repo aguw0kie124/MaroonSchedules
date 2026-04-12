@@ -275,8 +275,6 @@ function DetailModal({
 // Main Screen
 // ──────────────────────────────────────────────────────────────
 
-import { useQuery } from '@tanstack/react-query';
-
 export function GradesScreen() {
     const { COLORS } = useTheme();
     const styles = getStyles(COLORS);
@@ -286,39 +284,39 @@ export function GradesScreen() {
 
     const [subject, setSubject] = useState(initialSubject || '');
     const [courseNum, setCourseNum] = useState(initialCourseNum || '');
+    const [screenState, setScreenState] = useState<ScreenState>('idle');
+    const [result, setResult] = useState<GradeSearchResult | null>(null);
+    const [errorMsg, setErrorMsg] = useState('');
     const [selectedSection, setSelectedSection] = useState<InstructorSectionStat | null>(null);
-
-    const subj = subject.trim().toUpperCase();
-    const num = courseNum.trim();
-
-    const {
-        data: result,
-        isLoading,
-        isError,
-        error,
-        refetch,
-        isSuccess
-    } = useQuery({
-        queryKey: ['course-grades', subj, num],
-        queryFn: () => searchCourseGrades(subj, num),
-        enabled: false, // Only search on explicit trigger
-        staleTime: 1000 * 60 * 60, // Grades don't change often! 1 hour cache
-    });
-
-    const handleSearch = useCallback(() => {
-        if (subj && num) {
-            refetch();
-        }
-    }, [subj, num, refetch]);
 
     useEffect(() => {
         if (initialSubject && initialCourseNum) {
-            refetch();
+            performSearch(initialSubject, initialCourseNum);
         }
-    }, [initialSubject, initialCourseNum, refetch]);
+    }, [initialSubject, initialCourseNum]);
 
-    const errorMsg = (error as any)?.message ?? 'Unknown error';
-    const screenState: ScreenState = isLoading ? 'loading' : isError ? 'error' : isSuccess ? 'results' : 'idle';
+    const performSearch = async (subjInput: string, numInput: string) => {
+        const subj = subjInput.trim().toUpperCase();
+        const num = numInput.trim();
+        if (!subj || !num) return;
+
+        setScreenState('loading');
+        setResult(null);
+        setErrorMsg('');
+
+        try {
+            const data = await searchCourseGrades(subj, num);
+            setResult(data);
+            setScreenState('results');
+        } catch (err: any) {
+            setErrorMsg(err?.message ?? 'Unknown error');
+            setScreenState('error');
+        }
+    };
+
+    const handleSearch = useCallback(() => {
+        performSearch(subject, courseNum);
+    }, [subject, courseNum]);
 
     return (
         <SafeAreaView style={styles.container}>
