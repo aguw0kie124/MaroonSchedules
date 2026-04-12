@@ -98,8 +98,45 @@ def _is_event_upcoming(event: Dict[str, Any], now: Optional[datetime] = None) ->
 def _event_start_sort_key(event: Dict[str, Any]) -> tuple[int, float]:
     start_time = _parse_event_datetime(event.get("start_time"))
     if start_time is None:
-        return (1, float("inf"))
-    return (0, start_time.timestamp())
+        return 0, 0.0
+    return 1, start_time.timestamp()
+
+
+def _get_admin_event_categories(title: str, description: str, tags: List[str]) -> Dict[str, int]:
+    """Dynamically assign categories based on content and tags."""
+    blob = (title + " " + (description or "") + " " + " ".join(tags)).lower()
+    categories = {
+        "featured": 1,
+        "social": 0,
+        "sports": 0,
+        "academic": 0,
+        "food": 0,
+        "advocacy": 0,
+        "entertainment": 0,
+        "health_wellness": 0,
+        "miscellaneous": 0,
+    }
+
+    if any(kw in blob for kw in ["sport", "game", "match", "tournament", "athletic", "ncaa", "espn"]):
+        categories["sports"] = 1
+    if any(kw in blob for kw in ["lecture", "seminar", "research", "study", "academic", "workshop", "colloquium", "thesis", "dissertation"]):
+        categories["academic"] = 1
+    if any(kw in blob for kw in ["food", "meal", "dinner", "lunch", "breakfast", "pizza", "refreshments", "catering"]):
+        categories["food"] = 1
+    if any(kw in blob for kw in ["social", "mixer", "meetup", "party", "hangout", "organization fair", "student org"]):
+        categories["social"] = 1
+    if any(kw in blob for kw in ["concert", "show", "performance", "movie", "film", "theatre", "theater", "dance", "talent"]):
+        categories["entertainment"] = 1
+    if any(kw in blob for kw in ["wellness", "health", "yoga", "mental", "meditation", "self-care", "therapy"]):
+        categories["health_wellness"] = 1
+    if any(kw in blob for kw in ["advocacy", "activism", "awareness", "volunteer", "service", "march", "rally"]):
+        categories["advocacy"] = 1
+
+    # If no topic assigned, mark as miscellaneous
+    if not any(v for k, v in categories.items() if k != "featured"):
+        categories["miscellaneous"] = 1
+
+    return categories
 
 
 def _merge_admin_events_before_limit(events: List[Dict[str, Any]], limit: int) -> List[Dict[str, Any]]:
@@ -1136,9 +1173,13 @@ def get_events_snapshot(
 
         try:
             organization_name = ad_ev.get("organization_name") or "Campus organizer"
+            title = encryption_service.decrypt_string(ad_ev["title"])
+            description = encryption_service.decrypt_string(ad_ev["description"]) or ""
+            tags = ad_ev.get("access_tags") or []
+            
             admin_events_list.append({
                 "event_id": str(ad_ev["id"]),
-                "title": encryption_service.decrypt_string(ad_ev["title"]),
+                "title": title,
                 "location": ad_ev["location_name"],
                 "location_lat": ad_ev["lat"],
                 "location_lng": ad_ev["lng"],
@@ -1146,16 +1187,16 @@ def get_events_snapshot(
                 "end_time": ad_ev["end_time"].isoformat() if ad_ev["end_time"] else None,
                 "date_ts": int(ad_ev["start_time"].timestamp()) if ad_ev["start_time"] else 0,
                 "date2_ts": int(ad_ev["end_time"].timestamp()) if ad_ev["end_time"] else None,
-                "description": encryption_service.decrypt_string(ad_ev["description"]),
+                "description": description,
                 "google_review_url": ad_ev.get("google_review_url"),
                 "image_url": ad_ev.get("image_url"),
-                "access_tags": ad_ev.get("access_tags") or [],
+                "access_tags": tags,
                 "has_food": False,
                 "source_name": "admin_portal",
                 "host_name": organization_name,
                 "organization_name": organization_name,
                 "admin_clerk_id": admin_clerk_id,
-                "categories": {"featured": 1},
+                "categories": _get_admin_event_categories(title, description, tags),
                 "is_admin_event": True,
                 "campus_interest_score": 100,
                 "campus_interest_label": "high",

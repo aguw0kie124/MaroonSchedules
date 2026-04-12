@@ -405,7 +405,6 @@ function isFeaturedContent(event: TAMUEvent): boolean {
 }
 
 function classifyCategory(event: TAMUEvent): ExploreCategory {
-  if (isFeaturedContent(event)) return 'Featured';
   if (event.categories) {
     if (event.categories.food) return 'Food';
     if (event.categories.sports) return 'Sports';
@@ -1305,6 +1304,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       }
       if (category !== 'Featured') {
         counts[category] += 1;
+      } else if (!isFeaturedContent(event)) {
+        // Fallback for safety, though classifyCategory should not return Featured now
+        counts.Miscellaneous += 1;
       }
     });
 
