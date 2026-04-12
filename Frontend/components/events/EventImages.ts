@@ -38,6 +38,26 @@ const KEYWORD_ENTRIES: { image: any; triggers: string[] }[] = [
     triggers: ['basketball', 'hoops'],
   },
   {
+    image: require('../../assets/images/events/keywords/baseball.jpg'),
+    triggers: ['baseball', 'softball', 'olsen field', 'davis diamond'],
+  },
+  {
+    image: require('../../assets/images/events/keywords/golf.jpg'),
+    triggers: ['golf', 'golfing', 'golf course', 'putt'],
+  },
+  {
+    image: require('../../assets/images/events/keywords/tennis.jpg'),
+    triggers: ['tennis', 'racquet'],
+  },
+  {
+    image: require('../../assets/images/events/keywords/track_and_field.jpg'),
+    triggers: ['track and field', 'cross country', 'relay', 'hurdles', 'sprint'],
+  },
+  {
+    image: require('../../assets/images/events/keywords/english.jpg'),
+    triggers: ['english', 'writing','literature', 'poetry', 'writing center', 'humanities'],
+  },
+  {
     image: require('../../assets/images/events/keywords/tailgate.jpg'),
     triggers: ['tailgate', 'tailgating', 'pre-game'],
   },
