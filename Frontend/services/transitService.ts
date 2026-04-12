@@ -1,5 +1,4 @@
-import axios from 'axios';
-import { API_URL } from '../config';
+import { apiFetch } from '../api/client';
 
 const BASE_URL = 'https://aggiespirit.ts.tamu.edu';
 const ROUTE_COLORS = ['#500000', '#7E0000', '#B34100', '#0B6E4F', '#165DFF', '#6B3FA0', '#007A78', '#A63D40'];
@@ -8,6 +7,9 @@ const ROUTE_COLORS = ['#500000', '#7E0000', '#B34100', '#0B6E4F', '#165DFF', '#6
 const METADATA_TTL = 1000 * 60 * 5; // 5 minutes
 const PATTERN_TTL = 1000 * 60 * 30; // 30 minutes
 const VEHICLE_TTL = 1000 * 5; // 5 seconds (internal buffer)
+
+/** Transit polls often; keep tighter than generic API calls so a bad host fails fast. */
+const TRANSIT_FETCH_TIMEOUT_MS = 6000;
 
 export interface BusRoute {
     id: string;
@@ -107,7 +109,7 @@ export const transitService = {
         }
 
         try {
-            const response = await fetch(`${API_URL}/traffic/transit/routes`);
+            const response = await apiFetch('/traffic/transit/routes', {}, TRANSIT_FETCH_TIMEOUT_MS);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             
@@ -155,7 +157,11 @@ export const transitService = {
         }
 
         try {
-            const response = await fetch(`${API_URL}/traffic/transit/route/${encodeURIComponent(routeId)}`);
+            const response = await apiFetch(
+                `/traffic/transit/route/${encodeURIComponent(routeId)}`,
+                {},
+                TRANSIT_FETCH_TIMEOUT_MS,
+            );
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             
@@ -204,7 +210,7 @@ export const transitService = {
 
         try {
             const query = routeId ? `?route_id=${encodeURIComponent(routeId)}` : '';
-            const response = await fetch(`${API_URL}/traffic/transit/vehicles${query}`);
+            const response = await apiFetch(`/traffic/transit/vehicles${query}`, {}, TRANSIT_FETCH_TIMEOUT_MS);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const payload = await response.json();
             const vehicles = payload.vehicles || [];

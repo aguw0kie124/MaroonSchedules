@@ -3,7 +3,7 @@ import psycopg
 import json
 import gzip
 from datetime import datetime
-from db_config import CONNECTION_PARAMS
+from db_config import CONNECTION_PARAMS, get_pool
 from typing import List, Optional, Dict
 
 API_BASE = "https://api-aggiesbp.servehttp.com"
@@ -103,7 +103,7 @@ def _fetch_sections_slice(term: str = CURRENT_TERM, limit: int = 100) -> List[di
 def _get_sections_from_db_cache(section_ids: List[str]) -> Dict[str, dict]:
     if not section_ids: return {}
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 placeholders = ", ".join(["%s"] * len(section_ids))
                 cur.execute(f"SELECT section_id, data FROM section_cache WHERE section_id IN ({placeholders})", section_ids)
@@ -120,7 +120,7 @@ def _get_section_from_db_cache(section_id: str) -> Optional[dict]:
 def _save_sections_to_db_cache(sections: List[dict]) -> None:
     if not sections: return
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as cur:
                 for section in sections:
                     s_id = section.get("id")

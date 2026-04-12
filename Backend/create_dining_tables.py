@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Migration script: Create dining-related tables in PostgreSQL.
 Linked to 'users' table via clerk_id.

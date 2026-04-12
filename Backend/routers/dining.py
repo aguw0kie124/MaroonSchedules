@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Body, Query, Depends
 from typing import List, Optional, Dict
 from pydantic import BaseModel, Field
 import psycopg
-from db_config import get_db_connection
+from db_config import CONNECTION_PARAMS, get_pool
 from services import dining_service
 from auth.clerk_middleware import require_auth, ensure_matching_user
 import json
@@ -54,7 +54,7 @@ def require_clerk_user(clerk_id: str, user_id: str = Depends(require_auth)) -> s
 @router.get("/profile/{clerk_id}")
 @limiter.limit("60/minute")
 def get_dining_profile(request: Request, clerk_id: str, _auth_user_id: str = Depends(require_clerk_user)):
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT * FROM dining_profiles WHERE clerk_id = %s", (clerk_id,))
             profile = cur.fetchone()
@@ -98,7 +98,7 @@ def update_dining_profile(request: Request, clerk_id: str, req: UpdateDiningProf
     placeholders = ", ".join(["%s"] * len(fields))
     updates = ", ".join([f"{k} = EXCLUDED.{k}" for k in fields.keys()])
 
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor() as cur:
             sql = f"""
                 INSERT INTO dining_profiles (clerk_id, {cols})
@@ -142,7 +142,7 @@ def optimize_day(
     _auth_user_id: str = Depends(require_clerk_user),
 ):
     # 1. Get Profile
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT * FROM dining_profiles WHERE clerk_id = %s", (clerk_id,))
             profile = cur.fetchone()
@@ -198,7 +198,7 @@ def optimize_day(
     
     # If live fetch failed or returned nothing, fall back to DB
     if not all_foods:
-        with psycopg.connect(get_db_connection()) as conn:
+        with get_pool().connection() as conn:
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute("""
                     SELECT * FROM food_items 
@@ -224,7 +224,7 @@ def optimize_day(
         if not m_foods:
             aliases = dining_service.PERIOD_ALIASES.get(m, [m])
             try:
-                with psycopg.connect(get_db_connection()) as conn:
+                with get_pool().connection() as conn:
                     with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                         placeholders = ','.join(['%s'] * len(aliases))
                         cur.execute(f"""
@@ -296,7 +296,7 @@ class OptimizeComboRequest(SanitizedBaseModel):
 @limiter.limit("10/minute")
 def optimize_retail_combo(request: Request, req: OptimizeComboRequest, clerk_id: str = Query(...), dining_hall: str = Query(...), _auth_user_id: str = Depends(require_clerk_user)):
     # 1. Get Profile
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT * FROM dining_profiles WHERE clerk_id = %s", (clerk_id,))
             prof = cur.fetchone()
@@ -355,7 +355,7 @@ def optimize_retail_combo(request: Request, req: OptimizeComboRequest, clerk_id:
 @limiter.limit("30/minute")
 def log_meal(request: Request, clerk_id: str, req: LogMealRequest = Body(...), _auth_user_id: str = Depends(require_clerk_user)):
     totals = dining_service.compute_totals(req.foods)
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO meal_log (clerk_id, date, meal_period, label, foods_json, calories, protein, carbs, fat, fiber, sodium, potassium, calcium, iron, vitamin_c, vitamin_d, magnesium, notes)
@@ -372,7 +372,7 @@ def log_meal(request: Request, clerk_id: str, req: LogMealRequest = Body(...), _
 @router.delete("/tracker/{clerk_id}/{meal_id}")
 @limiter.limit("30/minute")
 def delete_meal(request: Request, clerk_id: str, meal_id: int, _auth_user_id: str = Depends(require_clerk_user)):
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM meal_log WHERE clerk_id = %s AND id = %s", (clerk_id, meal_id))
         conn.commit()
@@ -384,7 +384,7 @@ def search_foods(request: Request, q: str = Query(""), source: str = Query("all"
     results = []
     
     # 1. DB Search
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("""
                 SELECT * FROM food_items 
@@ -398,7 +398,7 @@ def search_foods(request: Request, q: str = Query(""), source: str = Query("all"
 @router.get("/swipes/{clerk_id}")
 @limiter.limit("60/minute")
 def get_swipes(request: Request, clerk_id: str, date: Optional[str] = Query(None), _auth_user_id: str = Depends(require_clerk_user)):
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT * FROM swipe_log WHERE clerk_id = %s ORDER BY date DESC", (clerk_id,))
             rows = cur.fetchall()
@@ -424,7 +424,7 @@ def get_swipes(request: Request, clerk_id: str, date: Optional[str] = Query(None
 
 @router.post("/swipes/{clerk_id}")
 def log_swipe(clerk_id: str, entry: Dict = Body(...), _auth_user_id: str = Depends(require_clerk_user)):
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO swipe_log (clerk_id, date, restaurant, total_cost) VALUES (%s, %s, %s, %s)",
@@ -435,7 +435,7 @@ def log_swipe(clerk_id: str, entry: Dict = Body(...), _auth_user_id: str = Depen
 
 @router.delete("/swipes/{clerk_id}/{swipe_id}")
 def delete_swipe(clerk_id: str, swipe_id: int, _auth_user_id: str = Depends(require_clerk_user)):
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM swipe_log WHERE clerk_id = %s AND id = %s", (clerk_id, swipe_id))
         conn.commit()
@@ -444,7 +444,7 @@ def delete_swipe(clerk_id: str, swipe_id: int, _auth_user_id: str = Depends(requ
 @router.get("/history/{clerk_id}")
 @limiter.limit("60/minute")
 def get_history(request: Request, clerk_id: str, days: int = 30, _auth_user_id: str = Depends(require_clerk_user)):
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("""
                 SELECT date, SUM(calories) as calories, SUM(protein) as protein, SUM(carbs) as carbs, SUM(fat) as fat
@@ -463,7 +463,7 @@ def get_tracker(request: Request, clerk_id: str, date: str = Query(None), _auth_
     if not date:
         date = datetime.now().strftime('%Y-%m-%d')
 
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT * FROM meal_log WHERE clerk_id = %s AND date = %s", (clerk_id, date))
             entries = cur.fetchall()
@@ -478,7 +478,7 @@ def get_tracker(request: Request, clerk_id: str, date: str = Query(None), _auth_
 @router.get("/weights/{clerk_id}")
 @limiter.limit("60/minute")
 def get_weights(request: Request, clerk_id: str, _auth_user_id: str = Depends(require_clerk_user)):
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT date, weight_lbs FROM weight_log WHERE clerk_id = %s ORDER BY date ASC", (clerk_id,))
             rows = cur.fetchall()
@@ -487,7 +487,7 @@ def get_weights(request: Request, clerk_id: str, _auth_user_id: str = Depends(re
 @router.post("/weights/{clerk_id}")
 @limiter.limit("30/minute")
 def log_weight(request: Request, clerk_id: str, entry: Dict = Body(...), _auth_user_id: str = Depends(require_clerk_user)):
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO weight_log (clerk_id, date, weight_lbs) VALUES (%s, %s, %s) ON CONFLICT (clerk_id, date) DO UPDATE SET weight_lbs = EXCLUDED.weight_lbs",
@@ -498,7 +498,7 @@ def log_weight(request: Request, clerk_id: str, entry: Dict = Body(...), _auth_u
 
 @router.delete("/weights/{clerk_id}/{date}")
 def delete_weight(clerk_id: str, date: str, _auth_user_id: str = Depends(require_clerk_user)):
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM weight_log WHERE clerk_id = %s AND date = %s", (clerk_id, date))
         conn.commit()
@@ -507,7 +507,7 @@ def delete_weight(clerk_id: str, date: str, _auth_user_id: str = Depends(require
 @router.get("/weight-stats/{clerk_id}")
 @limiter.limit("60/minute")
 def get_weight_stats(request: Request, clerk_id: str, _auth_user_id: str = Depends(require_clerk_user)):
-    with psycopg.connect(get_db_connection()) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT weight_lbs FROM weight_log WHERE clerk_id = %s ORDER BY date DESC LIMIT 2", (clerk_id,))
             rows = cur.fetchall()

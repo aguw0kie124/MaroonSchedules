@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Body, Query, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from models.base import SanitizedBaseModel
@@ -104,17 +104,22 @@ def get_events(
     limit: int = Query(250, ge=1, le=1000),
     category: Optional[str] = Query(None),
     student_relevant_only: bool = Query(True),
+    campus: str = Query("tamu"),
+    refresh: bool = Query(False),
     auth_user_id: Optional[str] = Depends(optional_auth),
-):
+) -> Dict[str, Any]:
+    if clerk_id is not None and auth_user_id is None:
+        # Gracefully downgrade to anonymous mode if auth failed but clerk_id was requested
+        clerk_id = None
+
     if clerk_id is not None:
-        if auth_user_id is None:
-            raise HTTPException(status_code=401, detail="Authentication required")
         ensure_matching_user(auth_user_id, clerk_id, detail="You can only personalize events for your own account")
     return campus_hub_service.get_events_snapshot(
         clerk_id,
         limit=limit,
-        category=category,
         student_relevant_only=student_relevant_only,
+        campus=campus,
+        force_refresh=refresh,
     )
 
 

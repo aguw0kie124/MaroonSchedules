@@ -67,7 +67,7 @@ import { scheduleAdminEventReviewNotification, scheduleEventNotification } from 
 import { promptGuestLogin } from '../utils/guestAccess';
 import { blockUser, reportContent } from '../services/socialFeedService';
 import { TagChips } from './common/TagChips';
-import { getEventImage } from './events/EventImages';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
@@ -195,6 +195,18 @@ function isExploreCategory(value: string): value is ExploreCategory {
   return ALL_CATEGORIES.includes(value as ExploreCategory);
 }
 
+const EVENTS_PREF_CHIP_SNAPSHOT_KEY = 'events:preference-chip-snapshot:v1';
+
+function selectedCategoriesFromDeselects(deselected: string[]): Set<ExploreCategory> {
+  const next = new Set(ALL_CATEGORIES);
+  deselected.forEach((cat) => {
+    if (isExploreCategory(cat)) {
+      next.delete(cat as ExploreCategory);
+    }
+  });
+  return next;
+}
+
 function normalizePreferredCategories(categories: string[] | undefined) {
   return (categories || []).filter(isExploreCategory).slice(0, PERSONALIZATION_CATEGORY_LIMIT);
 }
@@ -237,8 +249,8 @@ function getPersonalizationScore(
     score += 10;
   }
   score += getTimePreferenceScore(event, preferredTime);
-  if (event.is_admin_event || category === 'For U') {
-    score += 6;
+  if (isFeaturedContent(event)) {
+    score += 40; // Significant boost for featured/admin content
   }
   const hoursAway = Math.max(0, (event.date_ts - Math.floor(Date.now() / 1000)) / 3600);
   score += Math.max(0, 10 - Math.min(hoursAway / 12, 10));
@@ -385,10 +397,15 @@ function resolveEventImageUrl(value?: string | null) {
   return normalizeImageUrl(value);
 }
 
+/** Featured chip / filter: admin posts or feeds explicitly marked featured (crawler/API). */
+function isFeaturedContent(event: TAMUEvent): boolean {
+  if (event.is_admin_event) return true;
+  const f = event.categories?.featured;
+  return f !== undefined && f !== null && Number(f) !== 0;
+}
+
 function classifyCategory(event: TAMUEvent): ExploreCategory {
-  if (event.is_admin_event) return 'Featured';
   if (event.categories) {
-    if (event.categories.featured) return 'Featured';
     if (event.categories.food) return 'Food';
     if (event.categories.sports) return 'Sports';
     if (event.categories.entertainment) return 'Entertainment';
@@ -541,13 +558,45 @@ const MAJOR_KEYWORDS: Record<MajorOption, string[]> = {
   ],
 };
 
+/** Title/tags/description hints for each explore chip (used to tighten For U vs generic campus scores). */
+const PREF_CATEGORY_KEYWORDS: Record<StandardExploreCategory, readonly string[]> = {
+  Sports: ['sport', 'game', 'match', 'tournament', 'athletic', 'gym', 'football', 'basketball', 'volleyball', 'soccer', 'baseball', 'softball', 'track', 'swim', 'tennis', 'golf', 'intramural', 'ncaa', 'aggie'],
+  Academic: ['lecture', 'seminar', 'research', 'study', 'symposium', 'department', 'faculty', 'dissertation', 'thesis', 'tutor', 'workshop', 'colloquium'],
+  Food: ['food', 'meal', 'dining', 'breakfast', 'lunch', 'dinner', 'brunch', 'pizza', 'catering', 'refreshment', 'potluck', 'bbq', 'barbecue'],
+  Social: ['social', 'mixer', 'meetup', 'meet ', ' hangout', 'party', 'networking social', 'student org', 'organization fair'],
+  'Health & Wellness': ['wellness', 'mental health', 'yoga', 'meditation', 'therapy', 'counseling', 'self-care', 'fitness class', 'rec sports', 'nutrition'],
+  Entertainment: ['concert', 'show', 'comedy', 'music', 'performance', 'festival', 'film', 'movie', 'theatre', 'theater', 'dance', 'talent'],
+  Advocacy: ['advocacy', 'activism', 'awareness', 'march', 'rally', 'volunteer', 'community service', 'fundraiser', 'nonprofit'],
+  Miscellaneous: ['career fair', 'transfer student', 'orientation', 'graduation', 'commencement'],
+};
+
+function eventAlignsWithPreferredCategoryBlob(event: TAMUEvent, stdPrefs: StandardExploreCategory[]): boolean {
+  const blob = (event._searchBlob || getSearchBlob(event)).toLowerCase();
+  return stdPrefs.some((pref) => {
+    const words = PREF_CATEGORY_KEYWORDS[pref];
+    return words.some((w) => blob.includes(w));
+  });
+}
+
 function normalizeMajorBlob(blob: string) {
   return ` ${blob.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
 }
 
 function matchesMajor(event: TAMUEvent, major: MajorOption) {
   const blob = normalizeMajorBlob(event._searchBlob || getSearchBlob(event));
-  return MAJOR_KEYWORDS[major]?.some((term) => blob.includes(` ${term.toLowerCase().trim()} `)) ?? false;
+  const keywords = MAJOR_KEYWORDS[major];
+  if (!keywords) return false;
+  
+  // Check for direct keyword matches with word boundaries
+  const hasKeyword = keywords.some((term) => blob.includes(` ${term.toLowerCase().trim()} `));
+  if (hasKeyword) return true;
+
+  // Check for specialized department codes/tags
+  const tags = (event.tags || []).map(t => t.toLowerCase());
+  if (major === 'Engineering' && (tags.includes('engr') || tags.includes('csce'))) return true;
+  if (major === 'Business' && (tags.includes('mays') || tags.includes('mgmt'))) return true;
+
+  return false;
 }
 
 function matchesPreferredTime(event: TAMUEvent, preferredTime: PreferredTimeOption) {
@@ -570,58 +619,115 @@ function hasUserEventPreferences(preferences: UserEventPreferences) {
   );
 }
 
-function getForYouMeta(event: TAMUEvent, preferences: UserEventPreferences) {
-  if (!hasUserEventPreferences(preferences)) {
-    return { matched: false, score: 0, reasons: [] as string[] };
-  }
+/** True when we can run preference-based For U (onboarding + planner fields or category picks). */
+function hasForYouPersonalizationInput(
+  preferences: UserEventPreferences,
+  preferredExploreCategories: ExploreCategory[],
+): boolean {
+  return hasUserEventPreferences(preferences) || preferredExploreCategories.length > 0;
+}
 
-  const reasons: string[] = [];
-  let score = event.campus_interest_score ?? 40;
+function getForYouMeta(
+  event: TAMUEvent,
+  preferences: UserEventPreferences,
+  preferredExploreCategories: ExploreCategory[],
+  ctx: { isSignedIn: boolean },
+) {
+  const category = event._category || classifyCategory(event);
+  const stdPrefs = preferredExploreCategories.filter(
+    (c): c is StandardExploreCategory => c !== 'Featured' && c !== 'For U',
+  );
 
-  if (preferences.major) {
-    if (matchesMajor(event, preferences.major)) {
-      score += 30;
-      reasons.push('major_match');
-    } else {
-      score -= 8;
+  if (hasUserEventPreferences(preferences) || stdPrefs.length > 0) {
+    const reasons: string[] = [];
+    let score = 45;
+
+    if (stdPrefs.length > 0) {
+      const idx =
+        category !== 'Featured' && category !== 'For U' ? stdPrefs.indexOf(category) : -1;
+      if (idx >= 0) {
+        score += 38 - idx * 7;
+        reasons.push('category_preference');
+      }
+      if (eventAlignsWithPreferredCategoryBlob(event, stdPrefs)) {
+        score += 20;
+        reasons.push('topic_keywords');
+      }
     }
-  }
 
-  if (preferences.preferredTime && preferences.preferredTime !== 'No Preference') {
-    if (matchesPreferredTime(event, preferences.preferredTime)) {
-      score += 18;
-      reasons.push('time_match');
-    } else {
-      score -= 12;
+    if (preferences.major) {
+      if (matchesMajor(event, preferences.major)) {
+        score += 28;
+        reasons.push('major_match');
+      } else {
+        score -= 10;
+        reasons.push('major_mismatch');
+      }
     }
-  }
 
-  if (preferences.avoidFriday) {
-    if (isFridayEvent(event)) {
-      score -= 22;
-      reasons.push('friday_filtered');
-    } else {
-      score += 6;
-      reasons.push('weekday_match');
+    if (preferences.preferredTime && preferences.preferredTime !== 'No Preference') {
+      if (matchesPreferredTime(event, preferences.preferredTime)) {
+        score += 18;
+        reasons.push('time_match');
+      } else {
+        score -= 12;
+        reasons.push('time_mismatch');
+      }
     }
+
+    if (preferences.avoidFriday) {
+      if (isFridayEvent(event)) {
+        score -= 24;
+        reasons.push('friday_filtered');
+      } else {
+        score += 8;
+        reasons.push('weekday_match');
+      }
+    }
+
+    const normalizedScore = Math.max(0, Math.min(100, score));
+
+    let matched: boolean;
+    if (stdPrefs.length > 0) {
+      const inPreferredCategory =
+        category !== 'Featured' && category !== 'For U' && stdPrefs.includes(category);
+      const keywordAligned = eventAlignsWithPreferredCategoryBlob(event, stdPrefs);
+      matched =
+        inPreferredCategory ||
+        keywordAligned ||
+        (reasons.includes('major_match') && normalizedScore >= 52);
+    } else {
+      matched = normalizedScore >= 60;
+    }
+
+    if (preferences.avoidFriday && isFridayEvent(event)) {
+      matched = false;
+    }
+
+    return {
+      matched,
+      score: normalizedScore,
+      reasons,
+    };
   }
 
-  if (event.campus_interest_label === 'high') {
-    reasons.push('high_interest');
-  } else if (event.campus_interest_label === 'medium') {
-    reasons.push('medium_interest');
+  if (ctx.isSignedIn) {
+    const label = event.campus_interest_label;
+    const raw = event.campus_interest_score;
+    const scoreNum = typeof raw === 'number' && Number.isFinite(raw) ? raw : 45;
+    const matched =
+      label === 'high' ||
+      (label === 'medium' && scoreNum >= 56) ||
+      (label == null && scoreNum >= 68);
+    const score = Math.max(0, Math.min(100, scoreNum));
+    return {
+      matched,
+      score,
+      reasons: matched ? (['campus_fit'] as string[]) : [],
+    };
   }
 
-  const normalizedScore = Math.max(0, Math.min(100, score));
-  const matched =
-    normalizedScore >= 55 &&
-    (!preferences.avoidFriday || !isFridayEvent(event));
-
-  return {
-    matched,
-    score: normalizedScore,
-    reasons,
-  };
+  return { matched: false, score: 0, reasons: [] as string[] };
 }
 
 function formatTime(ts: number) {
@@ -844,7 +950,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const [view, setView] = useState<EventsView>('discover');
 
-  const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set(['Featured', 'For U']));
+  const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(
+    () => new Set(ALL_CATEGORIES),
+  );
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [searchQuery, setSearchQuery] = useState('');
   const [detailEvent, setDetailEvent] = useState<TAMUEvent | null>(null);
@@ -882,17 +990,38 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const pan = useRef(new Animated.ValueXY()).current;
   const opacity = useRef(new Animated.Value(1)).current;
-  const lastAppliedPreferenceKey = useRef<string | null>(null);
   const hydratedProfileMajorForUser = useRef<string | null>(null);
-  const nowTs = Math.floor(Date.now() / 1000);
+  const [nowTs, setNowTs] = useState(() => Math.floor(Date.now() / 1000));
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowTs(Math.floor(Date.now() / 1000));
+    }, 60000); // Update every minute to protect bridge performance
+    return () => clearInterval(timer);
+  }, []);
+
+  const [eventStoreHydrated, setEventStoreHydrated] = useState(() => useEventStore.persist.hasHydrated());
+
+  useEffect(() => {
+    if (useEventStore.persist.hasHydrated()) {
+      setEventStoreHydrated(true);
+    }
+    const unsub = useEventStore.persist.onFinishHydration(() => {
+      setEventStoreHydrated(true);
+    });
+    return unsub;
+  }, []);
 
   const {
     data: events = [],
     isLoading: loading,
     refetch: fetchEvents,
     isRefetching: refreshing,
+    isError,
+    error,
   } = useQuery({
     queryKey: ['campus-events', user?.id],
+    placeholderData: (prev) => prev,
     queryFn: async () => {
       const params = new URLSearchParams({
         limit: '1000',
@@ -900,6 +1029,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       });
       if (user?.id) {
         params.set('clerk_id', user.id);
+      }
+      // [SAFEGUARD] If we are manually refreshing (pull-to-refresh), force the backend to bypass cache.
+      if (refreshing) {
+        params.set('refresh', 'true');
       }
       const payload = (await requestJson(
         `/campus/events?${params.toString()}`,
@@ -950,10 +1083,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         })
         .sort((a, b) => a.date_ts - b.date_ts);
     },
-    staleTime: 1000 * 60 * 15, // 15 mins for events
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    staleTime: 1000 * 60 * 5, // 5 mins
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   const [rewardToast, setRewardToast] = useState<{ title: string; body: string } | null>(null);
@@ -994,21 +1127,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     };
   }, [setSelectedMajor, user?.id]);
 
-  const personalizedEvents = useMemo(
-    () =>
-      events.map((event) => {
-        const meta = getForYouMeta(event, profilePreferences);
-        return {
-          ...event,
-          _forYouMatched: meta.matched,
-          _forYouScore: meta.score,
-          _forYouReasons: meta.reasons,
-        };
-      }),
-    [events, profilePreferences],
-  );
-
-  const hasForYouPrefs = useMemo(() => hasUserEventPreferences(profilePreferences), [profilePreferences]);
   const profileMajor = profilePreferences.major;
 
   const {
@@ -1049,20 +1167,117 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     [preferredEventCategories],
   );
 
+  const personalizedEvents = useMemo(
+    () =>
+      events.map((event) => {
+        const meta = getForYouMeta(event, profilePreferences, normalizedPreferenceCategories, {
+          isSignedIn: Boolean(user?.id) && !isGuest,
+        });
+        return {
+          ...event,
+          _forYouMatched: meta.matched,
+          _forYouScore: meta.score,
+          _forYouReasons: meta.reasons,
+        };
+      }),
+    [events, profilePreferences, normalizedPreferenceCategories, user?.id, isGuest],
+  );
+
+  const hasForYouPrefs = useMemo(
+    () =>
+      hasForYouPersonalizationInput(profilePreferences, normalizedPreferenceCategories) ||
+      (Boolean(user?.id) && !isGuest),
+    [profilePreferences, normalizedPreferenceCategories, user?.id, isGuest],
+  );
+
   const isEventPreferencesCompleted = !!preferredEventCategories && preferredEventCategories.length > 0;
 
-  // On mount, ensure we respect persistent deselections for the default set
+  const preferenceDataReady = useMemo(
+    () =>
+      isEventPreferencesCompleted &&
+      preferredSocialMode !== undefined &&
+      preferredTime !== undefined,
+    [isEventPreferencesCompleted, preferredSocialMode, preferredTime],
+  );
+
+  // After zustand rehydrates, mirror persisted deselections into chip UI (avoids flashing wrong state before hydration).
   useEffect(() => {
-    setSelectedCategories((prev) => {
-      const next = new Set(prev);
-      deselectedCategories.forEach((cat) => {
-        if (isExploreCategory(cat)) {
-          next.delete(cat as ExploreCategory);
-        }
-      });
-      return next;
+    if (!eventStoreHydrated) {
+      return;
+    }
+    setSelectedCategories(selectedCategoriesFromDeselects(deselectedCategories));
+  }, [eventStoreHydrated, deselectedCategories]);
+
+  // When event preferences (onboarding / settings) change vs last session snapshot, reset chips to all on and clear explore deselects.
+  useEffect(() => {
+    if (!eventStoreHydrated || !preferenceDataReady) {
+      return;
+    }
+    let cancelled = false;
+
+    const preferenceKey = JSON.stringify({
+      categories: normalizedPreferenceCategories,
+      socialMode: preferredSocialMode,
+      preferredTime,
     });
-  }, []); // Only on mount to apply stored manual overrides to the default session state
+
+    (async () => {
+      try {
+        if (!user?.id) {
+          return;
+        }
+        const snapshotStorageKey = `${EVENTS_PREF_CHIP_SNAPSHOT_KEY}:${user.id}`;
+        const stored = await AsyncStorage.getItem(snapshotStorageKey);
+        if (cancelled) {
+          return;
+        }
+        if (stored === preferenceKey) {
+          return;
+        }
+
+        const exploreDeselects = useEventStore
+          .getState()
+          .deselectedCategories.filter((c) => isExploreCategory(c));
+
+        // App update / first snapshot: keep persisted chip deselects; only record current prefs for next comparison.
+        if (stored === null && exploreDeselects.length > 0) {
+          await AsyncStorage.setItem(snapshotStorageKey, preferenceKey);
+          return;
+        }
+
+        await AsyncStorage.setItem(snapshotStorageKey, preferenceKey);
+        if (cancelled) {
+          return;
+        }
+
+        exploreDeselects.forEach((cat) => {
+          toggleCategoryDeselection(cat, false);
+        });
+        setSelectedCategories(new Set(ALL_CATEGORIES));
+        if (preferredSocialMode) {
+          setSocialMode(preferredSocialMode);
+        }
+        if (!embedded) {
+          setView('discover');
+        }
+      } catch {
+        // ignore storage failures; chip state still follows deselection sync effect
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    embedded,
+    eventStoreHydrated,
+    normalizedPreferenceCategories,
+    preferenceDataReady,
+    preferredSocialMode,
+    preferredTime,
+    toggleCategoryDeselection,
+    user?.id,
+  ]);
 
   const handleRefresh = useCallback(async () => {
     await fetchEvents();
@@ -1091,14 +1306,28 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     };
 
     personalizedEvents.forEach((event) => {
-      const isOngoing = (event.date2_ts != null && event.date2_ts > nowTs) || (event.date_ts >= nowTs - 7200);
-      if (!isOngoing) return;
-      if (isMajorSpecific && !matchesMajor(event, selectedMajor)) return;
+      const inTimeWindow =
+        (event.date2_ts != null && event.date2_ts > nowTs) ||
+        (event.date_ts >= nowTs - 7200) ||
+        (isFeaturedContent(event) && event.date_ts >= nowTs - 86400);
+      if (!inTimeWindow) return;
+
+      // [RELAXED] Major filtering should not zero-out total category counts.
+      // We keep the counts global so users see what is available on campus,
+      // and only use the major filter to rank or refine the feed itself.
       if (event._forYouMatched) {
         counts['For U'] += 1;
       }
       const category = event._category || classifyCategory(event);
-      counts[category] += 1;
+      if (isFeaturedContent(event)) {
+        counts.Featured += 1;
+      }
+      if (category !== 'Featured') {
+        counts[category] += 1;
+      } else if (!isFeaturedContent(event)) {
+        // Fallback for safety, though classifyCategory should not return Featured now
+        counts.Miscellaneous += 1;
+      }
     });
 
     return counts;
@@ -1117,16 +1346,29 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const filteredUpcomingEvents = useMemo(() => {
     let next = personalizedEvents.filter((event) => {
-      return (event.date2_ts != null && event.date2_ts > nowTs) || (event.date_ts >= nowTs - 7200);
+      const inTimeWindow =
+        (event.date2_ts != null && event.date2_ts > nowTs) ||
+        (event.date_ts >= nowTs - 7200) ||
+        (isFeaturedContent(event) && event.date_ts >= nowTs - 172800);
+      return inTimeWindow;
     });
 
     if (deferredSearchQuery.trim()) {
       const q = deferredSearchQuery.toLowerCase();
-      next = next.filter((event) => (event._searchBlob || getSearchBlob(event)).includes(q));
+      next = next.filter((event) => {
+        // "Steel Curtain" for admin/featured events: they bypass search if Featured tab is selected
+        if (isFeaturedSelected && isFeaturedContent(event)) return true;
+        return (event._searchBlob || getSearchBlob(event)).includes(q);
+      });
     }
 
-    if (isMajorSpecific) {
-      next = next.filter((event) => matchesMajor(event, selectedMajor) || (isFeaturedSelected && event.is_admin_event));
+    if (isMajorSpecific && !deferredSearchQuery.trim() && !isFeaturedSelected && standardSelectedCategories.length === 0) {
+      // Only apply hard major exclusion on the main "For U" / Discover view if no specific category or search is active.
+      // This ensures that clicking a category like "Sports" still shows all sports.
+      next = next.filter(
+        (event) =>
+          matchesMajor(event, selectedMajor) || event.is_admin_event || !!event.categories?.featured,
+      );
     }
 
     // Apply category filters with Featured union semantics:
@@ -1135,8 +1377,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
     if (hasNonFeaturedFilters) {
       next = next.filter((event) => {
-        // Featured events always pass when Featured is selected
-        if (isFeaturedSelected && event.is_admin_event) return true;
+        if (isFeaturedSelected && isFeaturedContent(event)) return true;
 
         const category = event._category || classifyCategory(event);
 
@@ -1149,8 +1390,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         return false;
       });
     } else if (isFeaturedSelected) {
-      // Only Featured is selected — show admin events only
-      next = next.filter((event) => event.is_admin_event);
+      next = next.filter((event) => isFeaturedContent(event));
     }
 
     if (standardSelectedCategories.includes('Social')) {
@@ -1162,42 +1402,43 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
     next = next.filter((event) => !dislikedEventIds.includes(String(event.id)));
 
-    if (isForYouSelected) {
-      next = [...next].sort((a, b) => {
-        const scoreDiff = (b._forYouScore ?? 0) - (a._forYouScore ?? 0);
-        if (scoreDiff !== 0) return scoreDiff;
-        return a.date_ts - b.date_ts;
-      });
-    } else {
-      next = [...next].sort((left, right) => {
-        // Pin admin events to top when Featured is selected
-        if (isFeaturedSelected) {
-          const leftAdmin = left.is_admin_event ? 1 : 0;
-          const rightAdmin = right.is_admin_event ? 1 : 0;
-          if (leftAdmin !== rightAdmin) return rightAdmin - leftAdmin;
-        }
-        const leftScore = getPersonalizationScore(
-          left,
-          normalizedPreferenceCategories,
-          preferredSocialMode,
-          preferredTime,
-          selectedMajor,
-          isMajorSpecific,
-        );
-        const rightScore = getPersonalizationScore(
-          right,
-          normalizedPreferenceCategories,
-          preferredSocialMode,
-          preferredTime,
-          selectedMajor,
-          isMajorSpecific,
-        );
-        if (rightScore !== leftScore) {
-          return rightScore - leftScore;
-        }
-        return left.date_ts - right.date_ts;
-      });
-    }
+    next = [...next].sort((left, right) => {
+      // 1. Priority to Featured content if Featured tab is selected
+      if (isFeaturedSelected) {
+        const leftF = isFeaturedContent(left) ? 1 : 0;
+        const rightF = isFeaturedContent(right) ? 1 : 0;
+        if (leftF !== rightF) return rightF - leftF;
+      }
+
+      // 2. Personalization score priority if For U is selected
+      if (isForYouSelected) {
+        const leftScore =
+          left._forYouScore ??
+          getPersonalizationScore(
+            left,
+            normalizedPreferenceCategories,
+            preferredSocialMode,
+            preferredTime,
+            selectedMajor,
+            isMajorSpecific,
+          );
+        const rightScore =
+          right._forYouScore ??
+          getPersonalizationScore(
+            right,
+            normalizedPreferenceCategories,
+            preferredSocialMode,
+            preferredTime,
+            selectedMajor,
+            isMajorSpecific,
+          );
+        const scoreDiff = rightScore - leftScore;
+        if (Math.abs(scoreDiff) > 1) return scoreDiff;
+      }
+
+      // 3. Chronological tie-breaker
+      return left.date_ts - right.date_ts;
+    });
 
     return next;
   }, [
@@ -1234,58 +1475,33 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     setSwipeIndex(0);
   }, [selectedCategories, socialMode, deferredSearchQuery, isMajorSpecific, selectedMajor, profileMajor, profilePreferences.avoidFriday, profilePreferences.preferredTime]);
 
-  useEffect(() => {
-    if (!isEventPreferencesCompleted) {
-      return;
-    }
-    const preferenceKey = JSON.stringify({
-      categories: normalizedPreferenceCategories,
-      socialMode: preferredSocialMode,
-      preferredTime,
-    });
-    if (lastAppliedPreferenceKey.current === preferenceKey) {
-      return;
-    }
-    lastAppliedPreferenceKey.current = preferenceKey;
-    setSelectedCategories((prev) => {
-      const next = new Set(normalizedPreferenceCategories);
-      if (prev.has('For U') && !deselectedCategories.includes('For U')) {
-        next.add('For U');
-      }
-      if (prev.has('Featured')) {
-        next.add('Featured');
-      }
-      return next;
-    });
-    if (preferredSocialMode) {
-      setSocialMode(preferredSocialMode);
-    }
-    if (!embedded) {
-      setView('discover');
-    }
-  }, [embedded, isEventPreferencesCompleted, normalizedPreferenceCategories, preferredSocialMode, preferredTime]);
-
-
-
   const changeView = useCallback((nextView: EventsView) => {
     startTransition(() => {
       setView(nextView);
     });
   }, []);
 
-  const toggleCategory = useCallback((category: ExploreCategory) => {
-    setSelectedCategories((prev) => {
-      if (prev.has(category) && prev.size === 1) {
-        // Toggle off the only selected category -> reset to defaults
-        toggleCategoryDeselection(category, true);
-        return new Set(['Featured', 'For U']);
+  const toggleCategory = useCallback(
+    (category: ExploreCategory) => {
+      const wasSelected = selectedCategories.has(category);
+      if (wasSelected && selectedCategories.size <= 1) {
+        return;
       }
-      
-      // Select exactly this one category (implicitly unselecting others)
-      toggleCategoryDeselection(category, false);
-      return new Set([category]);
-    });
-  }, [toggleCategoryDeselection]);
+      setSelectedCategories((prev) => {
+        const next = new Set(prev);
+        if (wasSelected) {
+          next.delete(category);
+        } else {
+          next.add(category);
+        }
+        return next;
+      });
+      queueMicrotask(() => {
+        toggleCategoryDeselection(category, wasSelected);
+      });
+    },
+    [selectedCategories, toggleCategoryDeselection],
+  );
 
   const handleSchedule = useCallback(
     async (event: TAMUEvent) => {
@@ -1719,12 +1935,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   ) : null}
                 </View>
 
-                {isForYouSelected ? (
-                  <Text style={s.filterHintText}>
-                    Picks matched to your interests and saved preferences.
-                  </Text>
-                ) : null}
-
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -1854,12 +2064,45 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               }}
               ListEmptyComponent={
                 <View style={s.emptyState}>
-                  <Text style={s.emptyTitle}>Nothing matches right now</Text>
+                  <View style={s.emptyIconContainer}>
+                    {isError ? (
+                      <AlertCircle size={48} color={COLORS.error || '#FF4D4D'} />
+                    ) : (
+                      <SearchX size={48} color={COLORS.textTertiary} />
+                    )}
+                  </View>
+                  <Text style={s.emptyTitle}>
+                    {isError ? 'Something went wrong' : 'Nothing matches right now'}
+                  </Text>
                   <Text style={s.emptySubtitle}>
-                    {isForYouSelected && !hasForYouPrefs
+                    {isError
+                      ? 'We couldn\'t load campus events. Please check your connection and try again.'
+                      : isForYouSelected && !hasForYouPrefs
                       ? 'Add your profile preferences in onboarding or planner settings, then try For U again.'
                       : 'Try another category, turn off major-specific filtering, or clear hidden events.'}
                   </Text>
+                  
+                  {isError ? (
+                    <Pressable
+                      style={[s.emptyActionButton, { backgroundColor: COLORS.primary }]}
+                      onPress={() => fetchEvents()}
+                    >
+                      <Text style={s.emptyActionText}>Retry Loading</Text>
+                    </Pressable>
+                  ) : (
+                    (searchQuery || isMajorSpecific || selectedCategories.size !== ALL_CATEGORIES.length) && (
+                      <Pressable
+                        style={[s.emptyActionButton, { backgroundColor: COLORS.primary }]}
+                        onPress={() => {
+                          setSearchQuery('');
+                          setMajorSpecific(false);
+                          setSelectedCategories(new Set(ALL_CATEGORIES));
+                        }}
+                      >
+                        <Text style={s.emptyActionText}>Clear All Filters</Text>
+                      </Pressable>
+                    )
+                  )}
                 </View>
               }
             />
@@ -1951,7 +2194,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         socialMode={socialMode}
         setSocialMode={setSocialMode}
         selectedCategories={selectedCategories}
-        setSelectedCategories={setSelectedCategories}
         dislikedEventIds={dislikedEventIds}
         events={personalizedEvents}
         onRestoreCategory={handleRestoreCategory}
@@ -1990,14 +2232,18 @@ function CategoryChip({
   const { accent, chipBg, chipText, icon: Icon } = CATEGORY_META[category];
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={`${category} filter, ${active ? 'on' : 'off'}, ${count} events`}
       onPress={onPress}
       style={[
         stylesStatic.categoryChip,
         {
           backgroundColor: active ? accent : chipBg,
-          opacity: count ? 1 : 0.48,
-          borderWidth: active ? 2 : 1,
-          borderColor: active ? '#FFFFFF' : `${chipText}26`,
+          opacity: active || count > 0 ? 1 : 0.48,
+          borderWidth: active ? 2.5 : 1.5,
+          borderColor: active ? '#FFFFFF' : `${chipText}4D`,
+          shadowOpacity: active ? 0.14 : 0.05,
         },
       ]}
     >
@@ -2005,10 +2251,22 @@ function CategoryChip({
       <Text style={[stylesStatic.categoryChipText, { color: active ? '#FFFFFF' : chipText }]}>
         {category}
       </Text>
+      <View
+        style={[
+          stylesStatic.categoryChipToggle,
+          active ? stylesStatic.categoryChipToggleOn : stylesStatic.categoryChipToggleOff,
+        ]}
+      >
+        {active ? (
+          <Check size={12} color="#FFFFFF" strokeWidth={3} />
+        ) : (
+          <View style={[stylesStatic.categoryChipToggleRing, { borderColor: `${chipText}55` }]} />
+        )}
+      </View>
       <Text
         style={[
           stylesStatic.categoryChipCount,
-          { color: active ? 'rgba(255,255,255,0.82)' : `${chipText}CC` },
+          { color: active ? 'rgba(255,255,255,0.88)' : `${chipText}CC` },
         ]}
       >
         {count}
@@ -2283,7 +2541,6 @@ function SettingsModal({
   socialMode,
   setSocialMode,
   selectedCategories,
-  setSelectedCategories,
   dislikedEventIds,
   events,
   onRestoreCategory,
@@ -2297,13 +2554,11 @@ function SettingsModal({
   socialMode: SocialMode;
   setSocialMode: (mode: SocialMode) => void;
   selectedCategories: Set<ExploreCategory>;
-  setSelectedCategories: (val: Set<ExploreCategory>) => void;
   dislikedEventIds: string[];
   events: TAMUEvent[];
   onRestoreCategory: (category?: ExploreCategory) => void;
 }) {
-  const { COLORS, theme } = useTheme();
-  const isDark = theme === 'dark';
+  const { COLORS } = useTheme();
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -2317,41 +2572,10 @@ function SettingsModal({
         >
           <ScrollView showsVerticalScrollIndicator={false}>
             <Text style={[stylesStatic.modalTitle, { color: COLORS.textPrimary }]}>Filters</Text>
-            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 12 }]}>
-              Categories
-            </Text>
-
-            {ALL_CATEGORIES.map((category) => (
-              <Pressable
-                key={category}
-                style={stylesStatic.modalOption}
-                onPress={() => {
-                  const next = new Set(selectedCategories);
-                  if (next.has(category)) {
-                    next.delete(category);
-                    toggleCategoryDeselection(category, true);
-                  } else {
-                    next.add(category);
-                    toggleCategoryDeselection(category, false);
-                  }
-                  setSelectedCategories(next);
-                }}
-              >
-                <Text
-                  style={[
-                    stylesStatic.modalOptionText,
-                    { color: selectedCategories.has(category) ? COLORS.primary : COLORS.textPrimary },
-                  ]}
-                >
-                  {category}
-                </Text>
-                {selectedCategories.has(category) ? <Check size={16} color={COLORS.primary} /> : null}
-              </Pressable>
-            ))}
 
             {selectedCategories.has('Social') ? (
               <>
-                <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary }]}>
+                <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 12 }]}>
                   Social mode
                 </Text>
                 {(['casual', 'professional'] as SocialMode[]).map((mode) => (
@@ -2374,7 +2598,7 @@ function SettingsModal({
               </>
             ) : null}
 
-            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary }]}>
+            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 12 }]}>
               Major filter
             </Text>
             <Pressable
@@ -2959,12 +3183,6 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     socialModeTextActive: {
       color: COLORS.textPrimary,
     },
-    filterHintText: {
-      marginTop: 6,
-      color: COLORS.textSecondary,
-      fontSize: 12,
-      lineHeight: 18,
-    },
     heroRail: {
       paddingTop: 14,
       paddingLeft: 0,
@@ -3021,22 +3239,46 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       fontSize: 15,
     },
     emptyState: {
-      alignItems: 'center',
+      flex: 1,
       justifyContent: 'center',
-      paddingHorizontal: 24,
-      paddingTop: 64,
-      gap: 10,
+      alignItems: 'center',
+      paddingHorizontal: 40,
+      paddingTop: 80,
+    },
+    emptyIconContainer: {
+      marginBottom: 20,
+      opacity: 0.8,
     },
     emptyTitle: {
-      color: COLORS.textPrimary,
       fontSize: 22,
       fontWeight: '900',
+      color: COLORS.text,
+      textAlign: 'center',
+      marginBottom: 8,
+      letterSpacing: -0.5,
     },
     emptySubtitle: {
+      fontSize: 15,
       color: COLORS.textSecondary,
-      fontSize: 14,
-      lineHeight: 20,
       textAlign: 'center',
+      lineHeight: 22,
+      marginBottom: 32,
+    },
+    emptyActionButton: {
+      paddingHorizontal: 28,
+      paddingVertical: 15,
+      borderRadius: 20,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.15,
+      shadowRadius: 10,
+      elevation: 6,
+    },
+    emptyActionText: {
+      color: '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '800',
+      letterSpacing: 0.2,
     },
     swipeHeader: {
       paddingTop: embedded ? 10 : 52,
@@ -3255,16 +3497,37 @@ const stylesStatic = StyleSheet.create({
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: 6,
     borderRadius: 999,
-    paddingHorizontal: 13,
+    paddingHorizontal: 12,
     paddingVertical: 9,
     borderWidth: 1.25,
     shadowColor: '#000000',
-    shadowOpacity: 0.05,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
+  },
+  categoryChipToggle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 1,
+  },
+  categoryChipToggleOn: {
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
+  },
+  categoryChipToggleOff: {
+    backgroundColor: 'rgba(0,0,0,0.04)',
+  },
+  categoryChipToggleRing: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 1.75,
   },
   categoryChipText: {
     fontSize: 13,

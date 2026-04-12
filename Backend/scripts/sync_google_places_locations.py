@@ -12,7 +12,6 @@ Run:
   python3 scripts/sync_google_places_locations.py
 """
 
-from __future__ import annotations
 
 import json
 import os

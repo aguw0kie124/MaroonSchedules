@@ -123,53 +123,56 @@ function UserSync({ children }: { children: React.ReactNode }) {
           if (typeof data.tour_completed === 'boolean') {
             setTourCompleted(isTourCompleted || data.tour_completed);
           }
-          const hasLegacyPreferenceShape =
-            !('event_preferences_completed' in data) ||
-            (!Array.isArray(data.preferred_event_categories) &&
-              data.preferred_time == null &&
-              data.preferred_social_mode == null &&
-              !isMajorOption(data.major));
-          const nextEventPreferencesCompleted =
-            typeof data.event_preferences_completed === 'boolean'
-              ? data.event_preferences_completed
-              : hasLegacyPreferenceShape;
-          setEventPreferencesCompleted(
-            isEventPreferencesCompleted || nextEventPreferencesCompleted,
-          );
-          if (Array.isArray(data.preferred_event_categories)) {
-            setPreferredEventCategories(
-              data.preferred_event_categories.filter((entry: unknown): entry is string => typeof entry === 'string'),
+          const reopeningPrefs = useAppShellStore.getState().showEventPreferencesOnboarding;
+          if (!reopeningPrefs) {
+            const hasLegacyPreferenceShape =
+              !('event_preferences_completed' in data) ||
+              (!Array.isArray(data.preferred_event_categories) &&
+                data.preferred_time == null &&
+                data.preferred_social_mode == null &&
+                !isMajorOption(data.major));
+            const nextEventPreferencesCompleted =
+              typeof data.event_preferences_completed === 'boolean'
+                ? data.event_preferences_completed
+                : hasLegacyPreferenceShape;
+            setEventPreferencesCompleted(
+              isEventPreferencesCompleted || nextEventPreferencesCompleted,
             );
-          } else if (!isEventPreferencesCompleted) {
-            setPreferredEventCategories([]);
-          } else if (preferredEventCategories.length > 0) {
-            setPreferredEventCategories(preferredEventCategories);
-          } else {
-            setPreferredEventCategories([]);
-          }
-          if (
-            data.preferred_time === 'Morning' ||
-            data.preferred_time === 'Afternoon' ||
-            data.preferred_time === 'Evening' ||
-            data.preferred_time === 'Anytime'
-          ) {
-            setPreferredTime(data.preferred_time);
-          } else if (isEventPreferencesCompleted && preferredTime) {
-            setPreferredTime(preferredTime);
-          } else {
-            setPreferredTime(null);
-          }
-          if (data.preferred_social_mode === 'casual' || data.preferred_social_mode === 'professional') {
-            setPreferredSocialMode(data.preferred_social_mode);
-          } else if (isEventPreferencesCompleted && preferredSocialMode) {
-            setPreferredSocialMode(preferredSocialMode);
-          } else {
-            setPreferredSocialMode(null);
-          }
-          if (isMajorOption(data.major)) {
-            setSelectedMajor(data.major);
-          } else if (!isEventPreferencesCompleted) {
-            setMajorSpecific(false);
+            if (Array.isArray(data.preferred_event_categories)) {
+              setPreferredEventCategories(
+                data.preferred_event_categories.filter((entry: unknown): entry is string => typeof entry === 'string'),
+              );
+            } else if (!isEventPreferencesCompleted) {
+              setPreferredEventCategories([]);
+            } else if (preferredEventCategories.length > 0) {
+              setPreferredEventCategories(preferredEventCategories);
+            } else {
+              setPreferredEventCategories([]);
+            }
+            if (
+              data.preferred_time === 'Morning' ||
+              data.preferred_time === 'Afternoon' ||
+              data.preferred_time === 'Evening' ||
+              data.preferred_time === 'Anytime'
+            ) {
+              setPreferredTime(data.preferred_time);
+            } else if (isEventPreferencesCompleted && preferredTime) {
+              setPreferredTime(preferredTime);
+            } else {
+              setPreferredTime(null);
+            }
+            if (data.preferred_social_mode === 'casual' || data.preferred_social_mode === 'professional') {
+              setPreferredSocialMode(data.preferred_social_mode);
+            } else if (isEventPreferencesCompleted && preferredSocialMode) {
+              setPreferredSocialMode(preferredSocialMode);
+            } else {
+              setPreferredSocialMode(null);
+            }
+            if (isMajorOption(data.major)) {
+              setSelectedMajor(data.major);
+            } else if (!isEventPreferencesCompleted) {
+              setMajorSpecific(false);
+            }
           }
         }
       }).catch((err: any) => console.warn('UserSync failed:', err));
@@ -200,7 +203,7 @@ function ApiAuthBridge() {
         console.warn('Backend returned 401 after a Clerk token refresh attempt.');
       },
       onForbidden: async () => {
-        console.error('Backend rejected the configured API key.');
+        console.warn('Backend rejected the configured API key (403).');
       },
     });
 
@@ -454,7 +457,7 @@ function RootNavigator() {
     isRegularUserFlow &&
     isTOSAccepted &&
     isNotificationPrompted &&
-    isAdmin === false &&
+    (showEventPreferencesOnboarding || isAdmin === false) &&
     (!isEventPreferencesCompleted || showEventPreferencesOnboarding) &&
     user?.id
   ) {
@@ -572,6 +575,18 @@ const queryClient = new QueryClient({
     queries: {
       gcTime: 1000 * 60 * 60 * 24, // 24 hours
       staleTime: 1000 * 60 * 5, // 5 minutes default
+      /** Do not retry timeouts / dead hosts — that doubled perceived load time (two full abort windows). */
+      retry: (failureCount, error) => {
+        const message = String((error as Error)?.message ?? error ?? '');
+        if (/timed out|Network request failed|Failed to fetch/i.test(message)) {
+          return false;
+        }
+        return failureCount < 1;
+      },
+      refetchOnReconnect: true,
+    },
+    mutations: {
+      retry: 0,
     },
   },
 });

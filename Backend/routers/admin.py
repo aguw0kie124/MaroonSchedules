@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Any
 import os
 import psycopg
 
-from db_config import CONNECTION_PARAMS
+from db_config import CONNECTION_PARAMS, get_pool
 from auth.clerk_middleware import require_auth, ensure_matching_user
 from services import cache_service, encryption_service
 from repositories import tag_repository
@@ -17,12 +17,27 @@ from fastapi import Request
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 
+import threading
+
 def _safe_decrypt(value: Optional[str]) -> Optional[str]:
     """Decrypt if it's an encrypted payload, otherwise return as is."""
     if not value or not isinstance(value, str):
         return value
     return encryption_service.decrypt_string(value)
 
+_admin_schema_lock = threading.Lock()
+_admin_schema_initialized = False
+
+import threading
+
+def _ensure_admin_review_schema_once(conn: psycopg.Connection) -> None:
+    global _admin_schema_initialized
+    if _admin_schema_initialized:
+        return
+    with _admin_schema_lock:
+        if not _admin_schema_initialized:
+            _ensure_admin_review_schema(conn)
+            _admin_schema_initialized = True
 
 def _ensure_admin_review_schema(conn: psycopg.Connection) -> None:
     with conn.cursor() as cur:
@@ -186,6 +201,8 @@ def _invalidate_admin_event_caches() -> None:
         "campus:pulse:map:v2:12",
         "campus:pulse:map:v2:25",
         "campus:pulse:map:v2:8",
+        "campus:events:normalized:v2:tamu",
+        "campus:events:normalized:v2:utd",
     ]:
         cache_service.delete(key)
 
@@ -248,7 +265,8 @@ def get_admin_status(
 
     application_status = None
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        pool = get_pool()
+        with pool.connection() as conn:
             _ensure_admin_application_schema(conn)
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(
@@ -444,7 +462,7 @@ def submit_admin_application(
             profile_image_url=existing_user.get("profile_image_url"),
         )
 
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             _ensure_admin_application_schema(conn)
             with conn.cursor() as cur:
                 cur.execute(
@@ -495,8 +513,9 @@ def create_admin_event(
         )
 
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
-            _ensure_admin_review_schema(conn)
+        pool = get_pool()
+        with pool.connection() as conn:
+            _ensure_admin_review_schema_once(conn)
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -545,7 +564,7 @@ def update_admin_event(
     _require_admin_user(req.clerk_id)
 
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             _ensure_admin_review_schema(conn)
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 _require_owned_admin_event(cur, event_id, req.clerk_id)
@@ -598,7 +617,7 @@ def delete_admin_event(
     _require_admin_user(clerk_id)
 
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             _ensure_admin_review_schema(conn)
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 _require_owned_admin_event(cur, event_id, clerk_id)
@@ -624,7 +643,7 @@ def get_my_admin_events(
     _require_admin_user(clerk_id)
 
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             _ensure_admin_review_schema(conn)
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(
@@ -670,7 +689,7 @@ def get_my_admin_events(
 @limiter.limit("5/minute")
 def track_admin_event_share(request: Request, event_id: str):
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             _ensure_admin_review_schema(conn)
             with conn.cursor() as cur:
                 cur.execute(
@@ -701,7 +720,7 @@ def get_pending_reviews(
     _auth_user_id: str = Depends(require_clerk_user),
 ):
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             _ensure_admin_review_schema(conn)
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 query = """
@@ -754,7 +773,7 @@ def submit_event_review(
         detail="You can only submit reviews as yourself",
     )
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             _ensure_admin_review_schema(conn)
             with conn.cursor() as cur:
                 cur.execute(
@@ -807,7 +826,7 @@ def dismiss_event_review(
         detail="You can only dismiss your own review prompts",
     )
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             _ensure_admin_review_schema(conn)
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(
@@ -849,7 +868,7 @@ def unsubscribe_from_admin(
         raise HTTPException(status_code=400, detail="Missing user id")
 
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             _ensure_admin_review_schema(conn)
             with conn.cursor() as cur:
                 cur.execute(

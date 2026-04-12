@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ShieldAlert, CheckCircle2, ChevronRight, Scale } from 'lucide-react-native';
 import { useTheme } from './SharedUI';
 import { acceptToS } from '../api/client';
+import { SUPPORT_CONTACT_URL } from '../config';
 
 interface TOSScreenProps {
   clerkId: string;
@@ -109,6 +110,24 @@ export function TOSScreen({ clerkId, onAccepted }: TOSScreenProps) {
               Privacy Policy
             </Text>
             . You understand that failure to comply with these standards will result in permanent account termination.
+            {' '}
+            For questions or safety concerns, contact us via{' '}
+            <Text
+              style={{ color: COLORS.primary, fontWeight: '700' }}
+              onPress={async () => {
+                try {
+                  await Linking.openURL(SUPPORT_CONTACT_URL);
+                } catch (error) {
+                  Alert.alert(
+                    'Unable to Open Support',
+                    'We could not open the support page. Please visit our support site directly.'
+                  );
+                }
+              }}
+            >
+              Contact Support
+            </Text>
+            .
           </Text>
         </View>
 

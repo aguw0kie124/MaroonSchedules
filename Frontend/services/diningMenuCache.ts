@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_URL } from '../config';
+import { requestJson } from '../api/client';
 import { getLocalDateString } from './dateUtils';
 
 const CACHE_PREFIX = 'dining-menu-cache-v2';
@@ -273,11 +273,7 @@ export async function fetchDiningFullMenuCached({
     meal_period: mealPeriod,
     date: dateKey,
   });
-  const response = await fetch(`${API_URL}/dining/full-menu?${params.toString()}`);
-  if (!response.ok) {
-    throw new Error(`Dining menu request failed (${response.status})`);
-  }
-  const data = await response.json();
+  const data = await requestJson(`/dining/full-menu?${params.toString()}`);
 
   const isDiningHall = isDiningHallMenuLocation(resolvedLocation);
   if (!isDiningHall && data?.success && Array.isArray(data?.categories) && data.categories.length > 0) {

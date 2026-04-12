@@ -1,3 +1,4 @@
+from __future__ import annotations
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
 import requests

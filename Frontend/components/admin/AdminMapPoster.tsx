@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Text, TextInput, ScrollView, Alert, Platform, Image, Linking } from 'react-native';
 import { Pressable } from 'react-native';
 import { useUser, useAuth } from '@clerk/clerk-expo';
+import { useQueryClient } from '@tanstack/react-query';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../SharedUI';
@@ -29,6 +30,7 @@ export function AdminMapPoster() {
   const { user } = useUser();
   const { signOut } = useAuth();
   const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
+  const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [address, setAddress] = useState('');
@@ -56,14 +58,19 @@ export function AdminMapPoster() {
   }, [user?.id]);
 
   const updateDatePart = (nextValue: Date) => {
+    const year = nextValue.getFullYear();
+    const month = nextValue.getMonth();
+    const date = nextValue.getDate();
+
     setStartTime((current) => {
       const next = new Date(current);
-      next.setFullYear(nextValue.getFullYear(), nextValue.getMonth(), nextValue.getDate());
+      next.setFullYear(year, month, date);
       return next;
     });
+
     setEndTime((current) => {
       const next = new Date(current);
-      next.setFullYear(nextValue.getFullYear(), nextValue.getMonth(), nextValue.getDate());
+      next.setFullYear(year, month, date);
       return next;
     });
   };
@@ -213,6 +220,10 @@ export function AdminMapPoster() {
       }
 
       Alert.alert('Success', postKind === 'event' ? 'Event posted to the featured tab!' : 'Ping posted to Pulse.');
+      
+      // Invalidate events to force immediate refresh when navigating back
+      queryClient.invalidateQueries({ queryKey: ['campus-events'] });
+      
       setTitle('');
       setDescription('');
       setAddress('');

@@ -19,7 +19,7 @@ from tenacity import (
 
 logger = logging.getLogger("tamu_crawler.http")
 
-USER_AGENT = "TAMUEventsCrawler/1.0 (+https://github.com/tamu-events-crawler; contact@tamu.edu)"
+DEFAULT_USER_AGENT = "TAMUEventsCrawler/1.0 (+https://github.com/tamu-events-crawler; contact@tamu.edu)"
 
 
 class RobotsCache:
@@ -29,7 +29,7 @@ class RobotsCache:
         self._parsers: Dict[str, RobotFileParser] = {}
         self._lock = asyncio.Lock()
 
-    async def can_fetch(self, url: str, client: httpx.AsyncClient) -> bool:
+    async def can_fetch(self, url: str, client: httpx.AsyncClient, user_agent: str) -> bool:
         parsed = urlparse(url)
         domain = f"{parsed.scheme}://{parsed.netloc}"
         async with self._lock:
@@ -47,7 +47,7 @@ class RobotsCache:
                     rp.allow_all = True
                 self._parsers[domain] = rp
 
-        return self._parsers[domain].can_fetch(USER_AGENT, url)
+        return self._parsers[domain].can_fetch(user_agent, url)
 
 
 class RateLimiter:
@@ -78,17 +78,24 @@ class RateLimiter:
 class CrawlerHttpClient:
     """Async HTTP client with rate limiting, robots.txt, conditional requests."""
 
-    def __init__(self, dry_run: bool = False) -> None:
+    def __init__(
+        self,
+        dry_run: bool = False,
+        *,
+        user_agent: str = DEFAULT_USER_AGENT,
+        min_interval: float = 1.0,
+    ) -> None:
         self.dry_run = dry_run
+        self.user_agent = user_agent
         self._client: Optional[httpx.AsyncClient] = None
-        self._rate_limiter = RateLimiter()
+        self._rate_limiter = RateLimiter(min_interval=min_interval)
         self._robots = RobotsCache()
         self._etag_cache: Dict[str, str] = {}
         self._last_modified_cache: Dict[str, str] = {}
 
     async def __aenter__(self) -> "CrawlerHttpClient":
         self._client = httpx.AsyncClient(
-            headers={"User-Agent": USER_AGENT},
+            headers={"User-Agent": self.user_agent},
             follow_redirects=True,
             timeout=30.0,
         )
@@ -157,7 +164,7 @@ class CrawlerHttpClient:
             return None, 0, {}
 
         # Robots.txt check
-        if not await self._robots.can_fetch(url, self._client):
+        if not await self._robots.can_fetch(url, self._client, self.user_agent):
             logger.warning("Blocked by robots.txt: %s", url)
             return None, 403, {}
 
@@ -183,4 +190,5 @@ class CrawlerHttpClient:
             raise httpx.TransportError(f"429 on {url}")
 
         response.raise_for_status()
-        return response.text, response.status_code, dict(response.headers)
+        body_text = response.content.decode("utf-8", errors="replace")
+        return body_text, response.status_code, dict(response.headers)
