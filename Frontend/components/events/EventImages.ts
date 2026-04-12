@@ -51,7 +51,23 @@ const KEYWORD_ENTRIES: { image: any; triggers: string[] }[] = [
   },
   {
     image: require('../../assets/images/events/keywords/track_and_field.jpg'),
-    triggers: ['track and field', 'cross country', 'relay', 'hurdles', 'sprint'],
+    triggers: ['track and field', 'relay', 'hurdles', 'sprint'],
+  },
+  {
+    image: require('../../assets/images/events/keywords/cross_country.jpg'),
+    triggers: ['cross country', 'xc meet', 'cross-country'],
+  },
+  {
+    image: require('../../assets/images/events/keywords/equestrian.jpg'),
+    triggers: ['equestrian', 'horseback', 'riding', 'horses'],
+  },
+  {
+    image: require('../../assets/images/events/keywords/swim_and_dive.jpg'),
+    triggers: ['swim and dive', 'swimming', 'diving', 'swim meet'],
+  },
+  {
+    image: require('../../assets/images/events/keywords/volleyball.jpg'),
+    triggers: ['volleyball'],
   },
   {
     image: require('../../assets/images/events/keywords/english.jpg'),
