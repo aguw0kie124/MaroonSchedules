@@ -1000,6 +1000,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     isRefetching: refreshing,
   } = useQuery({
     queryKey: ['campus-events', user?.id],
+    placeholderData: (prev) => prev,
     queryFn: async () => {
       const params = new URLSearchParams({
         limit: '1000',
@@ -1417,6 +1418,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       // 3. Chronological tie-breaker
       return left.date_ts - right.date_ts;
     });
+
+    if (next.length === 0 && personalizedEvents.length > 0) {
+      console.warn(`[Events] All ${personalizedEvents.length} upcoming events were filtered out. isMajorSpecific: ${isMajorSpecific}, query: "${deferredSearchQuery}"`);
+    }
 
     return next;
   }, [

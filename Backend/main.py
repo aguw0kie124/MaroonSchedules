@@ -13,7 +13,7 @@ from slowapi.errors import RateLimitExceeded
 
 from auth import ensure_matching_user, require_auth
 from chat import router as chat_router
-from dependencies import require_auth as require_protected_request
+from dependencies import require_auth as require_protected_request, optional_api_auth as require_optional_auth
 from models.search import CourseSearchRequest
 from rate_limit import limiter
 from routers.admin import router as admin_router
@@ -54,6 +54,7 @@ else:
 
 public_router = APIRouter()
 protected_router = APIRouter(dependencies=[Depends(require_protected_request)])
+optional_protected_router = APIRouter(dependencies=[Depends(require_optional_auth)])
 
 
 @app.on_event("startup")
@@ -92,16 +93,17 @@ async def add_security_headers(request: Request, call_next):
 
 
 protected_router.include_router(chat_router)
-protected_router.include_router(traffic_router, prefix="/traffic", tags=["Traffic"])
 protected_router.include_router(posts_router)
 protected_router.include_router(dining_router)
-protected_router.include_router(campus_hub_router)
 protected_router.include_router(grades_router)
-protected_router.include_router(annex_router)
 protected_router.include_router(upload_router)
 protected_router.include_router(admin_router)
-protected_router.include_router(clubs_router)
-protected_router.include_router(maps_router)
+
+optional_protected_router.include_router(traffic_router, prefix="/traffic", tags=["Traffic"])
+optional_protected_router.include_router(campus_hub_router)
+optional_protected_router.include_router(annex_router)
+optional_protected_router.include_router(clubs_router)
+optional_protected_router.include_router(maps_router)
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
@@ -354,4 +356,5 @@ def view_courses(user_id: str, auth_user_id: str = Depends(require_auth)):
 
 
 app.include_router(public_router)
+app.include_router(optional_protected_router)
 app.include_router(protected_router)

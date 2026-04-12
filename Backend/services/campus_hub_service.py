@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 
 import psycopg
 
-from db_config import CONNECTION_PARAMS
+from db_config import CONNECTION_PARAMS, get_pool
 from repositories import course_repository, tag_repository, user_repository
 from services import (
     cache_service,
@@ -156,7 +156,7 @@ def _safe_db_fetchone(query: str, params: tuple = (), conn: Optional[psycopg.Con
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(query, params)
                 return cur.fetchone()
-        with psycopg.connect(CONNECTION_PARAMS) as new_conn:
+        with get_pool().connection() as new_conn:
             with new_conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(query, params)
                 return cur.fetchone()
@@ -170,7 +170,7 @@ def _safe_db_fetchall(query: str, params: tuple = (), conn: Optional[psycopg.Con
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(query, params)
                 return cur.fetchall() or []
-        with psycopg.connect(CONNECTION_PARAMS) as new_conn:
+        with get_pool().connection() as new_conn:
             with new_conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(query, params)
                 return cur.fetchall() or []
@@ -316,7 +316,7 @@ def _ensure_social_tables(conn: Optional[psycopg.Connection] = None) -> None:
         if conn:
             run_schema(conn)
         else:
-            with psycopg.connect(CONNECTION_PARAMS) as new_conn:
+            with get_pool().connection() as new_conn:
                 run_schema(new_conn)
     except Exception:
         pass
@@ -678,7 +678,7 @@ def capture_connector_snapshot(
     )
 
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(
                     """
@@ -722,7 +722,7 @@ def capture_connector_snapshot(
 def delete_connector_snapshot(clerk_id: str, system_id: str) -> Dict[str, Any]:
     _ensure_social_tables()
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "DELETE FROM campus_connector_snapshots WHERE clerk_id = %s AND system_id = %s",
@@ -1066,7 +1066,7 @@ def create_connection_request(requester_id: str, recipient_id: str) -> Dict[str,
         return {"status": "error", "message": "Cannot connect to yourself"}
 
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -1320,7 +1320,7 @@ def get_events_snapshot(
 def save_event_rsvp(clerk_id: str, event_id: str, response: str) -> Dict[str, Any]:
     _ensure_social_tables()
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
@@ -1607,7 +1607,7 @@ def get_overview(clerk_id: str) -> Dict[str, Any]:
             return fallback
 
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             # 1. Fetch connectors (needed by auth and academic/dining/career snapshots)
             # Actually snapshots call get_connector_snapshots themselves, but with a shared connection it's efficient.
             

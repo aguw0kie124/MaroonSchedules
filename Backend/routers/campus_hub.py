@@ -107,9 +107,11 @@ def get_events(
     campus: str = Query("tamu"),
     auth_user_id: Optional[str] = Depends(optional_auth),
 ):
+    if clerk_id is not None and auth_user_id is None:
+        # Gracefully downgrade to anonymous mode if auth failed but clerk_id was requested
+        clerk_id = None
+
     if clerk_id is not None:
-        if auth_user_id is None:
-            raise HTTPException(status_code=401, detail="Authentication required")
         ensure_matching_user(auth_user_id, clerk_id, detail="You can only personalize events for your own account")
     return campus_hub_service.get_events_snapshot(
         clerk_id,
