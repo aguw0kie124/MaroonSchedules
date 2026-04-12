@@ -421,7 +421,9 @@ export function CampusPingsScreen() {
         categories: event.categories || undefined,
       }));
     },
-    staleTime: 1000 * 60 * 10,
+    staleTime: 1000 * 60 * 5, // 5 mins
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
 
   const {
@@ -437,7 +439,8 @@ export function CampusPingsScreen() {
         return [];
       }
     },
-    staleTime: 1000 * 60 * 30, // 30 mins
+    staleTime: 1000 * 60 * 15, // 15 mins
+    refetchOnMount: true,
   });
 
   const userMap = useMemo(() => {
@@ -461,6 +464,8 @@ export function CampusPingsScreen() {
     },
     refetchInterval: 15000,
     staleTime: 1000 * 30,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
 
   const [feedConnected, setFeedConnected] = useState(false);

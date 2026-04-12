@@ -1168,6 +1168,11 @@ def get_events_snapshot(
     print(f"[EVENTS_DEBUG] admin_events_list after build: {len(admin_events_list)}")
     for ae in admin_events_list:
         print(f"[EVENTS_DEBUG]   admin event: {ae.get('title')} | date_ts={ae.get('date_ts')} | start={ae.get('start_time')}")
+    
+    # Re-verify decryption for all admin events
+    for ae in admin_events_list:
+        if 'title' in ae and ae['title'] is None:
+             print(f"[EVENTS_DEBUG] ERROR: Admin event {ae.get('event_id')} has null title after decryption")
 
     events = tag_access_service.filter_events_for_access_tags(
         events_copy,

@@ -249,8 +249,8 @@ function getPersonalizationScore(
     score += 10;
   }
   score += getTimePreferenceScore(event, preferredTime);
-  if (event.is_admin_event) {
-    score += 20;
+  if (isFeaturedContent(event)) {
+    score += 40; // Significant boost for featured/admin content
   }
   const hoursAway = Math.max(0, (event.date_ts - Math.floor(Date.now() / 1000)) / 3600);
   score += Math.max(0, 10 - Math.min(hoursAway / 12, 10));
@@ -405,7 +405,7 @@ function isFeaturedContent(event: TAMUEvent): boolean {
 }
 
 function classifyCategory(event: TAMUEvent): ExploreCategory {
-  if (event.is_admin_event) return 'Featured';
+  if (isFeaturedContent(event)) return 'Featured';
   if (event.categories) {
     if (event.categories.food) return 'Food';
     if (event.categories.sports) return 'Sports';
@@ -1058,10 +1058,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         })
         .sort((a, b) => a.date_ts - b.date_ts);
     },
-    staleTime: 1000 * 60 * 15, // 15 mins for events
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    staleTime: 1000 * 60 * 5, // 5 mins
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 
   const [rewardToast, setRewardToast] = useState<{ title: string; body: string } | null>(null);
@@ -1327,13 +1327,17 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       const inTimeWindow =
         (event.date2_ts != null && event.date2_ts > nowTs) ||
         (event.date_ts >= nowTs - 7200) ||
-        (isFeaturedContent(event) && event.date_ts >= nowTs - 86400);
+        (isFeaturedContent(event) && event.date_ts >= nowTs - 172800);
       return inTimeWindow;
     });
 
     if (deferredSearchQuery.trim()) {
       const q = deferredSearchQuery.toLowerCase();
-      next = next.filter((event) => (event._searchBlob || getSearchBlob(event)).includes(q));
+      next = next.filter((event) => {
+        // "Steel Curtain" for admin/featured events: they bypass search if Featured tab is selected
+        if (isFeaturedSelected && isFeaturedContent(event)) return true;
+        return (event._searchBlob || getSearchBlob(event)).includes(q);
+      });
     }
 
     if (isMajorSpecific) {
@@ -1374,42 +1378,43 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
     next = next.filter((event) => !dislikedEventIds.includes(String(event.id)));
 
-    if (isForYouSelected) {
-      next = [...next].sort((a, b) => {
-        const scoreDiff = (b._forYouScore ?? 0) - (a._forYouScore ?? 0);
-        if (scoreDiff !== 0) return scoreDiff;
-        return a.date_ts - b.date_ts;
-      });
-    } else {
-      next = [...next].sort((left, right) => {
-        // Pin admin events to top when Featured is selected
-        if (isFeaturedSelected) {
-          const leftF = isFeaturedContent(left) ? 1 : 0;
-          const rightF = isFeaturedContent(right) ? 1 : 0;
-          if (leftF !== rightF) return rightF - leftF;
-        }
-        const leftScore = getPersonalizationScore(
-          left,
-          normalizedPreferenceCategories,
-          preferredSocialMode,
-          preferredTime,
-          selectedMajor,
-          isMajorSpecific,
-        );
-        const rightScore = getPersonalizationScore(
-          right,
-          normalizedPreferenceCategories,
-          preferredSocialMode,
-          preferredTime,
-          selectedMajor,
-          isMajorSpecific,
-        );
-        if (rightScore !== leftScore) {
-          return rightScore - leftScore;
-        }
-        return left.date_ts - right.date_ts;
-      });
-    }
+    next = [...next].sort((left, right) => {
+      // 1. Priority to Featured content if Featured tab is selected
+      if (isFeaturedSelected) {
+        const leftF = isFeaturedContent(left) ? 1 : 0;
+        const rightF = isFeaturedContent(right) ? 1 : 0;
+        if (leftF !== rightF) return rightF - leftF;
+      }
+
+      // 2. Personalization score priority if For U is selected
+      if (isForYouSelected) {
+        const leftScore =
+          left._forYouScore ??
+          getPersonalizationScore(
+            left,
+            normalizedPreferenceCategories,
+            preferredSocialMode,
+            preferredTime,
+            selectedMajor,
+            isMajorSpecific,
+          );
+        const rightScore =
+          right._forYouScore ??
+          getPersonalizationScore(
+            right,
+            normalizedPreferenceCategories,
+            preferredSocialMode,
+            preferredTime,
+            selectedMajor,
+            isMajorSpecific,
+          );
+        const scoreDiff = rightScore - leftScore;
+        if (Math.abs(scoreDiff) > 1) return scoreDiff;
+      }
+
+      // 3. Chronological tie-breaker
+      return left.date_ts - right.date_ts;
+    });
 
     return next;
   }, [

@@ -5,6 +5,7 @@ python-dotenv
 python-multipart
 pydantic
 psycopg[binary]
+psycopg-pool
 protobuf<5.0.0
 jsonschema<3.0.0
 pytz
