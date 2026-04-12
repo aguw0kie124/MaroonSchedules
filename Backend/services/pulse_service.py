@@ -6,7 +6,7 @@ import psycopg
 
 from services import cache_service, campus_hub_service, place_registry_service, tag_access_service
 from repositories import feed_repository, tag_repository, user_repository
-from db_config import CONNECTION_PARAMS
+from db_config import CONNECTION_PARAMS, get_pool
 from services import encryption_service
 
 
@@ -163,7 +163,7 @@ def _resolve_access_scope(clerk_id: Optional[str]) -> tuple[List[str], bool]:
 
 def _load_admin_events() -> List[Dict[str, Any]]:
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             tag_repository._ensure_access_dependencies(conn)
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(

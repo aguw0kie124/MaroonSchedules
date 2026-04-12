@@ -6,7 +6,7 @@ import threading
 from functools import lru_cache
 import psycopg
 from psycopg.rows import dict_row
-from db_config import CONNECTION_PARAMS
+from db_config import CONNECTION_PARAMS, get_pool
 from typing import Any, Dict, Optional, Tuple, Union
 from services import encryption_service
 
@@ -53,7 +53,7 @@ def _execute_optional_ddl(conn: psycopg.Connection, sql: str) -> None:
 
 @lru_cache(maxsize=8)
 def _get_table_columns(table_name: str) -> Tuple[str, ...]:
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -234,7 +234,7 @@ def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile
 
     select_clause = _user_select_clause()
     placeholders = ", ".join(["%s"] * len(insert_columns))
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -259,7 +259,7 @@ def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile
 def get_user(clerk_id: str) -> Optional[dict]:
     """Return full user record by Clerk ID, or None."""
     select_clause = _user_select_clause()
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -305,7 +305,7 @@ def update_profile(clerk_id: str, fields: dict) -> Optional[dict]:
         set_clause = f"{set_clause}, updated_at = NOW()"
     select_clause = _user_select_clause()
 
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -335,7 +335,7 @@ def get_schedules(clerk_id: str) -> list:
     """Return the schedules JSONB array for a user."""
     if "schedules" not in _user_columns():
         return []
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor() as cur:
             cur.execute("SELECT schedules FROM users WHERE clerk_id = %s", (clerk_id,))
@@ -353,7 +353,7 @@ def save_schedules(clerk_id: str, schedules: list) -> None:
     columns = _user_columns()
     if "schedules" not in columns:
         return
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor() as cur:
             insert_columns = ["clerk_id", "schedules"]
@@ -452,7 +452,7 @@ def save_canvas_tokens(clerk_id: str, access_token: str, refresh_token: str, exp
     required = {"canvas_access_token", "canvas_refresh_token", "canvas_expires_at", "canvas_instance_url"}
     if not required.issubset(columns):
         return
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor() as cur:
             update_clause = "canvas_access_token = %s, canvas_refresh_token = %s, canvas_expires_at = %s, canvas_instance_url = %s"
@@ -480,7 +480,7 @@ def set_tour_completed(clerk_id: str) -> None:
     columns = _user_columns()
     if "tour_completed" not in columns:
         return
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor() as cur:
             update_clause = "tour_completed = TRUE"
@@ -498,7 +498,7 @@ def set_tos_accepted(clerk_id: str) -> None:
     columns = _user_columns()
     if "tos_accepted" not in columns:
         return
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor() as cur:
             update_clause = "tos_accepted = TRUE"

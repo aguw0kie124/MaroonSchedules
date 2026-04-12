@@ -10,7 +10,7 @@ import traceback
 
 from services import ping_service, cache_service, campus_hub_service, pulse_service, tag_access_service
 from repositories import feed_repository, user_repository, tag_repository
-from db_config import CONNECTION_PARAMS
+from db_config import CONNECTION_PARAMS, get_pool
 from auth.clerk_middleware import require_auth, optional_auth, ensure_matching_user
 
 # Force reload from the exact .env file
@@ -468,7 +468,7 @@ async def get_blocked_users(clerk_id: str, auth_user_id: str = Depends(require_a
             return []
             
         profiles = []
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as cur:
                 for bid in blocked_ids:
                     profile = user_repository.get_user(bid)

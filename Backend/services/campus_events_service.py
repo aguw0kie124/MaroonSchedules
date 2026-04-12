@@ -437,12 +437,12 @@ def load_campus_events(force_refresh: bool = False, campus: str = "tamu") -> Dic
     if not crawler_output.exists():
         payload = {
             "generated_at": datetime.utcnow().isoformat() + "Z",
-            "stale_after": EVENTS_SNAPSHOT_TTL_SECONDS,
+            "stale_after": 30,  # [FIX] Short TTL for missing state to allow faster recovery
             "source_status": "missing",
             "campus": campus_key,
             "events": [],
         }
-        cache_service.set_json(cache_key, payload, EVENTS_SNAPSHOT_TTL_SECONDS)
+        cache_service.set_json(cache_key, payload, 30)
         return payload
 
     mtime_ns = crawler_output.stat().st_mtime_ns

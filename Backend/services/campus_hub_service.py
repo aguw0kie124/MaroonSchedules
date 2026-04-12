@@ -1089,7 +1089,8 @@ def get_events_snapshot(
     student_relevant_only: bool = True,
     campus: str = "tamu",
     conn: Optional[psycopg.Connection] = None,
-) -> List[Dict[str, Any]]:
+    force_refresh: bool = False,
+) -> Dict[str, Any]:
     _ensure_social_tables(conn)
     rsvp_lookup: Dict[str, str] = {}
     blocked_ids: set[str] = set()
@@ -1127,7 +1128,7 @@ def get_events_snapshot(
             if row.get("admin_clerk_id")
         }
 
-    crawler_events = campus_events_service.load_campus_events(campus=campus)
+    crawler_events = campus_events_service.load_campus_events(campus=campus, force_refresh=force_refresh)
     events = crawler_events.get("events") if isinstance(crawler_events, dict) else crawler_events
     source_status = crawler_events.get("source_status") if isinstance(crawler_events, dict) else "live"
     events_copy = list(events) if events else []
@@ -1236,9 +1237,10 @@ def get_events_snapshot(
 
     if events:
         if student_relevant_only:
+            # Ensure label check is robust and includes unknown/missing labels by default
             events = [
                 e for e in events
-                if e.get("campus_interest_label") != "low" or e.get("is_admin_event")
+                if e.get("campus_interest_label", "high") != "low" or e.get("is_admin_event")
             ]
         if category:
             events = [
@@ -1259,6 +1261,7 @@ def get_events_snapshot(
             ],
         }
 
+    # Fallback to legacy tracker events if modern sources return absolutely nothing
     from routers.traffic import tracker
     raw_events = tracker.fetch_event_data(limit=limit)
     events = []

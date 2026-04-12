@@ -584,7 +584,19 @@ function normalizeMajorBlob(blob: string) {
 
 function matchesMajor(event: TAMUEvent, major: MajorOption) {
   const blob = normalizeMajorBlob(event._searchBlob || getSearchBlob(event));
-  return MAJOR_KEYWORDS[major]?.some((term) => blob.includes(` ${term.toLowerCase().trim()} `)) ?? false;
+  const keywords = MAJOR_KEYWORDS[major];
+  if (!keywords) return false;
+  
+  // Check for direct keyword matches with word boundaries
+  const hasKeyword = keywords.some((term) => blob.includes(` ${term.toLowerCase().trim()} `));
+  if (hasKeyword) return true;
+
+  // Check for specialized department codes/tags
+  const tags = (event.tags || []).map(t => t.toLowerCase());
+  if (major === 'Engineering' && (tags.includes('engr') || tags.includes('csce'))) return true;
+  if (major === 'Business' && (tags.includes('mays') || tags.includes('mgmt'))) return true;
+
+  return false;
 }
 
 function matchesPreferredTime(event: TAMUEvent, preferredTime: PreferredTimeOption) {
@@ -979,7 +991,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const pan = useRef(new Animated.ValueXY()).current;
   const opacity = useRef(new Animated.Value(1)).current;
   const hydratedProfileMajorForUser = useRef<string | null>(null);
-  const nowTs = Math.floor(Date.now() / 1000);
+  const [nowTs, setNowTs] = useState(() => Math.floor(Date.now() / 1000));
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowTs(Math.floor(Date.now() / 1000));
+    }, 60000); // Update every minute to protect bridge performance
+    return () => clearInterval(timer);
+  }, []);
 
   const [eventStoreHydrated, setEventStoreHydrated] = useState(() => useEventStore.persist.hasHydrated());
 
@@ -998,6 +1017,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     isLoading: loading,
     refetch: fetchEvents,
     isRefetching: refreshing,
+    isError,
+    error,
   } = useQuery({
     queryKey: ['campus-events', user?.id],
     placeholderData: (prev) => prev,
@@ -1008,6 +1029,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       });
       if (user?.id) {
         params.set('clerk_id', user.id);
+      }
+      // [SAFEGUARD] If we are manually refreshing (pull-to-refresh), force the backend to bypass cache.
+      if (refreshing) {
+        params.set('refresh', 'true');
       }
       const payload = (await requestJson(
         `/campus/events?${params.toString()}`,
@@ -1287,15 +1312,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         (isFeaturedContent(event) && event.date_ts >= nowTs - 86400);
       if (!inTimeWindow) return;
 
-      // Admin / featured-tagged events bypass major-matching for counts
-      if (
-        isMajorSpecific &&
-        !matchesMajor(event, selectedMajor) &&
-        !event.is_admin_event &&
-        !event.categories?.featured
-      ) {
-        return;
-      }
+      // [RELAXED] Major filtering should not zero-out total category counts.
+      // We keep the counts global so users see what is available on campus,
+      // and only use the major filter to rank or refine the feed itself.
       if (event._forYouMatched) {
         counts['For U'] += 1;
       }
@@ -1343,7 +1362,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       });
     }
 
-    if (isMajorSpecific) {
+    if (isMajorSpecific && !deferredSearchQuery.trim() && !isFeaturedSelected && standardSelectedCategories.length === 0) {
+      // Only apply hard major exclusion on the main "For U" / Discover view if no specific category or search is active.
+      // This ensures that clicking a category like "Sports" still shows all sports.
       next = next.filter(
         (event) =>
           matchesMajor(event, selectedMajor) || event.is_admin_event || !!event.categories?.featured,
@@ -1418,10 +1439,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       // 3. Chronological tie-breaker
       return left.date_ts - right.date_ts;
     });
-
-    if (next.length === 0 && personalizedEvents.length > 0) {
-      console.warn(`[Events] All ${personalizedEvents.length} upcoming events were filtered out. isMajorSpecific: ${isMajorSpecific}, query: "${deferredSearchQuery}"`);
-    }
 
     return next;
   }, [
@@ -2047,12 +2064,45 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               }}
               ListEmptyComponent={
                 <View style={s.emptyState}>
-                  <Text style={s.emptyTitle}>Nothing matches right now</Text>
+                  <View style={s.emptyIconContainer}>
+                    {isError ? (
+                      <AlertCircle size={48} color={COLORS.error || '#FF4D4D'} />
+                    ) : (
+                      <SearchX size={48} color={COLORS.textTertiary} />
+                    )}
+                  </View>
+                  <Text style={s.emptyTitle}>
+                    {isError ? 'Something went wrong' : 'Nothing matches right now'}
+                  </Text>
                   <Text style={s.emptySubtitle}>
-                    {isForYouSelected && !hasForYouPrefs
+                    {isError
+                      ? 'We couldn\'t load campus events. Please check your connection and try again.'
+                      : isForYouSelected && !hasForYouPrefs
                       ? 'Add your profile preferences in onboarding or planner settings, then try For U again.'
                       : 'Try another category, turn off major-specific filtering, or clear hidden events.'}
                   </Text>
+                  
+                  {isError ? (
+                    <Pressable
+                      style={[s.emptyActionButton, { backgroundColor: COLORS.primary }]}
+                      onPress={() => fetchEvents()}
+                    >
+                      <Text style={s.emptyActionText}>Retry Loading</Text>
+                    </Pressable>
+                  ) : (
+                    (searchQuery || isMajorSpecific || selectedCategories.size !== ALL_CATEGORIES.length) && (
+                      <Pressable
+                        style={[s.emptyActionButton, { backgroundColor: COLORS.primary }]}
+                        onPress={() => {
+                          setSearchQuery('');
+                          setMajorSpecific(false);
+                          setSelectedCategories(new Set(ALL_CATEGORIES));
+                        }}
+                      >
+                        <Text style={s.emptyActionText}>Clear All Filters</Text>
+                      </Pressable>
+                    )
+                  )}
                 </View>
               }
             />
@@ -3170,22 +3220,46 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       fontSize: 15,
     },
     emptyState: {
-      alignItems: 'center',
+      flex: 1,
       justifyContent: 'center',
-      paddingHorizontal: 24,
-      paddingTop: 64,
-      gap: 10,
+      alignItems: 'center',
+      paddingHorizontal: 40,
+      paddingTop: 80,
+    },
+    emptyIconContainer: {
+      marginBottom: 20,
+      opacity: 0.8,
     },
     emptyTitle: {
-      color: COLORS.textPrimary,
       fontSize: 22,
       fontWeight: '900',
+      color: COLORS.text,
+      textAlign: 'center',
+      marginBottom: 8,
+      letterSpacing: -0.5,
     },
     emptySubtitle: {
+      fontSize: 15,
       color: COLORS.textSecondary,
-      fontSize: 14,
-      lineHeight: 20,
       textAlign: 'center',
+      lineHeight: 22,
+      marginBottom: 32,
+    },
+    emptyActionButton: {
+      paddingHorizontal: 28,
+      paddingVertical: 15,
+      borderRadius: 20,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.15,
+      shadowRadius: 10,
+      elevation: 6,
+    },
+    emptyActionText: {
+      color: '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '800',
+      letterSpacing: 0.2,
     },
     swipeHeader: {
       paddingTop: embedded ? 10 : 52,

@@ -6,11 +6,11 @@ import psycopg.rows
 from typing import Optional, Dict, List, Any
 from pulp import LpMaximize, LpProblem, LpVariable, lpSum, value as pulp_value, PULP_CBC_CMD
 from datetime import datetime
-from db_config import get_db_connection
+from db_config import get_db_connection, get_pool
 from services import cache_service
 
 def get_db_conn():
-    return psycopg.connect(get_db_connection())
+    return get_pool().connection()
 
 def init_db():
     conn = get_db_conn()
