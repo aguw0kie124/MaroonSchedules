@@ -63,6 +63,55 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _score_personalized_relevance(event: Dict[str, Any], user: Dict[str, Any]) -> float:
+    """Calculate a personalization boost based on user's major and preferences."""
+    score = 0.0
+    major = user.get("major")
+    title = str(event.get("title") or "").lower()
+    desc = str(event.get("description") or "").lower()
+    summary = str(event.get("summary") or "").lower()
+    full_text = f"{title} {desc} {summary}"
+
+    if major:
+        major_lower = str(major).lower()
+        if major_lower in full_text:
+            score += 50.0  # Significant boost for exact major match
+
+        # Common major keyword mappings for tighter matching
+        major_map = {
+            "computer science": ["coding", "hackathon", "programming", "software", "tech", "developer", "cs"],
+            "engineering": ["engineer", "technology", "design", "build", "lab", "robotics"],
+            "mechanical": ["mech", "engine", "design", "machine", "manufacture"],
+            "business": ["networking", "finance", "mays", "entrepreneurship", "startup", "marketing", "accounting"],
+            "communication": ["journalism", "media", "writing", "reporting", "comm", "news"],
+            "agriculture": ["agri", "farm", "crop", "animal", "livestock", "soil", "plant"],
+            "biology": ["science", "medical", "research", "genetic", "health", "doctor"],
+            "nursing": ["nurse", "hospital", "patient", "clinic", "health"],
+            "psychology": ["mental health", "wellness", "counseling", "brain", "behavior"],
+            "political science": ["government", "policy", "debate", "election", "law"],
+            "education": ["teacher", "school", "learning", "classroom", "student"],
+        }
+        for m_key, keywords in major_map.items():
+            if m_key in major_lower:
+                if any(kw in full_text for kw in keywords):
+                    score += 25.0
+
+    # Boost based on preferred categories saved during onboarding
+    prefs = user.get("preferred_event_categories") or []
+    event_cats = event.get("categories", {})
+    for pref in prefs:
+        if event_cats.get(str(pref).lower()):
+            score += 35.0
+
+    # Boost based on user interest tags (e.g. 'Sports', 'Food')
+    user_tags = set(user.get("tags") or [])
+    event_tags = set(event.get("tags") or [])
+    matching_tags = user_tags.intersection(event_tags)
+    score += len(matching_tags) * 15.0
+
+    return score
+
+
 def _parse_event_datetime(value: Any) -> Optional[datetime]:
     if value is None:
         return None
@@ -86,13 +135,22 @@ def _parse_event_datetime(value: Any) -> Optional[datetime]:
     return parsed
 
 
+def _safe_decrypt(value: Any) -> Optional[str]:
+    if not value:
+        return None
+    try:
+        return encryption_service.decrypt_string(value)
+    except Exception:
+        return str(value)
+
+
 def _is_event_upcoming(event: Dict[str, Any], now: Optional[datetime] = None) -> bool:
     reference_time = now or datetime.now(timezone.utc)
     relevant_time = _parse_event_datetime(event.get("end_time")) or _parse_event_datetime(event.get("start_time"))
     if relevant_time is None:
         return True
-    # Allow events that started/ended within the last 12 hours for discovery and timezone padding
-    return relevant_time >= (reference_time - timedelta(hours=12))
+    # Allow events that started/ended within the last 72 hours for discovery and timezone padding
+    return relevant_time >= (reference_time - timedelta(hours=72))
 
 
 def _event_start_sort_key(event: Dict[str, Any]) -> tuple[int, float]:
@@ -1080,13 +1138,11 @@ def create_connection_request(requester_id: str, recipient_id: str) -> Dict[str,
         return {"status": "success", "requester_id": requester_id, "recipient_id": recipient_id}
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
-
-
 def get_events_snapshot(
     clerk_id: Optional[str] = None,
-    limit: int = 8,
+    limit: int = 100,
     category: Optional[str] = None,
-    student_relevant_only: bool = True,
+    student_relevant_only: bool = False,
     campus: str = "tamu",
     conn: Optional[psycopg.Connection] = None,
     force_refresh: bool = False,
@@ -1173,15 +1229,16 @@ def get_events_snapshot(
             continue
 
         try:
-            organization_name = ad_ev.get("organization_name") or "Campus organizer"
-            title = encryption_service.decrypt_string(ad_ev["title"])
-            description = encryption_service.decrypt_string(ad_ev["description"]) or ""
+            organization_name = _safe_decrypt(ad_ev.get("organization_name")) or "Campus organizer"
+            title = _safe_decrypt(ad_ev["title"])
+            description = _safe_decrypt(ad_ev["description"]) or ""
             tags = ad_ev.get("access_tags") or []
+            location_name = _safe_decrypt(ad_ev["location_name"]) or "Campus"
             
             admin_events_list.append({
                 "event_id": str(ad_ev["id"]),
                 "title": title,
-                "location": ad_ev["location_name"],
+                "location": location_name,
                 "location_lat": ad_ev["lat"],
                 "location_lng": ad_ev["lng"],
                 "start_time": ad_ev["start_time"].isoformat() if ad_ev["start_time"] else None,
@@ -1221,10 +1278,10 @@ def get_events_snapshot(
         user_tags=user_access_tags,
         bypass_restrictions=bypass_tag_restrictions,
     )
-    print(f"[EVENTS_DEBUG] after tag filter: {len(events)} crawler events")
+    has_modern_events = bool(events_copy)
     # Re-integrate admin events AFTER tag filtering to ensure they bypass it entirely
     events = admin_events_list + events
-    print(f"[EVENTS_DEBUG] after merge: {len(events)} total events")
+    print(f"[EVENTS_DEBUG] after merge: {len(events)} total events (has_modern_events={has_modern_events})")
     # Filter for upcoming events, but apply a "Steel Curtain" for admin events 
     # ensuring they stay visible for at least 24 hours after starting.
     events = [
@@ -1235,7 +1292,7 @@ def get_events_snapshot(
     print(f"[EVENTS_DEBUG] after upcoming filter: {len(events)} total, {len(admin_after_upcoming)} admin")
     events.sort(key=_event_start_sort_key)
 
-    if events:
+    if has_modern_events or admin_events_list:
         if student_relevant_only:
             # Ensure label check is robust and includes unknown/missing labels by default
             events = [
@@ -1243,10 +1300,22 @@ def get_events_snapshot(
                 if e.get("campus_interest_label", "high") != "low" or e.get("is_admin_event")
             ]
         if category:
-            events = [
-                e for e in events
-                if e.get("categories", {}).get(category.lower()) == 1
-            ]
+            if category.lower() == "for u" and clerk_id and user:
+                # Personalize sorting for "For U"
+                for event in events:
+                    event["personalization_score"] = _score_personalized_relevance(event, user)
+                
+                # Sort: Personalization (highest first), then start time (soonest first)
+                events.sort(key=lambda e: (-e.get("personalization_score", 0), _event_start_sort_key(e)))
+                
+                # "For U" is a meta-category, so we don't filter by a 'for u' string in categories dict.
+                # We just return the personalized list.
+                category = None
+            else:
+                events = [
+                    e for e in events
+                    if e.get("categories", {}).get(category.lower()) == 1
+                ]
         limited = _merge_admin_events_before_limit(events, limit) if limit else events
         return {
             "generated_at": _utc_now_iso(),
@@ -1262,9 +1331,10 @@ def get_events_snapshot(
         }
 
     # Fallback to legacy tracker events if modern sources return absolutely nothing
+    # but still keep whatever admin events we fetched
     from routers.traffic import tracker
     raw_events = tracker.fetch_event_data(limit=limit)
-    events = []
+    fallback_events = []
     for event in raw_events:
         event_id = _event_id_for(event)
         resolved_place = place_registry_service.resolve_place(
@@ -1272,7 +1342,7 @@ def get_events_snapshot(
             event.get("latitude"),
             event.get("longitude"),
         )
-        events.append(
+        fallback_events.append(
             {
                 "event_id": event_id,
                 "title": event.get("title", "Campus Event"),
@@ -1304,19 +1374,23 @@ def get_events_snapshot(
                 "place": place_registry_service.serialize_place(resolved_place),
             }
         )
-    # Filter for upcoming events, but apply a "Steel Curtain" for admin events 
-    # ensuring they stay visible for at least 24 hours after starting.
+    
+    # Merge admin events with fallback events
+    events = admin_events_list + fallback_events
+    
+    # Final filter and sort
     events = [
         event for event in events 
         if _is_event_upcoming(event) or (event.get("is_admin_event") and _parse_event_datetime(event.get("start_time")) >= (datetime.now(timezone.utc) - timedelta(hours=24)))
     ]
     events.sort(key=_event_start_sort_key)
-    events = _merge_admin_events_before_limit(events, limit) if limit else events
+    limited = _merge_admin_events_before_limit(events, limit) if limit else events
+    
     return {
         "generated_at": _utc_now_iso(),
         "stale_after": 300,
         "source_status": "preview",
-        "events": events,
+        "events": limited,
     }
 
 

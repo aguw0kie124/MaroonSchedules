@@ -102,6 +102,45 @@ function parseCoordinateValue(value: unknown): number | null {
   return null;
 }
 
+function formatPulseTimeLabel(startAt?: string | null, existingLabel?: string | null): string {
+  if (existingLabel && !existingLabel.includes("%#")) {
+    return existingLabel;
+  }
+
+  if (!startAt) {
+    return existingLabel || "Soon";
+  }
+
+  const date = new Date(startAt);
+  if (!Number.isFinite(date.getTime())) {
+    return existingLabel || "Soon";
+  }
+
+  const now = new Date();
+  const diffHours = (date.getTime() - now.getTime()) / (1000 * 60 * 60);
+  const time = date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+
+  if (diffHours >= -1.5 && diffHours <= 1) return "Now";
+
+  const sameDay = date.toDateString() === now.toDateString();
+  if (sameDay) return `Today · ${time}`;
+
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (date.toDateString() === tomorrow.toDateString()) {
+    return `Tomorrow · ${time}`;
+  }
+
+  const monthDay = date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+  return `${monthDay} · ${time}`;
+}
+
 function normalizeCoord(hotspot: any): { lat: number; lng: number } | null {
   const directLat = parseCoordinateValue(
     hotspot?.coord?.lat ?? hotspot?.coord?.latitude ?? hotspot?.lat ?? hotspot?.latitude,
@@ -167,7 +206,7 @@ function normalizePlace(
 }
 
 const PULSE_CACHE_TTL_MS = 30_000;
-const PULSE_MAX_LIMIT = 25;
+const PULSE_MAX_LIMIT = 100;
 
 let _cachedHotspots: CampusHotspot[] | null = null;
 let _cachedAt = 0;
@@ -187,7 +226,7 @@ export async function fetchCampusPulseMap(
     return { hotspots: _cachedHotspots, status: 'live' };
   }
 
-  const data = await apiFetchPulseMap(safeLimit, options.clerkId);
+  const data = await apiFetchPulseMap(safeLimit, options.clerkId, Boolean(options.force));
   const hotspots = Array.isArray(data) ? data : Array.isArray(data?.hotspots) ? data.hotspots : [];
   const status = data?.status || data?.source_status || 'live';
 
@@ -203,6 +242,7 @@ export async function fetchCampusPulseMap(
     
     const items = (Array.isArray(hotspot.items) ? hotspot.items : []).map((item: any) => ({
       ...item,
+      timeLabel: formatPulseTimeLabel(item.startAt ?? item.start_at, item.timeLabel ?? item.time_label),
       upvotes: toSafeNumber(item.upvotes),
       downvotes: toSafeNumber(item.downvotes),
       itemScore: toSafeNumber(item.itemScore),
@@ -213,7 +253,10 @@ export async function fetchCampusPulseMap(
     return {
       id: hotspot.id ?? `pulse-${placeId ?? hotspot.locationName ?? Math.random().toString(36).slice(2)}`,
       placeId,
-      locationName: hotspot.locationName ?? hotspot.place?.name ?? hotspot.place?.location ?? "Location",
+      locationName:
+        hotspot.locationName === "Campus Event"
+          ? hotspot.place?.name ?? hotspot.place?.location ?? "Campus"
+          : hotspot.locationName ?? hotspot.place?.name ?? hotspot.place?.location ?? "Location",
       coord,
       score: Number(hotspot.score) || 0,
       pulseLabel: (hotspot.pulseLabel ?? "Bubbling") as CampusHotspot["pulseLabel"],

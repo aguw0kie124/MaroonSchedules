@@ -20,7 +20,7 @@ export function resolveAdminEventLocation(locationName?: string | null) {
   const trimmed = locationName?.trim();
   if (!trimmed) {
     return {
-      location_name: 'Unknown address',
+      location_name: 'Campus Location',
       lat: FALLBACK_LOCATION.coord.lat,
       lng: FALLBACK_LOCATION.coord.lng,
     };

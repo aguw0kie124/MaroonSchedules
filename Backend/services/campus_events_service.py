@@ -255,6 +255,20 @@ def _normalize_event_row(raw: Dict[str, Any], campus: str) -> Dict[str, Any] | N
 
     lat = raw.get("location_lat")
     lng = raw.get("location_lng")
+    
+    if lat is None or lng is None:
+        # Check raw_payload (common for crawler events)
+        payload = raw.get("raw_payload") or {}
+        if isinstance(payload, str):
+            try:
+                import json
+                payload = json.loads(payload)
+            except:
+                payload = {}
+        
+        lat = lat if lat is not None else payload.get("location_latitude")
+        lng = lng if lng is not None else payload.get("location_longitude")
+
     if lat is None or lng is None:
         fallback_lat, fallback_lng = _parse_coordinate_fallback(raw.get("location"))
         lat = lat if lat is not None else fallback_lat
@@ -358,7 +372,7 @@ def _score_student_relevance(event: Dict[str, Any], campus: str) -> Tuple[int, s
     ]
     text = " ".join(text_parts).lower()
     categories = event.get("categories") or {}
-    score = 35
+    score = 40
     reasons: List[str] = []
 
     category_weights = {
@@ -416,7 +430,7 @@ def _score_student_relevance(event: Dict[str, Any], campus: str) -> Tuple[int, s
     score = max(0, min(100, score))
     if score >= 70:
         label = "high"
-    elif score >= 45:
+    elif score >= 25:
         label = "medium"
     else:
         label = "low"
@@ -474,7 +488,7 @@ def load_campus_events(force_refresh: bool = False, campus: str = "tamu") -> Dic
             if normalized:
                 events.append(normalized)
 
-    cutoff = datetime.now() - timedelta(days=1)
+    cutoff = datetime.now() - timedelta(days=3)
     events = [
         event
         for event in events

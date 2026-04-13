@@ -372,9 +372,10 @@ export const fetchCampusPlaceDetail = async (placeIdOrIdentifier: string) => {
     return requestJson(`/campus/places/${encodeURIComponent(placeIdOrIdentifier)}/detail`);
 };
 
-export const fetchCampusPulseMap = async (limit = 12, clerkId?: string) => {
+export const fetchCampusPulseMap = async (limit = 12, clerkId?: string, refresh = false) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (clerkId) params.set('clerk_id', clerkId);
+    if (refresh) params.set('refresh', 'true');
     return requestJson(`/campus/pulse/map?${params.toString()}`);
 };
 

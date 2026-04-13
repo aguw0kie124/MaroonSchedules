@@ -1020,8 +1020,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     isError,
     error,
   } = useQuery({
-    queryKey: ['campus-events', user?.id],
-    placeholderData: (prev) => prev,
+    queryKey: ['campus-events', user?.id, API_URL],
     queryFn: async () => {
       const params = new URLSearchParams({
         limit: '1000',
@@ -1083,7 +1082,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         })
         .sort((a, b) => a.date_ts - b.date_ts);
     },
-    staleTime: 1000 * 60 * 5, // 5 mins
+    staleTime: 0,
+    gcTime: 0,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
@@ -1132,7 +1132,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const {
     data: preferredEventCategories,
   } = useQuery({
-    queryKey: ['user-event-categories', user?.id],
+    queryKey: ['user-event-categories', user?.id, API_URL],
     enabled: !!user?.id,
     queryFn: async () => {
       const profile = await fetchUserProfile(user!.id);
@@ -1143,7 +1143,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const {
     data: preferredSocialMode,
   } = useQuery({
-    queryKey: ['user-social-mode', user?.id],
+    queryKey: ['user-social-mode', user?.id, API_URL],
     enabled: !!user?.id,
     queryFn: async () => {
       const profile = await fetchUserProfile(user!.id);
@@ -1154,7 +1154,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const {
     data: preferredTime,
   } = useQuery({
-    queryKey: ['user-preferred-time', user?.id],
+    queryKey: ['user-preferred-time', user?.id, API_URL],
     enabled: !!user?.id,
     queryFn: async () => {
       const profile = await fetchUserProfile(user!.id);
@@ -2068,7 +2068,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                     {isError ? (
                       <AlertCircle size={48} color={COLORS.error || '#FF4D4D'} />
                     ) : (
-                      <SearchX size={48} color={COLORS.textTertiary} />
+                      <Search size={48} color={COLORS.textTertiary} />
                     )}
                   </View>
                   <Text style={s.emptyTitle}>
