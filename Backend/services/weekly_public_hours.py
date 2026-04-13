@@ -94,7 +94,7 @@ WEEKLY_HOURS_BY_PLACE_ID: Dict[str, Dict[str, str]] = {
         "Saturday": "10:30 AM - 8:00 PM",
     },
     "commons": {
-        "Sunday": "10:30 AM - 8:00 PM",
+        "Sunday": "9:00 AM - 8:00 PM",
         "Monday": "6:30 AM - 8:00 PM",
         "Tuesday": "6:30 AM - 8:00 PM",
         "Wednesday": "6:30 AM - 8:00 PM",
@@ -187,6 +187,6 @@ def today_hours_for_place(
         return registry_hours
 
     if place_type == "Dining":
-        return "Hours vary — check the venue website or Texas A&M Dining."
+        return "Hours vary - check the venue website or Texas A&M Dining."
 
     return None

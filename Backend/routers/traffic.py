@@ -205,10 +205,11 @@ class TAMUFacilityTracker:
             "Dining": "7:00 AM – 10:00 PM",
         }
         hours = hours_map.get(loc_type, "8:00 AM – 10:00 PM")
-        if "Evans" in loc_name:
-            hours = "Open 24 Hours (Mon–Thu)"
-        if "Medical" in loc_name:
-            hours = "7:30 AM – 6:00 PM"
+        if loc_type == "Rec":
+            if "Evans" in loc_name:
+                hours = "Open 24 Hours (Mon–Thu)"
+            if "Medical" in loc_name:
+                hours = "7:30 AM – 6:00 PM"
 
         review_pool = [
             {"user": "Parin V.",  "rating": 5,
@@ -232,7 +233,11 @@ class TAMUFacilityTracker:
         ]
         random.shuffle(selected)
         history = [random.randint(15, 90) for _ in range(8)]
-        return {"hours": hours, "reviews": selected, "traffic_history": history}
+        # Library / Dining hours must not come from mock text — map uses registry, weekly, and DineOnCampus live periods.
+        meta: Dict[str, Any] = {"reviews": selected, "traffic_history": history}
+        if loc_type not in ("Library", "Dining"):
+            meta["hours"] = hours
+        return meta
 
     def get_all_locations_with_events(self) -> List[Dict[str, Any]]:
         result = []

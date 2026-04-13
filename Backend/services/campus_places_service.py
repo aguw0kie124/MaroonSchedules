@@ -6,13 +6,14 @@ from zoneinfo import ZoneInfo
 
 from routers.traffic import tracker
 from services import cache_service, parking_realtime_service, place_registry_service
+from services.dineoncampus_hours_service import fetch_dining_periods_summary
 from services.place_type_service import normalize_place_type
 from services.rec_hours_data import REC_PLACE_ID_TO_FACILITY_KEY, weekly_payload_for_facility_key
 from services.tamu_calendar_service import holiday_hours_notice_for_date
 from services.weekly_public_hours import today_hours_for_place
 
 PLACE_SNAPSHOT_TTL_SECONDS = 60
-PLACE_SNAPSHOT_CACHE_VERSION = "v4"
+PLACE_SNAPSHOT_CACHE_VERSION = "v6"
 
 # Visitor realtime counts from transport.tamu.edu (CCG, PRG, SBG, UCG, WCG)
 VISITOR_GARAGE_CODE_BY_PLACE_ID: Dict[str, str] = {
@@ -21,6 +22,15 @@ VISITOR_GARAGE_CODE_BY_PLACE_ID: Dict[str, str] = {
     "osm:way:450686873": "SBG",
     "garage-university-center": "UCG",
     "garage-west-campus": "WCG",
+}
+
+# Matches Texas A&M Transportation visitor garage names (realtime.aspx)
+VISITOR_GARAGE_FULL_NAME_BY_CODE: Dict[str, str] = {
+    "CCG": "Central Campus Garage",
+    "PRG": "Polo Road Garage",
+    "SBG": "Gene Stallings Blvd Garage",
+    "UCG": "University Center Garage",
+    "WCG": "West Campus Garage",
 }
 
 
@@ -118,6 +128,7 @@ def _merge_visitor_parking_counts(
             continue
         loc["visitor_parking_available"] = val
         loc["visitor_parking_code"] = code
+        loc["visitor_parking_garage_name"] = VISITOR_GARAGE_FULL_NAME_BY_CODE.get(code)
         loc["visitor_parking_as_of"] = fetched_at
         loc["visitor_parking_source_url"] = source_url
 
@@ -126,6 +137,7 @@ def _annotate_hours_today(locations: Dict[str, Dict[str, Any]]) -> None:
     chi = ZoneInfo("America/Chicago")
     now_chi = datetime.now(chi)
     day_name = now_chi.strftime("%A")
+    date_str = now_chi.strftime("%Y-%m-%d")
     notice = holiday_hours_notice_for_date(now_chi.date())
 
     for loc in locations.values():
@@ -138,6 +150,24 @@ def _annotate_hours_today(locations: Dict[str, Dict[str, Any]]) -> None:
             if fac_key:
                 wh = weekly_payload_for_facility_key(fac_key, now_chi)
                 slot = wh.get("today_hours") or "Check official facility page"
+        elif typ == "Dining":
+            weekly_slot = today_hours_for_place(
+                place_id=place_id,
+                place_type=typ,
+                registry_hours=loc.get("hours"),
+                now_weekday_name=day_name,
+            )
+            live = fetch_dining_periods_summary(place_id or "", date_str) if place_id else None
+            if live and live.get("line_with_times"):
+                slot = live["line_with_times"]
+            elif live and live.get("period_names"):
+                joined = ", ".join(live["period_names"])
+                if weekly_slot:
+                    slot = f"{weekly_slot} | Meal periods today: {joined}"
+                else:
+                    slot = f"Meal periods today: {joined}"
+            else:
+                slot = weekly_slot
         else:
             slot = today_hours_for_place(
                 place_id=place_id,

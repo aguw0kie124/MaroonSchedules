@@ -84,6 +84,7 @@ export interface CampusLocation {
   hours_holiday_notice?: string | null;
   visitor_parking_available?: number | null;
   visitor_parking_code?: string | null;
+  visitor_parking_garage_name?: string | null;
   visitor_parking_as_of?: string | null;
   visitor_parking_source_url?: string | null;
   address?: string;

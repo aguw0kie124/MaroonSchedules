@@ -574,10 +574,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // ── Derived map locations ─────────────────────────────────
   const allMapLocations = useMemo(() => {
+    // API `locations` must merge last: schedule rows set percent_full: 0 and omit hours_today /
+    // visitor_parking_* and would otherwise overwrite live campus map snapshot fields.
     return mergeCampusLocations(
-      locations,
       scheduleLocations as CampusLocation[],
       dynamicSearchLocations,
+      locations,
     );
   }, [dynamicSearchLocations, locations, scheduleLocations]);
 
