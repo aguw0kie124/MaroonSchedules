@@ -169,6 +169,51 @@ class CampusEventAccessTests(unittest.TestCase):
     @mock.patch.object(campus_hub_service.user_repository, "get_user")
     @mock.patch.object(campus_hub_service.campus_events_service, "load_campus_events")
     @mock.patch.object(campus_hub_service, "_safe_db_fetchall")
+    def test_get_events_snapshot_excludes_stale_admin_events_after_24_hours(
+        self,
+        mock_fetchall,
+        mock_load_events,
+        mock_get_user,
+        mock_get_user_tags,
+        _mock_ensure_tables,
+    ):
+        mock_get_user.return_value = {"is_admin": False}
+        mock_get_user_tags.return_value = []
+        mock_fetchall.side_effect = [
+            [],
+            [],
+            [
+                {
+                    "id": "stale-admin",
+                    "clerk_id": "admin_1",
+                    "title": "Encrypted title",
+                    "description": "Encrypted description",
+                    "lat": None,
+                    "lng": None,
+                    "location_name": "Encrypted location",
+                    "start_time": campus_hub_service.datetime.now(campus_hub_service.timezone.utc) - campus_hub_service.timedelta(days=2),
+                    "end_time": campus_hub_service.datetime.now(campus_hub_service.timezone.utc) - campus_hub_service.timedelta(days=2, hours=-2),
+                    "google_review_url": None,
+                    "image_url": None,
+                    "access_tags": [],
+                    "organization_name": "Encrypted org",
+                }
+            ],
+            [],
+        ]
+        mock_load_events.return_value = {"source_status": "live", "events": []}
+
+        with mock.patch.object(campus_hub_service, "_safe_decrypt", side_effect=lambda value: value):
+            result = campus_hub_service.get_events_snapshot(clerk_id="user_1", limit=20, student_relevant_only=False)
+
+        event_ids = [event["event_id"] for event in result["events"]]
+        self.assertEqual(event_ids, [])
+
+    @mock.patch.object(campus_hub_service, "_ensure_social_tables")
+    @mock.patch.object(campus_hub_service.tag_repository, "get_user_tags")
+    @mock.patch.object(campus_hub_service.user_repository, "get_user")
+    @mock.patch.object(campus_hub_service.campus_events_service, "load_campus_events")
+    @mock.patch.object(campus_hub_service, "_safe_db_fetchall")
     def test_get_events_snapshot_passes_campus_to_loader(
         self,
         mock_fetchall,
