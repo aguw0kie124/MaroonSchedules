@@ -28,7 +28,7 @@ VISITOR_GARAGE_CODE_BY_PLACE_ID: Dict[str, str] = {
 VISITOR_GARAGE_FULL_NAME_BY_CODE: Dict[str, str] = {
     "CCG": "Central Campus Garage",
     "PRG": "Polo Road Garage",
-    "SBG": "Gene Stallings Blvd Garage",
+    "SBG": "Stallings Blvd Garage",
     "UCG": "University Center Garage",
     "WCG": "West Campus Garage",
 }

@@ -23,7 +23,7 @@ _NAME_FRAGMENT_TO_CODE: Dict[str, str] = {
 CODE_TO_NAME: Dict[str, str] = {
     "CCG": "Central Campus Garage",
     "PRG": "Polo Road Garage",
-    "SBG": "Gene Stallings Blvd Garage",
+    "SBG": "Stallings Blvd Garage",
     "UCG": "University Center Garage",
     "WCG": "West Campus Garage",
 }

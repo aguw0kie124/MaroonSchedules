@@ -745,7 +745,82 @@ export function LocationBottomSheet({
               ) : null}
             </View>
 
-            {!isPeekSheet && parkingRecommendation ? (
+            {!isPeekSheet && selectedLoc.type === "Parking" ? (
+              <View style={styles.contextCard}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text style={[styles.contextCardTitle, { marginBottom: 0 }]}>
+                    {selectedLoc.visitor_parking_available != null
+                      ? `${selectedLoc.visitor_parking_available.toLocaleString()} spots available`
+                      : "Visitor Parking"}
+                  </Text>
+                  {selectedLoc.visitor_parking_available != null && (
+                    <View
+                      style={[
+                        styles.heroBadge,
+                        styles.heroBadgeLive,
+                        { paddingVertical: 4, paddingHorizontal: 8 },
+                      ]}
+                    >
+                      <View style={styles.heroBadgeDot} />
+                      <Text
+                        style={[
+                          styles.heroBadgeText,
+                          styles.heroBadgeTextLive,
+                          { fontSize: 10 },
+                        ]}
+                      >
+                        LIVE
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {selectedLoc.hours_today && (
+                  <Text
+                    style={[
+                      styles.contextCardBody,
+                      { fontWeight: "600", marginBottom: 2 },
+                    ]}
+                  >
+                    {selectedLoc.hours_today.includes("Typical")
+                      ? "Paid visitor parking available 24/7."
+                      : selectedLoc.hours_today}
+                  </Text>
+                )}
+
+                {selectedLoc.visitor_parking_available == null && (
+                  <Text style={styles.contextCardBody}>
+                    Real-time counts only available for CCG, PRG, SBG, UCG, and
+                    WCG garages.
+                  </Text>
+                )}
+
+                <TouchableOpacity
+                  style={styles.inlineLinkRow}
+                  onPress={() =>
+                    Linking.openURL(
+                      "https://transport.tamu.edu/parking/realtime.aspx",
+                    ).catch(() => {})
+                  }
+                >
+                  <ExternalLink size={14} color={COLORS.primary} />
+                  <Text style={styles.inlineLinkText}>
+                    Official Rates & Info
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {!isPeekSheet &&
+            selectedLoc.type !== "Parking" &&
+            parkingRecommendation ? (
               <View style={styles.contextCard}>
                 <Text style={styles.contextCardTitle}>
                   {parkingRecommendation.badge}
@@ -757,74 +832,11 @@ export function LocationBottomSheet({
             ) : null}
 
             {!isPeekSheet &&
-            selectedLoc.type === "Parking" &&
-            selectedLoc.visitor_parking_available != null ? (
-              <View style={styles.contextCard}>
-                <Text style={styles.contextCardTitle}>
-                  {selectedLoc.visitor_parking_code
-                    ? `${selectedLoc.visitor_parking_code}${
-                        selectedLoc.visitor_parking_garage_name
-                          ? ` (${selectedLoc.visitor_parking_garage_name})`
-                          : ""
-                      }`
-                    : "Visitor garage"}{" "}
-                  · {selectedLoc.visitor_parking_available.toLocaleString()} spaces
-                  (live)
-                </Text>
-                <Text style={styles.contextCardBody}>
-                  Counts are from Texas A&M Transportation Services and update
-                  regularly.
-                </Text>
-                <TouchableOpacity
-                  style={styles.inlineLinkRow}
-                  onPress={() =>
-                    Linking.openURL(
-                      selectedLoc.visitor_parking_source_url ||
-                        "https://transport.tamu.edu/parking/realtime.aspx",
-                    ).catch(() => {})
-                  }
-                >
-                  <ExternalLink size={14} color={COLORS.primary} />
-                  <Text style={styles.inlineLinkText}>
-                    Open official live garage counts
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-
-            {!isPeekSheet &&
-            selectedLoc.type === "Parking" &&
-            selectedLoc.visitor_parking_available == null ? (
-              <View style={styles.contextCard}>
-                <Text style={styles.contextCardTitle}>Live space counts</Text>
-                <Text style={styles.contextCardBody}>
-                  Real-time visitor space numbers are published only for the five
-                  visitor garages (CCG, PRG, SBG, UCG, WCG), not for surface lots
-                  or other parking areas. Use the link below to view current
-                  garage availability.
-                </Text>
-                <TouchableOpacity
-                  style={styles.inlineLinkRow}
-                  onPress={() =>
-                    Linking.openURL(
-                      "https://transport.tamu.edu/parking/realtime.aspx",
-                    ).catch(() => {})
-                  }
-                >
-                  <ExternalLink size={14} color={COLORS.primary} />
-                  <Text style={styles.inlineLinkText}>
-                    View visitor garage availability
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-
-            {!isPeekSheet &&
             selectedLoc.hours_today &&
+            selectedLoc.type !== "Parking" &&
             (selectedLoc.type === "Library" ||
               selectedLoc.type === "Dining" ||
               selectedLoc.type === "Rec" ||
-              selectedLoc.type === "Parking" ||
               selectedLoc.type === "Hub") ? (
               <View style={styles.contextCard}>
                 <Text style={styles.contextCardTitle}>Open today</Text>
