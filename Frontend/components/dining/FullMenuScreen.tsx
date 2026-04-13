@@ -138,8 +138,12 @@ export default function FullMenuScreen({ navigation, route }: any) {
 
   useEffect(() => {
     const categoryNames = (menu?.categories || []).map((category: any) => category.name);
-    setCollapsedCategories(new Set(categoryNames));
-  }, [menu]);
+    if (activeCategoryKey === 'all') {
+      setCollapsedCategories(new Set(categoryNames));
+    } else {
+      setCollapsedCategories(new Set());
+    }
+  }, [menu, activeCategoryKey]);
 
   useEffect(() => {
     if (!location) return;
@@ -278,7 +282,11 @@ export default function FullMenuScreen({ navigation, route }: any) {
                 activeCategoryKey === 'all' && [s.categoryFilterChipActive, { borderColor: T.text }],
                 { backgroundColor: T.bg2, borderColor: T.border },
               ]}
-              onPress={() => setActiveCategoryKey('all')}
+              onPress={() => {
+                setActiveCategoryKey('all');
+                const categoryNames = (menu?.categories || []).map((c: any) => c.name);
+                setCollapsedCategories(new Set(categoryNames));
+              }}
               activeOpacity={0.8}
             >
               <Text
@@ -300,7 +308,10 @@ export default function FullMenuScreen({ navigation, route }: any) {
                   activeCategoryKey === category.key && [s.categoryFilterChipActive, { borderColor: T.text }],
                   { backgroundColor: T.bg2, borderColor: T.border },
                 ]}
-                onPress={() => setActiveCategoryKey(category.key)}
+                onPress={() => {
+                  setActiveCategoryKey(category.key);
+                  setCollapsedCategories(new Set()); // Open by default
+                }}
                 activeOpacity={0.8}
               >
                 <Text

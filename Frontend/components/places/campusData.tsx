@@ -239,6 +239,16 @@ export const STATIC_LOCATION_META: Record<string, Partial<CampusLocation>> = {
     hours: "Check dining schedule",
     description: "Dining hub inside the Polo Road Garage complex.",
   },
+  "Northside Garage (NSG)": {
+    hours: "Open 24/7 for permit holders; search-only for visitors.",
+    description: "Multi-level parking facility on the north side of campus near the Northpoint area.",
+    type: "Parking"
+  },
+  "Southside Garage (SSG)": {
+    hours: "Open 24/7 for permit holders; search-only for visitors.",
+    description: "Multi-level parking facility on the south side of campus near the Commons and Southside Rec.",
+    type: "Parking"
+  },
   "Rudder Tower": {
     hours: "Open daily",
     description: "Event and campus activity landmark adjacent to the MSC.",
