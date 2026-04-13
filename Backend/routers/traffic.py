@@ -245,7 +245,14 @@ class TAMUFacilityTracker:
             place = live_count["place"]
             percent = live_count.get("percent_full")
             if percent is None:
-                continue
+                cap = _safe_int(live_count.get("capacity") or 0)
+                cur = _safe_int(live_count.get("current_count") or 0)
+                if cap > 0:
+                    percent = round((cur / cap) * 100, 1)
+                elif live_count.get("is_closed"):
+                    percent = 0.0
+                else:
+                    continue
             live_percents.append(percent)
             meta = self.get_mock_metadata(place["name"], "Rec")
             resolved_ids.add(place["place_id"])
@@ -275,7 +282,9 @@ class TAMUFacilityTracker:
                 continue
                 
             percent = float(entry.get("percentfull", 0))
-            remaining = int(entry.get("remaining", 0))
+            remaining = _safe_int(entry.get("remaining", 0))
+            capacity = _safe_int(entry.get("max", 0))
+            occupancy = _safe_int(entry.get("occupancy", 0))
             live_percents.append(percent)
             meta = self.get_mock_metadata(place["name"], "Library")
             resolved_ids.add(place["place_id"])
@@ -287,6 +296,8 @@ class TAMUFacilityTracker:
                 "is_live": True,
                 "available_seats": remaining,
                 "coord": {"lat": place["lat"], "lng": place["lng"]},
+                "capacity": capacity if capacity > 0 else None,
+                "current_count": occupancy,
                 **meta,
             })
 

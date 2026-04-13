@@ -74,10 +74,18 @@ export interface CampusLocation {
   type: LocationType;
   is_live: boolean;
   available_seats: number | null;
+  capacity?: number | null;
+  current_count?: number | null;
   coord: { lat: number; lng: number };
   current_event?: string;
   aliases?: string[];
   hours?: string;
+  hours_today?: string | null;
+  hours_holiday_notice?: string | null;
+  visitor_parking_available?: number | null;
+  visitor_parking_code?: string | null;
+  visitor_parking_as_of?: string | null;
+  visitor_parking_source_url?: string | null;
   address?: string;
   reviews?: Array<{ user: string; rating: number; comment: string }>;
   traffic_history?: number[];

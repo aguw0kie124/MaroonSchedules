@@ -320,6 +320,15 @@ export function LocationBottomSheet({
   const occupancyToneColor = selectedLoc
     ? getStatusColor(occupancyPercent)
     : COLORS.primary;
+  const occupancyCountLabel = useMemo(() => {
+    if (!selectedLoc || !isCapacityPlace) return null;
+    const cap = selectedLoc.capacity;
+    const cur = selectedLoc.current_count;
+    if (cap != null && cur != null && cap > 0) {
+      return `About ${cur.toLocaleString()} of ${cap.toLocaleString()} people`;
+    }
+    return null;
+  }, [selectedLoc, isCapacityPlace]);
   const parkingRecommendation = useMemo(() => {
     if (!selectedLoc || selectedLoc.type !== "Parking") return null;
     const lower = selectedLoc.location.toLowerCase();
@@ -336,15 +345,21 @@ export function LocationBottomSheet({
   }, [selectedLoc]);
   const selectedHoursLabel = useMemo(() => {
     if (!selectedLoc) return null;
+    const holiday = selectedLoc.hours_holiday_notice;
+    const suffix = holiday ? ` · ${holiday}` : "";
+    if (selectedLoc.hours_today) {
+      return `${selectedLoc.hours_today}${suffix}`;
+    }
     if (selectedLoc.type === "Rec") {
-      return (
+      const rec =
         selectedRecreationFacility?.today_hours ||
         selectedRecreationFacility?.hours_hint ||
         selectedLoc.hours ||
-        null
-      );
+        null;
+      return rec ? `${rec}${suffix}` : holiday || null;
     }
-    return selectedLoc.hours || null;
+    const base = selectedLoc.hours || null;
+    return base ? `${base}${suffix}` : holiday || null;
   }, [selectedLoc, selectedRecreationFacility]);
   const peekMetaText = useMemo(() => {
     if (!selectedLoc) return "";
@@ -352,7 +367,17 @@ export function LocationBottomSheet({
     if (isCapacityPlace) {
       return `${occupancyPercent}% full`;
     }
+    if (
+      selectedLoc.type === "Parking" &&
+      selectedLoc.visitor_parking_available != null
+    ) {
+      const code = selectedLoc.visitor_parking_code
+        ? `${selectedLoc.visitor_parking_code} · `
+        : "";
+      return `${code}${selectedLoc.visitor_parking_available.toLocaleString()} visitor spaces`;
+    }
     if (selectedHoursLabel) {
+      if (selectedLoc.hours_today) return selectedHoursLabel;
       return selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel;
     }
     if (isFoodCourtHub) {
@@ -391,9 +416,24 @@ export function LocationBottomSheet({
     if (selectedLoc.address) {
       bits.push(selectedLoc.address);
     }
-    if (selectedHoursLabel) {
-      bits.push(selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel);
-    } else if (selectedLoc.current_event) {
+    const hoursDetailTypes = new Set([
+      "Library",
+      "Dining",
+      "Rec",
+      "Parking",
+      "Hub",
+    ]);
+    const hoursShownInCard =
+      !!selectedLoc.hours_today && hoursDetailTypes.has(selectedLoc.type);
+    if (selectedHoursLabel && !hoursShownInCard) {
+      if (selectedLoc.hours_today) {
+        bits.push(selectedHoursLabel);
+      } else {
+        bits.push(selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel);
+      }
+    } else if (!selectedHoursLabel && selectedLoc.current_event) {
+      bits.push(selectedLoc.current_event);
+    } else if (hoursShownInCard && selectedLoc.current_event) {
       bits.push(selectedLoc.current_event);
     }
     if (!bits.length && isFoodCourtHub) {
@@ -716,6 +756,79 @@ export function LocationBottomSheet({
               </View>
             ) : null}
 
+            {!isPeekSheet &&
+            selectedLoc.type === "Parking" &&
+            selectedLoc.visitor_parking_available != null ? (
+              <View style={styles.contextCard}>
+                <Text style={styles.contextCardTitle}>
+                  {selectedLoc.visitor_parking_available.toLocaleString()}{" "}
+                  visitor spaces available (live)
+                </Text>
+                <Text style={styles.contextCardBody}>
+                  {selectedLoc.visitor_parking_code
+                    ? `Garage ${selectedLoc.visitor_parking_code}. `
+                    : ""}
+                  Counts are from Texas A&M Transportation Services and update regularly.
+                </Text>
+                <TouchableOpacity
+                  style={styles.inlineLinkRow}
+                  onPress={() =>
+                    Linking.openURL(
+                      selectedLoc.visitor_parking_source_url ||
+                        "https://transport.tamu.edu/parking/realtime.aspx",
+                    ).catch(() => {})
+                  }
+                >
+                  <ExternalLink size={14} color={COLORS.primary} />
+                  <Text style={styles.inlineLinkText}>
+                    Open official live garage counts
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {!isPeekSheet &&
+            selectedLoc.type === "Parking" &&
+            selectedLoc.visitor_parking_available == null ? (
+              <View style={styles.contextCard}>
+                <Text style={styles.contextCardTitle}>Live space counts</Text>
+                <Text style={styles.contextCardBody}>
+                  Real-time visitor space numbers are published only for the five
+                  visitor garages (CCG, PRG, SBG, UCG, WCG), not for surface lots
+                  or other parking areas. Use the link below to view current
+                  garage availability.
+                </Text>
+                <TouchableOpacity
+                  style={styles.inlineLinkRow}
+                  onPress={() =>
+                    Linking.openURL(
+                      "https://transport.tamu.edu/parking/realtime.aspx",
+                    ).catch(() => {})
+                  }
+                >
+                  <ExternalLink size={14} color={COLORS.primary} />
+                  <Text style={styles.inlineLinkText}>
+                    View visitor garage availability
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {!isPeekSheet &&
+            selectedLoc.hours_today &&
+            (selectedLoc.type === "Library" ||
+              selectedLoc.type === "Dining" ||
+              selectedLoc.type === "Rec" ||
+              selectedLoc.type === "Parking" ||
+              selectedLoc.type === "Hub") ? (
+              <View style={styles.contextCard}>
+                <Text style={styles.contextCardTitle}>Open today</Text>
+                <Text style={styles.contextCardBody}>
+                  {selectedLoc.hours_today}
+                </Text>
+              </View>
+            ) : null}
+
             {!isPeekSheet && selectedLoc.current_event ? (
               <View style={styles.contextCard}>
                 <Text style={styles.contextCardTitle}>
@@ -752,10 +865,21 @@ export function LocationBottomSheet({
                           width: `${occupancyPercent}%` as any,
                           backgroundColor: occupancyToneColor,
                         },
-                        ]}
-                      />
-                    </View>
+                      ]}
+                    />
+                  </View>
                 </View>
+
+                {occupancyCountLabel ? (
+                  <Text
+                    style={[
+                      styles.contextCardBody,
+                      { marginTop: 8, opacity: 0.9 },
+                    ]}
+                  >
+                    {occupancyCountLabel}
+                  </Text>
+                ) : null}
 
                 {officialFacilityUrl && officialFacilityUrl !== externalLink?.url ? (
                   <TouchableOpacity

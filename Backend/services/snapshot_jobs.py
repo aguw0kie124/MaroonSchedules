@@ -46,7 +46,10 @@ async def _run_sync(name: str, fn: Callable[[], object]) -> None:
 
 
 def _refresh_places() -> object:
-    return _delete_and_rebuild("campus:places:map:v1", campus_places_service.get_places_map_snapshot)
+    return _delete_and_rebuild(
+        f"campus:places:map:{campus_places_service.PLACE_SNAPSHOT_CACHE_VERSION}",
+        campus_places_service.get_places_map_snapshot,
+    )
 
 
 def _refresh_pulse() -> object:
