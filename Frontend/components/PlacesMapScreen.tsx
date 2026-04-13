@@ -2262,7 +2262,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
         )}
         {activeLayer === "Pulse" &&
           pulseHotspots.filter(h => h && h.coord).map((hotspot) => {
-            const isSelected = hotspot.id === selectedHotspotId;
             return (
               <MapMarker
                 key={hotspot.id}
@@ -2273,18 +2272,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 }}
                 onPress={() => handleSelectHotspot(hotspot)}
                 anchor={{ x: 0.5, y: 0.5 }}
+                tracksViewChanges={false}
               >
-                <View
-                  style={[
-                    styles.pulseMarkerWrap,
-                    { transform: [{ scale: isSelected ? 1.08 : 1 }] },
-                  ]}
-                >
+                <View style={styles.pulseMarkerWrap}>
                   <View
                     style={[
                       styles.pulseMarkerGlowOuter,
                       {
-                        backgroundColor: `${hotspot.pulseColor}${isSelected ? "20" : "16"}`,
+                        backgroundColor: `${hotspot.pulseColor}16`,
                       },
                     ]}
                   />
@@ -2293,7 +2288,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                       style={[
                         styles.pulseMarkerGlowMid,
                         {
-                          backgroundColor: `${hotspot.pulseColor}${isSelected ? "2E" : "24"}`,
+                          backgroundColor: `${hotspot.pulseColor}24`,
                         },
                       ]}
                     />
@@ -2301,7 +2296,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                       style={[
                         styles.pulseMarkerGlowInner,
                         {
-                          backgroundColor: `${hotspot.pulseColor}${isSelected ? "45" : "36"}`,
+                          backgroundColor: `${hotspot.pulseColor}36`,
                         },
                       ]}
                     />
@@ -2312,7 +2307,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                           backgroundColor: isDark
                             ? "rgba(255,255,255,0.16)"
                             : "rgba(255,255,255,0.34)",
-                          borderColor: `${hotspot.pulseColor}${isSelected ? "70" : "58"}`,
+                          borderColor: `${hotspot.pulseColor}58`,
                         },
                       ]}
                     >

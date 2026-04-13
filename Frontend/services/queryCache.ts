@@ -13,6 +13,6 @@ export const setupQueryPersistence = (queryClient: QueryClient) => {
     queryClient,
     persister,
     maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-    buster: 'v1', // Buster to clear old caches if schemas change
+    buster: 'v2', // Clear older persisted query keys that mixed data across backend hosts.
   });
 };

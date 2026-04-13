@@ -402,7 +402,7 @@ export function CampusPingsScreen() {
     isLoading: loadingFeatured,
     refetch: refetchFeatured,
   } = useQuery({
-    queryKey: ['campus-featured'],
+    queryKey: ['campus-featured', API_URL],
     queryFn: async () => {
       const res = await fetch(`${API_URL}/campus/events?limit=12`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -427,7 +427,7 @@ export function CampusPingsScreen() {
   const {
     data: userProfiles = [],
   } = useQuery({
-    queryKey: ['campus-chat-directory'],
+    queryKey: ['campus-chat-directory', API_URL],
     queryFn: async () => {
       try {
         const res = await fetch(`${API_URL}/chat/users`);
@@ -454,7 +454,7 @@ export function CampusPingsScreen() {
     refetch: refetchPings,
     isRefetching: refreshingPings,
   } = useQuery({
-    queryKey: ['campus-pings'],
+    queryKey: ['campus-pings', API_URL],
     queryFn: async () => {
       const activities = await getPingFeed(60);
       return (activities || []).map((a: any) => mapActivityToPing(a, user, userMap));
@@ -824,7 +824,7 @@ export function CampusPingsScreen() {
       const finalKind = currentVote === direction ? 'none' : targetKind;
 
       // Optimistic Update
-      const previousPings = queryClient.getQueryData<PingCard[]>(['campus-pings']);
+      const previousPings = queryClient.getQueryData<PingCard[]>(['campus-pings', API_URL]);
       if (previousPings) {
         const newPings = previousPings.map(p => {
           if (p.id !== ping.id) return p;
@@ -844,7 +844,7 @@ export function CampusPingsScreen() {
             score: (p.score || 0) + scoreAdjustment
           };
         });
-        queryClient.setQueryData(['campus-pings'], newPings);
+        queryClient.setQueryData(['campus-pings', API_URL], newPings);
       }
 
       try {
@@ -856,7 +856,7 @@ export function CampusPingsScreen() {
         console.warn('[Pings] vote failed', error);
         // Rollback
         if (previousPings) {
-          queryClient.setQueryData(['campus-pings'], previousPings);
+          queryClient.setQueryData(['campus-pings', API_URL], previousPings);
         }
       }
     },
@@ -874,7 +874,7 @@ export function CampusPingsScreen() {
           onPress: async () => {
             try {
               await deletePing(ping.activityId!);
-              queryClient.setQueryData(['campus-pings'], (current: PingCard[] | undefined) => {
+              queryClient.setQueryData(['campus-pings', API_URL], (current: PingCard[] | undefined) => {
                 if (!current) return current;
                 return current.filter((entry) => entry.id !== ping.id);
               });
