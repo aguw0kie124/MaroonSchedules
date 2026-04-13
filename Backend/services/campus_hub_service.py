@@ -153,6 +153,20 @@ def _is_event_upcoming(event: Dict[str, Any], now: Optional[datetime] = None) ->
     return relevant_time >= (reference_time - timedelta(hours=72))
 
 
+def _is_admin_event_visible(event: Dict[str, Any], now: Optional[datetime] = None) -> bool:
+    reference_time = now or datetime.now(timezone.utc)
+    end_time = _parse_event_datetime(event.get("end_time"))
+    if end_time is not None and end_time >= reference_time:
+        return True
+
+    start_time = _parse_event_datetime(event.get("start_time"))
+    if start_time is None:
+        return True
+
+    # Featured/admin events should stay around briefly after kickoff, but not for multiple days.
+    return start_time >= (reference_time - timedelta(hours=24))
+
+
 def _event_start_sort_key(event: Dict[str, Any]) -> tuple[int, float]:
     start_time = _parse_event_datetime(event.get("start_time"))
     if start_time is None:
@@ -1282,11 +1296,10 @@ def get_events_snapshot(
     # Re-integrate admin events AFTER tag filtering to ensure they bypass it entirely
     events = admin_events_list + events
     print(f"[EVENTS_DEBUG] after merge: {len(events)} total events (has_modern_events={has_modern_events})")
-    # Filter for upcoming events, but apply a "Steel Curtain" for admin events 
-    # ensuring they stay visible for at least 24 hours after starting.
+    # Filter for upcoming events, while keeping featured/admin events on their own shorter window.
     events = [
         event for event in events 
-        if _is_event_upcoming(event) or (event.get("is_admin_event") and _parse_event_datetime(event.get("start_time")) >= (datetime.now(timezone.utc) - timedelta(hours=24)))
+        if (_is_admin_event_visible(event) if event.get("is_admin_event") else _is_event_upcoming(event))
     ]
     admin_after_upcoming = [e for e in events if e.get('is_admin_event')]
     print(f"[EVENTS_DEBUG] after upcoming filter: {len(events)} total, {len(admin_after_upcoming)} admin")
@@ -1381,7 +1394,7 @@ def get_events_snapshot(
     # Final filter and sort
     events = [
         event for event in events 
-        if _is_event_upcoming(event) or (event.get("is_admin_event") and _parse_event_datetime(event.get("start_time")) >= (datetime.now(timezone.utc) - timedelta(hours=24)))
+        if (_is_admin_event_visible(event) if event.get("is_admin_event") else _is_event_upcoming(event))
     ]
     events.sort(key=_event_start_sort_key)
     limited = _merge_admin_events_before_limit(events, limit) if limit else events
