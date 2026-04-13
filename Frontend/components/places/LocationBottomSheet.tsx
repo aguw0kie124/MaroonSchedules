@@ -371,10 +371,10 @@ export function LocationBottomSheet({
       selectedLoc.type === "Parking" &&
       selectedLoc.visitor_parking_available != null
     ) {
-      const code = selectedLoc.visitor_parking_code
-        ? `${selectedLoc.visitor_parking_code} · `
-        : "";
-      return `${code}${selectedLoc.visitor_parking_available.toLocaleString()} visitor spaces`;
+      const code = selectedLoc.visitor_parking_code || "";
+      const name = selectedLoc.visitor_parking_garage_name;
+      const label = code && name ? `${code} (${name})` : code || "Garage";
+      return `${label}: ${selectedLoc.visitor_parking_available.toLocaleString()} spaces (live)`;
     }
     if (selectedHoursLabel) {
       if (selectedLoc.hours_today) return selectedHoursLabel;
@@ -761,14 +761,19 @@ export function LocationBottomSheet({
             selectedLoc.visitor_parking_available != null ? (
               <View style={styles.contextCard}>
                 <Text style={styles.contextCardTitle}>
-                  {selectedLoc.visitor_parking_available.toLocaleString()}{" "}
-                  visitor spaces available (live)
+                  {selectedLoc.visitor_parking_code
+                    ? `${selectedLoc.visitor_parking_code}${
+                        selectedLoc.visitor_parking_garage_name
+                          ? ` (${selectedLoc.visitor_parking_garage_name})`
+                          : ""
+                      }`
+                    : "Visitor garage"}{" "}
+                  · {selectedLoc.visitor_parking_available.toLocaleString()} spaces
+                  (live)
                 </Text>
                 <Text style={styles.contextCardBody}>
-                  {selectedLoc.visitor_parking_code
-                    ? `Garage ${selectedLoc.visitor_parking_code}. `
-                    : ""}
-                  Counts are from Texas A&M Transportation Services and update regularly.
+                  Counts are from Texas A&M Transportation Services and update
+                  regularly.
                 </Text>
                 <TouchableOpacity
                   style={styles.inlineLinkRow}

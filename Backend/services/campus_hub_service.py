@@ -21,6 +21,7 @@ from services import (
     campus_places_service,
     tag_access_service,
     encryption_service,
+    parking_realtime_service,
 )
 from services.rec_hours_data import REC_PLACE_ID_TO_FACILITY_KEY, weekly_payload_for_facility_key
 
@@ -1424,6 +1425,24 @@ def get_place_detail_snapshot(place_id: str) -> Dict[str, Any]:
 
     places_snapshot = campus_places_service.get_places_map_snapshot()
     location = next((loc for loc in places_snapshot.get("locations", []) if loc.get("placeId") == place_id), None)
+    
+    # Dynamic parking data for Garage icons
+    if place.get("type") == "Parking" and location:
+        # Check if this place_id is one of our known visitor garages
+        from services.campus_places_service import VISITOR_GARAGE_CODE_BY_PLACE_ID, VISITOR_GARAGE_FULL_NAME_BY_CODE
+        code = VISITOR_GARAGE_CODE_BY_PLACE_ID.get(place_id)
+        if code:
+            parking_data = parking_realtime_service.snapshot_block()
+            count = parking_data.get("garages", {}).get(code)
+            if count is not None:
+                # Ensure we have a fresh copy of the location to avoid polluting the cache
+                location = dict(location)
+                location["visitor_parking_available"] = count
+                location["visitor_parking_code"] = code
+                location["visitor_parking_garage_name"] = VISITOR_GARAGE_FULL_NAME_BY_CODE.get(code)
+                location["visitor_parking_as_of"] = parking_data.get("fetched_at")
+                location["visitor_parking_source_url"] = parking_data.get("source_url")
+
     rec_snapshot = get_recreation_snapshot() if place.get("type") == "Rec" else None
     rec_facility = None
     if rec_snapshot and location:
