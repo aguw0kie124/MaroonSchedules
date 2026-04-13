@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 import hashlib
 import html
 import json
@@ -21,6 +22,7 @@ from services import (
     tag_access_service,
     encryption_service,
 )
+from services.rec_hours_data import REC_PLACE_ID_TO_FACILITY_KEY, weekly_payload_for_facility_key
 
 HOWDY_URL = "https://howdy.tamu.edu/main/home/card-view"
 DINING_URL = "https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx"
@@ -499,34 +501,14 @@ def _extract_summary_from_html(source_html: str) -> Optional[str]:
     return None
 
 
-def _active_rec_hours_source() -> str:
-    month = datetime.now().month
-    if month in (5, 6, 7, 8):
-        return "summer"
-    return "fall_spring"
-
-
 def _weekly_hours_for_facility(facility_id: str) -> Dict[str, Any]:
     cache_key = f"campus:recreation:weekly-hours:v1:{facility_id}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
         return cached
 
-    season = _active_rec_hours_source()
-    lookup = SUMMER_HOURS_BY_FACILITY if season == "summer" else FALL_SPRING_HOURS_BY_FACILITY
-    weekly_hours = lookup.get(facility_id) or {}
-    day_name = datetime.now().strftime("%A")
-    today_hours = weekly_hours.get(day_name, "Check official facility page")
-    source_note = (
-        "Fall/spring operating hours based on official Texas A&M Rec Sports staffing/facility schedules."
-        if season == "fall_spring"
-        else "Summer operating hours based on official Texas A&M Rec Sports facility schedules."
-    )
-    payload = {
-        "weekly_hours": [{"day": day, "hours": hours} for day, hours in weekly_hours.items()],
-        "today_hours": today_hours,
-        "hours_source": source_note,
-    }
+    now_chi = datetime.now(ZoneInfo("America/Chicago"))
+    payload = weekly_payload_for_facility_key(facility_id, now_chi)
     cache_service.set_json(cache_key, payload, 60 * 60 * 6)
     return payload
 
@@ -1475,6 +1457,9 @@ def get_recreation_snapshot() -> Dict[str, Any]:
         capacity = live_count.get("capacity") if live_count else None
         percent_full = live_count.get("percent_full") if live_count else None
 
+        hours_facility_key = REC_PLACE_ID_TO_FACILITY_KEY.get(pid)
+        weekly_hours_payload = _weekly_hours_for_facility(hours_facility_key) if hours_facility_key else {}
+
         facilities.append({
             "id": pid,
             "name": place["name"],
@@ -1487,7 +1472,10 @@ def get_recreation_snapshot() -> Dict[str, Any]:
             "capacity": capacity,
             "occupancy_name": live_count.get("location_name") if live_count else None,
             "last_updated": live_count.get("last_updated") if live_count else None,
-            "source_url": source_url
+            "source_url": source_url,
+            "today_hours": weekly_hours_payload.get("today_hours"),
+            "hours_weekly": weekly_hours_payload.get("weekly_hours"),
+            "hours_source": weekly_hours_payload.get("hours_source"),
         })
 
     payload = {
