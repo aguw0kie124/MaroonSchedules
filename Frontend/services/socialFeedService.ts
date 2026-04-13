@@ -105,7 +105,7 @@ export async function getCampusFeed(limit = 25): Promise<any[]> {
 
 export async function getPingFeed(limit = 40): Promise<any[]> {
   try {
-    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?limit=${limit}`, {}, 15000);
+    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?limit=${limit}&refresh=true`, {}, 15000);
     if (!res.ok) throw new Error('Proxy Fetch Error');
     const data = await res.json();
     return data.results || [];

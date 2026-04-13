@@ -1,3 +1,4 @@
+from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -6,7 +7,7 @@ import psycopg
 
 from services import cache_service, campus_hub_service, place_registry_service, tag_access_service
 from repositories import feed_repository, tag_repository, user_repository
-from db_config import CONNECTION_PARAMS, get_pool
+from db_config import CONNECTION_PARAMS
 from services import encryption_service
 
 
@@ -37,6 +38,23 @@ def _safe_decrypt(value: Optional[str]) -> Optional[str]:
     return encryption_service.decrypt_string(value)
 
 
+def _copy_place(place: Optional[Dict[str, Any]], *, name: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    if not place:
+        return None
+    copied = dict(place)
+    if name:
+        copied["name"] = name
+    return copied
+
+
+def _format_clock_time(value: datetime) -> str:
+    return value.strftime("%I:%M %p").lstrip("0")
+
+
+def _format_month_day(value: datetime) -> str:
+    return f"{value.strftime('%b')} {value.day}"
+
+
 def _format_time_label(iso_value: str) -> str:
     target = _parse_iso(iso_value)
     if not target:
@@ -45,19 +63,18 @@ def _format_time_label(iso_value: str) -> str:
     now = datetime.now(timezone.utc)
     diff_hours = (target - now).total_seconds() / 3600
     local_time = target.astimezone()
+    local_now = now.astimezone()
 
     if -1.5 <= diff_hours <= 1:
         return "Now"
-    if local_time.date() == now.astimezone().date():
-        return local_time.strftime("Today · %I:%M %p").replace("· 0", "· ")
+    if local_time.date() == local_now.date():
+        return f"Today · {_format_clock_time(local_time)}"
 
-    tomorrow = now.astimezone().date() + timedelta(days=1)
+    tomorrow = local_now.date() + timedelta(days=1)
     if local_time.date() == tomorrow:
-        return local_time.strftime("Tomorrow · %#I:%M %p")
-        return local_time.strftime("Tomorrow · %#I:%M %p")
+        return f"Tomorrow · {_format_clock_time(local_time)}"
 
-    return local_time.strftime("%b %#d · %#I:%M %p")
-    return local_time.strftime("%b %#d · %#I:%M %p")
+    return f"{_format_month_day(local_time)} · {_format_clock_time(local_time)}"
 
 
 def _recency_weight(iso_value: str) -> float:
@@ -163,7 +180,7 @@ def _resolve_access_scope(clerk_id: Optional[str]) -> tuple[List[str], bool]:
 
 def _load_admin_events() -> List[Dict[str, Any]]:
     try:
-        with get_pool().connection() as conn:
+        with psycopg.connect(CONNECTION_PARAMS) as conn:
             tag_repository._ensure_access_dependencies(conn)
             with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
                 cur.execute(
@@ -234,9 +251,11 @@ def invalidate_pulse_map_cache() -> None:
         cache_service.delete(f"campus:pulse:map:v2:{limit}")
 
 
-def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None) -> Dict[str, Any]:
+def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh: bool = False) -> Dict[str, Any]:
     cache_key = f"campus:pulse:map:v2:{limit}"
-    if not clerk_id:
+    if force_refresh and not clerk_id:
+        cache_service.delete(cache_key)
+    if not clerk_id and not force_refresh:
         cached = cache_service.get_json(cache_key)
         if cached is not None:
             return cached
@@ -313,19 +332,23 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None) -> Dict[str, 
         custom = ping.get("custom_data") or {}
         
         # Robust extraction from both top-level columns and custom metadata
-        place_id = ping.get("place_id") # Note: registry pings might not have this top-level yet
-        location_tag = ping.get("location_tag")
+        place_id = ping.get("place_id") or custom.get("place_id")
+        location_tag = (
+            ping.get("location_tag")
+            or custom.get("location_tag")
+            or custom.get("place_name")
+        )
         
         lat = ping.get("lat") or custom.get("lat") or custom.get("place_lat") or custom.get("location_lat")
         lng = ping.get("lng") or custom.get("lng") or custom.get("place_lng") or custom.get("location_lng")
 
         place = None
         if place_id:
-             place = place_registry_service.get_place_by_id(place_id)
+             place = _copy_place(place_registry_service.get_place_by_id(place_id))
         
         if not place and location_tag:
              # Fallback: resolve using the building name
-             place = place_registry_service.resolve_place(location_tag, lat, lng)
+             place = _copy_place(place_registry_service.resolve_place(location_tag, lat, lng))
 
         # 2. If no campus building, but we have geographic coordinates, create a synthetic place (or cluster with nearby)
         if not place and lat is not None and lng is not None:
@@ -360,15 +383,24 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None) -> Dict[str, 
         
         # 3. Last fallback: MSC (just to ensure it's not discarded if it's on campus without a match)
         if not place and location_tag:
-             place = place_registry_service.resolve_place("Memorial Student Center", None, None)
+             place = _copy_place(
+                 place_registry_service.resolve_place("Memorial Student Center", None, None),
+                 name=location_tag,
+             )
              if place:
-                 place["name"] = location_tag # Preserve the user's tag
+                 place["is_fallback"] = True
         
         # FINAL SAFETY: If still no place (no tag, no GPS), default to MSC just to keep markers visible
         if not place:
-             place = place_registry_service.get_place_by_id("MSC") or place_registry_service.resolve_place("Memorial Student Center", None, None)
+             fallback_name = location_tag or custom.get("place_name") or "Campus"
+             place = _copy_place(place_registry_service.get_place_by_id("MSC"), name=fallback_name)
+             if not place:
+                 place = _copy_place(
+                     place_registry_service.resolve_place("Memorial Student Center", None, None),
+                     name=fallback_name,
+                 )
              if place:
-                 place["name"] = location_tag or "Campus Event"
+                 place["is_fallback"] = True
         
         if not place:
             print(f"[pulse_service] Discarding ping {ping_id}: No location or fallback possible.")

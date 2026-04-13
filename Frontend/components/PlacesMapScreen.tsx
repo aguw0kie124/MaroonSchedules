@@ -328,7 +328,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     isLoading: isLoadingPulse,
     refetch: refetchPulse,
   } = useQuery({
-    queryKey: ['campus-pulse', user?.id],
+    queryKey: ['campus-pulse', user?.id, API_URL],
     queryFn: async () => {
       const { hotspots: rawHotspots } = await fetchCampusPulseMap(60, {
         clerkId: user?.id || undefined,
@@ -363,8 +363,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
       });
     },
     enabled: activeLayer === 'Pulse' || !!pulsePlacesRef.current.length,
-    staleTime: 1000 * 30,
-    refetchInterval: 15000,
+    staleTime: 0,
+    gcTime: 0,
+    refetchInterval: 30000, // 30 seconds
   });
   // isLoadingPulse is now handled by useQuery
   // const [isLoadingPulse, setIsLoadingPulse] = useState(false);
