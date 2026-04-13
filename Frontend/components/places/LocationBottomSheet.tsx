@@ -29,6 +29,7 @@ import {
   ChevronUp,
   ChevronDown,
   Leaf,
+  Clock,
 } from "lucide-react-native";
 import { useUser } from "@clerk/clerk-expo";
 import { PillTabs } from "../PillTabs";
@@ -746,74 +747,140 @@ export function LocationBottomSheet({
             </View>
 
             {!isPeekSheet && selectedLoc.type === "Parking" ? (
-              <View style={styles.contextCard}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: 8,
-                  }}
-                >
-                  <Text style={[styles.contextCardTitle, { marginBottom: 0 }]}>
-                    {selectedLoc.visitor_parking_available != null
-                      ? `${selectedLoc.visitor_parking_available.toLocaleString()} spots available`
-                      : "Visitor Parking"}
-                  </Text>
-                  {selectedLoc.visitor_parking_available != null && (
+              <View style={[styles.occupancyBlock, { padding: 18 }]}>
+                {selectedLoc.visitor_parking_available != null ? (
+                  <View style={{ marginBottom: 14 }}>
                     <View
-                      style={[
-                        styles.heroBadge,
-                        styles.heroBadgeLive,
-                        { paddingVertical: 4, paddingHorizontal: 8 },
-                      ]}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                        marginBottom: 4,
+                      }}
                     >
-                      <View style={styles.heroBadgeDot} />
+                      <View
+                        style={[styles.heroBadgeDot, { backgroundColor: "#32D74B" }]}
+                      />
                       <Text
                         style={[
-                          styles.heroBadgeText,
-                          styles.heroBadgeTextLive,
-                          { fontSize: 10 },
+                          styles.sectionTitle,
+                          { marginBottom: 0, color: "#32D74B" },
                         ]}
                       >
-                        LIVE
+                        Live Availability
                       </Text>
                     </View>
-                  )}
-                </View>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "baseline",
+                        gap: 6,
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.occupancyLiveText,
+                          {
+                            fontSize: 34,
+                            fontWeight: "900",
+                            color: COLORS.textPrimary,
+                          },
+                        ]}
+                      >
+                        {selectedLoc.visitor_parking_available.toLocaleString()}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.sectionTitle,
+                          {
+                            fontSize: 14,
+                            fontWeight: "800",
+                            color: COLORS.textSecondary,
+                          },
+                        ]}
+                      >
+                        SPACES OPEN
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={{ marginBottom: 14 }}>
+                    <Text style={[styles.sectionTitle, { marginBottom: 4 }]}>
+                      Visitor Parking
+                    </Text>
+                    <Text
+                      style={[
+                        styles.contextCardBody,
+                        { fontSize: 14, fontWeight: "600" },
+                      ]}
+                    >
+                      Available at this location
+                    </Text>
+                  </View>
+                )}
+
+                <View
+                  style={[styles.sheetDivider, { marginVertical: 12, opacity: 0.5 }]}
+                />
 
                 {selectedLoc.hours_today && (
-                  <Text
-                    style={[
-                      styles.contextCardBody,
-                      { fontWeight: "600", marginBottom: 2 },
-                    ]}
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                      marginBottom: 12,
+                    }}
                   >
-                    {selectedLoc.hours_today.includes("Typical")
-                      ? "Paid visitor parking available 24/7."
-                      : selectedLoc.hours_today}
-                  </Text>
+                    <Clock size={16} color={COLORS.textSecondary} />
+                    <View>
+                      <Text
+                        style={[styles.sectionTitle, { fontSize: 10, marginBottom: 2 }]}
+                      >
+                        Operating Hours
+                      </Text>
+                      <Text
+                        style={[
+                          styles.contextCardBody,
+                          { fontWeight: "700", color: COLORS.textPrimary },
+                        ]}
+                      >
+                        {selectedLoc.hours_today.includes("Typical")
+                          ? "Available 24/7"
+                          : selectedLoc.hours_today.replace(/.*?:\s*/, "")}
+                      </Text>
+                    </View>
+                  </View>
                 )}
 
                 {selectedLoc.visitor_parking_available == null && (
-                  <Text style={styles.contextCardBody}>
-                    Real-time counts only available for CCG, PRG, SBG, UCG, and
-                    WCG garages.
+                  <Text
+                    style={[
+                      styles.contextCardBody,
+                      { fontSize: 12, fontStyle: "italic", marginBottom: 10 },
+                    ]}
+                  >
+                    Real-time counts only available for major visitor garages.
                   </Text>
                 )}
 
                 <TouchableOpacity
-                  style={styles.inlineLinkRow}
+                  style={[
+                    styles.quickActionPill,
+                    {
+                      alignSelf: "flex-start",
+                      paddingVertical: 6,
+                      paddingHorizontal: 12,
+                    },
+                  ]}
                   onPress={() =>
                     Linking.openURL(
                       "https://transport.tamu.edu/parking/realtime.aspx",
                     ).catch(() => {})
                   }
                 >
-                  <ExternalLink size={14} color={COLORS.primary} />
-                  <Text style={styles.inlineLinkText}>
-                    Official Rates & Info
-                  </Text>
+                  <ExternalLink size={14} color={COLORS.textPrimary} />
+                  <Text style={styles.quickActionText}>Rates & Rules</Text>
                 </TouchableOpacity>
               </View>
             ) : null}

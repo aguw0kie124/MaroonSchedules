@@ -705,6 +705,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   } = usePlacesSelection({
     allMapLocations,
     setActiveLayer,
+    currentLayer: activeLayer,
     onAfterSelectLocation: useCallback((loc: CampusLocation) => {
       // Integration for Pulse layer: selecting a location from the list or search
       // should trigger the corresponding hotspot sheet if it exists
