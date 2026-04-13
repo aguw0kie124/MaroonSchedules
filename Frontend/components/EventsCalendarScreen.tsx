@@ -68,6 +68,7 @@ import { promptGuestLogin } from '../utils/guestAccess';
 import { blockUser, reportContent } from '../services/socialFeedService';
 import { TagChips } from './common/TagChips';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getEventImage } from './events/EventImages';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
