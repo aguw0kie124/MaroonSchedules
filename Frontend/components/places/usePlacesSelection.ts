@@ -54,12 +54,14 @@ function getLayerForPlace(loc: CampusLocation): string {
 type UsePlacesSelectionParams = {
   allMapLocations: CampusLocation[];
   setActiveLayer: (layer: string) => void;
+  currentLayer: string;
   onAfterSelectLocation?: (loc: CampusLocation, nextLayer: string) => void;
 };
 
 export function usePlacesSelection({
   allMapLocations,
   setActiveLayer,
+  currentLayer,
   onAfterSelectLocation,
 }: UsePlacesSelectionParams) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -164,7 +166,14 @@ export function usePlacesSelection({
 
   const handleSelectLocation = useCallback(
     (loc: CampusLocation) => {
-      const parentFoodCourtLocation = findFoodCourtParentLocation(loc, allMapLocations);
+      // Polo Road Fix: If we are already on a layer that the place supports (like Parking),
+      // don't resolve to its Hub/Dining parent.
+      const shouldJumpToHub = !(currentLayer === "Parking" && loc.type === "Parking");
+
+      const parentFoodCourtLocation = shouldJumpToHub
+        ? findFoodCourtParentLocation(loc, allMapLocations)
+        : null;
+
       const nextLocation = parentFoodCourtLocation || loc;
       const preferredMenu = shouldHideFoodCourtLocationInBrowse(loc, allMapLocations)
         ? getDiningMenuCandidates(loc.location)[0] || null
@@ -182,7 +191,7 @@ export function usePlacesSelection({
       setSelectedId(getLocationSelectionId(nextLocation));
       onAfterSelectLocation?.(nextLocation, nextLayer);
     },
-    [allMapLocations, onAfterSelectLocation, setActiveLayer],
+    [allMapLocations, currentLayer, onAfterSelectLocation, setActiveLayer],
   );
 
   useEffect(() => {
