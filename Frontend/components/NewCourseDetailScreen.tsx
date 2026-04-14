@@ -30,7 +30,7 @@ export function NewCourseDetailScreen() {
         try {
             const res = await fetchCourseById(courseId);
             setCourse(res);
-        } catch (e) { console.error(e); }
+        } catch (e) { console.warn(e); }
         setLoading(false);
     };
 
@@ -38,7 +38,7 @@ export function NewCourseDetailScreen() {
         try {
             const res = await fetchSchedules(userId);
             setSchedules(res);
-        } catch (e) { console.error(e); }
+        } catch (e) { console.warn(e); }
     };
 
     const handleAddSectionClick = (sectionId: string) => {

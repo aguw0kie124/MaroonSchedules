@@ -5,7 +5,7 @@ import { Platform } from 'react-native';
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
-    shouldPlaySound: true,
+    shouldPlaySound: false,
     shouldSetBadge: true,
     shouldShowBanner: true,
     shouldShowList: true,
@@ -71,7 +71,7 @@ export async function scheduleEventNotification(
         title: `Reminder: ${title}`,
         body: body,
         data: { type: 'event', date: date.toISOString() },
-        sound: true,
+        sound: false,
       },
       trigger: { 
         type: Notifications.SchedulableTriggerInputTypes.DATE, 
@@ -80,7 +80,7 @@ export async function scheduleEventNotification(
     });
     return id;
   } catch (error) {
-    console.error('[NotificationService] Failed to schedule event notification:', error);
+    console.warn('[NotificationService] Failed to schedule event notification:', error);
     return null;
   }
 }
@@ -109,7 +109,7 @@ export async function scheduleAdminEventReviewNotification(
           endDate: endDate.toISOString(),
           googleReviewUrl: googleReviewUrl || null,
         },
-        sound: true,
+        sound: false,
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -118,7 +118,7 @@ export async function scheduleAdminEventReviewNotification(
     });
     return id;
   } catch (error) {
-    console.error('[NotificationService] Failed to schedule admin event review notification:', error);
+    console.warn('[NotificationService] Failed to schedule admin event review notification:', error);
     return null;
   }
 }
@@ -148,7 +148,7 @@ export async function scheduleRsvpSuccessNotification(
           locationName: locationName || null,
           startDate: startDate?.toISOString() || null,
         },
-        sound: true,
+        sound: false,
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
@@ -157,7 +157,7 @@ export async function scheduleRsvpSuccessNotification(
     });
     return id;
   } catch (error) {
-    console.error('[NotificationService] Failed to schedule RSVP success notification:', error);
+    console.warn('[NotificationService] Failed to schedule RSVP success notification:', error);
     return null;
   }
 }
@@ -183,7 +183,7 @@ export async function scheduleBusArrivalNotification(
       content: {
         title: `Bus Arriving Soon!`,
         body: `The ${routeName} is arriving at ${stopName} in about ${arrivalMinutes} minutes.`,
-        sound: true,
+        sound: false,
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 1 },
     });
@@ -194,13 +194,13 @@ export async function scheduleBusArrivalNotification(
       content: {
         title: `Bus Reminder`,
         body: `The ${routeName} is arriving at ${stopName} in ${leadTime} minutes.`,
-        sound: true,
+        sound: false,
       },
       trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: waitMinutes * 60 },
     });
     return id;
   } catch (error) {
-    console.error('[NotificationService] Failed to schedule bus notification:', error);
+    console.warn('[NotificationService] Failed to schedule bus notification:', error);
     return null;
   }
 }

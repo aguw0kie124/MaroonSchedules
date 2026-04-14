@@ -23,8 +23,8 @@ export default function StreakHubScreen({ navigation, embedded = false }: any) {
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
-      requestJson(`/dining/profile/${encodeURIComponent(user.id)}`).then(setProfile).catch(console.error);
-      requestJson(`/dining/history/${encodeURIComponent(user.id)}?days=180`).then(setHistory).catch(console.error);
+      requestJson(`/dining/profile/${encodeURIComponent(user.id)}`).then(setProfile).catch(console.warn);
+      requestJson(`/dining/history/${encodeURIComponent(user.id)}?days=180`).then(setHistory).catch(console.warn);
     }, [user]),
   );
 

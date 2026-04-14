@@ -64,7 +64,7 @@ export const transitService = {
                 return this.auth;
             }
         } catch (error) {
-            console.error('[TransitService] Dynamic auth failed, falling back...');
+            console.warn('[TransitService] Dynamic auth failed, falling back...');
             return this.initManualAuth();
         }
         return null;
@@ -93,7 +93,7 @@ export const transitService = {
                 return this.auth;
             }
         } catch (e) {
-            console.error('[TransitService] Manual fallback failed:', e);
+            console.warn('[TransitService] Manual fallback failed:', e);
         }
         return null;
     },
@@ -125,7 +125,7 @@ export const transitService = {
             this.routesCache = { data: result, timestamp: now };
             return result;
         } catch (error) {
-            console.error('[TransitService] Error fetching routes:', error);
+            console.warn('[TransitService] Error fetching routes:', error);
             return this.routesCache?.data || { routes: [], activeIds: [] };
         }
     },
@@ -191,7 +191,7 @@ export const transitService = {
             this.patternCache.set(routeId, { data: result, timestamp: now });
             return result;
         } catch (error) {
-            console.error('[TransitService] Error fetching patterns:', error);
+            console.warn('[TransitService] Error fetching patterns:', error);
             return cached?.data || { points: [], stops: [], paths: [] };
         }
     },
@@ -218,7 +218,7 @@ export const transitService = {
             this.vehicleCache.set(cacheKey, { data: vehicles, timestamp: now });
             return vehicles;
         } catch (error) {
-            console.error('[TransitService] Error fetching vehicles:', error);
+            console.warn('[TransitService] Error fetching vehicles:', error);
             return cached?.data || [];
         }
     },

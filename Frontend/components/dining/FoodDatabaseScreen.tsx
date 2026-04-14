@@ -86,7 +86,7 @@ export default function FoodDatabaseScreen({ navigation, embedded = false }: any
       const data = await requestJson(`/dining/foods?q=${encodeURIComponent(trimmed)}&source=all`);
       setFoods(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error(error);
+      console.warn(error);
       setFoods([]);
     } finally {
       setLoading(false);
@@ -108,7 +108,7 @@ export default function FoodDatabaseScreen({ navigation, embedded = false }: any
       }, {});
       setPortionCounts(nextCounts);
     } catch (trackerError) {
-      console.error('Failed to refresh tracker counts', trackerError);
+      console.warn('Failed to refresh tracker counts', trackerError);
     }
   }, [user]);
 
@@ -138,7 +138,7 @@ export default function FoodDatabaseScreen({ navigation, embedded = false }: any
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await refreshTrackerCounts();
     } catch (trackerError) {
-      console.error('Could not add database item to tracker', trackerError);
+      console.warn('Could not add database item to tracker', trackerError);
       Alert.alert('Error', 'Could not add this item right now.');
     } finally {
       setSyncingItemKey(null);
@@ -158,7 +158,7 @@ export default function FoodDatabaseScreen({ navigation, embedded = false }: any
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await refreshTrackerCounts();
     } catch (trackerError) {
-      console.error('Could not remove database item from tracker', trackerError);
+      console.warn('Could not remove database item from tracker', trackerError);
       Alert.alert('Error', 'Could not remove this item right now.');
     } finally {
       setSyncingItemKey(null);

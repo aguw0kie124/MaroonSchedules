@@ -33,7 +33,7 @@ export default function WeightTrackerScreen({ navigation }: any) {
       setWeights(Array.isArray(wRes) ? wRes : []);
       setStats(sRes);
     } catch (e) {
-      console.error(e);
+      console.warn(e);
     }
     setLoading(false);
   };

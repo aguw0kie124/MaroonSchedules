@@ -44,7 +44,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({ visible, onClose, loca
         onClose();
       }
     } catch (error) {
-      console.error('Failed to submit review:', error);
+      console.warn('Failed to submit review:', error);
     } finally {
       setSubmitting(false);
     }

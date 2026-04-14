@@ -33,7 +33,7 @@ export function TOSScreen({ clerkId, onAccepted }: TOSScreenProps) {
       await acceptToS(clerkId);
       onAccepted();
     } catch (error: any) {
-      console.error('TOS Acceptance failed:', error);
+      console.warn('TOS Acceptance failed:', error);
       const rawMessage = String(error?.message || error || '');
       const message = rawMessage.toLowerCase().includes('temporarily unavailable')
         ? 'We could not reach the server right now. Please try again in a moment.'

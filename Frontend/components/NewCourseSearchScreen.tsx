@@ -117,7 +117,7 @@ export function NewCourseSearchScreen() {
             const res = await fetchCourses(params);
             setCourses(res);
         } catch (err) {
-            console.error(err);
+            console.warn(err);
         } finally {
             setLoading(false);
         }

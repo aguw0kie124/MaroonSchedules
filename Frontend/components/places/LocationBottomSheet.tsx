@@ -48,8 +48,10 @@ import {
   DiningMealPeriod,
   isDiningHallMenuLocation,
 } from "../../services/diningMenuCache";
-import { reportContent, blockUser, deleteReview } from "../../services/socialFeedService";
 import { Alert } from "react-native";
+import { ReviewItem } from "./ReviewItem";
+import { ClassMeetingCard } from "./ClassMeetingCard";
+import { OccupancyChart } from "./OccupancyChart";
 
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.94;
 const SHEET_TOP_VISIBLE_HEIGHT = SCREEN_HEIGHT * 0.84;
@@ -138,6 +140,65 @@ function getOccupancyInsight(
   }
   return "Plenty of open space right now.";
 }
+
+/**
+ * ClassMeetingList - Isolated component for better render performance
+ */
+const ClassMeetingList = React.memo(({ 
+  meetings, 
+}: { 
+  meetings: any[] | null | undefined;
+}) => {
+  if (!meetings?.length) return null;
+  return (
+    <View style={{ marginTop: 12 }}>
+      {meetings.slice(0, 3).map((meeting) => (
+        <ClassMeetingCard key={meeting.id} meeting={meeting} />
+      ))}
+    </View>
+  );
+});
+
+/**
+ * ReviewList - Isolated component for review rendering
+ */
+const ReviewList = React.memo(({ 
+  reviews, 
+  userId, 
+  onDelete, 
+  onReport, 
+  onBlock 
+}: { 
+  reviews: any[]; 
+  userId?: string;
+  onDelete: (rev: any) => void;
+  onReport: (rev: any) => void;
+  onBlock: (rev: any) => void;
+}) => {
+  if (!reviews?.length) {
+    return (
+      <View style={{ padding: 24, alignItems: "center" }}>
+        <Text style={{ color: "#AAA", fontSize: 13, fontWeight: "600" }}>
+          No reviews found for this location.
+        </Text>
+      </View>
+    );
+  }
+  return (
+    <>
+      {reviews.slice(0, 3).map((rev, i) => (
+        <ReviewItem 
+          key={rev.id || i} 
+          rev={rev} 
+          currentUserId={userId}
+          onDelete={() => onDelete(rev)}
+          onReport={() => onReport(rev)}
+          onBlock={() => onBlock(rev)}
+        />
+      ))}
+    </>
+  );
+});
 
 interface LocationBottomSheetProps {
   styles: any;
@@ -1125,63 +1186,13 @@ export function LocationBottomSheet({
                         </View>
                       </View>
 
-                      {reviews.length > 0 ? (
-                        reviews.slice(0, 3).map((rev, i) => (
-                          <View key={rev.id || i} style={styles.reviewItem}>
-                            <View style={styles.reviewMeta}>
-                              <View style={styles.reviewUserRow}>
-                                <View style={styles.userAvatar}>
-                                  <Text style={styles.avatarText}>
-                                    {rev.user[0]}
-                                  </Text>
-                                </View>
-                                <Text style={styles.reviewUser}>
-                                  {rev.user}
-                                </Text>
-                              </View>
-                              <View style={styles.reviewStars}>
-                                {[1, 2, 3, 4, 5].map((s) => (
-                                  <Star
-                                    key={s}
-                                    size={11}
-                                    fill={
-                                      s <= rev.rating ? "#FFD700" : "transparent"
-                                    }
-                                    color={s <= rev.rating ? "#FFD700" : "#555"}
-                                  />
-                                ))}
-                              </View>
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.reviewComment} numberOfLines={3}>
-                                {rev.comment}
-                              </Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
-                                {rev.userId === user?.id ? (
-                                    <TouchableOpacity onPress={() => handleDeleteReview(rev)}>
-                                        <Trash2 size={14} color="#E56B6B" />
-                                    </TouchableOpacity>
-                                ) : (
-                                    <>
-                                        <TouchableOpacity onPress={() => handleReportReview(rev)}>
-                                            <Flag size={14} color="#888" />
-                                        </TouchableOpacity>
-                                        <TouchableOpacity onPress={() => handleBlockReviewer(rev)}>
-                                            <Shield size={14} color="#888" />
-                                        </TouchableOpacity>
-                                    </>
-                                )}
-                            </View>
-                          </View>
-                        ))
-                      ) : (
-                        <View style={styles.emptyReviews}>
-                          <Text style={styles.emptyReviewsText}>
-                            No reviews found for this location.
-                          </Text>
-                        </View>
-                      )}
+                      <ReviewList 
+                        reviews={reviews} 
+                        userId={user?.id}
+                        onDelete={handleDeleteReview}
+                        onReport={handleReportReview}
+                        onBlock={handleBlockReviewer}
+                      />
                     </View>
                   )}
                 </>
@@ -1193,25 +1204,7 @@ export function LocationBottomSheet({
                     <TourTarget name="rec-center-capacity">
                       <View style={styles.chartContainer}>
                         <Text style={styles.chartTitle}>Foot Traffic · Last 8h</Text>
-                        <View style={styles.chartBars}>
-                          {(
-                            selectedLoc.traffic_history || [
-                              20, 45, 15, 60, 40, 25, 20, 50,
-                            ]
-                          ).map((val: number, i: number) => (
-                            <View key={i} style={styles.barWrapper}>
-                              <View
-                                style={[
-                                  styles.barFill,
-                                  {
-                                    height: Math.max(8, (val / 100) * 45),
-                                    backgroundColor: getStatusColor(val),
-                                  },
-                                ]}
-                              />
-                            </View>
-                          ))}
-                        </View>
+                        <OccupancyChart history={selectedLoc.traffic_history} />
                       </View>
                     </TourTarget>
                   )}
@@ -1226,33 +1219,7 @@ export function LocationBottomSheet({
                         </TouchableOpacity>
                       </View>
 
-                      <View style={styles.classMeetingList}>
-                        {selectedLoc.classMeetings.slice(0, 3).map((meeting) => (
-                          <View
-                            key={meeting.id}
-                            style={styles.classMeetingCard}
-                          >
-                            <View style={styles.classMeetingHeader}>
-                              <Text style={styles.classMeetingCode}>
-                                {meeting.code}
-                              </Text>
-                              <Text style={styles.classMeetingTime}>
-                                {meeting.timeLabel}
-                              </Text>
-                            </View>
-                            <Text style={styles.classMeetingName}>
-                              {meeting.name}
-                            </Text>
-                            <Text style={styles.classMeetingMeta}>
-                              {formatScheduleDays(meeting.days)}
-                              {meeting.room ? ` · Room ${meeting.room}` : ""}
-                            </Text>
-                            <Text style={styles.classMeetingScheduleLabel}>
-                              {meeting.scheduleLabel}
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
+                      <ClassMeetingList meetings={selectedLoc.classMeetings} />
                     </View>
                   ) : null}
 
@@ -1278,57 +1245,13 @@ export function LocationBottomSheet({
                     </View>
                   </View>
 
-                  {reviews.length > 0 ? (
-                    reviews.slice(0, 3).map((rev, i) => (
-                      <View key={rev.id || i} style={styles.reviewItem}>
-                        <View style={styles.reviewMeta}>
-                          <View style={styles.reviewUserRow}>
-                            <View style={styles.userAvatar}>
-                              <Text style={styles.avatarText}>
-                                {rev.user[0]}
-                              </Text>
-                            </View>
-                            <Text style={styles.reviewUser}>{rev.user}</Text>
-                          </View>
-                          <View style={styles.reviewStars}>
-                            {[1, 2, 3, 4, 5].map((s) => (
-                              <Star
-                                key={s}
-                                size={11}
-                                fill={s <= rev.rating ? "#FFD700" : "transparent"}
-                                color={s <= rev.rating ? "#FFD700" : "#555"}
-                              />
-                            ))}
-                          </View>
-                        </View>
-                        <Text style={styles.reviewComment} numberOfLines={3}>
-                          {rev.comment}
-                        </Text>
-                          <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-                            {rev.userId === user?.id ? (
-                              <TouchableOpacity onPress={() => handleDeleteReview(rev)}>
-                                <Trash2 size={14} color="#E56B6B" />
-                              </TouchableOpacity>
-                            ) : (
-                              <>
-                                <TouchableOpacity onPress={() => handleReportReview(rev)}>
-                                  <Flag size={14} color="#888" />
-                                </TouchableOpacity>
-                                <TouchableOpacity onPress={() => handleBlockReviewer(rev)}>
-                                  <Shield size={14} color="#888" />
-                                </TouchableOpacity>
-                              </>
-                            )}
-                          </View>
-                      </View>
-                    ))
-                  ) : (
-                    <View style={styles.emptyReviews}>
-                      <Text style={styles.emptyReviewsText}>
-                        No reviews found for this location.
-                      </Text>
-                    </View>
-                  )}
+                  <ReviewList 
+                    reviews={reviews} 
+                    userId={user?.id}
+                    onDelete={handleDeleteReview}
+                    onReport={handleReportReview}
+                    onBlock={handleBlockReviewer}
+                  />
                 </>
               )}
             </ScrollView>

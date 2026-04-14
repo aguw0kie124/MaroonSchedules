@@ -48,7 +48,7 @@ export function ScheduleListScreen() {
             const data = await fetchSchedules(userId);
             setSchedules(data);
         } catch (e) {
-            console.error(e);
+            console.warn(e);
         } finally {
             setLoading(false);
         }

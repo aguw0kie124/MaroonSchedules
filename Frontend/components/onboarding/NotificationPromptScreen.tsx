@@ -31,7 +31,7 @@ export function NotificationPromptScreen({ onDone }: NotificationPromptScreenPro
       setNotificationsEnabled(granted);
       onDone();
     } catch (error) {
-      console.error('Notification permission request failed:', error);
+      console.warn('Notification permission request failed:', error);
       onDone();
     } finally {
       setLoading(false);

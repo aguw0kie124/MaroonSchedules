@@ -162,7 +162,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
       }, {});
       setPortionCounts(nextCounts);
     } catch (trackerError) {
-      console.error('Failed to refresh tracker counts', trackerError);
+      console.warn('Failed to refresh tracker counts', trackerError);
     }
   }, [activeMealPeriod, user]);
 
@@ -187,7 +187,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await refreshTrackerCounts();
     } catch (trackerError) {
-      console.error('Could not add menu item to tracker', trackerError);
+      console.warn('Could not add menu item to tracker', trackerError);
       Alert.alert('Error', 'Could not add this item right now.');
     } finally {
       setSyncingItemKey(null);
@@ -207,7 +207,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await refreshTrackerCounts();
     } catch (trackerError) {
-      console.error('Could not remove menu item from tracker', trackerError);
+      console.warn('Could not remove menu item from tracker', trackerError);
       Alert.alert('Error', 'Could not remove this item right now.');
     } finally {
       setSyncingItemKey(null);

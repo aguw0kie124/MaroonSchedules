@@ -110,7 +110,7 @@ export function TransitTripResultsScreen() {
         setOptions(plans);
       })
       .catch((plannerError) => {
-        console.error('[TripResults] Failed to build trip options:', plannerError);
+        console.warn('[TripResults] Failed to build trip options:', plannerError);
         if (mounted) {
           setError('Trip planning is temporarily unavailable.');
           setOptions([]);

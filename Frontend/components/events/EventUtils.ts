@@ -384,7 +384,7 @@ export function handleGoogleCalendar(event: TAMUEvent) {
   const desc = encodeURIComponent(stripHtml(event.description || ''));
   const loc = encodeURIComponent(event.location || '');
   const url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${desc}&location=${loc}`;
-  Linking.openURL(url).catch((err) => console.error('Error opening Google Calendar', err));
+  Linking.openURL(url).catch((err) => console.warn('Error opening Google Calendar', err));
 }
 
 export function openNativeMaps(lat: number, lng: number, label?: string | null) {

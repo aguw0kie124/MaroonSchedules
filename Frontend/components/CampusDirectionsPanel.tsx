@@ -10,7 +10,7 @@ import {
 import { Bus, MapPin, Navigation, X as XIcon } from 'lucide-react-native';
 import { useTheme } from './SharedUI';
 import { DirectionStep } from '../services/campusDirections';
-import { stopSpeech } from '../services/campusTTS';
+
 
 interface CampusDirectionsPanelProps {
   destinationName: string;
@@ -43,8 +43,7 @@ export function CampusDirectionsPanel({
     }).start();
   }, []);
 
-  const handleEnd = async () => {
-    await stopSpeech();
+  const handleEnd = () => {
     onEnd();
   };
 

@@ -76,7 +76,7 @@ export function AuthLanding() {
       }
     } catch (err: any) {
       resetSessionMode();
-      console.error('Sign in failed', flow, JSON.stringify(err, null, 2));
+      console.warn('Sign in failed', flow, JSON.stringify(err, null, 2));
       Alert.alert('Error', getAuthErrorMessage(flow, err));
     } finally {
       setIsLoading(false);

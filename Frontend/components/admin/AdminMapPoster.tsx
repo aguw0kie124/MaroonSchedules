@@ -54,7 +54,7 @@ export function AdminMapPoster() {
     if (!user?.id) return;
     requestJson(`/admin/tags?clerk_id=${encodeURIComponent(user.id)}`, {}, 15000)
       .then((data) => setAvailableTags(data.tags || []))
-      .catch((error) => console.error('Failed to load tag suggestions', error));
+      .catch((error) => console.warn('Failed to load tag suggestions', error));
   }, [user?.id]);
 
   const updateDatePart = (nextValue: Date) => {

@@ -294,7 +294,7 @@ export function Profile() {
         await loadBlockedUsers();
         Alert.alert('Success', 'User unblocked.');
     } catch (err) {
-        console.error('Failed to unblock user', err);
+        console.warn('Failed to unblock user', err);
         Alert.alert('Error', 'Failed to unblock user.');
     }
   };
@@ -347,7 +347,7 @@ export function Profile() {
         }
         Alert.alert('Updated', 'Your profile photo has been updated.');
       } catch (error) {
-        console.error('Failed to upload image:', error);
+        console.warn('Failed to upload image:', error);
         Alert.alert('Error', 'Unable to update your profile photo.');
       }
     }
@@ -372,7 +372,7 @@ export function Profile() {
         await setCustomWallpaper(result.assets[0].uri);
         setBackgroundMode('custom');
       } catch (error) {
-        console.error('Failed to set wallpaper:', error);
+        console.warn('Failed to set wallpaper:', error);
         Alert.alert('Error', 'Unable to save this wallpaper.');
       } finally {
         setUploadingWallpaper(false);

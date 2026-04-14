@@ -43,7 +43,7 @@ export function CourseDetail() {
             const res = await fetchSectionById(id);
             setSection(res);
         } catch (e) {
-            console.error(e);
+            console.warn(e);
         } finally {
             setLoading(false);
         }

@@ -795,7 +795,7 @@ export function CampusPingsScreen() {
       resetComposer();
       handleRefresh();
     } catch (error: any) {
-      console.error('[Pings] create failed', error);
+      console.warn('[Pings] create failed', error);
       Alert.alert('Could not post ping', error?.message || 'Something went wrong.');
     } finally {
       setIsPosting(false);
@@ -866,6 +866,11 @@ export function CampusPingsScreen() {
           Alert.alert(
             'Interaction unavailable',
             'You cannot interact with a user you have blocked or who has blocked you.',
+          );
+        } else if (error instanceof Error && /rate limit/i.test(error.message)) {
+          Alert.alert(
+            'Slow down!',
+            'You are voting too fast. Please wait a minute before trying again.',
           );
         }
       }
@@ -1322,7 +1327,7 @@ export function CampusPingsScreen() {
     <View style={styles.container}>
       <FlatList
         data={filteredFeed}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => item?.id || `ping-idx-${index}`}
         renderItem={renderPingCard}
         ListHeaderComponent={header}
         ListEmptyComponent={

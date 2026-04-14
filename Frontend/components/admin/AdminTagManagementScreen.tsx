@@ -115,7 +115,7 @@ export function AdminTagManagementScreen() {
         loadUsers(),
       ]);
     } catch (error) {
-      console.error(error);
+      console.warn(error);
       Alert.alert('Could not load access tools', 'Please try again in a moment.');
     } finally {
       setLoading(false);
@@ -140,7 +140,7 @@ export function AdminTagManagementScreen() {
 
   const handleSearchSubmit = () => {
     loadUsers(userQuery).catch((error) => {
-      console.error(error);
+      console.warn(error);
       Alert.alert('Search failed', 'We could not load matching users.');
     });
   };
@@ -162,7 +162,7 @@ export function AdminTagManagementScreen() {
       await Promise.all([loadTagLibrary(), loadJoinRequests()]);
       Alert.alert('Club settings saved', 'Your club tag and join workflow are updated.');
     } catch (error) {
-      console.error(error);
+      console.warn(error);
       Alert.alert('Save failed', 'We could not update your club settings.');
     } finally {
       setSavingClubSettings(false);
@@ -184,7 +184,7 @@ export function AdminTagManagementScreen() {
         await loadUsers(userQuery);
       }
     } catch (error) {
-      console.error(error);
+      console.warn(error);
       Alert.alert('Update failed', 'We could not update that join request.');
     }
   };
@@ -222,7 +222,7 @@ export function AdminTagManagementScreen() {
       closeUserEditor();
       Alert.alert('Tags updated', 'The user access tags were saved.');
     } catch (error) {
-      console.error(error);
+      console.warn(error);
       Alert.alert('Save failed', 'We could not update that user.');
       setSavingUserTags(false);
     }

@@ -62,7 +62,7 @@ export async function uploadMediaImage(uri: string): Promise<string> {
     const data = await res.json();
     return data.url;
   } catch (e: any) {
-    console.error('Local image upload failed:', e);
+    console.warn('Local image upload failed:', e);
     throw new Error('Failed to upload image to Backend.');
   }
 }
@@ -92,7 +92,7 @@ export async function uploadMediaFile(uri: string): Promise<string> {
     const data = await res.json();
     return data.url;
   } catch (e: any) {
-    console.error('Local video upload failed:', e);
+    console.warn('Local video upload failed:', e);
     throw new Error('Failed to upload video to Backend.');
   }
 }
@@ -179,7 +179,7 @@ export async function addPing(params: {
 
   if (!res.ok) {
     const err = await res.text();
-    console.error(`[NativeFeeds] addPing error: ${err}`);
+    console.warn(`[NativeFeeds] addPing error: ${err}`);
     throw new Error(`Proxy Ping Error: ${err}`);
   }
 }
@@ -234,7 +234,7 @@ export async function addPost(params: {
   
   if (!res.ok) {
     const err = await res.text();
-    console.error(`[NativeFeeds] addPost error: ${err}`);
+    console.warn(`[NativeFeeds] addPost error: ${err}`);
     throw new Error(`Proxy Post Error: ${err}`);
   }
 }
@@ -256,7 +256,7 @@ export async function toggleVote(activityId: string, kind: 'upvote' | 'downvote'
     });
     if (!res.ok) {
         const err = await res.text();
-        console.error('[NativeFeeds] toggleVote error:', err);
+        console.warn('[NativeFeeds] toggleVote error:', err);
         throw new Error('Vote Proxy Error: ' + err);
     }
     return res.json();
@@ -278,7 +278,7 @@ export async function toggleLike(activityId: string, userId: string): Promise<an
     });
     if (!res.ok) {
         const err = await res.text();
-        console.error('[NativeFeeds] toggleLike error:', err);
+        console.warn('[NativeFeeds] toggleLike error:', err);
         throw new Error('Like Proxy Error: ' + err);
     }
     return res.json();
@@ -302,7 +302,7 @@ export async function addComment(activityId: string, user: any, text: string): P
     });
     if (!res.ok) {
         const err = await res.text();
-        console.error('[NativeFeeds] addComment error:', err);
+        console.warn('[NativeFeeds] addComment error:', err);
         throw new Error('Comment Proxy Error: ' + err);
     }
     return res.json();
@@ -350,7 +350,7 @@ export async function addReel(params: {
   });
   if (!res.ok) {
     const err = await res.text();
-    console.error(`[NativeFeeds] addReel error: ${err}`);
+    console.warn(`[NativeFeeds] addReel error: ${err}`);
     throw new Error("Reel Proxy Error: " + err);
   }
 }
@@ -395,7 +395,7 @@ export async function getReelsFeed(limit = 20): Promise<any[]> {
     const data = await res.json();
     return data.results || [];
   } catch (e) {
-    console.error('[NativeFeeds] getReelsFeed error:', e);
+    console.warn('[NativeFeeds] getReelsFeed error:', e);
     return [];
   }
 }
@@ -416,30 +416,34 @@ export async function getPlaceReviews(placeId: string, limit = 5): Promise<any[]
             comment: act.text || act.custom?.comment || ''
         }));
     } catch (e) {
-        console.error(`[NativeFeeds] getPlaceReviews error:`, e);
+        console.warn(`[NativeFeeds] getPlaceReviews error:`, e);
         return [];
     }
 }
 
-export async function addPlaceReview(params: any): Promise<any> {
+export async function addPlaceReview(params: {
+  placeId: string;
+  rating: number;
+  text: string;
+  userId?: string;
+  userName?: string;
+  userImage?: string;
+  images?: string[];
+}): Promise<void> {
     const slugify = (text: string) => text.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^\w-]+/g, '');
     
-    let userId, userName, userImage, placeId, rating, text, images;
-
-    if (typeof params === 'object' && !Array.isArray(params) && params.placeId) {
-        ({ userId, userName, userImage, placeId, rating, text, images } = params);
-    } else {
-        placeId = arguments[0];
-        rating = arguments[1];
-        text = arguments[2];
-        images = arguments[3] || [];
-        userId = connectedUserId || "anonymous";
-        userName = getPremiumName(currentFullUser);
-        userImage = getPremiumImage(currentFullUser);
-    }
+    const { 
+        placeId, 
+        rating, 
+        text, 
+        images = [], 
+        userId = connectedUserId || "anonymous",
+        userName = getPremiumName(currentFullUser),
+        userImage = getPremiumImage(currentFullUser)
+    } = params;
 
     if (!placeId) {
-        console.error("[NativeFeeds] addPlaceReview: placeId is undefined");
+        console.warn("[NativeFeeds] addPlaceReview: placeId is undefined");
         throw new Error("placeId is required for reviews");
     }
 
@@ -466,7 +470,7 @@ export async function addPlaceReview(params: any): Promise<any> {
     
     if (!res.ok) {
         const err = await res.text();
-        console.error(`[NativeFeeds] addPlaceReview error: ${err}`);
+        console.warn(`[NativeFeeds] addPlaceReview error: ${err}`);
         throw new Error(`Proxy Review Error: ${err}`);
     }
 }

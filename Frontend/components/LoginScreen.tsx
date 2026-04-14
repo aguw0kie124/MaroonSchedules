@@ -80,7 +80,7 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
       }
     } catch (err: any) {
       resetSessionMode();
-      console.error('Sign in failed', flow, JSON.stringify(err, null, 2));
+      console.warn('Sign in failed', flow, JSON.stringify(err, null, 2));
       Alert.alert('Error', getAuthErrorMessage(flow, err));
     } finally {
       setIsLoading(false);
@@ -123,7 +123,7 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
         Alert.alert('Notice', 'Additional verification is required. Please use a browser to complete your account setup.');
       }
     } catch (err: any) {
-      console.error('Email sign in failed', JSON.stringify(err, null, 2));
+      console.warn('Email sign in failed', JSON.stringify(err, null, 2));
       Alert.alert('Error', getAuthErrorMessage('email', err));
     } finally {
       setIsLoading(false);
@@ -149,7 +149,7 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
       await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
       setAuthFlow('otp_verify');
     } catch (err: any) {
-      console.error('Email sign up failed', JSON.stringify(err, null, 2));
+      console.warn('Email sign up failed', JSON.stringify(err, null, 2));
       Alert.alert('Error', getAuthErrorMessage('email', err));
     } finally {
       setIsLoading(false);
@@ -178,7 +178,7 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
         Alert.alert('Error', 'Verification failed. Please check the code and try again.');
       }
     } catch (err: any) {
-      console.error('Verification failed', JSON.stringify(err, null, 2));
+      console.warn('Verification failed', JSON.stringify(err, null, 2));
       Alert.alert('Error', getAuthErrorMessage('email', err));
     } finally {
       setIsLoading(false);
@@ -202,7 +202,7 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
       });
       setAuthFlow('reset_password');
     } catch (err: any) {
-      console.error('Password reset request failed', JSON.stringify(err, null, 2));
+      console.warn('Password reset request failed', JSON.stringify(err, null, 2));
       Alert.alert('Error', getAuthErrorMessage('email', err));
     } finally {
       setIsLoading(false);
@@ -233,7 +233,7 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
         Alert.alert('Error', 'Reset failed. Please check the code and try again.');
       }
     } catch (err: any) {
-      console.error('Password reset failed', JSON.stringify(err, null, 2));
+      console.warn('Password reset failed', JSON.stringify(err, null, 2));
       Alert.alert('Error', getAuthErrorMessage('email', err));
     } finally {
       setIsLoading(false);

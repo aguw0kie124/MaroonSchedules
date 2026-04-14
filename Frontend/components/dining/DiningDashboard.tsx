@@ -58,7 +58,7 @@ export default function DiningDashboard({ navigation }: any) {
       setProfile(profileRes);
       setHistory(Array.isArray(historyRes) ? historyRes : []);
     } catch (error) {
-      console.error('Failed to load meal tracker summary', error);
+      console.warn('Failed to load meal tracker summary', error);
     } finally {
       setTrackerLoading(false);
     }

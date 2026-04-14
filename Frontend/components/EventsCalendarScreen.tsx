@@ -829,7 +829,7 @@ function handleGoogleCalendar(event: TAMUEvent) {
   const desc = encodeURIComponent(stripHtml(event.description || ''));
   const loc = encodeURIComponent(event.location || '');
   const url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${desc}&location=${loc}`;
-  Linking.openURL(url).catch((err) => console.error('Error opening Google Calendar', err));
+  Linking.openURL(url).catch((err) => console.warn('Error opening Google Calendar', err));
 }
 
 function openNativeMaps(lat: number, lng: number, label?: string | null) {
@@ -1322,7 +1322,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               response: 'none',
             });
           } catch (error) {
-            console.error('[Events] RSVP remove error:', error);
+            console.warn('[Events] RSVP remove error:', error);
           }
         }
         triggerRewardToast('Removed from your plans', 'No problem. You can always add it back later.');
@@ -1381,7 +1381,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             advanceStep('event-rsvp');
           }
         } catch (error) {
-          console.error('[Events] RSVP error:', error);
+          console.warn('[Events] RSVP error:', error);
         }
       }
       triggerRewardToast('Added to your schedule', 'Nice. We will keep this one easy to come back to.');
@@ -1484,7 +1484,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 removeOrganizerEvents(event.admin_clerk_id as string);
                 Alert.alert('Organizer muted', `You will no longer see events from ${organizerName}.`);
               } catch (error) {
-                console.error('[Events] Unsubscribe organizer error:', error);
+                console.warn('[Events] Unsubscribe organizer error:', error);
                 Alert.alert('Unable to update', 'We could not unsubscribe you from this organizer right now.');
               }
             },
@@ -1517,7 +1517,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 removeOrganizerEvents(event.admin_clerk_id as string);
                 Alert.alert('Organizer blocked', `${organizerName} has been blocked.`);
               } catch (error) {
-                console.error('[Events] Block organizer error:', error);
+                console.warn('[Events] Block organizer error:', error);
                 Alert.alert('Unable to block', 'We could not block this organizer right now.');
               }
             },
@@ -1544,7 +1544,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         });
         Alert.alert('Report received', 'Thank you for helping keep the community safe.');
       } catch (error) {
-        console.error('[Events] Report organizer error:', error);
+        console.warn('[Events] Report organizer error:', error);
         Alert.alert('Unable to submit report', 'We could not send that report right now.');
       }
     };

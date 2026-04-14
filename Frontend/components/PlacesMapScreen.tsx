@@ -29,8 +29,8 @@ import {
   ScrollView,
   InteractionManager,
   ActivityIndicator,
-  Share,
   Pressable,
+  Alert,
 } from "react-native";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
@@ -1211,8 +1211,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
   );
 
   const toggleHotspotVote = useCallback(async (hotspotId: string, itemId: string, targetVote: number) => {
-    const prevHotspots = pulseHotspots;
-    const hotspot = prevHotspots.find(h => h.id === hotspotId);
+    const pulseKey = ['campus-pulse', user?.id];
+    const prevPulseData = queryClient.getQueryData(pulseKey) as CampusHotspot[] | undefined;
+    if (!prevPulseData) return;
+
+    const hotspot = prevPulseData.find(h => h.id === hotspotId);
     if (!hotspot) return;
 
     const item = hotspot.items?.find((i) => i.id === itemId);
@@ -1223,37 +1226,56 @@ export function PlacesMapScreen({ route, navigation }: any) {
     const currentVote = item.userVote || 0;
     const scoreDelta = finalVote - currentVote;
 
-    // Dispatch real vote to backend using streamFeed's toggleVote mechanism
-    try {
-      await toggleVote(itemId, finalVote === 1 ? 'upvote' : (finalVote === -1 ? 'downvote' : 'none'));
-    } catch (e) {
-      console.error("Failed to commit final item vote", e);
-    }
-
-    // Process frontend cache instantly
-    queryClient.setQueryData(['campus-pulse', user?.id], (current: CampusHotspot[] | undefined) => {
+    // 1. Optimistically update the UI (Query Client)
+    queryClient.setQueryData(pulseKey, (current: CampusHotspot[] | undefined) => {
       if (!current) return current;
       return current.map(h => {
         if (h.id === hotspotId) {
           const updatedItems = (h.items || []).map(i => {
-            if (i.id === itemId) {
-              return applyCampusHotspotItemVote(i, finalVote);
-            }
+            if (i.id === itemId) return applyCampusHotspotItemVote(i, finalVote);
             return i;
           });
-
-          return {
-            ...h,
-            items: updatedItems,
-            score: (h.score || 0) + scoreDelta,
-          };
+          return { ...h, items: updatedItems, score: (h.score || 0) + scoreDelta };
         }
         return h;
       });
     });
 
-    await voteHotspotItem(itemId, finalVote);
-  }, [pulseHotspots, queryClient, user?.id]);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      
+      // 2. Dispatch real vote to backend
+      const kind = finalVote === 1 ? 'upvote' : (finalVote === -1 ? 'downvote' : 'none');
+      await toggleVote(itemId, kind);
+      
+      // 3. Sync memory-based cache for non-query-client consumers
+      await voteHotspotItem(itemId, finalVote);
+    } catch (e) {
+      console.warn("[Pulse] vote failed", e);
+      
+      // 4. Rollback on failure
+      if (prevPulseData) {
+        queryClient.setQueryData(pulseKey, prevPulseData);
+      }
+
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      if (/rate limit/i.test(errorMsg)) {
+        Alert.alert(
+          "Slow down!", 
+          "You are voting too fast. Please wait a minute before trying again.",
+          [{ text: "Understood" }]
+        );
+      } else if (/blocked/i.test(errorMsg)) {
+        Alert.alert(
+          "Interaction unavailable", 
+          "You cannot interact with this content due to a block relationship."
+        );
+      } else {
+        // Silent log for general failures to avoid annoying popups on spotty connections
+        console.warn("[Pulse] Connection error during vote commit");
+      }
+    }
+  }, [user?.id, queryClient, applyCampusHotspotItemVote, pulseHotspots]);
 
 
   const fetchPulseHotspots = useCallback(async (options: { force?: boolean } = {}) => {

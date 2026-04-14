@@ -112,7 +112,7 @@ export function AdminAnalyticsScreen() {
       const data = await requestJson(`/admin/events/me?clerk_id=${encodeURIComponent(user.id)}`);
       setEvents(data);
     } catch (err) {
-      console.error(err);
+      console.warn(err);
       Alert.alert('Could not load events', 'Please try again in a moment.');
     } finally {
       setLoading(false);
@@ -126,7 +126,7 @@ export function AdminAnalyticsScreen() {
       const data = await requestJson(`/admin/tags?clerk_id=${encodeURIComponent(user.id)}`);
       setAvailableTags(data.tags || []);
     } catch (error) {
-      console.error(error);
+      console.warn(error);
     }
   }, [user?.id]);
 
@@ -206,7 +206,7 @@ export function AdminAnalyticsScreen() {
       const uploaded = await uploadMediaImage(result.assets[0].uri);
       setDraft({ ...draft, image_url: uploaded });
     } catch (error) {
-      console.error(error);
+      console.warn(error);
       Alert.alert('Upload failed', 'We could not upload that image.');
     } finally {
       setUploadingImage(false);
@@ -248,7 +248,7 @@ export function AdminAnalyticsScreen() {
       closeEditor();
       Alert.alert('Event updated', 'Your featured event is live with the new details.');
     } catch (error) {
-      console.error(error);
+      console.warn(error);
       Alert.alert('Update failed', 'We could not save your changes.');
       setSaving(false);
     }
@@ -269,7 +269,7 @@ export function AdminAnalyticsScreen() {
       }
       Alert.alert('Event deleted', 'The event has been removed.');
     } catch (error) {
-      console.error(error);
+      console.warn(error);
       Alert.alert('Delete failed', 'We could not delete that event.');
     } finally {
       setDeletingEventId(null);
