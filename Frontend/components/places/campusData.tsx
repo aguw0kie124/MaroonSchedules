@@ -444,6 +444,17 @@ const INJECTED_RESTAURANTS: CampusLocation[] = [
   { placeId: "wc-cfa", location: "Chick-fil-A - West Campus Food Hall", type: "Dining", coord: { lat: 30.6133, lng: -96.3534 }, source: "snapshot", searchOnly: true },
   { placeId: "wc-copperhead", location: "Copperhead Jack's - West Campus Food Hall", type: "Dining", coord: { lat: 30.6134, lng: -96.3535 }, source: "snapshot", searchOnly: true },
   { placeId: "wc-houston", location: "Houston Street Subs - West Campus Food Hall", type: "Dining", coord: { lat: 30.6132, lng: -96.3533 }, source: "snapshot", searchOnly: true },
+
+  // Markets & Aggie Express
+  { placeId: "mkt-aggie-commons", location: "Aggie Express - Commons", type: "Dining", coord: { lat: 30.6135, lng: -96.3400 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-aggie-hullabaloo", location: "Aggie Express - Hullabaloo", type: "Dining", coord: { lat: 30.6174, lng: -96.3456 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-aggie-pavilion", location: "Aggie Express - Pavilion", type: "Dining", coord: { lat: 30.6133, lng: -96.3414 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-creekside", location: "Creekside Market", type: "Dining", coord: { lat: 30.6186, lng: -96.3533 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-polo", location: "Market @ Polo Garage", type: "Dining", coord: { lat: 30.6190, lng: -96.3395 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-lamar", location: "Market @ Lamar St.", type: "Dining", coord: { lat: 30.6120, lng: -96.3385 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-white-creek", location: "White Creek Market", type: "Dining", coord: { lat: 30.6195, lng: -96.3540 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-ag-cafe", location: "Market - Ag Cafe", type: "Dining", coord: { lat: 30.6111, lng: -96.3524 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-blcc", location: "Market Express - Business Library (BLCC)", type: "Dining", coord: { lat: 30.6095, lng: -96.3425 }, source: "snapshot", searchOnly: true },
 ];
 
 export function buildCampusDirectory(): CampusLocation[] {

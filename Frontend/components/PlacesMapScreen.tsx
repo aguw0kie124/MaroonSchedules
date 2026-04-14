@@ -601,12 +601,17 @@ export function PlacesMapScreen({ route, navigation }: any) {
     }
     if (activeLayer === "Heatmap") return [];
     if (activeLayer === "Today") return scheduleLocations;
-    if (activeLayer === "Dining")
-      return browsableLocations.filter(
+    if (activeLayer === "Dining") {
+      const isMarket = (l: CampusLocation) => 
+        l.location.includes("Market") || l.location.includes("Aggie Express");
+
+      return allMapLocations.filter(
         (l) =>
-          (l.type === "Dining" || l.type === "Hub") &&
+          ((l.type === "Dining" || l.type === "Hub") && 
+           (!l.searchOnly || isMarket(l))) &&
           !shouldHideFoodCourtLocationInBrowse(l, allMapLocations),
       );
+    }
     if (activeLayer === "Academic")
       return browsableLocations.filter(
         (l) => l.type === "Academic" || l.type === "Landmark",
@@ -1937,7 +1942,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
       activeLayer === "Today" ||
       activeLayer === "Pulse" ||
       selectedId ||
-      sortedFilteredLocations.length === 0
+      sortedFilteredLocations.length === 0 ||
+      (activeLayer === "Dining" && sortedFilteredLocations.every(l => l.searchOnly))
     )
       return;
     const fitKey = `${activeLayer}:${sortedFilteredLocations.length}:${sortedFilteredLocations[0]?.location || ""}`;
@@ -2359,6 +2365,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
               isTodayLayer && loc.sequenceIndex
                 ? loc.sequenceIndex.toString()
                 : null;
+
+            if (loc.searchOnly && getLocationSelectionId(loc) !== selectedId) {
+              return null;
+            }
 
             return (
               <MapMarker
