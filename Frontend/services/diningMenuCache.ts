@@ -182,9 +182,9 @@ export function resolveDiningLocationForMenu(locationName?: string | null) {
   if (normalized.includes('salata')) return 'Salata';
   if (normalized.includes('rev')) return 'Rev\'s American Grill';
   if (normalized.includes('bagel')) return 'Einstein Bros. Bagels';
-  if (normalized.includes('sbisa')) return 'Sbisa Dining Hall (North Campus)';
-  if (normalized.includes('duncan')) return 'Duncan Dining Hall (South Campus/Quad)';
-  if (normalized.includes('commons')) return 'The Commons Dining Hall (South Campus)';
+  if (normalized.includes('sbisa') && normalized.includes('dining hall')) return 'Sbisa Dining Hall (North Campus)';
+  if (normalized.includes('duncan') && normalized.includes('dining hall')) return 'Duncan Dining Hall (South Campus/Quad)';
+  if (normalized.includes('commons') && normalized.includes('dining hall')) return 'The Commons Dining Hall (South Campus)';
   return locationName;
 }
 

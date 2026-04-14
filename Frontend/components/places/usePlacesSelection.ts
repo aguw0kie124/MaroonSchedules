@@ -250,10 +250,12 @@ export function usePlacesSelection({
 
   const isPrimaryDiningHallSelection = useMemo(() => {
     const reference = (activeDiningMenu || selectedLoc?.location || "").toLowerCase();
+    const isHall = reference.includes("dining hall");
     return (
-      reference.includes("sbisa") ||
-      reference.includes("commons") ||
-      reference.includes("duncan")
+      isHall &&
+      (reference.includes("sbisa") ||
+        reference.includes("commons") ||
+        reference.includes("duncan"))
     );
   }, [activeDiningMenu, selectedLoc?.location]);
 
