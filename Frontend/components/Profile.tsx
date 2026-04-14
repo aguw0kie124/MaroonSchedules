@@ -178,32 +178,17 @@ export function Profile() {
   const setNotificationLeadTime = useAppShellStore((state) => state.setNotificationLeadTime);
   const notificationsEnabled = useAppShellStore((state) => state.notificationsEnabled);
   const setNotificationsEnabled = useAppShellStore((state) => state.setNotificationsEnabled);
-  const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
-  const preferredTime = useAppShellStore((state) => state.preferredTime);
-  const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
   const [profileTags, setProfileTags] = useState<string[]>([]);
+  const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
+  const [showBlockedPanel, setShowBlockedPanel] = useState(false);
   const scrollRef = React.useRef<ScrollView | null>(null);
   const finishCardYRef = React.useRef(0);
 
   const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
   const accentRatio = useMemo(() => getRatioFromColor(accentColor), [accentColor]);
   const accentPreviewColor = useMemo(() => getSpectrumColorFromRatio(accentRatio), [accentRatio]);
-  const preferenceSummary = useMemo(() => {
-    const parts: string[] = [];
-    if (preferredEventCategories.length > 0) {
-      parts.push(preferredEventCategories.join(', '));
-    }
-    if (preferredTime) {
-      parts.push(preferredTime);
-    }
-    if (preferredSocialMode) {
-      parts.push(preferredSocialMode === 'casual' ? 'Casual social vibe' : 'Professional social vibe');
-    }
-    return parts.length > 0 ? parts.join(' • ') : 'Currently broad and open-ended.';
-  }, [preferredEventCategories, preferredSocialMode, preferredTime]);
-
   const updateAccentFromPosition = React.useCallback((locationX: number) => {
     if (!accentSliderWidth) return;
     const clamped = Math.min(Math.max(locationX, 0), accentSliderWidth);
@@ -456,7 +441,6 @@ export function Profile() {
       <View style={styles.heroCard}>
         <View style={styles.heroHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.eyebrow}>Identity</Text>
             <Text style={styles.title}>Personal</Text>
           </View>
           <View style={styles.heroBadge}>
@@ -575,88 +559,59 @@ export function Profile() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Club Access</Text>
-
         <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('ClubAccess')}>
           <View style={[styles.toolIconBg, { backgroundColor: 'rgba(80, 0, 0, 0.12)' }]}>
             <Shield size={20} color={COLORS.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Request club event access</Text>
+            <Text style={styles.toolTitle}>Club Access</Text>
           </View>
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Nutrition</Text>
-
         <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('DiningDashboard')}>
           <View style={[styles.toolIconBg, { backgroundColor: 'rgba(0, 207, 199, 0.14)' }]}>
             <Flame size={20} color="#00CFC7" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Nutrition Dashboard</Text>
+            <Text style={styles.toolTitle}>Nutrition</Text>
           </View>
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
       </View>
-      
+
       {renderNotificationsTab()}
       {renderBlockedTab()}
 
 
-      <Pressable 
-        style={[styles.heroCard, { 
-          padding: 16, 
-          backgroundColor: isDark ? COLORS.surface : '#F8FAFC', 
-          borderColor: COLORS.primary, 
-          borderWidth: 1.5,
-          flexDirection: 'row', 
-          alignItems: 'center', 
-          gap: 12,
-          marginTop: 8
-        }]} 
-        onPress={() => startTour()}
-      >
-        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary + '15', alignItems: 'center', justifyContent: 'center' }}>
-          <Compass size={24} color={COLORS.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Restart App Tour</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Replay the guided walkthrough for Events, Places, and Pings.</Text>
-        </View>
-        <ChevronRight size={20} color={COLORS.textTertiary} />
-      </Pressable>
+      <View style={styles.quickActionRow}>
+        <Pressable
+          style={[styles.quickActionCard, { borderColor: COLORS.primary }]}
+          onPress={() => startTour()}
+        >
+          <View style={[styles.quickActionIconWrap, { backgroundColor: COLORS.primary + '15' }]}>
+            <Compass size={18} color={COLORS.primary} />
+          </View>
+          <Text style={styles.quickActionTitle}>Restart Tour</Text>
+        </Pressable>
 
-      <Pressable 
-        style={[styles.heroCard, { 
-          padding: 16, 
-          backgroundColor: isDark ? COLORS.surface : '#F8FAFC', 
-          borderColor: '#2F80ED', 
-          borderWidth: 1.5,
-          flexDirection: 'row', 
-          alignItems: 'center', 
-          gap: 12,
-          marginTop: 10
-        }]} 
-        onPress={() => {
-          useAppShellStore.setState({
-            isEventPreferencesCompleted: false,
-            showEventPreferencesOnboarding: true,
-          });
-        }}
-      >
-        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(47, 128, 237, 0.12)', alignItems: 'center', justifyContent: 'center' }}>
-          <Sparkles size={24} color="#2F80ED" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Redo Preference Questions</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Reopen the 4 Events setup questions.</Text>
-          <Text style={{ color: COLORS.textTertiary, fontSize: 12, marginTop: 6, lineHeight: 17 }}>{preferenceSummary}</Text>
-        </View>
-        <ChevronRight size={20} color={COLORS.textTertiary} />
-      </Pressable>
+        <Pressable
+          style={[styles.quickActionCard, { borderColor: '#2F80ED' }]}
+          onPress={() => {
+            useAppShellStore.setState({
+              isEventPreferencesCompleted: false,
+              showEventPreferencesOnboarding: true,
+            });
+          }}
+        >
+          <View style={[styles.quickActionIconWrap, { backgroundColor: 'rgba(47, 128, 237, 0.12)' }]}>
+            <Sparkles size={18} color="#2F80ED" />
+          </View>
+          <Text style={styles.quickActionTitle}>Redo Questions</Text>
+        </Pressable>
+      </View>
 
       <Pressable style={styles.logoutButton} onPress={handleLogout}>
         <LogOut size={18} color={COLORS.textPrimary} />
@@ -836,85 +791,118 @@ export function Profile() {
 
   const renderNotificationsTab = () => (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Notifications</Text>
-      
-      <View style={{ marginTop: 8 }}>
-        <View style={styles.inlineSwitchRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.inlineSwitchTitle}>Event Reminders</Text>
-          </View>
-          <Switch
-            value={eventNotifications}
-            onValueChange={(v) => setNotificationPreference('event', v)}
-            trackColor={{ false: COLORS.border, true: COLORS.primary }}
-            thumbColor="#FFFFFF"
-          />
+      <Pressable
+        style={[styles.toolRow, showNotificationsPanel && styles.toolRowExpanded]}
+        onPress={() => setShowNotificationsPanel((current) => !current)}
+      >
+        <View style={[styles.toolIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+          <Bell size={20} color="#F59E0B" />
         </View>
-
-        <View style={[styles.inlineSwitchRow, { marginTop: 12 }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.inlineSwitchTitle}>Transit Alerts</Text>
-          </View>
-          <Switch
-            value={placeNotifications}
-            onValueChange={(v) => setNotificationPreference('place', v)}
-            trackColor={{ false: COLORS.border, true: COLORS.primary }}
-            thumbColor="#FFFFFF"
-          />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.toolTitle}>Notifications</Text>
         </View>
+        <ChevronRight
+          size={20}
+          color={COLORS.textTertiary}
+          style={{ transform: [{ rotate: showNotificationsPanel ? '90deg' : '0deg' }] }}
+        />
+      </Pressable>
 
-        <View style={[styles.inlineSwitchRow, { marginTop: 12 }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.inlineSwitchTitle}>Social Pings</Text>
+      {showNotificationsPanel ? (
+        <>
+          <View style={styles.inlinePanel}>
+            <View style={styles.inlineSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inlineSwitchTitle}>Event Reminders</Text>
+              </View>
+              <Switch
+                value={eventNotifications}
+                onValueChange={(v) => setNotificationPreference('event', v)}
+                trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            <View style={[styles.inlineSwitchRow, { marginTop: 12 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inlineSwitchTitle}>Transit Alerts</Text>
+              </View>
+              <Switch
+                value={placeNotifications}
+                onValueChange={(v) => setNotificationPreference('place', v)}
+                trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            <View style={[styles.inlineSwitchRow, { marginTop: 12 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inlineSwitchTitle}>Social Pings</Text>
+              </View>
+              <Switch
+                value={pingNotifications}
+                onValueChange={(v) => setNotificationPreference('ping', v)}
+                trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
           </View>
-          <Switch
-            value={pingNotifications}
-            onValueChange={(v) => setNotificationPreference('ping', v)}
-            trackColor={{ false: COLORS.border, true: COLORS.primary }}
-            thumbColor="#FFFFFF"
-          />
-        </View>
-      </View>
 
-      <Text style={[styles.preferenceLabel, { marginTop: 24, marginBottom: 12, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 }]}>
-        Alert Lead Time
-      </Text>
-      <View style={styles.segmentedRow}>
-        {[
-          { id: 5, label: '5m' },
-          { id: 10, label: '10m' },
-          { id: 15, label: '15m' },
-          { id: 30, label: '30m' },
-          { id: 60, label: '1h' },
-        ].map((option) => {
-          const selected = notificationLeadTime === option.id;
-          return (
-            <Pressable
-              key={option.id}
-              style={[styles.segmentButton, selected && styles.segmentButtonActive]}
-              onPress={() => setNotificationLeadTime(option.id)}
-            >
-              <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
-                {option.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+          <Text style={[styles.preferenceLabel, { marginTop: 24, marginBottom: 12, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 }]}>
+            Alert Lead Time
+          </Text>
+          <View style={styles.segmentedRow}>
+            {[
+              { id: 5, label: '5m' },
+              { id: 10, label: '10m' },
+              { id: 15, label: '15m' },
+              { id: 30, label: '30m' },
+              { id: 60, label: '1h' },
+            ].map((option) => {
+              const selected = notificationLeadTime === option.id;
+              return (
+                <Pressable
+                  key={option.id}
+                  style={[styles.segmentButton, selected && styles.segmentButtonActive]}
+                  onPress={() => setNotificationLeadTime(option.id)}
+                >
+                  <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
     </View>
   );
 
   const renderBlockedTab = () => (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Blocked Users</Text>
-      <Text style={styles.sectionSubtitle}>
-        People and organizers you've blocked will be hidden only for this account.
-      </Text>
+      <Pressable
+        style={[styles.toolRow, styles.toolRowLast, showBlockedPanel && styles.toolRowExpanded]}
+        onPress={() => setShowBlockedPanel((current) => !current)}
+      >
+        <View style={[styles.toolIconBg, { backgroundColor: 'rgba(239, 68, 68, 0.12)' }]}>
+          <UserX size={20} color={COLORS.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.toolTitle}>Blocked Users</Text>
+        </View>
+        <ChevronRight
+          size={20}
+          color={COLORS.textTertiary}
+          style={{ transform: [{ rotate: showBlockedPanel ? '90deg' : '0deg' }] }}
+        />
+      </Pressable>
 
-      {loadingBlocked ? (
+      {showBlockedPanel ? (
+      loadingBlocked ? (
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 24 }} />
       ) : blockedUsers.length > 0 ? (
-        blockedUsers.map((item, index) => (
+        <View style={styles.inlinePanel}>
+        {blockedUsers.map((item, index) => (
           <View 
             key={item.id} 
             style={[
@@ -947,13 +935,15 @@ export function Profile() {
                 <UserX size={18} color={COLORS.danger || '#FF4444'} />
             </Pressable>
           </View>
-        ))
+        ))}
+        </View>
       ) : (
-        <View style={{ alignItems: 'center', padding: 40, opacity: 0.5 }}>
+        <View style={[styles.inlinePanel, { alignItems: 'center', padding: 40, opacity: 0.5 }]}>
             <Shield size={48} color={COLORS.textTertiary} strokeWidth={1} />
             <Text style={{ color: COLORS.textTertiary, marginTop: 12, fontSize: 15 }}>No blocked users</Text>
         </View>
-      )}
+      )
+      ) : null}
     </View>
   );
 
@@ -1259,6 +1249,37 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'transparent',
     },
+    quickActionRow: {
+      flexDirection: 'row',
+      gap: 12,
+      marginTop: 8,
+    },
+    quickActionCard: {
+      flex: 1,
+      minHeight: 92,
+      borderRadius: 24,
+      borderWidth: 1.5,
+      backgroundColor: isDark ? COLORS.surface : '#F8FAFC',
+      paddingHorizontal: 14,
+      paddingVertical: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+    },
+    quickActionIconWrap: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    quickActionTitle: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+      textAlign: 'center',
+      letterSpacing: -0.2,
+    },
     tabShell: {
       marginTop: 2,
     },
@@ -1388,6 +1409,10 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       borderBottomWidth: 0,
       paddingBottom: 0,
     },
+    toolRowExpanded: {
+      borderBottomWidth: 0,
+      paddingBottom: 0,
+    },
     toolIconBg: {
       width: 42,
       height: 42,
@@ -1405,6 +1430,9 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       fontSize: 13,
       lineHeight: 18,
       color: COLORS.textSecondary,
+    },
+    inlinePanel: {
+      marginTop: 12,
     },
     accentSliderCard: {
       borderRadius: 22,

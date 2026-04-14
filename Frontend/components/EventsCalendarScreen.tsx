@@ -31,7 +31,6 @@ import {
   Check,
   ChevronLeft,
   Funnel,
-  Filter,
   GraduationCap,
   Heart,
   HeartPulse,
@@ -205,7 +204,8 @@ function selectedCategoriesFromDeselects(deselected: string[]): Set<ExploreCateg
       next.delete(cat as ExploreCategory);
     }
   });
-  return next;
+  const orderedActive = ALL_CATEGORIES.filter((category) => next.has(category));
+  return new Set<ExploreCategory>([orderedActive[0] || 'For U']);
 }
 
 function normalizePreferredCategories(categories: string[] | undefined) {
@@ -403,6 +403,16 @@ function isFeaturedContent(event: TAMUEvent): boolean {
   if (event.is_admin_event) return true;
   const f = event.categories?.featured;
   return f !== undefined && f !== null && Number(f) !== 0;
+}
+
+function isEventVisibleInFeed(event: TAMUEvent, nowTs: number): boolean {
+  // If an event has an explicit end time, remove it as soon as that end passes.
+  if (event.date2_ts != null) {
+    return event.date2_ts > nowTs;
+  }
+
+  // Fallback for records without an end time: keep them visible briefly after start.
+  return event.date_ts >= nowTs - 7200;
 }
 
 function classifyCategory(event: TAMUEvent): ExploreCategory {
@@ -958,7 +968,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [view, setView] = useState<EventsView>('discover');
 
   const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(
-    () => new Set(ALL_CATEGORIES),
+    () => new Set<ExploreCategory>(['For U']),
   );
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [searchQuery, setSearchQuery] = useState('');
@@ -1257,10 +1267,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           return;
         }
 
-        exploreDeselects.forEach((cat) => {
-          toggleCategoryDeselection(cat, false);
+        ALL_CATEGORIES.forEach((category) => {
+          toggleCategoryDeselection(category, category !== 'For U');
         });
-        setSelectedCategories(new Set(ALL_CATEGORIES));
+        setSelectedCategories(new Set<ExploreCategory>(['For U']));
         if (preferredSocialMode) {
           setSocialMode(preferredSocialMode);
         }
@@ -1313,10 +1323,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     };
 
     personalizedEvents.forEach((event) => {
-      const inTimeWindow =
-        (event.date2_ts != null && event.date2_ts > nowTs) ||
-        (event.date_ts >= nowTs - 7200) ||
-        (isFeaturedContent(event) && event.date_ts >= nowTs - 86400);
+      const inTimeWindow = isEventVisibleInFeed(event, nowTs);
       if (!inTimeWindow) return;
 
       // [RELAXED] Major filtering should not zero-out total category counts.
@@ -1347,11 +1354,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const filteredUpcomingEvents = useMemo(() => {
     let next = personalizedEvents.filter((event) => {
-      const inTimeWindow =
-        (event.date2_ts != null && event.date2_ts > nowTs) ||
-        (event.date_ts >= nowTs - 7200) ||
-        (isFeaturedContent(event) && event.date_ts >= nowTs - 172800);
-      return inTimeWindow;
+      return isEventVisibleInFeed(event, nowTs);
     });
 
     if (deferredSearchQuery.trim()) {
@@ -1465,21 +1468,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const toggleCategory = useCallback(
     (category: ExploreCategory) => {
-      const wasSelected = selectedCategories.has(category);
-      if (wasSelected && selectedCategories.size <= 1) {
+      if (selectedCategories.has(category)) {
         return;
       }
-      setSelectedCategories((prev) => {
-        const next = new Set(prev);
-        if (wasSelected) {
-          next.delete(category);
-        } else {
-          next.add(category);
-        }
-        return next;
-      });
+      setSelectedCategories(new Set<ExploreCategory>([category]));
       queueMicrotask(() => {
-        toggleCategoryDeselection(category, wasSelected);
+        ALL_CATEGORIES.forEach((candidate) => {
+          toggleCategoryDeselection(candidate, candidate !== category);
+        });
       });
     },
     [selectedCategories, toggleCategoryDeselection],
@@ -1970,9 +1966,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 clearButtonMode="while-editing"
               />
             </View>
-            <Pressable style={s.filterButton} onPress={() => setSettingsVisible(true)}>
-              <Filter size={18} color={COLORS.textPrimary} />
-            </Pressable>
           </View>
 
           <View style={[s.categoryWrap, { marginBottom: 16, marginTop: 4 }]}>
@@ -2078,7 +2071,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                         onPress={() => {
                           setSearchQuery('');
                           setMajorSpecific(false);
-                          setSelectedCategories(new Set(ALL_CATEGORIES));
+                          setSelectedCategories(new Set<ExploreCategory>(['For U']));
+                          ALL_CATEGORIES.forEach((category) => {
+                            toggleCategoryDeselection(category, category !== 'For U');
+                          });
                         }}
                       >
                         <Text style={s.emptyActionText}>Clear All Filters</Text>

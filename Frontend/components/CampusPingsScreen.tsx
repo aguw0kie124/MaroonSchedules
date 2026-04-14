@@ -1410,7 +1410,12 @@ export function CampusPingsScreen() {
                       </View>
 
                       {locationQuery.trim().length > 0 && !selectedLocation && !composerGeoLocation && (
-                        <View style={styles.suggestionsWrap}>
+                        <ScrollView
+                          style={styles.suggestionsWrap}
+                          nestedScrollEnabled
+                          keyboardShouldPersistTaps="handled"
+                          showsVerticalScrollIndicator={false}
+                        >
                           {locationSuggestions.map((loc) => (
                             <Pressable
                               key={loc.location}
@@ -1421,7 +1426,7 @@ export function CampusPingsScreen() {
                               <Text style={styles.suggestionText}>{loc.location}</Text>
                             </Pressable>
                           ))}
-                        </View>
+                        </ScrollView>
                       )}
 
                       {selectedLocation && (
