@@ -74,33 +74,38 @@ export default function FullMenuScreen({ navigation, route }: any) {
   const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const { location, mealPeriod, title, locations, sourceHint } = route.params || {};
-  const availableMealPeriods = getDiningMealOptionsForLocation(location);
+  const availableMealPeriods = useMemo(() => getDiningMealOptionsForLocation(location), [location]);
   const isDiningHall = isDiningHallMenuLocation(location);
   const staticMenu = useMemo(() => getStaticRestaurantMenu(location), [location]);
   const isStaticRestaurant = !!staticMenu && !isDiningHall;
+
+  const menu = useMemo(() => {
+    if (!isStaticRestaurant) return menusByPeriod[activeMealPeriod] || null;
+    if (!staticMenu) return null;
+    
+    return {
+      success: true,
+      categories: staticMenu.categories.map((cat) => ({
+        name: cat.name,
+        items: cat.items.map((item) => ({
+          name: item.name,
+          calories: item.calories,
+          protein: item.protein,
+          carbs: item.carbs,
+          fat: item.fat,
+          description: item.description,
+          portion: item.portion,
+        })),
+      })),
+      count: staticMenu.categories.reduce((s, c) => s + c.items.length, 0),
+      source: 'static' as const,
+    };
+  }, [isStaticRestaurant, staticMenu, menusByPeriod, activeMealPeriod]);
+
   const [activeMealPeriod, setActiveMealPeriod] = useState<DiningMealPeriod>(
     (mealPeriod as DiningMealPeriod) || getDiningMealPeriodForLocation(location),
   );
   const [menusByPeriod, setMenusByPeriod] = useState<Record<string, any>>({});
-  const menu = isStaticRestaurant
-    ? {
-        success: true,
-        categories: staticMenu.categories.map((cat) => ({
-          name: cat.name,
-          items: cat.items.map((item) => ({
-            name: item.name,
-            calories: item.calories,
-            protein: item.protein,
-            carbs: item.carbs,
-            fat: item.fat,
-            description: item.description,
-            portion: item.portion,
-          })),
-        })),
-        count: staticMenu.categories.reduce((s, c) => s + c.items.length, 0),
-        source: 'static',
-      }
-    : menusByPeriod[activeMealPeriod] || null;
   const [loading, setLoading] = useState(!isStaticRestaurant);
   const [error, setError] = useState('');
   const [portionCounts, setPortionCounts] = useState<Record<string, { count: number; entryIds: number[] }>>({});
