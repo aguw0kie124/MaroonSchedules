@@ -626,6 +626,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   const sortedFilteredLocations = useMemo(() => {
     return [...filteredLocations].sort((a, b) => {
+      // Prioritize primary dining over markets/convenience
+      if (activeLayer === "Dining") {
+        const isAMarket = a.location.includes("Market") || a.location.includes("Aggie Express");
+        const isBMarket = b.location.includes("Market") || b.location.includes("Aggie Express");
+        if (isAMarket && !isBMarket) return 1;
+        if (!isAMarket && isBMarket) return -1;
+      }
+
       const aD = userCoord
         ? haversineDistanceMeters(
           userCoord.latitude,
@@ -647,7 +655,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
         const bP = getParkingRecommendation(b.location, parkingPermit);
         if (aP.score !== bP.score) return aP.score - bP.score;
       }
-      if (aD != null && bD != null && aD !== bD) return aD - bD;
+      if (aD != null && bD != null) {
+        if (Math.abs(aD - bD) > 20) return aD - bD;
+      }
       return a.location.localeCompare(b.location);
     });
   }, [activeLayer, filteredLocations, parkingPermit, userCoord]);

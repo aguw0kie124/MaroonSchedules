@@ -901,7 +901,7 @@ export function LocationBottomSheet({
             ) : null}
 
             {!isPeekSheet &&
-            selectedLoc.hours_today &&
+            (selectedLoc.hours_today || getRestaurantHoursToday(selectedLoc.location)) &&
             selectedLoc.type !== "Parking" &&
             (selectedLoc.type === "Library" ||
               selectedLoc.type === "Dining" ||
@@ -911,10 +911,11 @@ export function LocationBottomSheet({
                 <Text style={styles.contextCardTitle}>Open today</Text>
                 <Text style={styles.contextCardBody}>
                   {(() => {
-                    const matches = (selectedLoc.hours_today || "").match(/\d{1,2}:\d{2}\s*(?:am|pm)\s*-\s*\d{1,2}:\d{2}\s*(?:am|pm)/gi);
+                    const hoursSource = selectedLoc.hours_today || getRestaurantHoursToday(selectedLoc.location) || "";
+                    const matches = hoursSource.match(/\d{1,2}:\d{2}\s*(?:am|pm)\s*-\s*\d{1,2}:\d{2}\s*(?:am|pm)/gi);
                     return matches && matches.length > 0 
                       ? matches.join(", ") 
-                      : (selectedLoc.hours_today || "").replace(/^(.*?:\s*)*Open Today:\s*/i, "").trim();
+                      : hoursSource.replace(/^(.*?:\s*)*Open Today:\s*/i, "").trim();
                   })()}
                 </Text>
               </View>
