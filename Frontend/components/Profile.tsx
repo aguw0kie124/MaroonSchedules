@@ -42,6 +42,7 @@ import {
   UserX,
   Bell,
   LifeBuoy,
+  CalendarDays,
 } from 'lucide-react-native';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
@@ -560,22 +561,12 @@ export function Profile() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Life & Safety</Text>
-        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('ClubAccess')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(80, 0, 0, 0.12)' }]}>
-            <Shield size={20} color={COLORS.primary} />
+        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('ClubAccess')}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 211, 153, 0.12)' }]}>
+            <CalendarDays size={20} color="#10B981" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.toolTitle}>Club Access</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
-
-        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('DiningDashboard')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(0, 207, 199, 0.14)' }]}>
-            <Flame size={20} color="#00CFC7" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Nutrition</Text>
           </View>
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>

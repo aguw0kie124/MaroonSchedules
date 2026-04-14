@@ -276,11 +276,11 @@ function MainTabs(props: any) {
   const isGuest = useSessionStore((state) => state.isGuest);
   const visibleNavItems = React.useMemo(() => {
     if (!isGuest) {
-      return getOrderedVisibleItems(navItems);
+      return getOrderedVisibleItems(navItems).filter((item: any) => item.id !== 'Dining');
     }
     return getOrderedItems(navItems)
-      .filter((item) => item.id === 'Dashboard' || item.id === 'Places')
-      .map((item) => ({ ...item, visible: true }));
+      .filter((item: any) => (item.id === 'Dashboard' || item.id === 'Places') && item.id !== 'Dining')
+      .map((item: any) => ({ ...item, visible: true }));
   }, [isGuest, navItems]);
 
   const tabScreens = [
