@@ -1784,9 +1784,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 clearButtonMode="while-editing"
               />
             </View>
-            <Pressable style={s.filterButton} onPress={() => setSettingsVisible(true)}>
-              <Filter size={18} color={COLORS.textPrimary} />
-            </Pressable>
           </View>
 
           <View style={[s.categoryWrap, { marginBottom: 16, marginTop: 4 }]}>

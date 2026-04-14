@@ -559,7 +559,8 @@ export function Profile() {
       </View>
 
       <View style={styles.section}>
-        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('ClubAccess')}>
+        <Text style={styles.sectionTitle}>Life & Safety</Text>
+        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('ClubAccess')}>
           <View style={[styles.toolIconBg, { backgroundColor: 'rgba(80, 0, 0, 0.12)' }]}>
             <Shield size={20} color={COLORS.primary} />
           </View>
@@ -568,9 +569,7 @@ export function Profile() {
           </View>
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
-      </View>
 
-      <View style={styles.section}>
         <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('DiningDashboard')}>
           <View style={[styles.toolIconBg, { backgroundColor: 'rgba(0, 207, 199, 0.14)' }]}>
             <Flame size={20} color="#00CFC7" />
@@ -582,8 +581,11 @@ export function Profile() {
         </Pressable>
       </View>
 
-      {renderNotificationsTab()}
-      {renderBlockedTab()}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Privacy & Notifications</Text>
+        {renderNotificationsTab(true, false)}
+        {renderBlockedTab(true, true)}
+      </View>
 
 
       <View style={styles.quickActionRow}>
@@ -789,10 +791,11 @@ export function Profile() {
     </>
   );
 
-  const renderNotificationsTab = () => (
-    <View style={styles.section}>
+  const renderNotificationsTab = (embedded = false, isLast = false) => {
+    const content = (
+      <>
       <Pressable
-        style={[styles.toolRow, showNotificationsPanel && styles.toolRowExpanded]}
+        style={[styles.toolRow, (showNotificationsPanel || isLast) && styles.toolRowLast]}
         onPress={() => setShowNotificationsPanel((current) => !current)}
       >
         <View style={[styles.toolIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
@@ -875,13 +878,21 @@ export function Profile() {
           </View>
         </>
       ) : null}
-    </View>
-  );
+      {showNotificationsPanel && !isLast && (
+        <View style={{ borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 8 }} />
+      )}
+      </>
+    );
 
-  const renderBlockedTab = () => (
-    <View style={styles.section}>
+    if (embedded) return content;
+    return <View style={styles.section}>{content}</View>;
+  };
+
+  const renderBlockedTab = (embedded = false, isLast = false) => {
+    const content = (
+      <>
       <Pressable
-        style={[styles.toolRow, styles.toolRowLast, showBlockedPanel && styles.toolRowExpanded]}
+        style={[styles.toolRow, (showBlockedPanel || isLast) && styles.toolRowLast]}
         onPress={() => setShowBlockedPanel((current) => !current)}
       >
         <View style={[styles.toolIconBg, { backgroundColor: 'rgba(239, 68, 68, 0.12)' }]}>
@@ -944,8 +955,15 @@ export function Profile() {
         </View>
       )
       ) : null}
-    </View>
-  );
+      {showBlockedPanel && !isLast && (
+        <View style={{ borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 8 }} />
+      )}
+      </>
+    );
+
+    if (embedded) return content;
+    return <View style={styles.section}>{content}</View>;
+  };
 
   const renderResourcesTab = () => (
     <View style={styles.section}>

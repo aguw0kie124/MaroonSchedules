@@ -310,6 +310,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const [activeWalkingRoute, setActiveWalkingRoute] =
     useState<WalkingRoute | null>(null);
   const [isTodayExpanded, setIsTodayExpanded] = useState(false);
+  const [hasManualMapMovement, setHasManualMapMovement] = useState(false);
   const timelineHeight = useSharedValue(0);
 
   // ── Location data ─────────────────────────────────────────
@@ -498,6 +499,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   useEffect(() => {
     setIsListDroppedDown(false);
+    setHasManualMapMovement(false);
   }, [activeLayer]);
 
   const isFetchingRef = useRef(false);
@@ -1510,6 +1512,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   useEffect(() => {
     if (!mapRef.current) return;
     if (selectedId || (activeLayer === "Pulse" && selectedHotspotId) || selectedStop || selectedBus) return;
+    if (hasManualMapMovement) return;
     if (suppressNextOverviewFitRef.current) {
       suppressNextOverviewFitRef.current = false;
       return;
@@ -1526,6 +1529,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     pulseHotspots,
     selectedStop,
     selectedBus,
+    hasManualMapMovement,
   ]);
 
   const handleSelectBusRoute = useCallback(
@@ -1535,6 +1539,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setBusVehicles([]);
       setSelectedStop(null);
       setSelectedBus(null);
+      setHasManualMapMovement(false);
       setRoutePatterns([]); // Clear previous traces
       setRoutePaths([]);
       setBusStops([]);
@@ -1997,6 +2002,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         showsCompass={false}
         rotateEnabled={false}
         pitchEnabled
+        onPanDrag={() => setHasManualMapMovement(true)}
         onRegionChangeComplete={(region) => {
           currentMapCenterRef.current = {
             latitude: region.latitude,
@@ -2160,17 +2166,18 @@ export function PlacesMapScreen({ route, navigation }: any) {
           })}
 
         {activeLayer === "Bus" &&
-          !isAllBusRoutesSelected &&
           busVehicles.map((bus) => {
             const isTrackedBus =
               selectedBus?.Key && bus.Key
                 ? selectedBus.Key === bus.Key
                 : selectedBus?.Name === bus.Name;
+            
             const routeShortName =
-              bus.routeShortName ||
+              (bus.routeShortName ||
               bus.RouteShortName ||
               selectedRoute?.ShortName ||
-              "";
+              "").toString();
+
             const routeColor =
               bus.routeColor ||
               bus.RouteColor ||
@@ -2181,11 +2188,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
               bus.direction || bus.DirectionName || "Unknown Direction";
 
             const matchesDirection =
+              isAllBusRoutesSelected ||
               selectedDirection === "All" ||
               (busDir || "")
                 .toLowerCase()
                 .includes((selectedDirection || "All").toLowerCase());
             const opacity = matchesDirection ? (isTrackedBus ? 1 : 0.9) : 0.3;
+
+            // Oblong marker logic for long names like "01-04"
+            const isLong = routeShortName.length > 2 || routeShortName.includes("-");
+            const markerWidth = isLong ? 52 : 34;
 
             return (
               <MapMarker
@@ -2198,7 +2210,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 onPress={() => {
                   setSelectedBus(bus);
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  // Camera centering removed per user request
                 }}
                 anchor={{ x: 0.5, y: 0.5 }}
               >
@@ -2214,6 +2225,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     shadowOffset: { width: 0, height: 2 },
                   }}
                 >
+                  {/* Directional Arrow */}
                   <View
                     style={{
                       width: 0,
@@ -2229,11 +2241,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     }}
                   />
 
+                  {/* Bus Marker Body */}
                   <View
                     style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 16,
+                      width: markerWidth,
+                      height: 34,
+                      borderRadius: 17,
                       backgroundColor: routeColor,
                       alignItems: "center",
                       justifyContent: "center",
@@ -2243,10 +2256,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     }}
                   >
                     <View style={{ transform: [{ rotate: `-${heading}deg` }] }}>
-                      <Bus
-                        size={16}
-                        color={isTrackedBus ? "#FFD700" : "white"}
-                      />
+                      <Text
+                        style={{
+                          color: isTrackedBus ? "#FFD700" : "white",
+                          fontSize: isLong ? 11 : 13,
+                          fontWeight: "900",
+                          textAlign: "center",
+                        }}
+                      >
+                        {routeShortName || "?"}
+                      </Text>
                     </View>
                   </View>
                 </View>
@@ -2445,6 +2464,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   setSelectedStop(null);
                   setSelectedBus(null);
                   setIsRouteDropdownOpen(false);
+                  setHasManualMapMovement(false);
                 }}
                 onOpenSettings={() => setIsEditorVisible(true)}
               />
