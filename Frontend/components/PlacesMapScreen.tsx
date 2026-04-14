@@ -503,15 +503,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   const isFetchingRef = useRef(false);
 
-  // ── Review / dining state ─────────────────────────────────
-  const [reviews, setReviews] = useState<any[]>([]);
-  const [reviewModalVisible, setReviewModalVisible] = useState(false);
-  const [newRating, setNewRating] = useState(5);
-  const [newReviewText, setNewReviewText] = useState("");
-  const [isPostingReview, setIsPostingReview] = useState(false);
-  const [allReviewsModalVisible, setAllReviewsModalVisible] = useState(false);
-  const [isFetchingReviews, setIsFetchingReviews] = useState(false);
-
   // ── Recreation facility map ───────────────────────────────
   const recreationFacilityMap = useMemo(() => {
     const facilities = campusHubSnapshot?.recreation.facilities || [];
@@ -1121,41 +1112,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     [navigation, userCoord],
   );
 
-  const fetchReviews = useCallback(async (placeId: string, limit = 5) => {
-    if (limit > 5) setIsFetchingReviews(true);
-    try {
-      const { getPlaceReviews } = require("../services/socialFeedService");
-      const revs = await getPlaceReviews(placeId, limit);
-      setReviews(revs);
-    } catch (e) {
-      console.warn("Failed to fetch reviews", e);
-    } finally {
-      setIsFetchingReviews(false);
-    }
-  }, []);
-  const handlePostReview = useCallback(async () => {
-    const selectedReviewId =
-      selectedLoc?.placeId || selectedLoc?.location || null;
-    if (!selectedReviewId || !newReviewText.trim() || newRating === 0) return;
-    setIsPostingReview(true);
-    try {
-      const { postPlaceReview } = require("../services/socialFeedService");
-      await postPlaceReview(selectedReviewId, newRating, newReviewText.trim());
-      setReviewModalVisible(false);
-      setNewReviewText("");
-      setNewRating(5);
-      fetchReviews(selectedReviewId);
-    } catch (e) {
-      console.warn("Failed to post review", e);
-    } finally {
-      setIsPostingReview(false);
-    }
-  }, [
-    fetchReviews,
-    newRating,
-    newReviewText,
-    selectedLoc,
-  ]);
+
 
   const handleGetDirections = useCallback(
     (item: ScheduleMeetingEntry | string) => {
@@ -1980,16 +1937,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     });
   }, [activeLayer, selectedId, sortedFilteredLocations]);
 
-  // Sheet selection - fetch reviews + dining on select
-  useEffect(() => {
-    const selectedReviewId =
-      selectedLoc?.placeId || selectedLoc?.location || null;
-    if (selectedId && selectedReviewId) {
-      fetchReviews(selectedReviewId);
-    } else {
-      setReviews([]);
-    }
-  }, [selectedId, selectedLoc, fetchReviews]);
+
 
   useEffect(() => {
     if (!selectedLoc || !mapRef.current) return;
@@ -2051,10 +1999,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
             if (hadSelection) {
               if (hadPulseHotspotSelection) {
                 suppressNextOverviewFitRef.current = true;
-              } else {
-                requestAnimationFrame(() => {
-                  fitMapToActiveOverview();
-                });
               }
             }
           }
@@ -2800,19 +2744,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
         selectedId={selectedId}
         setSelectedId={setSelectedId}
         selectedLoc={selectedLoc}
-        reviews={reviews}
-        reviewModalVisible={reviewModalVisible}
-        setReviewModalVisible={setReviewModalVisible}
-        newRating={newRating}
-        setNewRating={setNewRating}
-        newReviewText={newReviewText}
-        setNewReviewText={setNewReviewText}
-        isPostingReview={isPostingReview}
-        handlePostReview={handlePostReview}
-        allReviewsModalVisible={allReviewsModalVisible}
-        setAllReviewsModalVisible={setAllReviewsModalVisible}
-        isFetchingReviews={isFetchingReviews}
-        fetchReviews={fetchReviews}
         foodCourtVenues={foodCourtVenues}
         diningMenuOptions={diningMenuOptions}
         activeDiningMenu={activeDiningMenu}

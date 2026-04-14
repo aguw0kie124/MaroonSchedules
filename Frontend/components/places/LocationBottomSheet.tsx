@@ -148,21 +148,7 @@ interface LocationBottomSheetProps {
   setSelectedId: (v: string | null) => void;
   selectedLoc: CampusLocation | undefined;
   // Sheet state is managed internally
-  // Reviews
-  reviews: any[];
-  reviewModalVisible: boolean;
-  setReviewModalVisible: (v: boolean) => void;
-  newRating: number;
-  setNewRating: (v: number) => void;
-  newReviewText: string;
-  setNewReviewText: (v: string) => void;
-  isPostingReview: boolean;
-  handlePostReview: () => void;
-  allReviewsModalVisible: boolean;
-  setAllReviewsModalVisible: (v: boolean) => void;
-  isFetchingReviews: boolean;
   isDark: boolean;
-  fetchReviews: (placeId: string, limit?: number) => void;
   // Dining
   foodCourtVenues: Array<{
     selectionId: string;
@@ -201,19 +187,6 @@ export function LocationBottomSheet({
   selectedId,
   setSelectedId,
   selectedLoc,
-  reviews,
-  reviewModalVisible,
-  setReviewModalVisible,
-  newRating,
-  setNewRating,
-  newReviewText,
-  setNewReviewText,
-  isPostingReview,
-  handlePostReview,
-  allReviewsModalVisible,
-  setAllReviewsModalVisible,
-  isFetchingReviews,
-  fetchReviews,
   foodCourtVenues,
   diningMenuOptions,
   activeDiningMenu,
@@ -235,7 +208,6 @@ export function LocationBottomSheet({
 }: LocationBottomSheetProps) {
   const { user } = useUser();
   const { advanceStep, activeTargetName } = useTour();
-  const selectedReviewId = selectedLoc?.placeId || selectedLoc?.location || null;
   const selectedLabel = selectedLoc?.location || selectedId || "";
 
   // ── Bottom sheet animation ──────────────────────────────────
@@ -243,7 +215,7 @@ export function LocationBottomSheet({
   const sheetSnap = useRef<number>(SHEET_HIDDEN_SNAP);
   const panStartY = useRef<number>(SHEET_HIDDEN_SNAP);
   const [sheetMode, setSheetMode] = useState<SheetMode>("hidden");
-  const [diningDetailTab, setDiningDetailTab] = useState<"reviews" | "menus">("reviews");
+  const [diningDetailTab, setDiningDetailTab] = useState<"menus">("menus");
 
   const [activeCategoryKey, setActiveCategoryKey] = useState("all");
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
@@ -285,7 +257,7 @@ export function LocationBottomSheet({
     if (selectedLoc && (isDiningHallMenuLocation(selectedLoc.location) || foodCourtVenues.length > 0)) {
       setDiningDetailTab("menus");
     } else {
-      setDiningDetailTab("reviews");
+      setDiningDetailTab("menus");
     }
     if (selectedId) {
       animateSheet(
@@ -316,7 +288,11 @@ export function LocationBottomSheet({
         0,
         Math.min(
           100,
-          Number.isFinite(selectedLoc.percent_full) ? selectedLoc.percent_full : 0,
+          selectedLoc.capacity && selectedLoc.capacity > 0 && selectedLoc.current_count != null
+            ? Math.round((selectedLoc.current_count / selectedLoc.capacity) * 100)
+            : Number.isFinite(selectedLoc.percent_full)
+              ? selectedLoc.percent_full
+              : 0,
         ),
       )
     : 0;
@@ -492,9 +468,6 @@ export function LocationBottomSheet({
     });
   }, [contextLink]);
 
-  const openReviewComposer = useCallback(() => {
-    setReviewModalVisible(true);
-  }, [setReviewModalVisible]);
 
   const panResponder = useMemo(
     () =>
@@ -1001,7 +974,6 @@ export function LocationBottomSheet({
                   <View style={styles.detailTabsWrap}>
                     <View style={styles.mapsTabRow}>
                       {[
-                        { key: "reviews", label: "Reviews" },
                         {
                           key: "menus",
                           label: isDiningHallCard ? "Menu" : "Locations",
@@ -1013,7 +985,7 @@ export function LocationBottomSheet({
                             key={tab.key}
                             style={styles.mapsTabButton}
                             onPress={() =>
-                              setDiningDetailTab(tab.key as "reviews" | "menus")
+                              setDiningDetailTab(tab.key as "menus")
                             }
                             activeOpacity={0.75}
                           >
@@ -1127,88 +1099,7 @@ export function LocationBottomSheet({
                         </View>
                       ) : null}
                     </View>
-                  ) : (
-                    <View style={styles.infoBlock}>
-                      <View style={styles.reviewsHeader}>
-                        <Text style={styles.sectionTitle}>Reviews</Text>
-                        <View style={{ flexDirection: "row", gap: 12 }}>
-                          <TouchableOpacity
-                            onPress={openReviewComposer}
-                          >
-                            <Text style={styles.addReviewText}>
-                              + Add Review
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => {
-                              setAllReviewsModalVisible(true);
-                              if (selectedReviewId) fetchReviews(selectedReviewId, 30);
-                            }}
-                          >
-                            <Text style={styles.seeAllText}>See all</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-
-                      {reviews.length > 0 ? (
-                        reviews.slice(0, 3).map((rev, i) => (
-                          <View key={rev.id || i} style={styles.reviewItem}>
-                            <View style={styles.reviewMeta}>
-                              <View style={styles.reviewUserRow}>
-                                <View style={styles.userAvatar}>
-                                  <Text style={styles.avatarText}>
-                                    {rev.user[0]}
-                                  </Text>
-                                </View>
-                                <Text style={styles.reviewUser}>
-                                  {rev.user}
-                                </Text>
-                              </View>
-                              <View style={styles.reviewStars}>
-                                {[1, 2, 3, 4, 5].map((s) => (
-                                  <Star
-                                    key={s}
-                                    size={11}
-                                    fill={
-                                      s <= rev.rating ? "#FFD700" : "transparent"
-                                    }
-                                    color={s <= rev.rating ? "#FFD700" : "#555"}
-                                  />
-                                ))}
-                              </View>
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.reviewComment} numberOfLines={3}>
-                                {rev.comment}
-                              </Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
-                                {rev.userId === user?.id ? (
-                                    <TouchableOpacity onPress={() => handleDeleteReview(rev)}>
-                                        <Trash2 size={14} color="#E56B6B" />
-                                    </TouchableOpacity>
-                                ) : (
-                                    <>
-                                        <TouchableOpacity onPress={() => handleReportReview(rev)}>
-                                            <Flag size={14} color="#888" />
-                                        </TouchableOpacity>
-                                        <TouchableOpacity onPress={() => handleBlockReviewer(rev)}>
-                                            <Shield size={14} color="#888" />
-                                        </TouchableOpacity>
-                                    </>
-                                )}
-                            </View>
-                          </View>
-                        ))
-                      ) : (
-                        <View style={styles.emptyReviews}>
-                          <Text style={styles.emptyReviewsText}>
-                            No reviews found for this location.
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  )}
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -1281,79 +1172,7 @@ export function LocationBottomSheet({
                     </View>
                   ) : null}
 
-                  {/* Reviews */}
-                  <View style={styles.reviewsHeader}>
-                    <Text style={styles.sectionTitle}>Reviews</Text>
-                      <View style={{ flexDirection: "row", gap: 12 }}>
-                      <TouchableOpacity
-                        onPress={openReviewComposer}
-                      >
-                        <Text style={styles.addReviewText}>
-                          + Add Review
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => {
-                          setAllReviewsModalVisible(true);
-                          if (selectedReviewId) fetchReviews(selectedReviewId, 30);
-                        }}
-                      >
-                        <Text style={styles.seeAllText}>See all</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  {reviews.length > 0 ? (
-                    reviews.slice(0, 3).map((rev, i) => (
-                      <View key={rev.id || i} style={styles.reviewItem}>
-                        <View style={styles.reviewMeta}>
-                          <View style={styles.reviewUserRow}>
-                            <View style={styles.userAvatar}>
-                              <Text style={styles.avatarText}>
-                                {rev.user[0]}
-                              </Text>
-                            </View>
-                            <Text style={styles.reviewUser}>{rev.user}</Text>
-                          </View>
-                          <View style={styles.reviewStars}>
-                            {[1, 2, 3, 4, 5].map((s) => (
-                              <Star
-                                key={s}
-                                size={11}
-                                fill={s <= rev.rating ? "#FFD700" : "transparent"}
-                                color={s <= rev.rating ? "#FFD700" : "#555"}
-                              />
-                            ))}
-                          </View>
-                        </View>
-                        <Text style={styles.reviewComment} numberOfLines={3}>
-                          {rev.comment}
-                        </Text>
-                          <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-                            {rev.userId === user?.id ? (
-                              <TouchableOpacity onPress={() => handleDeleteReview(rev)}>
-                                <Trash2 size={14} color="#E56B6B" />
-                              </TouchableOpacity>
-                            ) : (
-                              <>
-                                <TouchableOpacity onPress={() => handleReportReview(rev)}>
-                                  <Flag size={14} color="#888" />
-                                </TouchableOpacity>
-                                <TouchableOpacity onPress={() => handleBlockReviewer(rev)}>
-                                  <Shield size={14} color="#888" />
-                                </TouchableOpacity>
-                              </>
-                            )}
-                          </View>
-                      </View>
-                    ))
-                  ) : (
-                    <View style={styles.emptyReviews}>
-                      <Text style={styles.emptyReviewsText}>
-                        No reviews found for this location.
-                      </Text>
-                    </View>
-                  )}
+                  {/* Schedule only, reviews removed */}
                 </>
               )}
             </ScrollView>
@@ -1582,186 +1401,9 @@ export function LocationBottomSheet({
         ) : null}
       </Animated.View>
 
-      {/* Review Modal */}
-      <Modal visible={reviewModalVisible} animationType="fade" transparent>
-        <TouchableWithoutFeedback
-          onPress={() => setReviewModalVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : "height"}
-              style={{ width: "100%", alignItems: "center" }}
-            >
-              <TouchableWithoutFeedback
-                onPress={(e) => e.stopPropagation()}
-              >
-                <View style={styles.reviewModalContainer}>
-                  <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Rate {selectedLabel}</Text>
-                    <TouchableOpacity
-                      onPress={() => setReviewModalVisible(false)}
-                    >
-                      <X size={20} color="#666" />
-                    </TouchableOpacity>
-                  </View>
 
-                  <View style={styles.starRow}>
-                    {[1, 2, 3, 4, 5].map((s) => (
-                      <TouchableOpacity
-                        key={s}
-                        onPress={() => {
-                          setNewRating(s);
-                          Haptics.impactAsync(
-                            Haptics.ImpactFeedbackStyle.Light,
-                          );
-                        }}
-                        style={styles.starTouch}
-                      >
-                        <Star
-                          size={38}
-                          fill={s <= newRating ? "#FFD700" : "transparent"}
-                          color={s <= newRating ? "#FFD700" : "#333"}
-                        />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
 
-                  <View style={styles.inputContainer}>
-                    <TextInput
-                      style={styles.reviewInput}
-                      placeholder="Sharing your experience helps other Aggies..."
-                      placeholderTextColor="#555"
-                      multiline
-                      value={newReviewText}
-                      onChangeText={setNewReviewText}
-                      maxLength={500}
-                    />
-                    <Text style={styles.charCount}>
-                      {newReviewText.length}/500
-                    </Text>
-                  </View>
 
-                  <TouchableOpacity
-                    style={[
-                      styles.premiumPostBtn,
-                      (!newReviewText.trim() || newRating === 0) && {
-                        opacity: 0.4,
-                      },
-                    ]}
-                    onPress={handlePostReview}
-                    disabled={
-                      !newReviewText.trim() ||
-                      newRating === 0 ||
-                      isPostingReview
-                    }
-                  >
-                    <View style={styles.btnContent}>
-                      {isPostingReview ? (
-                        <ActivityIndicator size="small" color="#000" />
-                      ) : (
-                        <Text style={styles.premiumPostBtnText}>
-                          Post Review
-                        </Text>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                </View>
-              </TouchableWithoutFeedback>
-            </KeyboardAvoidingView>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      {/* Full Reviews Modal */}
-      <Modal
-        visible={allReviewsModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setAllReviewsModalVisible(false)}
-      >
-        <TouchableWithoutFeedback
-          onPress={() => setAllReviewsModalVisible(false)}
-        >
-          <View style={styles.fullReviewsOverlay}>
-            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={styles.fullReviewsContainer}>
-                <View style={styles.dragHandle} />
-                <View style={styles.fullReviewsHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.fullReviewsTitle}>User Reviews</Text>
-                    <Text style={styles.fullReviewsSubtitle}>{selectedLabel}</Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => setAllReviewsModalVisible(false)}
-                    style={styles.backBtn}
-                  >
-                    <X size={18} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-
-                {isFetchingReviews ? (
-                  <View style={styles.fullReviewsLoading}>
-                    <ActivityIndicator size="large" color={COLORS.primary} />
-                    <Text style={styles.fullReviewsLoadingText}>
-                      Loading reviews...
-                    </Text>
-                  </View>
-                ) : (
-                  <ScrollView
-                    contentContainerStyle={styles.fullReviewsScroll}
-                    showsVerticalScrollIndicator={false}
-                  >
-                    {reviews.length > 0 ? (
-                      reviews.map((rev, i) => (
-                        <View key={i} style={styles.reviewItem}>
-                          <View style={styles.reviewMeta}>
-                            <Text style={styles.reviewUser}>{rev.user}</Text>
-                            <View style={styles.reviewStars}>
-                              {[1, 2, 3, 4, 5].map((s) => (
-                                <Star
-                                  key={s}
-                                  size={11}
-                                  fill={
-                                    s <= rev.rating ? "#FFD700" : "transparent"
-                                  }
-                                  color={s <= rev.rating ? "#FFD700" : "#444"}
-                                />
-                              ))}
-                            </View>
-                          </View>
-                          <Text style={styles.reviewComment}>{rev.comment}</Text>
-                          <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-                                {rev.userId === user?.id ? (
-                                    <TouchableOpacity onPress={() => handleDeleteReview(rev)}>
-                                        <Trash2 size={14} color="#E56B6B" />
-                                    </TouchableOpacity>
-                                ) : (
-                                    <>
-                                        <TouchableOpacity onPress={() => handleReportReview(rev)}>
-                                            <Flag size={14} color="#888" />
-                                        </TouchableOpacity>
-                                        <TouchableOpacity onPress={() => handleBlockReviewer(rev)}>
-                                            <Shield size={14} color="#888" />
-                                        </TouchableOpacity>
-                                    </>
-                                )}
-                          </View>
-                        </View>
-                      ))
-                    ) : (
-                      <View style={styles.emptyReviews}>
-                        <Text style={styles.emptyReviewsText}>
-                          No reviews found for this location.
-                        </Text>
-                      </View>
-                    )}
-                  </ScrollView>
-                )}
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
     </>
   );
 }

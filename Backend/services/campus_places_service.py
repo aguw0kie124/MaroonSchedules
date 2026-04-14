@@ -76,31 +76,42 @@ def _merge_operational_state(locations: Dict[str, Dict[str, Any]]) -> None:
         rows = []
 
     for row in rows:
-        coord = row.get("coord") or {}
-        resolved_place = place_registry_service.resolve_place(
-            row.get("location"),
-            coord.get("lat"),
-            coord.get("lng"),
-        )
-        if not resolved_place:
-            continue
+        # Prefer explicit place_id from tracker, fallback to coordinate resolution
+        pid = row.get("place_id")
+        existing = locations.get(pid) if pid else None
+        
+        resolved_place = None
+        if not existing:
+            coord = row.get("coord") or {}
+            resolved_place = place_registry_service.resolve_place(
+                row.get("location"),
+                coord.get("lat"),
+                coord.get("lng"),
+            )
+            if not resolved_place:
+                continue
+            existing = locations.get(resolved_place["place_id"])
 
-        existing = locations.get(resolved_place["place_id"])
         if not existing:
             continue
 
+        loc_name = resolved_place["name"] if resolved_place else existing["location"]
+        short_name = existing.get("shortName")
+        if resolved_place and not short_name:
+            short_name = resolved_place.get("short_name")
+
         existing.update(
             {
-                "location": resolved_place["name"],
-                "shortName": existing.get("shortName") or resolved_place.get("short_name"),
+                "location": loc_name,
+                "shortName": short_name,
                 "percent_full": int(round(float(row.get("percent_full") or 0))),
                 "type": _prefer_place_type(existing.get("type"), row.get("type")),
                 "is_live": bool(row.get("is_live")),
                 "available_seats": row.get("available_seats"),
-                "coord": {"lat": resolved_place["lat"], "lng": resolved_place["lng"]},
+                "coord": {"lat": resolved_place["lat"], "lng": resolved_place["lng"]} if resolved_place else existing.get("coord"),
                 "hours": existing.get("hours") or row.get("hours"),
                 "description": existing.get("description") or row.get("description"),
-                "features": existing.get("features") or resolved_place.get("features"),
+                "features": existing.get("features") or (resolved_place.get("features") if resolved_place else None),
                 "current_event": row.get("current_event") or existing.get("current_event"),
                 "source": existing.get("source") or "snapshot",
             }

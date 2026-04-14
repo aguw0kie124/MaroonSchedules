@@ -234,7 +234,7 @@ class TAMUFacilityTracker:
         random.shuffle(selected)
         history = [random.randint(15, 90) for _ in range(8)]
         # Library / Dining hours must not come from mock text — map uses registry, weekly, and DineOnCampus live periods.
-        meta: Dict[str, Any] = {"reviews": selected, "traffic_history": history}
+        meta: Dict[str, Any] = {"traffic_history": history}
         if loc_type not in ("Library", "Dining"):
             meta["hours"] = hours
         return meta
@@ -271,6 +271,7 @@ class TAMUFacilityTracker:
                 "coord": {"lat": place["lat"], "lng": place["lng"]},
                 "current_count": live_count.get("current_count"),
                 "capacity": live_count.get("capacity"),
+                "place_id": place["place_id"],
                 "last_updated": live_count.get("last_updated"),
                 "occupancy_name": live_count.get("location_name"),
                 **meta,
@@ -303,6 +304,7 @@ class TAMUFacilityTracker:
                 "coord": {"lat": place["lat"], "lng": place["lng"]},
                 "capacity": capacity if capacity > 0 else None,
                 "current_count": occupancy,
+                "place_id": place["place_id"],
                 **meta,
             })
 
@@ -324,6 +326,7 @@ class TAMUFacilityTracker:
                 "is_live": False,
                 "available_seats": None,
                 "coord": place["coord"],
+                "place_id": place["place_id"],
                 **meta,
             })
 
