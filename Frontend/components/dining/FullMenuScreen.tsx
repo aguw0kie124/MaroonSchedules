@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -29,6 +29,7 @@ import {
   isDiningHallMenuLocation,
   prefetchDiningMenus,
 } from '../../services/diningMenuCache';
+import { getStaticRestaurantMenu } from '../../data/restaurantMenus';
 
 function formatMealLabel(meal: string) {
   const value = (meal || '').toLowerCase();
@@ -75,17 +76,38 @@ export default function FullMenuScreen({ navigation, route }: any) {
   const { location, mealPeriod, title, locations, sourceHint } = route.params || {};
   const availableMealPeriods = getDiningMealOptionsForLocation(location);
   const isDiningHall = isDiningHallMenuLocation(location);
+  const staticMenu = useMemo(() => getStaticRestaurantMenu(location), [location]);
+  const isStaticRestaurant = !!staticMenu && !isDiningHall;
   const [activeMealPeriod, setActiveMealPeriod] = useState<DiningMealPeriod>(
     (mealPeriod as DiningMealPeriod) || getDiningMealPeriodForLocation(location),
   );
   const [menusByPeriod, setMenusByPeriod] = useState<Record<string, any>>({});
-  const menu = menusByPeriod[activeMealPeriod] || null;
-  const [loading, setLoading] = useState(true);
+  const menu = isStaticRestaurant
+    ? {
+        success: true,
+        categories: staticMenu.categories.map((cat) => ({
+          name: cat.name,
+          items: cat.items.map((item) => ({
+            name: item.name,
+            calories: item.calories,
+            protein: item.protein,
+            carbs: item.carbs,
+            fat: item.fat,
+            description: item.description,
+            portion: item.portion,
+          })),
+        })),
+        count: staticMenu.categories.reduce((s, c) => s + c.items.length, 0),
+        source: 'static',
+      }
+    : menusByPeriod[activeMealPeriod] || null;
+  const [loading, setLoading] = useState(!isStaticRestaurant);
   const [error, setError] = useState('');
   const [portionCounts, setPortionCounts] = useState<Record<string, { count: number; entryIds: number[] }>>({});
   const [syncingItemKey, setSyncingItemKey] = useState<string | null>(null);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [activeCategoryKey, setActiveCategoryKey] = useState('all');
+  const [showMaroonMeals, setShowMaroonMeals] = useState(false);
 
   const toggleCategory = useCallback((categoryName: string) => {
     setCollapsedCategories((current) => {
@@ -132,23 +154,30 @@ export default function FullMenuScreen({ navigation, route }: any) {
   }, [location, menusByPeriod]);
 
   useEffect(() => {
+    if (isStaticRestaurant) {
+      setLoading(false);
+      setError('');
+      return;
+    }
     load(activeMealPeriod);
     setActiveCategoryKey('all');
-  }, [activeMealPeriod, load]);
+  }, [activeMealPeriod, load, isStaticRestaurant]);
 
   useEffect(() => {
     const categoryNames = (menu?.categories || []).map((category: any) => category.name);
-    if (activeCategoryKey === 'all') {
+    if (showMaroonMeals) {
+      setCollapsedCategories(new Set(categoryNames));
+    } else if (activeCategoryKey === 'all') {
       setCollapsedCategories(new Set(categoryNames));
     } else {
       setCollapsedCategories(new Set());
     }
-  }, [menu, activeCategoryKey]);
+  }, [menu, activeCategoryKey, showMaroonMeals]);
 
   useEffect(() => {
-    if (!location) return;
+    if (!location || isStaticRestaurant) return;
     prefetchDiningMenus([location], availableMealPeriods).catch(() => {});
-  }, [availableMealPeriods, location]);
+  }, [availableMealPeriods, location, isStaticRestaurant]);
 
   const refreshTrackerCounts = useCallback(async () => {
     if (!user) return;
@@ -256,6 +285,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
           </View>
         </View>
 
+        {!isStaticRestaurant && (
         <View style={s.mealTabsWrap}>
           <PillTabs
             items={availableMealPeriods.map((period) => ({
@@ -268,6 +298,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
             compact
           />
         </View>
+        )}
 
         {categoryOptions.length > 0 ? (
           <ScrollView
@@ -279,10 +310,11 @@ export default function FullMenuScreen({ navigation, route }: any) {
             <TouchableOpacity
               style={[
                 s.categoryFilterChip,
-                activeCategoryKey === 'all' && [s.categoryFilterChipActive, { borderColor: T.text }],
+                !showMaroonMeals && activeCategoryKey === 'all' && [s.categoryFilterChipActive, { borderColor: T.text }],
                 { backgroundColor: T.bg2, borderColor: T.border },
               ]}
               onPress={() => {
+                setShowMaroonMeals(false);
                 setActiveCategoryKey('all');
                 const categoryNames = (menu?.categories || []).map((c: any) => c.name);
                 setCollapsedCategories(new Set(categoryNames));
@@ -293,22 +325,52 @@ export default function FullMenuScreen({ navigation, route }: any) {
                 style={[
                   s.categoryFilterLabel,
                   { color: T.text2 },
-                  activeCategoryKey === 'all' && { color: T.text },
+                  !showMaroonMeals && activeCategoryKey === 'all' && { color: T.text },
                 ]}
               >
-                All stations
+                {isDiningHall ? 'All stations' : 'Full Menu'}
               </Text>
             </TouchableOpacity>
+
+            {staticMenu?.maroonMeals ? (
+              <TouchableOpacity
+                style={[
+                  s.categoryFilterChip,
+                  showMaroonMeals && [s.categoryFilterChipActive, { borderColor: '#500000' }],
+                  { backgroundColor: showMaroonMeals ? 'rgba(80,0,0,0.14)' : T.bg2, borderColor: showMaroonMeals ? '#500000' : T.border },
+                ]}
+                onPress={() => {
+                  setShowMaroonMeals(true);
+                  setActiveCategoryKey('all');
+                }}
+                activeOpacity={0.8}
+              >
+                <Text
+                  style={[
+                    s.categoryFilterLabel,
+                    { color: showMaroonMeals ? '#500000' : T.text2 },
+                  ]}
+                >
+                  Maroon Meals
+                </Text>
+                <View style={[s.categoryFilterCount, { backgroundColor: showMaroonMeals ? 'rgba(80,0,0,0.12)' : T.bg3 }]}>
+                  <Text style={[s.categoryFilterCountText, { color: showMaroonMeals ? '#500000' : T.text3 }]}>
+                    {staticMenu.maroonMeals.combos.length}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ) : null}
 
             {categoryOptions.map((category) => (
               <TouchableOpacity
                 key={category.key}
                 style={[
                   s.categoryFilterChip,
-                  activeCategoryKey === category.key && [s.categoryFilterChipActive, { borderColor: T.text }],
+                  !showMaroonMeals && activeCategoryKey === category.key && [s.categoryFilterChipActive, { borderColor: T.text }],
                   { backgroundColor: T.bg2, borderColor: T.border },
                 ]}
                 onPress={() => {
+                  setShowMaroonMeals(false);
                   setActiveCategoryKey(category.key);
                   setCollapsedCategories(new Set()); // Open by default
                 }}
@@ -318,7 +380,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
                   style={[
                     s.categoryFilterLabel,
                     { color: T.text2 },
-                    activeCategoryKey === category.key && { color: T.text },
+                    !showMaroonMeals && activeCategoryKey === category.key && { color: T.text },
                   ]}
                 >
                   {category.label}
@@ -349,7 +411,38 @@ export default function FullMenuScreen({ navigation, route }: any) {
           </Card>
         ) : (
           <>
-            {menu?.locations?.length > 1 && (
+            {showMaroonMeals && staticMenu?.maroonMeals ? (
+              <Card>
+                <View style={s.maroonMealsHeader}>
+                  <SectionLabel style={{ marginBottom: 0 }}>Maroon Meals</SectionLabel>
+                  <Badge label="MEAL SWIPE" color="#500000" />
+                </View>
+                <Text style={[s.maroonMealsNote, { color: T.text3 }]}>
+                  {staticMenu.maroonMeals.note}
+                </Text>
+                <View style={{ paddingHorizontal: 0, gap: 0 }}>
+                  {staticMenu.maroonMeals.combos.map((combo, idx) => (
+                    <View
+                      key={combo.name}
+                      style={[
+                        s.maroonMealRow,
+                        { borderBottomColor: T.border },
+                        idx === staticMenu!.maroonMeals!.combos.length - 1 && { borderBottomWidth: 0 },
+                      ]}
+                    >
+                      <View style={{ flex: 1, paddingRight: 12 }}>
+                        <Text style={[s.itemName, { color: T.text }]}>{combo.name}</Text>
+                      </View>
+                      <View style={s.maroonMealValueBadge}>
+                        <Text style={s.maroonMealValueText}>${combo.value.toFixed(2)}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </Card>
+            ) : null}
+
+            {!showMaroonMeals && menu?.locations?.length > 1 && (
               <Card>
                 <SectionLabel>Locations</SectionLabel>
                 <View style={s.locationWrap}>
@@ -362,7 +455,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
               </Card>
             )}
 
-            {visibleCategories.map((category: any) => {
+            {!showMaroonMeals && visibleCategories.map((category: any) => {
               const isCollapsed = collapsedCategories.has(category.name);
               return (
                 <Card key={category.name} style={{ paddingHorizontal: 0 }}>
@@ -385,12 +478,19 @@ export default function FullMenuScreen({ navigation, route }: any) {
                         <View key={`${category.name}-${item.location || 'menu'}-${item.name}`} style={[s.itemRow, { borderBottomColor: T.border }]}>
                           <View style={{ flex: 1, paddingRight: 12 }}>
                             <Text style={[s.itemName, { color: T.text }]}>{item.name}</Text>
+                            {item.description ? (
+                              <Text style={[s.itemDescription, { color: T.text3 }]} numberOfLines={2}>
+                                {item.description}
+                              </Text>
+                            ) : null}
                             <Text style={[s.itemMeta, { color: T.text3 }]}>
-                              {Math.round(item.calories || 0)} kcal
+                              {Math.round(item.calories || 0) > 0 ? `${Math.round(item.calories)} kcal` : ''}
                               {!!item.protein && ` • ${Math.round(item.protein)}g protein`}
+                              {!!item.portion && item.portion !== '—' && (Math.round(item.calories || 0) > 0 ? ` • ${item.portion}` : item.portion)}
                               {!!item.location && menu.locations?.length > 1 && ` • ${item.location}`}
                             </Text>
                           </View>
+                          {!isStaticRestaurant && (
                           <View style={s.actionWrap}>
                             <View style={s.countSlot}>
                               {portionCounts[buildMenuItemKey(item)]?.count > 0 ? (
@@ -420,6 +520,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
                               )}
                             </TouchableOpacity>
                           </View>
+                          )}
                         </View>
                       ))}
                     </View>
@@ -490,5 +591,36 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 4,
+  },
+  itemDescription: { fontSize: 12, marginTop: 2, fontWeight: '400', lineHeight: 16 },
+  maroonMealsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  maroonMealsNote: {
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 17,
+    marginBottom: 14,
+    paddingHorizontal: 0,
+  },
+  maroonMealRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  maroonMealValueBadge: {
+    backgroundColor: 'rgba(80,0,0,0.12)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  maroonMealValueText: {
+    color: '#500000',
+    fontSize: 13,
+    fontWeight: '900',
   },
 });

@@ -44,6 +44,7 @@ import {
   getLocationContextLink,
 } from "./utils";
 import { getCanonicalLocationName } from "./campusData";
+import { getStaticRestaurantMenu } from "../../data/restaurantMenus";
 import {
   DiningMealPeriod,
   isDiningHallMenuLocation,
@@ -1058,7 +1059,9 @@ export function LocationBottomSheet({
 
                       {!isDiningHallCard && foodCourtVenues.length > 0 ? (
                         <View style={styles.foodCourtVenueList}>
-                          {foodCourtVenues.map((venue) => (
+                          {foodCourtVenues.map((venue) => {
+                            const hasMenu = !!getStaticRestaurantMenu(venue.location.location);
+                            return (
                             <View key={venue.selectionId} style={styles.foodCourtVenueCard}>
                               <View style={{ flex: 1, paddingRight: 12 }}>
                                 <Text style={styles.foodCourtVenueTitle}>
@@ -1071,9 +1074,22 @@ export function LocationBottomSheet({
                                     : "Dining location"}
                                 </Text>
                               </View>
-                              <Text style={styles.foodCourtVenueAction}>Inside</Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <Text style={styles.foodCourtVenueAction}>Inside</Text>
+                                {hasMenu ? (
+                                  <TouchableOpacity
+                                    onPress={() => openFullMenu(venue.menuCandidate || venue.location.location)}
+                                    style={styles.foodCourtVenueMenuBtn}
+                                    activeOpacity={0.7}
+                                  >
+                                    <Utensils size={11} color="#FFF" />
+                                    <Text style={styles.foodCourtVenueMenuBtnText}>Menu</Text>
+                                  </TouchableOpacity>
+                                ) : null}
+                              </View>
                             </View>
-                          ))}
+                            );
+                          })}
                         </View>
                       ) : null}
 
