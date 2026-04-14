@@ -51,7 +51,7 @@ import {
   isDiningHallMenuLocation,
 } from "../../services/diningMenuCache";
 import { Alert } from "react-native";
-import { ReviewItem } from "./ReviewItem";
+
 import { ClassMeetingCard } from "./ClassMeetingCard";
 import { OccupancyChart } from "./OccupancyChart";
 
@@ -161,46 +161,7 @@ const ClassMeetingList = React.memo(({
   );
 });
 
-/**
- * ReviewList - Isolated component for review rendering
- */
-const ReviewList = React.memo(({ 
-  reviews, 
-  userId, 
-  onDelete, 
-  onReport, 
-  onBlock 
-}: { 
-  reviews: any[]; 
-  userId?: string;
-  onDelete: (rev: any) => void;
-  onReport: (rev: any) => void;
-  onBlock: (rev: any) => void;
-}) => {
-  if (!reviews?.length) {
-    return (
-      <View style={{ padding: 24, alignItems: "center" }}>
-        <Text style={{ color: "#AAA", fontSize: 13, fontWeight: "600" }}>
-          No reviews found for this location.
-        </Text>
-      </View>
-    );
-  }
-  return (
-    <>
-      {reviews.slice(0, 3).map((rev, i) => (
-        <ReviewItem 
-          key={rev.id || i} 
-          rev={rev} 
-          currentUserId={userId}
-          onDelete={() => onDelete(rev)}
-          onReport={() => onReport(rev)}
-          onBlock={() => onBlock(rev)}
-        />
-      ))}
-    </>
-  );
-});
+
 
 interface LocationBottomSheetProps {
   styles: any;
@@ -593,80 +554,7 @@ export function LocationBottomSheet({
     [animateSheet, preferredExpandedSnap, setSelectedId],
   );
 
-    const handleReportReview = (rev: any) => {
-        Alert.alert(
-            "Report Review",
-            "Why are you reporting this review?",
-            [
-                { text: "Inappropriate", onPress: () => submitReviewReport(rev, "inappropriate") },
-                { text: "Spam", onPress: () => submitReviewReport(rev, "spam") },
-                { text: "Harassment", onPress: () => submitReviewReport(rev, "harassment") },
-                { text: "Cancel", style: "cancel" },
-            ]
-        );
-    };
 
-    const submitReviewReport = async (rev: any, reason: string) => {
-        try {
-            await reportContent({
-                reporteeId: rev.userId || rev.user_id || rev.sub,
-                postType: 'review',
-                postId: rev.id,
-                reason: reason,
-                placeId: selectedReviewId || undefined
-            });
-            Alert.alert("Report Received", "Thank you for your report.");
-        } catch (err) {
-            Alert.alert("Error", "Failed to submit report.");
-        }
-    };
-
-    const handleBlockReviewer = (rev: any) => {
-        Alert.alert(
-            "Block User",
-            `Block ${rev.user}? You won't see their reviews.`,
-            [
-                { text: "Cancel", style: "cancel" },
-                { 
-                    text: "Block", 
-                    style: "destructive",
-                    onPress: async () => {
-                        try {
-                            await blockUser(rev.userId || rev.user_id || rev.sub);
-                            if (selectedReviewId) fetchReviews(selectedReviewId, 10);
-                            Alert.alert("User Blocked");
-                        } catch (err) {
-                            Alert.alert("Error", "Failed to block user.");
-                        }
-                    }
-                }
-            ]
-        );
-    };
-
-    const handleDeleteReview = (rev: any) => {
-        Alert.alert(
-            "Delete Review",
-            "Are you sure you want to remove your review?",
-            [
-                { text: "Cancel", style: "cancel" },
-                { 
-                    text: "Delete", 
-                    style: "destructive",
-                    onPress: async () => {
-                        try {
-                            if (!selectedReviewId) return;
-                            await deleteReview(selectedReviewId, rev.id);
-                            fetchReviews(selectedReviewId, 10);
-                            Alert.alert("Success", "Review deleted.");
-                        } catch (err) {
-                            console.warn("[Reviews] delete failed (silent)", err);
-                        }
-                    }
-                }
-            ]
-        );
-    };
 
   if (!selectedId || selectedStop || selectedBus) return null;
 
@@ -1161,37 +1049,7 @@ export function LocationBottomSheet({
                       ) : null}
                     </View>
                   ) : (
-                    <View style={styles.infoBlock}>
-                      <View style={styles.reviewsHeader}>
-                        <Text style={styles.sectionTitle}>Reviews</Text>
-                        <View style={{ flexDirection: "row", gap: 12 }}>
-                          <TouchableOpacity
-                            onPress={openReviewComposer}
-                          >
-                            <Text style={styles.addReviewText}>
-                              + Add Review
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => {
-                              setAllReviewsModalVisible(true);
-                              if (selectedReviewId) fetchReviews(selectedReviewId, 30);
-                            }}
-                          >
-                            <Text style={styles.seeAllText}>See all</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-
-                      <ReviewList 
-                        reviews={reviews} 
-                        userId={user?.id}
-                        onDelete={handleDeleteReview}
-                        onReport={handleReportReview}
-                        onBlock={handleBlockReviewer}
-                      />
-                    </View>
-                  )}
+                 ) : null}
                 </>
               ) : (
                 <>
@@ -1220,35 +1078,7 @@ export function LocationBottomSheet({
                     </View>
                   ) : null}
 
-                  {/* Reviews */}
-                  <View style={styles.reviewsHeader}>
-                    <Text style={styles.sectionTitle}>Reviews</Text>
-                      <View style={{ flexDirection: "row", gap: 12 }}>
-                      <TouchableOpacity
-                        onPress={openReviewComposer}
-                      >
-                        <Text style={styles.addReviewText}>
-                          + Add Review
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => {
-                          setAllReviewsModalVisible(true);
-                          if (selectedReviewId) fetchReviews(selectedReviewId, 30);
-                        }}
-                      >
-                        <Text style={styles.seeAllText}>See all</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
 
-                  <ReviewList 
-                    reviews={reviews} 
-                    userId={user?.id}
-                    onDelete={handleDeleteReview}
-                    onReport={handleReportReview}
-                    onBlock={handleBlockReviewer}
-                  />
                 </>
               )}
             </ScrollView>
