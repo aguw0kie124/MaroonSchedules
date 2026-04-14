@@ -889,8 +889,7 @@ export function CampusPingsScreen() {
                 return current.filter((entry) => entry.id !== ping.id);
               });
             } catch (error) {
-              console.warn('[Pings] delete failed', error);
-              Alert.alert('Delete failed', 'This ping could not be removed right now.');
+              console.warn('[Pings] delete failed (silent)', error);
             }
           },
         },

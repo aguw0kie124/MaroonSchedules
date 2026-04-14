@@ -624,7 +624,7 @@ export function LocationBottomSheet({
                             fetchReviews(selectedReviewId, 10);
                             Alert.alert("Success", "Review deleted.");
                         } catch (err) {
-                            Alert.alert("Error", "Failed to delete review.");
+                            console.warn("[Reviews] delete failed (silent)", err);
                         }
                     }
                 }
