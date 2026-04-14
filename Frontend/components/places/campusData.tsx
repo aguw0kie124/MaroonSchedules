@@ -455,6 +455,9 @@ const INJECTED_RESTAURANTS: CampusLocation[] = [
   { placeId: "mkt-white-creek", location: "White Creek Market", type: "Dining", coord: { lat: 30.6092, lng: -96.3571 }, source: "snapshot", searchOnly: true },
   { placeId: "mkt-ag-cafe", location: "Market - Ag Cafe", type: "Dining", coord: { lat: 30.6073, lng: -96.3433 }, source: "snapshot", searchOnly: true },
   { placeId: "mkt-blcc", location: "Market Express - Business Library (BLCC)", type: "Dining", coord: { lat: 30.6105, lng: -96.3503 }, source: "snapshot", searchOnly: true },
+
+  // Libraries (missing from OSM snapshot)
+  { placeId: "annex", location: "Evans Library Annex", type: "Library", coord: { lat: 30.6163, lng: -96.3384 }, source: "snapshot", aliases: ["Sterling C. Evans Library Annex", "Library Annex", "Annex"] },
 ];
 
 export function buildCampusDirectory(): CampusLocation[] {
