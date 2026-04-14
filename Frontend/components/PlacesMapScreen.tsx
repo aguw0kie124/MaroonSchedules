@@ -73,11 +73,11 @@ import { API_URL } from "../config";
 import { useCampusHubStore } from "../store/campusHubStore";
 import { getOrderedItems, useAppShellStore } from "../store/appShellStore";
 import { useSessionStore } from "../store/sessionStore";
-import { useShareStore } from "../store/shareStore";
 import {
   type DiningMealPeriod,
   getDiningMealPeriodForLocation,
 } from "../services/diningMenuCache";
+import { triggerNativeShare } from "../utils/share";
 
 // ── Sub-components ────────────────────────────────────────────
 import { FloatingSearchBar } from "./places/FloatingSearchBar";
@@ -2463,9 +2463,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
           setShowSearchResults={setShowSearchResults}
           onOpenSettings={() => setIsEditorVisible(true)}
           onShare={() =>
-            Share.share({
+            triggerNativeShare({
               title: "Campus Map",
-              message: "Check out the live campus map on MaroonSchedules! https://maroonschedules.tamu.edu/places",
+              message: "Check out the live campus map on MaroonSchedules!",
+              url: "https://maroonschedules.tamu.edu/places",
+              type: "place",
             })
           }
           onSubmitSearch={() => runGlobalSearch()}

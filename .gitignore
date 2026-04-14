@@ -43,4 +43,13 @@ test_event.html
 .DS_Store
 **/.DS_Store
 
+# Native Artifacts & Sensitive Keys
+android/
+*.p8
+.gemini/
+
+# Temporary / Development
+scratch/
+test-compile.js
+
 data_architecture_plan.md

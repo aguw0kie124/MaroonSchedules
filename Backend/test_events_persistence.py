@@ -1,9 +1,15 @@
+import os
 import requests
 import json
 import time
+from dotenv import load_dotenv
+
+# Load env variables from root .env 
+env_path = os.path.join(os.path.dirname(__file__), '.env')
+load_dotenv(dotenv_path=env_path)
 
 API_URL = "http://localhost:8000/campus/events"
-HEADERS = {"x-api-key": "ml_app_4f8d2b7c9e1a6f3d8c2b5a9e7f1d4c6b"}
+HEADERS = {"x-api-key": os.getenv("API_KEY", "your_api_key_here")}
 
 def test_api():
     print("Fetching events from API...")
