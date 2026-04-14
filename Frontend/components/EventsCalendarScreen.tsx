@@ -2946,6 +2946,13 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     socialModeTextActive: {
       color: COLORS.textPrimary,
     },
+    filterHintText: {
+      marginTop: 6,
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      lineHeight: 18,
+    },
+
     heroRail: {
       paddingTop: 14,
       paddingLeft: 0,
