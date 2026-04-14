@@ -1048,8 +1048,7 @@ export function LocationBottomSheet({
                         </View>
                       ) : null}
                     </View>
-                  ) : (
-                 ) : null}
+                  ) : null}
                 </>
               ) : (
                 <>
