@@ -2595,6 +2595,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
                         showsVerticalScrollIndicator={false}
                       >
                         {sortedFilteredLocations.map((loc) => {
+                          const displayPercent =
+                            loc.capacity && loc.capacity > 0 && loc.current_count != null
+                              ? Math.round((loc.current_count / loc.capacity) * 100)
+                              : loc.percent_full != null && Number.isFinite(loc.percent_full)
+                                ? loc.percent_full
+                                : null;
+
                           const isRecCenterTourItem =
                             getCanonicalLocationName(loc.location) ===
                             getCanonicalLocationName("Student Recreation Center");
