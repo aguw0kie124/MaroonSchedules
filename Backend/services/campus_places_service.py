@@ -2,13 +2,36 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, Dict, List
+from zoneinfo import ZoneInfo
 
 from routers.traffic import tracker
-from services import cache_service, place_registry_service
+from services import cache_service, parking_realtime_service, place_registry_service
+from services.dineoncampus_hours_service import fetch_dining_periods_summary
 from services.place_type_service import normalize_place_type
+from services.rec_hours_data import REC_PLACE_ID_TO_FACILITY_KEY, weekly_payload_for_facility_key
+from services.tamu_calendar_service import holiday_hours_notice_for_date
+from services.weekly_public_hours import today_hours_for_place
 
 PLACE_SNAPSHOT_TTL_SECONDS = 60
-PLACE_SNAPSHOT_CACHE_VERSION = "v2"
+PLACE_SNAPSHOT_CACHE_VERSION = "v6"
+
+# Visitor realtime counts from transport.tamu.edu (CCG, PRG, SBG, UCG, WCG)
+VISITOR_GARAGE_CODE_BY_PLACE_ID: Dict[str, str] = {
+    "osm:way:91100311": "CCG",
+    "garage-polo": "PRG",
+    "osm:way:450686873": "SBG",
+    "garage-university-center": "UCG",
+    "garage-west-campus": "WCG",
+}
+
+# Matches Texas A&M Transportation visitor garage names (realtime.aspx)
+VISITOR_GARAGE_FULL_NAME_BY_CODE: Dict[str, str] = {
+    "CCG": "Central Campus Garage",
+    "PRG": "Polo Road Garage",
+    "SBG": "Stallings Blvd Garage",
+    "UCG": "University Center Garage",
+    "WCG": "West Campus Garage",
+}
 
 
 def _prefer_place_type(base_type: str, live_type: str | None) -> str:
@@ -75,13 +98,88 @@ def _merge_operational_state(locations: Dict[str, Dict[str, Any]]) -> None:
                 "is_live": bool(row.get("is_live")),
                 "available_seats": row.get("available_seats"),
                 "coord": {"lat": resolved_place["lat"], "lng": resolved_place["lng"]},
-                "hours": row.get("hours") or existing.get("hours"),
+                "hours": existing.get("hours") or row.get("hours"),
                 "description": existing.get("description") or row.get("description"),
                 "features": existing.get("features") or resolved_place.get("features"),
                 "current_event": row.get("current_event") or existing.get("current_event"),
                 "source": existing.get("source") or "snapshot",
             }
         )
+        if row.get("capacity") is not None:
+            existing["capacity"] = row.get("capacity")
+        if row.get("current_count") is not None:
+            existing["current_count"] = row.get("current_count")
+
+
+def _merge_visitor_parking_counts(
+    locations: Dict[str, Dict[str, Any]],
+    counts: Dict[str, int],
+    fetched_at: str | None,
+    source_url: str | None,
+) -> None:
+    if not counts:
+        return
+    for place_id, code in VISITOR_GARAGE_CODE_BY_PLACE_ID.items():
+        loc = locations.get(place_id)
+        if not loc:
+            continue
+        val = counts.get(code)
+        if val is None:
+            continue
+        loc["visitor_parking_available"] = val
+        loc["visitor_parking_code"] = code
+        loc["visitor_parking_garage_name"] = VISITOR_GARAGE_FULL_NAME_BY_CODE.get(code)
+        loc["visitor_parking_as_of"] = fetched_at
+        loc["visitor_parking_source_url"] = source_url
+
+
+def _annotate_hours_today(locations: Dict[str, Dict[str, Any]]) -> None:
+    chi = ZoneInfo("America/Chicago")
+    now_chi = datetime.now(chi)
+    day_name = now_chi.strftime("%A")
+    date_str = now_chi.strftime("%Y-%m-%d")
+    notice = holiday_hours_notice_for_date(now_chi.date())
+
+    for loc in locations.values():
+        typ = loc.get("type") or "General"
+        place_id = loc.get("placeId")
+
+        slot: str | None = None
+        if typ == "Rec":
+            fac_key = REC_PLACE_ID_TO_FACILITY_KEY.get(place_id or "")
+            if fac_key:
+                wh = weekly_payload_for_facility_key(fac_key, now_chi)
+                slot = wh.get("today_hours") or "Check official facility page"
+        elif typ == "Dining":
+            weekly_slot = today_hours_for_place(
+                place_id=place_id,
+                place_type=typ,
+                registry_hours=loc.get("hours"),
+                now_weekday_name=day_name,
+            )
+            live = fetch_dining_periods_summary(place_id or "", date_str) if place_id else None
+            if live and live.get("line_with_times"):
+                slot = live["line_with_times"]
+            elif live and live.get("period_names"):
+                joined = ", ".join(live["period_names"])
+                if weekly_slot:
+                    slot = f"{weekly_slot} | Meal periods today: {joined}"
+                else:
+                    slot = f"Meal periods today: {joined}"
+            else:
+                slot = weekly_slot
+        else:
+            slot = today_hours_for_place(
+                place_id=place_id,
+                place_type=typ,
+                registry_hours=loc.get("hours"),
+                now_weekday_name=day_name,
+            )
+
+        if slot:
+            loc["hours_today"] = f"{day_name} (Central Time): {slot}"
+        if notice and typ in {"Rec", "Library", "Dining", "Parking", "Hub"}:
+            loc["hours_holiday_notice"] = notice
 
 
 def get_places_map_snapshot() -> Dict[str, Any]:
@@ -92,12 +190,20 @@ def get_places_map_snapshot() -> Dict[str, Any]:
 
     locations = _base_locations()
     _merge_operational_state(locations)
+    parking_block = parking_realtime_service.snapshot_block()
+    _merge_visitor_parking_counts(
+        locations,
+        parking_block.get("garages") or {},
+        parking_block.get("fetched_at"),
+        parking_block.get("source_url"),
+    )
+    _annotate_hours_today(locations)
 
     ordered_locations: List[Dict[str, Any]] = sorted(
         locations.values(),
         key=lambda location: (
             1 if location.get("searchOnly") else 0,
-            0 if location["type"] in {"Hub", "Dining", "Library", "Rec"} else 1,
+            0 if location["type"] in {"Hub", "Dining", "Library", "Rec", "Parking"} else 1,
             location["location"],
         ),
     )

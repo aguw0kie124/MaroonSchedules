@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import List, Optional
 
 import psycopg
@@ -29,7 +30,11 @@ from routers.upload import UPLOAD_DIR
 from routers.upload import router as upload_router
 from services import cache_service, course_service, schedule_service, snapshot_jobs, user_service
 
-load_dotenv(override=True)
+# Same source of truth as Expo: repo-root .env, then optional Backend/.env for local-only keys.
+_BACKEND_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _BACKEND_DIR.parent
+load_dotenv(_REPO_ROOT / ".env", override=True)
+load_dotenv(_BACKEND_DIR / ".env", override=False)
 
 app = FastAPI(
     docs_url=None,

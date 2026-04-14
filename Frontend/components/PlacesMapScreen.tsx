@@ -328,7 +328,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     isLoading: isLoadingPulse,
     refetch: refetchPulse,
   } = useQuery({
-    queryKey: ['campus-pulse', user?.id],
+    queryKey: ['campus-pulse', user?.id, API_URL],
     queryFn: async () => {
       const { hotspots: rawHotspots } = await fetchCampusPulseMap(60, {
         clerkId: user?.id || undefined,
@@ -363,8 +363,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
       });
     },
     enabled: activeLayer === 'Pulse' || !!pulsePlacesRef.current.length,
-    staleTime: 1000 * 30,
-    refetchInterval: 15000,
+    staleTime: 0,
+    gcTime: 0,
+    refetchInterval: 30000, // 30 seconds
   });
   // isLoadingPulse is now handled by useQuery
   // const [isLoadingPulse, setIsLoadingPulse] = useState(false);
@@ -573,10 +574,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // ── Derived map locations ─────────────────────────────────
   const allMapLocations = useMemo(() => {
+    // API `locations` must merge last: schedule rows set percent_full: 0 and omit hours_today /
+    // visitor_parking_* and would otherwise overwrite live campus map snapshot fields.
     return mergeCampusLocations(
-      locations,
       scheduleLocations as CampusLocation[],
       dynamicSearchLocations,
+      locations,
     );
   }, [dynamicSearchLocations, locations, scheduleLocations]);
 
@@ -702,6 +705,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   } = usePlacesSelection({
     allMapLocations,
     setActiveLayer,
+    currentLayer: activeLayer,
     onAfterSelectLocation: useCallback((loc: CampusLocation) => {
       // Integration for Pulse layer: selecting a location from the list or search
       // should trigger the corresponding hotspot sheet if it exists
@@ -2261,7 +2265,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
         )}
         {activeLayer === "Pulse" &&
           pulseHotspots.filter(h => h && h.coord).map((hotspot) => {
-            const isSelected = hotspot.id === selectedHotspotId;
             return (
               <MapMarker
                 key={hotspot.id}
@@ -2272,18 +2275,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 }}
                 onPress={() => handleSelectHotspot(hotspot)}
                 anchor={{ x: 0.5, y: 0.5 }}
+                tracksViewChanges={false}
               >
-                <View
-                  style={[
-                    styles.pulseMarkerWrap,
-                    { transform: [{ scale: isSelected ? 1.08 : 1 }] },
-                  ]}
-                >
+                <View style={styles.pulseMarkerWrap}>
                   <View
                     style={[
                       styles.pulseMarkerGlowOuter,
                       {
-                        backgroundColor: `${hotspot.pulseColor}${isSelected ? "20" : "16"}`,
+                        backgroundColor: `${hotspot.pulseColor}16`,
                       },
                     ]}
                   />
@@ -2292,7 +2291,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                       style={[
                         styles.pulseMarkerGlowMid,
                         {
-                          backgroundColor: `${hotspot.pulseColor}${isSelected ? "2E" : "24"}`,
+                          backgroundColor: `${hotspot.pulseColor}24`,
                         },
                       ]}
                     />
@@ -2300,7 +2299,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                       style={[
                         styles.pulseMarkerGlowInner,
                         {
-                          backgroundColor: `${hotspot.pulseColor}${isSelected ? "45" : "36"}`,
+                          backgroundColor: `${hotspot.pulseColor}36`,
                         },
                       ]}
                     />
@@ -2311,7 +2310,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                           backgroundColor: isDark
                             ? "rgba(255,255,255,0.16)"
                             : "rgba(255,255,255,0.34)",
-                          borderColor: `${hotspot.pulseColor}${isSelected ? "70" : "58"}`,
+                          borderColor: `${hotspot.pulseColor}58`,
                         },
                       ]}
                     >

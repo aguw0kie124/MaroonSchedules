@@ -5,6 +5,7 @@ from models.base import SanitizedBaseModel
 from rate_limit import limiter
 
 from services import campus_hub_service, campus_places_service, place_registry_service, pulse_service
+from services.parking_realtime_service import snapshot_block as parking_snapshot_block
 from auth.clerk_middleware import require_auth, optional_auth, ensure_matching_user
 
 router = APIRouter(prefix="/campus", tags=["Campus Hub"])
@@ -135,6 +136,13 @@ def get_places_map(request: Request):
     return campus_places_service.get_places_map_snapshot()
 
 
+@router.get("/places/parking-realtime")
+@limiter.limit("120/minute")
+def get_places_parking_realtime(request: Request):
+    """Fresh visitor garage counts (not cached with the places map snapshot)."""
+    return parking_snapshot_block()
+
+
 @router.get("/places/{place_id}/detail")
 @limiter.limit("100/minute")
 def get_place_detail(request: Request, place_id: str):
@@ -147,17 +155,24 @@ def get_pulse_map(
     request: Request,
     limit: int = Query(60, ge=1, le=100),
     clerk_id: Optional[str] = Query(default=None),
+    refresh: bool = Query(default=False),
     auth_user_id: Optional[str] = Depends(optional_auth),
 ):
-    if clerk_id:
-        if not auth_user_id:
-            raise HTTPException(status_code=401, detail="Authentication required")
+    print(f"[PULSE_DEBUG] Request for pulse map: clerk_id={clerk_id}, auth_user_id={auth_user_id}")
+    # Soft guard: If clerk_id is passed but auth fails, we just don't personalize.
+    # This avoids 401s for public map data.
+    effective_clerk_id = clerk_id
+    if clerk_id and not auth_user_id:
+        print(f"[PULSE_DEBUG] clerk_id provided without auth; falling back to anonymous pulse map.")
+        effective_clerk_id = None
+    elif clerk_id and auth_user_id:
         ensure_matching_user(
             auth_user_id,
             clerk_id,
             detail="You can only request your own personalized pulse map",
         )
-    return pulse_service.get_pulse_map(limit=limit, clerk_id=clerk_id)
+    
+    return pulse_service.get_pulse_map(limit=limit, clerk_id=effective_clerk_id, force_refresh=refresh)
 
 
 @router.post("/events/rsvp")

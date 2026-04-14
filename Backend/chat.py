@@ -128,14 +128,40 @@ async def list_users(request: Request, exclude_id: str = "", _auth_user_id: str 
 
 # --- Feed Proxy (Now 100% Native) ---
 
+def _resolve_access_scope_cached(clerk_id: Optional[str]) -> tuple[List[str], bool]:
+    """Retrieves user tags and admin status with Redis caching (5 min TTL)."""
+    if not clerk_id:
+        return [], False
+    
+    cache_key = f"auth:access_scope:{clerk_id}"
+    cached = cache_service.get_json(cache_key)
+    if cached:
+        return cached["tags"], cached["is_admin"]
+    
+    # Cache miss
+    from repositories import tag_repository, user_repository
+    profile = user_repository.get_user(clerk_id) or {}
+    try:
+        user_tags = tag_repository.get_user_tags(clerk_id)
+    except Exception as exc:
+        print(f"[chat] failed to load user tags for {clerk_id}: {exc}")
+        user_tags = []
+    
+    is_admin = bool(profile.get("is_admin"))
+    result = {"tags": user_tags, "is_admin": is_admin}
+    cache_service.set_json(cache_key, result, ttl_seconds=300)
+    return user_tags, is_admin
+
+
 @router.get("/feeds/proxy/{feed_group}/{feed_id}")
 @limiter.limit("120/minute")
 async def proxy_get_feed(
     request: Request,
     feed_group: str,
     feed_id: str,
-    limit: int = 25,
-    clerk_id: Optional[str] = Header(None, alias="X-Clerk-User-Id"),
+    limit: int = Query(25, ge=1, le=100),
+    clerk_id: Optional[str] = Query(None),
+    refresh: bool = Query(False),
     auth_user_id: Optional[str] = Depends(optional_auth),
 ):
     """Fetch feed activities natively (Postgres) with Redis Backbone caching."""
@@ -144,11 +170,18 @@ async def proxy_get_feed(
         if auth_user_id and clerk_id:
             ensure_matching_user(auth_user_id, clerk_id, detail="Feed identity header does not match the signed-in user")
         resolved_user_id = auth_user_id or clerk_id
-        user_access_tags, bypass_access_restrictions = _resolve_access_scope(resolved_user_id)
+        user_access_tags, bypass_access_restrictions = _resolve_access_scope_cached(resolved_user_id)
 
         # 1. Check Backbone Cache
         cache_key = f"feed:backbone:{feed_group}:{feed_id}"
-        backbone = cache_service.get_json(cache_key)
+        if feed_id == "for_u" and resolved_user_id:
+            cache_key = f"feed:backbone:{feed_group}:for_u:{resolved_user_id}"
+            
+        if refresh:
+            cache_service.delete(cache_key)
+            backbone = None
+        else:
+            backbone = cache_service.get_json(cache_key)
         
         raw_items = []
         if backbone:
@@ -156,16 +189,21 @@ async def proxy_get_feed(
         else:
             # Backbone Miss - Fetch from DB (unfiltered by user)
             if feed_group == "flat":
-                if feed_id.startswith("place_review_"):
+                if feed_id == "for_u":
+                    if resolved_user_id:
+                        raw_items = feed_repository.get_tailored_feed_for_user(resolved_user_id, limit=limit*2)
+                    else:
+                        raw_items = feed_repository.get_crowdping_feed(post_types=['ping', 'post'], limit=limit*2)
+                elif feed_id.startswith("place_review_"):
                     place_id = feed_id.replace("place_review_", "")
-                    raw_items = feed_repository.get_place_reviews(place_id, limit=limit*2) # Get extra for filtering headroom
+                    raw_items = feed_repository.get_place_reviews(place_id, limit=limit*2)
                 elif feed_id in ["campus_global", "campus_pings", "reels_global"]:
                     post_types = ['post', 'reel', 'ping']
                     if feed_id == "campus_pings": post_types = ['ping', 'post']
                     elif feed_id == "reels_global": post_types = ['reel']
                     raw_items = feed_repository.get_crowdping_feed(post_types=post_types, limit=limit*2)
             
-            # Store in Backbone Cache (60s TTL for active session freshness)
+            # Keep the feed warm, but refresh often enough that recent pings don't disappear.
             if raw_items:
                 cache_service.set_json(cache_key, raw_items, ttl_seconds=60)
 
@@ -184,15 +222,20 @@ async def proxy_get_feed(
         ids_to_hydrate = [item["id"] for item in final_list]
         interaction_map = feed_repository.get_batch_interaction_counts(ids_to_hydrate)
         
+        # Batch fetch own reactions for the user (Fix N+1)
+        user_reactions_map = {}
+        if resolved_user_id:
+            user_reactions_map = feed_repository.get_user_interactions_batch(resolved_user_id, ids_to_hydrate)
+        
         results = []
         for item in final_list:
             pid = item["id"]
             # Detect own reactions for this specific caller
             own_reactions = {}
-            if resolved_user_id:
-                post_type = item.get("post_type") or ("review" if feed_id.startswith("place_review_") else "post")
-                all_ints = feed_repository.get_post_interactions(pid, post_type)
-                own_reactions = {i["interaction_type"]: [True] for i in all_ints if i["user_id"] == resolved_user_id}
+            user_reactions = user_reactions_map.get(pid, {})
+            # Format reactions for frontend Stream compatibility
+            for r_type in user_reactions:
+                own_reactions[r_type] = [True]
             
             if feed_id.startswith("place_review_"):
                 results.append(_transform_review_to_activity(item, interaction_map.get(pid, {}), own_reactions))

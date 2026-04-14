@@ -1,5 +1,6 @@
 import { getPremiumName, getPremiumImage } from '../utils/userUtils';
 import { apiFetch } from '../api/client';
+import { API_KEY } from '../config';
 
 function warnFeedRead(scope: string, e: unknown) {
   if (__DEV__) {
@@ -10,11 +11,16 @@ function warnFeedRead(scope: string, e: unknown) {
 let connectedUserId: string | null = null;
 let currentFullUser: any | null = null;
 
-async function feedFetch(path: string, init: RequestInit = {}, timeoutMs?: number) {
-  const headers = {
-    ...(init.headers || {}),
+function getFeedHeaders(extraHeaders: HeadersInit = {}) {
+  return {
+    ...(extraHeaders || {}),
+    ...(API_KEY ? { 'x-api-key': API_KEY } : {}),
     ...(connectedUserId ? { 'X-Clerk-User-Id': connectedUserId } : {}),
   };
+}
+
+async function feedFetch(path: string, init: RequestInit = {}, timeoutMs?: number) {
+  const headers = getFeedHeaders(init.headers || {});
   return apiFetch(path, { ...init, headers }, timeoutMs);
 }
 
@@ -105,7 +111,7 @@ export async function getCampusFeed(limit = 25): Promise<any[]> {
 
 export async function getPingFeed(limit = 40): Promise<any[]> {
   try {
-    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?limit=${limit}`, {}, 15000);
+    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?limit=${limit}&refresh=true`, {}, 15000);
     if (!res.ok) throw new Error('Proxy Fetch Error');
     const data = await res.json();
     return data.results || [];

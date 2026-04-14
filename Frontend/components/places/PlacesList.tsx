@@ -328,11 +328,16 @@ export function PlacesList({
     const recreationFacility =
       recreationFacilityMap.get(getCanonicalLocationName(loc.location)) || null;
     const isCapacityType = loc.type === "Rec" || loc.type === "Library";
+    const hoursForList =
+      loc.hours_today ||
+      loc.hours ||
+      recreationFacility?.today_hours ||
+      recreationFacility?.hours_hint;
     const primaryMeta = loc.classMeetings?.length
       ? `${loc.classMeetings.length} class${loc.classMeetings.length === 1 ? "" : "es"}`
       : isCapacityType
-        ? `${loc.percent_full != null ? `${loc.percent_full}% full` : loc.hours || recreationFacility?.today_hours || recreationFacility?.hours_hint || "Hours available"}`
-        : loc.hours || loc.type;
+        ? `${loc.percent_full != null ? `${loc.percent_full}% full` : hoursForList || "Hours available"}`
+        : loc.hours_today || loc.hours || loc.type;
     const secondaryMeta =
       loc.type === "Parking"
         ? parkingRecommendation?.badge || null

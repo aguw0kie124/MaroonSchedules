@@ -428,6 +428,12 @@ function classifyCategory(event: TAMUEvent): ExploreCategory {
   return 'Miscellaneous';
 }
 
+function getDisplayCategory(event: TAMUEvent): ExploreCategory {
+  if (isFeaturedContent(event)) return 'Featured';
+  if (event._forYouMatched) return 'For U';
+  return event._category || classifyCategory(event);
+}
+
 function getSocialMode(event: TAMUEvent): SocialMode {
   const blob = event._searchBlob || getSearchBlob(event);
   if (/\bcareer\b|\bnetworking\b|\bprofessional\b|\bresume\b|\binterview\b|\bcompany\b|\brecruit\b|\bworkshop\b|\bpanel\b/.test(blob)) {
@@ -1021,8 +1027,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     isError,
     error,
   } = useQuery({
-    queryKey: ['campus-events', user?.id],
-    placeholderData: (prev) => prev,
+    queryKey: ['campus-events', user?.id, API_URL],
     queryFn: async () => {
       const params = new URLSearchParams({
         limit: '1000',
@@ -1084,7 +1089,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         })
         .sort((a, b) => a.date_ts - b.date_ts);
     },
-    staleTime: 1000 * 60 * 5, // 5 mins
+    staleTime: 0,
+    gcTime: 0,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
@@ -1133,7 +1139,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const {
     data: preferredEventCategories,
   } = useQuery({
-    queryKey: ['user-event-categories', user?.id],
+    queryKey: ['user-event-categories', user?.id, API_URL],
     enabled: !!user?.id,
     queryFn: async () => {
       const profile = await fetchUserProfile(user!.id);
@@ -1144,7 +1150,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const {
     data: preferredSocialMode,
   } = useQuery({
-    queryKey: ['user-social-mode', user?.id],
+    queryKey: ['user-social-mode', user?.id, API_URL],
     enabled: !!user?.id,
     queryFn: async () => {
       const profile = await fetchUserProfile(user!.id);
@@ -1155,7 +1161,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const {
     data: preferredTime,
   } = useQuery({
-    queryKey: ['user-preferred-time', user?.id],
+    queryKey: ['user-preferred-time', user?.id, API_URL],
     enabled: !!user?.id,
     queryFn: async () => {
       const profile = await fetchUserProfile(user!.id);
@@ -1316,19 +1322,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       // [RELAXED] Major filtering should not zero-out total category counts.
       // We keep the counts global so users see what is available on campus,
       // and only use the major filter to rank or refine the feed itself.
-      if (event._forYouMatched) {
-        counts['For U'] += 1;
-      }
-      const category = event._category || classifyCategory(event);
-      if (isFeaturedContent(event)) {
-        counts.Featured += 1;
-      }
-      if (category !== 'Featured') {
-        counts[category] += 1;
-      } else if (!isFeaturedContent(event)) {
-        // Fallback for safety, though classifyCategory should not return Featured now
-        counts.Miscellaneous += 1;
-      }
+      const category = getDisplayCategory(event);
+      counts[category] += 1;
     });
 
     return counts;
@@ -1339,6 +1334,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       Array.from(selectedCategories).filter(
         (category): category is StandardExploreCategory => category !== 'For U' && category !== 'Featured',
       ),
+    [selectedCategories],
+  );
+
+  const selectedCategoryPriority = useMemo(
+    () => ALL_CATEGORIES.filter((category) => selectedCategories.has(category)),
     [selectedCategories],
   );
 
@@ -1357,8 +1357,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     if (deferredSearchQuery.trim()) {
       const q = deferredSearchQuery.toLowerCase();
       next = next.filter((event) => {
-        // "Steel Curtain" for admin/featured events: they bypass search if Featured tab is selected
-        if (isFeaturedSelected && isFeaturedContent(event)) return true;
         return (event._searchBlob || getSearchBlob(event)).includes(q);
       });
     }
@@ -1372,31 +1370,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       );
     }
 
-    // Apply category filters with Featured union semantics:
-    // When Featured is active, admin events always pass through regardless of other filters
-    const hasNonFeaturedFilters = isForYouSelected || standardSelectedCategories.length > 0;
-
-    if (hasNonFeaturedFilters) {
-      next = next.filter((event) => {
-        if (isFeaturedSelected && isFeaturedContent(event)) return true;
-
-        const category = event._category || classifyCategory(event);
-
-        if (isForYouSelected && event._forYouMatched) return true;
-
-        if (standardSelectedCategories.length > 0) {
-          return category !== 'For U' && category !== 'Featured' && standardSelectedCategories.includes(category);
-        }
-
-        return false;
-      });
-    } else if (isFeaturedSelected) {
-      next = next.filter((event) => isFeaturedContent(event));
-    }
+    next = next.filter((event) => selectedCategories.has(getDisplayCategory(event)));
 
     if (standardSelectedCategories.includes('Social')) {
       next = next.filter((event) => {
-        const category = event._category || classifyCategory(event);
+        const category = getDisplayCategory(event);
         return category !== 'Social' || (event._socialMode || getSocialMode(event)) === socialMode;
       });
     }
@@ -1404,15 +1382,18 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     next = next.filter((event) => !dislikedEventIds.includes(String(event.id)));
 
     next = [...next].sort((left, right) => {
-      // 1. Priority to Featured content if Featured tab is selected
-      if (isFeaturedSelected) {
-        const leftF = isFeaturedContent(left) ? 1 : 0;
-        const rightF = isFeaturedContent(right) ? 1 : 0;
-        if (leftF !== rightF) return rightF - leftF;
+      const leftCategory = getDisplayCategory(left);
+      const rightCategory = getDisplayCategory(right);
+      const leftCategoryRank = selectedCategoryPriority.indexOf(leftCategory);
+      const rightCategoryRank = selectedCategoryPriority.indexOf(rightCategory);
+
+      // 1. Respect the order of the active chips.
+      if (leftCategoryRank !== rightCategoryRank) {
+        return leftCategoryRank - rightCategoryRank;
       }
 
-      // 2. Personalization score priority if For U is selected
-      if (isForYouSelected) {
+      // 2. Personalization score priority within For U.
+      if (leftCategory === 'For U' && rightCategory === 'For U' && selectedCategories.has('For U')) {
         const leftScore =
           left._forYouScore ??
           getPersonalizationScore(
@@ -1437,7 +1418,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         if (Math.abs(scoreDiff) > 1) return scoreDiff;
       }
 
-      // 3. Chronological tie-breaker
+      // 3. Chronological tie-breaker within the same visible category.
       return left.date_ts - right.date_ts;
     });
 
@@ -1447,12 +1428,12 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     personalizedEvents,
     isFeaturedSelected,
     isMajorSpecific,
-    isForYouSelected,
     nowTs,
     normalizedPreferenceCategories,
     deferredSearchQuery,
     preferredSocialMode,
     preferredTime,
+    selectedCategoryPriority,
     selectedCategories,
     selectedMajor,
     socialMode,
@@ -1465,7 +1446,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const swipeDeck = useMemo(() => {
     if (standardSelectedCategories.length === 0) return filteredUpcomingEvents;
     return filteredUpcomingEvents.filter((event) => {
-      const category = event._category || classifyCategory(event);
+      const category = getDisplayCategory(event);
       return category !== 'For U' && (standardSelectedCategories as ExploreCategory[]).includes(category);
     });
   }, [filteredUpcomingEvents, standardSelectedCategories]);
@@ -1774,7 +1755,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
       const idsToRestore = dislikedEventIds.filter((id) => {
         const event = personalizedEvents.find((candidate) => String(candidate.id) === id);
-        return event && classifyCategory(event) === category;
+        return event && getDisplayCategory(event) === category;
       });
       if (idsToRestore.length > 0) {
         removeIdsFromDisliked(idsToRestore);
@@ -2069,7 +2050,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                     {isError ? (
                       <AlertCircle size={48} color={COLORS.error || '#FF4D4D'} />
                     ) : (
-                      <SearchX size={48} color={COLORS.textTertiary} />
+                      <Search size={48} color={COLORS.textTertiary} />
                     )}
                   </View>
                   <Text style={s.emptyTitle}>
@@ -2291,7 +2272,7 @@ function HeroEventCard({
   onPress: () => void;
   onMap: () => void;
 }) {
-  const category = classifyCategory(event);
+  const category = getDisplayCategory(event);
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
   const eventImage = getEventImage(event as any);
@@ -2436,7 +2417,7 @@ function ListEventRow({
 }) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
-  const category = classifyCategory(event);
+  const category = getDisplayCategory(event);
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
 
@@ -2657,7 +2638,7 @@ function SettingsModal({
             {ALL_CATEGORIES.map((category) => {
               const count = dislikedEventIds.filter((id) => {
                 const event = events.find((candidate) => String(candidate.id) === id);
-                return event && classifyCategory(event) === category;
+                return event && getDisplayCategory(event) === category;
               }).length;
               if (!count) return null;
               return (
@@ -2716,6 +2697,8 @@ function DetailModal({
 
   if (!event) return null;
 
+  const category = getDisplayCategory(event);
+
   return (
     <Animated.View style={[StyleSheet.absoluteFill, { zIndex: 100, elevation: 100, justifyContent: 'flex-end' }]} pointerEvents="box-none">
       <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]} onPress={onClose} />
@@ -2735,16 +2718,16 @@ function DetailModal({
             <View
               style={[
                 stylesStatic.detailCategoryPill,
-                { backgroundColor: CATEGORY_META[classifyCategory(event)].chipBg },
+                { backgroundColor: CATEGORY_META[category].chipBg },
               ]}
             >
               <Text
                 style={[
                   stylesStatic.detailCategoryText,
-                  { color: CATEGORY_META[classifyCategory(event)].chipText },
+                  { color: CATEGORY_META[category].chipText },
                 ]}
               >
-                {classifyCategory(event)}
+                {category}
               </Text>
             </View>
             {!isGuest ? (

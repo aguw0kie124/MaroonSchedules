@@ -1,12 +1,10 @@
-from __future__ import annotations
-
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from services import place_registry_service
 
 
-def _parse_iso(iso_value: str | None) -> datetime | None:
+def _parse_iso(iso_value: Optional[str]) -> Optional[datetime]:
     if not iso_value:
         return None
     try:
@@ -15,7 +13,7 @@ def _parse_iso(iso_value: str | None) -> datetime | None:
         return None
 
 
-def _coerce_iso(iso_value: str | None, fallback: datetime) -> str:
+def _coerce_iso(iso_value: Optional[str], fallback: datetime) -> str:
     parsed = _parse_iso(iso_value)
     if parsed:
         return parsed.isoformat()

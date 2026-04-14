@@ -153,6 +153,10 @@ export function AdminMapPoster() {
       Alert.alert('Incomplete', `Please provide a ${postKind} title.`);
       return;
     }
+    if (!address.trim()) {
+      Alert.alert('Location Required', 'Please provide a campus building, room, or general location.');
+      return;
+    }
 
     setLoading(true);
     try {

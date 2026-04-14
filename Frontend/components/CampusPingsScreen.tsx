@@ -22,11 +22,11 @@ import {
   TouchableWithoutFeedback,
   View,
 } from 'react-native';
-import Animated, {
+import Animated, { 
   FadeIn,
   FadeOut,
   SlideInDown,
-  SlideOutDown
+  SlideOutDown 
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation } from '@react-navigation/native';
@@ -247,9 +247,9 @@ function haversineDistanceMeters(
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos(toRad(fromLat)) *
-    Math.cos(toRad(toLat)) *
-    Math.sin(dLng / 2) *
-    Math.sin(dLng / 2);
+      Math.cos(toRad(toLat)) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
   return earthRadiusMeters * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -402,7 +402,7 @@ export function CampusPingsScreen() {
     isLoading: loadingFeatured,
     refetch: refetchFeatured,
   } = useQuery({
-    queryKey: ['campus-featured'],
+    queryKey: ['campus-featured', API_URL],
     queryFn: async () => {
       const res = await fetch(`${API_URL}/campus/events?limit=12`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -427,7 +427,7 @@ export function CampusPingsScreen() {
   const {
     data: userProfiles = [],
   } = useQuery({
-    queryKey: ['campus-chat-directory'],
+    queryKey: ['campus-chat-directory', API_URL],
     queryFn: async () => {
       try {
         const res = await fetch(`${API_URL}/chat/users`);
@@ -454,7 +454,7 @@ export function CampusPingsScreen() {
     refetch: refetchPings,
     isRefetching: refreshingPings,
   } = useQuery({
-    queryKey: ['campus-pings'],
+    queryKey: ['campus-pings', API_URL],
     queryFn: async () => {
       const activities = await getPingFeed(60);
       return (activities || []).map((a: any) => mapActivityToPing(a, user, userMap));
@@ -824,11 +824,11 @@ export function CampusPingsScreen() {
       const finalKind = currentVote === direction ? 'none' : targetKind;
 
       // Optimistic Update
-      const previousPings = queryClient.getQueryData<PingCard[]>(['campus-pings']);
+      const previousPings = queryClient.getQueryData<PingCard[]>(['campus-pings', API_URL]);
       if (previousPings) {
         const newPings = previousPings.map(p => {
           if (p.id !== ping.id) return p;
-
+          
           let scoreAdjustment = 0;
           if (finalKind === 'none') {
             scoreAdjustment = -currentVote; // Remove old vote
@@ -844,7 +844,7 @@ export function CampusPingsScreen() {
             score: (p.score || 0) + scoreAdjustment
           };
         });
-        queryClient.setQueryData(['campus-pings'], newPings);
+        queryClient.setQueryData(['campus-pings', API_URL], newPings);
       }
 
       try {
@@ -856,7 +856,7 @@ export function CampusPingsScreen() {
         console.warn('[Pings] vote failed', error);
         // Rollback
         if (previousPings) {
-          queryClient.setQueryData(['campus-pings'], previousPings);
+          queryClient.setQueryData(['campus-pings', API_URL], previousPings);
         }
       }
     },
@@ -874,7 +874,7 @@ export function CampusPingsScreen() {
           onPress: async () => {
             try {
               await deletePing(ping.activityId!);
-              queryClient.setQueryData(['campus-pings'], (current: PingCard[] | undefined) => {
+              queryClient.setQueryData(['campus-pings', API_URL], (current: PingCard[] | undefined) => {
                 if (!current) return current;
                 return current.filter((entry) => entry.id !== ping.id);
               });
@@ -1078,15 +1078,15 @@ export function CampusPingsScreen() {
                     item.userVote === 1 && { backgroundColor: hasImage ? 'rgba(74, 222, 128, 0.3)' : '#4ADE8020' }
                   ]}
                 >
-                  <ArrowBigUp
-                    size={22}
-                    color={item.userVote === 1 ? '#4ADE80' : (hasImage ? '#FFFFFF' : COLORS.textTertiary)}
+                  <ArrowBigUp 
+                    size={22} 
+                    color={item.userVote === 1 ? '#4ADE80' : (hasImage ? '#FFFFFF' : COLORS.textTertiary)} 
                     fill={item.userVote === 1 ? '#4ADE80' : 'transparent'}
                   />
                 </ScalePressable>
-
+                
                 <Text style={[
-                  styles.pingVoteCount,
+                  styles.pingVoteCount, 
                   hasImage && { color: '#FFFFFF' },
                   item.userVote !== 0 && { color: item.userVote === 1 ? '#4ADE80' : '#FF4D6D', fontWeight: '800' }
                 ]}>
@@ -1100,15 +1100,15 @@ export function CampusPingsScreen() {
                     item.userVote === -1 && { backgroundColor: hasImage ? 'rgba(255, 77, 109, 0.3)' : '#FF4D6D20' }
                   ]}
                 >
-                  <ArrowBigDown
-                    size={22}
-                    color={item.userVote === -1 ? '#FF4D6D' : (hasImage ? '#FFFFFF' : COLORS.textTertiary)}
+                  <ArrowBigDown 
+                    size={22} 
+                    color={item.userVote === -1 ? '#FF4D6D' : (hasImage ? '#FFFFFF' : COLORS.textTertiary)} 
                     fill={item.userVote === -1 ? '#FF4D6D' : 'transparent'}
                   />
                 </ScalePressable>
               </View>
 
-              <ScalePressable
+              <ScalePressable 
                 style={[styles.pingSecondaryAction, hasImage && { backgroundColor: 'rgba(0,0,0,0.4)', borderColor: 'rgba(255,255,255,0.1)' }]}
                 onPress={() => savePingToPlans(item)}
               >
@@ -1117,7 +1117,7 @@ export function CampusPingsScreen() {
               </ScalePressable>
 
               {canDelete && (
-                <ScalePressable
+                <ScalePressable 
                   style={[styles.pingSecondaryAction, hasImage && { backgroundColor: 'rgba(0,0,0,0.4)', borderColor: 'rgba(255,255,255,0.1)' }]}
                   onPress={() => handleDeletePing(item)}
                 >
@@ -1172,10 +1172,10 @@ export function CampusPingsScreen() {
           const meta =
             option === 'All'
               ? {
-                id: 'All',
-                accent: COLORS.primary,
-                Icon: Sparkles,
-              }
+                  id: 'All',
+                  accent: COLORS.primary,
+                  Icon: Sparkles,
+                }
               : categoryMeta(option);
           const Icon = meta.Icon;
           return (
@@ -1393,7 +1393,7 @@ export function CampusPingsScreen() {
                           style={[
                             styles.composerSearchAction,
                             (composerGeoLocation || isResolvingCurrentLocation) &&
-                            styles.composerSearchActionActive,
+                              styles.composerSearchActionActive,
                           ]}
                           onPress={handleUseCurrentLocation}
                           disabled={isResolvingCurrentLocation}
@@ -1591,7 +1591,7 @@ export function CampusPingsScreen() {
 
 const getStyles = (theme: any) => {
   const COLORS = theme.COLORS;
-
+  
   return StyleSheet.create({
     container: {
       flex: 1,

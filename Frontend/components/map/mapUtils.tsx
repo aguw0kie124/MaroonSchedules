@@ -242,17 +242,24 @@ export function MapMarker({
   coordinate,
   anchor,
   onPress,
+  tracksViewChanges,
   children,
 }: {
   id: string;
   coordinate: MapCoordinate;
   anchor?: { x: number; y: number };
   onPress?: () => void;
+  tracksViewChanges?: boolean;
   allowOverlap?: boolean;
   children: ReactElement;
 }) {
   return (
-    <Marker coordinate={toLatLng(coordinate)} anchor={anchor} onPress={onPress}>
+    <Marker
+      coordinate={toLatLng(coordinate)}
+      anchor={anchor}
+      onPress={onPress}
+      tracksViewChanges={tracksViewChanges}
+    >
       {children}
     </Marker>
   );

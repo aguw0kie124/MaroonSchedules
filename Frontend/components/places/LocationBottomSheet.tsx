@@ -29,6 +29,7 @@ import {
   ChevronUp,
   ChevronDown,
   Leaf,
+  Clock,
 } from "lucide-react-native";
 import { useUser } from "@clerk/clerk-expo";
 import { PillTabs } from "../PillTabs";
@@ -320,6 +321,15 @@ export function LocationBottomSheet({
   const occupancyToneColor = selectedLoc
     ? getStatusColor(occupancyPercent)
     : COLORS.primary;
+  const occupancyCountLabel = useMemo(() => {
+    if (!selectedLoc || !isCapacityPlace) return null;
+    const cap = selectedLoc.capacity;
+    const cur = selectedLoc.current_count;
+    if (cap != null && cur != null && cap > 0) {
+      return `About ${cur.toLocaleString()} of ${cap.toLocaleString()} people`;
+    }
+    return null;
+  }, [selectedLoc, isCapacityPlace]);
   const parkingRecommendation = useMemo(() => {
     if (!selectedLoc || selectedLoc.type !== "Parking") return null;
     const lower = selectedLoc.location.toLowerCase();
@@ -336,15 +346,21 @@ export function LocationBottomSheet({
   }, [selectedLoc]);
   const selectedHoursLabel = useMemo(() => {
     if (!selectedLoc) return null;
+    const holiday = selectedLoc.hours_holiday_notice;
+    const suffix = holiday ? ` · ${holiday}` : "";
+    if (selectedLoc.hours_today) {
+      return `${selectedLoc.hours_today}${suffix}`;
+    }
     if (selectedLoc.type === "Rec") {
-      return (
+      const rec =
         selectedRecreationFacility?.today_hours ||
         selectedRecreationFacility?.hours_hint ||
         selectedLoc.hours ||
-        null
-      );
+        null;
+      return rec ? `${rec}${suffix}` : holiday || null;
     }
-    return selectedLoc.hours || null;
+    const base = selectedLoc.hours || null;
+    return base ? `${base}${suffix}` : holiday || null;
   }, [selectedLoc, selectedRecreationFacility]);
   const peekMetaText = useMemo(() => {
     if (!selectedLoc) return "";
@@ -352,7 +368,17 @@ export function LocationBottomSheet({
     if (isCapacityPlace) {
       return `${occupancyPercent}% full`;
     }
+    if (
+      selectedLoc.type === "Parking" &&
+      selectedLoc.visitor_parking_available != null
+    ) {
+      const code = selectedLoc.visitor_parking_code || "";
+      const name = selectedLoc.visitor_parking_garage_name;
+      const label = code && name ? `${code} (${name})` : code || "Garage";
+      return `${label}: ${selectedLoc.visitor_parking_available.toLocaleString()} spaces (live)`;
+    }
     if (selectedHoursLabel) {
+      if (selectedLoc.hours_today) return selectedHoursLabel;
       return selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel;
     }
     if (isFoodCourtHub) {
@@ -391,9 +417,24 @@ export function LocationBottomSheet({
     if (selectedLoc.address) {
       bits.push(selectedLoc.address);
     }
-    if (selectedHoursLabel) {
-      bits.push(selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel);
-    } else if (selectedLoc.current_event) {
+    const hoursDetailTypes = new Set([
+      "Library",
+      "Dining",
+      "Rec",
+      "Parking",
+      "Hub",
+    ]);
+    const hoursShownInCard =
+      !!selectedLoc.hours_today && hoursDetailTypes.has(selectedLoc.type);
+    if (selectedHoursLabel && !hoursShownInCard) {
+      if (selectedLoc.hours_today) {
+        bits.push(selectedHoursLabel);
+      } else {
+        bits.push(selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel);
+      }
+    } else if (!selectedHoursLabel && selectedLoc.current_event) {
+      bits.push(selectedLoc.current_event);
+    } else if (hoursShownInCard && selectedLoc.current_event) {
       bits.push(selectedLoc.current_event);
     }
     if (!bits.length && isFoodCourtHub) {
@@ -705,13 +746,169 @@ export function LocationBottomSheet({
               ) : null}
             </View>
 
-            {!isPeekSheet && parkingRecommendation ? (
+            {!isPeekSheet && selectedLoc.type === "Parking" ? (
+              <View style={[styles.occupancyBlock, { padding: 18 }]}>
+                {selectedLoc.visitor_parking_available != null ? (
+                  <View style={{ marginBottom: 14 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                        marginBottom: 4,
+                      }}
+                    >
+                      <View
+                        style={[styles.heroBadgeDot, { backgroundColor: "#32D74B" }]}
+                      />
+                      <Text
+                        style={[
+                          styles.sectionTitle,
+                          { marginBottom: 0, color: "#32D74B" },
+                        ]}
+                      >
+                        Live Availability
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "baseline",
+                        gap: 6,
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.occupancyLiveText,
+                          {
+                            fontSize: 34,
+                            fontWeight: "900",
+                            color: COLORS.textPrimary,
+                          },
+                        ]}
+                      >
+                        {selectedLoc.visitor_parking_available.toLocaleString()}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.sectionTitle,
+                          {
+                            fontSize: 14,
+                            fontWeight: "800",
+                            color: COLORS.textSecondary,
+                          },
+                        ]}
+                      >
+                        SPACES OPEN
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={{ marginBottom: 14 }}>
+                    <Text style={[styles.sectionTitle, { marginBottom: 4 }]}>
+                      Visitor Parking
+                    </Text>
+                    <Text
+                      style={[
+                        styles.contextCardBody,
+                        { fontSize: 14, fontWeight: "600" },
+                      ]}
+                    >
+                      Available at this location
+                    </Text>
+                  </View>
+                )}
+
+                <View
+                  style={[styles.sheetDivider, { marginVertical: 12, opacity: 0.5 }]}
+                />
+
+                {selectedLoc.hours_today && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <Clock size={16} color={COLORS.textSecondary} />
+                    <View>
+                      <Text
+                        style={[styles.sectionTitle, { fontSize: 10, marginBottom: 2 }]}
+                      >
+                        Operating Hours
+                      </Text>
+                      <Text
+                        style={[
+                          styles.contextCardBody,
+                          { fontWeight: "700", color: COLORS.textPrimary },
+                        ]}
+                      >
+                        {selectedLoc.hours_today.includes("Typical")
+                          ? "Available 24/7"
+                          : selectedLoc.hours_today.replace(/.*?:\s*/, "")}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {selectedLoc.visitor_parking_available == null && (
+                  <Text
+                    style={[
+                      styles.contextCardBody,
+                      { fontSize: 12, fontStyle: "italic", marginBottom: 10 },
+                    ]}
+                  >
+                    Real-time counts only available for major visitor garages.
+                  </Text>
+                )}
+
+                <TouchableOpacity
+                  style={[
+                    styles.quickActionPill,
+                    {
+                      alignSelf: "flex-start",
+                      paddingVertical: 6,
+                      paddingHorizontal: 12,
+                    },
+                  ]}
+                  onPress={() =>
+                    Linking.openURL(
+                      "https://transport.tamu.edu/parking/realtime.aspx",
+                    ).catch(() => {})
+                  }
+                >
+                  <ExternalLink size={14} color={COLORS.textPrimary} />
+                  <Text style={styles.quickActionText}>Rates & Rules</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {!isPeekSheet &&
+            selectedLoc.type !== "Parking" &&
+            parkingRecommendation ? (
               <View style={styles.contextCard}>
                 <Text style={styles.contextCardTitle}>
                   {parkingRecommendation.badge}
                 </Text>
                 <Text style={styles.contextCardBody}>
                   {parkingRecommendation.detail}
+                </Text>
+              </View>
+            ) : null}
+
+            {!isPeekSheet &&
+            selectedLoc.hours_today &&
+            selectedLoc.type !== "Parking" &&
+            (selectedLoc.type === "Library" ||
+              selectedLoc.type === "Dining" ||
+              selectedLoc.type === "Rec" ||
+              selectedLoc.type === "Hub") ? (
+              <View style={styles.contextCard}>
+                <Text style={styles.contextCardTitle}>Open today</Text>
+                <Text style={styles.contextCardBody}>
+                  {selectedLoc.hours_today}
                 </Text>
               </View>
             ) : null}
@@ -752,10 +949,21 @@ export function LocationBottomSheet({
                           width: `${occupancyPercent}%` as any,
                           backgroundColor: occupancyToneColor,
                         },
-                        ]}
-                      />
-                    </View>
+                      ]}
+                    />
+                  </View>
                 </View>
+
+                {occupancyCountLabel ? (
+                  <Text
+                    style={[
+                      styles.contextCardBody,
+                      { marginTop: 8, opacity: 0.9 },
+                    ]}
+                  >
+                    {occupancyCountLabel}
+                  </Text>
+                ) : null}
 
                 {officialFacilityUrl && officialFacilityUrl !== externalLink?.url ? (
                   <TouchableOpacity

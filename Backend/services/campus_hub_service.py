@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 import hashlib
 import html
 import json
@@ -20,7 +21,9 @@ from services import (
     campus_places_service,
     tag_access_service,
     encryption_service,
+    parking_realtime_service,
 )
+from services.rec_hours_data import REC_PLACE_ID_TO_FACILITY_KEY, weekly_payload_for_facility_key
 
 HOWDY_URL = "https://howdy.tamu.edu/main/home/card-view"
 DINING_URL = "https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx"
@@ -63,6 +66,55 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _score_personalized_relevance(event: Dict[str, Any], user: Dict[str, Any]) -> float:
+    """Calculate a personalization boost based on user's major and preferences."""
+    score = 0.0
+    major = user.get("major")
+    title = str(event.get("title") or "").lower()
+    desc = str(event.get("description") or "").lower()
+    summary = str(event.get("summary") or "").lower()
+    full_text = f"{title} {desc} {summary}"
+
+    if major:
+        major_lower = str(major).lower()
+        if major_lower in full_text:
+            score += 50.0  # Significant boost for exact major match
+
+        # Common major keyword mappings for tighter matching
+        major_map = {
+            "computer science": ["coding", "hackathon", "programming", "software", "tech", "developer", "cs"],
+            "engineering": ["engineer", "technology", "design", "build", "lab", "robotics"],
+            "mechanical": ["mech", "engine", "design", "machine", "manufacture"],
+            "business": ["networking", "finance", "mays", "entrepreneurship", "startup", "marketing", "accounting"],
+            "communication": ["journalism", "media", "writing", "reporting", "comm", "news"],
+            "agriculture": ["agri", "farm", "crop", "animal", "livestock", "soil", "plant"],
+            "biology": ["science", "medical", "research", "genetic", "health", "doctor"],
+            "nursing": ["nurse", "hospital", "patient", "clinic", "health"],
+            "psychology": ["mental health", "wellness", "counseling", "brain", "behavior"],
+            "political science": ["government", "policy", "debate", "election", "law"],
+            "education": ["teacher", "school", "learning", "classroom", "student"],
+        }
+        for m_key, keywords in major_map.items():
+            if m_key in major_lower:
+                if any(kw in full_text for kw in keywords):
+                    score += 25.0
+
+    # Boost based on preferred categories saved during onboarding
+    prefs = user.get("preferred_event_categories") or []
+    event_cats = event.get("categories", {})
+    for pref in prefs:
+        if event_cats.get(str(pref).lower()):
+            score += 35.0
+
+    # Boost based on user interest tags (e.g. 'Sports', 'Food')
+    user_tags = set(user.get("tags") or [])
+    event_tags = set(event.get("tags") or [])
+    matching_tags = user_tags.intersection(event_tags)
+    score += len(matching_tags) * 15.0
+
+    return score
+
+
 def _parse_event_datetime(value: Any) -> Optional[datetime]:
     if value is None:
         return None
@@ -86,13 +138,36 @@ def _parse_event_datetime(value: Any) -> Optional[datetime]:
     return parsed
 
 
+def _safe_decrypt(value: Any) -> Optional[str]:
+    if not value:
+        return None
+    try:
+        return encryption_service.decrypt_string(value)
+    except Exception:
+        return str(value)
+
+
 def _is_event_upcoming(event: Dict[str, Any], now: Optional[datetime] = None) -> bool:
     reference_time = now or datetime.now(timezone.utc)
     relevant_time = _parse_event_datetime(event.get("end_time")) or _parse_event_datetime(event.get("start_time"))
     if relevant_time is None:
         return True
-    # Allow events that started/ended within the last 12 hours for discovery and timezone padding
-    return relevant_time >= (reference_time - timedelta(hours=12))
+    # Allow events that started/ended within the last 72 hours for discovery and timezone padding
+    return relevant_time >= (reference_time - timedelta(hours=72))
+
+
+def _is_admin_event_visible(event: Dict[str, Any], now: Optional[datetime] = None) -> bool:
+    reference_time = now or datetime.now(timezone.utc)
+    end_time = _parse_event_datetime(event.get("end_time"))
+    if end_time is not None and end_time >= reference_time:
+        return True
+
+    start_time = _parse_event_datetime(event.get("start_time"))
+    if start_time is None:
+        return True
+
+    # Featured/admin events should stay around briefly after kickoff, but not for multiple days.
+    return start_time >= (reference_time - timedelta(hours=24))
 
 
 def _event_start_sort_key(event: Dict[str, Any]) -> tuple[int, float]:
@@ -427,34 +502,14 @@ def _extract_summary_from_html(source_html: str) -> Optional[str]:
     return None
 
 
-def _active_rec_hours_source() -> str:
-    month = datetime.now().month
-    if month in (5, 6, 7, 8):
-        return "summer"
-    return "fall_spring"
-
-
 def _weekly_hours_for_facility(facility_id: str) -> Dict[str, Any]:
     cache_key = f"campus:recreation:weekly-hours:v1:{facility_id}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
         return cached
 
-    season = _active_rec_hours_source()
-    lookup = SUMMER_HOURS_BY_FACILITY if season == "summer" else FALL_SPRING_HOURS_BY_FACILITY
-    weekly_hours = lookup.get(facility_id) or {}
-    day_name = datetime.now().strftime("%A")
-    today_hours = weekly_hours.get(day_name, "Check official facility page")
-    source_note = (
-        "Fall/spring operating hours based on official Texas A&M Rec Sports staffing/facility schedules."
-        if season == "fall_spring"
-        else "Summer operating hours based on official Texas A&M Rec Sports facility schedules."
-    )
-    payload = {
-        "weekly_hours": [{"day": day, "hours": hours} for day, hours in weekly_hours.items()],
-        "today_hours": today_hours,
-        "hours_source": source_note,
-    }
+    now_chi = datetime.now(ZoneInfo("America/Chicago"))
+    payload = weekly_payload_for_facility_key(facility_id, now_chi)
     cache_service.set_json(cache_key, payload, 60 * 60 * 6)
     return payload
 
@@ -1080,13 +1135,11 @@ def create_connection_request(requester_id: str, recipient_id: str) -> Dict[str,
         return {"status": "success", "requester_id": requester_id, "recipient_id": recipient_id}
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
-
-
 def get_events_snapshot(
     clerk_id: Optional[str] = None,
-    limit: int = 8,
+    limit: int = 100,
     category: Optional[str] = None,
-    student_relevant_only: bool = True,
+    student_relevant_only: bool = False,
     campus: str = "tamu",
     conn: Optional[psycopg.Connection] = None,
     force_refresh: bool = False,
@@ -1173,15 +1226,16 @@ def get_events_snapshot(
             continue
 
         try:
-            organization_name = ad_ev.get("organization_name") or "Campus organizer"
-            title = encryption_service.decrypt_string(ad_ev["title"])
-            description = encryption_service.decrypt_string(ad_ev["description"]) or ""
+            organization_name = _safe_decrypt(ad_ev.get("organization_name")) or "Campus organizer"
+            title = _safe_decrypt(ad_ev["title"])
+            description = _safe_decrypt(ad_ev["description"]) or ""
             tags = ad_ev.get("access_tags") or []
+            location_name = _safe_decrypt(ad_ev["location_name"]) or "Campus"
             
             admin_events_list.append({
                 "event_id": str(ad_ev["id"]),
                 "title": title,
-                "location": ad_ev["location_name"],
+                "location": location_name,
                 "location_lat": ad_ev["lat"],
                 "location_lng": ad_ev["lng"],
                 "start_time": ad_ev["start_time"].isoformat() if ad_ev["start_time"] else None,
@@ -1221,21 +1275,20 @@ def get_events_snapshot(
         user_tags=user_access_tags,
         bypass_restrictions=bypass_tag_restrictions,
     )
-    print(f"[EVENTS_DEBUG] after tag filter: {len(events)} crawler events")
+    has_modern_events = bool(events_copy)
     # Re-integrate admin events AFTER tag filtering to ensure they bypass it entirely
     events = admin_events_list + events
-    print(f"[EVENTS_DEBUG] after merge: {len(events)} total events")
-    # Filter for upcoming events, but apply a "Steel Curtain" for admin events 
-    # ensuring they stay visible for at least 24 hours after starting.
+    print(f"[EVENTS_DEBUG] after merge: {len(events)} total events (has_modern_events={has_modern_events})")
+    # Filter for upcoming events, while keeping featured/admin events on their own shorter window.
     events = [
         event for event in events 
-        if _is_event_upcoming(event) or (event.get("is_admin_event") and _parse_event_datetime(event.get("start_time")) >= (datetime.now(timezone.utc) - timedelta(hours=24)))
+        if (_is_admin_event_visible(event) if event.get("is_admin_event") else _is_event_upcoming(event))
     ]
     admin_after_upcoming = [e for e in events if e.get('is_admin_event')]
     print(f"[EVENTS_DEBUG] after upcoming filter: {len(events)} total, {len(admin_after_upcoming)} admin")
     events.sort(key=_event_start_sort_key)
 
-    if events:
+    if has_modern_events or admin_events_list:
         if student_relevant_only:
             # Ensure label check is robust and includes unknown/missing labels by default
             events = [
@@ -1243,10 +1296,22 @@ def get_events_snapshot(
                 if e.get("campus_interest_label", "high") != "low" or e.get("is_admin_event")
             ]
         if category:
-            events = [
-                e for e in events
-                if e.get("categories", {}).get(category.lower()) == 1
-            ]
+            if category.lower() == "for u" and clerk_id and user:
+                # Personalize sorting for "For U"
+                for event in events:
+                    event["personalization_score"] = _score_personalized_relevance(event, user)
+                
+                # Sort: Personalization (highest first), then start time (soonest first)
+                events.sort(key=lambda e: (-e.get("personalization_score", 0), _event_start_sort_key(e)))
+                
+                # "For U" is a meta-category, so we don't filter by a 'for u' string in categories dict.
+                # We just return the personalized list.
+                category = None
+            else:
+                events = [
+                    e for e in events
+                    if e.get("categories", {}).get(category.lower()) == 1
+                ]
         limited = _merge_admin_events_before_limit(events, limit) if limit else events
         return {
             "generated_at": _utc_now_iso(),
@@ -1262,9 +1327,10 @@ def get_events_snapshot(
         }
 
     # Fallback to legacy tracker events if modern sources return absolutely nothing
+    # but still keep whatever admin events we fetched
     from routers.traffic import tracker
     raw_events = tracker.fetch_event_data(limit=limit)
-    events = []
+    fallback_events = []
     for event in raw_events:
         event_id = _event_id_for(event)
         resolved_place = place_registry_service.resolve_place(
@@ -1272,7 +1338,7 @@ def get_events_snapshot(
             event.get("latitude"),
             event.get("longitude"),
         )
-        events.append(
+        fallback_events.append(
             {
                 "event_id": event_id,
                 "title": event.get("title", "Campus Event"),
@@ -1304,19 +1370,23 @@ def get_events_snapshot(
                 "place": place_registry_service.serialize_place(resolved_place),
             }
         )
-    # Filter for upcoming events, but apply a "Steel Curtain" for admin events 
-    # ensuring they stay visible for at least 24 hours after starting.
+    
+    # Merge admin events with fallback events
+    events = admin_events_list + fallback_events
+    
+    # Final filter and sort
     events = [
         event for event in events 
-        if _is_event_upcoming(event) or (event.get("is_admin_event") and _parse_event_datetime(event.get("start_time")) >= (datetime.now(timezone.utc) - timedelta(hours=24)))
+        if (_is_admin_event_visible(event) if event.get("is_admin_event") else _is_event_upcoming(event))
     ]
     events.sort(key=_event_start_sort_key)
-    events = _merge_admin_events_before_limit(events, limit) if limit else events
+    limited = _merge_admin_events_before_limit(events, limit) if limit else events
+    
     return {
         "generated_at": _utc_now_iso(),
         "stale_after": 300,
         "source_status": "preview",
-        "events": events,
+        "events": limited,
     }
 
 
@@ -1388,6 +1458,9 @@ def get_recreation_snapshot() -> Dict[str, Any]:
         capacity = live_count.get("capacity") if live_count else None
         percent_full = live_count.get("percent_full") if live_count else None
 
+        hours_facility_key = REC_PLACE_ID_TO_FACILITY_KEY.get(pid)
+        weekly_hours_payload = _weekly_hours_for_facility(hours_facility_key) if hours_facility_key else {}
+
         facilities.append({
             "id": pid,
             "name": place["name"],
@@ -1400,7 +1473,10 @@ def get_recreation_snapshot() -> Dict[str, Any]:
             "capacity": capacity,
             "occupancy_name": live_count.get("location_name") if live_count else None,
             "last_updated": live_count.get("last_updated") if live_count else None,
-            "source_url": source_url
+            "source_url": source_url,
+            "today_hours": weekly_hours_payload.get("today_hours"),
+            "hours_weekly": weekly_hours_payload.get("weekly_hours"),
+            "hours_source": weekly_hours_payload.get("hours_source"),
         })
 
     payload = {
@@ -1436,6 +1512,24 @@ def get_place_detail_snapshot(place_id: str) -> Dict[str, Any]:
 
     places_snapshot = campus_places_service.get_places_map_snapshot()
     location = next((loc for loc in places_snapshot.get("locations", []) if loc.get("placeId") == place_id), None)
+    
+    # Dynamic parking data for Garage icons
+    if place.get("type") == "Parking" and location:
+        # Check if this place_id is one of our known visitor garages
+        from services.campus_places_service import VISITOR_GARAGE_CODE_BY_PLACE_ID, VISITOR_GARAGE_FULL_NAME_BY_CODE
+        code = VISITOR_GARAGE_CODE_BY_PLACE_ID.get(place_id)
+        if code:
+            parking_data = parking_realtime_service.snapshot_block()
+            count = parking_data.get("garages", {}).get(code)
+            if count is not None:
+                # Ensure we have a fresh copy of the location to avoid polluting the cache
+                location = dict(location)
+                location["visitor_parking_available"] = count
+                location["visitor_parking_code"] = code
+                location["visitor_parking_garage_name"] = VISITOR_GARAGE_FULL_NAME_BY_CODE.get(code)
+                location["visitor_parking_as_of"] = parking_data.get("fetched_at")
+                location["visitor_parking_source_url"] = parking_data.get("source_url")
+
     rec_snapshot = get_recreation_snapshot() if place.get("type") == "Rec" else None
     rec_facility = None
     if rec_snapshot and location:
