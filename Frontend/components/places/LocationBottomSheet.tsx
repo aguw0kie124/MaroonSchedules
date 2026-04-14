@@ -45,6 +45,7 @@ import {
 } from "./utils";
 import { getCanonicalLocationName } from "./campusData";
 import { getStaticRestaurantMenu } from "../../data/restaurantMenus";
+import { getRestaurantHoursToday } from "../../data/restaurantHours";
 import {
   DiningMealPeriod,
   isDiningHallMenuLocation,
@@ -1075,10 +1076,10 @@ export function LocationBottomSheet({
                                   {venue.label}
                                 </Text>
                                 <Text style={styles.foodCourtVenueMeta}>
-                                  {venue.location.shortName &&
-                                  venue.location.shortName !== venue.location.location
-                                    ? venue.location.shortName
-                                    : "Dining location"}
+                                  {getRestaurantHoursToday(venue.label) || 
+                                   (venue.location.shortName && venue.location.shortName !== venue.location.location
+                                     ? venue.location.shortName
+                                     : "Dining location")}
                                 </Text>
                               </View>
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
