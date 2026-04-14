@@ -909,7 +909,12 @@ export function LocationBottomSheet({
               <View style={styles.contextCard}>
                 <Text style={styles.contextCardTitle}>Open today</Text>
                 <Text style={styles.contextCardBody}>
-                  {selectedLoc.hours_today}
+                  {(() => {
+                    const matches = (selectedLoc.hours_today || "").match(/\d{1,2}:\d{2}\s*(?:am|pm)\s*-\s*\d{1,2}:\d{2}\s*(?:am|pm)/gi);
+                    return matches && matches.length > 0 
+                      ? matches.join(", ") 
+                      : (selectedLoc.hours_today || "").replace(/^(.*?:\s*)*Open Today:\s*/i, "").trim();
+                  })()}
                 </Text>
               </View>
             ) : null}
@@ -1059,10 +1064,12 @@ export function LocationBottomSheet({
 
                       {!isDiningHallCard && foodCourtVenues.length > 0 ? (
                         <View style={styles.foodCourtVenueList}>
-                          {foodCourtVenues.map((venue) => {
-                            const hasMenu = !!getStaticRestaurantMenu(venue.location.location);
+                          {foodCourtVenues.map((venue, idx) => {
+                            const candidate = venue.menuCandidate || venue.location.location;
+                            const hasMenuSource = !!getStaticRestaurantMenu(candidate) || isDiningHallMenuLocation(candidate);
+                            
                             return (
-                            <View key={venue.selectionId} style={styles.foodCourtVenueCard}>
+                            <View key={`${venue.selectionId}-${idx}`} style={styles.foodCourtVenueCard}>
                               <View style={{ flex: 1, paddingRight: 12 }}>
                                 <Text style={styles.foodCourtVenueTitle}>
                                   {venue.label}
@@ -1076,9 +1083,9 @@ export function LocationBottomSheet({
                               </View>
                               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                 <Text style={styles.foodCourtVenueAction}>Inside</Text>
-                                {hasMenu ? (
+                                {hasMenuSource ? (
                                   <TouchableOpacity
-                                    onPress={() => openFullMenu(venue.menuCandidate || venue.location.location)}
+                                    onPress={() => openFullMenu(candidate)}
                                     style={styles.foodCourtVenueMenuBtn}
                                     activeOpacity={0.7}
                                   >

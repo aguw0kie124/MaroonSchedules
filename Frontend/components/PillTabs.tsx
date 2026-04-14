@@ -48,8 +48,8 @@ export function PillTabs({
   const slotWidth = trackWidth > 0 ? trackWidth / Math.max(items.length, 1) : 0;
   const indicatorInset = compact ? 2 : 4;
   const indicatorWidth = Math.max(slotWidth - indicatorInset * 2, 0);
-  const translateX = items.length <= 1
-    ? 0
+  const translateX = items.length < 2
+    ? indicatorInset
     : indicatorAnim.interpolate({
         inputRange: items.map((_, index) => index),
         outputRange: items.map((_, index) => index * slotWidth + indicatorInset),

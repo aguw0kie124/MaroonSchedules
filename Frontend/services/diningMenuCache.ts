@@ -10,9 +10,12 @@ const DINING_LOCATION_ALIASES: Record<string, string> = {
   'sbisa dining hall': 'Sbisa Dining Hall (North Campus)',
   duncan: 'Duncan Dining Hall (South Campus/Quad)',
   'duncan dining hall': 'Duncan Dining Hall (South Campus/Quad)',
+  'duncan hall': 'Duncan Dining Hall (South Campus/Quad)',
+  'duncan lounge': 'Duncan Dining Hall (South Campus/Quad)',
   commons: 'The Commons Dining Hall (South Campus)',
   'the commons': 'The Commons Dining Hall (South Campus)',
   'the commons dining hall': 'The Commons Dining Hall (South Campus)',
+  'commons hall': 'The Commons Dining Hall (South Campus)',
   'chick-fil-a (msc)': 'Chick-fil-A',
   'chick-fil-a - msc': 'Chick-fil-A',
   'panda express (msc)': 'Panda Express',
@@ -131,6 +134,10 @@ function buildMealWindows(locationName?: string | null, date = new Date()): Meal
 }
 
 export function isDiningHallMenuLocation(locationName?: string | null) {
+  const normalized = (locationName || '').toLowerCase();
+  if (normalized.includes('sbisa') || normalized.includes('commons') || normalized.includes('duncan')) {
+    return true;
+  }
   const resolved = resolveDiningLocationForMenu(locationName || '')?.toLowerCase() || '';
   return resolved.includes('dining hall');
 }
@@ -146,7 +153,11 @@ export function getDiningMealOptionsForLocation(locationName?: string | null, da
   if (isDiningHallMenuLocation(locationName)) {
     return ALL_DINING_MEAL_PERIODS;
   }
-  const ordered = buildMealWindows(locationName, date).map((window) => window.mealPeriod);
+  const resolved = resolveDiningLocationForMenu(locationName || '');
+  if (isDiningHallMenuLocation(resolved)) {
+    return ALL_DINING_MEAL_PERIODS;
+  }
+  const ordered = buildMealWindows(resolved || locationName, date).map((window) => window.mealPeriod);
   return Array.from(new Set(ordered));
 }
 
@@ -172,9 +183,13 @@ export function getDiningMealPeriodForLocation(locationName?: string | null, dat
 export function resolveDiningLocationForMenu(locationName?: string | null) {
   if (!locationName) return null;
   const normalized = locationName.trim().toLowerCase();
+  
+  // 1. Explicit Aliases
   if (DINING_LOCATION_ALIASES[normalized]) {
     return DINING_LOCATION_ALIASES[normalized];
   }
+
+  // 2. Specific Retail Restaurants (Prioritize over complex names)
   if (normalized.includes('chick-fil-a')) return 'Chick-fil-A';
   if (normalized.includes('panda express')) return 'Panda Express';
   if (normalized.includes('houston street subs')) return 'Houston Street Subs';
@@ -182,9 +197,16 @@ export function resolveDiningLocationForMenu(locationName?: string | null) {
   if (normalized.includes('salata')) return 'Salata';
   if (normalized.includes('rev')) return 'Rev\'s American Grill';
   if (normalized.includes('bagel')) return 'Einstein Bros. Bagels';
-  if (normalized.includes('sbisa') && normalized.includes('dining hall')) return 'Sbisa Dining Hall (North Campus)';
-  if (normalized.includes('duncan') && normalized.includes('dining hall')) return 'Duncan Dining Hall (South Campus/Quad)';
-  if (normalized.includes('commons') && normalized.includes('dining hall')) return 'The Commons Dining Hall (South Campus)';
+  if (normalized.includes('1876')) return '1876 Burgers';
+  if (normalized.includes('copperhead')) return 'Copperhead Jack\'s';
+  if (normalized.includes('abu omar')) return 'Abu Omar Halal';
+  if (normalized.includes('cabo')) return 'Cabo Grill';
+  
+  // 3. Primary Dining Halls (Fall back if no specific restaurant matched)
+  if (normalized.includes('sbisa')) return 'Sbisa Dining Hall';
+  if (normalized.includes('commons')) return 'Commons Dining Hall';
+  if (normalized.includes('duncan')) return 'Duncan Dining Hall';
+  
   return locationName;
 }
 

@@ -77,7 +77,9 @@ import { useShareStore } from "../store/shareStore";
 import {
   type DiningMealPeriod,
   getDiningMealPeriodForLocation,
+  isDiningHallMenuLocation,
 } from "../services/diningMenuCache";
+import { getStaticRestaurantMenu } from "../data/restaurantMenus";
 
 // ── Sub-components ────────────────────────────────────────────
 import { FloatingSearchBar } from "./places/FloatingSearchBar";
@@ -1008,13 +1010,24 @@ export function PlacesMapScreen({ route, navigation }: any) {
     (locationName: string, mealPeriod?: DiningMealPeriod) => {
       const rootNav =
         navigation.getParent?.("RootStack") || navigation.getParent?.();
-      const params = {
-        location: locationName,
-        mealPeriod: mealPeriod || getDiningMealPeriodForLocation(locationName),
-        title: `${locationName} Menu`,
-        sourceHint: "cached",
-      };
-      (rootNav?.navigate || navigation.navigate)("FullMenu", params);
+      
+      const isHall = isDiningHallMenuLocation(locationName);
+      const staticMenu = getStaticRestaurantMenu(locationName);
+
+      if (!isHall && staticMenu) {
+        (rootNav?.navigate || navigation.navigate)("RestaurantMenu", {
+          location: locationName,
+          title: locationName,
+        });
+      } else {
+        const params = {
+          location: locationName,
+          mealPeriod: mealPeriod || getDiningMealPeriodForLocation(locationName),
+          title: `${locationName} Menu`,
+          sourceHint: "cached",
+        };
+        (rootNav?.navigate || navigation.navigate)("FullMenu", params);
+      }
     },
     [navigation],
   );

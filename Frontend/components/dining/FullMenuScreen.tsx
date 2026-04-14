@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -29,7 +29,6 @@ import {
   isDiningHallMenuLocation,
   prefetchDiningMenus,
 } from '../../services/diningMenuCache';
-import { getStaticRestaurantMenu } from '../../data/restaurantMenus';
 
 function formatMealLabel(meal: string) {
   const value = (meal || '').toLowerCase();
@@ -43,7 +42,7 @@ function formatMenuTitle(location?: string, title?: string) {
 }
 
 function buildMenuItemKey(item: any) {
-  return item.name;
+  return item?.name || 'unknown';
 }
 
 function buildFoodPayload(item: any, location: string, mealPeriod: DiningMealPeriod) {
@@ -62,10 +61,6 @@ function buildFoodPayload(item: any, location: string, mealPeriod: DiningMealPer
   };
 }
 
-function buildCategoryKey(categoryName: string) {
-  return categoryName.trim().toLowerCase();
-}
-
 export default function FullMenuScreen({ navigation, route }: any) {
   const { user } = useUser();
   const { theme, wallpaperUri } = useTheme();
@@ -75,44 +70,18 @@ export default function FullMenuScreen({ navigation, route }: any) {
 
   const { location, mealPeriod, title, locations, sourceHint } = route.params || {};
   const availableMealPeriods = useMemo(() => getDiningMealOptionsForLocation(location), [location]);
-  const isDiningHall = isDiningHallMenuLocation(location);
-  const staticMenu = useMemo(() => getStaticRestaurantMenu(location), [location]);
-  const isStaticRestaurant = !!staticMenu && !isDiningHall;
-
-  const menu = useMemo(() => {
-    if (!isStaticRestaurant) return menusByPeriod[activeMealPeriod] || null;
-    if (!staticMenu) return null;
-    
-    return {
-      success: true,
-      categories: staticMenu.categories.map((cat) => ({
-        name: cat.name,
-        items: cat.items.map((item) => ({
-          name: item.name,
-          calories: item.calories,
-          protein: item.protein,
-          carbs: item.carbs,
-          fat: item.fat,
-          description: item.description,
-          portion: item.portion,
-        })),
-      })),
-      count: staticMenu.categories.reduce((s, c) => s + c.items.length, 0),
-      source: 'static' as const,
-    };
-  }, [isStaticRestaurant, staticMenu, menusByPeriod, activeMealPeriod]);
-
+  
   const [activeMealPeriod, setActiveMealPeriod] = useState<DiningMealPeriod>(
     (mealPeriod as DiningMealPeriod) || getDiningMealPeriodForLocation(location),
   );
   const [menusByPeriod, setMenusByPeriod] = useState<Record<string, any>>({});
-  const [loading, setLoading] = useState(!isStaticRestaurant);
+  const menu = menusByPeriod[activeMealPeriod] || null;
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [portionCounts, setPortionCounts] = useState<Record<string, { count: number; entryIds: number[] }>>({});
   const [syncingItemKey, setSyncingItemKey] = useState<string | null>(null);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [activeCategoryKey, setActiveCategoryKey] = useState('all');
-  const [showMaroonMeals, setShowMaroonMeals] = useState(false);
 
   const toggleCategory = useCallback((categoryName: string) => {
     setCollapsedCategories((current) => {
@@ -159,30 +128,23 @@ export default function FullMenuScreen({ navigation, route }: any) {
   }, [location, menusByPeriod]);
 
   useEffect(() => {
-    if (isStaticRestaurant) {
-      setLoading(false);
-      setError('');
-      return;
-    }
     load(activeMealPeriod);
     setActiveCategoryKey('all');
-  }, [activeMealPeriod, load, isStaticRestaurant]);
+  }, [activeMealPeriod, load]);
 
   useEffect(() => {
     const categoryNames = (menu?.categories || []).map((category: any) => category.name);
-    if (showMaroonMeals) {
-      setCollapsedCategories(new Set(categoryNames));
-    } else if (activeCategoryKey === 'all') {
+    if (activeCategoryKey === 'all') {
       setCollapsedCategories(new Set(categoryNames));
     } else {
       setCollapsedCategories(new Set());
     }
-  }, [menu, activeCategoryKey, showMaroonMeals]);
+  }, [menu, activeCategoryKey]);
 
   useEffect(() => {
-    if (!location || isStaticRestaurant) return;
+    if (!location) return;
     prefetchDiningMenus([location], availableMealPeriods).catch(() => {});
-  }, [availableMealPeriods, location, isStaticRestaurant]);
+  }, [availableMealPeriods, location]);
 
   const refreshTrackerCounts = useCallback(async () => {
     if (!user) return;
@@ -235,14 +197,16 @@ export default function FullMenuScreen({ navigation, route }: any) {
   const removePortion = useCallback(async (item: any) => {
     if (!user) return;
     const itemKey = buildMenuItemKey(item);
-    const tracked = portionCounts[itemKey];
-    const entryId = tracked?.entryIds?.[tracked.entryIds.length - 1];
-    if (!entryId) return;
+    const existing = portionCounts[itemKey];
+    if (!existing || existing.entryIds.length === 0) return;
 
     setSyncingItemKey(itemKey);
     try {
-      await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}/${entryId}`, { method: 'DELETE' });
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const entryId = existing.entryIds[existing.entryIds.length - 1];
+      await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}/entry/${entryId}`, {
+        method: 'DELETE',
+      });
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await refreshTrackerCounts();
     } catch (trackerError) {
       console.error('Could not remove menu item from tracker', trackerError);
@@ -252,132 +216,83 @@ export default function FullMenuScreen({ navigation, route }: any) {
     }
   }, [portionCounts, refreshTrackerCounts, user]);
 
+  const categoryOptions = useMemo(() => {
+    const cats = menu?.categories || [];
+    const options = cats.map((c: any) => ({
+      key: c.name.trim().toLowerCase(),
+      label: c.name,
+      count: c.items.length,
+    }));
+    if (options.length > 0) {
+      options.unshift({
+        key: 'all',
+        label: 'All Stations',
+        count: cats.reduce((s: number, c: any) => s + c.items.length, 0),
+      });
+    }
+    return options;
+  }, [menu]);
+
+  const visibleCategories = useMemo(() => {
+    if (activeCategoryKey === 'all') return menu?.categories || [];
+    return (menu?.categories || []).filter((c: any) => c.name.trim().toLowerCase() === activeCategoryKey);
+  }, [menu, activeCategoryKey]);
+
   const categoryCount = menu?.categories?.length || 0;
-  const categoryOptions = (menu?.categories || []).map((category: any) => ({
-    key: buildCategoryKey(category.name),
-    label: category.name,
-    count: Array.isArray(category.items) ? category.items.length : 0,
-  }));
-  const visibleCategories = (menu?.categories || []).filter((category: any) => {
-    if (activeCategoryKey === 'all') return true;
-    return buildCategoryKey(category.name) === activeCategoryKey;
-  });
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
-      <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
+    <SafeAreaView style={[s.container, { backgroundColor: T.bg }]}>
+      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
       {wallpaperSource ? (
         <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.58)' : 'rgba(255,255,255,0.72)' }]} />
+          <View style={[StyleSheet.absoluteFill, darkMode ? { backgroundColor: 'rgba(0,0,0,0.58)' } : { backgroundColor: 'rgba(255,255,255,0.72)' }]} />
         </ImageBackground>
       ) : (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: T.bg }]} />
       )}
 
-      <ScrollView style={s.container} contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
+      >
         <View style={s.header}>
-          <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
-            <ChevronLeft size={24} color={T.text} />
+          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+            <ChevronLeft size={28} color={T.text} />
           </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={[s.title, { color: T.text }]} numberOfLines={1}>
-              {formatMenuTitle(location, title)}
-            </Text>
-            <Text style={[s.subtitle, { color: T.text3 }]}>
-              {formatMealLabel(activeMealPeriod)}
-              {isDiningHall ? ' service' : ' menu'}
-            </Text>
+          <View>
+            <Text style={[s.title, { color: T.text }]}>{formatMenuTitle(location, title)}</Text>
+            <Text style={[s.subtitle, { color: T.textSecondary }]}>Dining Hall Menu</Text>
           </View>
         </View>
 
-        {!isStaticRestaurant && (
-        <View style={s.mealTabsWrap}>
-          <PillTabs
-            items={availableMealPeriods.map((period) => ({
-              key: period,
-              label: formatMealLabel(period),
-            }))}
-            activeKey={activeMealPeriod}
-            onChange={(key) => setActiveMealPeriod(key as DiningMealPeriod)}
-            floating
-            compact
-          />
-        </View>
+        {availableMealPeriods.length > 1 && (
+          <View style={s.mealTabsWrap}>
+            <PillTabs
+              items={availableMealPeriods.map((m) => ({ key: m, label: formatMealLabel(m) }))}
+              activeKey={activeMealPeriod}
+              onChange={(key) => setActiveMealPeriod(key as DiningMealPeriod)}
+            />
+          </View>
         )}
 
-        {categoryOptions.length > 0 ? (
+        {categoryOptions.length > 1 ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={s.categoryFilterRow}
             style={s.categoryFilterScroll}
+            contentContainerStyle={s.categoryFilterRow}
           >
-            <TouchableOpacity
-              style={[
-                s.categoryFilterChip,
-                !showMaroonMeals && activeCategoryKey === 'all' && [s.categoryFilterChipActive, { borderColor: T.text }],
-                { backgroundColor: T.bg2, borderColor: T.border },
-              ]}
-              onPress={() => {
-                setShowMaroonMeals(false);
-                setActiveCategoryKey('all');
-                const categoryNames = (menu?.categories || []).map((c: any) => c.name);
-                setCollapsedCategories(new Set(categoryNames));
-              }}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={[
-                  s.categoryFilterLabel,
-                  { color: T.text2 },
-                  !showMaroonMeals && activeCategoryKey === 'all' && { color: T.text },
-                ]}
-              >
-                {isDiningHall ? 'All stations' : 'Full Menu'}
-              </Text>
-            </TouchableOpacity>
-
-            {staticMenu?.maroonMeals ? (
+            {categoryOptions.map((category, idx) => (
               <TouchableOpacity
+                key={`${category.key}-${idx}`}
                 style={[
                   s.categoryFilterChip,
-                  showMaroonMeals && [s.categoryFilterChipActive, { borderColor: '#500000' }],
-                  { backgroundColor: showMaroonMeals ? 'rgba(80,0,0,0.14)' : T.bg2, borderColor: showMaroonMeals ? '#500000' : T.border },
-                ]}
-                onPress={() => {
-                  setShowMaroonMeals(true);
-                  setActiveCategoryKey('all');
-                }}
-                activeOpacity={0.8}
-              >
-                <Text
-                  style={[
-                    s.categoryFilterLabel,
-                    { color: showMaroonMeals ? '#500000' : T.text2 },
-                  ]}
-                >
-                  Maroon Meals
-                </Text>
-                <View style={[s.categoryFilterCount, { backgroundColor: showMaroonMeals ? 'rgba(80,0,0,0.12)' : T.bg3 }]}>
-                  <Text style={[s.categoryFilterCountText, { color: showMaroonMeals ? '#500000' : T.text3 }]}>
-                    {staticMenu.maroonMeals.combos.length}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            ) : null}
-
-            {categoryOptions.map((category) => (
-              <TouchableOpacity
-                key={category.key}
-                style={[
-                  s.categoryFilterChip,
-                  !showMaroonMeals && activeCategoryKey === category.key && [s.categoryFilterChipActive, { borderColor: T.text }],
                   { backgroundColor: T.bg2, borderColor: T.border },
+                  activeCategoryKey === category.key ? [s.categoryFilterChipActive, { borderColor: T.text }] : null,
                 ]}
                 onPress={() => {
-                  setShowMaroonMeals(false);
                   setActiveCategoryKey(category.key);
-                  setCollapsedCategories(new Set()); // Open by default
+                  setCollapsedCategories(new Set()); 
                 }}
                 activeOpacity={0.8}
               >
@@ -385,7 +300,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
                   style={[
                     s.categoryFilterLabel,
                     { color: T.text2 },
-                    !showMaroonMeals && activeCategoryKey === category.key && { color: T.text },
+                    activeCategoryKey === category.key ? { color: T.text } : null,
                   ]}
                 >
                   {category.label}
@@ -416,43 +331,12 @@ export default function FullMenuScreen({ navigation, route }: any) {
           </Card>
         ) : (
           <>
-            {showMaroonMeals && staticMenu?.maroonMeals ? (
-              <Card>
-                <View style={s.maroonMealsHeader}>
-                  <SectionLabel style={{ marginBottom: 0 }}>Maroon Meals</SectionLabel>
-                  <Badge label="MEAL SWIPE" color="#500000" />
-                </View>
-                <Text style={[s.maroonMealsNote, { color: T.text3 }]}>
-                  {staticMenu.maroonMeals.note}
-                </Text>
-                <View style={{ paddingHorizontal: 0, gap: 0 }}>
-                  {staticMenu.maroonMeals.combos.map((combo, idx) => (
-                    <View
-                      key={combo.name}
-                      style={[
-                        s.maroonMealRow,
-                        { borderBottomColor: T.border },
-                        idx === staticMenu!.maroonMeals!.combos.length - 1 && { borderBottomWidth: 0 },
-                      ]}
-                    >
-                      <View style={{ flex: 1, paddingRight: 12 }}>
-                        <Text style={[s.itemName, { color: T.text }]}>{combo.name}</Text>
-                      </View>
-                      <View style={s.maroonMealValueBadge}>
-                        <Text style={s.maroonMealValueText}>${combo.value.toFixed(2)}</Text>
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              </Card>
-            ) : null}
-
-            {!showMaroonMeals && menu?.locations?.length > 1 && (
+            {(menu?.locations?.length || 0) > 1 && (
               <Card>
                 <SectionLabel>Locations</SectionLabel>
                 <View style={s.locationWrap}>
-                  {(menu.locations || locations || []).map((entry: string) => (
-                    <View key={entry} style={[s.locationPill, { backgroundColor: T.bg3, borderColor: T.border }]}>
+                  {(menu.locations || locations || []).map((entry: string, idx: number) => (
+                    <View key={`${entry}-${idx}`} style={[s.locationPill, { backgroundColor: T.bg3, borderColor: T.border }]}>
                       <Text style={[s.locationText, { color: T.text2 }]}>{entry}</Text>
                     </View>
                   ))}
@@ -460,10 +344,11 @@ export default function FullMenuScreen({ navigation, route }: any) {
               </Card>
             )}
 
-            {!showMaroonMeals && visibleCategories.map((category: any) => {
+            {(visibleCategories || []).map((category: any, catIdx: number) => {
               const isCollapsed = collapsedCategories.has(category.name);
+              const categoryKey = `${category.name}-${catIdx}`;
               return (
-                <Card key={category.name} style={{ paddingHorizontal: 0 }}>
+                <Card key={categoryKey} style={{ paddingHorizontal: 0 }}>
                   <TouchableOpacity
                     style={s.categoryHeader}
                     onPress={() => toggleCategory(category.name)}
@@ -479,55 +364,53 @@ export default function FullMenuScreen({ navigation, route }: any) {
 
                   {!isCollapsed && (
                     <View style={{ paddingHorizontal: 20 }}>
-                      {category.items.map((item: any) => (
-                        <View key={`${category.name}-${item.location || 'menu'}-${item.name}`} style={[s.itemRow, { borderBottomColor: T.border }]}>
-                          <View style={{ flex: 1, paddingRight: 12 }}>
-                            <Text style={[s.itemName, { color: T.text }]}>{item.name}</Text>
-                            {item.description ? (
-                              <Text style={[s.itemDescription, { color: T.text3 }]} numberOfLines={2}>
-                                {item.description}
+                      {(category.items || []).map((item: any, itmIdx: number) => {
+                        const itemKey = buildMenuItemKey(item);
+                        const count = portionCounts[itemKey]?.count || 0;
+                        const isSyncing = syncingItemKey === itemKey;
+
+                        return (
+                          <View key={`${category.name}-${item.name}-${itmIdx}`} style={[s.itemRow, { borderBottomColor: T.border }]}>
+                            <View style={{ flex: 1, paddingRight: 12 }}>
+                              <Text style={[s.itemName, { color: T.text }]}>{item.name}</Text>
+                              <Text style={[s.itemMeta, { color: T.text3 }]}>
+                                {Math.round(item.calories || 0)} kcal
+                                {!!item.protein && ` • ${Math.round(item.protein)}g protein`}
+                                {!!item.location && (menu.locations?.length || 0) > 1 && ` • ${item.location}`}
                               </Text>
-                            ) : null}
-                            <Text style={[s.itemMeta, { color: T.text3 }]}>
-                              {Math.round(item.calories || 0) > 0 ? `${Math.round(item.calories)} kcal` : ''}
-                              {!!item.protein && ` • ${Math.round(item.protein)}g protein`}
-                              {!!item.portion && item.portion !== '—' && (Math.round(item.calories || 0) > 0 ? ` • ${item.portion}` : item.portion)}
-                              {!!item.location && menu.locations?.length > 1 && ` • ${item.location}`}
-                            </Text>
-                          </View>
-                          {!isStaticRestaurant && (
-                          <View style={s.actionWrap}>
-                            <View style={s.countSlot}>
-                              {portionCounts[buildMenuItemKey(item)]?.count > 0 ? (
-                                <Text style={[s.countText, { color: T.text3 }]}>
-                                  {portionCounts[buildMenuItemKey(item)]?.count}x
-                                </Text>
-                              ) : null}
                             </View>
-                            {portionCounts[buildMenuItemKey(item)]?.count > 0 ? (
+                            <View style={s.actionWrap}>
+                              <View style={s.countSlot}>
+                                {count > 0 ? (
+                                  <Text style={[s.countText, { color: T.text3 }]}>
+                                    {count}x
+                                  </Text>
+                                ) : null}
+                              </View>
+                              {count > 0 ? (
+                                <TouchableOpacity
+                                  style={[s.actionButton, { borderColor: T.clay, backgroundColor: `${T.clay}18` }]}
+                                  onPress={() => removePortion(item)}
+                                  disabled={isSyncing}
+                                >
+                                  <Text style={[s.actionSymbol, { color: T.clay }]}>-</Text>
+                                </TouchableOpacity>
+                              ) : null}
                               <TouchableOpacity
-                                style={[s.actionButton, { borderColor: T.clay, backgroundColor: `${T.clay}18` }]}
-                                onPress={() => removePortion(item)}
-                                disabled={syncingItemKey === buildMenuItemKey(item)}
+                                style={[s.actionButton, { borderColor: T.sage, backgroundColor: `${T.sage}18` }]}
+                                onPress={() => addPortion(item)}
+                                disabled={isSyncing}
                               >
-                                <Text style={[s.actionSymbol, { color: T.clay }]}>-</Text>
+                                {isSyncing ? (
+                                  <ActivityIndicator color={T.sage} size="small" />
+                                ) : (
+                                  <Text style={[s.actionSymbol, { color: T.sage }]}>+</Text>
+                                )}
                               </TouchableOpacity>
-                            ) : null}
-                            <TouchableOpacity
-                              style={[s.actionButton, { borderColor: T.sage, backgroundColor: `${T.sage}18` }]}
-                              onPress={() => addPortion(item)}
-                              disabled={syncingItemKey === buildMenuItemKey(item)}
-                            >
-                              {syncingItemKey === buildMenuItemKey(item) ? (
-                                <ActivityIndicator color={T.sage} size="small" />
-                              ) : (
-                                <Text style={[s.actionSymbol, { color: T.sage }]}>+</Text>
-                              )}
-                            </TouchableOpacity>
+                            </View>
                           </View>
-                          )}
-                        </View>
-                      ))}
+                        );
+                      })}
                     </View>
                   )}
                 </Card>
@@ -596,36 +479,5 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 4,
-  },
-  itemDescription: { fontSize: 12, marginTop: 2, fontWeight: '400', lineHeight: 16 },
-  maroonMealsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  maroonMealsNote: {
-    fontSize: 12,
-    fontWeight: '500',
-    lineHeight: 17,
-    marginBottom: 14,
-    paddingHorizontal: 0,
-  },
-  maroonMealRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  maroonMealValueBadge: {
-    backgroundColor: 'rgba(80,0,0,0.12)',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  maroonMealValueText: {
-    color: '#500000',
-    fontSize: 13,
-    fontWeight: '900',
   },
 });

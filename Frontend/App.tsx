@@ -46,6 +46,7 @@ import FoodDatabaseScreen from './components/dining/FoodDatabaseScreen';
 import WeightTrackerScreen from './components/dining/WeightTrackerScreen';
 import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
+import RestaurantMenuScreen from './components/dining/RestaurantMenuScreen';
 
 import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio } from 'lucide-react-native';
 import { GlassPillTabBar } from './components/GlassPillTabBar';
@@ -528,6 +529,11 @@ function RootNavigator() {
             <Stack.Screen
               name="FullMenu"
               component={FullMenuScreen}
+              options={{ headerShown: false, presentation: 'modal' }}
+            />
+            <Stack.Screen
+              name="RestaurantMenu"
+              component={RestaurantMenuScreen}
               options={{ headerShown: false, presentation: 'modal' }}
             />
             <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: false }} />
