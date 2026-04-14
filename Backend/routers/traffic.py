@@ -271,6 +271,7 @@ class TAMUFacilityTracker:
                 "coord": {"lat": place["lat"], "lng": place["lng"]},
                 "current_count": live_count.get("current_count"),
                 "capacity": live_count.get("capacity"),
+                "place_id": place["place_id"],
                 "last_updated": live_count.get("last_updated"),
                 "occupancy_name": live_count.get("location_name"),
                 **meta,
@@ -303,6 +304,7 @@ class TAMUFacilityTracker:
                 "coord": {"lat": place["lat"], "lng": place["lng"]},
                 "capacity": capacity if capacity > 0 else None,
                 "current_count": occupancy,
+                "place_id": place["place_id"],
                 **meta,
             })
 
@@ -324,6 +326,7 @@ class TAMUFacilityTracker:
                 "is_live": False,
                 "available_seats": None,
                 "coord": place["coord"],
+                "place_id": place["place_id"],
                 **meta,
             })
 

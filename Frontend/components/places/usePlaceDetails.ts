@@ -10,14 +10,6 @@ import type { CampusLocation } from "./types";
 
 export function usePlaceDetails(selectedId: string | null, locations: CampusLocation[]) {
   const { user } = useUser();
-  const [reviews, setReviews] = useState<any[]>([]);
-  const [reviewModalVisible, setReviewModalVisible] = useState(false);
-  const [newRating, setNewRating] = useState(5);
-  const [newReviewText, setNewReviewText] = useState("");
-  const [isPostingReview, setIsPostingReview] = useState(false);
-  const [allReviewsModalVisible, setAllReviewsModalVisible] = useState(false);
-  const [isFetchingReviews, setIsFetchingReviews] = useState(false);
-  
   const [hubRestaurants, setHubRestaurants] = useState<string[]>([]);
   const [isFetchingDining, setIsFetchingDining] = useState(false);
   const [diningMenuOptions, setDiningMenuOptions] = useState<string[]>([]);
@@ -25,42 +17,7 @@ export function usePlaceDetails(selectedId: string | null, locations: CampusLoca
   const [activeDiningMealPeriod, setActiveDiningMealPeriod] = useState<DiningMealPeriod>("lunch");
   const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
 
-  const fetchReviews = useCallback(async (placeId: string, limit = 5) => {
-    if (limit > 5) setIsFetchingReviews(true);
-    try {
-      const { getPlaceReviews } = require("../../services/socialFeedService");
-      const revs = await getPlaceReviews(placeId, limit);
-      setReviews(revs);
-    } catch (e) {
-      console.warn("Failed to fetch reviews", e);
-    } finally {
-      setIsFetchingReviews(false);
-    }
-  }, []);
 
-  const handlePostReview = useCallback(async () => {
-    if (!selectedId || !newReviewText.trim() || newRating === 0) return;
-    setIsPostingReview(true);
-    try {
-      const { postPlaceReview } = require("../../services/socialFeedService");
-      await postPlaceReview({
-        userId: user?.id || "anonymous",
-        userName: user?.fullName || user?.username || "Aggie User",
-        userImage: user?.imageUrl || "",
-        placeId: selectedId,
-        rating: newRating,
-        text: newReviewText.trim()
-      });
-      setReviewModalVisible(false);
-      setNewReviewText("");
-      setNewRating(5);
-      fetchReviews(selectedId);
-    } catch (e) {
-      console.warn("Failed to post review", e);
-    } finally {
-      setIsPostingReview(false);
-    }
-  }, [fetchReviews, newRating, newReviewText, selectedId]);
 
   const fetchDiningData = useCallback(async (loc: CampusLocation) => {
     setIsFetchingDining(true);
@@ -90,11 +47,10 @@ export function usePlaceDetails(selectedId: string | null, locations: CampusLoca
     if (selectedId && locations.length > 0) {
       const loc = locations.find((l) => l.location === selectedId);
       if (loc) {
-        fetchReviews(selectedId);
         fetchDiningData(loc);
       }
     }
-  }, [selectedId, locations, fetchReviews, fetchDiningData]);
+  }, [selectedId, locations, fetchDiningData]);
 
   const loadBestDiningPreview = useCallback(async (locationName: string, preferredMeal?: DiningMealPeriod) => {
     try {
@@ -131,17 +87,6 @@ export function usePlaceDetails(selectedId: string | null, locations: CampusLoca
   }, [activeDiningMealPeriod, activeDiningMenu, loadBestDiningPreview]);
 
   return {
-    reviews,
-    reviewModalVisible,
-    setReviewModalVisible,
-    newRating,
-    setNewRating,
-    newReviewText,
-    setNewReviewText,
-    isPostingReview,
-    allReviewsModalVisible,
-    setAllReviewsModalVisible,
-    isFetchingReviews,
     hubRestaurants,
     isFetchingDining,
     diningMenuOptions,
@@ -151,8 +96,6 @@ export function usePlaceDetails(selectedId: string | null, locations: CampusLoca
     setActiveDiningMealPeriod,
     diningMenuPreview,
     setDiningMenuPreview,
-    handlePostReview,
-    fetchReviews,
     fetchDiningData,
     loadBestDiningPreview
   };

@@ -76,8 +76,10 @@ import { useSessionStore } from "../store/sessionStore";
 import {
   type DiningMealPeriod,
   getDiningMealPeriodForLocation,
+  isDiningHallMenuLocation,
 } from "../services/diningMenuCache";
 import { triggerNativeShare } from "../utils/share";
+import { getStaticRestaurantMenu } from "../data/restaurantMenus";
 
 // ── Sub-components ────────────────────────────────────────────
 import { FloatingSearchBar } from "./places/FloatingSearchBar";
@@ -504,15 +506,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   const isFetchingRef = useRef(false);
 
-  // ── Review / dining state ─────────────────────────────────
-  const [reviews, setReviews] = useState<any[]>([]);
-  const [reviewModalVisible, setReviewModalVisible] = useState(false);
-  const [newRating, setNewRating] = useState(5);
-  const [newReviewText, setNewReviewText] = useState("");
-  const [isPostingReview, setIsPostingReview] = useState(false);
-  const [allReviewsModalVisible, setAllReviewsModalVisible] = useState(false);
-  const [isFetchingReviews, setIsFetchingReviews] = useState(false);
-
   // ── Recreation facility map ───────────────────────────────
   const recreationFacilityMap = useMemo(() => {
     const facilities = campusHubSnapshot?.recreation.facilities || [];
@@ -602,12 +595,17 @@ export function PlacesMapScreen({ route, navigation }: any) {
     }
     if (activeLayer === "Heatmap") return [];
     if (activeLayer === "Today") return scheduleLocations;
-    if (activeLayer === "Dining")
-      return browsableLocations.filter(
+    if (activeLayer === "Dining") {
+      const isMarket = (l: CampusLocation) => 
+        l.location.includes("Market") || l.location.includes("Aggie Express");
+
+      return allMapLocations.filter(
         (l) =>
-          (l.type === "Dining" || l.type === "Hub") &&
+          ((l.type === "Dining" || l.type === "Hub") && 
+           (!l.searchOnly || isMarket(l))) &&
           !shouldHideFoodCourtLocationInBrowse(l, allMapLocations),
       );
+    }
     if (activeLayer === "Academic")
       return browsableLocations.filter(
         (l) => l.type === "Academic" || l.type === "Landmark",
@@ -622,6 +620,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   const sortedFilteredLocations = useMemo(() => {
     return [...filteredLocations].sort((a, b) => {
+      // Prioritize primary dining over markets/convenience
+      if (activeLayer === "Dining") {
+        const isAMarket = a.location.includes("Market") || a.location.includes("Aggie Express");
+        const isBMarket = b.location.includes("Market") || b.location.includes("Aggie Express");
+        if (isAMarket && !isBMarket) return 1;
+        if (!isAMarket && isBMarket) return -1;
+      }
+
       const aD = userCoord
         ? haversineDistanceMeters(
           userCoord.latitude,
@@ -643,7 +649,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
         const bP = getParkingRecommendation(b.location, parkingPermit);
         if (aP.score !== bP.score) return aP.score - bP.score;
       }
-      if (aD != null && bD != null && aD !== bD) return aD - bD;
+      if (aD != null && bD != null) {
+        if (Math.abs(aD - bD) > 20) return aD - bD;
+      }
       return a.location.localeCompare(b.location);
     });
   }, [activeLayer, filteredLocations, parkingPermit, userCoord]);
@@ -1011,13 +1019,24 @@ export function PlacesMapScreen({ route, navigation }: any) {
     (locationName: string, mealPeriod?: DiningMealPeriod) => {
       const rootNav =
         navigation.getParent?.("RootStack") || navigation.getParent?.();
-      const params = {
-        location: locationName,
-        mealPeriod: mealPeriod || getDiningMealPeriodForLocation(locationName),
-        title: `${locationName} Menu`,
-        sourceHint: "cached",
-      };
-      (rootNav?.navigate || navigation.navigate)("FullMenu", params);
+      
+      const isHall = isDiningHallMenuLocation(locationName);
+      const staticMenu = getStaticRestaurantMenu(locationName);
+
+      if (!isHall && staticMenu) {
+        (rootNav?.navigate || navigation.navigate)("RestaurantMenu", {
+          location: locationName,
+          title: locationName,
+        });
+      } else {
+        const params = {
+          location: locationName,
+          mealPeriod: mealPeriod || getDiningMealPeriodForLocation(locationName),
+          title: `${locationName} Menu`,
+          sourceHint: "cached",
+        };
+        (rootNav?.navigate || navigation.navigate)("FullMenu", params);
+      }
     },
     [navigation],
   );
@@ -1096,41 +1115,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     [navigation, userCoord],
   );
 
-  const fetchReviews = useCallback(async (placeId: string, limit = 5) => {
-    if (limit > 5) setIsFetchingReviews(true);
-    try {
-      const { getPlaceReviews } = require("../services/socialFeedService");
-      const revs = await getPlaceReviews(placeId, limit);
-      setReviews(revs);
-    } catch (e) {
-      console.warn("Failed to fetch reviews", e);
-    } finally {
-      setIsFetchingReviews(false);
-    }
-  }, []);
-  const handlePostReview = useCallback(async () => {
-    const selectedReviewId =
-      selectedLoc?.placeId || selectedLoc?.location || null;
-    if (!selectedReviewId || !newReviewText.trim() || newRating === 0) return;
-    setIsPostingReview(true);
-    try {
-      const { postPlaceReview } = require("../services/socialFeedService");
-      await postPlaceReview(selectedReviewId, newRating, newReviewText.trim());
-      setReviewModalVisible(false);
-      setNewReviewText("");
-      setNewRating(5);
-      fetchReviews(selectedReviewId);
-    } catch (e) {
-      console.warn("Failed to post review", e);
-    } finally {
-      setIsPostingReview(false);
-    }
-  }, [
-    fetchReviews,
-    newRating,
-    newReviewText,
-    selectedLoc,
-  ]);
+
 
   const handleGetDirections = useCallback(
     (item: ScheduleMeetingEntry | string) => {
@@ -1952,7 +1937,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
       activeLayer === "Today" ||
       activeLayer === "Pulse" ||
       selectedId ||
-      sortedFilteredLocations.length === 0
+      sortedFilteredLocations.length === 0 ||
+      (activeLayer === "Dining" && sortedFilteredLocations.every(l => l.searchOnly))
     )
       return;
     const fitKey = `${activeLayer}:${sortedFilteredLocations.length}:${sortedFilteredLocations[0]?.location || ""}`;
@@ -1979,16 +1965,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     });
   }, [activeLayer, selectedId, sortedFilteredLocations]);
 
-  // Sheet selection - fetch reviews + dining on select
-  useEffect(() => {
-    const selectedReviewId =
-      selectedLoc?.placeId || selectedLoc?.location || null;
-    if (selectedId && selectedReviewId) {
-      fetchReviews(selectedReviewId);
-    } else {
-      setReviews([]);
-    }
-  }, [selectedId, selectedLoc, fetchReviews]);
+
 
   useEffect(() => {
     if (!selectedLoc || !mapRef.current) return;
@@ -2051,10 +2028,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
             if (hadSelection) {
               if (hadPulseHotspotSelection) {
                 suppressNextOverviewFitRef.current = true;
-              } else {
-                requestAnimationFrame(() => {
-                  fitMapToActiveOverview();
-                });
               }
             }
           }
@@ -2374,15 +2347,26 @@ export function PlacesMapScreen({ route, navigation }: any) {
             const isSelected = getLocationSelectionId(loc) === selectedId;
             const isTodayLayer = activeLayer === "Today";
             const isCapacityType = loc.type === "Library" || loc.type === "Rec";
+            const displayPercent =
+              loc.capacity && loc.capacity > 0 && loc.current_count != null
+                ? Math.round((loc.current_count / loc.capacity) * 100)
+                : loc.percent_full != null && Number.isFinite(loc.percent_full)
+                  ? loc.percent_full
+                  : null;
+
             const pinColor = isTodayLayer
               ? getCategoryColor(loc.classMeetings?.[0]?.category)
               : isCapacityType
-                ? getStatusColor(loc.percent_full)
+                ? getStatusColor(displayPercent)
                 : COLORS.primary;
             const pinText =
               isTodayLayer && loc.sequenceIndex
                 ? loc.sequenceIndex.toString()
                 : null;
+
+            if (loc.searchOnly && getLocationSelectionId(loc) !== selectedId) {
+              return null;
+            }
 
             return (
               <MapMarker
@@ -2651,6 +2635,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
                         showsVerticalScrollIndicator={false}
                       >
                         {sortedFilteredLocations.map((loc) => {
+                          const displayPercent =
+                            loc.capacity && loc.capacity > 0 && loc.current_count != null
+                              ? Math.round((loc.current_count / loc.capacity) * 100)
+                              : loc.percent_full != null && Number.isFinite(loc.percent_full)
+                                ? loc.percent_full
+                                : null;
+
                           const isRecCenterTourItem =
                             getCanonicalLocationName(loc.location) ===
                             getCanonicalLocationName("Student Recreation Center");
@@ -2696,8 +2687,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
                                 >
                                   {(loc.type === "Library" ||
                                     loc.type === "Rec") &&
-                                    loc.percent_full != null
-                                    ? `${loc.percent_full}% full · `
+                                    displayPercent != null
+                                    ? `${displayPercent}% full · `
                                     : ""}
                                   {loc.type !== "Dining" && loc.type !== "Hub"
                                     ? loc.type
@@ -2807,19 +2798,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
         selectedId={selectedId}
         setSelectedId={setSelectedId}
         selectedLoc={selectedLoc}
-        reviews={reviews}
-        reviewModalVisible={reviewModalVisible}
-        setReviewModalVisible={setReviewModalVisible}
-        newRating={newRating}
-        setNewRating={setNewRating}
-        newReviewText={newReviewText}
-        setNewReviewText={setNewReviewText}
-        isPostingReview={isPostingReview}
-        handlePostReview={handlePostReview}
-        allReviewsModalVisible={allReviewsModalVisible}
-        setAllReviewsModalVisible={setAllReviewsModalVisible}
-        isFetchingReviews={isFetchingReviews}
-        fetchReviews={fetchReviews}
         foodCourtVenues={foodCourtVenues}
         diningMenuOptions={diningMenuOptions}
         activeDiningMenu={activeDiningMenu}

@@ -239,6 +239,16 @@ export const STATIC_LOCATION_META: Record<string, Partial<CampusLocation>> = {
     hours: "Check dining schedule",
     description: "Dining hub inside the Polo Road Garage complex.",
   },
+  "Northside Garage (NSG)": {
+    hours: "Open 24/7 for permit holders; search-only for visitors.",
+    description: "Multi-level parking facility on the north side of campus near the Northpoint area.",
+    type: "Parking"
+  },
+  "Southside Garage (SSG)": {
+    hours: "Open 24/7 for permit holders; search-only for visitors.",
+    description: "Multi-level parking facility on the south side of campus near the Commons and Southside Rec.",
+    type: "Parking"
+  },
   "Rudder Tower": {
     hours: "Open daily",
     description: "Event and campus activity landmark adjacent to the MSC.",
@@ -408,8 +418,53 @@ function toRegistryCampusLocation(place: CampusRegistryPlaceRecord): CampusLocat
   };
 }
 
+const INJECTED_RESTAURANTS: CampusLocation[] = [
+  // MSC Food Court
+  { placeId: "msc-abu-omar", location: "Abu Omar Halal - MSC", type: "Dining", coord: { lat: 30.6123, lng: -96.3414 }, source: "snapshot", searchOnly: true },
+  { placeId: "msc-cabo", location: "Cabo Grill - MSC", type: "Dining", coord: { lat: 30.6122, lng: -96.3413 }, source: "snapshot", searchOnly: true },
+  { placeId: "msc-cfa", location: "Chick-Fil-A - MSC Food Court", type: "Dining", coord: { lat: 30.6124, lng: -96.3415 }, source: "snapshot", searchOnly: true },
+  { placeId: "msc-houston", location: "Houston Street Subs - MSC", type: "Dining", coord: { lat: 30.6121, lng: -96.3412 }, source: "snapshot", searchOnly: true },
+  { placeId: "msc-panda", location: "Panda Express - MSC", type: "Dining", coord: { lat: 30.6125, lng: -96.3416 }, source: "snapshot", searchOnly: true },
+  { placeId: "msc-revs", location: "Rev's American Grill - MSC", type: "Dining", coord: { lat: 30.6122, lng: -96.3411 }, source: "snapshot", searchOnly: true },
+  { placeId: "msc-shake-smart", location: "Shake Smart - MSC", type: "Dining", coord: { lat: 30.6124, lng: -96.3417 }, source: "snapshot", searchOnly: true },
+  { placeId: "msc-spin", location: "Spin 'N Stone Pizza - MSC", type: "Dining", coord: { lat: 30.6123, lng: -96.3418 }, source: "snapshot", searchOnly: true },
+  { placeId: "msc-starbucks", location: "Starbucks Coffee - MSC", type: "Dining", coord: { lat: 30.6126, lng: -96.3413 }, source: "snapshot", searchOnly: true },
+  
+  // Sbisa Underground
+  { placeId: "und-1876", location: "1876 Burgers - Sbisa Complex", type: "Dining", coord: { lat: 30.6171, lng: -96.3429 }, source: "snapshot", searchOnly: true },
+  { placeId: "und-cfa", location: "Chick-Fil-A - Sbisa Underground Food Court", type: "Dining", coord: { lat: 30.6172, lng: -96.3430 }, source: "snapshot", searchOnly: true },
+  { placeId: "und-copperhead", location: "Copperhead Jack's - Sbisa Complex", type: "Dining", coord: { lat: 30.6170, lng: -96.3428 }, source: "snapshot", searchOnly: true },
+  { placeId: "und-einstein", location: "Einstein Bros. Bagels - Sbisa Complex", type: "Dining", coord: { lat: 30.6173, lng: -96.3431 }, source: "snapshot", searchOnly: true },
+  { placeId: "und-houston", location: "Houston Street Subs - Underground Food Court", type: "Dining", coord: { lat: 30.6169, lng: -96.3427 }, source: "snapshot", searchOnly: true },
+  { placeId: "und-bagel", location: "Bagel Block", type: "Dining", coord: { lat: 30.6171, lng: -96.3426 }, source: "snapshot", searchOnly: true },
+  { placeId: "und-pizza", location: "Pizza @ Underground", type: "Dining", coord: { lat: 30.6174, lng: -96.3432 }, source: "snapshot", searchOnly: true },
+  { placeId: "und-smoothie", location: "Smoothie King - Sbisa Underground Food Court", type: "Dining", coord: { lat: 30.6172, lng: -96.3433 }, source: "snapshot", searchOnly: true },
+
+  // West Campus Food Hall
+  { placeId: "wc-cfa", location: "Chick-fil-A - West Campus Food Hall", type: "Dining", coord: { lat: 30.6133, lng: -96.3534 }, source: "snapshot", searchOnly: true },
+  { placeId: "wc-copperhead", location: "Copperhead Jack's - West Campus Food Hall", type: "Dining", coord: { lat: 30.6134, lng: -96.3535 }, source: "snapshot", searchOnly: true },
+  { placeId: "wc-houston", location: "Houston Street Subs - West Campus Food Hall", type: "Dining", coord: { lat: 30.6132, lng: -96.3533 }, source: "snapshot", searchOnly: true },
+
+  // Markets & Aggie Express — coordinates from campus registry DB + geocoded addresses
+  { placeId: "mkt-aggie-commons", location: "Aggie Express - Commons", type: "Dining", coord: { lat: 30.6158, lng: -96.3363 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-aggie-hullabaloo", location: "Aggie Express - Hullabaloo", type: "Dining", coord: { lat: 30.6165, lng: -96.3463 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-aggie-pavilion", location: "Aggie Express - Pavilion", type: "Dining", coord: { lat: 30.6135, lng: -96.3355 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-creekside", location: "Creekside Market", type: "Dining", coord: { lat: 30.6076, lng: -96.3539 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-polo", location: "Market @ Polo Garage", type: "Dining", coord: { lat: 30.6235, lng: -96.3380 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-lamar", location: "Market @ Lamar St.", type: "Dining", coord: { lat: 30.6120, lng: -96.3442 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-white-creek", location: "White Creek Market", type: "Dining", coord: { lat: 30.6076, lng: -96.3562 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-ag-cafe", location: "Market - Ag Cafe", type: "Dining", coord: { lat: 30.6055, lng: -96.3510 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-blcc", location: "Market Express - Business Library (BLCC)", type: "Dining", coord: { lat: 30.6115, lng: -96.3502 }, source: "snapshot", searchOnly: true },
+];
+
 export function buildCampusDirectory(): CampusLocation[] {
-  return CAMPUS_REGISTRY_PLACES.map(toRegistryCampusLocation);
+  const directory = CAMPUS_REGISTRY_PLACES.map(toRegistryCampusLocation);
+  
+  // Inject missing restaurants so they show up in food court lists
+  const existingPlaceIds = new Set(directory.map(p => p.placeId));
+  const missing = INJECTED_RESTAURANTS.filter(p => !existingPlaceIds.has(p.placeId));
+  
+  return [...directory, ...missing];
 }
 
 type FoodCourtGroupConfig = {
@@ -427,26 +482,44 @@ const FOOD_COURT_GROUPS: FoodCourtGroupConfig[] = [
     id: "msc-food-court",
     canonicalParentPlaceId: "msc",
     canonicalParentName: "Memorial Student Center",
-    aliasParentPlaceIds: ["msc"],
-    aliasParentNames: ["Memorial Student Center", "Memorial Student Center (MSC)"],
+    aliasParentPlaceIds: ["msc", "osm:node:368159934"],
+    aliasParentNames: ["Memorial Student Center", "Memorial Student Center (MSC)", "MSC"],
     childPlaceIds: [
-      "cfa",
-      "panda-msc",
-      "revs-msc-food",
-      "houston-msc",
-      "abu-omar-msc",
-      "starbucks-msc",
+      "cfa", "panda-msc", "revs-msc-food", "houston-msc", "abu-omar-msc", "starbucks-msc",
+      "msc-abu-omar", "msc-cabo", "msc-cfa", "msc-houston", "msc-panda", "msc-revs", 
+      "msc-shake-smart", "msc-spin", "msc-starbucks"
     ],
-    childNamePatterns: [/\(msc\)\s*$/i, /\s-\s*msc\s*$/i],
+    childNamePatterns: [/\(msc\)\s*$/i, /\s-\s*msc\s*$/i, /^msc\s+/i],
   },
   {
     id: "polo-food-court",
     canonicalParentPlaceId: "polo-garage-food",
     canonicalParentName: "Polo Road Garage Dining",
-    aliasParentPlaceIds: ["polo-garage-food", "garage-polo"],
-    aliasParentNames: ["Polo Road Garage Dining", "Polo Road Garage"],
-    childPlaceIds: ["panda-polo", "salata-polo", "shake-polo"],
+    aliasParentPlaceIds: ["polo-garage-food", "garage-polo", "polo-road-dining"],
+    aliasParentNames: ["Polo Road Garage Dining", "Polo Road Garage", "Polo Dining"],
+    childPlaceIds: ["panda-polo", "salata-polo", "shake-polo", "panda-polo-garage", "shake-polo-garage", "houston-polo-garage"],
     childNamePatterns: [/\(polo\)\s*$/i, /\s-\s*polo(?:\s+garage)?\s*$/i],
+  },
+  {
+    id: "underground-food-court",
+    canonicalParentPlaceId: "underground-food",
+    canonicalParentName: "Underground Food Court",
+    aliasParentPlaceIds: ["underground-food", "sbisa-underground", "sbisa"],
+    aliasParentNames: ["Underground Food Court", "Sbisa Underground", "Sbisa Complex"],
+    childPlaceIds: [
+      "und-1876", "und-cfa", "und-copperhead", "und-einstein", "und-houston", "und-bagel", "und-pizza", "und-smoothie",
+      "chick-fil-a-sbisa", "houston-sbisa", "1876-burgers", "copperhead-sbisa"
+    ],
+    childNamePatterns: [/\s-\s*sbisa(?:\s+complex)?\s*$/i, /underground/i],
+  },
+  {
+    id: "west-campus-food-hall",
+    canonicalParentPlaceId: "west-campus-dining",
+    canonicalParentName: "West Campus Dining Facility",
+    aliasParentPlaceIds: ["west-campus-dining", "wcd"],
+    aliasParentNames: ["West Campus Dining Facility", "West Campus Dining Hall"],
+    childPlaceIds: ["wc-cfa", "wc-copperhead", "wc-houston"],
+    childNamePatterns: [/\s-\s*west\s+campus\s+food\s+hall\s*$/i],
   },
 ];
 
@@ -648,6 +721,8 @@ export function mergeCampusLocations(...groups: CampusLocation[][]): CampusLocat
             ? existing.coord
             : location.coord,
           aliases: nextAliases,
+          // Never let a searchOnly:true duplicate hide an already-visible location
+          searchOnly: existing.searchOnly === false ? false : (location.searchOnly ?? existing.searchOnly),
         }
       : {
           ...location,

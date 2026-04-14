@@ -147,9 +147,9 @@ export const Card = ({ children, style }: any) => {
   return <View style={[styles.card, style]}>{children}</View>;
 };
 
-export const SectionLabel = ({ children }: any) => {
+export const SectionLabel = ({ children, style }: any) => {
   const styles = useDiningStyles();
-  return <Text style={styles.sectionLabel}>{children}</Text>;
+  return <Text style={[styles.sectionLabel, style]}>{children}</Text>;
 };
 
 export const Divider = () => {
