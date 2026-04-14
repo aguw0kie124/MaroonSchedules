@@ -2310,10 +2310,17 @@ export function PlacesMapScreen({ route, navigation }: any) {
             const isSelected = getLocationSelectionId(loc) === selectedId;
             const isTodayLayer = activeLayer === "Today";
             const isCapacityType = loc.type === "Library" || loc.type === "Rec";
+            const displayPercent =
+              loc.capacity && loc.capacity > 0 && loc.current_count != null
+                ? Math.round((loc.current_count / loc.capacity) * 100)
+                : loc.percent_full != null && Number.isFinite(loc.percent_full)
+                  ? loc.percent_full
+                  : null;
+
             const pinColor = isTodayLayer
               ? getCategoryColor(loc.classMeetings?.[0]?.category)
               : isCapacityType
-                ? getStatusColor(loc.percent_full)
+                ? getStatusColor(displayPercent)
                 : COLORS.primary;
             const pinText =
               isTodayLayer && loc.sequenceIndex
@@ -2633,8 +2640,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
                                 >
                                   {(loc.type === "Library" ||
                                     loc.type === "Rec") &&
-                                    loc.percent_full != null
-                                    ? `${loc.percent_full}% full · `
+                                    displayPercent != null
+                                    ? `${displayPercent}% full · `
                                     : ""}
                                   {loc.type !== "Dining" && loc.type !== "Hub"
                                     ? loc.type
