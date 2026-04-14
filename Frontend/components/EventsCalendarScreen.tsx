@@ -68,6 +68,7 @@ import { promptGuestLogin } from '../utils/guestAccess';
 import { blockUser, reportContent } from '../services/socialFeedService';
 import { TagChips } from './common/TagChips';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getEventImage } from './events/EventImages';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
@@ -1846,7 +1847,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
 
                 <View style={s.categoryWrap}>
-                  {categoriesExpanded ? (
+                    {categoriesExpanded ? (
                     <>
                       <View style={s.categoryHeaderRow}>
                         <Text style={s.categorySectionLabel}>Filters</Text>
@@ -2274,19 +2275,38 @@ function HeroEventCard({
   const category = getDisplayCategory(event);
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
+  const eventImage = getEventImage(event as any);
+
+  // DEBUG: remove after fixing
+  if (!eventImage) {
+    const { classifyCategory: cc } = require('./events/EventUtils');
+    console.log('NO IMAGE:', event.title, '| category:', cc(event), '| has categories:', !!event.categories);
+  }
 
   return (
     <Pressable
       onPress={onPress}
       style={[stylesStatic.heroCard, { backgroundColor: meta.cardTint }]}
     >
-      {event.imageUrl ? <Image source={{ uri: event.imageUrl }} style={stylesStatic.heroImage} resizeMode="cover" /> : null}
-      {event.imageUrl ? <View style={stylesStatic.heroImageOverlay} /> : null}
-      <View style={[stylesStatic.heroGlow, { backgroundColor: 'rgba(255,255,255,0.18)' }]} />
-      <View style={[stylesStatic.heroGlowSmall, { backgroundColor: 'rgba(255,255,255,0.12)' }]} />
-      <View style={[stylesStatic.heroIconHalo, event.imageUrl ? stylesStatic.heroIconHaloWithImage : null]}>
-        <Icon size={88} color="rgba(255,255,255,0.12)" />
-      </View>
+      {eventImage ? (
+        <View style={StyleSheet.absoluteFill}>
+          <Image source={eventImage} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          <LinearGradient
+            colors={['transparent', 'transparent', 'rgba(0,0,0,0.7)']}
+            locations={[0, 0.5, 1]}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+        </View>
+      ) : (
+        <>
+          <View style={[stylesStatic.heroGlow, { backgroundColor: 'rgba(255,255,255,0.18)' }]} />
+          <View style={[stylesStatic.heroGlowSmall, { backgroundColor: 'rgba(255,255,255,0.12)' }]} />
+          <View style={[stylesStatic.heroIconHalo]}>
+            <Icon size={88} color="rgba(255,255,255,0.12)" />
+          </View>
+        </>
+      )}
 
       <View style={stylesStatic.heroTopRow}>
         <View style={stylesStatic.heroCategoryPill}>
@@ -3566,6 +3586,9 @@ const stylesStatic = StyleSheet.create({
     fontWeight: '900',
     textTransform: 'uppercase',
     letterSpacing: 1.4,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   verifiedPill: {
     flexDirection: 'row',
@@ -3580,6 +3603,9 @@ const stylesStatic = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '800',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   heroBottom: {
     flex: 1,
@@ -3598,6 +3624,9 @@ const stylesStatic = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: -1.0,
     maxWidth: '88%',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   heroOrganizerPill: {
     alignSelf: 'flex-start',
@@ -3625,6 +3654,9 @@ const stylesStatic = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     flex: 1,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   heroActionRow: {
     flexDirection: 'row',
