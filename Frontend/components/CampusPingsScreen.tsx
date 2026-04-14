@@ -72,10 +72,12 @@ import { TourTarget, useTour } from './onboarding/TourProvider';
 import {
   addComment,
   addPing,
+  blockUser,
   initializeFeedUser,
   deletePing,
   getComments,
   getPingFeed,
+  reportContent,
   toggleLike,
   toggleVote,
   uploadMediaImage,
@@ -860,6 +862,12 @@ export function CampusPingsScreen() {
         if (previousPings) {
           queryClient.setQueryData(['campus-pings', API_URL], previousPings);
         }
+        if (error instanceof Error && /blocked/i.test(error.message)) {
+          Alert.alert(
+            'Interaction unavailable',
+            'You cannot interact with a user you have blocked or who has blocked you.',
+          );
+        }
       }
     },
     [navigation, queryClient],
@@ -890,6 +898,81 @@ export function CampusPingsScreen() {
     },
     [],
   );
+
+  const removeBlockedUserFromVisibleFeed = useCallback((blockedUserId: string) => {
+    queryClient.setQueryData(['campus-pings', API_URL], (current: PingCard[] | undefined) => {
+      if (!current) return current;
+      return current.filter((entry) => entry.userId !== blockedUserId);
+    });
+  }, [queryClient]);
+
+  const handleReportPing = useCallback((ping: PingCard) => {
+    if (!user?.id || !ping.userId) {
+      Alert.alert('Sign in required', 'Please sign in to report this post.');
+      return;
+    }
+
+    const submitReport = async (reason: string) => {
+      try {
+        await reportContent({
+          reporteeId: ping.userId!,
+          postType: 'crowdping',
+          postId: ping.activityId || ping.id,
+          reason,
+        });
+        Alert.alert('Report received', 'Thanks for helping keep Campus Pulse safe.');
+      } catch (error) {
+        console.warn('[Pings] report failed', error);
+        Alert.alert('Unable to submit report', 'We could not send that report right now.');
+      }
+    };
+
+    Alert.alert('Report post', 'What is the issue with this post?', [
+      { text: 'Spam', onPress: () => submitReport('spam') },
+      { text: 'Inappropriate', onPress: () => submitReport('inappropriate') },
+      { text: 'Harassment', onPress: () => submitReport('harassment') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [user?.id]);
+
+  const handleBlockPingAuthor = useCallback((ping: PingCard) => {
+    if (!user?.id || !ping.userId) {
+      Alert.alert('Sign in required', 'Please sign in to block this user.');
+      return;
+    }
+
+    const displayName = ping.isAnonymous ? 'this user' : ping.userName;
+    Alert.alert(
+      'Block user?',
+      `You will stop seeing posts from ${displayName}, and you will no longer be able to interact with each other until you unblock them in Blocked Users.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await blockUser(ping.userId!, user.id);
+              removeBlockedUserFromVisibleFeed(ping.userId!);
+              Alert.alert('User blocked', `${displayName} has been blocked.`);
+            } catch (error) {
+              console.warn('[Pings] block failed', error);
+              Alert.alert('Unable to block user', 'We could not block this user right now.');
+            }
+          },
+        },
+      ],
+    );
+  }, [removeBlockedUserFromVisibleFeed, user?.id]);
+
+  const handleOpenPingMenu = useCallback((ping: PingCard) => {
+    const displayName = ping.isAnonymous ? 'this user' : ping.userName;
+    Alert.alert(displayName, 'Choose an action for this post.', [
+      { text: 'Report', onPress: () => handleReportPing(ping) },
+      { text: 'Block User', style: 'destructive', onPress: () => handleBlockPingAuthor(ping) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [handleBlockPingAuthor, handleReportPing]);
 
 
 
@@ -1011,6 +1094,7 @@ export function CampusPingsScreen() {
 
   const renderPingCard = ({ item }: { item: PingCard }) => {
     const canDelete = item.userId === user?.id;
+    const canModerateAuthor = !!user?.id && !!item.userId && item.userId !== user.id;
     const CategoryData = PING_CATEGORIES.find((c) => c.id === item.category) || PING_CATEGORIES[PING_CATEGORIES.length - 1];
     const { Icon, accent } = CategoryData;
 
@@ -1043,11 +1127,24 @@ export function CampusPingsScreen() {
                 {formatRelativeAge(item.createdAt)} · {item.locationTag}
               </Text>
             </View>
-            {item.anchorType === 'geo' && (
-              <View style={[styles.geoIndicator, hasImage && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                <LocateFixed size={12} color={hasImage ? '#FFFFFF' : COLORS.textTertiary} />
-              </View>
-            )}
+            <View style={styles.pingHeaderActions}>
+              {item.anchorType === 'geo' && (
+                <View style={[styles.geoIndicator, hasImage && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                  <LocateFixed size={12} color={hasImage ? '#FFFFFF' : COLORS.textTertiary} />
+                </View>
+              )}
+              {canModerateAuthor ? (
+                <ScalePressable
+                  style={[
+                    styles.pingMenuButton,
+                    hasImage && styles.pingMenuButtonOverlay,
+                  ]}
+                  onPress={() => handleOpenPingMenu(item)}
+                >
+                  <MoreVertical size={16} color={hasImage ? '#FFFFFF' : COLORS.textSecondary} />
+                </ScalePressable>
+              ) : null}
+            </View>
           </View>
 
           {!hasImage && (
@@ -1820,6 +1917,11 @@ const getStyles = (theme: any) => {
       flex: 1,
       marginLeft: 12,
     },
+    pingHeaderActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
     pingAuthorName: {
       color: COLORS.textPrimary,
       fontSize: 16,
@@ -1838,6 +1940,20 @@ const getStyles = (theme: any) => {
       backgroundColor: COLORS.surfaceElevated,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    pingMenuButton: {
+      width: 32,
+      height: 32,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: COLORS.surfaceElevated,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    pingMenuButtonOverlay: {
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      borderColor: 'rgba(255,255,255,0.1)',
     },
     pingContent: {
       marginBottom: 16,

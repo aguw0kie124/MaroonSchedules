@@ -87,7 +87,7 @@ class CrowdPingRouteTests(unittest.TestCase):
     @mock.patch.object(chat.feed_repository, "get_batch_interaction_counts")
     @mock.patch.object(chat.feed_repository, "get_crowdping_feed")
     @mock.patch.object(chat.cache_service, "delete")
-    @mock.patch.object(chat, "_get_blocked_ids_cached", return_value=[])
+    @mock.patch.object(chat, "_get_block_relationship_ids_cached", return_value=[])
     @mock.patch.object(chat, "_resolve_access_scope_cached", return_value=([], False))
     @mock.patch.object(chat.cache_service, "get_json", return_value=None)
     @mock.patch.object(chat.campus_hub_service, "_ensure_social_tables")
@@ -96,7 +96,7 @@ class CrowdPingRouteTests(unittest.TestCase):
         mock_ensure_tables,
         _mock_cache_get_json,
         _mock_resolve_access_scope,
-        _mock_get_blocked_ids,
+        _mock_get_block_relationship_ids,
         _mock_cache_delete,
         mock_get_crowdping_feed,
         mock_get_batch_counts,
@@ -159,14 +159,14 @@ class CrowdPingRouteTests(unittest.TestCase):
     @mock.patch.object(chat.cache_service, "set_json")
     @mock.patch.object(chat.cache_service, "get_json")
     @mock.patch.object(chat.cache_service, "delete")
-    @mock.patch.object(chat, "_get_blocked_ids_cached", return_value=[])
+    @mock.patch.object(chat, "_get_block_relationship_ids_cached", return_value=[])
     @mock.patch.object(chat, "_resolve_access_scope_cached", return_value=([], False))
     @mock.patch.object(chat.campus_hub_service, "_ensure_social_tables")
     def test_proxy_get_feed_refresh_bypasses_backbone_cache(
         self,
         _mock_ensure_tables,
         _mock_resolve_access_scope,
-        _mock_get_blocked_ids,
+        _mock_get_block_relationship_ids,
         mock_cache_delete,
         mock_cache_get_json,
         _mock_cache_set_json,
@@ -189,6 +189,116 @@ class CrowdPingRouteTests(unittest.TestCase):
         mock_cache_delete.assert_any_call("feed:backbone:flat:campus_pings")
         mock_cache_get_json.assert_not_called()
         mock_get_crowdping_feed.assert_called_once_with(post_types=["ping", "post"], limit=50)
+
+    @mock.patch.object(chat.feed_repository, "get_user_interactions_batch", return_value={})
+    @mock.patch.object(chat.feed_repository, "get_batch_interaction_counts", return_value={})
+    @mock.patch.object(chat.feed_repository, "get_crowdping_feed")
+    @mock.patch.object(chat.cache_service, "get_json", return_value=None)
+    @mock.patch.object(chat, "_get_block_relationship_ids_cached", return_value=["blocked_user"])
+    @mock.patch.object(chat, "_resolve_access_scope_cached", return_value=([], False))
+    @mock.patch.object(chat.campus_hub_service, "_ensure_social_tables")
+    def test_proxy_get_feed_filters_block_relationships(
+        self,
+        _mock_ensure_tables,
+        _mock_resolve_access_scope,
+        _mock_get_block_relationship_ids,
+        _mock_cache_get_json,
+        mock_get_crowdping_feed,
+        _mock_get_batch_counts,
+        _mock_get_user_interactions_batch,
+    ):
+        mock_get_crowdping_feed.return_value = [
+            {
+                "id": "hidden-ping",
+                "user_id": "blocked_user",
+                "user_name": "Blocked User",
+                "user_image": "",
+                "content": "Hidden",
+                "lat": None,
+                "lng": None,
+                "location_tag": "Nowhere",
+                "event_id": None,
+                "images": [],
+                "is_anonymous": False,
+                "visibility": "public",
+                "post_type": "ping",
+                "custom_data": {},
+                "created_at": "2099-01-01T11:55:00+00:00",
+            },
+            {
+                "id": "visible-ping",
+                "user_id": "user_789",
+                "user_name": "Visible User",
+                "user_image": "",
+                "content": "Visible",
+                "lat": None,
+                "lng": None,
+                "location_tag": "MSC",
+                "event_id": None,
+                "images": [],
+                "is_anonymous": False,
+                "visibility": "public",
+                "post_type": "ping",
+                "custom_data": {},
+                "created_at": "2099-01-01T11:56:00+00:00",
+            },
+        ]
+
+        response = asyncio.run(
+            chat.proxy_get_feed(
+                request=make_request(),
+                feed_group="flat",
+                feed_id="campus_pings",
+                limit=25,
+                clerk_id=None,
+                refresh=False,
+                auth_user_id="user_123",
+            )
+        )
+
+        self.assertEqual([item["id"] for item in response["results"]], ["visible-ping"])
+
+    @mock.patch.object(chat.feed_repository, "has_block_relationship", return_value=True)
+    @mock.patch.object(chat.feed_repository, "get_crowdping_post_owner", return_value="blocked_user")
+    @mock.patch.object(chat.campus_hub_service, "_ensure_social_tables")
+    def test_proxy_add_reaction_blocks_interaction_when_users_blocked(
+        self,
+        _mock_ensure_tables,
+        _mock_get_post_owner,
+        _mock_has_block_relationship,
+    ):
+        body = chat.ReactionPayload(
+            kind="upvote",
+            activity_id="ping-1",
+            user_id="user_123",
+            data={"name": "Aggie"},
+        )
+
+        with self.assertRaises(chat.HTTPException) as ctx:
+            asyncio.run(chat.proxy_add_reaction(make_request(), body, auth_user_id="user_123"))
+
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertIn("blocked", str(ctx.exception.detail).lower())
+
+    @mock.patch.object(chat.feed_repository, "get_post_interactions")
+    @mock.patch.object(chat, "_get_block_relationship_ids_cached", return_value=["blocked_user"])
+    @mock.patch.object(chat.campus_hub_service, "_ensure_social_tables")
+    def test_proxy_get_reactions_filters_blocked_relationships(
+        self,
+        _mock_ensure_tables,
+        _mock_get_block_relationship_ids,
+        mock_get_post_interactions,
+    ):
+        mock_get_post_interactions.return_value = []
+
+        asyncio.run(chat.proxy_get_reactions("ping-1", "comment", auth_user_id="user_123"))
+
+        mock_get_post_interactions.assert_called_once_with(
+            "ping-1",
+            "crowdping",
+            interaction_type="comment",
+            exclude_user_ids=["blocked_user"],
+        )
 
 
 class PulseServiceTests(unittest.TestCase):

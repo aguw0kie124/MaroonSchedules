@@ -239,12 +239,17 @@ def add_post_interaction(
     cache_service.delete(f"post:interactions:{post_id}")
     return _row_to_interaction_dict(row)
 
-def get_post_interactions(post_id: str, post_type: str, interaction_type: str = None) -> List[Dict[str, Any]]:
+def get_post_interactions(
+    post_id: str,
+    post_type: str,
+    interaction_type: str = None,
+    exclude_user_ids: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         with conn.cursor() as cur:
+            params: List[Any] = [post_id, post_type]
             if interaction_type:
-                cur.execute(
-                    """
+                sql = """
                     SELECT i.id, i.post_id, i.post_type, i.user_id, i.type, i.comment_text, i.created_at, 
                            COALESCE(u.full_name, i.user_name, 'Aggie User') as user_name, 
                            COALESCE(u.profile_image_url, i.user_image, '') as user_image
@@ -252,12 +257,10 @@ def get_post_interactions(post_id: str, post_type: str, interaction_type: str = 
                     LEFT JOIN users u ON i.user_id = u.clerk_id
                     WHERE i.post_id = %s AND i.post_type = %s AND i.type = %s
                     ORDER BY i.created_at DESC
-                    """,
-                    (post_id, post_type, interaction_type)
-                )
-            else:
-                cur.execute(
                     """
+                params.append(interaction_type)
+            else:
+                sql = """
                     SELECT i.id, i.post_id, i.post_type, i.user_id, i.type, i.comment_text, i.created_at, 
                            COALESCE(u.full_name, i.user_name, 'Aggie User') as user_name, 
                            COALESCE(u.profile_image_url, i.user_image, '') as user_image
@@ -265,9 +268,11 @@ def get_post_interactions(post_id: str, post_type: str, interaction_type: str = 
                     LEFT JOIN users u ON i.user_id = u.clerk_id
                     WHERE i.post_id = %s AND i.post_type = %s
                     ORDER BY i.created_at DESC
-                    """,
-                    (post_id, post_type)
-                )
+                    """
+            if exclude_user_ids:
+                sql = sql.replace("ORDER BY i.created_at DESC", "AND i.user_id != ALL(%s) ORDER BY i.created_at DESC")
+                params.append(exclude_user_ids)
+            cur.execute(sql, tuple(params))
             rows = cur.fetchall()
     return [_row_to_interaction_dict(r) for r in rows]
 
@@ -420,6 +425,57 @@ def get_blocked_user_ids(user_id: str) -> List[str]:
             cur.execute("SELECT blocked_id FROM blocked_users WHERE blocker_id = %s", (user_id,))
             rows = cur.fetchall()
     return [r[0] for r in rows]
+
+
+def get_block_relationship_user_ids(user_id: str) -> List[str]:
+    """Returns users the caller has blocked or who have blocked the caller."""
+    with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT related_id
+                FROM (
+                    SELECT blocked_id AS related_id
+                    FROM blocked_users
+                    WHERE blocker_id = %s
+                    UNION
+                    SELECT blocker_id AS related_id
+                    FROM blocked_users
+                    WHERE blocked_id = %s
+                ) relationships
+                """,
+                (user_id, user_id),
+            )
+            rows = cur.fetchall()
+    return [r[0] for r in rows]
+
+
+def has_block_relationship(user_a: str, user_b: str) -> bool:
+    """Returns true when either user has blocked the other."""
+    if not user_a or not user_b:
+        return False
+    with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1
+                FROM blocked_users
+                WHERE (blocker_id = %s AND blocked_id = %s)
+                   OR (blocker_id = %s AND blocked_id = %s)
+                LIMIT 1
+                """,
+                (user_a, user_b, user_b, user_a),
+            )
+            return cur.fetchone() is not None
+
+
+def get_crowdping_post_owner(post_id: str) -> Optional[str]:
+    """Returns the owner clerk_id for a crowdping post, ping, or reel."""
+    with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT user_id FROM crowdping_posts WHERE id = %s", (post_id,))
+            row = cur.fetchone()
+    return row[0] if row else None
 
 def add_content_report(
     reporter_id: str,

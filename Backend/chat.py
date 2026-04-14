@@ -208,7 +208,7 @@ async def proxy_get_feed(
                 cache_service.set_json(cache_key, raw_items, ttl_seconds=60)
 
         # 2. In-Memory Personalization (Filtering & Hydration)
-        blocked_ids = _get_blocked_ids_cached(resolved_user_id) if resolved_user_id else []
+        blocked_ids = _get_block_relationship_ids_cached(resolved_user_id) if resolved_user_id else []
         
         filtered_items = [
             item
@@ -424,6 +424,9 @@ async def proxy_add_reaction(request: Request, body: ReactionPayload, auth_user_
     try:
         _ensure_social_schema()
         ensure_matching_user(auth_user_id, body.user_id, detail="You can only react as yourself")
+        post_owner_id = feed_repository.get_crowdping_post_owner(body.activity_id)
+        if post_owner_id and post_owner_id != body.user_id and feed_repository.has_block_relationship(body.user_id, post_owner_id):
+            raise HTTPException(status_code=403, detail="You cannot interact with a user you have blocked or who has blocked you")
         # 1. Resolve naming/image from DB if possible to fix "Aggie" bug
         user_profile = user_repository.get_user(body.user_id)
         final_name = user_profile.get("full_name") if user_profile else (body.data.get("name") if body.data else "Aggie")
@@ -460,11 +463,17 @@ async def proxy_add_reaction(request: Request, body: ReactionPayload, auth_user_
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/feeds/proxy/reactions/{activity_id}/{kind}")
-async def proxy_get_reactions(activity_id: str, kind: str):
+async def proxy_get_reactions(activity_id: str, kind: str, auth_user_id: Optional[str] = Depends(optional_auth)):
     """Fetch reactions natively from Postgres."""
     try:
         _ensure_social_schema()
-        interactions = feed_repository.get_post_interactions(activity_id, "crowdping", interaction_type=kind)
+        exclude_user_ids = _get_block_relationship_ids_cached(auth_user_id) if auth_user_id else None
+        interactions = feed_repository.get_post_interactions(
+            activity_id,
+            "crowdping",
+            interaction_type=kind,
+            exclude_user_ids=exclude_user_ids,
+        )
         # Transform to Stream reaction format for frontend compatibility
         results = []
         for i in interactions:
@@ -496,6 +505,8 @@ async def proxy_block_user(request: Request, clerk_id: str, body: BlockRequest =
         feed_repository.add_block(clerk_id, body.target_id)
         # Invalidate cached blocked list
         cache_service.delete(f"user:blocks:{clerk_id}")
+        cache_service.delete(f"user:block-relationships:{clerk_id}")
+        cache_service.delete(f"user:block-relationships:{body.target_id}")
         return {"status": "success"}
     except Exception as e:
         print(f"Block Error: {e}")
@@ -558,6 +569,8 @@ async def proxy_unblock_user(clerk_id: str, target_id: str, auth_user_id: str = 
         if not removed:
             raise HTTPException(status_code=404, detail="Block record not found")
         cache_service.delete(f"user:blocks:{clerk_id}")
+        cache_service.delete(f"user:block-relationships:{clerk_id}")
+        cache_service.delete(f"user:block-relationships:{target_id}")
         return {"status": "success"}
     except HTTPException:
         raise
@@ -591,5 +604,17 @@ def _get_blocked_ids_cached(clerk_id: str) -> List[str]:
         return cached
     
     ids = feed_repository.get_blocked_user_ids(clerk_id)
+    cache_service.set_json(cache_key, ids, ttl_seconds=3600)
+    return ids
+
+
+def _get_block_relationship_ids_cached(clerk_id: str) -> List[str]:
+    """Users the caller has blocked or who have blocked the caller."""
+    cache_key = f"user:block-relationships:{clerk_id}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
+    ids = feed_repository.get_block_relationship_user_ids(clerk_id)
     cache_service.set_json(cache_key, ids, ttl_seconds=3600)
     return ids
