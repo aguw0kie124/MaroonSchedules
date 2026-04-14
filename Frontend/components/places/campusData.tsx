@@ -445,19 +445,16 @@ const INJECTED_RESTAURANTS: CampusLocation[] = [
   { placeId: "wc-copperhead", location: "Copperhead Jack's - West Campus Food Hall", type: "Dining", coord: { lat: 30.6134, lng: -96.3535 }, source: "snapshot", searchOnly: true },
   { placeId: "wc-houston", location: "Houston Street Subs - West Campus Food Hall", type: "Dining", coord: { lat: 30.6132, lng: -96.3533 }, source: "snapshot", searchOnly: true },
 
-  // Markets & Aggie Express
-  { placeId: "mkt-aggie-commons", location: "Aggie Express - Commons", type: "Dining", coord: { lat: 30.6156, lng: -96.3363 }, source: "snapshot", searchOnly: true },
-  { placeId: "mkt-aggie-hullabaloo", location: "Aggie Express - Hullabaloo", type: "Dining", coord: { lat: 30.6201, lng: -96.3405 }, source: "snapshot", searchOnly: true },
-  { placeId: "mkt-aggie-pavilion", location: "Aggie Express - Pavilion", type: "Dining", coord: { lat: 30.6168, lng: -96.3380 }, source: "snapshot", searchOnly: true },
-  { placeId: "mkt-creekside", location: "Creekside Market", type: "Dining", coord: { lat: 30.6092, lng: -96.3571 }, source: "snapshot", searchOnly: true },
-  { placeId: "mkt-polo", location: "Market @ Polo Garage", type: "Dining", coord: { lat: 30.6235, lng: -96.3382 }, source: "snapshot", searchOnly: true },
-  { placeId: "mkt-lamar", location: "Market @ Lamar St.", type: "Dining", coord: { lat: 30.6120, lng: -96.3445 }, source: "snapshot", searchOnly: true },
-  { placeId: "mkt-white-creek", location: "White Creek Market", type: "Dining", coord: { lat: 30.6092, lng: -96.3571 }, source: "snapshot", searchOnly: true },
-  { placeId: "mkt-ag-cafe", location: "Market - Ag Cafe", type: "Dining", coord: { lat: 30.6073, lng: -96.3433 }, source: "snapshot", searchOnly: true },
-  { placeId: "mkt-blcc", location: "Market Express - Business Library (BLCC)", type: "Dining", coord: { lat: 30.6105, lng: -96.3503 }, source: "snapshot", searchOnly: true },
-
-  // Libraries (missing from OSM snapshot)
-  { placeId: "annex", location: "Evans Library Annex", type: "Library", coord: { lat: 30.6163, lng: -96.3384 }, source: "snapshot", aliases: ["Sterling C. Evans Library Annex", "Library Annex", "Annex"] },
+  // Markets & Aggie Express — coordinates from campus registry DB + geocoded addresses
+  { placeId: "mkt-aggie-commons", location: "Aggie Express - Commons", type: "Dining", coord: { lat: 30.6158, lng: -96.3363 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-aggie-hullabaloo", location: "Aggie Express - Hullabaloo", type: "Dining", coord: { lat: 30.6165, lng: -96.3463 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-aggie-pavilion", location: "Aggie Express - Pavilion", type: "Dining", coord: { lat: 30.6135, lng: -96.3355 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-creekside", location: "Creekside Market", type: "Dining", coord: { lat: 30.6076, lng: -96.3539 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-polo", location: "Market @ Polo Garage", type: "Dining", coord: { lat: 30.6235, lng: -96.3380 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-lamar", location: "Market @ Lamar St.", type: "Dining", coord: { lat: 30.6120, lng: -96.3442 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-white-creek", location: "White Creek Market", type: "Dining", coord: { lat: 30.6076, lng: -96.3562 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-ag-cafe", location: "Market - Ag Cafe", type: "Dining", coord: { lat: 30.6055, lng: -96.3510 }, source: "snapshot", searchOnly: true },
+  { placeId: "mkt-blcc", location: "Market Express - Business Library (BLCC)", type: "Dining", coord: { lat: 30.6115, lng: -96.3502 }, source: "snapshot", searchOnly: true },
 ];
 
 export function buildCampusDirectory(): CampusLocation[] {
@@ -724,6 +721,8 @@ export function mergeCampusLocations(...groups: CampusLocation[][]): CampusLocat
             ? existing.coord
             : location.coord,
           aliases: nextAliases,
+          // Never let a searchOnly:true duplicate hide an already-visible location
+          searchOnly: existing.searchOnly === false ? false : (location.searchOnly ?? existing.searchOnly),
         }
       : {
           ...location,
