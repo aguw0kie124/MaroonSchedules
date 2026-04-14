@@ -858,6 +858,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(
     () => new Set(DEFAULT_SELECTED_CATEGORIES),
   );
+  const hasSelectedCategory = selectedCategories.size > 0;
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [searchQuery, setSearchQuery] = useState('');
   const [detailEvent, setDetailEvent] = useState<TAMUEvent | null>(null);
@@ -1673,6 +1674,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                             category={category}
                             count={categoryCounts[category] || 0}
                             active={selectedCategories.has(category)}
+                            dimmed={hasSelectedCategory && !selectedCategories.has(category)}
                             onPress={() => toggleCategory(category)}
                           />
                         ))}
@@ -1697,6 +1699,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                             category={category}
                             count={categoryCounts[category] || 0}
                             active={selectedCategories.has(category)}
+                            dimmed={hasSelectedCategory && !selectedCategories.has(category)}
                             onPress={() => toggleCategory(category)}
                           />
                         ))}
@@ -1727,12 +1730,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                     </View>
                   ) : null}
                 </View>
-
-                {isForYouSelected ? (
-                  <Text style={s.filterHintText}>
-                    Picks matched to your interests and saved preferences.
-                  </Text>
-                ) : null}
 
                 <ScrollView
                   horizontal
@@ -2000,11 +1997,13 @@ function CategoryChip({
   category,
   count,
   active,
+  dimmed = false,
   onPress,
 }: {
   category: ExploreCategory;
   count: number;
   active: boolean;
+  dimmed?: boolean;
   onPress: () => void;
 }) {
   const { accent, chipBg, chipText, icon: Icon } = CATEGORY_META[category];
@@ -2015,7 +2014,7 @@ function CategoryChip({
         stylesStatic.categoryChip,
         {
           backgroundColor: active ? accent : chipBg,
-          opacity: 1,
+          opacity: dimmed ? 0.42 : 1,
           borderWidth: active ? 2 : 1,
           borderColor: active ? '#FFFFFF' : `${chipText}26`,
           shadowOpacity: active ? 0.1 : 0.04,
@@ -2073,8 +2072,8 @@ function HeroEventCard({
         <View style={StyleSheet.absoluteFill}>
           <Image source={eventImage} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
           <LinearGradient
-            colors={['transparent', 'transparent', 'rgba(0,0,0,0.7)']}
-            locations={[0, 0.5, 1]}
+            colors={['rgba(0,0,0,0.16)', 'rgba(0,0,0,0.28)', 'rgba(0,0,0,0.78)']}
+            locations={[0, 0.45, 1]}
             style={StyleSheet.absoluteFill}
             pointerEvents="none"
           />
