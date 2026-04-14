@@ -465,7 +465,6 @@ export function CampusPingsScreen() {
 
   const [feedConnected, setFeedConnected] = useState(false);
   const [feedError, setFeedError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<'All' | PingCategory>('All');
 
@@ -538,6 +537,9 @@ export function CampusPingsScreen() {
   const filteredFeed = useMemo(() => {
     return feedPings.filter((ping) => categoryFilter === 'All' || ping.category === categoryFilter);
   }, [categoryFilter, feedPings]);
+
+  const isInitialPingsLoading = loadingPings && userPings.length === 0;
+  const isManuallyRefreshing = refreshing && !isInitialPingsLoading;
 
   const loadAll = useCallback(async () => {
     setRefreshing(true);
@@ -1139,6 +1141,12 @@ export function CampusPingsScreen() {
         </View>
       </View>
 
+      {isManuallyRefreshing ? (
+        <View style={styles.refreshWheelWrap}>
+          <ActivityIndicator size="small" color={COLORS.textPrimary} />
+        </View>
+      ) : null}
+
       <TourTarget
         name="crowdping-cta"
         assistAction={() => {
@@ -1205,7 +1213,7 @@ export function CampusPingsScreen() {
   const canSubmitComposer =
     Boolean(composerTitle.trim()) && composerHasLocation && !isResolvingCurrentLocation;
 
-  if (loading) {
+  if (isInitialPingsLoading) {
     return (
       <View style={styles.loadingWrap}>
         <ActivityIndicator size="large" color={COLORS.primary} />
@@ -1233,7 +1241,15 @@ export function CampusPingsScreen() {
           </View>
         }
         contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="transparent"
+            colors={['transparent']}
+            progressBackgroundColor="transparent"
+          />
+        }
         showsVerticalScrollIndicator={false}
       />
 
@@ -1613,6 +1629,12 @@ const getStyles = (theme: any) => {
       color: COLORS.textSecondary,
       fontSize: 15,
       fontWeight: '600',
+    },
+    refreshWheelWrap: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingTop: 5,
+      paddingBottom: 20,
     },
     listContent: {
       paddingBottom: 120,
