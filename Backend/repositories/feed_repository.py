@@ -512,6 +512,7 @@ def delete_user_data_cascade(clerk_id: str) -> bool:
             cur.execute("DELETE FROM crowdping_posts WHERE user_id = %s", (clerk_id,))
             cur.execute("DELETE FROM post_interactions WHERE user_id = %s", (clerk_id,))
             cur.execute("DELETE FROM blocked_users WHERE blocker_id = %s OR blocked_id = %s", (clerk_id, clerk_id))
+            cur.execute("DELETE FROM network_connections WHERE requester_id = %s OR recipient_id = %s", (clerk_id, clerk_id))
             cur.execute("DELETE FROM content_reports WHERE reporter_clerk_id = %s OR reportee_clerk_id = %s", (clerk_id, clerk_id))
             cur.execute("DELETE FROM users WHERE clerk_id = %s", (clerk_id,))
         conn.commit()

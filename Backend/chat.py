@@ -46,6 +46,10 @@ class ReportRequest(SanitizedBaseModel):
     place_id: Optional[str] = None
 
 
+class FriendRequest(SanitizedBaseModel):
+    target_id: str
+
+
 def _ensure_social_schema() -> None:
     campus_hub_service._ensure_social_tables()
 
@@ -576,6 +580,67 @@ async def proxy_unblock_user(clerk_id: str, target_id: str, auth_user_id: str = 
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/users/{clerk_id}/friends")
+@limiter.limit("20/minute")
+async def add_friend_for_user(
+    request: Request,
+    clerk_id: str,
+    body: FriendRequest = Body(...),
+    auth_user_id: str = Depends(require_auth),
+):
+    try:
+        _ensure_social_schema()
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only add friends from your own account")
+        if feed_repository.has_block_relationship(clerk_id, body.target_id):
+            raise HTTPException(status_code=403, detail="You cannot friend a blocked user")
+        result = user_repository.add_friend(clerk_id, body.target_id)
+        return {"status": "success", "friendship": result}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/users/{clerk_id}/friends")
+async def get_friends_for_user(clerk_id: str, auth_user_id: str = Depends(require_auth)):
+    try:
+        _ensure_social_schema()
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only view your own friends list")
+        return user_repository.list_friends(clerk_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.delete("/users/{clerk_id}/friends/{target_id}")
+async def remove_friend_for_user(clerk_id: str, target_id: str, auth_user_id: str = Depends(require_auth)):
+    try:
+        _ensure_social_schema()
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only remove friends from your own account")
+        removed = user_repository.remove_friend(clerk_id, target_id)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Friendship not found")
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/users/{clerk_id}/friends/search")
+async def search_users_for_friends(
+    clerk_id: str,
+    query: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=25),
+    auth_user_id: str = Depends(require_auth),
+):
+    try:
+        _ensure_social_schema()
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only search friends for your own account")
+        return user_repository.search_users(clerk_id, query, limit=limit)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 @router.post("/reports")
 @limiter.limit("5/minute")

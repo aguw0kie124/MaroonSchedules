@@ -25,6 +25,7 @@ interface BusTimetableSheetProps {
     sequence: number;
     etaLabel: string;
     detail: string;
+    departures?: any[];
   }>;
   onStopPress: (stop: any) => void;
 }
@@ -105,6 +106,21 @@ export function BusTimetableSheet({
   ).current;
 
   if (!visible) return null;
+
+  const formatDepartureList = (item: { departures?: any[] }) => {
+    const departures = Array.isArray(item.departures) ? item.departures : [];
+    return departures
+      .map((departure) => departure?.estimated_depart_time_utc || departure?.scheduled_depart_time_utc)
+      .filter(Boolean)
+      .slice(0, 3)
+      .map((value) =>
+        new Date(value).toLocaleTimeString("en-US", {
+          hour: "numeric",
+          minute: "2-digit",
+        }),
+      )
+      .join(" • ");
+  };
 
   return (
     <Animated.View
@@ -280,6 +296,14 @@ export function BusTimetableSheet({
                   >
                     {item.stop.Name}
                   </Text>
+                  <Text
+                    style={[
+                      styles.stopDetail,
+                      { color: COLORS.textSecondary, marginBottom: 6 },
+                    ]}
+                  >
+                    {item.detail}
+                  </Text>
                   <View style={styles.detailRow}>
                     <MapPin size={12} color={COLORS.textSecondary} />
                     <Text
@@ -291,6 +315,19 @@ export function BusTimetableSheet({
                       Stop #{item.stop.StopCode || item.sequence}
                     </Text>
                   </View>
+                  {formatDepartureList(item) ? (
+                    <View style={[styles.detailRow, { marginTop: 6 }]}>
+                      <Clock size={12} color={COLORS.textSecondary} />
+                      <Text
+                        style={[
+                          styles.stopDetail,
+                          { color: COLORS.textSecondary },
+                        ]}
+                      >
+                        {formatDepartureList(item)}
+                      </Text>
+                    </View>
+                  ) : null}
                 </View>
                 <View style={styles.etaContainer}>
                   <Text

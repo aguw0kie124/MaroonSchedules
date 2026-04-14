@@ -462,6 +462,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const [selectedStop, setSelectedStop] = useState<any | null>(null);
   const [selectedBus, setSelectedBus] = useState<any | null>(null);
   const [selectedDirection, setSelectedDirection] = useState<string>("All");
+  const [routeTimetableEntries, setRouteTimetableEntries] = useState<any[]>([]);
 
   const isAllBusRoutesSelected =
     !selectedBusRouteId ||
@@ -802,6 +803,31 @@ export function PlacesMapScreen({ route, navigation }: any) {
         : (busRoutes.find((r) => r.Key === selectedBusRouteId) ?? null),
     [busRoutes, isAllBusRoutesSelected, selectedBusRouteId],
   );
+  useEffect(() => {
+    let cancelled = false;
+
+    if (activeLayer !== "Bus" || !selectedRoute || isAllBusRoutesSelected) {
+      setRouteTimetableEntries([]);
+      return;
+    }
+
+    transitService.getRouteTimetable(selectedRoute.Key, 12)
+      .then((entries) => {
+        if (!cancelled) {
+          setRouteTimetableEntries(entries);
+        }
+      })
+      .catch((error) => {
+        console.warn("[Transit] Failed to fetch timetable", error);
+        if (!cancelled) {
+          setRouteTimetableEntries([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLayer, isAllBusRoutesSelected, selectedRoute]);
   const busRouteOptions = useMemo(
     () => [
       {
@@ -828,8 +854,36 @@ export function PlacesMapScreen({ route, navigation }: any) {
   }, [recreationFacilityMap, selectedLoc, selectedPlaceDetail?.recreation]);
 
   const stopTimetable = useMemo(() => {
-    if (activeLayer !== "Bus" || !selectedRoute || busStops.length === 0)
+    if (
+      activeLayer !== "Bus" ||
+      !selectedRoute ||
+      (busStops.length === 0 && routeTimetableEntries.length === 0)
+    )
       return [];
+    if (routeTimetableEntries.length > 0) {
+      return routeTimetableEntries.map((entry, i) => {
+        const departures = Array.isArray(entry.departures) ? entry.departures : [];
+        const nextDeparture = departures[0] || null;
+        const primaryTimeValue =
+          nextDeparture?.estimated_depart_time_utc ||
+          nextDeparture?.scheduled_depart_time_utc;
+        const primaryTime = primaryTimeValue
+          ? new Date(primaryTimeValue).toLocaleTimeString("en-US", {
+            hour: "numeric",
+            minute: "2-digit",
+          })
+          : "No times";
+        return {
+          stop: entry.stop || busStops[i],
+          sequence: entry.sequence ?? i + 1,
+          etaLabel: primaryTime,
+          detail: nextDeparture?.is_realtime
+            ? "Live departure board"
+            : "Scheduled departure board",
+          departures,
+        };
+      });
+    }
     return busStops.slice(0, 12).map((stop, i) => {
       if (busVehicles.length === 0)
         return {
@@ -837,6 +891,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           sequence: i + 1,
           etaLabel: "Route loaded",
           detail: "ETA pending",
+          departures: [],
         };
       const { getApproximateEtaMinutes } = require("./places/utils");
       const ranked = busVehicles
@@ -852,6 +907,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           sequence: i + 1,
           etaLabel: "No estimate",
           detail: "Live feed unavailable",
+          departures: [],
         };
       return {
         stop,
@@ -860,9 +916,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
         detail: next.bus.RouteShortName
           ? `Route ${next.bus.RouteShortName}`
           : next.bus.Name || "Live bus",
+        departures: [],
       };
     });
-  }, [activeLayer, busStops, busVehicles, routePatterns, selectedRoute]);
+  }, [activeLayer, busStops, busVehicles, routePatterns, routeTimetableEntries, selectedRoute]);
 
   const allRouteBoards = useMemo(() => {
     if (!isAllBusRoutesSelected) return [];
@@ -1338,6 +1395,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setBusStops([]);
     setRoutePatterns([]);
     setRoutePaths([]);
+    setRouteTimetableEntries([]);
     if (!routesToLoad.length) {
       setAllRoutePatternsById({});
       return;
@@ -1550,6 +1608,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setRoutePatterns([]); // Clear previous traces
       setRoutePaths([]);
       setBusStops([]);
+      setRouteTimetableEntries([]);
 
       if (routeId === ALL_BUS_ROUTES_KEY) {
         await loadAllBusRoutes(availableRoutes);
@@ -1938,7 +1997,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       activeLayer === "Pulse" ||
       selectedId ||
       sortedFilteredLocations.length === 0 ||
-      (activeLayer === "Dining" && sortedFilteredLocations.every(l => l.searchOnly))
+      (activeLayer === "Dining" && sortedFilteredLocations.every((l) => ("searchOnly" in l ? !!l.searchOnly : false)))
     )
       return;
     const fitKey = `${activeLayer}:${sortedFilteredLocations.length}:${sortedFilteredLocations[0]?.location || ""}`;
@@ -2635,9 +2694,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
                         showsVerticalScrollIndicator={false}
                       >
                         {sortedFilteredLocations.map((loc) => {
+                          const locCapacity = "capacity" in loc ? loc.capacity : null;
+                          const locCurrentCount = "current_count" in loc ? loc.current_count : null;
                           const displayPercent =
-                            loc.capacity && loc.capacity > 0 && loc.current_count != null
-                              ? Math.round((loc.current_count / loc.capacity) * 100)
+                            locCapacity && locCapacity > 0 && locCurrentCount != null
+                              ? Math.round((locCurrentCount / locCapacity) * 100)
                               : loc.percent_full != null && Number.isFinite(loc.percent_full)
                                 ? loc.percent_full
                                 : null;

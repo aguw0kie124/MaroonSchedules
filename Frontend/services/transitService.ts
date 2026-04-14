@@ -46,6 +46,7 @@ export const transitService = {
     routesCache: null as CacheEntry<{ routes: any[], activeIds: string[] }> | null,
     patternCache: new Map<string, CacheEntry<{ points: any[]; stops: any[] }>>(),
     vehicleCache: new Map<string, CacheEntry<any[]>>(),
+    timetableCache: new Map<string, CacheEntry<any[]>>(),
 
     /**
      * Initializes authentication for MaroonRides/AggieSpirit
@@ -226,6 +227,31 @@ export const transitService = {
     async getRouteStops(routeId: string): Promise<any[]> {
         const { stops } = await this.getRoutePattern(routeId);
         return stops;
+    },
+
+    async getRouteTimetable(routeId: string, maxStops = 12): Promise<any[]> {
+        const now = Date.now();
+        const cacheKey = `${routeId}:${maxStops}`;
+        const cached = this.timetableCache.get(cacheKey);
+        if (cached && (now - cached.timestamp < 30000)) {
+            return cached.data;
+        }
+
+        try {
+            const response = await apiFetch(
+                `/traffic/transit/timetable/${encodeURIComponent(routeId)}?max_stops=${encodeURIComponent(String(maxStops))}`,
+                {},
+                TRANSIT_FETCH_TIMEOUT_MS,
+            );
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const payload = await response.json();
+            const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+            this.timetableCache.set(cacheKey, { data: entries, timestamp: now });
+            return entries;
+        } catch (error) {
+            console.warn('[TransitService] Error fetching timetable:', error);
+            return cached?.data || [];
+        }
     },
 
     getRouteColor(routeId?: string): string {

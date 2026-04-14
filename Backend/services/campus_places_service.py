@@ -13,7 +13,11 @@ from services.tamu_calendar_service import holiday_hours_notice_for_date
 from services.weekly_public_hours import today_hours_for_place
 
 PLACE_SNAPSHOT_TTL_SECONDS = 60
-PLACE_SNAPSHOT_CACHE_VERSION = "v6"
+PLACE_SNAPSHOT_CACHE_VERSION = "v7"
+
+CAPACITY_ALIAS_PLACE_IDS: Dict[str, tuple[str, ...]] = {
+    "annex": ("osm:way:307098419",),
+}
 
 # Visitor realtime counts from transport.tamu.edu (CCG, PRG, SBG, UCG, WCG)
 VISITOR_GARAGE_CODE_BY_PLACE_ID: Dict[str, str] = {
@@ -120,6 +124,22 @@ def _merge_operational_state(locations: Dict[str, Dict[str, Any]]) -> None:
             existing["capacity"] = row.get("capacity")
         if row.get("current_count") is not None:
             existing["current_count"] = row.get("current_count")
+
+        for alias_place_id in CAPACITY_ALIAS_PLACE_IDS.get(existing["placeId"], ()):
+            alias_existing = locations.get(alias_place_id)
+            if not alias_existing:
+                continue
+            alias_existing.update(
+                {
+                    "percent_full": existing["percent_full"],
+                    "is_live": existing["is_live"],
+                    "available_seats": existing.get("available_seats"),
+                }
+            )
+            if existing.get("capacity") is not None:
+                alias_existing["capacity"] = existing.get("capacity")
+            if existing.get("current_count") is not None:
+                alias_existing["current_count"] = existing.get("current_count")
 
 
 def _merge_visitor_parking_counts(

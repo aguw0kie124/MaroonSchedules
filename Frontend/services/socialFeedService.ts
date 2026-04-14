@@ -519,6 +519,57 @@ export async function getBlockedUsers(userId: string): Promise<any[]> {
     }
 }
 
+export async function addFriend(targetId: string, actingUserId?: string): Promise<void> {
+    const requesterId = actingUserId || connectedUserId;
+    if (!requesterId) {
+        throw new Error('Must be signed in to add a friend.');
+    }
+    const res = await feedFetch(`/chat/users/${requesterId}/friends`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ target_id: targetId }),
+    });
+    if (!res.ok) throw new Error('Failed to add friend.');
+}
+
+export async function removeFriend(targetId: string, actingUserId?: string): Promise<void> {
+    const requesterId = actingUserId || connectedUserId;
+    if (!requesterId) {
+        throw new Error('Must be signed in to remove a friend.');
+    }
+    const res = await feedFetch(`/chat/users/${requesterId}/friends/${targetId}`, {
+        method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Failed to remove friend.');
+}
+
+export async function getFriends(userId: string): Promise<any[]> {
+    try {
+        const res = await feedFetch(`/chat/users/${userId}/friends`);
+        if (!res.ok) return [];
+        return await res.json();
+    } catch (e) {
+        if (__DEV__) {
+            console.warn('[NativeFeeds] getFriends: network error, returning empty list', e);
+        }
+        return [];
+    }
+}
+
+export async function searchUsers(query: string, userId?: string, limit = 10): Promise<any[]> {
+    const requesterId = userId || connectedUserId;
+    if (!requesterId) {
+        throw new Error('Must be signed in to search users.');
+    }
+    const params = new URLSearchParams({
+        query,
+        limit: String(limit),
+    });
+    const res = await feedFetch(`/chat/users/${requesterId}/friends/search?${params.toString()}`);
+    if (!res.ok) throw new Error('Failed to search users.');
+    return await res.json();
+}
+
 export async function reportContent(params: {
     reporteeId: string;
     postType: 'review' | 'crowdping' | 'post' | 'reel';

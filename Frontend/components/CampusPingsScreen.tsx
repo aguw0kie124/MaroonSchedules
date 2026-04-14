@@ -70,6 +70,7 @@ import { useAppShellStore } from '../store/appShellStore';
 import { useEventStore } from '../store/eventStore';
 import { TourTarget, useTour } from './onboarding/TourProvider';
 import {
+  addFriend,
   addComment,
   addPing,
   blockUser,
@@ -969,14 +970,49 @@ export function CampusPingsScreen() {
     );
   }, [removeBlockedUserFromVisibleFeed, user?.id]);
 
+  const handleAddPingAuthorAsFriend = useCallback((ping: PingCard) => {
+    if (!user?.id || !ping.userId) {
+      Alert.alert('Sign in required', 'Please sign in to add a friend.');
+      return;
+    }
+    if (ping.userId === user.id) {
+      Alert.alert('Your post', 'You cannot add yourself as a friend.');
+      return;
+    }
+
+    const displayName = ping.isAnonymous ? 'this user' : ping.userName;
+    Alert.alert(
+      'Add friend?',
+      `Add ${displayName} to your friends list?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Add Friend',
+          onPress: async () => {
+            try {
+              await addFriend(ping.userId!, user.id);
+              Alert.alert('Friend added', `${displayName} has been added to your friends.`);
+            } catch (error) {
+              console.warn('[Pings] add friend failed', error);
+              Alert.alert('Unable to add friend', 'We could not add this user right now.');
+            }
+          },
+        },
+      ],
+    );
+  }, [user?.id]);
+
   const handleOpenPingMenu = useCallback((ping: PingCard) => {
     const displayName = ping.isAnonymous ? 'this user' : ping.userName;
-    Alert.alert(displayName, 'Choose an action for this post.', [
-      { text: 'Report', onPress: () => handleReportPing(ping) },
-      { text: 'Block User', style: 'destructive', onPress: () => handleBlockPingAuthor(ping) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  }, [handleBlockPingAuthor, handleReportPing]);
+    const actions: Array<{ text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }> = [];
+    if (ping.userId && ping.userId !== user?.id && !ping.isAnonymous) {
+      actions.push({ text: 'Add Friend', onPress: () => handleAddPingAuthorAsFriend(ping) });
+    }
+    actions.push({ text: 'Report', onPress: () => handleReportPing(ping) });
+    actions.push({ text: 'Block User', style: 'destructive', onPress: () => handleBlockPingAuthor(ping) });
+    actions.push({ text: 'Cancel', style: 'cancel' });
+    Alert.alert(displayName, 'Choose an action for this post.', actions);
+  }, [handleAddPingAuthorAsFriend, handleBlockPingAuthor, handleReportPing, user?.id]);
 
 
 

@@ -183,7 +183,9 @@ class RecreationSnapshotTests(unittest.TestCase):
         self.assertEqual(student_rec["current_count"], 150)
         self.assertEqual(student_rec["capacity"], 400)
         self.assertEqual(student_rec["percent_full"], 37.5)
-        mock_set_json.assert_called_once()
+        self.assertTrue(
+            any(call.args and call.args[0] == "campus:recreation:snapshot:v1" for call in mock_set_json.call_args_list)
+        )
 
 
 if __name__ == "__main__":

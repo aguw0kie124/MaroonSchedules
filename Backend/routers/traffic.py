@@ -35,6 +35,31 @@ REC_OCCUPANCY_LOCATION_PREFERENCES: Dict[str, tuple[str, ...]] = {
     ),
 }
 
+REC_PLACE_ID_BY_LOCATION_NAME: Dict[str, str] = {
+    "student rec center": "rec",
+    "student recreation center": "rec",
+    "student rec center strength conditioning": "rec",
+    "southside rec center": "southside-rec",
+    "southside recreation center": "southside-rec",
+    "southside strength conditioning": "southside-rec",
+    "southside strength conditioning area": "southside-rec",
+    "polo road rec center": "polo-rec",
+    "polo road recreation center": "polo-rec",
+    "polo road strength conditioning": "polo-rec",
+}
+
+LIBRARY_PLACE_ID_BY_API_KEY: Dict[str, str] = {
+    "evans": "libr",
+    "libr": "libr",
+    "annex": "annex",
+    "blcc": "wcl",
+    "wcl": "wcl",
+    "cushing": "cush",
+    "cush": "cush",
+    "msl": "msl",
+    "psel": "psel",
+}
+
 
 def _safe_int(value: Any, default: int = 0) -> int:
     try:
@@ -85,6 +110,12 @@ class TAMUFacilityTracker:
 
     def _resolve_rec_place(self, row: Dict[str, Any]) -> Dict[str, Any] | None:
         for candidate in (row.get("FacilityName"), row.get("LocationName")):
+            normalized_candidate = _normalize_location_name(candidate)
+            explicit_place_id = REC_PLACE_ID_BY_LOCATION_NAME.get(normalized_candidate)
+            if explicit_place_id:
+                explicit_place = place_registry_service.get_place_by_id(explicit_place_id)
+                if explicit_place:
+                    return explicit_place
             resolved = place_registry_service.resolve_place(candidate)
             if resolved and resolved.get("type") == "Rec":
                 return resolved
@@ -282,8 +313,13 @@ class TAMUFacilityTracker:
         for api_key, entry in lib_raw.items():
             if api_key == "lastupdate" or not isinstance(entry, dict):
                 continue
-                
-            place = place_registry_service.resolve_place(api_key)
+
+            place = None
+            explicit_place_id = LIBRARY_PLACE_ID_BY_API_KEY.get(str(api_key).strip().lower())
+            if explicit_place_id:
+                place = place_registry_service.get_place_by_id(explicit_place_id)
+            if not place:
+                place = place_registry_service.resolve_place(api_key)
             if not place:
                 continue
                 
@@ -549,6 +585,7 @@ class AggieSpiritProxy:
                                 "Latitude": point.get("latitude"),
                                 "Longitude": point.get("longitude"),
                                 "StopCode": stop.get("stopCode"),
+                                "DirectionKey": dkey,
                                 "DirectionName": resolved_dir,
                             })
                     if path_points:
@@ -636,6 +673,100 @@ class AggieSpiritProxy:
             cached = self._vehicle_cache.get(cache_key, [])
             return {"vehicles": cached, "live": False, "used_cache": bool(cached)}
 
+    def get_route_timetable(self, route_key: str, max_stops: int = 12) -> Dict[str, Any]:
+        try:
+            route_lookup = {
+                route["Key"]: route for route in self.get_routes() if route.get("Key")
+            }
+            route = route_lookup.get(route_key)
+            if not route:
+                return {"route": None, "entries": []}
+
+            pattern = self.get_pattern(route_key)
+            raw_stops = pattern.get("stops") or []
+            unique_stops: List[Dict[str, Any]] = []
+            seen_pairs = set()
+            for stop in raw_stops:
+                stop_code = stop.get("StopCode")
+                direction_key = stop.get("DirectionKey")
+                if not stop_code or not direction_key:
+                    continue
+                pair = (stop_code, direction_key)
+                if pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
+                unique_stops.append(stop)
+                if len(unique_stops) >= max_stops:
+                    break
+
+            if not unique_stops:
+                return {"route": route, "entries": []}
+
+            payload = {
+                "routes": [
+                    {
+                        "routeKey": route_key,
+                        "nearbyStops": [
+                            {
+                                "stopCode": stop["StopCode"],
+                                "directionKey": stop["DirectionKey"],
+                            }
+                            for stop in unique_stops
+                        ],
+                    }
+                ]
+            }
+
+            response = self._post(
+                "/Home/GetNextStopTimes",
+                body=json.dumps(payload),
+                content_type="application/json",
+            )
+            route_payload = response[0] if isinstance(response, list) and response else {}
+            nearby_stops = route_payload.get("nearbyStops") or []
+            stop_by_pair = {
+                (stop.get("StopCode"), stop.get("DirectionKey")): stop
+                for stop in unique_stops
+            }
+            entries: List[Dict[str, Any]] = []
+            for index, stop_payload in enumerate(nearby_stops):
+                stop_code = stop_payload.get("stopCode")
+                direction_key = stop_payload.get("directionKey")
+                pattern_stop = stop_by_pair.get((stop_code, direction_key)) or {}
+                departures = []
+                for departure in stop_payload.get("nextStopTimes") or []:
+                    scheduled = departure.get("scheduledDepartTimeUtc")
+                    estimated = departure.get("estimatedDepartTimeUtc")
+                    departures.append(
+                        {
+                            "scheduled_depart_time_utc": scheduled,
+                            "estimated_depart_time_utc": estimated,
+                            "is_realtime": bool(departure.get("isRealtime")),
+                            "is_off_route": bool(departure.get("isOffRoute")),
+                        }
+                    )
+
+                entries.append(
+                    {
+                        "sequence": index + 1,
+                        "stop": {
+                            "Name": stop_payload.get("stopName") or pattern_stop.get("Name"),
+                            "StopCode": stop_code,
+                            "Latitude": pattern_stop.get("Latitude"),
+                            "Longitude": pattern_stop.get("Longitude"),
+                            "DirectionKey": direction_key,
+                            "DirectionName": stop_payload.get("directionName")
+                            or pattern_stop.get("DirectionName"),
+                        },
+                        "departures": departures,
+                        "amenities": stop_payload.get("amenities") or [],
+                    }
+                )
+
+            return {"route": route, "entries": entries}
+        except Exception:
+            return {"route": None, "entries": []}
+
 
 transit_proxy = AggieSpiritProxy()
 
@@ -704,6 +835,19 @@ def get_transit_vehicles(request: Request, route_id: str = Query("")):
 
     payload = transit_proxy.get_vehicles(route_id)
     cache_service.set_json(cache_key, payload, 15)
+    return payload
+
+
+@router.get("/transit/timetable/{route_key}")
+@limiter.limit("120/minute")
+def get_transit_timetable(request: Request, route_key: str, max_stops: int = Query(12, ge=1, le=20)):
+    cache_key = f"traffic:transit:timetable:v1:{route_key}:{max_stops}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
+    payload = transit_proxy.get_route_timetable(route_key, max_stops=max_stops)
+    cache_service.set_json(cache_key, payload, 30)
     return payload
 
 

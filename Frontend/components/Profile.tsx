@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -52,7 +53,15 @@ import { fetchCampusOverview, fetchUserProfile } from '../api/client';
 import { SUPPORT_CONTACT_URL } from '../config';
 import { PARKING_PERMIT_OPTIONS, useAppShellStore } from '../store/appShellStore';
 import { useSessionStore } from '../store/sessionStore';
-import { deleteAccount, getBlockedUsers, unblockUser } from '../services/socialFeedService';
+import {
+  addFriend,
+  deleteAccount,
+  getBlockedUsers,
+  getFriends,
+  removeFriend,
+  searchUsers,
+  unblockUser,
+} from '../services/socialFeedService';
 import { useTour, TourTarget } from './onboarding/TourProvider';
 import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme } from './SharedUI';
@@ -180,10 +189,17 @@ export function Profile() {
   const notificationsEnabled = useAppShellStore((state) => state.notificationsEnabled);
   const setNotificationsEnabled = useAppShellStore((state) => state.setNotificationsEnabled);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+  const [friends, setFriends] = useState<any[]>([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
+  const [loadingFriends, setLoadingFriends] = useState(false);
   const [profileTags, setProfileTags] = useState<string[]>([]);
   const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
+  const [showFriendsPanel, setShowFriendsPanel] = useState(false);
   const [showBlockedPanel, setShowBlockedPanel] = useState(false);
+  const [showFriendSearchPanel, setShowFriendSearchPanel] = useState(false);
+  const [friendSearchQuery, setFriendSearchQuery] = useState('');
+  const [friendSearchResults, setFriendSearchResults] = useState<any[]>([]);
+  const [searchingFriends, setSearchingFriends] = useState(false);
   const scrollRef = React.useRef<ScrollView | null>(null);
   const finishCardYRef = React.useRef(0);
 
@@ -248,9 +264,47 @@ export function Profile() {
 
   useEffect(() => {
     if (activeTab === 'personal' && user) {
+        loadFriends();
         loadBlockedUsers();
     }
   }, [activeTab, isGuest, user]);
+
+  useEffect(() => {
+    if (!user?.id || !showFriendSearchPanel) {
+      setFriendSearchResults([]);
+      setSearchingFriends(false);
+      return;
+    }
+
+    const query = friendSearchQuery.trim();
+    if (!query) {
+      setFriendSearchResults([]);
+      setSearchingFriends(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      setSearchingFriends(true);
+      searchUsers(query, user.id, 8)
+        .then((results) => {
+          if (!cancelled) {
+            setFriendSearchResults(results.filter((entry) => entry.id !== user.id));
+          }
+        })
+        .catch((error) => console.warn('Failed to search users', error))
+        .finally(() => {
+          if (!cancelled) {
+            setSearchingFriends(false);
+          }
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [friendSearchQuery, showFriendSearchPanel, user?.id]);
 
   useEffect(() => {
     if ((activeTargetName === 'tour-finish' || activeTargetName === 'settings-tab') && activeTab !== 'personal') {
@@ -283,6 +337,21 @@ export function Profile() {
     }
   };
 
+  const loadFriends = async () => {
+    if (!user) return;
+    setLoadingFriends(true);
+    try {
+      const data = await getFriends(user.id);
+      setFriends(data);
+    } catch (err) {
+      if (__DEV__) {
+        console.warn('Failed to load friends', err);
+      }
+    } finally {
+      setLoadingFriends(false);
+    }
+  };
+
   const handleUnblock = async (targetId: string) => {
     if (!user?.id) {
       Alert.alert('Error', 'You must be signed in to unblock a user.');
@@ -299,6 +368,40 @@ export function Profile() {
     }
   };
 
+  const handleAddFriend = async (targetId: string, name?: string) => {
+    if (!user?.id) {
+      Alert.alert('Error', 'You must be signed in to add a friend.');
+      return;
+    }
+    try {
+      await addFriend(targetId, user.id);
+      await loadFriends();
+      setFriendSearchResults((current) =>
+        current.map((item) => (item.id === targetId ? { ...item, is_friend: true } : item)),
+      );
+      Alert.alert('Friend added', `${name || 'User'} has been added to your friends.`);
+    } catch (err) {
+      console.warn('Failed to add friend', err);
+      Alert.alert('Error', 'Failed to add friend.');
+    }
+  };
+
+  const handleRemoveFriend = async (targetId: string) => {
+    if (!user?.id) {
+      Alert.alert('Error', 'You must be signed in to remove a friend.');
+      return;
+    }
+    try {
+      await removeFriend(targetId, user.id);
+      setFriends((current) => current.filter((item) => item.id !== targetId));
+      await loadFriends();
+      Alert.alert('Friend removed', 'User removed from your friends.');
+    } catch (err) {
+      console.warn('Failed to remove friend', err);
+      Alert.alert('Error', 'Failed to remove friend.');
+    }
+  };
+
   const handleRefresh = async () => {
     if (!user) return;
     setRefreshing(true);
@@ -308,6 +411,7 @@ export function Profile() {
       const profile = await fetchUserProfile(user.id);
       setProfileTags(Array.isArray(profile?.tags) ? profile.tags : []);
       if (activeTab === 'personal') {
+        await loadFriends();
         await loadBlockedUsers();
       }
     } catch (error) {
@@ -575,6 +679,7 @@ export function Profile() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Privacy & Notifications</Text>
         {renderNotificationsTab(true, false)}
+        {renderFriendsTab(true, false)}
         {renderBlockedTab(true, true)}
       </View>
 
@@ -949,6 +1054,155 @@ export function Profile() {
       {showBlockedPanel && !isLast && (
         <View style={{ borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 8 }} />
       )}
+      </>
+    );
+
+    if (embedded) return content;
+    return <View style={styles.section}>{content}</View>;
+  };
+
+  const renderFriendsTab = (embedded = false, isLast = false) => {
+    const content = (
+      <>
+        <Pressable
+          style={[styles.toolRow, (showFriendsPanel || isLast) && styles.toolRowLast]}
+          onPress={() => setShowFriendsPanel((current) => !current)}
+        >
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
+            <UserRound size={20} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Friends</Text>
+          </View>
+          <ChevronRight
+            size={20}
+            color={COLORS.textTertiary}
+            style={{ transform: [{ rotate: showFriendsPanel ? '90deg' : '0deg' }] }}
+          />
+        </Pressable>
+
+        {showFriendsPanel ? (
+          <>
+            <View style={styles.inlinePanel}>
+              <Pressable
+                style={styles.friendSearchToggle}
+                onPress={() => setShowFriendSearchPanel((current) => !current)}
+              >
+                <Search size={16} color={COLORS.primary} />
+                <Text style={styles.friendSearchToggleText}>Search user</Text>
+              </Pressable>
+
+              {showFriendSearchPanel ? (
+                <View style={styles.friendSearchCard}>
+                  <View style={styles.friendSearchInputWrap}>
+                    <Search size={16} color={COLORS.textTertiary} />
+                    <TextInput
+                      value={friendSearchQuery}
+                      onChangeText={setFriendSearchQuery}
+                      placeholder="Search by name, email, or major"
+                      placeholderTextColor={COLORS.textTertiary}
+                      style={styles.friendSearchInput}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                  </View>
+
+                  {searchingFriends ? (
+                    <ActivityIndicator color={COLORS.primary} style={{ marginTop: 12 }} />
+                  ) : friendSearchResults.length > 0 ? (
+                    <View style={{ marginTop: 12 }}>
+                      {friendSearchResults.map((item, index) => (
+                        <View
+                          key={item.id}
+                          style={[
+                            styles.toolRow,
+                            index === friendSearchResults.length - 1 && styles.toolRowLast,
+                            { paddingVertical: 12 },
+                          ]}
+                        >
+                          <View style={styles.avatar}>
+                            {item.profile_image_url ? (
+                              <Image source={{ uri: item.profile_image_url }} style={styles.avatarImage} />
+                            ) : (
+                              <Text style={styles.avatarText}>{item.name?.[0] || 'U'}</Text>
+                            )}
+                          </View>
+                          <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={styles.toolTitle}>{item.name}</Text>
+                            <Text style={styles.email} numberOfLines={1}>
+                              {item.major || item.id}
+                            </Text>
+                          </View>
+                          <Pressable
+                            style={[
+                              styles.friendActionButton,
+                              item.is_friend && styles.friendActionButtonDisabled,
+                            ]}
+                            disabled={item.is_friend}
+                            onPress={() => handleAddFriend(item.id, item.name)}
+                          >
+                            <Text
+                              style={[
+                                styles.friendActionButtonText,
+                                item.is_friend && styles.friendActionButtonTextDisabled,
+                              ]}
+                            >
+                              {item.is_friend ? 'Friends' : 'Add'}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      ))}
+                    </View>
+                  ) : friendSearchQuery.trim() ? (
+                    <Text style={styles.friendSearchEmpty}>No users found.</Text>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
+
+            {loadingFriends ? (
+              <ActivityIndicator color={COLORS.primary} style={{ marginTop: 24 }} />
+            ) : friends.length > 0 ? (
+              <View style={styles.inlinePanel}>
+                {friends.map((item, index) => (
+                  <View
+                    key={item.id}
+                    style={[
+                      styles.toolRow,
+                      index === friends.length - 1 && styles.toolRowLast,
+                      { paddingVertical: 12 },
+                    ]}
+                  >
+                    <View style={styles.avatar}>
+                      {item.profile_image_url ? (
+                        <Image source={{ uri: item.profile_image_url }} style={styles.avatarImage} />
+                      ) : (
+                        <Text style={styles.avatarText}>{item.name?.[0] || 'U'}</Text>
+                      )}
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={styles.toolTitle}>{item.name}</Text>
+                      <Text style={styles.email} numberOfLines={1}>
+                        {item.major || item.id}
+                      </Text>
+                    </View>
+                    <Pressable style={styles.friendActionButton} onPress={() => handleRemoveFriend(item.id)}>
+                      <Text style={styles.friendActionButtonText}>Unfriend</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={[styles.inlinePanel, { alignItems: 'center', padding: 40, opacity: 0.5 }]}>
+                <UserRound size={48} color={COLORS.textTertiary} strokeWidth={1} />
+                <Text style={{ color: COLORS.textTertiary, marginTop: 12, fontSize: 15 }}>No friends yet</Text>
+              </View>
+            )}
+          </>
+        ) : null}
+        {showFriendsPanel && !isLast && (
+          <View style={{ borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 8 }} />
+        )}
       </>
     );
 
@@ -1442,6 +1696,71 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
     },
     inlinePanel: {
       marginTop: 12,
+    },
+    friendSearchToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      alignSelf: 'flex-start',
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 14,
+      backgroundColor: COLORS.surfaceElevated,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    friendSearchToggleText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
+    },
+    friendSearchCard: {
+      marginTop: 12,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surfaceElevated,
+      padding: 12,
+    },
+    friendSearchInputWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 12,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.7)',
+    },
+    friendSearchInput: {
+      flex: 1,
+      minHeight: 44,
+      color: COLORS.textPrimary,
+      fontSize: 14,
+    },
+    friendSearchEmpty: {
+      marginTop: 12,
+      color: COLORS.textSecondary,
+      fontSize: 14,
+    },
+    friendActionButton: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 12,
+      backgroundColor: COLORS.surfaceElevated,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    friendActionButtonDisabled: {
+      opacity: 0.65,
+    },
+    friendActionButtonText: {
+      color: COLORS.textPrimary,
+      fontSize: 13,
+      fontWeight: '800',
+    },
+    friendActionButtonTextDisabled: {
+      color: COLORS.textSecondary,
     },
     accentSliderCard: {
       borderRadius: 22,
