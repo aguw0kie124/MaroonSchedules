@@ -77,6 +77,7 @@ import {
   initializeFeedUser,
   deletePing,
   getComments,
+  getFriends,
   getPingFeed,
   reportContent,
   toggleLike,
@@ -95,6 +96,8 @@ type PingCategory =
   | 'Popup'
   | 'Market'
   | 'Heads Up';
+
+type FeedFilter = 'All' | 'Friends' | PingCategory;
 
 type TimePreset = 'now' | 'soon' | 'tonight' | 'tomorrow';
 
@@ -469,7 +472,7 @@ export function CampusPingsScreen() {
   const [feedConnected, setFeedConnected] = useState(false);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState<'All' | PingCategory>('All');
+  const [categoryFilter, setCategoryFilter] = useState<FeedFilter>('All');
 
   const [composerVisible, setComposerVisible] = useState(false);
   const [composerTitle, setComposerTitle] = useState('');
@@ -488,6 +491,24 @@ export function CampusPingsScreen() {
 
   const [activeFeaturedEvent, setActiveFeaturedEvent] = useState<FeaturedEvent | null>(null);
 
+  const { data: friends = [] } = useQuery({
+    queryKey: ['campus-ping-friends', API_URL, user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      return await getFriends(user.id);
+    },
+    enabled: Boolean(user?.id),
+    staleTime: 1000 * 60,
+  });
+
+  const friendIds = useMemo(() => {
+    return new Set(
+      friends
+        .map((friend: any) => String(friend?.id || '').trim())
+        .filter(Boolean),
+    );
+  }, [friends]);
+
   const locationSuggestions = useMemo(() => {
     const query = locationQuery.trim().toLowerCase();
     if (!query) return directory.slice(0, 8);
@@ -501,6 +522,9 @@ export function CampusPingsScreen() {
   }, [directory, locationQuery]);
 
   const featuredCards = useMemo(() => {
+    if (categoryFilter === 'Friends') {
+      return [];
+    }
     return featuredEvents
       .filter((event) => categoryFilter === 'All' || mapOfficialEventCategory(event) === categoryFilter)
       .map((event) => {
@@ -538,8 +562,19 @@ export function CampusPingsScreen() {
   );
 
   const filteredFeed = useMemo(() => {
-    return feedPings.filter((ping) => categoryFilter === 'All' || ping.category === categoryFilter);
-  }, [categoryFilter, feedPings]);
+    return feedPings.filter((ping) => {
+      if (categoryFilter === 'All') {
+        return true;
+      }
+      if (categoryFilter === 'Friends') {
+        if (!ping.userId || ping.source !== 'user') {
+          return false;
+        }
+        return friendIds.has(String(ping.userId));
+      }
+      return ping.category === categoryFilter;
+    });
+  }, [categoryFilter, feedPings, friendIds]);
 
   const isInitialPingsLoading = loadingPings && userPings.length === 0;
   const isManuallyRefreshing = refreshing && !isInitialPingsLoading;
@@ -1312,7 +1347,7 @@ export function CampusPingsScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.categoryRow}
       >
-        {(['All', ...PING_CATEGORIES.map((entry) => entry.id)] as Array<'All' | PingCategory>).map((option) => {
+        {(['All', 'Friends', ...PING_CATEGORIES.map((entry) => entry.id)] as FeedFilter[]).map((option) => {
           const active = categoryFilter === option;
           const meta =
             option === 'All'
@@ -1321,6 +1356,12 @@ export function CampusPingsScreen() {
                   accent: COLORS.primary,
                   Icon: Sparkles,
                 }
+              : option === 'Friends'
+                ? {
+                    id: 'Friends',
+                    accent: '#D85F8D',
+                    Icon: Users,
+                  }
               : categoryMeta(option);
           const Icon = meta.Icon;
           return (

@@ -188,5 +188,51 @@ class RecreationSnapshotTests(unittest.TestCase):
         )
 
 
+class LibraryLiveMappingTests(unittest.TestCase):
+    @mock.patch.object(TAMUFacilityTracker, "get_rec_center_live_counts", return_value={})
+    @mock.patch.object(TAMUFacilityTracker, "fetch_event_data", return_value=[])
+    @mock.patch.object(place_registry_service, "get_all_places", return_value=[])
+    @mock.patch.object(TAMUFacilityTracker, "fetch_library_data")
+    @mock.patch.object(place_registry_service, "resolve_place", return_value=None)
+    @mock.patch.object(place_registry_service, "get_place_by_id")
+    def test_get_all_locations_with_events_maps_library_api_keys_to_expected_places(
+        self,
+        mock_get_place_by_id,
+        _mock_resolve_place,
+        mock_fetch_library_data,
+        _mock_get_all_places,
+        _mock_fetch_event_data,
+        _mock_get_rec_live_counts,
+    ):
+        by_place_id = {
+            "libr": {"place_id": "libr", "name": "Sterling C. Evans Library", "type": "Library", "lat": 30.61, "lng": -96.34},
+            "annex": {"place_id": "annex", "name": "Evans Library Annex", "type": "Library", "lat": 30.61, "lng": -96.34},
+            "wcl": {"place_id": "wcl", "name": "West Campus Library", "type": "Library", "lat": 30.61, "lng": -96.34},
+            "cush": {"place_id": "cush", "name": "Cushing Memorial Library", "type": "Library", "lat": 30.61, "lng": -96.34},
+            "msl": {"place_id": "msl", "name": "Medical Sciences Library", "type": "Library", "lat": 30.61, "lng": -96.34},
+            "psel": {"place_id": "psel", "name": "Policy Sciences & Economics Library", "type": "Library", "lat": 30.61, "lng": -96.34},
+        }
+        mock_get_place_by_id.side_effect = lambda place_id: by_place_id.get(place_id)
+        mock_fetch_library_data.return_value = {
+            "evans": {"percentfull": 21, "remaining": 2709, "max": 3422, "occupancy": 713},
+            "annex": {"percentfull": 29, "remaining": 815, "max": 1134, "occupancy": 319},
+            "blcc": {"percentfull": 14, "remaining": 858, "max": 994, "occupancy": 136},
+            "cushing": {"percentfull": 0, "remaining": 132, "max": 132, "occupancy": 0},
+            "msl": {"percentfull": 25, "remaining": 421, "max": 559, "occupancy": 138},
+            "psel": {"percentfull": 0, "remaining": 51, "max": 51, "occupancy": 0},
+            "lastupdate": "2026-04-14 18:56:01",
+        }
+
+        rows = TAMUFacilityTracker().get_all_locations_with_events()
+        by_id = {row["place_id"]: row for row in rows}
+
+        self.assertEqual(by_id["libr"]["current_count"], 713)
+        self.assertEqual(by_id["annex"]["capacity"], 1134)
+        self.assertEqual(by_id["wcl"]["available_seats"], 858)
+        self.assertEqual(by_id["cush"]["percent_full"], 0.0)
+        self.assertEqual(by_id["msl"]["current_count"], 138)
+        self.assertEqual(by_id["psel"]["available_seats"], 51)
+
+
 if __name__ == "__main__":
     unittest.main()
