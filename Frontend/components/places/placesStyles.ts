@@ -1061,26 +1061,23 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       marginTop: 3,
     },
     foodCourtVenueList: {
-      gap: 10,
-      marginTop: 10,
+      marginTop: 8,
     },
-    foodCourtVenueCard: {
+    foodCourtVenueRow: {
       flexDirection: "row",
       alignItems: "center",
-      borderRadius: 22,
-      borderWidth: 1,
-      borderColor: isDark ? "#252525" : "rgba(12,12,14,0.08)",
-      backgroundColor: isDark ? "#131313" : "#F8F9FB",
-      paddingHorizontal: 14,
-      paddingVertical: 12,
+      justifyContent: "space-between",
+      paddingVertical: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: isDark ? "#1E2228" : "rgba(12,12,14,0.08)",
     },
-    foodCourtVenueCardActive: {
-      borderColor: COLORS.primary,
-      backgroundColor: isDark ? "rgba(80,0,0,0.24)" : "rgba(80,0,0,0.08)",
+    foodCourtVenueRowMain: {
+      flex: 1,
+      paddingRight: 12,
     },
     foodCourtVenueTitle: {
       color: COLORS.textPrimary,
-      fontSize: 14,
+      fontSize: 15,
       fontWeight: "800",
     },
     foodCourtVenueMeta: {
@@ -1089,24 +1086,15 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       fontWeight: "600",
       marginTop: 3,
     },
-    foodCourtVenueAction: {
-      color: COLORS.primary,
-      fontSize: 11,
-      fontWeight: "800",
-      textTransform: "uppercase",
-      letterSpacing: 0.4,
-    },
-    foodCourtVenueMenuBtn: {
+    foodCourtVenueMenuLink: {
       flexDirection: "row",
       alignItems: "center",
       gap: 5,
-      backgroundColor: "#500000",
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-      borderRadius: 999,
-    } as any,
-    foodCourtVenueMenuBtnText: {
-      color: "#FFF",
+      paddingVertical: 4,
+      paddingLeft: 8,
+    },
+    foodCourtVenueMenuLinkText: {
+      color: COLORS.primary,
       fontSize: 11,
       fontWeight: "800",
       letterSpacing: 0.3,

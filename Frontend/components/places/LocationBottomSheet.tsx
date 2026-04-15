@@ -1073,43 +1073,33 @@ export function LocationBottomSheet({
             >
               {isDiningMenuExperience ? (
                 <>
-                  <View style={styles.detailTabsWrap}>
-                    <View style={styles.mapsTabRow}>
-                      {[
-                        {
-                          key: "menus",
-                          label: isDiningHallCard ? "Menu" : "Locations",
-                        },
-                      ].map((tab) => {
-                        const isActive = diningDetailTab === tab.key;
-                        return (
-                          <TouchableOpacity
-                            key={tab.key}
-                            style={styles.mapsTabButton}
-                            onPress={() =>
-                              setDiningDetailTab(tab.key as "menus")
-                            }
-                            activeOpacity={0.75}
+                  {isDiningHallCard ? (
+                    <View style={styles.detailTabsWrap}>
+                      <View style={styles.mapsTabRow}>
+                        <TouchableOpacity
+                          style={styles.mapsTabButton}
+                          onPress={() => setDiningDetailTab("menus")}
+                          activeOpacity={0.75}
+                        >
+                          <Text
+                            style={[
+                              styles.mapsTabLabel,
+                              diningDetailTab === "menus" && styles.mapsTabLabelActive,
+                            ]}
                           >
-                            <Text
-                              style={[
-                                styles.mapsTabLabel,
-                                isActive && styles.mapsTabLabelActive,
-                              ]}
-                            >
-                              {tab.label}
-                            </Text>
-                            <View
-                              style={[
-                                styles.mapsTabUnderline,
-                                isActive && styles.mapsTabUnderlineActive,
-                              ]}
-                            />
-                          </TouchableOpacity>
-                        );
-                      })}
+                            Menu
+                          </Text>
+                          <View
+                            style={[
+                              styles.mapsTabUnderline,
+                              diningDetailTab === "menus" &&
+                                styles.mapsTabUnderlineActive,
+                            ]}
+                          />
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                  </View>
+                  ) : null}
 
                   {diningDetailTab === "menus" ? (
                     <View style={styles.infoBlock}>
@@ -1133,31 +1123,33 @@ export function LocationBottomSheet({
                             const hasMenuSource = !!getStaticRestaurantMenu(candidate) || isDiningHallMenuLocation(candidate);
                             
                             return (
-                            <View key={`${venue.selectionId}-${idx}`} style={styles.foodCourtVenueCard}>
-                              <View style={{ flex: 1, paddingRight: 12 }}>
+                            <View
+                              key={`${venue.selectionId}-${idx}`}
+                              style={styles.foodCourtVenueRow}
+                            >
+                              <View style={styles.foodCourtVenueRowMain}>
                                 <Text style={styles.foodCourtVenueTitle}>
                                   {venue.label}
                                 </Text>
                                 <Text style={styles.foodCourtVenueMeta}>
-                                  {getRestaurantHoursToday(venue.label) || 
+                                  {getRestaurantHoursToday(venue.label) ||
                                    (venue.location.shortName && venue.location.shortName !== venue.location.location
                                      ? venue.location.shortName
                                      : "Dining location")}
                                 </Text>
                               </View>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <Text style={styles.foodCourtVenueAction}>Inside</Text>
-                                {hasMenuSource ? (
-                                  <TouchableOpacity
-                                    onPress={() => openFullMenu(candidate)}
-                                    style={styles.foodCourtVenueMenuBtn}
-                                    activeOpacity={0.7}
-                                  >
-                                    <Utensils size={11} color="#FFF" />
-                                    <Text style={styles.foodCourtVenueMenuBtnText}>Menu</Text>
-                                  </TouchableOpacity>
-                                ) : null}
-                              </View>
+                              {hasMenuSource ? (
+                                <TouchableOpacity
+                                  onPress={() => openFullMenu(candidate)}
+                                  style={styles.foodCourtVenueMenuLink}
+                                  activeOpacity={0.7}
+                                >
+                                  <Utensils size={12} color={COLORS.primary} />
+                                  <Text style={styles.foodCourtVenueMenuLinkText}>
+                                    Menu
+                                  </Text>
+                                </TouchableOpacity>
+                              ) : null}
                             </View>
                             );
                           })}
