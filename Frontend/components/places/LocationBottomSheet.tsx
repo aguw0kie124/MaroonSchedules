@@ -285,7 +285,8 @@ export function LocationBottomSheet({
   const panStartY = useRef<number>(SHEET_HIDDEN_SNAP);
   const [sheetMode, setSheetMode] = useState<SheetMode>("hidden");
   const [diningDetailTab, setDiningDetailTab] = useState<"menus">("menus");
-  const [isFacilityCountsExpanded, setIsFacilityCountsExpanded] = useState(false);
+  const [isFacilitySelectorOpen, setIsFacilitySelectorOpen] = useState(false);
+  const [selectedFacilityCountName, setSelectedFacilityCountName] = useState<string | null>(null);
 
   const [activeCategoryKey, setActiveCategoryKey] = useState("all");
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
@@ -305,10 +306,6 @@ export function LocationBottomSheet({
       setCollapsedCategories(new Set(categoryNames));
     }
   }, [diningMenuPreview]);
-
-  useEffect(() => {
-    setIsFacilityCountsExpanded(false);
-  }, [selectedId]);
 
   const animateSheet = useCallback(
     (toValue: number, onDone?: () => void) => {
@@ -357,31 +354,6 @@ export function LocationBottomSheet({
   const isPeekSheet = sheetMode === "peek";
   const isCapacityPlace =
     selectedLoc?.type === "Library" || selectedLoc?.type === "Rec";
-  const occupancyPercent = selectedLoc
-    ? Math.max(
-        0,
-        Math.min(
-          100,
-          selectedLoc.capacity && selectedLoc.capacity > 0 && selectedLoc.current_count != null
-            ? Math.round((selectedLoc.current_count / selectedLoc.capacity) * 100)
-            : Number.isFinite(selectedLoc.percent_full)
-              ? selectedLoc.percent_full
-              : 0,
-        ),
-      )
-    : 0;
-  const occupancyToneColor = selectedLoc
-    ? getStatusColor(occupancyPercent)
-    : COLORS.primary;
-  const occupancyCountLabel = useMemo(() => {
-    if (!selectedLoc || !isCapacityPlace) return null;
-    const cap = selectedLoc.capacity;
-    const cur = selectedLoc.current_count;
-    if (cap != null && cur != null && cap > 0) {
-      return `About ${cur.toLocaleString()} of ${cap.toLocaleString()} people`;
-    }
-    return null;
-  }, [selectedLoc, isCapacityPlace]);
   const recreationFacilityCounts = useMemo<FacilityCountEntry[]>(() => {
     if (selectedLoc?.type !== "Rec") return [];
     if (Array.isArray(selectedLoc.facility_counts) && selectedLoc.facility_counts.length) {
@@ -392,24 +364,114 @@ export function LocationBottomSheet({
     }
     return [];
   }, [selectedLoc, selectedRecreationFacility]);
+  const preferredFacilityCount = useMemo<FacilityCountEntry | null>(() => {
+    if (selectedLoc?.type !== "Rec" || !recreationFacilityCounts.length) return null;
+
+    const selectedByName = selectedFacilityCountName
+      ? recreationFacilityCounts.find(
+          (entry) => entry.location_name === selectedFacilityCountName,
+        ) || null
+      : null;
+    if (selectedByName) return selectedByName;
+
+    const normalizedLocation = selectedLoc.location.toLowerCase();
+    const wantsStrengthAndConditioning =
+      normalizedLocation.includes("southside recreation center") ||
+      normalizedLocation.includes("student recreation center");
+
+    if (wantsStrengthAndConditioning) {
+      const strengthEntry =
+        recreationFacilityCounts.find((entry) =>
+          entry.location_name.toLowerCase().includes("strength & conditioning"),
+        ) ||
+        recreationFacilityCounts.find((entry) =>
+          entry.location_name.toLowerCase().includes("strength and conditioning"),
+        ) ||
+        null;
+      if (strengthEntry) return strengthEntry;
+    }
+
+    return recreationFacilityCounts[0] || null;
+  }, [recreationFacilityCounts, selectedFacilityCountName, selectedLoc]);
+  const activeFacilityCount = useMemo<FacilityCountEntry | null>(() => {
+    if (selectedLoc?.type !== "Rec") return null;
+    return preferredFacilityCount;
+  }, [preferredFacilityCount, selectedLoc?.type]);
+  const liveCapacitySource = useMemo(() => {
+    if (!selectedLoc || !isCapacityPlace) return null;
+
+    if (selectedLoc.type === "Rec" && activeFacilityCount) {
+      const capacity = activeFacilityCount.capacity;
+      const currentCount = activeFacilityCount.current_count;
+      const percentFull =
+        capacity && capacity > 0 && currentCount != null
+          ? Math.round((currentCount / capacity) * 100)
+          : Number.isFinite(activeFacilityCount.percent_full)
+            ? Math.round(activeFacilityCount.percent_full as number)
+            : 0;
+
+      return {
+        percentFull: Math.max(0, Math.min(100, percentFull)),
+        currentCount,
+        capacity,
+        lastUpdated: activeFacilityCount.last_updated || null,
+      };
+    }
+
+    const capacity = selectedLoc.capacity;
+    const currentCount = selectedLoc.current_count;
+    const percentFull =
+      capacity && capacity > 0 && currentCount != null
+        ? Math.round((currentCount / capacity) * 100)
+        : Number.isFinite(selectedLoc.percent_full)
+          ? selectedLoc.percent_full
+          : 0;
+
+    return {
+      percentFull: Math.max(0, Math.min(100, percentFull)),
+      currentCount,
+      capacity,
+      lastUpdated:
+        selectedLoc.capacity_last_updated || selectedLoc.capacity_as_of || null,
+    };
+  }, [activeFacilityCount, isCapacityPlace, selectedLoc]);
+  const occupancyPercent = liveCapacitySource?.percentFull ?? 0;
+  const occupancyToneColor = selectedLoc
+    ? getStatusColor(occupancyPercent)
+    : COLORS.primary;
+  const occupancyCountLabel = useMemo(() => {
+    if (!selectedLoc || !isCapacityPlace || !liveCapacitySource) return null;
+    const cap = liveCapacitySource.capacity;
+    const cur = liveCapacitySource.currentCount;
+    if (cap != null && cur != null && cap > 0) {
+      return `About ${cur.toLocaleString()} of ${cap.toLocaleString()} people`;
+    }
+    return null;
+  }, [isCapacityPlace, liveCapacitySource, selectedLoc]);
+  useEffect(() => {
+    if (selectedLoc?.type !== "Rec") {
+      setSelectedFacilityCountName(null);
+      setIsFacilitySelectorOpen(false);
+      return;
+    }
+
+    const defaultName = preferredFacilityCount?.location_name || null;
+    setSelectedFacilityCountName(defaultName);
+    setIsFacilitySelectorOpen(false);
+  }, [preferredFacilityCount?.location_name, selectedId, selectedLoc?.type]);
   const recCapacityLastUpdatedLabel = useMemo(() => {
-    if (selectedLoc?.type !== "Rec") return null;
-    return formatLiveTimestamp(
-      selectedLoc.capacity_last_updated ||
-        selectedLoc.capacity_as_of ||
-        selectedRecreationFacility?.last_updated ||
-        null,
-    );
+    if (!selectedLoc || !liveCapacitySource) return null;
+    if (selectedLoc.type === "Rec") {
+      return formatLiveTimestamp(
+        liveCapacitySource.lastUpdated || selectedRecreationFacility?.last_updated || null,
+      );
+    }
+    return formatLiveTimestamp(liveCapacitySource.lastUpdated);
   }, [
-    selectedLoc?.capacity_as_of,
-    selectedLoc?.capacity_last_updated,
-    selectedLoc?.type,
+    liveCapacitySource,
     selectedRecreationFacility?.last_updated,
+    selectedLoc,
   ]);
-  const recLiveSourceLabel = useMemo(() => {
-    if (selectedLoc?.type !== "Rec") return null;
-    return selectedLoc.occupancy_name || selectedRecreationFacility?.occupancy_name || null;
-  }, [selectedLoc?.occupancy_name, selectedLoc?.type, selectedRecreationFacility?.occupancy_name]);
   const parkingRecommendation = useMemo(() => {
     if (!selectedLoc || selectedLoc.type !== "Parking") return null;
     const lower = selectedLoc.location.toLowerCase();
@@ -467,7 +529,7 @@ export function LocationBottomSheet({
       return selectedTodayHoursLine;
     }
     if (isCapacityPlace) {
-      return `${occupancyPercent}% full`;
+      return `${liveCapacitySource?.percentFull ?? occupancyPercent}% full`;
     }
     if (
       selectedLoc.type === "Parking" &&
@@ -495,6 +557,7 @@ export function LocationBottomSheet({
     foodCourtVenues.length,
     isCapacityPlace,
     isFoodCourtHub,
+    liveCapacitySource?.percentFull,
     occupancyPercent,
     selectedTodayHoursLine,
     selectedLoc,
@@ -736,23 +799,15 @@ export function LocationBottomSheet({
                     </TouchableOpacity>
                   ) : null}
 
-                  {selectedLoc.type === "Rec" && recreationFacilityCounts.length ? (
+                  {officialFacilityUrl && officialFacilityUrl !== externalLink?.url ? (
                     <TouchableOpacity
                       style={styles.quickActionPill}
                       onPress={() =>
-                        setIsFacilityCountsExpanded((current) => !current)
+                        Linking.openURL(officialFacilityUrl).catch(() => {})
                       }
                     >
-                      <ChevronDown
-                        size={14}
-                        color={COLORS.textPrimary}
-                        style={{
-                          transform: [
-                            { rotate: isFacilityCountsExpanded ? "180deg" : "0deg" },
-                          ],
-                        }}
-                      />
-                      <Text style={styles.quickActionText}>Facility Counts</Text>
+                      <ExternalLink size={14} color={COLORS.textPrimary} />
+                      <Text style={styles.quickActionText}>Facility Page</Text>
                     </TouchableOpacity>
                   ) : null}
                 </View>
@@ -950,6 +1005,33 @@ export function LocationBottomSheet({
                       ]}
                     />
                   </View>
+                  {selectedLoc.type === "Rec" && recreationFacilityCounts.length ? (
+                    <View style={styles.facilityPickerWrap}>
+                      <TouchableOpacity
+                        style={styles.facilityPickerTrigger}
+                        onPress={() =>
+                          setIsFacilitySelectorOpen((current) => !current)
+                        }
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          style={styles.facilityPickerText}
+                          numberOfLines={1}
+                        >
+                          {activeFacilityCount?.location_name || "Choose facility"}
+                        </Text>
+                        <ChevronDown
+                          size={14}
+                          color={COLORS.textSecondary}
+                          style={{
+                            transform: [
+                              { rotate: isFacilitySelectorOpen ? "180deg" : "0deg" },
+                            ],
+                          }}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
                 </View>
 
                 {occupancyCountLabel ? (
@@ -963,17 +1045,6 @@ export function LocationBottomSheet({
                   </Text>
                 ) : null}
 
-                {selectedLoc.type === "Rec" && recLiveSourceLabel ? (
-                  <Text
-                    style={[
-                      styles.contextCardBody,
-                      { marginTop: occupancyCountLabel ? 6 : 8, opacity: 0.95 },
-                    ]}
-                  >
-                    Live source: {recLiveSourceLabel}
-                  </Text>
-                ) : null}
-
                 {selectedLoc.type === "Rec" && recCapacityLastUpdatedLabel ? (
                   <Text
                     style={[
@@ -983,18 +1054,6 @@ export function LocationBottomSheet({
                   >
                     Last updated: {recCapacityLastUpdatedLabel}
                   </Text>
-                ) : null}
-
-                {officialFacilityUrl && officialFacilityUrl !== externalLink?.url ? (
-                  <TouchableOpacity
-                    style={styles.inlineLinkRow}
-                    onPress={() => Linking.openURL(officialFacilityUrl).catch(() => {})}
-                  >
-                    <ExternalLink size={14} color={COLORS.primary} />
-                    <Text style={styles.inlineLinkText}>
-                      Open official facility page
-                    </Text>
-                  </TouchableOpacity>
                 ) : null}
               </View>
             ) : null}
@@ -1142,68 +1201,6 @@ export function LocationBottomSheet({
                 </>
               ) : (
                 <>
-                  {selectedLoc.type === "Rec" &&
-                  isFacilityCountsExpanded &&
-                  recreationFacilityCounts.length ? (
-                    <View style={styles.infoBlock}>
-                      <View style={styles.reviewsHeader}>
-                        <View>
-                          <Text style={styles.sectionTitle}>Facility Counts</Text>
-                          <Text style={styles.menuIntroText}>
-                            Live sub-facility counts from the rec API.
-                          </Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.facilityCountsPanel}>
-                        {recreationFacilityCounts.map((entry, index) => {
-                          const percentLabel =
-                            typeof entry.percent_full === "number"
-                              ? `${Math.round(entry.percent_full)}% full`
-                              : "No live percentage";
-                          const countLabel =
-                            entry.current_count != null && entry.capacity != null
-                              ? `${entry.current_count.toLocaleString()} / ${entry.capacity.toLocaleString()} people`
-                              : entry.current_count != null
-                                ? `${entry.current_count.toLocaleString()} people`
-                                : "No live count";
-                          const updatedLabel = formatLiveTimestamp(entry.last_updated);
-
-                          return (
-                            <View
-                              key={`${entry.location_name}-${index}`}
-                              style={styles.facilityCountCard}
-                            >
-                              <View style={styles.facilityCountHeader}>
-                                <Text style={styles.facilityCountName}>
-                                  {entry.location_name}
-                                </Text>
-                                {entry.is_closed ? (
-                                  <View style={styles.facilityCountBadge}>
-                                    <Text style={styles.facilityCountBadgeText}>
-                                      Closed
-                                    </Text>
-                                  </View>
-                                ) : null}
-                              </View>
-                              <Text style={styles.facilityCountMeta}>
-                                {countLabel}
-                              </Text>
-                              <Text style={styles.facilityCountMeta}>
-                                {percentLabel}
-                              </Text>
-                              {updatedLabel ? (
-                                <Text style={styles.facilityCountMeta}>
-                                  Last updated: {updatedLabel}
-                                </Text>
-                              ) : null}
-                            </View>
-                          );
-                        })}
-                      </View>
-                    </View>
-                  ) : null}
-
                   {/* Traffic chart */}
                   {(selectedLoc.type === "Library" ||
                     selectedLoc.type === "Rec") && (
@@ -1458,8 +1455,52 @@ export function LocationBottomSheet({
         ) : null}
       </Animated.View>
 
+      <Modal
+        visible={isFacilitySelectorOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setIsFacilitySelectorOpen(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setIsFacilitySelectorOpen(false)}>
+          <View style={styles.facilityListBackdrop}>
+            <TouchableWithoutFeedback>
+              <View style={styles.facilityListModal}>
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.facilityListContent}
+                >
+                  {recreationFacilityCounts.map((entry, index) => {
+                    const isSelected =
+                      entry.location_name === activeFacilityCount?.location_name;
 
-
+                    return (
+                      <TouchableOpacity
+                        key={`${entry.location_name}-${index}`}
+                        style={[
+                          styles.facilityListRow,
+                          isSelected && styles.facilityListRowActive,
+                        ]}
+                        activeOpacity={0.85}
+                        onPress={() => {
+                          setSelectedFacilityCountName(entry.location_name);
+                          setIsFacilitySelectorOpen(false);
+                        }}
+                      >
+                        <Text
+                          style={styles.facilityListRowText}
+                          numberOfLines={1}
+                        >
+                          {entry.location_name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
     </>
   );

@@ -809,9 +809,24 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       marginBottom: 10,
       backgroundColor: isDark ? "#16181C" : "#F6F7FB",
       padding: 16,
-      borderRadius: 24,
+      borderRadius: 22,
       borderWidth: 1,
       borderColor: isDark ? "#252830" : "#E3E7EF",
+    },
+    facilityPickerWrap: {
+      marginTop: 12,
+      alignItems: "flex-start",
+    },
+    facilityPickerTrigger: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingVertical: 2,
+    },
+    facilityPickerText: {
+      color: COLORS.textSecondary,
+      fontSize: 11,
+      fontWeight: "600",
     },
     occupancySummaryRow: {
       flexDirection: "row",
@@ -838,6 +853,36 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       marginBottom: 0,
     },
     occupancyFill: { height: "100%", borderRadius: 999 },
+    facilityListBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.18)",
+      justifyContent: "center",
+      paddingHorizontal: 40,
+    },
+    facilityListModal: {
+      maxHeight: SCREEN_HEIGHT * 0.4,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: isDark ? "#252830" : "#E1E6EF",
+      backgroundColor: isDark ? "#13161A" : "#FFFFFF",
+      overflow: "hidden",
+    },
+    facilityListContent: {
+      paddingVertical: 6,
+    },
+    facilityListRow: {
+      minHeight: 42,
+      justifyContent: "center",
+      paddingHorizontal: 14,
+    },
+    facilityListRowActive: {
+      backgroundColor: isDark ? "#1A2027" : "#F4F8FF",
+    },
+    facilityListRowText: {
+      color: COLORS.textPrimary,
+      fontSize: 13,
+      fontWeight: "600",
+    },
     inlineLinkRow: {
       flexDirection: "row",
       alignItems: "center",
