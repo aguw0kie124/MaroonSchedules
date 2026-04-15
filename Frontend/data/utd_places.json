@@ -1,0 +1,322 @@
+[
+  {
+    "id": "AB",
+    "name": "Activity Center",
+    "latitude": 32.985193621812606,
+    "longitude": -96.75029286740849,
+    "category": "recreation",
+    "campus": "UTD"
+  },
+  {
+    "id": "AD",
+    "name": "Administration Building",
+    "latitude": 32.98969298997524,
+    "longitude": -96.74847741354178,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "AH1",
+    "name": "Arts and Humanities 1",
+    "latitude": 32.98780031736015,
+    "longitude": -96.75209491481787,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "Arts & Humanities 2",
+    "name": "Arts and Humanities 2",
+    "latitude": 32.98780034071849,
+    "longitude": -96.75182093763937,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "GC",
+    "name": "Cecil and Ida Green Center",
+    "latitude": 32.987825871377325,
+    "longitude": -96.74794359866735,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "GR",
+    "name": "Cecil H. Green Hall",
+    "latitude": 32.98864818551305,
+    "longitude": -96.747937261053,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "Classroom Building",
+    "name": "Classroom Building",
+    "latitude": 32.989699358376015,
+    "longitude": -96.74934471808398,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "Classroom Building 1",
+    "name": "Classroom Building 1",
+    "latitude": 32.98757406068141,
+    "longitude": -96.75183481032232,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "Classroom Building 2",
+    "name": "Classroom Building 2",
+    "latitude": 32.9875741684314,
+    "longitude": -96.75155165595486,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "Classroom Building 3",
+    "name": "Classroom Building 3",
+    "latitude": 32.98780024954565,
+    "longitude": -96.75150236180195,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "ATC",
+    "name": "Edith O'Donnell Arts & Technology Building",
+    "latitude": 32.98609121197232,
+    "longitude": -96.74755957337496,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "CEP",
+    "name": "Energy Plant",
+    "latitude": 32.98849689940769,
+    "longitude": -96.75122103101455,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "JO",
+    "name": "Erik Jonsson Academic Center",
+    "latitude": 32.98868847372752,
+    "longitude": -96.74917127945375,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "MC",
+    "name": "Eugene McDermott Library",
+    "latitude": 32.98693908674629,
+    "longitude": -96.74764172610433,
+    "category": "library",
+    "campus": "UTD"
+  },
+  {
+    "id": "Facilities Management",
+    "name": "Facilities Management",
+    "latitude": 32.99221147054741,
+    "longitude": -96.7473026138812,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "Founders Building",
+    "name": "Founders Building",
+    "latitude": 32.98768459480751,
+    "longitude": -96.74909916449938,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "FN",
+    "name": "Founders North",
+    "latitude": 32.98813142267551,
+    "longitude": -96.74932370199791,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "FA",
+    "name": "Founders West Annex",
+    "latitude": 32.987690341719286,
+    "longitude": -96.7498457660101,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "HH",
+    "name": "Karl Hoblitzelle Hall",
+    "latitude": 32.98693948308843,
+    "longitude": -96.75159099407948,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "BE",
+    "name": "Lloyd V. Berkner Hall",
+    "latitude": 32.98769477453428,
+    "longitude": -96.7504288256301,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "ML1",
+    "name": "Modular Building 1",
+    "latitude": 32.98687349511771,
+    "longitude": -96.75262230853467,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "ML2",
+    "name": "Modular Building 2",
+    "latitude": 32.98687381008183,
+    "longitude": -96.75328798082145,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "JSOM",
+    "name": "Naveen Jindal School of Management",
+    "latitude": 32.98506393239973,
+    "longitude": -96.7470675112966,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "ECSN",
+    "name": "North Engineering and Computer Science",
+    "latitude": 32.986938774796414,
+    "longitude": -96.75038959440502,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "NL",
+    "name": "North Lab",
+    "latitude": 32.990314670915154,
+    "longitude": -96.74920541004465,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "NB",
+    "name": "North Office Building",
+    "latitude": 32.99008164919952,
+    "longitude": -96.74941335206663,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "Police Department",
+    "name": "PD",
+    "latitude": 32.991701525548336,
+    "longitude": -96.74569832968328,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "PHY",
+    "name": "Physics Building",
+    "latitude": 32.98942993664466,
+    "longitude": -96.75038502916674,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "ROW",
+    "name": "Research and Operations Center West",
+    "latitude": 32.9862192813403,
+    "longitude": -96.7585824139508,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "RL",
+    "name": "RL",
+    "latitude": 32.99231048756226,
+    "longitude": -96.75052352423073,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "ROC",
+    "name": "ROC",
+    "latitude": 32.98627445696417,
+    "longitude": -96.7571792095444,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "SG",
+    "name": "Safety and Grounds",
+    "latitude": 32.99090595332626,
+    "longitude": -96.74686934024999,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "SB",
+    "name": "Service Building",
+    "latitude": 32.99131656844844,
+    "longitude": -96.74641855845391,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "ECSS",
+    "name": "South Engineering and Computer Science",
+    "latitude": 32.98623531071972,
+    "longitude": -96.75043516863433,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "SSB",
+    "name": "Student Services Building",
+    "latitude": 32.98591169045088,
+    "longitude": -96.74883904563077,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "SSA",
+    "name": "Student Services Building Addition",
+    "latitude": 32.98601937311645,
+    "longitude": -96.74941876890779,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "SU",
+    "name": "Student Union",
+    "latitude": 32.9867782884984,
+    "longitude": -96.74899653646975,
+    "category": "dining",
+    "campus": "UTD"
+  },
+  {
+    "id": "SUP",
+    "name": "Supplementary Utility Plant",
+    "latitude": 32.986067967713204,
+    "longitude": -96.74495983097641,
+    "category": "building",
+    "campus": "UTD"
+  },
+  {
+    "id": "VCB",
+    "name": "Visitor Center and University Bookstore",
+    "latitude": 32.98462644774594,
+    "longitude": -96.7497792673229,
+    "category": "parking",
+    "campus": "UTD"
+  },
+  {
+    "id": "WSTC",
+    "name": "Waterview Science and Technology Center",
+    "latitude": 32.99198798660351,
+    "longitude": -96.75733728877991,
+    "category": "building",
+    "campus": "UTD"
+  }
+]

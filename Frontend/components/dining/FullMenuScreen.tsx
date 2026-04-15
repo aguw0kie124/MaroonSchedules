@@ -11,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { useUser } from '@clerk/clerk-expo';
 import { ChevronDown, ChevronLeft, ChevronUp } from 'lucide-react-native';
@@ -29,6 +30,7 @@ import {
   isDiningHallMenuLocation,
   prefetchDiningMenus,
 } from '../../services/diningMenuCache';
+import { fetchUTDFullMenu, getUTDMealOptions } from '../../services/utdDiningService';
 
 function formatMealLabel(meal: string) {
   const value = (meal || '').toLowerCase();
@@ -73,7 +75,12 @@ export default function FullMenuScreen({ navigation, route }: any) {
   const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const { location, mealPeriod, title, locations, sourceHint } = route.params || {};
-  const availableMealPeriods = getDiningMealOptionsForLocation(location);
+  const [selectedCampus, setSelectedCampus] = useState<'TAMU' | 'UTD'>('TAMU');
+  const [isCampusReady, setCampusReady] = useState(false);
+  const isUTDCampus = selectedCampus === 'UTD';
+  const availableMealPeriods = isUTDCampus
+    ? getUTDMealOptions()
+    : getDiningMealOptionsForLocation(location);
   const isDiningHall = isDiningHallMenuLocation(location);
   const [activeMealPeriod, setActiveMealPeriod] = useState<DiningMealPeriod>(
     (mealPeriod as DiningMealPeriod) || getDiningMealPeriodForLocation(location),
@@ -86,6 +93,25 @@ export default function FullMenuScreen({ navigation, route }: any) {
   const [syncingItemKey, setSyncingItemKey] = useState<string | null>(null);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [activeCategoryKey, setActiveCategoryKey] = useState('all');
+
+  useEffect(() => {
+    AsyncStorage.getItem('selected_campus')
+      .then((value) => {
+        if (value === 'UTD' || value === 'TAMU') {
+          setSelectedCampus(value);
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to read selected campus for dining menu', error);
+      })
+      .finally(() => setCampusReady(true));
+  }, []);
+
+  useEffect(() => {
+    if (!availableMealPeriods.includes(activeMealPeriod)) {
+      setActiveMealPeriod(availableMealPeriods[0] || 'lunch');
+    }
+  }, [activeMealPeriod, availableMealPeriods]);
 
   const toggleCategory = useCallback((categoryName: string) => {
     setCollapsedCategories((current) => {
@@ -112,10 +138,15 @@ export default function FullMenuScreen({ navigation, route }: any) {
     setLoading(true);
     setError('');
     try {
-      const result = await fetchDiningFullMenuCached({
-        location,
-        mealPeriod: nextMealPeriod,
-      });
+      const result = isUTDCampus
+        ? await fetchUTDFullMenu({
+            location,
+            mealPeriod: nextMealPeriod,
+          })
+        : await fetchDiningFullMenuCached({
+            location,
+            mealPeriod: nextMealPeriod,
+          });
       if (result.success) {
         setMenusByPeriod((current) => ({
           ...current,
@@ -129,12 +160,13 @@ export default function FullMenuScreen({ navigation, route }: any) {
     } finally {
       setLoading(false);
     }
-  }, [location, menusByPeriod]);
+  }, [isUTDCampus, location, menusByPeriod]);
 
   useEffect(() => {
+    if (!isCampusReady) return;
     load(activeMealPeriod);
     setActiveCategoryKey('all');
-  }, [activeMealPeriod, load]);
+  }, [activeMealPeriod, isCampusReady, load]);
 
   useEffect(() => {
     const categoryNames = (menu?.categories || []).map((category: any) => category.name);
@@ -142,9 +174,9 @@ export default function FullMenuScreen({ navigation, route }: any) {
   }, [menu]);
 
   useEffect(() => {
-    if (!location) return;
+    if (!location || isUTDCampus) return;
     prefetchDiningMenus([location], availableMealPeriods).catch(() => {});
-  }, [availableMealPeriods, location]);
+  }, [availableMealPeriods, isUTDCampus, location]);
 
   const refreshTrackerCounts = useCallback(async () => {
     if (!user) return;

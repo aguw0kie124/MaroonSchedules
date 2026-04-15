@@ -1,5 +1,6 @@
 import React, { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ActivityIndicator,
   Alert,
@@ -73,6 +74,7 @@ const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
 const HERO_CARD_HEIGHT = 380;
 const HERO_CARD_GAP = 14;
 const HERO_CARD_SNAP_INTERVAL = HERO_CARD_WIDTH + HERO_CARD_GAP;
+const UTD_PLACEHOLDER_EVENTS = ['Student Organization Fair', 'Hackathon', 'Career Expo'] as const;
 
 interface CampusEventResponse {
   event_id: string;
@@ -838,8 +840,26 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const { user } = useUser();
   const s = useMemo(() => getStyles(COLORS, isDark, embedded), [COLORS, isDark, embedded]);
   const isGuest = useSessionStore((state) => state.isGuest);
+  const [selectedCampus, setSelectedCampus] = useState<'TAMU' | 'UTD'>('TAMU');
+  const [campusHydrated, setCampusHydrated] = useState(false);
+  const isUTDCampus = selectedCampus === 'UTD';
 
   const { advanceStep, activeTargetName } = useTour();
+
+  useEffect(() => {
+    AsyncStorage.getItem('selected_campus')
+      .then((value) => {
+        if (value === 'UTD' || value === 'TAMU') {
+          setSelectedCampus(value);
+        }
+      })
+      .catch((error) => {
+        console.warn('[Events] Failed to load selected campus', error);
+      })
+      .finally(() => {
+        setCampusHydrated(true);
+      });
+  }, []);
 
   const [view, setView] = useState<EventsView>('discover');
 
@@ -891,7 +911,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     refetch: fetchEvents,
     isRefetching: refreshing,
   } = useQuery({
-    queryKey: ['campus-events', user?.id],
+    queryKey: ['campus-events', user?.id, selectedCampus],
+    enabled: campusHydrated && !isUTDCampus,
     queryFn: async () => {
       const params = new URLSearchParams({
         limit: '1000',
@@ -961,6 +982,16 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   useEffect(() => {
     let cancelled = false;
 
+    if (!campusHydrated) {
+      return;
+    }
+
+    if (isUTDCampus) {
+      setProfilePreferences(DEFAULT_USER_EVENT_PREFERENCES);
+      hydratedProfileMajorForUser.current = null;
+      return;
+    }
+
     if (!user?.id) {
       setProfilePreferences(DEFAULT_USER_EVENT_PREFERENCES);
       hydratedProfileMajorForUser.current = null;
@@ -991,7 +1022,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     return () => {
       cancelled = true;
     };
-  }, [setSelectedMajor, user?.id]);
+  }, [campusHydrated, isUTDCampus, setSelectedMajor, user?.id]);
 
   const personalizedEvents = useMemo(
     () =>
@@ -1014,7 +1045,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     data: preferredEventCategories,
   } = useQuery({
     queryKey: ['user-event-categories', user?.id],
-    enabled: !!user?.id,
+    enabled: campusHydrated && !!user?.id && !isUTDCampus,
     queryFn: async () => {
       const profile = await fetchUserProfile(user!.id);
       return profile?.preferred_event_categories || [];
@@ -1025,7 +1056,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     data: preferredSocialMode,
   } = useQuery({
     queryKey: ['user-social-mode', user?.id],
-    enabled: !!user?.id,
+    enabled: campusHydrated && !!user?.id && !isUTDCampus,
     queryFn: async () => {
       const profile = await fetchUserProfile(user!.id);
       return profile?.social_mode as SocialMode || null;
@@ -1036,7 +1067,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     data: preferredTime,
   } = useQuery({
     queryKey: ['user-preferred-time', user?.id],
-    enabled: !!user?.id,
+    enabled: campusHydrated && !!user?.id && !isUTDCampus,
     queryFn: async () => {
       const profile = await fetchUserProfile(user!.id);
       return profile?.preferred_time || null;
@@ -1064,8 +1095,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   }, []); // Only on mount to apply stored manual overrides to the default session state
 
   const handleRefresh = useCallback(async () => {
+    if (isUTDCampus) return;
     await fetchEvents();
-  }, [fetchEvents]);
+  }, [fetchEvents, isUTDCampus]);
 
   const triggerRewardToast = useCallback((title: string, body: string) => {
     if (rewardToastTimerRef.current) {
@@ -1288,6 +1320,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const handleSchedule = useCallback(
     async (event: TAMUEvent) => {
+      if (isUTDCampus) {
+        Alert.alert('UTD Events Coming Soon', 'RSVP will be available soon for UTD events.');
+        return;
+      }
       if (!user) {
         promptGuestLogin(
           navigation,
@@ -1376,7 +1412,17 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       triggerRewardToast('Added to your schedule', 'Nice. We will keep this one easy to come back to.');
       Alert.alert('Successfully RSVPed', `${event.title} is now in your schedule.`);
     },
-    [activeTargetName, advanceStep, navigation, removeScheduledEvent, scheduleEvent, scheduledEvents, triggerRewardToast, user],
+    [
+      activeTargetName,
+      advanceStep,
+      isUTDCampus,
+      navigation,
+      removeScheduledEvent,
+      scheduleEvent,
+      scheduledEvents,
+      triggerRewardToast,
+      user,
+    ],
   );
 
   const handleShare = useCallback((event: TAMUEvent) => {
@@ -1618,6 +1664,48 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       </View>
     </View>
   );
+
+  if (!campusHydrated) {
+    return (
+      <View style={s.container}>
+        <View style={s.loadingWrap}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={s.loadingText}>Loading campus events...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (isUTDCampus) {
+    return (
+      <View style={s.container}>
+        {renderHeader('Events')}
+        <ScrollView
+          style={s.discoverScroll}
+          contentContainerStyle={s.utdComingSoonWrap}
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={s.utdComingSoonTitle}>UTD Events Coming Soon</Text>
+          <Text style={s.utdComingSoonSubtitle}>
+            We are preparing UT Dallas campus events. RSVP and live event data will be available soon.
+          </Text>
+          <View style={s.utdPlaceholderList}>
+            {UTD_PLACEHOLDER_EVENTS.map((title) => (
+              <View key={title} style={s.utdPlaceholderCard}>
+                <View style={s.utdPlaceholderTitleRow}>
+                  <Megaphone size={18} color={COLORS.primary} />
+                  <Text style={s.utdPlaceholderTitle}>{title}</Text>
+                </View>
+                <Pressable disabled style={s.utdPlaceholderRsvpButton}>
+                  <Text style={s.utdPlaceholderRsvpButtonText}>RSVP Coming Soon</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <View style={s.container}>
@@ -2801,6 +2889,60 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     discoverScroll: {
       flex: 1,
+    },
+    utdComingSoonWrap: {
+      paddingHorizontal: 20,
+      paddingTop: 20,
+      paddingBottom: 28,
+      gap: 10,
+    },
+    utdComingSoonTitle: {
+      color: COLORS.textPrimary,
+      fontSize: 30,
+      fontWeight: '900',
+      letterSpacing: -1.0,
+    },
+    utdComingSoonSubtitle: {
+      color: COLORS.textSecondary,
+      fontSize: 14,
+      lineHeight: 20,
+      marginBottom: 12,
+    },
+    utdPlaceholderList: {
+      gap: 12,
+    },
+    utdPlaceholderCard: {
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF',
+      padding: 16,
+      gap: 12,
+    },
+    utdPlaceholderTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    utdPlaceholderTitle: {
+      color: COLORS.textPrimary,
+      fontSize: 17,
+      fontWeight: '800',
+      flex: 1,
+    },
+    utdPlaceholderRsvpButton: {
+      height: 44,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.08)',
+      opacity: 0.7,
+    },
+    utdPlaceholderRsvpButtonText: {
+      color: COLORS.textSecondary,
+      fontSize: 13,
+      fontWeight: '800',
+      letterSpacing: 0.2,
     },
     forYouHero: {
       borderRadius: 28,

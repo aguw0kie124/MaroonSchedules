@@ -4,6 +4,7 @@ import { MapPin, Bookmark } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { ScalePressable } from './common/Motion';
+import { tamuTheme, useCampusThemeContext } from '../theme';
 
 export const DARK_COLORS = {
   background: '#000000',      // Pure Black
@@ -37,11 +38,14 @@ export const LIGHT_COLORS = {
   warning: '#FF9500',
 };
 
-export const DEFAULT_LIGHT_ACCENT = '#500000';
-export const DEFAULT_DARK_ACCENT = '#500000';
+export const DEFAULT_LIGHT_ACCENT = tamuTheme.colors.primary;
+export const DEFAULT_DARK_ACCENT = tamuTheme.colors.primary;
 const LEGACY_DEFAULT_ACCENT = '#8E8E93';
 
-export function getDefaultAccentColor(theme: 'light' | 'dark') {
+export function getDefaultAccentColor(theme: 'light' | 'dark', campusPrimary?: string) {
+  if (campusPrimary) {
+    return campusPrimary;
+  }
   return theme === 'dark' ? DEFAULT_DARK_ACCENT : DEFAULT_LIGHT_ACCENT;
 }
 
@@ -151,6 +155,7 @@ export const useThemeStore = create<any>((set, get) => ({
 }));
 
 export const useTheme = () => {
+  const { campus, theme: campusTheme } = useCampusThemeContext();
   const theme = useThemeStore((s: any) => s.theme);
   const backgroundMode = useThemeStore((s: any) => s.backgroundMode);
   const wallpaperUri = useThemeStore((s: any) => s.customWallpaperUri);
@@ -158,14 +163,24 @@ export const useTheme = () => {
   const applyAccentToText = useThemeStore((s: any) => s.applyAccentToText);
   const useWallpaper = backgroundMode === 'custom' && !!wallpaperUri;
   const palette = theme === 'dark' ? DARK_COLORS : LIGHT_COLORS;
+  const isDark = theme === 'dark';
   const COLORS = {
     ...palette,
-    primary: accentColor,
-    accent: accentColor,
-    accentText: applyAccentToText ? accentColor : palette.textPrimary,
+    primary: campusTheme.colors.primary,
+    secondary: campusTheme.colors.secondary,
+    primaryLight: campusTheme.colors.card,
+    accent: campusTheme.colors.accent,
+    background: isDark ? palette.background : campusTheme.colors.background,
+    surface: isDark ? palette.surface : campusTheme.colors.card,
+    textPrimary: isDark ? palette.textPrimary : campusTheme.colors.text,
+    accentText: applyAccentToText ? accentColor : isDark ? palette.textPrimary : campusTheme.colors.text,
+    campusMarkerColor: campusTheme.map.markerColor,
+    campusRouteColor: campusTheme.map.routeColor,
+    navigationHeaderColor: campusTheme.navigation.headerColor,
+    navigationTabActiveColor: campusTheme.navigation.tabActiveColor,
   };
   return {
-    COLORS, theme, useWallpaper, backgroundMode, wallpaperUri, accentColor, applyAccentToText,
+    COLORS, theme, useWallpaper, backgroundMode, wallpaperUri, accentColor, applyAccentToText, campus, campusTheme,
     setTheme: useThemeStore.getState().setTheme,
     setUseWallpaper: useThemeStore.getState().setUseWallpaper,
     setBackgroundMode: useThemeStore.getState().setBackgroundMode,

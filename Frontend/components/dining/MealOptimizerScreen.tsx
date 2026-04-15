@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, SafeAreaView, StatusBar, ImageBackground } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUser } from '@clerk/clerk-expo';
 import { requestJson } from '../../api/client';
 import { Card, SectionLabel, Divider, StatPill, ActionButton, Badge } from './DiningUI';
@@ -10,10 +11,15 @@ import { getLocalDateString } from '../../services/dateUtils';
 import { MapPin, MoonStar, Plus, SunMedium, Sunrise, UtensilsCrossed } from 'lucide-react-native';
 import { getDiningMealPeriodForLocation, prefetchDiningMenus } from '../../services/diningMenuCache';
 
-const HALLS = [
+const TAMU_HALLS = [
   { key: 'Sbisa', label: 'Sbisa', sub: 'North Campus' },
   { key: 'Commons', label: 'Commons', sub: 'South Campus' },
   { key: 'Duncan', label: 'Duncan', sub: 'South / Quad' },
+];
+const UTD_HALLS = [
+  { key: 'Dining Hall West', label: 'Dining Hall West', sub: 'Main Campus' },
+  { key: 'Student Union', label: 'Student Union', sub: 'Food Court' },
+  { key: 'Activity Center', label: 'Activity Center', sub: 'Campus Dining' },
 ];
 const MEALS = ['breakfast', 'lunch', 'dinner'];
 const M_ICON: any = { breakfast: Sunrise, lunch: SunMedium, dinner: MoonStar };
@@ -37,14 +43,40 @@ export default function MealOptimizerScreen({ navigation, embedded = false }: an
   const [active, setActive] = useState('breakfast');
   const [activeTopTab, setActiveTopTab] = useState<'menus' | 'location'>('menus');
   const [msg, setMsg] = useState<any>(null);
+  const [selectedCampus, setSelectedCampus] = useState<'TAMU' | 'UTD'>('TAMU');
+  const isUTDCampus = selectedCampus === 'UTD';
+  const halls = useMemo(
+    () => (isUTDCampus ? UTD_HALLS : TAMU_HALLS),
+    [isUTDCampus],
+  );
 
   useEffect(() => {
-    prefetchDiningMenus(HALLS.map((item) => item.key), MEALS).catch(() => {});
+    AsyncStorage.getItem('selected_campus')
+      .then((value) => {
+        if (value === 'UTD' || value === 'TAMU') {
+          setSelectedCampus(value);
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to load selected campus for meal optimizer', error);
+      });
   }, []);
 
   useEffect(() => {
+    if (!halls.some((entry) => entry.key === hall)) {
+      setHall(halls[0]?.key || 'Sbisa');
+    }
+  }, [hall, halls]);
+
+  useEffect(() => {
+    if (isUTDCampus) return;
+    prefetchDiningMenus(halls.map((item) => item.key), MEALS).catch(() => {});
+  }, [halls, isUTDCampus]);
+
+  useEffect(() => {
+    if (isUTDCampus) return;
     prefetchDiningMenus([hall], MEALS).catch(() => {});
-  }, [hall]);
+  }, [hall, isUTDCampus]);
 
   const toggle = (m: string) => setSelMeals(s => s.includes(m) ? s.filter(x => x !== m) : [...s, m]);
 
@@ -91,7 +123,7 @@ export default function MealOptimizerScreen({ navigation, embedded = false }: an
       location: hall,
       mealPeriod,
       title: `${hall} Menu`,
-      sourceHint: plan?.liveMenu?.fetched ? 'live' : 'database',
+      sourceHint: isUTDCampus ? 'utd-live' : plan?.liveMenu?.fetched ? 'live' : 'database',
     });
   };
 
@@ -126,7 +158,7 @@ export default function MealOptimizerScreen({ navigation, embedded = false }: an
         <Card>
           <SectionLabel>Location</SectionLabel>
           <View style={s.chipRow}>
-            {HALLS.map(h => (
+            {halls.map(h => (
               <TouchableOpacity key={h.key} 
                   style={[
                     s.chip,

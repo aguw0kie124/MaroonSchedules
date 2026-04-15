@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ArrowLeft,
   Database,
@@ -16,10 +17,15 @@ import { useDiningTheme } from './DiningTheme';
 import { getDiningMealPeriodForLocation } from '../../services/diningMenuCache';
 import { Card, SectionLabel, ActionButton } from './DiningUI';
 
-const HALLS = [
+const TAMU_HALLS = [
   { key: 'Sbisa', label: 'Sbisa', sub: 'North Campus' },
   { key: 'Commons', label: 'Commons', sub: 'South Campus' },
   { key: 'Duncan', label: 'Duncan', sub: 'South / Quad' },
+];
+const UTD_HALLS = [
+  { key: 'Dining Hall West', label: 'Dining Hall West', sub: 'Main Campus' },
+  { key: 'Student Union', label: 'Student Union', sub: 'Food Court' },
+  { key: 'Activity Center', label: 'Activity Center', sub: 'Campus Dining' },
 ];
 
 const DASHBOARD_TOOLS = [
@@ -74,6 +80,29 @@ export default function DiningDashboard({ navigation }: any) {
   const T = useDiningTheme(darkMode);
 
   const [hall, setHall] = useState('Sbisa');
+  const [selectedCampus, setSelectedCampus] = useState<'TAMU' | 'UTD'>('TAMU');
+  const halls = useMemo(
+    () => (selectedCampus === 'UTD' ? UTD_HALLS : TAMU_HALLS),
+    [selectedCampus],
+  );
+
+  useEffect(() => {
+    AsyncStorage.getItem('selected_campus')
+      .then((value) => {
+        if (value === 'UTD' || value === 'TAMU') {
+          setSelectedCampus(value);
+        }
+      })
+      .catch((error) => {
+        console.warn('Failed to load selected campus for dining dashboard', error);
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!halls.some((entry) => entry.key === hall)) {
+      setHall(halls[0]?.key || 'Sbisa');
+    }
+  }, [hall, halls]);
 
   const openFullMenu = () => {
     const mealPeriod = getDiningMealPeriodForLocation(hall);
@@ -81,7 +110,7 @@ export default function DiningDashboard({ navigation }: any) {
       location: hall,
       mealPeriod,
       title: `${hall} Menu`,
-      sourceHint: 'cached',
+      sourceHint: selectedCampus === 'UTD' ? 'utd-live' : 'cached',
     });
   };
 
@@ -116,7 +145,7 @@ export default function DiningDashboard({ navigation }: any) {
             Jump straight into any dining hall menu without leaving the nutrition tools flow.
           </Text>
           <View style={s.chipRow}>
-            {HALLS.map(h => (
+            {halls.map(h => (
               <TouchableOpacity key={h.key} 
                   style={[
                     s.chip,

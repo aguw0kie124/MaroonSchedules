@@ -32,6 +32,7 @@ import {
   Share,
   Pressable,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
 import {
@@ -141,6 +142,9 @@ import {
   useMapLibreCamera,
 } from "./map/mapLibreUtils";
 import { searchGlobalPlaces } from "../services/globalMap";
+import UTD_PLACES_DATA from "../data/utd_places.json";
+import { transitService } from "../services/transitService";
+import { utdTransitService } from "../services/utdTransitService";
 
 // ── Transitional: still uses inline hooks from original file
 //    (replace with useLocationData / useScheduleMap / useBusTransit
@@ -190,13 +194,23 @@ const PULSE_SELECTION_ANIMATION_MS = 520;
 const DEFAULT_USER_CAMERA_ZOOM = 15.15;
 const MAX_RESTORE_CAMERA_ZOOM = 15.45;
 const MIN_RESTORE_CAMERA_ZOOM = 14.2;
+const UTD_CENTER = {
+  latitude: 32.9857,
+  longitude: -96.7501,
+  latitudeDelta: 0.03,
+  longitudeDelta: 0.03,
+};
 
-const isPulseCoordNearCollegeStation = (latitude: number, longitude: number) =>
+const isPulseCoordNearCampus = (
+  latitude: number,
+  longitude: number,
+  campusCenter: { latitude: number; longitude: number },
+) =>
   haversineDistanceMeters(
     latitude,
     longitude,
-    TAMU_CENTER.latitude,
-    TAMU_CENTER.longitude,
+    campusCenter.latitude,
+    campusCenter.longitude,
   ) <= PULSE_OVERVIEW_RADIUS_METERS;
 
 const getPulseFocusRegion = (latitude: number, longitude: number) => ({
@@ -213,12 +227,20 @@ const zoomFromLatitudeDelta = (latitudeDelta?: number) => {
 };
 
 export function PlacesMapScreen({ route, navigation }: any) {
-  const { COLORS, theme } = useTheme();
+  const { COLORS, theme, campusTheme } = useTheme();
   const isDark = theme === "dark";
   const styles = getStyles(COLORS, isDark);
   const { user } = useUser();
   const insets = useSafeAreaInsets();
   const { width: SCREEN_WIDTH } = Dimensions.get("window");
+  const [selectedCampus, setSelectedCampus] = useState<"TAMU" | "UTD">(
+    campusTheme.campus === "UTD" ? "UTD" : "TAMU",
+  );
+  const isUTDCampus = selectedCampus === "UTD";
+  const activeCampusCenter = useMemo(
+    () => (isUTDCampus ? UTD_CENTER : TAMU_CENTER),
+    [isUTDCampus],
+  );
 
   // ── App-shell store ───────────────────────────────────────
   const placesPills = useAppShellStore((s) => s.placesPills);
@@ -241,11 +263,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
   // ── Map ref ───────────────────────────────────────────────
   const mapRef = useRef<any>(null);
   const { cameraRef, defaultCamera, animateToRegion, animateCamera, fitToCoordinates } =
-    useMapLibreCamera(TAMU_CENTER);
+    useMapLibreCamera(activeCampusCenter);
   const currentBusRouteFetchId = useRef<string | null>(null);
   const lastPlacesFitKey = useRef<string | null>(null);
   const currentMapZoomRef = useRef(DEFAULT_USER_CAMERA_ZOOM);
-  const currentMapCenterRef = useRef(TAMU_CENTER);
+  const currentMapCenterRef = useRef<{ latitude: number; longitude: number }>({
+    latitude: activeCampusCenter.latitude,
+    longitude: activeCampusCenter.longitude,
+  });
   const suppressNextOverviewFitRef = useRef(false);
   const [isListDroppedDown, setIsListDroppedDown] = useState(false);
   const listDropdownScrollRef = useRef<ScrollView | null>(null);
@@ -285,6 +310,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
     return () => clearTimeout(timer);
   }, [activeTargetName, isListDroppedDown, scrollToRecCenterDropdownItem]);
 
+  useEffect(() => {
+    currentMapCenterRef.current = activeCampusCenter;
+    animateToRegion(activeCampusCenter, 650);
+  }, [activeCampusCenter, animateToRegion]);
+
   // ── UI state ──────────────────────────────────────────────
   const [activeLayer, setActiveLayer] = useState<string>("Pulse");
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(
@@ -312,12 +342,77 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const [isTodayExpanded, setIsTodayExpanded] = useState(false);
   const timelineHeight = useSharedValue(0);
 
+  useEffect(() => {
+    AsyncStorage.getItem("selected_campus")
+      .then((value) => {
+        if (value === "UTD" || value === "TAMU") {
+          setSelectedCampus(value);
+        }
+      })
+      .catch((error) => {
+        console.warn("Failed to load selected campus", error);
+      });
+  }, []);
+
+  useEffect(() => {
+    const campusFromTheme = campusTheme.campus === "UTD" ? "UTD" : "TAMU";
+    setSelectedCampus((current) =>
+      current === campusFromTheme ? current : campusFromTheme,
+    );
+  }, [campusTheme.campus]);
+
   // ── Location data ─────────────────────────────────────────
   const {
-    fullCampusIndex,
-    locations,
-    refreshLocations,
+    fullCampusIndex: tamuFullCampusIndex,
+    locations: tamuLocations,
+    refreshLocations: refreshTamuLocations,
   } = useLocationData({ autoFetch: true });
+
+  const utdLocations = useMemo<CampusLocation[]>(() => {
+    return (UTD_PLACES_DATA as Array<{
+      id: string;
+      name: string;
+      latitude: number;
+      longitude: number;
+      category: string;
+      campus: "UTD";
+    }>).map((place) => {
+      let type: LocationType = "Academic";
+      const category = place.category.toLowerCase();
+      if (category === "parking") type = "Parking";
+      if (category === "dining") type = "Dining";
+      if (category === "recreation") type = "Rec";
+      if (category === "library") type = "Library";
+
+      return {
+        placeId: `utd:${place.id}`,
+        location: place.name,
+        shortName: place.id,
+        percent_full: 0,
+        type,
+        is_live: false,
+        available_seats: null,
+        coord: {
+          lat: place.latitude,
+          lng: place.longitude,
+        },
+        source: "directory",
+      };
+    });
+  }, []);
+
+  const fullCampusIndex = useMemo(
+    () => (isUTDCampus ? utdLocations : tamuFullCampusIndex),
+    [isUTDCampus, tamuFullCampusIndex, utdLocations],
+  );
+  const locations = useMemo(
+    () => (isUTDCampus ? utdLocations : tamuLocations),
+    [isUTDCampus, tamuLocations, utdLocations],
+  );
+  const refreshLocations = useCallback(async () => {
+    if (isUTDCampus) return;
+    await refreshTamuLocations();
+  }, [isUTDCampus, refreshTamuLocations]);
   const pulseHotspotsRef = useRef<CampusHotspot[]>([]);
   const pulsePlacesRef = useRef<CampusLocation[]>([]);
   const selectedHotspotIdRef = useRef<string | null>(null);
@@ -1318,7 +1413,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
   }, [isMapTilted]);
 
   // ── Transit handlers ──────────────────────────────────────
-  const { transitService } = require("../services/transitService");
+  const activeTransitService = useMemo(
+    () => (isUTDCampus ? utdTransitService : transitService),
+    [isUTDCampus],
+  );
 
   const loadAllBusRoutes = useCallback(async (routesToLoad: any[]) => {
     setBusVehicles([]);
@@ -1332,7 +1430,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     const patternEntries = await Promise.all(
       routesToLoad.map(
         async (r) =>
-          [r.Key, await transitService.getRoutePattern(r.Key)] as const,
+          [r.Key, await activeTransitService.getRoutePattern(r.Key)] as const,
       ),
     );
     const nextPatterns = patternEntries.reduce((acc, [k, p]) => {
@@ -1340,7 +1438,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       return acc;
     }, {} as any);
     setAllRoutePatternsById(nextPatterns);
-    const vehicles = await transitService.getVehicles();
+    const vehicles = await activeTransitService.getVehicles();
     setBusVehicles(vehicles || []);
 
     const routeCoords = Object.values(nextPatterns).flatMap((pattern: any) =>
@@ -1368,7 +1466,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         animated: true,
       });
     }
-  }, []);
+  }, [activeTransitService]);
 
   const fitMapToActiveOverview = useCallback(() => {
     if (!mapRef.current) return;
@@ -1447,7 +1545,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
           longitude: hotspot.coord.lng,
         }))
         .filter((coord) =>
-          isPulseCoordNearCollegeStation(coord.latitude, coord.longitude),
+          isPulseCoordNearCampus(
+            coord.latitude,
+            coord.longitude,
+            activeCampusCenter,
+          ),
         );
 
       if (campusPulseCoords.length > 0) {
@@ -1460,9 +1562,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
         longitude: hotspot.coord.lng,
       }));
 
-      if (allPulseCoords.length === 0) {
+      if (isUTDCampus || allPulseCoords.length === 0) {
         fitToCoords(
-          [{ latitude: TAMU_CENTER.latitude, longitude: TAMU_CENTER.longitude }],
+          [
+            {
+              latitude: activeCampusCenter.latitude,
+              longitude: activeCampusCenter.longitude,
+            },
+          ],
           PULSE_OVERVIEW_EDGE_PADDING,
         );
         return;
@@ -1500,6 +1607,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
     routePatterns,
     sortedFilteredLocations,
     userCoord,
+    activeCampusCenter,
+    isUTDCampus,
   ]);
 
   // ── Auto-zoom and fitting logic ───────────────────────────
@@ -1539,7 +1648,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       }
       try {
         const { points, stops, paths } =
-          await transitService.getRoutePattern(routeId);
+          await activeTransitService.getRoutePattern(routeId);
           
         if (currentBusRouteFetchId.current !== routeId) return; // Prevent race condition crashes
 
@@ -1552,7 +1661,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
             animated: true,
           });
         
-        const vehicles = await transitService.getVehicles(routeId);
+        const vehicles = await activeTransitService.getVehicles(routeId);
         if (currentBusRouteFetchId.current === routeId) {
           setBusVehicles(vehicles);
         }
@@ -1560,7 +1669,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         console.warn("Failed to select bus route", e);
       }
     },
-    [busRoutes, loadAllBusRoutes],
+    [activeTransitService, busRoutes, loadAllBusRoutes],
   );
 
   const handleSelectBusRouteFromSearch = useCallback(
@@ -1864,8 +1973,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
         isFetchingRef.current = true;
         setIsFetchingBus(true);
         try {
-          const metadata = await transitService.getRoutesMetadata();
-          const activeIds = await transitService.getActiveRoutes();
+          const metadata = await activeTransitService.getRoutesMetadata();
+          const activeIds = await activeTransitService.getActiveRoutes();
           const active = metadata.filter(
             (m: any) =>
               activeIds.includes(m.ShortName) ||
@@ -1888,15 +1997,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
         }
       })();
     }
-  }, [activeLayer]);
+  }, [activeLayer, activeTransitService]);
 
   // Bus polling
   useEffect(() => {
     if (activeLayer === "Bus" && selectedBusRouteId) {
       busPollInterval.current = setInterval(async () => {
         const updated = isAllBusRoutesSelected
-          ? await transitService.getVehicles()
-          : await transitService.getVehicles(selectedBusRouteId);
+          ? await activeTransitService.getVehicles()
+          : await activeTransitService.getVehicles(selectedBusRouteId);
         setBusVehicles(updated);
       }, 5000);
     } else {
@@ -1905,7 +2014,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     return () => {
       if (busPollInterval.current) clearInterval(busPollInterval.current);
     };
-  }, [activeLayer, isAllBusRoutesSelected, selectedBusRouteId]);
+  }, [activeLayer, activeTransitService, isAllBusRoutesSelected, selectedBusRouteId]);
 
   // Today selection should not auto-generate directions.
   useEffect(() => {
@@ -2181,7 +2290,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
               bus.routeColor ||
               bus.RouteColor ||
               selectedRoute?.Color ||
-              "#007AFF";
+              campusTheme.map.routeColor;
             const heading = bus.heading || bus.Heading || 0;
             const busDir =
               bus.direction || bus.DirectionName || "Unknown Direction";
@@ -2279,7 +2388,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           <MapLibrePolylineOverlay
             id="walking-route"
             coordinates={activeWalkingRoute.polyline}
-            color="#500000"
+            color={campusTheme.map.routeColor}
             width={4}
             lineDasharray={[1.5, 2.5]}
           />
@@ -2363,7 +2472,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
               ? getCategoryColor(loc.classMeetings?.[0]?.category)
               : isCapacityType
                 ? getStatusColor(loc.percent_full)
-                : COLORS.primary;
+                : campusTheme.map.markerColor;
             const pinText =
               isTodayLayer && loc.sequenceIndex
                 ? loc.sequenceIndex.toString()

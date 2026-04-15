@@ -156,6 +156,7 @@ export function Profile() {
     setAccentColor,
     applyAccentToText,
     setApplyAccentToText,
+    campusTheme,
   } = useTheme();
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark, accentColor);
@@ -782,7 +783,7 @@ export function Profile() {
               <Text style={styles.accentScaleLabel}>Light</Text>
               <Pressable
                 style={styles.accentResetButton}
-                onPress={() => setAccentColor(getDefaultAccentColor(theme))}
+                onPress={() => setAccentColor(getDefaultAccentColor(theme, campusTheme.colors.primary))}
               >
                 <Text style={styles.accentResetText}>Use Theme Default</Text>
               </Pressable>

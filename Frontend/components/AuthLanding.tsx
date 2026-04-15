@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -10,15 +10,18 @@ import {
   Image,
 } from 'react-native';
 import { useOAuth } from '@clerk/clerk-expo';
-import { COLORS, TYPOGRAPHY, SPACING } from '../constants';
+import { TYPOGRAPHY, SPACING } from '../constants';
 import { Button } from './Button';
 import * as Linking from 'expo-linking';
 import { useSessionStore } from '../store/sessionStore';
 import { GoogleIcon } from './common/CustomIcons';
+import { useTheme } from './SharedUI';
 
 const APPLE_LABEL = '\uF8FF';
 
 export function AuthLanding() {
+  const { COLORS, campusTheme } = useTheme();
+  const styles = useMemo(() => getStyles(COLORS), [COLORS]);
   const { startOAuthFlow: startGoogleOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
   const { startOAuthFlow: startAppleOAuthFlow } = useOAuth({ strategy: 'oauth_apple' });
   const exitGuestMode = useSessionStore((state) => state.exitGuestMode);
@@ -109,7 +112,7 @@ export function AuthLanding() {
 
           <View style={styles.logoContainer}>
             <Image
-              source={require('../../assets/login-logo-transparent.png')}
+              source={campusTheme.branding.logo}
               style={styles.logoImage}
               resizeMode="contain"
             />
@@ -117,6 +120,7 @@ export function AuthLanding() {
 
           <View>
             <Text style={styles.appTitle}>MaroonLife</Text>
+            <Text style={styles.campusTitle}>{campusTheme.branding.campusName}</Text>
           </View>
 
           <View style={styles.accentLine} />
@@ -187,7 +191,7 @@ export function AuthLanding() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (COLORS: any) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -242,15 +246,22 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.title,
     fontSize: 32,
     fontWeight: '700',
-    color: '#000000',
+    color: COLORS.primary,
     marginBottom: SPACING.sm,
     textAlign: 'center',
     zIndex: 1,
   },
+  campusTitle: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: SPACING.sm,
+  },
   accentLine: {
     width: 60,
     height: 4,
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.primary,
     borderRadius: 2,
     marginBottom: SPACING.xl,
     zIndex: 1,

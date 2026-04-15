@@ -5,7 +5,10 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, useThemeStore } from './components/SharedUI';
+import { useCampusTheme } from './hooks/useCampusTheme';
+import { CampusThemeProvider, useCampusThemeContext } from './theme';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -63,6 +66,7 @@ import {
 import { TOSScreen } from './components/TOSScreen';
 import { NotificationPromptScreen } from './components/onboarding/NotificationPromptScreen';
 import { EventPreferenceOnboardingScreen } from './components/onboarding/EventPreferenceOnboardingScreen';
+import { CollegeSelectionScreen } from './components/onboarding/CollegeSelectionScreen';
 
 import { AdminApplicationScreen } from './components/admin/AdminApplicationScreen';
 import { AdminPortal } from './components/admin/AdminPortal';
@@ -267,7 +271,7 @@ const AnimatedTimerScreen = withTabMotion(TimerScreen, 80);
 const AnimatedSettingsScreen = withTabMotion(Profile, 80);
 
 function MainTabs(props: any) {
-  const { COLORS } = useTheme();
+  const { COLORS, campusTheme } = useTheme();
   const navItems = useAppShellStore((state) => state.navItems);
   const tabBarMode = useAppShellStore((state) => state.tabBarMode);
   const isGuest = useSessionStore((state) => state.isGuest);
@@ -363,7 +367,7 @@ function MainTabs(props: any) {
           shadowOffset: { width: 0, height: -3 },
           elevation: 8,
         },
-        tabBarActiveTintColor: COLORS.primary,
+        tabBarActiveTintColor: campusTheme.navigation.tabActiveColor,
         tabBarInactiveTintColor: COLORS.textTertiary,
       }}
     >
@@ -382,7 +386,7 @@ function MainTabs(props: any) {
               return (
                 <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                   <screen.icon
-                    color={focused ? COLORS.primary : color}
+                    color={focused ? campusTheme.navigation.tabActiveColor : color}
                     size={24}
                     strokeWidth={focused ? 2.5 : 2}
                   />
@@ -398,8 +402,11 @@ function MainTabs(props: any) {
 
 function RootNavigator() {
   const { COLORS } = useTheme();
+  const { theme: campusTheme, refreshCampusTheme } = useCampusThemeContext();
   const { isSignedIn, isLoaded } = useAuth();
   const { user } = useUser();
+  const [isCampusSelectionChecked, setCampusSelectionChecked] = React.useState(false);
+  const [hasCampusSelection, setHasCampusSelection] = React.useState(false);
   const isGuest = useSessionStore((state) => state.isGuest);
   const authMode = useSessionStore((state) => state.authMode);
   const exitGuestMode = useSessionStore((state) => state.exitGuestMode);
@@ -414,6 +421,23 @@ function RootNavigator() {
   const isAdmin = useAppShellStore((state) => state.adminAccessStatus);
   const setIsAdmin = useAppShellStore((state) => state.setAdminAccessStatus);
   const isRegularUserFlow = isSignedIn && authMode !== 'admin';
+
+  const refreshCampusSelection = React.useCallback(async () => {
+    try {
+      const selectedCampus = await AsyncStorage.getItem('selected_campus');
+      setHasCampusSelection(Boolean(selectedCampus));
+    } catch (error) {
+      console.warn('Failed to read selected campus from AsyncStorage', error);
+      setHasCampusSelection(false);
+    } finally {
+      await refreshCampusTheme();
+      setCampusSelectionChecked(true);
+    }
+  }, [refreshCampusTheme]);
+
+  React.useEffect(() => {
+    refreshCampusSelection();
+  }, [refreshCampusSelection]);
 
   React.useEffect(() => {
     if (isSignedIn && user?.id) {
@@ -431,6 +455,37 @@ function RootNavigator() {
 
   if (!isLoaded) {
     return null;
+  }
+
+  if (!isCampusSelectionChecked) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
+  }
+
+  if (!hasCampusSelection) {
+    return (
+      <Stack.Navigator
+        key="campus-selection-gate"
+        id="RootStack"
+        screenOptions={{
+          headerShown: false,
+          headerStyle: { backgroundColor: campusTheme.navigation.headerColor },
+          headerTintColor: campusTheme.colors.accent,
+        }}
+        screenListeners={{
+          state: () => {
+            refreshCampusSelection().catch(() => {});
+          },
+        }}
+      >
+        <Stack.Screen name="CollegeSelection" component={CollegeSelectionScreen} />
+        <Stack.Screen name="AuthLanding">
+          {() => <AuthLanding />}
+        </Stack.Screen>
+        <Stack.Screen name="Login">
+          {(props: any) => <LoginScreen onBack={() => props.navigation.goBack()} />}
+        </Stack.Screen>
+      </Stack.Navigator>
+    );
   }
 
   let content: React.ReactNode;
@@ -478,8 +533,8 @@ function RootNavigator() {
         id="RootStack"
         screenOptions={{
           headerShown: false,
-          headerStyle: { backgroundColor: COLORS.background },
-          headerTintColor: COLORS.textPrimary,
+          headerStyle: { backgroundColor: campusTheme.navigation.headerColor },
+          headerTintColor: campusTheme.colors.accent,
         }}
       >
         {isAdminRoute ? (
@@ -617,7 +672,7 @@ function TabButtonWrapper({ screenName, props }: { screenName: string; props: an
   );
 }
 
-function App() {
+function AppContent() {
   const { theme, COLORS } = useTheme();
 
   React.useEffect(() => {
@@ -656,6 +711,16 @@ function App() {
         </QueryClientProvider>
       </ClerkLoaded>
     </ClerkProvider>
+  );
+}
+
+function App() {
+  const campusThemeValue = useCampusTheme();
+
+  return (
+    <CampusThemeProvider value={campusThemeValue}>
+      <AppContent />
+    </CampusThemeProvider>
   );
 }
 

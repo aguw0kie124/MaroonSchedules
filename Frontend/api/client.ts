@@ -1,4 +1,5 @@
 import { API_KEY, API_URL } from '../config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const DEFAULT_TIMEOUT_MS = 10000;
 const API_BASE = API_URL.replace(/\/+$/, '');
@@ -9,6 +10,7 @@ type TokenProviderOptions = {
 
 type AuthTokenProvider = (options?: TokenProviderOptions) => Promise<string | null>;
 type ResponseHandler = (response: Response) => void | Promise<void>;
+type CampusId = 'TAMU' | 'UTD';
 
 let authTokenProvider: AuthTokenProvider | null = null;
 let unauthorizedHandler: ResponseHandler | null = null;
@@ -65,6 +67,19 @@ function warnMissingApiKeyOnce() {
 async function buildHeaders(init: RequestInit = {}, options: TokenProviderOptions = {}): Promise<Record<string, string>> {
     const headers = headersToObject(init.headers);
     warnMissingApiKeyOnce();
+
+    try {
+        const storedCampus = await AsyncStorage.getItem('selected_campus');
+        const campusId = storedCampus === 'TAMU' || storedCampus === 'UTD'
+            ? (storedCampus as CampusId)
+            : null;
+
+        if (campusId && !headers['x-campus-id'] && !headers['X-Campus-Id']) {
+            headers['x-campus-id'] = campusId;
+        }
+    } catch (error) {
+        console.warn('[API] Failed to read selected_campus from AsyncStorage', error);
+    }
 
     if (API_KEY && !headers['x-api-key'] && !headers['X-API-Key']) {
         headers['x-api-key'] = API_KEY;
