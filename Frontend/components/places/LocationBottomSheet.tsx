@@ -161,6 +161,35 @@ function formatLiveTimestamp(value?: string | null) {
   });
 }
 
+function formatTodayHoursLine(hoursSource?: string | null) {
+  if (!hoursSource) return null;
+
+  if (/typical/i.test(hoursSource)) {
+    return "Today Open 24 hours";
+  }
+
+  const matches = hoursSource.match(
+    /\d{1,2}:\d{2}\s*(?:am|pm)\s*-\s*\d{1,2}:\d{2}\s*(?:am|pm)/gi,
+  );
+
+  if (matches?.length) {
+    const normalized = matches.slice(0, 2).map((entry) =>
+      entry
+        .replace(/\b(am|pm)\b/gi, (token) => token.toUpperCase())
+        .replace(/\s*-\s*/g, " – ")
+        .replace(/\s+/g, " ")
+        .trim(),
+    );
+    return `Today ${normalized.join(" • ")}`;
+  }
+
+  const cleaned = hoursSource
+    .replace(/^(.*?:\s*)*Open Today:\s*/i, "")
+    .trim();
+
+  return cleaned ? `Today ${cleaned}` : null;
+}
+
 /**
  * ClassMeetingList - Isolated component for better render performance
  */
@@ -413,9 +442,30 @@ export function LocationBottomSheet({
     const base = selectedLoc.hours || null;
     return base ? `${base}${suffix}` : holiday || null;
   }, [selectedLoc, selectedRecreationFacility]);
+  const selectedTodayHoursLine = useMemo(() => {
+    if (!selectedLoc) return null;
+
+    const hoursSource =
+      selectedLoc.hours_today ||
+      (selectedLoc.type === "Rec"
+        ? selectedRecreationFacility?.today_hours ||
+          selectedRecreationFacility?.hours_hint ||
+          selectedLoc.hours ||
+          null
+        : null) ||
+      (selectedLoc.type === "Dining" || selectedLoc.type === "Hub"
+        ? getRestaurantHoursToday(selectedLoc.location)
+        : null) ||
+      null;
+
+    return formatTodayHoursLine(hoursSource);
+  }, [selectedLoc, selectedRecreationFacility]);
   const peekMetaText = useMemo(() => {
     if (!selectedLoc) return "";
 
+    if (selectedTodayHoursLine) {
+      return selectedTodayHoursLine;
+    }
     if (isCapacityPlace) {
       return `${occupancyPercent}% full`;
     }
@@ -427,10 +477,6 @@ export function LocationBottomSheet({
       const name = selectedLoc.visitor_parking_garage_name;
       const label = code && name ? `${code} (${name})` : code || "Garage";
       return `${label}: ${selectedLoc.visitor_parking_available.toLocaleString()} spaces (live)`;
-    }
-    if (selectedHoursLabel) {
-      if (selectedLoc.hours_today) return selectedHoursLabel;
-      return selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel;
     }
     if (isFoodCourtHub) {
       return `${foodCourtVenues.length} locations`;
@@ -450,7 +496,7 @@ export function LocationBottomSheet({
     isCapacityPlace,
     isFoodCourtHub,
     occupancyPercent,
-    selectedHoursLabel,
+    selectedTodayHoursLine,
     selectedLoc,
   ]);
   const contextLink = useMemo(
@@ -463,36 +509,8 @@ export function LocationBottomSheet({
   );
   const heroMetaText = useMemo(() => {
     if (!selectedLoc) return "";
-
-    const bits: string[] = [];
-    if (selectedLoc.address) {
-      bits.push(selectedLoc.address);
-    }
-    const hoursDetailTypes = new Set([
-      "Library",
-      "Dining",
-      "Rec",
-      "Parking",
-      "Hub",
-    ]);
-    const hoursShownInCard =
-      !!selectedLoc.hours_today && hoursDetailTypes.has(selectedLoc.type);
-    if (selectedHoursLabel && !hoursShownInCard) {
-      if (selectedLoc.hours_today) {
-        bits.push(selectedHoursLabel);
-      } else {
-        bits.push(selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel);
-      }
-    } else if (!selectedHoursLabel && selectedLoc.current_event) {
-      bits.push(selectedLoc.current_event);
-    } else if (hoursShownInCard && selectedLoc.current_event) {
-      bits.push(selectedLoc.current_event);
-    }
-    if (!bits.length && isFoodCourtHub) {
-      bits.push(`${foodCourtVenues.length} dining locations inside`);
-    }
-    return bits.filter(Boolean).slice(0, 2).join(" • ");
-  }, [foodCourtVenues.length, isFoodCourtHub, selectedHoursLabel, selectedLoc]);
+    return selectedTodayHoursLine || "";
+  }, [selectedLoc, selectedTodayHoursLine]);
   const officialFacilityUrl = useMemo(
     () =>
       selectedLoc?.type === "Rec"
@@ -889,27 +907,6 @@ export function LocationBottomSheet({
                 </Text>
                 <Text style={styles.contextCardBody}>
                   {parkingRecommendation.detail}
-                </Text>
-              </View>
-            ) : null}
-
-            {!isPeekSheet &&
-            (selectedLoc.hours_today || getRestaurantHoursToday(selectedLoc.location)) &&
-            selectedLoc.type !== "Parking" &&
-            (selectedLoc.type === "Library" ||
-              selectedLoc.type === "Dining" ||
-              selectedLoc.type === "Rec" ||
-              selectedLoc.type === "Hub") ? (
-              <View style={styles.contextCard}>
-                <Text style={styles.contextCardTitle}>Open today</Text>
-                <Text style={styles.contextCardBody}>
-                  {(() => {
-                    const hoursSource = selectedLoc.hours_today || getRestaurantHoursToday(selectedLoc.location) || "";
-                    const matches = hoursSource.match(/\d{1,2}:\d{2}\s*(?:am|pm)\s*-\s*\d{1,2}:\d{2}\s*(?:am|pm)/gi);
-                    return matches && matches.length > 0 
-                      ? matches.join(", ") 
-                      : hoursSource.replace(/^(.*?:\s*)*Open Today:\s*/i, "").trim();
-                  })()}
                 </Text>
               </View>
             ) : null}
