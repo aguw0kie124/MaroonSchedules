@@ -143,6 +143,13 @@ def get_places_parking_realtime(request: Request):
     return parking_snapshot_block()
 
 
+@router.get("/places/capacity-realtime")
+@limiter.limit("120/minute")
+def get_places_capacity_realtime(request: Request):
+    """Fresh recreation and library counts (not cached with the places map snapshot)."""
+    return campus_places_service.get_places_capacity_realtime_snapshot()
+
+
 @router.get("/places/{place_id}/detail")
 @limiter.limit("100/minute")
 def get_place_detail(request: Request, place_id: str):

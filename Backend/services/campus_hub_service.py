@@ -1530,6 +1530,30 @@ def get_place_detail_snapshot(place_id: str) -> Dict[str, Any]:
                 location["visitor_parking_as_of"] = parking_data.get("fetched_at")
                 location["visitor_parking_source_url"] = parking_data.get("source_url")
 
+    if place.get("type") in {"Rec", "Library"} and location:
+        capacity_snapshot = campus_places_service.get_places_capacity_realtime_snapshot()
+        section_key = "recreation" if place.get("type") == "Rec" else "libraries"
+        live_capacity = (
+            capacity_snapshot.get(section_key, {})
+            .get("locations", {})
+            .get(place_id)
+        )
+        if live_capacity:
+            location = dict(location)
+            for key in (
+                "percent_full",
+                "available_seats",
+                "capacity",
+                "current_count",
+                "occupancy_name",
+                "capacity_last_updated",
+                "capacity_source_url",
+                "capacity_as_of",
+                "is_live",
+            ):
+                if live_capacity.get(key) is not None:
+                    location[key] = live_capacity.get(key)
+
     rec_snapshot = get_recreation_snapshot() if place.get("type") == "Rec" else None
     rec_facility = None
     if rec_snapshot and location:

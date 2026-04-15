@@ -76,6 +76,10 @@ export interface CampusLocation {
   available_seats: number | null;
   capacity?: number | null;
   current_count?: number | null;
+  occupancy_name?: string | null;
+  capacity_last_updated?: string | null;
+  capacity_source_url?: string | null;
+  capacity_as_of?: string | null;
   coord: { lat: number; lng: number };
   current_event?: string;
   aliases?: string[];

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List
 from zoneinfo import ZoneInfo
 
-from routers.traffic import tracker
+from routers.traffic import LIBRARY_PLACE_ID_BY_API_KEY, tracker
 from services import cache_service, parking_realtime_service, place_registry_service
 from services.dineoncampus_hours_service import fetch_dining_periods_summary
 from services.place_type_service import normalize_place_type
@@ -14,6 +14,7 @@ from services.weekly_public_hours import today_hours_for_place
 
 PLACE_SNAPSHOT_TTL_SECONDS = 60
 PLACE_SNAPSHOT_CACHE_VERSION = "v7"
+CAPACITY_REALTIME_STALE_AFTER_SECONDS = 15
 
 CAPACITY_ALIAS_PLACE_IDS: Dict[str, tuple[str, ...]] = {
     "annex": ("osm:way:307098419",),
@@ -36,6 +37,107 @@ VISITOR_GARAGE_FULL_NAME_BY_CODE: Dict[str, str] = {
     "UCG": "University Center Garage",
     "WCG": "West Campus Garage",
 }
+
+
+def _safe_int(value: Any) -> int | None:
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _expand_capacity_alias_rows(rows_by_place_id: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    expanded: Dict[str, Dict[str, Any]] = {}
+    for place_id, payload in rows_by_place_id.items():
+        expanded[place_id] = dict(payload)
+        for alias_place_id in CAPACITY_ALIAS_PLACE_IDS.get(place_id, ()):
+            alias_payload = dict(payload)
+            alias_payload["canonical_place_id"] = place_id
+            expanded[alias_place_id] = alias_payload
+    return expanded
+
+
+def get_places_capacity_realtime_snapshot() -> Dict[str, Any]:
+    rec_rows = tracker.fetch_rec_data() or []
+    rec_counts = tracker.get_rec_center_live_counts(rec_rows)
+    rec_locations: Dict[str, Dict[str, Any]] = {}
+    rec_last_updated_values: List[str] = []
+
+    for place_id, live_count in rec_counts.items():
+        last_updated = live_count.get("last_updated")
+        if isinstance(last_updated, str) and last_updated.strip():
+            rec_last_updated_values.append(last_updated)
+
+        rec_locations[place_id] = {
+            "percent_full": live_count.get("percent_full"),
+            "available_seats": live_count.get("available_seats"),
+            "capacity": live_count.get("capacity"),
+            "current_count": live_count.get("current_count"),
+            "occupancy_name": live_count.get("location_name"),
+            "capacity_last_updated": last_updated,
+            "capacity_source_url": tracker.rec_api,
+            "capacity_as_of": last_updated,
+            "is_live": True,
+        }
+
+    library_raw = tracker.fetch_library_data()
+    library_lastupdate = library_raw.get("lastupdate") if isinstance(library_raw, dict) else None
+    library_locations: Dict[str, Dict[str, Any]] = {}
+
+    if isinstance(library_raw, dict):
+        for api_key, entry in library_raw.items():
+            if api_key == "lastupdate" or not isinstance(entry, dict):
+                continue
+            place_id = LIBRARY_PLACE_ID_BY_API_KEY.get(str(api_key).strip().lower())
+            if not place_id:
+                continue
+
+            capacity = _safe_int(entry.get("max"))
+            current_count = _safe_int(entry.get("occupancy"))
+            percent_full = _safe_float(entry.get("percentfull"))
+            available_seats = _safe_int(entry.get("remaining"))
+
+            library_locations[place_id] = {
+                "percent_full": percent_full,
+                "available_seats": available_seats,
+                "capacity": capacity,
+                "current_count": current_count,
+                "occupancy_name": entry.get("name"),
+                "capacity_last_updated": library_lastupdate,
+                "capacity_source_url": tracker.library_api,
+                "capacity_as_of": library_lastupdate,
+                "is_live": True,
+            }
+
+    expanded_rec_locations = _expand_capacity_alias_rows(rec_locations)
+    expanded_library_locations = _expand_capacity_alias_rows(library_locations)
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "stale_after": CAPACITY_REALTIME_STALE_AFTER_SECONDS,
+        "source_status": "live" if expanded_rec_locations or expanded_library_locations else "preview",
+        "recreation": {
+            "source_url": tracker.rec_api,
+            "fetched_at": max(rec_last_updated_values) if rec_last_updated_values else None,
+            "locations": expanded_rec_locations,
+        },
+        "libraries": {
+            "source_url": tracker.library_api,
+            "fetched_at": library_lastupdate,
+            "locations": expanded_library_locations,
+        },
+    }
 
 
 def _prefer_place_type(base_type: str, live_type: str | None) -> str:

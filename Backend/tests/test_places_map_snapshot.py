@@ -66,6 +66,51 @@ class PlacesMapSnapshotTests(unittest.TestCase):
         self.assertEqual(by_id["osm:way:307098419"]["current_count"], 20)
         self.assertEqual(by_id["osm:way:307098419"]["percent_full"], 33)
 
+    @mock.patch.object(campus_places_service.tracker, "fetch_library_data")
+    @mock.patch.object(campus_places_service.tracker, "get_rec_center_live_counts")
+    @mock.patch.object(campus_places_service.tracker, "fetch_rec_data")
+    def test_capacity_realtime_snapshot_maps_rec_and_library_payloads(
+        self,
+        mock_fetch_rec_data,
+        mock_get_rec_center_live_counts,
+        mock_fetch_library_data,
+    ):
+        mock_fetch_rec_data.return_value = [{"FacilityName": "Student Rec Center"}]
+        mock_get_rec_center_live_counts.return_value = {
+            "rec": {
+                "location_name": "Student Rec Center Strength & Conditioning",
+                "current_count": 87,
+                "capacity": 400,
+                "percent_full": 21.8,
+                "available_seats": 313,
+                "last_updated": "2026-04-14T23:02:19.193",
+            }
+        }
+        mock_fetch_library_data.return_value = {
+            "lastupdate": "2026-04-15 01:43:01",
+            "annex": {
+                "percentfull": 16,
+                "max": 1134,
+                "occupancy": 171,
+                "remaining": 963,
+                "name": "Annex",
+            },
+        }
+
+        snapshot = campus_places_service.get_places_capacity_realtime_snapshot()
+        rec = snapshot["recreation"]["locations"]["rec"]
+        annex = snapshot["libraries"]["locations"]["annex"]
+        annex_alias = snapshot["libraries"]["locations"]["osm:way:307098419"]
+
+        self.assertEqual(rec["current_count"], 87)
+        self.assertEqual(rec["capacity"], 400)
+        self.assertEqual(rec["occupancy_name"], "Student Rec Center Strength & Conditioning")
+        self.assertEqual(annex["current_count"], 171)
+        self.assertEqual(annex["capacity"], 1134)
+        self.assertEqual(annex["capacity_as_of"], "2026-04-15 01:43:01")
+        self.assertEqual(annex_alias["current_count"], 171)
+        self.assertEqual(annex_alias["canonical_place_id"], "annex")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -74,6 +74,66 @@ class PlaceDetailCacheTests(unittest.TestCase):
         cache_key = mock_set_json.call_args.args[0]
         self.assertIn("campus:place-detail:v2:libr", cache_key)
 
+    @mock.patch.object(campus_hub_service, "get_recreation_snapshot", return_value=None)
+    @mock.patch.object(campus_hub_service, "get_transit_snapshot", return_value=None)
+    @mock.patch.object(campus_hub_service.campus_places_service, "get_places_capacity_realtime_snapshot")
+    @mock.patch.object(campus_hub_service.campus_places_service, "get_places_map_snapshot")
+    @mock.patch.object(campus_hub_service.place_registry_service, "serialize_place")
+    @mock.patch.object(campus_hub_service.place_registry_service, "get_place_by_id")
+    @mock.patch.object(campus_hub_service.cache_service, "set_json")
+    @mock.patch.object(campus_hub_service.cache_service, "get_json", return_value=None)
+    def test_get_place_detail_overlays_fresh_library_capacity(
+        self,
+        _mock_get_json,
+        _mock_set_json,
+        mock_get_place_by_id,
+        _mock_serialize_place,
+        mock_get_places_map,
+        mock_get_capacity_snapshot,
+        _mock_get_transit,
+        _mock_get_recreation,
+    ):
+        mock_get_place_by_id.return_value = {
+            "place_id": "annex",
+            "name": "Evans Library Annex",
+            "type": "Library",
+        }
+        mock_get_places_map.return_value = {
+            "locations": [
+                {
+                    "placeId": "annex",
+                    "location": "Evans Library Annex",
+                    "type": "Library",
+                    "percent_full": 4,
+                    "available_seats": 1088,
+                    "capacity": 1134,
+                    "current_count": 46,
+                    "is_live": True,
+                }
+            ]
+        }
+        mock_get_capacity_snapshot.return_value = {
+            "libraries": {
+                "locations": {
+                    "annex": {
+                        "percent_full": 16,
+                        "available_seats": 963,
+                        "capacity": 1134,
+                        "current_count": 171,
+                        "capacity_as_of": "2026-04-15 01:43:01",
+                        "capacity_source_url": "https://php.library.tamu.edu/utilities/occupancy/index.php",
+                        "is_live": True,
+                    }
+                }
+            }
+        }
+
+        result = campus_hub_service.get_place_detail_snapshot("annex")
+
+        self.assertEqual(result["place"]["current_count"], 171)
+        self.assertEqual(result["place"]["available_seats"], 963)
+        self.assertEqual(result["place"]["capacity_as_of"], "2026-04-15 01:43:01")
+
 
 if __name__ == "__main__":
     unittest.main()

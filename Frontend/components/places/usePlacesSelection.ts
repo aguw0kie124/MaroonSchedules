@@ -25,6 +25,7 @@ function mergePlaceDetailSnapshot(
   if (!mapLoc) return undefined;
   const snap = detailPayload?.place;
   if (!snap || typeof snap !== "object") return mapLoc;
+  const isCapacityPlace = mapLoc.type === "Library" || mapLoc.type === "Rec";
   return {
     ...mapLoc,
     hours_today: snap.hours_today ?? mapLoc.hours_today,
@@ -34,12 +35,35 @@ function mergePlaceDetailSnapshot(
     visitor_parking_garage_name: snap.visitor_parking_garage_name ?? mapLoc.visitor_parking_garage_name,
     visitor_parking_as_of: snap.visitor_parking_as_of ?? mapLoc.visitor_parking_as_of,
     visitor_parking_source_url: snap.visitor_parking_source_url ?? mapLoc.visitor_parking_source_url,
+    occupancy_name:
+      isCapacityPlace
+        ? mapLoc.occupancy_name ?? snap.occupancy_name
+        : snap.occupancy_name ?? mapLoc.occupancy_name,
+    capacity_last_updated:
+      isCapacityPlace
+        ? mapLoc.capacity_last_updated ?? snap.capacity_last_updated
+        : snap.capacity_last_updated ?? mapLoc.capacity_last_updated,
+    capacity_source_url:
+      isCapacityPlace
+        ? mapLoc.capacity_source_url ?? snap.capacity_source_url
+        : snap.capacity_source_url ?? mapLoc.capacity_source_url,
+    capacity_as_of:
+      isCapacityPlace
+        ? mapLoc.capacity_as_of ?? snap.capacity_as_of
+        : snap.capacity_as_of ?? mapLoc.capacity_as_of,
     percent_full:
-      typeof snap.percent_full === "number" ? snap.percent_full : mapLoc.percent_full,
-    available_seats: snap.available_seats ?? mapLoc.available_seats,
-    is_live: typeof snap.is_live === "boolean" ? snap.is_live : mapLoc.is_live,
-    capacity: snap.capacity ?? mapLoc.capacity,
-    current_count: snap.current_count ?? mapLoc.current_count,
+      isCapacityPlace
+        ? (typeof mapLoc.percent_full === "number" ? mapLoc.percent_full : snap.percent_full)
+        : (typeof snap.percent_full === "number" ? snap.percent_full : mapLoc.percent_full),
+    available_seats:
+      isCapacityPlace ? mapLoc.available_seats ?? snap.available_seats : snap.available_seats ?? mapLoc.available_seats,
+    is_live:
+      isCapacityPlace
+        ? (typeof mapLoc.is_live === "boolean" ? mapLoc.is_live : snap.is_live)
+        : (typeof snap.is_live === "boolean" ? snap.is_live : mapLoc.is_live),
+    capacity: isCapacityPlace ? mapLoc.capacity ?? snap.capacity : snap.capacity ?? mapLoc.capacity,
+    current_count:
+      isCapacityPlace ? mapLoc.current_count ?? snap.current_count : snap.current_count ?? mapLoc.current_count,
   };
 }
 

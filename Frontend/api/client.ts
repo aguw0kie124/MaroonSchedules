@@ -372,6 +372,10 @@ export const fetchCampusParkingRealtime = async () => {
     return requestJson('/campus/places/parking-realtime');
 };
 
+export const fetchCampusCapacityRealtime = async () => {
+    return requestJson('/campus/places/capacity-realtime');
+};
+
 export const fetchCampusPlaceDetail = async (placeIdOrIdentifier: string) => {
     return requestJson(`/campus/places/${encodeURIComponent(placeIdOrIdentifier)}/detail`);
 };
