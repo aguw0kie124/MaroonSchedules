@@ -2130,31 +2130,13 @@ function HeroEventCard({
         <Pressable
           style={[
             stylesStatic.heroActionButton,
-            stylesStatic.heroActionPrimary,
-            scheduled && stylesStatic.heroActionDisabled,
+            scheduled ? stylesStatic.heroActionSelected : stylesStatic.heroActionPrimary,
           ]}
-          onPress={() => {
-            if (!scheduled) onSchedule();
-          }}
+          onPress={onSchedule}
         >
-          <CalendarDays size={15} color="#174F2E" />
+          {scheduled ? <Check size={15} color="#174F2E" /> : <CalendarDays size={15} color="#174F2E" />}
           <Text style={[stylesStatic.heroActionText, stylesStatic.heroActionPrimaryText]}>
-            Add
-          </Text>
-        </Pressable>
-        <Pressable
-          style={[
-            stylesStatic.heroActionButton,
-            stylesStatic.heroActionSecondary,
-            !scheduled && stylesStatic.heroActionDisabled,
-          ]}
-          onPress={() => {
-            if (scheduled) onSchedule();
-          }}
-        >
-          <XIcon size={15} color="#FFFFFF" />
-          <Text style={[stylesStatic.heroActionText, stylesStatic.heroActionSecondaryText]}>
-            Remove
+            {scheduled ? 'Added' : 'Add'}
           </Text>
         </Pressable>
 
@@ -3433,12 +3415,9 @@ const stylesStatic = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderColor: 'rgba(255,255,255,0.36)',
   },
-  heroActionSecondary: {
-    backgroundColor: 'rgba(93,108,141,0.66)',
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  heroActionDisabled: {
-    opacity: 0.44,
+  heroActionSelected: {
+    backgroundColor: '#FFFFFF',
+    borderColor: 'rgba(255,255,255,0.48)',
   },
   heroActionText: {
     fontSize: 12,
@@ -3446,9 +3425,6 @@ const stylesStatic = StyleSheet.create({
   },
   heroActionPrimaryText: {
     color: '#174F2E',
-  },
-  heroActionSecondaryText: {
-    color: '#FFFFFF',
   },
   heroInlineMapButton: {
     marginTop: 2,
