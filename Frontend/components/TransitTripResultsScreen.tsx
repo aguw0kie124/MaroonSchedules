@@ -10,7 +10,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { ArrowLeft, Bus, ChevronRight, Clock3, Footprints, MapPin, Repeat2, Route } from 'lucide-react-native';
+import { ArrowLeft, Bus, ChevronRight, Clock3, Repeat2, Route } from 'lucide-react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from './SharedUI';
 import {
@@ -18,7 +18,6 @@ import {
   CampusTransitPlan,
   TransitTripPreference,
 } from '../services/campusTransitRouting';
-import { formatDistance, formatTime } from '../services/campusDirections';
 
 type PlannerLocation = {
   id: string;
@@ -70,6 +69,23 @@ function buildStepWindows(plan: CampusTransitPlan, depart: Date) {
       end,
     };
   });
+}
+
+function buildArrivalSummary(plan: CampusTransitPlan, depart: Date) {
+  const walkToStopMin = Math.max(1, Math.round((plan.walkingToStopMeters || 0) / 84));
+  const waitMin = plan.estimatedWaitMinutes || 5;
+  const busArrivalMs = depart.getTime() + (walkToStopMin + waitMin) * 60_000;
+  const busArrivalTime = new Date(busArrivalMs).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const stopName = plan.originStop?.Name || 'Stop';
+  return {
+    arrivalTime: busArrivalTime,
+    stopName,
+    walkMinutes: walkToStopMin,
+    exitStop: plan.destinationStop?.Name || 'Destination',
+  };
 }
 
 export function TransitTripResultsScreen() {
@@ -207,7 +223,7 @@ export function TransitTripResultsScreen() {
           <View style={styles.optionStack}>
             {options.map((plan, index) => {
               const tripWindow = getTripWindow(plan, plannedTimestamp, timingMode);
-              const stepWindows = buildStepWindows(plan, tripWindow.depart);
+              const arrival = buildArrivalSummary(plan, tripWindow.depart);
               return (
                 <Pressable
                   key={`${plan.routeKey}-${index}`}
@@ -258,55 +274,27 @@ export function TransitTripResultsScreen() {
                   <View style={styles.metricRow}>
                     <View style={styles.metricPill}>
                       <Clock3 size={14} color={COLORS.textPrimary} />
-                      <Text style={styles.metricPillText}>{plan.estimatedTimeMinutes} min total</Text>
+                      <Text style={styles.metricPillText}>{plan.estimatedTimeMinutes}m</Text>
                     </View>
                     <View style={styles.metricPill}>
                       <Repeat2 size={14} color={COLORS.textPrimary} />
                       <Text style={styles.metricPillText}>{plan.transferCount} transfers</Text>
                     </View>
-                    <View style={styles.metricPill}>
-                      <Footprints size={14} color={COLORS.textPrimary} />
-                      <Text style={styles.metricPillText}>
-                        {Math.round((plan.walkingToStopMeters + plan.walkingFromStopMeters) / 160.934)} mi walk
-                      </Text>
-                    </View>
                   </View>
 
-                  <View style={styles.detailBlock}>
-                    <View style={styles.detailRow}>
-                      <MapPin size={13} color={COLORS.textSecondary} />
-                      <Text style={styles.detailText}>
-                        Board at {plan.originStop?.Name} and exit at {plan.destinationStop?.Name}
+                  <View style={styles.arrivalRow}>
+                    <View style={styles.arrivalInfo}>
+                      <Text style={styles.arrivalLabel}>Board</Text>
+                      <Text style={styles.arrivalValue}>
+                        {arrival.arrivalTime} @ {arrival.stopName}
                       </Text>
+                      <Text style={styles.arrivalWalk}>{arrival.walkMinutes} min walk</Text>
                     </View>
-                    {plan.nearestVehicleLabel ? (
-                      <View style={styles.detailRow}>
-                        <Bus size={13} color={COLORS.textSecondary} />
-                        <Text style={styles.detailText}>{plan.nearestVehicleLabel}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-
-                  <View style={styles.stepList}>
-                    {stepWindows.map((step) => (
-                      <View key={`${plan.routeKey}-${step.id}`} style={styles.stepCard}>
-                        <View style={styles.stepCardHeader}>
-                          <Text style={styles.stepInstruction}>{step.instruction}</Text>
-                          {step.durationMinutes ? (
-                            <Text style={styles.stepDuration}>{formatTime(step.durationMinutes)}</Text>
-                          ) : null}
-                        </View>
-                        <Text style={styles.stepMeta}>
-                          {[
-                            step.durationMinutes ? `${formatClockTime(step.start)}-${formatClockTime(step.end)}` : null,
-                            step.distanceMeters ? formatDistance(step.distanceMeters) : null,
-                            step.detail || null,
-                          ]
-                            .filter(Boolean)
-                            .join(' • ')}
-                        </Text>
-                      </View>
-                    ))}
+                    <View style={styles.arrivalDivider} />
+                    <View style={styles.arrivalInfo}>
+                      <Text style={styles.arrivalLabel}>Exit</Text>
+                      <Text style={styles.arrivalValue}>{arrival.exitStop}</Text>
+                    </View>
                   </View>
                 </Pressable>
               );
@@ -478,52 +466,41 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       fontSize: 12,
       fontWeight: '700',
     },
-    detailBlock: {
-      gap: 8,
-    },
-    detailRow: {
+    arrivalRow: {
       flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    detailText: {
-      flex: 1,
-      color: COLORS.textSecondary,
-      fontSize: 12,
-      lineHeight: 18,
-    },
-    stepList: {
-      gap: 8,
-    },
-    stepCard: {
+      alignItems: 'stretch',
+      gap: 0,
       borderRadius: 16,
-      padding: 12,
       backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F7F8FA',
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(12,12,14,0.06)',
+      overflow: 'hidden',
     },
-    stepCardHeader: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      justifyContent: 'space-between',
-      gap: 12,
-    },
-    stepInstruction: {
+    arrivalInfo: {
       flex: 1,
-      color: COLORS.textPrimary,
-      fontSize: 13,
-      lineHeight: 18,
-      fontWeight: '700',
+      padding: 12,
+      gap: 2,
     },
-    stepDuration: {
-      color: COLORS.textPrimary,
-      fontSize: 12,
-      fontWeight: '800',
+    arrivalDivider: {
+      width: 1,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(12,12,14,0.08)',
     },
-    stepMeta: {
-      marginTop: 6,
+    arrivalLabel: {
       color: COLORS.textSecondary,
-      fontSize: 12,
-      lineHeight: 17,
+      fontSize: 10,
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    arrivalValue: {
+      color: COLORS.textPrimary,
+      fontSize: 14,
+      fontWeight: '800',
+      lineHeight: 20,
+    },
+    arrivalWalk: {
+      color: COLORS.textSecondary,
+      fontSize: 11,
+      fontWeight: '600',
     },
   });

@@ -192,6 +192,17 @@ export function MapCircleOverlay({
   strokeColor: string;
   strokeWidth?: number;
 }) {
+  // Guard against nil coordinates
+  if (
+    !center ||
+    center.latitude == null ||
+    center.longitude == null ||
+    !Number.isFinite(center.latitude) ||
+    !Number.isFinite(center.longitude)
+  ) {
+    return null;
+  }
+
   return (
     <Circle
       center={toLatLng(center)}
@@ -253,6 +264,17 @@ export function MapMarker({
   allowOverlap?: boolean;
   children: ReactElement;
 }) {
+  // CRITICAL: nil coordinates crash the native AIRMap with NSInvalidArgumentException
+  if (
+    !coordinate ||
+    coordinate.latitude == null ||
+    coordinate.longitude == null ||
+    !Number.isFinite(coordinate.latitude) ||
+    !Number.isFinite(coordinate.longitude)
+  ) {
+    return null;
+  }
+
   return (
     <Marker
       coordinate={toLatLng(coordinate)}
