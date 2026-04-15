@@ -9,7 +9,7 @@ const PATTERN_TTL = 1000 * 60 * 30; // 30 minutes
 const VEHICLE_TTL = 1000 * 5; // 5 seconds (internal buffer)
 
 /** Transit polls often; keep tighter than generic API calls so a bad host fails fast. */
-const TRANSIT_FETCH_TIMEOUT_MS = 6000;
+const TRANSIT_FETCH_TIMEOUT_MS = 30000;
 
 export interface BusRoute {
     id: string;

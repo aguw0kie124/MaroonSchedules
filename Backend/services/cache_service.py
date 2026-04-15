@@ -143,7 +143,6 @@ def get_json(key: str) -> Any | None:
                 return _memory_get(key)
             print(f"[cache] HIT  (Redis): {key}")
             decoded = json.loads(payload)
-            _memory_set(key, decoded, 30)
             return decoded
         except Exception:
             pass

@@ -15,7 +15,7 @@ PULSE_REFRESH_SECONDS = max(10, int(os.environ.get("PULSE_REFRESH_SECONDS", "45"
 EVENTS_REFRESH_SECONDS = max(60, int(os.environ.get("EVENTS_REFRESH_SECONDS", "300")))
 RECREATION_REFRESH_SECONDS = max(30, int(os.environ.get("RECREATION_REFRESH_SECONDS", "120")))
 TRANSIT_REFRESH_SECONDS = max(15, int(os.environ.get("TRANSIT_REFRESH_SECONDS", "60")))
-TRANSIT_VEHICLES_REFRESH_SECONDS = max(5, int(os.environ.get("TRANSIT_VEHICLES_REFRESH_SECONDS", "15")))
+TRANSIT_VEHICLES_REFRESH_SECONDS = max(5, int(os.environ.get("TRANSIT_VEHICLES_REFRESH_SECONDS", "5")))
 DINING_REFRESH_SECONDS = max(60, int(os.environ.get("DINING_REFRESH_SECONDS", "300")))
 PLACE_DETAILS_REFRESH_SECONDS = max(30, int(os.environ.get("PLACE_DETAILS_REFRESH_SECONDS", "90")))
 PULSE_LIMIT = 60
@@ -58,7 +58,7 @@ def _refresh_places() -> object:
 def _refresh_pulse() -> object:
     # Match the v2 cache key used in pulse_service.py
     cache_key = f"campus:pulse:map:v2:{PULSE_LIMIT}"
-    return _rebuild_in_place(cache_key, lambda: pulse_service.get_pulse_map(limit=PULSE_LIMIT), ttl_seconds=600)
+    return _rebuild_in_place(cache_key, lambda: pulse_service.get_pulse_map(limit=PULSE_LIMIT), ttl_seconds=50)
 
 
 def _refresh_events() -> object:
@@ -66,7 +66,7 @@ def _refresh_events() -> object:
 
 
 def _refresh_recreation() -> object:
-    return _rebuild_in_place("campus:recreation:snapshot:v1", campus_hub_service.get_recreation_snapshot, ttl_seconds=600)
+    return _rebuild_in_place("campus:recreation:snapshot:v1", campus_hub_service.get_recreation_snapshot, ttl_seconds=50)
 
 
 def _refresh_transit_routes() -> object:
@@ -93,7 +93,7 @@ def _refresh_transit_vehicles() -> object:
     return _rebuild_in_place(
         "traffic:transit:vehicles:v1:__all__",
         lambda: traffic.transit_proxy.get_vehicles(""),
-        ttl_seconds=60
+        ttl_seconds=5
     )
 
 

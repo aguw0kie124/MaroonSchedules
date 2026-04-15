@@ -948,7 +948,7 @@ def get_transit_vehicles(request: Request, route_id: str = Query("")):
         return cached
 
     payload = transit_proxy.get_vehicles(route_id)
-    cache_service.set_json(cache_key, payload, 15)
+    cache_service.set_json(cache_key, payload, 3)
     return payload
 
 

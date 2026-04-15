@@ -2,22 +2,18 @@ import json
 import psycopg
 from db_config import CONNECTION_PARAMS
 from typing import List, Dict, Any, Optional
-import uuid
 from services import cache_service, encryption_service
+
 
 def _safe_decrypt_json(data: Any) -> Dict[str, Any]:
     if isinstance(data, dict) and "_enc" in data:
         return encryption_service.decrypt_json(data["_enc"])
-    if isinstance(data, str) and data.startswith("{"):
-        # Legacy fallback
-        try:
-            return json.loads(data)
-        except Exception:
-            pass
     return data if isinstance(data, dict) else {}
 
+
 def _row_to_review_dict(row) -> Dict[str, Any]:
-    if not row: return {}
+    if not row:
+        return {}
     return {
         "id": str(row[0]),
         "place_id": row[1],
@@ -33,8 +29,10 @@ def _row_to_review_dict(row) -> Dict[str, Any]:
         "is_anonymous": row[11]
     }
 
+
 def _row_to_post_dict(row) -> Dict[str, Any]:
-    if not row: return {}
+    if not row:
+        return {}
     return {
         "id": str(row[0]),
         "user_id": row[1],
@@ -53,8 +51,10 @@ def _row_to_post_dict(row) -> Dict[str, Any]:
         "created_at": str(row[14])
     }
 
+
 def _row_to_interaction_dict(row) -> Dict[str, Any]:
-    if not row: return {}
+    if not row:
+        return {}
     return {
         "id": str(row[0]),
         "post_id": str(row[1]),
@@ -69,6 +69,7 @@ def _row_to_interaction_dict(row) -> Dict[str, Any]:
 
 # --- Reviews ---
 
+
 def add_place_review(
     place_id: str,
     user_id: str,
@@ -77,7 +78,7 @@ def add_place_review(
     user_name: str = "Aggie",
     user_image: str = "",
     title: str = "",
-    images: List[str] = None,
+    images: Optional[List[str]] = None,
     is_anonymous: bool = False
 ) -> Dict[str, Any]:
     with psycopg.connect(CONNECTION_PARAMS) as conn:
@@ -88,13 +89,15 @@ def add_place_review(
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id, place_id, user_id, user_name, user_image, rating, title, body, images, created_at, updated_at, is_anonymous
                 """,
-                (place_id, user_id, user_name, user_image, rating, encryption_service.encrypt_string(title), encryption_service.encrypt_string(body), images or [], is_anonymous)
+                (place_id, user_id, user_name, user_image, rating, encryption_service.encrypt_string(
+                    title), encryption_service.encrypt_string(body), images or [], is_anonymous)
             )
             row = cur.fetchone()
         conn.commit()
     return _row_to_review_dict(row)
 
-def get_place_reviews(place_id: str, limit: int = 50, exclude_user_ids: List[str] = None) -> List[Dict[str, Any]]:
+
+def get_place_reviews(place_id: str, limit: int = 50, exclude_user_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         with conn.cursor() as cur:
             sql = """
@@ -106,19 +109,20 @@ def get_place_reviews(place_id: str, limit: int = 50, exclude_user_ids: List[str
                 LEFT JOIN users u ON r.user_id = u.clerk_id
                 WHERE r.place_id = %s
             """
-            params = [place_id]
+            params: List[Any] = [place_id]
             if exclude_user_ids:
                 sql += " AND r.user_id != ALL(%s)"
                 params.append(exclude_user_ids)
-            
+
             sql += " ORDER BY r.created_at DESC LIMIT %s"
             params.append(limit)
-            
+
             cur.execute(sql, tuple(params))
             rows = cur.fetchall()
     return [_row_to_review_dict(r) for r in rows]
 
 # --- Crowdping Posts ---
+
 
 def add_crowdping_post(
     user_id: str,
@@ -126,14 +130,14 @@ def add_crowdping_post(
     post_type: str = 'post',
     user_name: str = "Aggie",
     user_image: str = "",
-    lat: float = None,
-    lng: float = None,
+    lat: Optional[float] = None,
+    lng: Optional[float] = None,
     location_tag: str = "",
-    event_id: str = None,
-    images: List[str] = None,
+    event_id: Optional[str] = None,
+    images: Optional[List[str]] = None,
     is_anonymous: bool = False,
     visibility: str = 'public',
-    custom_data: Dict[str, Any] = None
+    custom_data: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         with conn.cursor() as cur:
@@ -144,13 +148,15 @@ def add_crowdping_post(
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
                 RETURNING id, user_id, user_name, user_image, content, lat, lng, location_tag, event_id, images, is_anonymous, visibility, post_type, custom_data, created_at
                 """,
-                (user_id, user_name, user_image, encryption_service.encrypt_string(content), lat, lng, location_tag, event_id, images or [], is_anonymous, visibility, post_type, json.dumps({"_enc": encryption_service.encrypt_json(custom_data or {})}))
+                (user_id, user_name, user_image, encryption_service.encrypt_string(content), lat, lng, location_tag, event_id, images or [
+                ], is_anonymous, visibility, post_type, json.dumps({"_enc": encryption_service.encrypt_json(custom_data or {})}))
             )
             row = cur.fetchone()
         conn.commit()
     return _row_to_post_dict(row)
 
-def get_crowdping_feed(post_types: List[str] = None, limit: int = 40, exclude_user_ids: List[str] = None) -> List[Dict[str, Any]]:
+
+def get_crowdping_feed(post_types: Optional[List[str]] = None, limit: int = 40, exclude_user_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         with conn.cursor() as cur:
             sql = """
@@ -162,30 +168,31 @@ def get_crowdping_feed(post_types: List[str] = None, limit: int = 40, exclude_us
                 LEFT JOIN users u ON p.user_id = u.clerk_id
                 WHERE 1=1
             """
-            params = []
+            params: List[Any] = []
             if post_types:
                 sql += " AND p.post_type = ANY(%s)"
                 params.append(post_types)
-            
+
             if exclude_user_ids:
                 sql += " AND p.user_id != ALL(%s)"
                 params.append(exclude_user_ids)
-                
+
             sql += " ORDER BY p.created_at DESC LIMIT %s"
             params.append(limit)
-            
+
             cur.execute(sql, tuple(params))
             rows = cur.fetchall()
     return [_row_to_post_dict(r) for r in rows]
 
 # --- Interactions ---
 
+
 def add_post_interaction(
     post_id: str,
     post_type: str,
     user_id: str,
     interaction_type: str,
-    comment_text: str = None,
+    comment_text: Optional[str] = None,
     user_name: str = "Aggie",
     user_image: str = ""
 ) -> Dict[str, Any]:
@@ -194,13 +201,13 @@ def add_post_interaction(
             # Mutual exclusivity for upvote/downvote
             if interaction_type in ['upvote', 'downvote']:
                 opposite = 'downvote' if interaction_type == 'upvote' else 'upvote'
-                
+
                 # 1. Remove opposite reaction if it exists
                 cur.execute(
                     "DELETE FROM post_interactions WHERE post_id = %s AND user_id = %s AND type = %s",
                     (post_id, user_id, opposite)
                 )
-                
+
                 # 2. Toggle same reaction if it exists
                 cur.execute(
                     "SELECT id FROM post_interactions WHERE post_id = %s AND user_id = %s AND type = %s",
@@ -208,7 +215,8 @@ def add_post_interaction(
                 )
                 existing = cur.fetchone()
                 if existing:
-                    cur.execute("DELETE FROM post_interactions WHERE id = %s", (existing[0],))
+                    cur.execute(
+                        "DELETE FROM post_interactions WHERE id = %s", (existing[0],))
                     conn.commit()
                     return {"status": "removed", "type": interaction_type}
 
@@ -220,7 +228,8 @@ def add_post_interaction(
                 )
                 existing = cur.fetchone()
                 if existing:
-                    cur.execute("DELETE FROM post_interactions WHERE id = %s", (existing[0],))
+                    cur.execute(
+                        "DELETE FROM post_interactions WHERE id = %s", (existing[0],))
                     conn.commit()
                     return {"status": "unliked", "id": str(existing[0])}
 
@@ -230,19 +239,21 @@ def add_post_interaction(
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id, post_id, post_type, user_id, type, comment_text, created_at, user_name, user_image
                 """,
-                (post_id, post_type, user_id, interaction_type, encryption_service.encrypt_string(comment_text) if comment_text else None, user_name, user_image)
+                (post_id, post_type, user_id, interaction_type, encryption_service.encrypt_string(
+                    comment_text) if comment_text else None, user_name, user_image)
             )
             row = cur.fetchone()
         conn.commit()
-    
+
     # Invalidate interaction cache for this post
     cache_service.delete(f"post:interactions:{post_id}")
     return _row_to_interaction_dict(row)
 
+
 def get_post_interactions(
     post_id: str,
     post_type: str,
-    interaction_type: str = None,
+    interaction_type: Optional[str] = None,
     exclude_user_ids: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     with psycopg.connect(CONNECTION_PARAMS) as conn:
@@ -270,11 +281,13 @@ def get_post_interactions(
                     ORDER BY i.created_at DESC
                     """
             if exclude_user_ids:
-                sql = sql.replace("ORDER BY i.created_at DESC", "AND i.user_id != ALL(%s) ORDER BY i.created_at DESC")
+                sql = sql.replace("ORDER BY i.created_at DESC",
+                                  "AND i.user_id != ALL(%s) ORDER BY i.created_at DESC")
                 params.append(exclude_user_ids)
             cur.execute(sql, tuple(params))
             rows = cur.fetchall()
     return [_row_to_interaction_dict(r) for r in rows]
+
 
 def get_interaction_counts(post_id: str, post_type: str) -> Dict[str, int]:
     with psycopg.connect(CONNECTION_PARAMS) as conn:
@@ -294,14 +307,15 @@ def get_interaction_counts(post_id: str, post_type: str) -> Dict[str, int]:
         counts[row[0]] = row[1]
     return counts
 
+
 def get_batch_interaction_counts(post_ids: List[str]) -> Dict[str, Dict[str, Any]]:
     """Get interaction counts and scores for a list of post IDs with Redis caching."""
     if not post_ids:
         return {}
-    
+
     final_counts = {}
     missing_ids = []
-    
+
     # 1. Try to get from Cache first
     for pid in post_ids:
         cached = cache_service.get_json(f"post:interactions:{pid}")
@@ -309,12 +323,13 @@ def get_batch_interaction_counts(post_ids: List[str]) -> Dict[str, Dict[str, Any
             final_counts[pid] = cached
         else:
             missing_ids.append(pid)
-            
+
     if not missing_ids:
         return final_counts
-        
+
     # 2. Fetch missing from Postgres
-    batch_counts = {pid: {"like": 0, "comment": 0, "upvote": 0, "downvote": 0, "score": 0} for pid in missing_ids}
+    batch_counts = {pid: {"like": 0, "comment": 0, "upvote": 0,
+                          "downvote": 0, "score": 0} for pid in missing_ids}
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
             with conn.cursor() as cur:
@@ -335,18 +350,21 @@ def get_batch_interaction_counts(post_ids: List[str]) -> Dict[str, Dict[str, Any
 
                 # Post-process scores and Cache each result
                 for pid in batch_counts:
-                    batch_counts[pid]["score"] = batch_counts[pid]["upvote"] - batch_counts[pid]["downvote"]
+                    batch_counts[pid]["score"] = batch_counts[pid]["upvote"] - \
+                        batch_counts[pid]["downvote"]
                     # Cache individual post results (30 min TTL for high-traffic metadata)
-                    cache_service.set_json(f"post:interactions:{pid}", batch_counts[pid], ttl_seconds=1800)
+                    cache_service.set_json(
+                        f"post:interactions:{pid}", batch_counts[pid], ttl_seconds=1800)
                     final_counts[pid] = batch_counts[pid]
-                    
-    except Exception as e:
+
+    except psycopg.Error as e:
         print(f"Error in get_batch_interaction_counts: {e}")
         # Ensure we return at least the initialized map if DB fails
         for pid in missing_ids:
             if pid not in final_counts:
-                final_counts[pid] = {"like": 0, "comment": 0, "upvote": 0, "downvote": 0, "score": 0}
-        
+                final_counts[pid] = {"like": 0, "comment": 0,
+                                     "upvote": 0, "downvote": 0, "score": 0}
+
     return final_counts
 
 
@@ -355,7 +373,8 @@ def get_user_interactions_batch(user_id: str, post_ids: List[str]) -> Dict[str, 
     if not user_id or not post_ids:
         return {}
 
-    reactions_by_post: Dict[str, Dict[str, bool]] = {str(pid): {} for pid in post_ids}
+    reactions_by_post: Dict[str, Dict[str, bool]] = {
+        str(pid): {} for pid in post_ids}
     try:
         with psycopg.connect(CONNECTION_PARAMS) as conn:
             with conn.cursor() as cur:
@@ -368,15 +387,16 @@ def get_user_interactions_batch(user_id: str, post_ids: List[str]) -> Dict[str, 
                     (user_id, post_ids),
                 )
                 for post_id, interaction_type in cur.fetchall():
-                    reactions_by_post.setdefault(str(post_id), {})[interaction_type] = True
-    except Exception as exc:
+                    reactions_by_post.setdefault(str(post_id), {})[
+                        interaction_type] = True
+    except psycopg.Error as exc:
         print(f"Error in get_user_interactions_batch: {exc}")
 
     return reactions_by_post
 
 
 def get_tailored_feed_for_user(
-    user_id: str,
+    _user_id: str,
     limit: int = 40,
     exclude_user_ids: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
@@ -395,6 +415,7 @@ def get_tailored_feed_for_user(
 
 # --- Compliance (Blocking & Reporting) ---
 
+
 def add_block(blocker_id: str, blocked_id: str) -> bool:
     """Creates a one-way block in the database."""
     with psycopg.connect(CONNECTION_PARAMS) as conn:
@@ -405,6 +426,7 @@ def add_block(blocker_id: str, blocked_id: str) -> bool:
             )
         conn.commit()
     return True
+
 
 def remove_block(blocker_id: str, blocked_id: str) -> bool:
     """Removes a one-way block."""
@@ -418,11 +440,13 @@ def remove_block(blocker_id: str, blocked_id: str) -> bool:
         conn.commit()
     return deleted
 
+
 def get_blocked_user_ids(user_id: str) -> List[str]:
     """Returns a list of clerk_ids that the user has explicitly blocked."""
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT blocked_id FROM blocked_users WHERE blocker_id = %s", (user_id,))
+            cur.execute(
+                "SELECT blocked_id FROM blocked_users WHERE blocker_id = %s", (user_id,))
             rows = cur.fetchall()
     return [r[0] for r in rows]
 
@@ -473,9 +497,11 @@ def get_crowdping_post_owner(post_id: str) -> Optional[str]:
     """Returns the owner clerk_id for a crowdping post, ping, or reel."""
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT user_id FROM crowdping_posts WHERE id = %s", (post_id,))
+            cur.execute(
+                "SELECT user_id FROM crowdping_posts WHERE id = %s", (post_id,))
             row = cur.fetchone()
     return row[0] if row else None
+
 
 def add_content_report(
     reporter_id: str,
@@ -483,8 +509,8 @@ def add_content_report(
     post_type: str,
     post_id: str,
     reason: str,
-    comment: str = None,
-    place_id: str = None
+    comment: Optional[str] = None,
+    place_id: Optional[str] = None
 ) -> str:
     """Inserts a new report into content_reports."""
     with psycopg.connect(CONNECTION_PARAMS) as conn:
@@ -496,11 +522,14 @@ def add_content_report(
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
-                (reporter_id, reportee_id, post_type, post_id, reason, comment, place_id)
+                (reporter_id, reportee_id, post_type,
+                 post_id, reason, comment, place_id)
             )
-            report_id = cur.fetchone()[0]
+            row = cur.fetchone()
+            report_id = row[0] if row else None
         conn.commit()
-    return str(report_id)
+    return str(report_id) if report_id else ''
+
 
 def delete_user_data_cascade(clerk_id: str) -> bool:
     """Permanently deletes all data related to a user (cascade)."""
@@ -508,28 +537,38 @@ def delete_user_data_cascade(clerk_id: str) -> bool:
         with conn.cursor() as cur:
             # Delete from users (will cascade to dining_profiles, campus_connector_snapshots, etc. if ON DELETE CASCADE set)
             # We explicitly handle some social tables just in case
-            cur.execute("DELETE FROM place_reviews WHERE user_id = %s", (clerk_id,))
-            cur.execute("DELETE FROM crowdping_posts WHERE user_id = %s", (clerk_id,))
-            cur.execute("DELETE FROM post_interactions WHERE user_id = %s", (clerk_id,))
-            cur.execute("DELETE FROM blocked_users WHERE blocker_id = %s OR blocked_id = %s", (clerk_id, clerk_id))
-            cur.execute("DELETE FROM network_connections WHERE requester_id = %s OR recipient_id = %s", (clerk_id, clerk_id))
-            cur.execute("DELETE FROM content_reports WHERE reporter_clerk_id = %s OR reportee_clerk_id = %s", (clerk_id, clerk_id))
+            cur.execute(
+                "DELETE FROM place_reviews WHERE user_id = %s", (clerk_id,))
+            cur.execute(
+                "DELETE FROM crowdping_posts WHERE user_id = %s", (clerk_id,))
+            cur.execute(
+                "DELETE FROM post_interactions WHERE user_id = %s", (clerk_id,))
+            cur.execute(
+                "DELETE FROM blocked_users WHERE blocker_id = %s OR blocked_id = %s", (clerk_id, clerk_id))
+            cur.execute(
+                "DELETE FROM network_connections WHERE requester_id = %s OR recipient_id = %s", (clerk_id, clerk_id))
+            cur.execute(
+                "DELETE FROM content_reports WHERE reporter_clerk_id = %s OR reportee_clerk_id = %s", (clerk_id, clerk_id))
             cur.execute("DELETE FROM users WHERE clerk_id = %s", (clerk_id,))
         conn.commit()
     return True
 
+
 def delete_place_review(review_id: str, user_id: str) -> bool:
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM place_reviews WHERE id = %s AND user_id = %s RETURNING id", (review_id, user_id))
+            cur.execute(
+                "DELETE FROM place_reviews WHERE id = %s AND user_id = %s RETURNING id", (review_id, user_id))
             deleted = cur.fetchone()
         conn.commit()
     return bool(deleted)
 
+
 def delete_crowdping_post(post_id: str, user_id: str) -> bool:
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM crowdping_posts WHERE id = %s AND user_id = %s RETURNING id", (post_id, user_id))
+            cur.execute(
+                "DELETE FROM crowdping_posts WHERE id = %s AND user_id = %s RETURNING id", (post_id, user_id))
             deleted = cur.fetchone()
         conn.commit()
     return bool(deleted)
