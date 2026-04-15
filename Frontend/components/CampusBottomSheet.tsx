@@ -28,6 +28,7 @@ interface CampusBottomSheetProps {
   isLoadingRoute?: boolean;
   onClearRoute?: () => void;
   onStartDirections?: () => void;
+  insetBottom?: number;
 }
 
 export function CampusBottomSheet({
@@ -46,6 +47,7 @@ export function CampusBottomSheet({
   isLoadingRoute = false,
   onClearRoute,
   onStartDirections,
+  insetBottom = 28,
 }: CampusBottomSheetProps) {
     const { COLORS, theme } = useTheme();
     const styles = getStyles(COLORS, theme === 'dark');
@@ -64,7 +66,7 @@ export function CampusBottomSheet({
   };
 
   return (
-    <View style={[styles.container, hasRoute ? styles.containerRoute : styles.containerBrowse]}>
+    <View style={[styles.container, hasRoute ? styles.containerRoute : styles.containerBrowse, { bottom: insetBottom }]}>
       {!hasRoute ? <View style={styles.handleBar} /> : null}
 
       {hasRoute && destinationName ? (

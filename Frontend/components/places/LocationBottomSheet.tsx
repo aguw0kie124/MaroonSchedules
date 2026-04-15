@@ -161,6 +161,35 @@ function formatLiveTimestamp(value?: string | null) {
   });
 }
 
+function formatTodayHoursLine(hoursSource?: string | null) {
+  if (!hoursSource) return null;
+
+  if (/typical/i.test(hoursSource)) {
+    return "Today Open 24 hours";
+  }
+
+  const matches = hoursSource.match(
+    /\d{1,2}:\d{2}\s*(?:am|pm)\s*-\s*\d{1,2}:\d{2}\s*(?:am|pm)/gi,
+  );
+
+  if (matches?.length) {
+    const normalized = matches.slice(0, 2).map((entry) =>
+      entry
+        .replace(/\b(am|pm)\b/gi, (token) => token.toUpperCase())
+        .replace(/\s*-\s*/g, " – ")
+        .replace(/\s+/g, " ")
+        .trim(),
+    );
+    return `Today ${normalized.join(" • ")}`;
+  }
+
+  const cleaned = hoursSource
+    .replace(/^(.*?:\s*)*Open Today:\s*/i, "")
+    .trim();
+
+  return cleaned ? `Today ${cleaned}` : null;
+}
+
 /**
  * ClassMeetingList - Isolated component for better render performance
  */
@@ -256,7 +285,8 @@ export function LocationBottomSheet({
   const panStartY = useRef<number>(SHEET_HIDDEN_SNAP);
   const [sheetMode, setSheetMode] = useState<SheetMode>("hidden");
   const [diningDetailTab, setDiningDetailTab] = useState<"menus">("menus");
-  const [isFacilityCountsExpanded, setIsFacilityCountsExpanded] = useState(false);
+  const [isFacilitySelectorOpen, setIsFacilitySelectorOpen] = useState(false);
+  const [selectedFacilityCountName, setSelectedFacilityCountName] = useState<string | null>(null);
 
   const [activeCategoryKey, setActiveCategoryKey] = useState("all");
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
@@ -276,10 +306,6 @@ export function LocationBottomSheet({
       setCollapsedCategories(new Set(categoryNames));
     }
   }, [diningMenuPreview]);
-
-  useEffect(() => {
-    setIsFacilityCountsExpanded(false);
-  }, [selectedId]);
 
   const animateSheet = useCallback(
     (toValue: number, onDone?: () => void) => {
@@ -328,31 +354,6 @@ export function LocationBottomSheet({
   const isPeekSheet = sheetMode === "peek";
   const isCapacityPlace =
     selectedLoc?.type === "Library" || selectedLoc?.type === "Rec";
-  const occupancyPercent = selectedLoc
-    ? Math.max(
-        0,
-        Math.min(
-          100,
-          selectedLoc.capacity && selectedLoc.capacity > 0 && selectedLoc.current_count != null
-            ? Math.round((selectedLoc.current_count / selectedLoc.capacity) * 100)
-            : Number.isFinite(selectedLoc.percent_full)
-              ? selectedLoc.percent_full
-              : 0,
-        ),
-      )
-    : 0;
-  const occupancyToneColor = selectedLoc
-    ? getStatusColor(occupancyPercent)
-    : COLORS.primary;
-  const occupancyCountLabel = useMemo(() => {
-    if (!selectedLoc || !isCapacityPlace) return null;
-    const cap = selectedLoc.capacity;
-    const cur = selectedLoc.current_count;
-    if (cap != null && cur != null && cap > 0) {
-      return `About ${cur.toLocaleString()} of ${cap.toLocaleString()} people`;
-    }
-    return null;
-  }, [selectedLoc, isCapacityPlace]);
   const recreationFacilityCounts = useMemo<FacilityCountEntry[]>(() => {
     if (selectedLoc?.type !== "Rec") return [];
     if (Array.isArray(selectedLoc.facility_counts) && selectedLoc.facility_counts.length) {
@@ -363,24 +364,114 @@ export function LocationBottomSheet({
     }
     return [];
   }, [selectedLoc, selectedRecreationFacility]);
+  const preferredFacilityCount = useMemo<FacilityCountEntry | null>(() => {
+    if (selectedLoc?.type !== "Rec" || !recreationFacilityCounts.length) return null;
+
+    const selectedByName = selectedFacilityCountName
+      ? recreationFacilityCounts.find(
+          (entry) => entry.location_name === selectedFacilityCountName,
+        ) || null
+      : null;
+    if (selectedByName) return selectedByName;
+
+    const normalizedLocation = selectedLoc.location.toLowerCase();
+    const wantsStrengthAndConditioning =
+      normalizedLocation.includes("southside recreation center") ||
+      normalizedLocation.includes("student recreation center");
+
+    if (wantsStrengthAndConditioning) {
+      const strengthEntry =
+        recreationFacilityCounts.find((entry) =>
+          entry.location_name.toLowerCase().includes("strength & conditioning"),
+        ) ||
+        recreationFacilityCounts.find((entry) =>
+          entry.location_name.toLowerCase().includes("strength and conditioning"),
+        ) ||
+        null;
+      if (strengthEntry) return strengthEntry;
+    }
+
+    return recreationFacilityCounts[0] || null;
+  }, [recreationFacilityCounts, selectedFacilityCountName, selectedLoc]);
+  const activeFacilityCount = useMemo<FacilityCountEntry | null>(() => {
+    if (selectedLoc?.type !== "Rec") return null;
+    return preferredFacilityCount;
+  }, [preferredFacilityCount, selectedLoc?.type]);
+  const liveCapacitySource = useMemo(() => {
+    if (!selectedLoc || !isCapacityPlace) return null;
+
+    if (selectedLoc.type === "Rec" && activeFacilityCount) {
+      const capacity = activeFacilityCount.capacity;
+      const currentCount = activeFacilityCount.current_count;
+      const percentFull =
+        capacity && capacity > 0 && currentCount != null
+          ? Math.round((currentCount / capacity) * 100)
+          : Number.isFinite(activeFacilityCount.percent_full)
+            ? Math.round(activeFacilityCount.percent_full as number)
+            : 0;
+
+      return {
+        percentFull: Math.max(0, Math.min(100, percentFull)),
+        currentCount,
+        capacity,
+        lastUpdated: activeFacilityCount.last_updated || null,
+      };
+    }
+
+    const capacity = selectedLoc.capacity;
+    const currentCount = selectedLoc.current_count;
+    const percentFull =
+      capacity && capacity > 0 && currentCount != null
+        ? Math.round((currentCount / capacity) * 100)
+        : Number.isFinite(selectedLoc.percent_full)
+          ? selectedLoc.percent_full
+          : 0;
+
+    return {
+      percentFull: Math.max(0, Math.min(100, percentFull)),
+      currentCount,
+      capacity,
+      lastUpdated:
+        selectedLoc.capacity_last_updated || selectedLoc.capacity_as_of || null,
+    };
+  }, [activeFacilityCount, isCapacityPlace, selectedLoc]);
+  const occupancyPercent = liveCapacitySource?.percentFull ?? 0;
+  const occupancyToneColor = selectedLoc
+    ? getStatusColor(occupancyPercent)
+    : COLORS.primary;
+  const occupancyCountLabel = useMemo(() => {
+    if (!selectedLoc || !isCapacityPlace || !liveCapacitySource) return null;
+    const cap = liveCapacitySource.capacity;
+    const cur = liveCapacitySource.currentCount;
+    if (cap != null && cur != null && cap > 0) {
+      return `About ${cur.toLocaleString()} of ${cap.toLocaleString()} people`;
+    }
+    return null;
+  }, [isCapacityPlace, liveCapacitySource, selectedLoc]);
+  useEffect(() => {
+    if (selectedLoc?.type !== "Rec") {
+      setSelectedFacilityCountName(null);
+      setIsFacilitySelectorOpen(false);
+      return;
+    }
+
+    const defaultName = preferredFacilityCount?.location_name || null;
+    setSelectedFacilityCountName(defaultName);
+    setIsFacilitySelectorOpen(false);
+  }, [preferredFacilityCount?.location_name, selectedId, selectedLoc?.type]);
   const recCapacityLastUpdatedLabel = useMemo(() => {
-    if (selectedLoc?.type !== "Rec") return null;
-    return formatLiveTimestamp(
-      selectedLoc.capacity_last_updated ||
-        selectedLoc.capacity_as_of ||
-        selectedRecreationFacility?.last_updated ||
-        null,
-    );
+    if (!selectedLoc || !liveCapacitySource) return null;
+    if (selectedLoc.type === "Rec") {
+      return formatLiveTimestamp(
+        liveCapacitySource.lastUpdated || selectedRecreationFacility?.last_updated || null,
+      );
+    }
+    return formatLiveTimestamp(liveCapacitySource.lastUpdated);
   }, [
-    selectedLoc?.capacity_as_of,
-    selectedLoc?.capacity_last_updated,
-    selectedLoc?.type,
+    liveCapacitySource,
     selectedRecreationFacility?.last_updated,
+    selectedLoc,
   ]);
-  const recLiveSourceLabel = useMemo(() => {
-    if (selectedLoc?.type !== "Rec") return null;
-    return selectedLoc.occupancy_name || selectedRecreationFacility?.occupancy_name || null;
-  }, [selectedLoc?.occupancy_name, selectedLoc?.type, selectedRecreationFacility?.occupancy_name]);
   const parkingRecommendation = useMemo(() => {
     if (!selectedLoc || selectedLoc.type !== "Parking") return null;
     const lower = selectedLoc.location.toLowerCase();
@@ -413,11 +504,32 @@ export function LocationBottomSheet({
     const base = selectedLoc.hours || null;
     return base ? `${base}${suffix}` : holiday || null;
   }, [selectedLoc, selectedRecreationFacility]);
+  const selectedTodayHoursLine = useMemo(() => {
+    if (!selectedLoc) return null;
+
+    const hoursSource =
+      selectedLoc.hours_today ||
+      (selectedLoc.type === "Rec"
+        ? selectedRecreationFacility?.today_hours ||
+          selectedRecreationFacility?.hours_hint ||
+          selectedLoc.hours ||
+          null
+        : null) ||
+      (selectedLoc.type === "Dining" || selectedLoc.type === "Hub"
+        ? getRestaurantHoursToday(selectedLoc.location)
+        : null) ||
+      null;
+
+    return formatTodayHoursLine(hoursSource);
+  }, [selectedLoc, selectedRecreationFacility]);
   const peekMetaText = useMemo(() => {
     if (!selectedLoc) return "";
 
+    if (selectedTodayHoursLine) {
+      return selectedTodayHoursLine;
+    }
     if (isCapacityPlace) {
-      return `${occupancyPercent}% full`;
+      return `${liveCapacitySource?.percentFull ?? occupancyPercent}% full`;
     }
     if (
       selectedLoc.type === "Parking" &&
@@ -427,10 +539,6 @@ export function LocationBottomSheet({
       const name = selectedLoc.visitor_parking_garage_name;
       const label = code && name ? `${code} (${name})` : code || "Garage";
       return `${label}: ${selectedLoc.visitor_parking_available.toLocaleString()} spaces (live)`;
-    }
-    if (selectedHoursLabel) {
-      if (selectedLoc.hours_today) return selectedHoursLabel;
-      return selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel;
     }
     if (isFoodCourtHub) {
       return `${foodCourtVenues.length} locations`;
@@ -449,8 +557,9 @@ export function LocationBottomSheet({
     foodCourtVenues.length,
     isCapacityPlace,
     isFoodCourtHub,
+    liveCapacitySource?.percentFull,
     occupancyPercent,
-    selectedHoursLabel,
+    selectedTodayHoursLine,
     selectedLoc,
   ]);
   const contextLink = useMemo(
@@ -463,36 +572,8 @@ export function LocationBottomSheet({
   );
   const heroMetaText = useMemo(() => {
     if (!selectedLoc) return "";
-
-    const bits: string[] = [];
-    if (selectedLoc.address) {
-      bits.push(selectedLoc.address);
-    }
-    const hoursDetailTypes = new Set([
-      "Library",
-      "Dining",
-      "Rec",
-      "Parking",
-      "Hub",
-    ]);
-    const hoursShownInCard =
-      !!selectedLoc.hours_today && hoursDetailTypes.has(selectedLoc.type);
-    if (selectedHoursLabel && !hoursShownInCard) {
-      if (selectedLoc.hours_today) {
-        bits.push(selectedHoursLabel);
-      } else {
-        bits.push(selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel);
-      }
-    } else if (!selectedHoursLabel && selectedLoc.current_event) {
-      bits.push(selectedLoc.current_event);
-    } else if (hoursShownInCard && selectedLoc.current_event) {
-      bits.push(selectedLoc.current_event);
-    }
-    if (!bits.length && isFoodCourtHub) {
-      bits.push(`${foodCourtVenues.length} dining locations inside`);
-    }
-    return bits.filter(Boolean).slice(0, 2).join(" • ");
-  }, [foodCourtVenues.length, isFoodCourtHub, selectedHoursLabel, selectedLoc]);
+    return selectedTodayHoursLine || "";
+  }, [selectedLoc, selectedTodayHoursLine]);
   const officialFacilityUrl = useMemo(
     () =>
       selectedLoc?.type === "Rec"
@@ -522,6 +603,9 @@ export function LocationBottomSheet({
   const handlePeekExpand = useCallback(() => {
     animateSheet(preferredExpandedSnap);
   }, [animateSheet, preferredExpandedSnap]);
+  const handleDiningMenuExpand = useCallback(() => {
+    animateSheet(SHEET_TOP_SNAP);
+  }, [animateSheet]);
 
   const handleExternalLinkPress = useCallback(() => {
     if (!selectedLoc || !externalLink) return;
@@ -613,132 +697,125 @@ export function LocationBottomSheet({
     <>
       <Animated.View
         style={[styles.bottomSheet, { transform: [{ translateY: sheetY }] }]}
-        {...panResponder.panHandlers}
       >
-        <View style={styles.dragHandle} />
-
         {selectedLoc ? (
           <>
-            <View style={[styles.heroCard, isPeekSheet && styles.heroCardPeek]}>
-              <View style={[styles.heroHeadingRow, isPeekSheet && styles.heroHeadingRowPeek]}>
-                <View style={styles.heroHeadingText}>
-                  <Text
-                    style={[
-                      styles.locationName,
-                      isPeekSheet ? styles.locationNamePeek : styles.locationNameExpanded,
-                    ]}
-                    numberOfLines={isPeekSheet ? 1 : 3}
-                  >
-                    {selectedLoc.location}
-                  </Text>
+            <View {...panResponder.panHandlers}>
+              <View style={styles.dragHandle} />
 
-                  {((isPeekSheet ? peekMetaText : heroMetaText) || "").length ? (
+              <View style={[styles.heroCard, isPeekSheet && styles.heroCardPeek]}>
+                <View style={[styles.heroHeadingRow, isPeekSheet && styles.heroHeadingRowPeek]}>
+                  <View style={styles.heroHeadingText}>
                     <Text
                       style={[
-                        styles.heroMetaText,
-                        isPeekSheet && styles.heroMetaTextPeek,
+                        styles.locationName,
+                        isPeekSheet ? styles.locationNamePeek : styles.locationNameExpanded,
                       ]}
-                      numberOfLines={1}
+                      numberOfLines={isPeekSheet ? 1 : 3}
                     >
-                      {isPeekSheet ? peekMetaText : heroMetaText}
+                      {selectedLoc.location}
                     </Text>
-                  ) : null}
+
+                    {((isPeekSheet ? peekMetaText : heroMetaText) || "").length ? (
+                      <Text
+                        style={[
+                          styles.heroMetaText,
+                          isPeekSheet && styles.heroMetaTextPeek,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {isPeekSheet ? peekMetaText : heroMetaText}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  {isPeekSheet ? (
+                    <TouchableOpacity
+                      style={styles.peekPrimaryAction}
+                      activeOpacity={0.85}
+                      onPress={handlePeekExpand}
+                    >
+                      <ChevronRight size={18} color={COLORS.primary} />
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => setSelectedId(null)}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      style={styles.dismissBtn}
+                    >
+                      <X size={16} color="#888" />
+                    </TouchableOpacity>
+                  )}
                 </View>
 
-                {isPeekSheet ? (
-                  <TouchableOpacity
-                    style={styles.peekPrimaryAction}
-                    activeOpacity={0.85}
-                    onPress={handlePeekExpand}
-                  >
-                    <ChevronRight size={18} color={COLORS.primary} />
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    onPress={() => setSelectedId(null)}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    style={styles.dismissBtn}
-                  >
-                    <X size={16} color="#888" />
-                  </TouchableOpacity>
-                )}
+                {!isPeekSheet ? (
+                  <View style={styles.quickActionRow}>
+                    <TouchableOpacity
+                      style={styles.quickActionPill}
+                      onPress={handleNavigatePress}
+                    >
+                      <Navigation size={14} color={COLORS.textPrimary} />
+                      <Text style={styles.quickActionText}>Directions</Text>
+                    </TouchableOpacity>
+
+                    {externalLink && externalLink.label !== "Open in Maps" ? (
+                      <TouchableOpacity
+                        style={styles.quickActionPill}
+                        onPress={handleExternalLinkPress}
+                      >
+                        <ExternalLink size={14} color={COLORS.textPrimary} />
+                        <Text style={styles.quickActionText}>
+                          {externalLink.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {activeDiningMenu && isDiningHallCard ? (
+                      <TouchableOpacity
+                        style={styles.quickActionPill}
+                        onPress={handleDiningMenuExpand}
+                      >
+                        <Utensils size={14} color={COLORS.textPrimary} />
+                        <Text style={styles.quickActionText}>Menus</Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {selectedLoc.classMeetings?.length ? (
+                      <TouchableOpacity
+                        style={styles.quickActionPill}
+                        onPress={openScheduleList}
+                      >
+                        <Calendar size={14} color={COLORS.textPrimary} />
+                        <Text style={styles.quickActionText}>Today</Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {contextLink ? (
+                      <TouchableOpacity
+                        style={styles.quickActionPill}
+                        onPress={handleContextLinkPress}
+                      >
+                        <ExternalLink size={14} color={COLORS.textPrimary} />
+                        <Text style={styles.quickActionText}>
+                          {contextLink.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {officialFacilityUrl && officialFacilityUrl !== externalLink?.url ? (
+                      <TouchableOpacity
+                        style={styles.quickActionPill}
+                        onPress={() =>
+                          Linking.openURL(officialFacilityUrl).catch(() => {})
+                        }
+                      >
+                        <ExternalLink size={14} color={COLORS.textPrimary} />
+                        <Text style={styles.quickActionText}>Facility Page</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                ) : null}
               </View>
-
-              {!isPeekSheet ? (
-                <View style={styles.quickActionRow}>
-                  <TouchableOpacity
-                    style={styles.quickActionPill}
-                    onPress={handleNavigatePress}
-                  >
-                    <Navigation size={14} color={COLORS.textPrimary} />
-                    <Text style={styles.quickActionText}>Directions</Text>
-                  </TouchableOpacity>
-
-                  {externalLink && externalLink.label !== "Open in Maps" ? (
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={handleExternalLinkPress}
-                    >
-                      <ExternalLink size={14} color={COLORS.textPrimary} />
-                      <Text style={styles.quickActionText}>
-                        {externalLink.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-
-                  {activeDiningMenu && isDiningHallCard ? (
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={() => openFullMenu(activeDiningMenu, activeDiningMealPeriod)}
-                    >
-                      <Utensils size={14} color={COLORS.textPrimary} />
-                      <Text style={styles.quickActionText}>Menus</Text>
-                    </TouchableOpacity>
-                  ) : null}
-
-                  {selectedLoc.classMeetings?.length ? (
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={openScheduleList}
-                    >
-                      <Calendar size={14} color={COLORS.textPrimary} />
-                      <Text style={styles.quickActionText}>Today</Text>
-                    </TouchableOpacity>
-                  ) : null}
-
-                  {contextLink ? (
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={handleContextLinkPress}
-                    >
-                      <ExternalLink size={14} color={COLORS.textPrimary} />
-                      <Text style={styles.quickActionText}>
-                        {contextLink.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-
-                  {selectedLoc.type === "Rec" && recreationFacilityCounts.length ? (
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={() =>
-                        setIsFacilityCountsExpanded((current) => !current)
-                      }
-                    >
-                      <ChevronDown
-                        size={14}
-                        color={COLORS.textPrimary}
-                        style={{
-                          transform: [
-                            { rotate: isFacilityCountsExpanded ? "180deg" : "0deg" },
-                          ],
-                        }}
-                      />
-                      <Text style={styles.quickActionText}>Facility Counts</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              ) : null}
             </View>
 
             {!isPeekSheet && selectedLoc.type === "Parking" ? (
@@ -893,27 +970,6 @@ export function LocationBottomSheet({
               </View>
             ) : null}
 
-            {!isPeekSheet &&
-            (selectedLoc.hours_today || getRestaurantHoursToday(selectedLoc.location)) &&
-            selectedLoc.type !== "Parking" &&
-            (selectedLoc.type === "Library" ||
-              selectedLoc.type === "Dining" ||
-              selectedLoc.type === "Rec" ||
-              selectedLoc.type === "Hub") ? (
-              <View style={styles.contextCard}>
-                <Text style={styles.contextCardTitle}>Open today</Text>
-                <Text style={styles.contextCardBody}>
-                  {(() => {
-                    const hoursSource = selectedLoc.hours_today || getRestaurantHoursToday(selectedLoc.location) || "";
-                    const matches = hoursSource.match(/\d{1,2}:\d{2}\s*(?:am|pm)\s*-\s*\d{1,2}:\d{2}\s*(?:am|pm)/gi);
-                    return matches && matches.length > 0 
-                      ? matches.join(", ") 
-                      : hoursSource.replace(/^(.*?:\s*)*Open Today:\s*/i, "").trim();
-                  })()}
-                </Text>
-              </View>
-            ) : null}
-
             {!isPeekSheet && selectedLoc.current_event ? (
               <View style={styles.contextCard}>
                 <Text style={styles.contextCardTitle}>
@@ -953,6 +1009,33 @@ export function LocationBottomSheet({
                       ]}
                     />
                   </View>
+                  {selectedLoc.type === "Rec" && recreationFacilityCounts.length ? (
+                    <View style={styles.facilityPickerWrap}>
+                      <TouchableOpacity
+                        style={styles.facilityPickerTrigger}
+                        onPress={() =>
+                          setIsFacilitySelectorOpen((current) => !current)
+                        }
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          style={styles.facilityPickerText}
+                          numberOfLines={1}
+                        >
+                          {activeFacilityCount?.location_name || "Choose facility"}
+                        </Text>
+                        <ChevronDown
+                          size={14}
+                          color={COLORS.textSecondary}
+                          style={{
+                            transform: [
+                              { rotate: isFacilitySelectorOpen ? "180deg" : "0deg" },
+                            ],
+                          }}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
                 </View>
 
                 {occupancyCountLabel ? (
@@ -966,17 +1049,6 @@ export function LocationBottomSheet({
                   </Text>
                 ) : null}
 
-                {selectedLoc.type === "Rec" && recLiveSourceLabel ? (
-                  <Text
-                    style={[
-                      styles.contextCardBody,
-                      { marginTop: occupancyCountLabel ? 6 : 8, opacity: 0.95 },
-                    ]}
-                  >
-                    Live source: {recLiveSourceLabel}
-                  </Text>
-                ) : null}
-
                 {selectedLoc.type === "Rec" && recCapacityLastUpdatedLabel ? (
                   <Text
                     style={[
@@ -986,18 +1058,6 @@ export function LocationBottomSheet({
                   >
                     Last updated: {recCapacityLastUpdatedLabel}
                   </Text>
-                ) : null}
-
-                {officialFacilityUrl && officialFacilityUrl !== externalLink?.url ? (
-                  <TouchableOpacity
-                    style={styles.inlineLinkRow}
-                    onPress={() => Linking.openURL(officialFacilityUrl).catch(() => {})}
-                  >
-                    <ExternalLink size={14} color={COLORS.primary} />
-                    <Text style={styles.inlineLinkText}>
-                      Open official facility page
-                    </Text>
-                  </TouchableOpacity>
                 ) : null}
               </View>
             ) : null}
@@ -1013,69 +1073,57 @@ export function LocationBottomSheet({
             >
               {isDiningMenuExperience ? (
                 <>
-                  <View style={styles.detailTabsWrap}>
-                    <View style={styles.mapsTabRow}>
-                      {[
-                        {
-                          key: "menus",
-                          label: isDiningHallCard ? "Menu" : "Locations",
-                        },
-                      ].map((tab) => {
-                        const isActive = diningDetailTab === tab.key;
-                        return (
-                          <TouchableOpacity
-                            key={tab.key}
-                            style={styles.mapsTabButton}
-                            onPress={() =>
-                              setDiningDetailTab(tab.key as "menus")
-                            }
-                            activeOpacity={0.75}
+                  {isDiningHallCard ? (
+                    <View style={styles.detailTabsWrap}>
+                      <View style={styles.mapsTabRow}>
+                        <TouchableOpacity
+                          style={styles.mapsTabButton}
+                          onPress={() => setDiningDetailTab("menus")}
+                          activeOpacity={0.75}
+                        >
+                          <Text
+                            style={[
+                              styles.mapsTabLabel,
+                              diningDetailTab === "menus" && styles.mapsTabLabelActive,
+                            ]}
                           >
-                            <Text
-                              style={[
-                                styles.mapsTabLabel,
-                                isActive && styles.mapsTabLabelActive,
-                              ]}
-                            >
-                              {tab.label}
-                            </Text>
-                            <View
-                              style={[
-                                styles.mapsTabUnderline,
-                                isActive && styles.mapsTabUnderlineActive,
-                              ]}
-                            />
-                          </TouchableOpacity>
-                        );
-                      })}
+                            Menu
+                          </Text>
+                          <View
+                            style={[
+                              styles.mapsTabUnderline,
+                              diningDetailTab === "menus" &&
+                                styles.mapsTabUnderlineActive,
+                            ]}
+                          />
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                  </View>
+                  ) : null}
 
                   {diningDetailTab === "menus" ? (
                     <View style={styles.infoBlock}>
-                      <View style={styles.reviewsHeader}>
+                      <View
+                        style={[
+                          styles.reviewsHeader,
+                          !isDiningHallCard && styles.reviewsHeaderCompact,
+                        ]}
+                      >
                         <View>
-                          <Text style={styles.sectionTitle}>
-                            {isDiningHallCard ? "Menu" : "Inside this Food Court"}
-                          </Text>
-                          <Text style={styles.menuIntroText}>
-                            {isDiningHallCard
-                              ? "Use the Menus button above to open the full dining hall menu."
-                              : "Browse the dining locations available inside this hub."}
-                          </Text>
-                        </View>
-                        {isDiningHallCard && activeDiningMenu ? (
-                          <TouchableOpacity
-                            onPress={() =>
-                              openFullMenu(
-                                activeDiningMenu || selectedLoc.location,
-                                activeDiningMealPeriod,
-                              )
-                            }
+                          <Text
+                            style={[
+                              styles.sectionTitle,
+                              !isDiningHallCard && styles.sectionTitleCompact,
+                            ]}
                           >
-                            <Text style={styles.seeAllText}>Open full menu</Text>
-                          </TouchableOpacity>
-                        ) : null}
+                            {isDiningHallCard ? "Menu" : "Dining Locations"}
+                          </Text>
+                          {isDiningHallCard ? (
+                            <Text style={styles.menuIntroText}>
+                              Browse the current dining hall menu below.
+                            </Text>
+                          ) : null}
+                        </View>
                       </View>
 
                       {!isDiningHallCard && foodCourtVenues.length > 0 ? (
@@ -1085,31 +1133,33 @@ export function LocationBottomSheet({
                             const hasMenuSource = !!getStaticRestaurantMenu(candidate) || isDiningHallMenuLocation(candidate);
                             
                             return (
-                            <View key={`${venue.selectionId}-${idx}`} style={styles.foodCourtVenueCard}>
-                              <View style={{ flex: 1, paddingRight: 12 }}>
+                            <View
+                              key={`${venue.selectionId}-${idx}`}
+                              style={styles.foodCourtVenueRow}
+                            >
+                              <View style={styles.foodCourtVenueRowMain}>
                                 <Text style={styles.foodCourtVenueTitle}>
                                   {venue.label}
                                 </Text>
                                 <Text style={styles.foodCourtVenueMeta}>
-                                  {getRestaurantHoursToday(venue.label) || 
+                                  {getRestaurantHoursToday(venue.label) ||
                                    (venue.location.shortName && venue.location.shortName !== venue.location.location
                                      ? venue.location.shortName
                                      : "Dining location")}
                                 </Text>
                               </View>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <Text style={styles.foodCourtVenueAction}>Inside</Text>
-                                {hasMenuSource ? (
-                                  <TouchableOpacity
-                                    onPress={() => openFullMenu(candidate)}
-                                    style={styles.foodCourtVenueMenuBtn}
-                                    activeOpacity={0.7}
-                                  >
-                                    <Utensils size={11} color="#FFF" />
-                                    <Text style={styles.foodCourtVenueMenuBtnText}>Menu</Text>
-                                  </TouchableOpacity>
-                                ) : null}
-                              </View>
+                              {hasMenuSource ? (
+                                <TouchableOpacity
+                                  onPress={() => openFullMenu(candidate)}
+                                  style={styles.foodCourtVenueMenuLink}
+                                  activeOpacity={0.7}
+                                >
+                                  <Utensils size={12} color={COLORS.primary} />
+                                  <Text style={styles.foodCourtVenueMenuLinkText}>
+                                    Menu
+                                  </Text>
+                                </TouchableOpacity>
+                              ) : null}
                             </View>
                             );
                           })}
@@ -1145,68 +1195,6 @@ export function LocationBottomSheet({
                 </>
               ) : (
                 <>
-                  {selectedLoc.type === "Rec" &&
-                  isFacilityCountsExpanded &&
-                  recreationFacilityCounts.length ? (
-                    <View style={styles.infoBlock}>
-                      <View style={styles.reviewsHeader}>
-                        <View>
-                          <Text style={styles.sectionTitle}>Facility Counts</Text>
-                          <Text style={styles.menuIntroText}>
-                            Live sub-facility counts from the rec API.
-                          </Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.facilityCountsPanel}>
-                        {recreationFacilityCounts.map((entry, index) => {
-                          const percentLabel =
-                            typeof entry.percent_full === "number"
-                              ? `${Math.round(entry.percent_full)}% full`
-                              : "No live percentage";
-                          const countLabel =
-                            entry.current_count != null && entry.capacity != null
-                              ? `${entry.current_count.toLocaleString()} / ${entry.capacity.toLocaleString()} people`
-                              : entry.current_count != null
-                                ? `${entry.current_count.toLocaleString()} people`
-                                : "No live count";
-                          const updatedLabel = formatLiveTimestamp(entry.last_updated);
-
-                          return (
-                            <View
-                              key={`${entry.location_name}-${index}`}
-                              style={styles.facilityCountCard}
-                            >
-                              <View style={styles.facilityCountHeader}>
-                                <Text style={styles.facilityCountName}>
-                                  {entry.location_name}
-                                </Text>
-                                {entry.is_closed ? (
-                                  <View style={styles.facilityCountBadge}>
-                                    <Text style={styles.facilityCountBadgeText}>
-                                      Closed
-                                    </Text>
-                                  </View>
-                                ) : null}
-                              </View>
-                              <Text style={styles.facilityCountMeta}>
-                                {countLabel}
-                              </Text>
-                              <Text style={styles.facilityCountMeta}>
-                                {percentLabel}
-                              </Text>
-                              {updatedLabel ? (
-                                <Text style={styles.facilityCountMeta}>
-                                  Last updated: {updatedLabel}
-                                </Text>
-                              ) : null}
-                            </View>
-                          );
-                        })}
-                      </View>
-                    </View>
-                  ) : null}
-
                   {/* Traffic chart */}
                   {(selectedLoc.type === "Library" ||
                     selectedLoc.type === "Rec") && (
@@ -1379,14 +1367,27 @@ export function LocationBottomSheet({
                         const isCollapsed = isAllSelected && collapsedCategories.has(category.name);
                         
                         return (
-                          <View key={category.name} style={isAllSelected ? { marginBottom: 12, backgroundColor: COLORS.card, borderRadius: 16, overflow: "hidden" } : {}}>
+                          <View
+                            key={category.name}
+                            style={
+                              isAllSelected
+                                ? {
+                                    marginBottom: 12,
+                                    marginHorizontal: -4,
+                                    backgroundColor: COLORS.card,
+                                    borderRadius: 16,
+                                    overflow: "hidden",
+                                  }
+                                : {}
+                            }
+                          >
                             {isAllSelected && (
                               <TouchableOpacity
                                 style={{
                                   flexDirection: "row",
                                   alignItems: "center",
                                   justifyContent: "space-between",
-                                  paddingHorizontal: 16,
+                                  paddingHorizontal: 12,
                                   paddingVertical: 18,
                                 }}
                                 onPress={() => toggleCategory(category.name)}
@@ -1404,7 +1405,13 @@ export function LocationBottomSheet({
                             )}
 
                             {!isCollapsed && (
-                              <View style={isAllSelected ? { paddingHorizontal: 16, paddingBottom: 16 } : {}}>
+                              <View
+                                style={
+                                  isAllSelected
+                                    ? { paddingHorizontal: 12, paddingBottom: 16 }
+                                    : {}
+                                }
+                              >
                                 {category.items.map((item: any, idx: number) => (
                                   <View
                                     key={`${category.name}-${item.name}-${idx}`}
@@ -1461,8 +1468,52 @@ export function LocationBottomSheet({
         ) : null}
       </Animated.View>
 
+      <Modal
+        visible={isFacilitySelectorOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setIsFacilitySelectorOpen(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setIsFacilitySelectorOpen(false)}>
+          <View style={styles.facilityListBackdrop}>
+            <TouchableWithoutFeedback>
+              <View style={styles.facilityListModal}>
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.facilityListContent}
+                >
+                  {recreationFacilityCounts.map((entry, index) => {
+                    const isSelected =
+                      entry.location_name === activeFacilityCount?.location_name;
 
-
+                    return (
+                      <TouchableOpacity
+                        key={`${entry.location_name}-${index}`}
+                        style={[
+                          styles.facilityListRow,
+                          isSelected && styles.facilityListRowActive,
+                        ]}
+                        activeOpacity={0.85}
+                        onPress={() => {
+                          setSelectedFacilityCountName(entry.location_name);
+                          setIsFacilitySelectorOpen(false);
+                        }}
+                      >
+                        <Text
+                          style={styles.facilityListRowText}
+                          numberOfLines={1}
+                        >
+                          {entry.location_name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
     </>
   );

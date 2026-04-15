@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  ImageBackground,
   PanResponder,
   Pressable,
   RefreshControl,
@@ -25,11 +24,9 @@ import {
   ExternalLink,
   Flame,
   GraduationCap,
-  LayoutGrid,
   LibraryBig,
   LogIn,
   LogOut,
-  Palette,
   Search,
   Settings2,
   Trophy,
@@ -71,7 +68,7 @@ import { TagChips } from './common/TagChips';
 
 const SETTINGS_TABS = [
   { key: 'personal', label: 'Personal', icon: UserRound },
-  { key: 'layout', label: 'Layout', icon: LayoutGrid },
+  { key: 'layout', label: 'Layout', icon: Settings2 },
   { key: 'resources', label: 'Resources', icon: LibraryBig },
 ] as const;
 
@@ -158,10 +155,6 @@ export function Profile() {
     COLORS,
     theme,
     setTheme,
-    useWallpaper,
-    wallpaperUri,
-    setBackgroundMode,
-    setCustomWallpaper,
     accentColor,
     setAccentColor,
     applyAccentToText,
@@ -173,13 +166,10 @@ export function Profile() {
 
   const [academicStatus, setAcademicStatus] = useState<any | null>(null);
   const [loadingAcademicStatus, setLoadingAcademicStatus] = useState(true);
-  const [uploadingWallpaper, setUploadingWallpaper] = useState(false);
   const [accentSliderWidth, setAccentSliderWidth] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const activeTab = useAppShellStore((state) => state.settingsTab) as SettingsTabKey;
   const setActiveTab = useAppShellStore((state) => state.setSettingsTab);
-  const tabBarMode = useAppShellStore((state) => state.tabBarMode);
-  const setTabBarMode = useAppShellStore((state) => state.setTabBarMode);
   const eventNotifications = useAppShellStore((state) => state.eventNotifications);
   const placeNotifications = useAppShellStore((state) => state.placeNotifications);
   const pingNotifications = useAppShellStore((state) => state.pingNotifications);
@@ -203,7 +193,6 @@ export function Profile() {
   const scrollRef = React.useRef<ScrollView | null>(null);
   const finishCardYRef = React.useRef(0);
 
-  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
   const accentRatio = useMemo(() => getRatioFromColor(accentColor), [accentColor]);
   const accentPreviewColor = useMemo(() => getSpectrumColorFromRatio(accentRatio), [accentRatio]);
   const updateAccentFromPosition = React.useCallback((locationX: number) => {
@@ -453,33 +442,6 @@ export function Profile() {
       } catch (error) {
         console.warn('Failed to upload image:', error);
         Alert.alert('Error', 'Unable to update your profile photo.');
-      }
-    }
-  };
-
-  const handleWallpaperPick = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Denied', 'Camera roll permission is required to set a wallpaper.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets?.[0]?.uri) {
-      setUploadingWallpaper(true);
-      try {
-        await setCustomWallpaper(result.assets[0].uri);
-        setBackgroundMode('custom');
-      } catch (error) {
-        console.warn('Failed to set wallpaper:', error);
-        Alert.alert('Error', 'Unable to save this wallpaper.');
-      } finally {
-        setUploadingWallpaper(false);
       }
     }
   };
@@ -742,30 +704,6 @@ export function Profile() {
   const renderLayoutTab = () => (
     <>
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Tab Bar Style</Text>
-        <Text style={styles.sectionSubtitle}>Choose your navigation look.</Text>
-        <View style={styles.segmentedRow}>
-          {[
-            { id: 'floating', label: 'Floating' },
-            { id: 'solid', label: 'Main' },
-          ].map((option) => {
-            const selected = tabBarMode === option.id;
-            return (
-              <Pressable
-                key={option.id}
-                style={[styles.segmentButton, styles.segmentButtonStretch, selected && styles.segmentButtonActive]}
-                onPress={() => setTabBarMode(option.id as 'floating' | 'solid')}
-              >
-                <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
-                  {option.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-
-      <View style={styles.section}>
         <Text style={styles.sectionTitle}>Appearance</Text>
 
         <View style={styles.preferenceBlock}>
@@ -785,24 +723,6 @@ export function Profile() {
                 </Pressable>
               );
             })}
-          </View>
-        </View>
-
-        <View style={styles.preferenceBlock}>
-          <Text style={styles.preferenceLabel}>Background</Text>
-          <View style={styles.segmentedRow}>
-            <Pressable
-              style={[styles.segmentButton, !useWallpaper && styles.segmentButtonActive]}
-              onPress={() => setBackgroundMode('solid')}
-            >
-              <Text style={[styles.segmentText, !useWallpaper && styles.segmentTextActive]}>Solid</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.segmentButton, useWallpaper && styles.segmentButtonActive]}
-              onPress={() => (wallpaperUri ? setBackgroundMode('custom') : handleWallpaperPick())}
-            >
-              <Text style={[styles.segmentText, useWallpaper && styles.segmentTextActive]}>Wallpaper</Text>
-            </Pressable>
           </View>
         </View>
 
@@ -867,33 +787,6 @@ export function Profile() {
               trackColor={{ false: COLORS.border, true: COLORS.primary }}
               thumbColor="#FFFFFF"
             />
-          </View>
-        </View>
-
-        <View style={styles.wallpaperCard}>
-          {wallpaperUri ? (
-            <Image source={{ uri: wallpaperUri }} style={styles.wallpaperPreview} />
-          ) : (
-            <View style={styles.wallpaperPlaceholder}>
-              <Palette size={22} color={COLORS.textTertiary} />
-              <Text style={styles.wallpaperPlaceholderText}>No custom wallpaper selected</Text>
-            </View>
-          )}
-
-          <View style={styles.wallpaperActions}>
-            <Pressable style={styles.wallpaperButton} onPress={handleWallpaperPick}>
-              <Text style={styles.wallpaperButtonText}>
-                {uploadingWallpaper ? 'Uploading...' : wallpaperUri ? 'Replace' : 'Choose Image'}
-              </Text>
-            </Pressable>
-            {wallpaperUri ? (
-              <Pressable
-                style={[styles.wallpaperButton, styles.wallpaperSecondaryButton]}
-                onPress={() => setCustomWallpaper(null)}
-              >
-                <Text style={[styles.wallpaperButtonText, styles.wallpaperSecondaryButtonText]}>Remove</Text>
-              </Pressable>
-            ) : null}
           </View>
         </View>
       </View>
@@ -1426,21 +1319,10 @@ export function Profile() {
   );
 
   return (
-    <View style={[styles.container, useWallpaper && styles.transparentContainer]}>
-      {useWallpaper ? (
-        <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              { backgroundColor: isDark ? 'rgba(0,0,0,0.34)' : 'rgba(255,255,255,0.18)' },
-            ]}
-          />
-        </ImageBackground>
-      ) : null}
-
+    <View style={styles.container}>
       <ScrollView
         ref={scrollRef}
-        style={[styles.container, useWallpaper && styles.transparentContainer]}
+        style={styles.container}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
@@ -1478,9 +1360,6 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
     container: {
       flex: 1,
       backgroundColor: COLORS.background,
-    },
-    transparentContainer: {
-      backgroundColor: 'transparent',
     },
     contentContainer: {
       padding: 16,
@@ -1866,55 +1745,6 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       fontWeight: '800',
       color: COLORS.textPrimary,
       marginBottom: 4,
-    },
-    wallpaperCard: {
-      borderRadius: 20,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      backgroundColor: COLORS.surfaceElevated,
-    },
-    wallpaperPreview: {
-      width: '100%',
-      height: 160,
-    },
-    wallpaperPlaceholder: {
-      height: 160,
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 10,
-      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(80,0,0,0.03)',
-    },
-    wallpaperPlaceholderText: {
-      fontSize: 14,
-      color: COLORS.textSecondary,
-    },
-    wallpaperActions: {
-      flexDirection: 'row',
-      gap: 10,
-      padding: 14,
-    },
-    wallpaperButton: {
-      flex: 1,
-      borderRadius: 14,
-      backgroundColor: 'rgba(12,12,14,0.92)',
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: 12,
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.08)',
-    },
-    wallpaperSecondaryButton: {
-      backgroundColor: 'transparent',
-      borderColor: COLORS.border,
-    },
-    wallpaperButtonText: {
-      color: '#FFFFFF',
-      fontSize: 13,
-      fontWeight: '800',
-    },
-    wallpaperSecondaryButtonText: {
-      color: COLORS.textPrimary,
     },
     logoutButton: {
       flexDirection: 'row',

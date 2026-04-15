@@ -93,7 +93,6 @@ type PingCategory =
   | 'Show'
   | 'Sports'
   | 'Popup'
-  | 'Market'
   | 'Heads Up';
 
 type FeedFilter = 'All' | 'Friends' | PingCategory;
@@ -157,7 +156,6 @@ const PING_CATEGORIES: Array<{ id: PingCategory; accent: string; Icon: any }> = 
   { id: 'Show', accent: '#855FF0', Icon: Flame },
   { id: 'Sports', accent: '#3CA86E', Icon: Flame },
   { id: 'Popup', accent: '#4B8AC9', Icon: Megaphone },
-  { id: 'Market', accent: '#C96B47', Icon: Sparkles },
   { id: 'Heads Up', accent: '#CC5454', Icon: Megaphone },
 ];
 
@@ -1388,16 +1386,15 @@ export function CampusPingsScreen() {
               ? {
                   id: 'All',
                   accent: COLORS.primary,
-                  Icon: Sparkles,
                 }
               : option === 'Friends'
                 ? {
                     id: 'Friends',
                     accent: '#D85F8D',
                     Icon: Users,
-                  }
+                }
               : categoryMeta(option);
-          const Icon = meta.Icon;
+          const Icon = 'Icon' in meta ? meta.Icon : null;
           return (
             <Pressable
               key={option}
@@ -1409,7 +1406,7 @@ export function CampusPingsScreen() {
               ]}
               onPress={() => setCategoryFilter(option)}
             >
-              <Icon size={14} color={active ? '#FFFFFF' : meta.accent} />
+              {Icon ? <Icon size={14} color={active ? '#FFFFFF' : meta.accent} /> : null}
               <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>
                 {option}
               </Text>

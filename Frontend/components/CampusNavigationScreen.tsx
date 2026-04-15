@@ -13,6 +13,7 @@ import {
   Dimensions,
 } from 'react-native';
 import * as Location from 'expo-location';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView from 'react-native-maps';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from './SharedUI';
@@ -44,6 +45,7 @@ import {
 } from '../services/campusSearch';
 
 import { buildTransitPlan, CampusTransitPlan } from '../services/campusTransitRouting';
+import { transitService } from '../services/transitService';
 import type { CampusLocation } from './places/types';
 import { buildExpandedPlacesDirectory, getLocationSelectionId } from './places/campusData';
 import { getCategoryColor, getCategoryIcon } from './places/utils';
@@ -274,6 +276,7 @@ function resolveNearestAmenityLocation(
 export function CampusNavigationScreen() {
   const { COLORS, theme } = useTheme();
   const styles = getStyles(COLORS, theme === 'dark');
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const initialDestinationParam = route.params?.initialDestination as SeededLocationParams | undefined;
@@ -294,6 +297,7 @@ export function CampusNavigationScreen() {
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeNotice, setRouteNotice] = useState<string | null>(null);
   const [nearbyItems, setNearbyItems] = useState<CampusSearchResult[]>([]);
+  const [busRouteStops, setBusRouteStops] = useState<any[]>([]);
   const [userCoord, setUserCoord] = useState<Coordinate>({
     latitude: DEFAULT_USER_LOCATION.latitude,
     longitude: DEFAULT_USER_LOCATION.longitude,
@@ -367,27 +371,53 @@ export function CampusNavigationScreen() {
     : routeNotice;
   const transitStopMarkers = useMemo(() => {
     if (!activeTransitPlan) return [];
-    return [
-      {
+    const markers = [];
+    const oLat = activeTransitPlan.originStop?.Latitude;
+    const oLng = activeTransitPlan.originStop?.Longitude;
+    if (oLat != null && oLng != null) {
+      markers.push({
         key: 'board',
         title: activeTransitPlan.originStop.Name,
         badge: 'Board',
-        coordinate: {
-          latitude: activeTransitPlan.originStop.Latitude,
-          longitude: activeTransitPlan.originStop.Longitude,
-        },
-      },
-      {
+        coordinate: { latitude: oLat, longitude: oLng },
+      });
+    }
+    const dLat = activeTransitPlan.destinationStop?.Latitude;
+    const dLng = activeTransitPlan.destinationStop?.Longitude;
+    if (dLat != null && dLng != null) {
+      markers.push({
         key: 'exit',
         title: activeTransitPlan.destinationStop.Name,
         badge: 'Exit',
-        coordinate: {
-          latitude: activeTransitPlan.destinationStop.Latitude,
-          longitude: activeTransitPlan.destinationStop.Longitude,
-        },
-      },
-    ];
+        coordinate: { latitude: dLat, longitude: dLng },
+      });
+    }
+    return markers;
   }, [activeTransitPlan]);
+
+  // Fetch all stops for the active bus route
+  useEffect(() => {
+    if (!activeTransitPlan?.routeKey) {
+      setBusRouteStops([]);
+      return;
+    }
+    let cancelled = false;
+    console.log('[NavScreen] Fetching stops for route:', activeTransitPlan.routeKey);
+    transitService.getRoutePattern(activeTransitPlan.routeKey)
+      .then((pattern) => {
+        if (cancelled) return;
+        const stops = pattern?.stops || [];
+        console.log('[NavScreen] Loaded', stops.length, 'stops for route', activeTransitPlan.routeKey,
+          stops.length > 0 ? 'Sample stop:' : '', stops.length > 0 ? JSON.stringify(stops[0]) : '');
+        setBusRouteStops(stops);
+      })
+      .catch((err) => {
+        console.warn('[NavScreen] Failed to fetch route stops:', err);
+        if (!cancelled) setBusRouteStops([]);
+      });
+    return () => { cancelled = true; };
+  }, [activeTransitPlan?.routeKey]);
+
   const discoveryMarkers = useMemo(
     () => (
       destination
@@ -448,15 +478,15 @@ export function CampusNavigationScreen() {
 
     const edgePadding = viewport === 'navigating'
       ? {
-          top: Math.round(SCREEN_HEIGHT * 0.14),
+          top: Math.round(SCREEN_HEIGHT * 0.14) + insets.top,
           right: 56,
-          bottom: Math.round(SCREEN_HEIGHT * 0.34),
+          bottom: Math.round(SCREEN_HEIGHT * 0.34) + insets.bottom,
           left: 56,
         }
       : {
-          top: Math.round(SCREEN_HEIGHT * 0.22),
+          top: Math.round(SCREEN_HEIGHT * 0.26) + insets.top,
           right: 56,
-          bottom: Math.round(SCREEN_HEIGHT * 0.28),
+          bottom: Math.round(SCREEN_HEIGHT * 0.30) + insets.bottom,
           left: 56,
         };
 
@@ -864,7 +894,7 @@ export function CampusNavigationScreen() {
               <MapPin size={18} color="#FFFFFF" />
             </Animated.View>
           </MapMarker>
-          {manualOrigin && (
+          {manualOrigin && manualOrigin.coordinate?.latitude != null && manualOrigin.coordinate?.longitude != null && (
             <MapMarker
               id="campus-navigation-origin"
               coordinate={manualOrigin.coordinate}
@@ -875,7 +905,7 @@ export function CampusNavigationScreen() {
               </View>
             </MapMarker>
           )}
-          {transitStopMarkers.map((stop) => (
+          {transitStopMarkers.filter(s => s.coordinate?.latitude != null && s.coordinate?.longitude != null).map((stop) => (
             <MapMarker
               key={stop.key}
               id={`campus-navigation-stop-${stop.key}`}
@@ -899,6 +929,39 @@ export function CampusNavigationScreen() {
               </View>
             </MapMarker>
           ))}
+          {/* Bus route stops (intermediate stops along the selected transit route) */}
+          {activeTransitPlan && busRouteStops.length > 0 && busRouteStops.map((stop) => {
+            const sLat = stop.Latitude != null ? stop.Latitude : stop.lat;
+            const sLng = stop.Longitude != null ? stop.Longitude : stop.lng;
+            if (sLat == null || sLng == null) return null;
+            // Skip board/exit stops — they already have distinct markers
+            const boardCode = activeTransitPlan.originStop?.StopCode || activeTransitPlan.originStop?.Name;
+            const exitCode = activeTransitPlan.destinationStop?.StopCode || activeTransitPlan.destinationStop?.Name;
+            const stopCode = stop.StopCode || stop.Name;
+            if (stopCode && (stopCode === boardCode || stopCode === exitCode)) return null;
+            return (
+              <MapMarker
+                key={`route-stop-${stopCode || sLat}-${sLng}`}
+                id={`route-stop-${stopCode || sLat}-${sLng}`}
+                coordinate={{ latitude: sLat, longitude: sLng }}
+                anchor={{ x: 0.5, y: 0.5 }}
+                tracksViewChanges={false}
+              >
+                <View style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: 9,
+                  backgroundColor: activeTransitPlan.routeColor || COLORS.primary,
+                  borderWidth: 3,
+                  borderColor: '#FFFFFF',
+                  shadowColor: '#000',
+                  shadowOpacity: 0.3,
+                  shadowRadius: 2,
+                  shadowOffset: { width: 0, height: 1 },
+                }} />
+              </MapMarker>
+            );
+          })}
           {destinationCoord ? (
             <MapMarker
               id="campus-navigation-destination"
@@ -949,7 +1012,7 @@ export function CampusNavigationScreen() {
       </View>
 
       {!isNavigating ? (
-        <View style={styles.topOverlay} pointerEvents="box-none">
+        <View style={[styles.topOverlay, { paddingTop: Math.max(48, insets.top + 8) }]} pointerEvents="box-none">
           <View style={styles.searchContainer}>
             <View style={styles.searchHeaderRow}>
               <Pressable
@@ -1086,6 +1149,7 @@ export function CampusNavigationScreen() {
           isLoadingRoute={routeLoading}
           onClearRoute={handleClearRoute}
           onStartDirections={handleStartDirections}
+          insetBottom={Math.max(28, insets.bottom + 8)}
         />
       )}
 

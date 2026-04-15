@@ -131,7 +131,10 @@ import {
   getDistanceLabel,
   getParkingRecommendation,
   getCategoryIcon,
+  getApproximateEtaMinutes,
+  isVehicleOnRoute,
 } from "./places/utils";
+import { transitService } from "../services/transitService";
 import { getStyles } from "./places/placesStyles";
 import {
   applyCampusHotspotItemVote,
@@ -921,7 +924,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
           detail: "ETA pending",
           departures: [],
         };
-      const { getApproximateEtaMinutes } = require("./places/utils");
       const ranked = busVehicles
         .map((bus) => ({
           bus,
@@ -958,15 +960,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   const allRouteBoards = useMemo(() => {
     if (!isAllBusRoutesSelected) return [];
-    const {
-      getApproximateEtaMinutes,
-      isVehicleOnRoute,
-    } = require("./places/utils");
     return busRoutes
       .map((route) => {
         const pattern = allRoutePatternsById[route.Key];
-        const routePoints = pattern?.points || [];
-        const routeStops = pattern?.stops || [];
+        if (!pattern) return { route, liveCount: 0, entries: [] };
+        const routePoints = pattern.points || [];
+        const routeStops = pattern.stops || [];
         const routeVehicles = busVehicles.filter((bus) =>
           isVehicleOnRoute(bus, route),
         );
@@ -1229,7 +1228,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         };
         openNavigationToLocation(syntheticLoc);
         setIsTodayExpanded(false);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch (_) {}
         return;
       }
 
@@ -1247,7 +1246,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       if (loc) {
         openNavigationToLocation(loc);
         setIsTodayExpanded(false);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch (_) {}
       } else {
         // Fallback to search query
         setSearchQuery(buildingName);
@@ -1258,20 +1257,23 @@ export function PlacesMapScreen({ route, navigation }: any) {
     [fullCampusIndex, scheduleLocations, openNavigationToLocation],
   );
 
-  const handleSelectHotspot = useCallback((hotspot: CampusHotspot) => {
-    setSelectedHotspotId(hotspot.id);
-    setSelectedId(null);
-    setSelectedStop(null);
-    setSelectedBus(null);
-    setNearestBusInfo(null);
-    setIsRouteDropdownOpen(false);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (!mapRef.current) return;
-    mapRef.current.animateToRegion(
-      getPulseFocusRegion(hotspot.coord.lat, hotspot.coord.lng),
-      PULSE_SELECTION_ANIMATION_MS,
-    );
-  }, []);
+  const handleSelectHotspot = useCallback(
+    (hotspot: CampusHotspot) => {
+      setSelectedHotspotId(hotspot.id);
+      setSelectedId(null);
+      setSelectedStop(null);
+      setSelectedBus(null);
+      setNearestBusInfo(null);
+      setIsRouteDropdownOpen(false);
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch (_) {}
+      if (!mapRef.current) return;
+      mapRef.current.animateToRegion(
+        getPulseFocusRegion(hotspot.coord.lat, hotspot.coord.lng),
+        PULSE_SELECTION_ANIMATION_MS,
+      );
+    },
+    [],
+  );
 
   const openHotspotItem = useCallback(
     async (_hotspot: CampusHotspot, item: CampusHotspot["items"][number]) => {
@@ -1437,7 +1439,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   }, [isMapTilted]);
 
   // ── Transit handlers ──────────────────────────────────────
-  const { transitService } = require("../services/transitService");
+  // transitService is now imported at top level
 
   const loadAllBusRoutes = useCallback(async (routesToLoad: any[]) => {
     currentBusRouteFetchId.current = ALL_BUS_ROUTES_KEY;
@@ -1787,7 +1789,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
       setSelectedStop(null);
       setSelectedBus(bus);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch (_) {}
     },
     [
       handleSelectBusRoute,
@@ -1877,7 +1879,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setSelectedStop(stop);
       setSelectedBus(null);
       setNearestBusInfo("Finding closest bus...");
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch (_) {}
 
       resolveNearestBusForStop(stop, busVehicles);
     },
@@ -2096,28 +2098,31 @@ export function PlacesMapScreen({ route, navigation }: any) {
     }
   }, [activeLayer]);
 
-  // Bus polling
+  // Bus polling — wrapped in try/catch with stale-guard to prevent crashes
   useEffect(() => {
-    let isActive = true;
+    let cancelled = false;
     if (activeLayer === "Bus" && selectedBusRouteId) {
       busPollInterval.current = setInterval(async () => {
-        const updated = isAllBusRoutesSelected
-          ? await transitService.getVehicles()
-          : await transitService.getVehicles(selectedBusRouteId);
-
-        if (
-          isActive &&
-          (currentBusRouteFetchId.current === selectedBusRouteId ||
-            isAllBusRoutesSelected)
-        ) {
-          setBusVehicles(updated);
+        try {
+          const updated = isAllBusRoutesSelected
+            ? await transitService.getVehicles()
+            : await transitService.getVehicles(selectedBusRouteId);
+          if (
+            !cancelled &&
+            (currentBusRouteFetchId.current === selectedBusRouteId ||
+              isAllBusRoutesSelected)
+          ) {
+            setBusVehicles(updated || []);
+          }
+        } catch (e) {
+          console.warn('[Transit] Polling error:', e);
         }
       }, 5000);
     } else {
       if (busPollInterval.current) clearInterval(busPollInterval.current);
     }
     return () => {
-      isActive = false;
+      cancelled = true;
       if (busPollInterval.current) clearInterval(busPollInterval.current);
     };
   }, [activeLayer, isAllBusRoutesSelected, selectedBusRouteId]);
@@ -2281,7 +2286,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           })}
 
         {activeLayer === "Pulse" &&
-          pulseHotspots.map((hotspot) => (
+          pulseHotspots.filter(h => h && h.coord && h.coord.lat != null && h.coord.lng != null).map((hotspot) => (
             <MapCircleOverlay
               key={`pulse-radius-${hotspot.id}`}
               id={`pulse-radius-${hotspot.id}`}
@@ -2350,10 +2355,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
         {activeLayer === "Bus" &&
           busStops.map((stop) => {
-            const sLat = stop.Latitude !== undefined ? stop.Latitude : stop.lat;
+            const sLat = stop.Latitude != null ? stop.Latitude : stop.lat;
             const sLng =
-              stop.Longitude !== undefined ? stop.Longitude : stop.lng;
-            if (sLat == null || sLng == null) return null;
+              stop.Longitude != null ? stop.Longitude : stop.lng;
+            if (sLat == null || sLng == null || typeof sLat !== 'number' || typeof sLng !== 'number') return null;
 
             const stopDir = stop.DirectionName || stop.direction || "Unknown";
             const stopSelected =
@@ -2387,7 +2392,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
           })}
 
         {activeLayer === "Bus" &&
-          !isAllBusRoutesSelected && busVehicles.map((bus) => {
+          busVehicles.map((bus) => {
+            const bLat = bus.Latitude != null ? bus.Latitude : bus.lat;
+            const bLng = bus.Longitude != null ? bus.Longitude : bus.lng;
+            // CRITICAL: skip buses with invalid coordinates — nil coords crash AIRMap
+            if (bLat == null || bLng == null || typeof bLat !== 'number' || typeof bLng !== 'number') return null;
             const isTrackedBus =
               selectedBus?.Key && bus.Key
                 ? selectedBus.Key === bus.Key
@@ -2416,19 +2425,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 .toLowerCase()
                 .includes((selectedDirection || "All").toLowerCase());
             const opacity = matchesDirection ? (isTrackedBus ? 1 : 0.9) : 0.3;
-
-            // Oblong marker logic for long names like "01-04"
-            const isLong =
-              routeShortName.length > 2 || routeShortName.includes("-");
-            const markerWidth = isLong ? 52 : 34;
+            const displayName = routeShortName;
 
             return (
               <MapMarker
                 key={`bus-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`}
                 id={`bus-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`}
                 coordinate={{
-                  latitude: bus.Latitude || bus.lat,
-                  longitude: bus.Longitude || bus.lng,
+                  latitude: bLat,
+                  longitude: bLng,
                 }}
                 onPress={() => {
                   handleBusMarkerPress(bus);
@@ -2447,7 +2452,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     shadowOffset: { width: 0, height: 2 },
                   }}
                 >
-                  
                   {/* Teardrop Container pointing UP initially */}
                   <View
                     style={{
@@ -2486,7 +2490,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                           lineHeight: 10,
                         }}
                       >
-                        {routeShortName || "?"}
+                        {displayName || "?"}
                       </Text>
                     </View>
                   </View>
@@ -2506,7 +2510,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
         )}
         {activeLayer === "Pulse" &&
           pulseHotspots
-            .filter((h) => h && h.coord)
+            .filter(
+              (h) =>
+                h &&
+                h.coord &&
+                h.coord.lat != null &&
+                h.coord.lng != null,
+            )
             .map((hotspot) => {
               return (
                 <MapMarker
@@ -2596,6 +2606,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
             if (loc.searchOnly && getLocationSelectionId(loc) !== selectedId) {
               return null;
             }
+
+            if (!loc.coord || loc.coord.lat == null || loc.coord.lng == null) return null;
 
             return (
               <MapMarker
