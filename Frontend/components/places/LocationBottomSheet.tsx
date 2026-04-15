@@ -183,9 +183,7 @@ function formatTodayHoursLine(hoursSource?: string | null) {
     return `Today ${normalized.join(" • ")}`;
   }
 
-  const cleaned = hoursSource
-    .replace(/^(.*?:\s*)*Open Today:\s*/i, "")
-    .trim();
+  const cleaned = (hoursSource.split(/open today:\s*/i).pop() || "").trim();
 
   return cleaned ? `Today ${cleaned}` : null;
 }
