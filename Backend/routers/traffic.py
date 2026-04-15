@@ -33,6 +33,64 @@ REC_OCCUPANCY_LOCATION_PREFERENCES: Dict[str, tuple[str, ...]] = {
     "polo-rec": (
         "polo road strength conditioning",
     ),
+    "aquatics": (
+        "50 meter",
+    ),
+    "penberthy": (
+        "tennis courts",
+        "pickleball courts",
+    ),
+}
+
+REC_FALLBACK_PLACE_BY_ID: Dict[str, Dict[str, Any]] = {
+    "rec": {
+        "place_id": "rec",
+        "name": "Student Recreation Center",
+        "short_name": "REC",
+        "type": "Rec",
+        "lat": 30.6071267,
+        "lng": -96.3426842,
+    },
+    "southside-rec": {
+        "place_id": "southside-rec",
+        "name": "Southside Recreation Center",
+        "short_name": "SSRC",
+        "type": "Rec",
+        "lat": 30.615858627009548,
+        "lng": -96.33350512942744,
+    },
+    "polo-rec": {
+        "place_id": "polo-rec",
+        "name": "Polo Road Recreation Center",
+        "short_name": "POLO REC",
+        "type": "Rec",
+        "lat": 30.62322838512405,
+        "lng": -96.33752363659374,
+    },
+    "aquatics": {
+        "place_id": "aquatics",
+        "name": "Aquatics",
+        "short_name": "AQUATICS",
+        "type": "Rec",
+        "lat": 30.60755,
+        "lng": -96.34215,
+    },
+    "peap": {
+        "place_id": "peap",
+        "name": "PEAP",
+        "short_name": "PEAP",
+        "type": "Rec",
+        "lat": 30.60442587454078,
+        "lng": -96.35188398861327,
+    },
+    "penberthy": {
+        "place_id": "penberthy",
+        "name": "Penberthy Rec Sports Complex-Tennis",
+        "short_name": "PENBERTHY",
+        "type": "Rec",
+        "lat": 30.6012303882534,
+        "lng": -96.34964369057107,
+    },
 }
 
 REC_PLACE_ID_BY_LOCATION_NAME: Dict[str, str] = {
@@ -46,6 +104,14 @@ REC_PLACE_ID_BY_LOCATION_NAME: Dict[str, str] = {
     "polo road rec center": "polo-rec",
     "polo road recreation center": "polo-rec",
     "polo road strength conditioning": "polo-rec",
+    "aquatics": "aquatics",
+    "peap": "peap",
+    "physical education activity room": "peap",
+    "physical education activity program": "peap",
+    "physical education activity program building": "peap",
+    "penberthy": "penberthy",
+    "penberthy rec sports complex": "penberthy",
+    "penberthy rec sports complex tennis": "penberthy",
 }
 
 LIBRARY_PLACE_ID_BY_API_KEY: Dict[str, str] = {
@@ -108,12 +174,27 @@ class TAMUFacilityTracker:
         """Returns raw sub-location list from GoBoard."""
         return self._get_json(self.rec_api) or []
 
+    def get_rec_place_catalog(self) -> Dict[str, Dict[str, Any]]:
+        catalog: Dict[str, Dict[str, Any]] = {}
+        for place_id, fallback in REC_FALLBACK_PLACE_BY_ID.items():
+            place = place_registry_service.get_place_by_id(place_id)
+            if place:
+                catalog[place_id] = place
+            else:
+                catalog[place_id] = dict(fallback)
+        return catalog
+
+    def _get_rec_place_by_id(self, place_id: str) -> Dict[str, Any] | None:
+        if not place_id:
+            return None
+        return self.get_rec_place_catalog().get(place_id)
+
     def _resolve_rec_place(self, row: Dict[str, Any]) -> Dict[str, Any] | None:
         for candidate in (row.get("FacilityName"), row.get("LocationName")):
             normalized_candidate = _normalize_location_name(candidate)
             explicit_place_id = REC_PLACE_ID_BY_LOCATION_NAME.get(normalized_candidate)
             if explicit_place_id:
-                explicit_place = place_registry_service.get_place_by_id(explicit_place_id)
+                explicit_place = self._get_rec_place_by_id(explicit_place_id)
                 if explicit_place:
                     return explicit_place
             resolved = place_registry_service.resolve_place(candidate)
@@ -127,17 +208,19 @@ class TAMUFacilityTracker:
 
         preferred_names = REC_OCCUPANCY_LOCATION_PREFERENCES.get(place_id, ())
 
-        def rank(row: Dict[str, Any]) -> tuple[int, int, int, datetime]:
+        def rank(row: Dict[str, Any]) -> tuple[int, int, int, int, int, datetime]:
             location_name = _normalize_location_name(row.get("LocationName"))
             preferred_rank = 0
             for index, preferred_name in enumerate(preferred_names):
                 if location_name == preferred_name:
                     preferred_rank = len(preferred_names) - index
                     break
+            current_count = _safe_int(row.get("LastCount"))
             return (
                 preferred_rank,
                 1 if ("strength" in location_name and "conditioning" in location_name) else 0,
                 0 if row.get("IsClosed") else 1,
+                current_count,
                 _safe_int(row.get("TotalCapacity")),
                 _parse_goboard_timestamp(row.get("LastUpdatedDateAndTime")),
             )
@@ -163,6 +246,36 @@ class TAMUFacilityTracker:
             current_count = _safe_int(display_row.get("LastCount"))
             capacity = _safe_int(display_row.get("TotalCapacity"))
             percent_full = round((current_count / capacity) * 100, 1) if capacity > 0 else None
+            facility_counts = []
+            for row in sorted(
+                payload["rows"],
+                key=lambda candidate: (
+                    0 if candidate.get("IsClosed") else 1,
+                    _safe_int(candidate.get("LastCount")),
+                    _safe_int(candidate.get("TotalCapacity")),
+                    _parse_goboard_timestamp(candidate.get("LastUpdatedDateAndTime")),
+                ),
+                reverse=True,
+            ):
+                row_current_count = _safe_int(row.get("LastCount"))
+                row_capacity = _safe_int(row.get("TotalCapacity"))
+                row_percent_full = (
+                    round((row_current_count / row_capacity) * 100, 1)
+                    if row_capacity > 0
+                    else None
+                )
+                facility_counts.append(
+                    {
+                        "location_name": row.get("LocationName") or payload["place"]["name"],
+                        "facility_name": row.get("FacilityName") or payload["place"]["name"],
+                        "current_count": row_current_count,
+                        "capacity": row_capacity,
+                        "percent_full": row_percent_full,
+                        "available_seats": max(0, row_capacity - row_current_count) if row_capacity > 0 else None,
+                        "last_updated": row.get("LastUpdatedDateAndTime"),
+                        "is_closed": bool(row.get("IsClosed")),
+                    }
+                )
 
             summaries[place_id] = {
                 "place": payload["place"],
@@ -175,6 +288,7 @@ class TAMUFacilityTracker:
                 "available_seats": max(0, capacity - current_count) if capacity > 0 else None,
                 "last_updated": display_row.get("LastUpdatedDateAndTime"),
                 "is_closed": bool(display_row.get("IsClosed")),
+                "facility_counts": facility_counts,
             }
 
         return summaries

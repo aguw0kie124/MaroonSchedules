@@ -112,6 +112,63 @@ class RecLiveCountSelectionTests(unittest.TestCase):
         )
         self.assertAlmostEqual(summaries["polo-rec"]["percent_full"], 26.8)
 
+    @mock.patch.object(place_registry_service, "resolve_place", return_value=None)
+    @mock.patch.object(place_registry_service, "get_place_by_id", return_value=None)
+    def test_rec_center_live_counts_supports_aquatics_peap_and_penberthy(
+        self,
+        _mock_get_place_by_id,
+        _mock_resolve_place,
+    ):
+        tracker = TAMUFacilityTracker()
+        rows = [
+            {
+                "FacilityName": "Aquatics",
+                "LocationName": "50-Meter",
+                "LastCount": 4,
+                "TotalCapacity": 33,
+                "LastUpdatedDateAndTime": "2026-04-14T22:49:37.967",
+                "IsClosed": False,
+            },
+            {
+                "FacilityName": "PEAP",
+                "LocationName": "Indoor Court D",
+                "LastCount": 4,
+                "TotalCapacity": 50,
+                "LastUpdatedDateAndTime": "2026-04-14T22:39:14.077",
+                "IsClosed": False,
+            },
+            {
+                "FacilityName": "Penberthy Rec Sports Complex-Tennis",
+                "LocationName": "Tennis Courts",
+                "LastCount": 2,
+                "TotalCapacity": 60,
+                "LastUpdatedDateAndTime": "2026-04-14T22:28:32.233",
+                "IsClosed": False,
+            },
+            {
+                "FacilityName": "Penberthy Rec Sports Complex-Tennis",
+                "LocationName": "Multipurpose Field 05",
+                "LastCount": 41,
+                "TotalCapacity": 75,
+                "LastUpdatedDateAndTime": "2026-04-14T21:54:26.120",
+                "IsClosed": False,
+            },
+        ]
+
+        summaries = tracker.get_rec_center_live_counts(rows)
+
+        self.assertEqual(summaries["aquatics"]["location_name"], "50-Meter")
+        self.assertEqual(summaries["peap"]["location_name"], "Indoor Court D")
+        self.assertEqual(
+            summaries["penberthy"]["location_name"],
+            "Tennis Courts",
+        )
+        self.assertEqual(len(summaries["penberthy"]["facility_counts"]), 2)
+        self.assertEqual(
+            summaries["penberthy"]["facility_counts"][0]["location_name"],
+            "Multipurpose Field 05",
+        )
+
 
 class RecreationSnapshotTests(unittest.TestCase):
     @mock.patch.object(campus_hub_service.cache_service, "set_json")
@@ -186,6 +243,63 @@ class RecreationSnapshotTests(unittest.TestCase):
         self.assertTrue(
             any(call.args and call.args[0] == "campus:recreation:snapshot:v1" for call in mock_set_json.call_args_list)
         )
+
+    @mock.patch.object(campus_hub_service.cache_service, "set_json")
+    @mock.patch.object(campus_hub_service.cache_service, "get_json", return_value=None)
+    @mock.patch.object(campus_hub_service, "_fetch_rec_notices", return_value=[])
+    @mock.patch.object(campus_hub_service, "_fetch_rec_facility_page_details", return_value={})
+    @mock.patch.object(campus_hub_service.place_registry_service, "get_all_places", return_value=[])
+    @mock.patch("routers.traffic.tracker.get_rec_center_live_counts")
+    @mock.patch("routers.traffic.tracker.fetch_rec_data")
+    def test_get_recreation_snapshot_includes_extended_rec_facilities(
+        self,
+        mock_fetch_rec_data,
+        mock_get_rec_center_live_counts,
+        _mock_get_all_places,
+        _mock_fetch_page_details,
+        _mock_fetch_notices,
+        _mock_get_json,
+        _mock_set_json,
+    ):
+        mock_fetch_rec_data.return_value = [{"FacilityName": "Aquatics"}]
+        mock_get_rec_center_live_counts.return_value = {
+            "aquatics": {
+                "location_name": "50-Meter",
+                "current_count": 4,
+                "capacity": 33,
+                "percent_full": 12.1,
+                "last_updated": "2026-04-14T22:49:37.967",
+                "facility_counts": [
+                    {
+                        "location_name": "50-Meter",
+                        "current_count": 4,
+                        "capacity": 33,
+                        "percent_full": 12.1,
+                        "last_updated": "2026-04-14T22:49:37.967",
+                        "is_closed": False,
+                    }
+                ],
+            },
+            "peap": {
+                "location_name": "Indoor Court D",
+                "current_count": 4,
+                "capacity": 50,
+                "percent_full": 8.0,
+                "last_updated": "2026-04-14T22:39:14.077",
+                "facility_counts": [],
+            },
+        }
+
+        snapshot = campus_hub_service.get_recreation_snapshot()
+        by_id = {facility["id"]: facility for facility in snapshot["facilities"]}
+
+        self.assertIn("aquatics", by_id)
+        self.assertIn("peap", by_id)
+        self.assertEqual(
+            by_id["aquatics"]["source_url"],
+            "https://recsports.tamu.edu/programs/aquatics/",
+        )
+        self.assertEqual(by_id["aquatics"]["facility_counts"][0]["location_name"], "50-Meter")
 
 
 class LibraryLiveMappingTests(unittest.TestCase):

@@ -339,11 +339,30 @@ export function PlacesList({
         : loc.percent_full != null && Number.isFinite(loc.percent_full)
           ? loc.percent_full
           : null;
+    const recUpdatedLabel =
+      loc.type === "Rec" && (loc.capacity_last_updated || loc.capacity_as_of)
+        ? (() => {
+            const raw = loc.capacity_last_updated || loc.capacity_as_of;
+            const parsed = new Date(
+              String(raw).includes("T") ? String(raw) : String(raw).replace(" ", "T"),
+            );
+            return Number.isNaN(parsed.getTime())
+              ? null
+              : `Updated ${parsed.toLocaleTimeString("en-US", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}`;
+          })()
+        : null;
 
     const primaryMeta = loc.classMeetings?.length
       ? `${loc.classMeetings.length} class${loc.classMeetings.length === 1 ? "" : "es"}`
       : isCapacityType
-        ? `${displayPercent != null ? `${displayPercent}% full` : hoursForList || "Hours available"}`
+        ? `${
+            displayPercent != null
+              ? `${displayPercent}% full${recUpdatedLabel ? ` · ${recUpdatedLabel}` : ""}`
+              : hoursForList || "Hours available"
+          }`
         : loc.hours_today || loc.hours || loc.type;
     const secondaryMeta =
       loc.type === "Parking"
