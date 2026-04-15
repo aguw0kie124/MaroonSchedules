@@ -165,9 +165,9 @@ export const TOUR_SEQUENCE: TourStep[] = [
   {
     id: 'social-tab',
     title: 'Head to Campus Pulse',
-    instruction: "Tap the 'Pings' tab in the bottom navigation to open the live campus pulse feed.",
-    where: 'Look in the bottom tab bar for the tab labeled Pings.',
-    cue: 'Tap Pings in the bottom navigation.',
+    instruction: "Tap the 'Social' tab in the bottom navigation to open the live campus pulse feed.",
+    where: 'Look in the bottom tab bar for the tab labeled Social.',
+    cue: 'Tap Social in the bottom navigation.',
     celebrationTitle: 'Nice move.',
     celebrationBody: 'Welcome to the live campus pulse.',
     position: 'top',

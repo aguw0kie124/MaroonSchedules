@@ -306,7 +306,7 @@ function MainTabs(props: any) {
         return {
           name: 'Social',
           component: AnimatedSocialScreen,
-          title: 'Pings',
+          title: 'Social',
           icon: Radio,
           initialParams: undefined,
         };

@@ -37,7 +37,7 @@ export const PARKING_PERMIT_OPTIONS: Array<{ id: ParkingPermit; label: string; d
 export const DEFAULT_NAV_ITEMS: ToggleLayoutItem<NavItemId>[] = [
   { id: 'Dashboard', label: 'Events', visible: true, order: 0 },
   { id: 'Places', label: 'Places', visible: true, order: 1 },
-  { id: 'Social', label: 'Pings', visible: true, order: 2 },
+  { id: 'Social', label: 'Social', visible: true, order: 2 },
   { id: 'Dining', label: 'Dining', visible: false, order: 3 },
 ];
 
