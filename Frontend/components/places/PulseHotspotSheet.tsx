@@ -12,11 +12,12 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { ChevronDown, ChevronUp, Clock3, ExternalLink, X } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Clock3, ExternalLink, MessageCircle, X } from 'lucide-react-native';
 
 import { useTheme } from '../SharedUI';
 import type { CampusHotspot, CampusHotspotItem } from '../../services/campusPulse';
 import { getCampusHotspotItemVoteScore } from '../../services/campusPulse';
+import { PingCommentsModal } from '../pings/PingCommentsModal';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HORIZONTAL_MARGIN = 12;
@@ -55,6 +56,7 @@ export function PulseHotspotSheet({
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
   const [activeIndex, setActiveIndex] = useState(0);
+  const [commentTarget, setCommentTarget] = useState<CampusHotspotItem | null>(null);
 
   useEffect(() => {
     setActiveIndex(0);
@@ -137,6 +139,7 @@ export function PulseHotspotSheet({
                     isDark={isDark}
                     onOpenItem={onOpenItem}
                     onVote={onVote}
+                    onOpenComments={setCommentTarget}
                   />
                 ))}
               </ScrollView>
@@ -178,6 +181,21 @@ export function PulseHotspotSheet({
           borderColor={shellBorderColor}
         />
       </Animated.View>
+
+      <PingCommentsModal
+        visible={!!commentTarget}
+        target={
+          commentTarget?.activityId
+            ? {
+                activityId: commentTarget.activityId,
+                title: commentTarget.title,
+                subtitle: commentTarget.locationTag || hotspot.locationName,
+                commentCount: commentTarget.commentCount || 0,
+              }
+            : null
+        }
+        onClose={() => setCommentTarget(null)}
+      />
     </View>
   );
 }
@@ -188,12 +206,14 @@ function PreviewPage({
   isDark,
   onOpenItem,
   onVote,
+  onOpenComments,
 }: {
   hotspot: CampusHotspot;
   item: CampusHotspotItem;
   isDark: boolean;
   onOpenItem: (hotspot: CampusHotspot, item: CampusHotspotItem) => void;
   onVote: (hotspotId: string, itemId: string, target: number) => void;
+  onOpenComments: (item: CampusHotspotItem) => void;
 }) {
   const { COLORS } = useTheme();
   const hasImage = Boolean(item.imageUrl);
@@ -270,13 +290,45 @@ function PreviewPage({
             </View>
 
             {item.source === 'ping' ? (
-              <ItemVoteControls
-                score={getCampusHotspotItemVoteScore(item)}
-                userVote={item.userVote || 0}
-                onVote={(target) => onVote(hotspot.id, item.id, target)}
-                categoryColor={hotspot.pulseColor}
-                lightText={hasImage}
-              />
+              <View style={styles.pingActionRow}>
+                <ItemVoteControls
+                  score={getCampusHotspotItemVoteScore(item)}
+                  userVote={item.userVote || 0}
+                  onVote={(target) => onVote(hotspot.id, item.id, target)}
+                  categoryColor={hotspot.pulseColor}
+                  lightText={hasImage}
+                />
+                {item.activityId ? (
+                  <Pressable
+                    onPress={() => onOpenComments(item)}
+                    style={({ pressed }) => [
+                      styles.iconAction,
+                      {
+                        backgroundColor: hasImage
+                          ? 'rgba(255,255,255,0.14)'
+                          : `${hotspot.pulseColor}10`,
+                        borderColor: hasImage
+                          ? 'rgba(255,255,255,0.08)'
+                          : `${hotspot.pulseColor}20`,
+                        opacity: pressed ? 0.74 : 1,
+                      },
+                    ]}
+                  >
+                    <MessageCircle
+                      size={14}
+                      color={hasImage ? '#FFFFFF' : hotspot.pulseColor}
+                    />
+                    <Text
+                      style={[
+                        styles.iconActionLabel,
+                        { color: hasImage ? '#FFFFFF' : hotspot.pulseColor },
+                      ]}
+                    >
+                      {item.commentCount || 0}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
             ) : item.link ? (
               <Pressable
                 onPress={() => onOpenItem(hotspot, item)}
@@ -655,13 +707,25 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
   },
+  pingActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   iconAction: {
-    width: 30,
+    minWidth: 30,
     height: 30,
     borderRadius: 15,
+    paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 4,
     borderWidth: 1,
+  },
+  iconActionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
   },
   eventPill: {
     paddingHorizontal: 10,

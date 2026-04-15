@@ -1253,7 +1253,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   );
 
   const toggleHotspotVote = useCallback(async (hotspotId: string, itemId: string, targetVote: number) => {
-    const pulseKey = ['campus-pulse', user?.id];
+    const pulseKey = ['campus-pulse', user?.id, API_URL];
     const prevPulseData = queryClient.getQueryData(pulseKey) as CampusHotspot[] | undefined;
     if (!prevPulseData) return;
 
@@ -2709,7 +2709,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
                           const item = (
                             <TouchableOpacity
-                              key={loc.location}
+                              key={`${('placeId' in loc && loc.placeId) || loc.location}-${loc.coord.lat}-${loc.coord.lng}`}
                               style={(styles as any).listDropdownItem}
                               onLayout={
                                 isRecCenterTourItem

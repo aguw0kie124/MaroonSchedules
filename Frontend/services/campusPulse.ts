@@ -7,11 +7,15 @@ export interface CampusHotspotItem {
   source: "ping" | "event";
   title: string;
   subtitle: string;
+  body?: string;
   category: string;
   timeLabel: string;
   startAt: string;
   link?: string | null;
   imageUrl?: string | null;
+  activityId?: string;
+  locationTag?: string;
+  commentCount?: number;
   upvotes?: number;
   downvotes?: number;
   itemScore?: number;
@@ -243,6 +247,9 @@ export async function fetchCampusPulseMap(
     const items = (Array.isArray(hotspot.items) ? hotspot.items : []).map((item: any) => ({
       ...item,
       timeLabel: formatPulseTimeLabel(item.startAt ?? item.start_at, item.timeLabel ?? item.time_label),
+      activityId: item.activityId ?? item.activity_id ?? item.id,
+      locationTag: item.locationTag ?? item.location_tag ?? hotspot.locationName ?? '',
+      commentCount: toSafeNumber(item.commentCount ?? item.comment_count),
       upvotes: toSafeNumber(item.upvotes),
       downvotes: toSafeNumber(item.downvotes),
       itemScore: toSafeNumber(item.itemScore),

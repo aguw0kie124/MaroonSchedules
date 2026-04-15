@@ -305,6 +305,16 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
         interactions = {}
 
     try:
+        user_reactions = (
+            feed_repository.get_user_interactions_batch(clerk_id, post_ids)
+            if clerk_id and post_ids
+            else {}
+        )
+    except Exception as exc:
+        print(f"[pulse_service] DB query failed for user reactions: {exc}")
+        user_reactions = {}
+
+    try:
         occupancy_by_place = _load_occupancy_by_place()
     except Exception as exc:
         print(f"[pulse_service] occupancy load failed: {exc}")
@@ -422,9 +432,10 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
                 continue
 
         counts = interactions.get(ping_id, {})
+        own_reactions = user_reactions.get(ping_id, {})
         upvote_count = int(counts.get("upvote") or counts.get("like") or 0)
         downvote_count = int(counts.get("downvote") or 0)
-        item_score = upvote_count - downvote_count + 20 # Base boost to ensure visibility
+        item_score = upvote_count - downvote_count
         comment_count = int(counts.get("comment") or 0)
 
         weight = (
@@ -451,15 +462,19 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
                 "source": "ping",
                 "title": custom.get("ping_title") or ping.get("content") or "Campus Ping",
                 "subtitle": custom.get("user_name") or ping.get("user_name") or "Aggie",
+                "body": ping.get("content") or "",
                 "category": category,
                 "timeLabel": _format_time_label(start_at),
                 "startAt": start_at,
                 "link": None,
+                "activityId": ping_id,
+                "locationTag": place["name"],
                 "imageUrl": ping.get("image_url") or custom.get("image_url") or (ping.get("media_urls") and ping.get("media_urls")[0] if ping.get("media_urls") else None) or (ping.get("images") and ping.get("images")[0] if ping.get("images") else None),
                 "upvotes": upvote_count,
                 "downvotes": downvote_count,
+                "commentCount": comment_count,
                 "itemScore": item_score,
-                "userVote": 0 # userVote can be mapped client-side or handled dynamically
+                "userVote": 1 if own_reactions.get("upvote") else (-1 if own_reactions.get("downvote") else 0),
             }
         )
 
@@ -580,7 +595,15 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
                     group["eventCount"],
                     percent_full,
                 ),
-                "items": sorted(group["items"], key=lambda item: item["startAt"])[:6],
+                "items": sorted(
+                    group["items"],
+                    key=lambda item: (
+                        0 if item["source"] == "ping" else 1,
+                        -int(item.get("itemScore") or 0),
+                        -int(item.get("commentCount") or 0),
+                        item.get("startAt") or "",
+                    ),
+                )[:6],
                 "place": place_registry_service.serialize_place(resolved_place) if resolved_place else None,
             }
         )

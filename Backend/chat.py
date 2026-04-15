@@ -328,8 +328,9 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
         verb = activity.get("verb", "post")
         custom = activity.get("custom", {})
         
+        created_activity: Optional[Dict[str, Any]] = None
         if feed_group == "flat" and feed_id.startswith("place_review_"):
-            feed_repository.add_place_review(
+            created_review = feed_repository.add_place_review(
                 place_id=custom.get("place_id", ""),
                 user_id=user_id,
                 rating=custom.get("rating", 0),
@@ -337,7 +338,12 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
                 user_name=custom.get("user_name", "Aggie"),
                 user_image=custom.get("user_image", ""),
                 images=custom.get("images", []),
-                is_anonymous=custom.get("is_anonymous", False)
+                is_anonymous=False,
+            )
+            created_activity = _transform_review_to_activity(
+                created_review,
+                {"like": 0, "comment": 0, "upvote": 0, "downvote": 0, "score": 0},
+                {},
             )
         elif feed_group == "flat" and feed_id in ["campus_global", "campus_pings", "reels_global"]:
             if feed_id == "campus_pings":
@@ -366,7 +372,7 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
             except ValueError:
                 fl_lng = None
 
-            feed_repository.add_crowdping_post(
+            created_post = feed_repository.add_crowdping_post(
                 user_id=user_id,
                 content=content,
                 post_type=verb,
@@ -376,12 +382,21 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
                 lng=fl_lng,
                 location_tag=custom.get("location_tag", ""),
                 images=images,
-                is_anonymous=bool(custom.get("is_anonymous", False)),
-                custom_data=custom
+                is_anonymous=False,
+                custom_data={**custom, "is_anonymous": False},
+            )
+            created_activity = _transform_post_to_activity(
+                created_post,
+                {"like": 0, "comment": 0, "upvote": 0, "downvote": 0, "score": 0},
+                {},
             )
         
         _invalidate_ping_related_caches(feed_group, feed_id)
-        return {"status": "success", "message": "Activity recorded natively"}
+        return {
+            "status": "success",
+            "message": "Activity recorded natively",
+            "activity": created_activity,
+        }
     except Exception as e:
         print(f"Native Write Error: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))

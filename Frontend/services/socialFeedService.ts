@@ -111,7 +111,7 @@ export async function getCampusFeed(limit = 25): Promise<any[]> {
 
 export async function getPingFeed(limit = 40): Promise<any[]> {
   try {
-    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?limit=${limit}&refresh=true`, {}, 15000);
+    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?limit=${limit}`, {}, 12000);
     if (!res.ok) throw new Error('Proxy Fetch Error');
     const data = await res.json();
     return data.results || [];
@@ -133,12 +133,10 @@ export async function addPing(params: {
   startAt: string;
   endAt?: string;
   mediaUrl?: string;
-  isAnonymous?: boolean;
   latitude?: number;
   longitude?: number;
   anchorType?: 'place' | 'geo';
 }): Promise<any> {
-  const isAnonymous = params.isAnonymous === true;
   const attachments: any[] = [];
   if (params.mediaUrl) {
     attachments.push({
@@ -155,8 +153,8 @@ export async function addPing(params: {
     text: params.body,
     attachments,
     custom: {
-      user_name: isAnonymous ? 'Aggie User' : (params.userName || getPremiumName(currentFullUser)),
-      user_image: isAnonymous ? '' : (params.userImage ?? getPremiumImage(currentFullUser) ?? ''),
+      user_name: params.userName || getPremiumName(currentFullUser),
+      user_image: params.userImage ?? getPremiumImage(currentFullUser) ?? '',
       ping_title: params.title,
       ping_category: params.category,
       location_tag: params.locationTag,
@@ -164,7 +162,7 @@ export async function addPing(params: {
       start_at: params.startAt,
       end_at: params.endAt || '',
       content_type: 'ping',
-      is_anonymous: isAnonymous,
+      is_anonymous: false,
       anchor_type: params.anchorType || 'place',
       place_lat: params.latitude,
       place_lng: params.longitude,
@@ -182,6 +180,7 @@ export async function addPing(params: {
     console.warn(`[NativeFeeds] addPing error: ${err}`);
     throw new Error(`Proxy Ping Error: ${err}`);
   }
+  return res.json();
 }
 
 export async function deletePing(activityId: string) {

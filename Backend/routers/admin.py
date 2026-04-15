@@ -754,9 +754,11 @@ def get_pending_reviews(
                 if event:
                     event["id"] = str(event["id"])
                 return event
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error checking pending reviews: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        return None
 
 
 @router.post("/events/{event_id}/reviews")

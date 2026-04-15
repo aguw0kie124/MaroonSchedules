@@ -16,7 +16,6 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableWithoutFeedback,
@@ -53,7 +52,6 @@ import {
   Plus,
   Search,
   Share2,
-  Shield,
   Sparkles,
   Trash2,
   Users,
@@ -69,6 +67,7 @@ import { useTheme } from './SharedUI';
 import { useAppShellStore } from '../store/appShellStore';
 import { useEventStore } from '../store/eventStore';
 import { TourTarget, useTour } from './onboarding/TourProvider';
+import { PingCommentsModal } from './pings/PingCommentsModal';
 import {
   addFriend,
   addComment,
@@ -307,18 +306,16 @@ function mapActivityToPing(activity: any, currentUser: any, userMap: Map<string,
   const custom = activity.custom || {};
   const actor = activity.actor || {};
   const userId = (actor.id || activity.actor || '').replace('SU:', '');
-  const rawName = custom.is_anonymous ? 'Aggie User' : (actor.name || actor.data?.name || custom.user_name || 'Aggie User');
+  const rawName = actor.name || actor.data?.name || custom.user_name || 'Aggie User';
 
   // Resolve name: Current User match > User Directory match > Raw Name (if not encrypted) > 'Aggie User'
   let resolvedName = rawName;
-  if (!custom.is_anonymous) {
-    if (userId === currentUser?.id) {
-      resolvedName = currentUser.username || currentUser.firstName || currentUser.fullName || 'Shreyaan';
-    } else if (userMap.has(userId)) {
-      resolvedName = userMap.get(userId)!;
-    } else if (isEncryptedString(rawName)) {
-      resolvedName = 'Aggie User';
-    }
+  if (userId === currentUser?.id) {
+    resolvedName = currentUser.username || currentUser.firstName || currentUser.fullName || 'Shreyaan';
+  } else if (userMap.has(userId)) {
+    resolvedName = userMap.get(userId)!;
+  } else if (isEncryptedString(rawName)) {
+    resolvedName = 'Aggie User';
   }
 
   const attachments = activity.attachments || [];
@@ -350,12 +347,12 @@ function mapActivityToPing(activity: any, currentUser: any, userMap: Map<string,
     createdAt: activity.time || activity.created_at || new Date().toISOString(),
     userId,
     userName: resolvedName,
-    userImage: custom.is_anonymous ? null : (actor.image || actor.data?.image || custom.user_image || null),
+    userImage: actor.image || actor.data?.image || custom.user_image || null,
     score: activity.reaction_counts?.score ?? activity.reaction_counts?.upvote ?? 0,
     userVote: activity.own_reactions?.upvote ? 1 : (activity.own_reactions?.downvote ? -1 : 0),
     commentCount: activity.reaction_counts?.comment || 0,
     activityId: activity.id,
-    isAnonymous: !!custom.is_anonymous,
+    isAnonymous: false,
     imageUrl: imageUrl,
     locationLat: locationLat,
     locationLng: locationLng,
@@ -386,7 +383,6 @@ export function CampusPingsScreen() {
     setComposerCategory('Popup');
     setComposerTimePreset('now');
     setComposerDurationHours(3);
-    setComposerAnonymous(false);
     setLocationQuery('');
     setSelectedLocation(null);
     setComposerGeoLocation(null);
@@ -480,7 +476,6 @@ export function CampusPingsScreen() {
   const [composerCategory, setComposerCategory] = useState<PingCategory>('Popup');
   const [composerTimePreset, setComposerTimePreset] = useState<TimePreset>('now');
   const [composerDurationHours, setComposerDurationHours] = useState<number>(3);
-  const [composerAnonymous, setComposerAnonymous] = useState(false);
   const [locationQuery, setLocationQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [composerGeoLocation, setComposerGeoLocation] = useState<ComposerGeoLocation | null>(null);
@@ -490,6 +485,7 @@ export function CampusPingsScreen() {
   const [isResolvingCurrentLocation, setIsResolvingCurrentLocation] = useState(false);
 
   const [activeFeaturedEvent, setActiveFeaturedEvent] = useState<FeaturedEvent | null>(null);
+  const [activeCommentsPing, setActiveCommentsPing] = useState<PingCard | null>(null);
 
   const { data: friends = [] } = useQuery({
     queryKey: ['campus-ping-friends', API_URL, user?.id],
@@ -809,10 +805,10 @@ export function CampusPingsScreen() {
         uploadedImageUrl = await uploadMediaImage(composerImageUri);
       }
 
-      await addPing({
+      const createdPing = await addPing({
         userId: user.id,
-        userName: composerAnonymous ? 'Aggie User' : displayName,
-        userImage: composerAnonymous ? undefined : user.imageUrl,
+        userName: displayName,
+        userImage: user.imageUrl,
         title: composerTitle.trim(),
         body: composerBody.trim(),
         category: composerCategory,
@@ -824,12 +820,21 @@ export function CampusPingsScreen() {
         startAt,
         endAt,
         mediaUrl: uploadedImageUrl,
-        isAnonymous: composerAnonymous,
       });
+
+      const createdActivity = createdPing?.activity;
+      if (createdActivity) {
+        const optimisticPing = mapActivityToPing(createdActivity, user, userMap);
+        queryClient.setQueryData(['campus-pings', API_URL], (current: PingCard[] | undefined) => {
+          const existing = current || [];
+          return [optimisticPing, ...existing.filter((entry) => entry.id !== optimisticPing.id)];
+        });
+      }
 
       setComposerVisible(false);
       resetComposer();
-      handleRefresh();
+      queryClient.invalidateQueries({ queryKey: ['campus-pings', API_URL] });
+      queryClient.invalidateQueries({ queryKey: ['campus-pulse', user?.id, API_URL] });
     } catch (error: any) {
       console.warn('[Pings] create failed', error);
       Alert.alert('Could not post ping', error?.message || 'Something went wrong.');
@@ -843,14 +848,14 @@ export function CampusPingsScreen() {
     composerDurationHours,
     composerTimePreset,
     composerImageUri,
-    composerAnonymous,
     composerGeoLocation,
     selectedLocation,
     feedConnected,
+    queryClient,
     handleUseCurrentLocation,
-    handleRefresh,
     resetComposer,
     user,
+    userMap,
     locationLookup,
     useCurrentLocation,
   ]);
@@ -981,7 +986,7 @@ export function CampusPingsScreen() {
       return;
     }
 
-    const displayName = ping.isAnonymous ? 'this user' : ping.userName;
+    const displayName = ping.userName;
     Alert.alert(
       'Block user?',
       `You will stop seeing posts from ${displayName}, and you will no longer be able to interact with each other until you unblock them in Blocked Users.`,
@@ -1005,6 +1010,22 @@ export function CampusPingsScreen() {
     );
   }, [removeBlockedUserFromVisibleFeed, user?.id]);
 
+  const handleOpenComments = useCallback((ping: PingCard) => {
+    setActiveCommentsPing(ping);
+  }, []);
+
+  const handleCommentPosted = useCallback(() => {
+    if (!activeCommentsPing) return;
+    queryClient.setQueryData(['campus-pings', API_URL], (current: PingCard[] | undefined) => {
+      if (!current) return current;
+      return current.map((entry) =>
+        entry.id === activeCommentsPing.id
+          ? { ...entry, commentCount: (entry.commentCount || 0) + 1 }
+          : entry,
+      );
+    });
+  }, [activeCommentsPing, queryClient]);
+
   const handleAddPingAuthorAsFriend = useCallback((ping: PingCard) => {
     if (!user?.id || !ping.userId) {
       Alert.alert('Sign in required', 'Please sign in to add a friend.');
@@ -1015,7 +1036,7 @@ export function CampusPingsScreen() {
       return;
     }
 
-    const displayName = ping.isAnonymous ? 'this user' : ping.userName;
+    const displayName = ping.userName;
     Alert.alert(
       'Add friend?',
       `Add ${displayName} to your friends list?`,
@@ -1038,9 +1059,9 @@ export function CampusPingsScreen() {
   }, [user?.id]);
 
   const handleOpenPingMenu = useCallback((ping: PingCard) => {
-    const displayName = ping.isAnonymous ? 'this user' : ping.userName;
+    const displayName = ping.userName;
     const actions: Array<{ text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }> = [];
-    if (ping.userId && ping.userId !== user?.id && !ping.isAnonymous) {
+    if (ping.userId && ping.userId !== user?.id) {
       actions.push({ text: 'Add Friend', onPress: () => handleAddPingAuthorAsFriend(ping) });
     }
     actions.push({ text: 'Report', onPress: () => handleReportPing(ping) });
@@ -1196,7 +1217,7 @@ export function CampusPingsScreen() {
             </View>
             <View style={styles.pingAuthorBlock}>
               <Text style={[styles.pingAuthorName, { color: textColor }]}>
-                {item.isAnonymous ? 'Anonymous' : item.userName}
+                {item.userName}
               </Text>
               <Text style={[styles.pingTimestamp, { color: secondaryTextColor }]}>
                 {formatRelativeAge(item.createdAt)} · {item.locationTag}
@@ -1281,6 +1302,19 @@ export function CampusPingsScreen() {
                   />
                 </ScalePressable>
               </View>
+
+              <ScalePressable 
+                style={[styles.pingSecondaryAction, hasImage && { backgroundColor: 'rgba(0,0,0,0.4)', borderColor: 'rgba(255,255,255,0.1)' }]}
+                onPress={() => handleOpenComments(item)}
+              >
+                <MessageCircle size={18} color={hasImage ? '#FFFFFF' : COLORS.textTertiary} />
+                <Text style={[
+                  styles.pingSecondaryActionText,
+                  hasImage && { color: '#FFFFFF' },
+                ]}>
+                  {item.commentCount || 0}
+                </Text>
+              </ScalePressable>
 
               <ScalePressable 
                 style={[styles.pingSecondaryAction, hasImage && { backgroundColor: 'rgba(0,0,0,0.4)', borderColor: 'rgba(255,255,255,0.1)' }]}
@@ -1612,7 +1646,7 @@ export function CampusPingsScreen() {
                         >
                           {locationSuggestions.map((loc) => (
                             <Pressable
-                              key={loc.location}
+                              key={`${loc.placeId || loc.location}-${loc.coord.lat}-${loc.coord.lng}`}
                               style={styles.suggestionItem}
                               onPress={() => handleSelectLocation(loc.location)}
                             >
@@ -1687,18 +1721,6 @@ export function CampusPingsScreen() {
                               <Text style={styles.stepperButtonText}>+</Text>
                             </ScalePressable>
                           </View>
-                        </View>
-                        <View style={styles.preferenceDivider} />
-                        <View style={styles.compactPreferenceRow}>
-                          <View style={styles.anonymousInlineLabel}>
-                            <Shield size={18} color={composerAnonymous ? COLORS.success : COLORS.textSecondary} />
-                            <Text style={styles.compactPreferenceLabel}>Post anonymously</Text>
-                          </View>
-                          <Switch
-                            value={composerAnonymous}
-                            onValueChange={setComposerAnonymous}
-                            trackColor={{ false: COLORS.border, true: COLORS.success }}
-                          />
                         </View>
                       </View>
                     </View>
@@ -1784,6 +1806,22 @@ export function CampusPingsScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      <PingCommentsModal
+        visible={!!activeCommentsPing}
+        target={
+          activeCommentsPing?.activityId
+            ? {
+                activityId: activeCommentsPing.activityId,
+                title: activeCommentsPing.title,
+                subtitle: activeCommentsPing.locationTag,
+                commentCount: activeCommentsPing.commentCount,
+              }
+            : null
+        }
+        onClose={() => setActiveCommentsPing(null)}
+        onCommentPosted={handleCommentPosted}
+      />
     </View>
   );
 }
