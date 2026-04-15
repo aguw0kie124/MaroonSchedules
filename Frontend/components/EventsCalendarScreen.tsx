@@ -1787,11 +1787,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           </View>
 
           <View style={[s.categoryWrap, { marginBottom: 16, marginTop: 4 }]}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={s.categoryCollapsedRow}
-            >
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={[s.categoryCollapsedRow, { paddingLeft: 20 }]}
+                >
               {ALL_CATEGORIES.map((category) => (
                 <CategoryChip
                   key={category}
@@ -2236,15 +2236,6 @@ function ListEventRow({
         </Text>
       </View>
       <View style={stylesStatic.listActions}>
-        {!isGuest ? (
-          <Pressable onPress={onDelete} style={stylesStatic.listActionButton}>
-            <Trash2 size={20} color={COLORS.textSecondary} />
-          </Pressable>
-        ) : null}
-
-        <Pressable onPress={onShare} style={stylesStatic.listActionButton}>
-          <Share2 size={20} color={COLORS.textSecondary} />
-        </Pressable>
         <Pressable
           onPress={onSchedule}
           style={[
@@ -2258,8 +2249,18 @@ function ListEventRow({
             },
           ]}
         >
-          {scheduled ? <XIcon size={20} color="#E06A3E" /> : <Check size={20} color="#3CCB6C" />}
+          {scheduled ? <XIcon size={18} color="#E06A3E" /> : <Check size={18} color="#3CCB6C" />}
         </Pressable>
+
+        <Pressable onPress={onShare} style={stylesStatic.listActionButton}>
+          <Share2 size={18} color={COLORS.textSecondary} />
+        </Pressable>
+
+        {!isGuest ? (
+          <Pressable onPress={onDelete} style={stylesStatic.listActionButton}>
+            <Trash2 size={18} color={COLORS.textSecondary} />
+          </Pressable>
+        ) : null}
       </View>
     </Pressable>
   );
@@ -2959,12 +2960,14 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       flexDirection: 'row',
       gap: 10,
       paddingHorizontal: 20,
-      paddingBottom: 10,
+      marginTop: 6,
+      marginBottom: 10,
     },
     searchShell: {
       flex: 1,
       height: 46,
-      borderRadius: 14,
+      borderRadius: 999,
+      marginTop: 6,
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: 14,
@@ -2990,7 +2993,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       backgroundColor: 'transparent',
     },
     listScroll: {
-      paddingHorizontal: 18,
+      paddingHorizontal: 20,
       paddingBottom: 126,
       gap: 0,
     },
@@ -3466,12 +3469,12 @@ const stylesStatic = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 12,
+    paddingVertical: 10,
   },
   listThumb: {
-    width: 84,
-    height: 84,
-    borderRadius: 14,
+    width: 76,
+    height: 76,
+    borderRadius: 12,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -3498,27 +3501,27 @@ const stylesStatic = StyleSheet.create({
   },
   listTitle: {
     flex: 1,
-    fontSize: 16,
-    lineHeight: 21,
+    fontSize: 15,
+    lineHeight: 20,
     fontWeight: '700',
   },
   listMeta: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: '500',
   },
   listOrganizer: {
     fontWeight: '700',
   },
   listActions: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   listActionButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
