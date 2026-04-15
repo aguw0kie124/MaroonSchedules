@@ -49,10 +49,10 @@ export function TodayTimeline({
     };
 
     return [...activeScheduleOption.entries].sort((a: any, b: any) => {
-      const tA = parseTime(a.timeLabel) || (a.date_ts ? (new Date(a.date_ts * 1000).getHours() * 60 + new Date(a.date_ts * 1000).getMinutes()) : 0);
-      const tB = parseTime(b.timeLabel) || (b.date_ts ? (new Date(b.date_ts * 1000).getHours() * 60 + new Date(b.date_ts * 1000).getMinutes()) : 0);
+      const tA = parseTime(a?.timeLabel || "") || (a?.date_ts ? (new Date(a.date_ts * 1000).getHours() * 60 + new Date(a.date_ts * 1000).getMinutes()) : 0);
+      const tB = parseTime(b?.timeLabel || "") || (b?.date_ts ? (new Date(b.date_ts * 1000).getHours() * 60 + new Date(b.date_ts * 1000).getMinutes()) : 0);
       if (tA !== tB) return tA - tB;
-      return (a.date_ts || 0) - (b.date_ts || 0);
+      return (Number(a?.date_ts) || 0) - (Number(b?.date_ts) || 0);
     });
   }, [activeScheduleOption]);
 
@@ -110,7 +110,7 @@ export function TodayTimeline({
             <View key={`${entry.id}-${index}`} style={localStyles.timelineItem}>
               <View style={localStyles.timeContainer}>
                 <Text style={[localStyles.timeText, { color: palette.time }]}>
-                  {entry.timeLabel.split("-")[0].trim().replace(/^0/, '')}
+                  {(entry.timeLabel || "").split("-")[0].trim().replace(/^0/, '') || "--:--"}
                 </Text>
               </View>
 

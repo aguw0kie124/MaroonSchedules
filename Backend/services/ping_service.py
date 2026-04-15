@@ -1,28 +1,10 @@
-from __future__ import annotations
-
-import os
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List
-
-import stream
+from typing import Any, Dict, Optional
 
 from services import place_registry_service
 
 
-def get_feeds_credentials() -> tuple[str, str]:
-    key = os.environ.get("STREAM_FEEDS_API_KEY") or os.environ.get("STREAM_API_KEY", "")
-    secret = os.environ.get("STREAM_FEEDS_API_SECRET") or os.environ.get("STREAM_API_SECRET", "")
-    return key, secret
-
-
-def _server_client():
-    api_key, api_secret = get_feeds_credentials()
-    if not api_key or not api_secret:
-        return None
-    return stream.connect(api_key, api_secret)
-
-
-def _parse_iso(iso_value: str | None) -> datetime | None:
+def _parse_iso(iso_value: Optional[str]) -> Optional[datetime]:
     if not iso_value:
         return None
     try:
@@ -31,7 +13,7 @@ def _parse_iso(iso_value: str | None) -> datetime | None:
         return None
 
 
-def _coerce_iso(iso_value: str | None, fallback: datetime) -> str:
+def _coerce_iso(iso_value: Optional[str], fallback: datetime) -> str:
     parsed = _parse_iso(iso_value)
     if parsed:
         return parsed.isoformat()
@@ -96,17 +78,3 @@ def enrich_ping_activity(activity: Dict[str, Any]) -> Dict[str, Any]:
         "custom": normalized_custom,
         "place": place_registry_service.serialize_place(resolved_place),
     }
-
-
-def get_campus_ping_activities(limit: int = 80) -> List[Dict[str, Any]]:
-    client = _server_client()
-    if client is None:
-        return []
-
-    feed = client.feed("flat", "campus_pings")
-    try:
-        response = feed.get(limit=limit, enrich=True, reactions={"recent": True, "counts": True})
-        return [enrich_ping_activity(activity) for activity in response.get("results", [])]
-    except Exception as exc:
-        print(f"[ping_service] failed to fetch campus pings: {exc}")
-        return []

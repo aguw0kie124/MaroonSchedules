@@ -16,7 +16,6 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableWithoutFeedback,
@@ -53,7 +52,6 @@ import {
   Plus,
   Search,
   Share2,
-  Shield,
   Sparkles,
   Trash2,
   Users,
@@ -69,17 +67,22 @@ import { useTheme } from './SharedUI';
 import { useAppShellStore } from '../store/appShellStore';
 import { useEventStore } from '../store/eventStore';
 import { TourTarget, useTour } from './onboarding/TourProvider';
+import { PingCommentsModal } from './pings/PingCommentsModal';
 import {
+  addFriend,
   addComment,
   addPing,
-  connectFeedsUser,
+  blockUser,
+  initializeFeedUser,
   deletePing,
   getComments,
+  getFriends,
   getPingFeed,
+  reportContent,
   toggleLike,
   toggleVote,
-  uploadStreamImage,
-} from '../services/streamFeeds';
+  uploadMediaImage,
+} from '../services/socialFeedService';
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
 import { useSessionStore } from '../store/sessionStore';
 
@@ -92,6 +95,8 @@ type PingCategory =
   | 'Popup'
   | 'Market'
   | 'Heads Up';
+
+type FeedFilter = 'All' | 'Friends' | PingCategory;
 
 type TimePreset = 'now' | 'soon' | 'tonight' | 'tomorrow';
 
@@ -301,18 +306,16 @@ function mapActivityToPing(activity: any, currentUser: any, userMap: Map<string,
   const custom = activity.custom || {};
   const actor = activity.actor || {};
   const userId = (actor.id || activity.actor || '').replace('SU:', '');
-  const rawName = custom.is_anonymous ? 'Aggie User' : (actor.name || actor.data?.name || custom.user_name || 'Aggie User');
+  const rawName = actor.name || actor.data?.name || custom.user_name || 'Aggie User';
 
   // Resolve name: Current User match > User Directory match > Raw Name (if not encrypted) > 'Aggie User'
   let resolvedName = rawName;
-  if (!custom.is_anonymous) {
-    if (userId === currentUser?.id) {
-      resolvedName = currentUser.username || currentUser.firstName || currentUser.fullName || 'Shreyaan';
-    } else if (userMap.has(userId)) {
-      resolvedName = userMap.get(userId)!;
-    } else if (isEncryptedString(rawName)) {
-      resolvedName = 'Aggie User';
-    }
+  if (userId === currentUser?.id) {
+    resolvedName = currentUser.username || currentUser.firstName || currentUser.fullName || 'Shreyaan';
+  } else if (userMap.has(userId)) {
+    resolvedName = userMap.get(userId)!;
+  } else if (isEncryptedString(rawName)) {
+    resolvedName = 'Aggie User';
   }
 
   const attachments = activity.attachments || [];
@@ -344,12 +347,12 @@ function mapActivityToPing(activity: any, currentUser: any, userMap: Map<string,
     createdAt: activity.time || activity.created_at || new Date().toISOString(),
     userId,
     userName: resolvedName,
-    userImage: custom.is_anonymous ? null : (actor.image || actor.data?.image || custom.user_image || null),
+    userImage: actor.image || actor.data?.image || custom.user_image || null,
     score: activity.reaction_counts?.score ?? activity.reaction_counts?.upvote ?? 0,
     userVote: activity.own_reactions?.upvote ? 1 : (activity.own_reactions?.downvote ? -1 : 0),
     commentCount: activity.reaction_counts?.comment || 0,
     activityId: activity.id,
-    isAnonymous: !!custom.is_anonymous,
+    isAnonymous: false,
     imageUrl: imageUrl,
     locationLat: locationLat,
     locationLng: locationLng,
@@ -380,7 +383,6 @@ export function CampusPingsScreen() {
     setComposerCategory('Popup');
     setComposerTimePreset('now');
     setComposerDurationHours(3);
-    setComposerAnonymous(false);
     setLocationQuery('');
     setSelectedLocation(null);
     setComposerGeoLocation(null);
@@ -402,7 +404,7 @@ export function CampusPingsScreen() {
     isLoading: loadingFeatured,
     refetch: refetchFeatured,
   } = useQuery({
-    queryKey: ['campus-featured'],
+    queryKey: ['campus-featured', API_URL],
     queryFn: async () => {
       const res = await fetch(`${API_URL}/campus/events?limit=12`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -427,7 +429,7 @@ export function CampusPingsScreen() {
   const {
     data: userProfiles = [],
   } = useQuery({
-    queryKey: ['campus-chat-directory'],
+    queryKey: ['campus-chat-directory', API_URL],
     queryFn: async () => {
       try {
         const res = await fetch(`${API_URL}/chat/users`);
@@ -454,7 +456,7 @@ export function CampusPingsScreen() {
     refetch: refetchPings,
     isRefetching: refreshingPings,
   } = useQuery({
-    queryKey: ['campus-pings'],
+    queryKey: ['campus-pings', API_URL],
     queryFn: async () => {
       const activities = await getPingFeed(60);
       return (activities || []).map((a: any) => mapActivityToPing(a, user, userMap));
@@ -464,10 +466,9 @@ export function CampusPingsScreen() {
   });
 
   const [feedConnected, setFeedConnected] = useState(false);
-  const [streamError, setStreamError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [feedError, setFeedError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState<'All' | PingCategory>('All');
+  const [categoryFilter, setCategoryFilter] = useState<FeedFilter>('All');
 
   const [composerVisible, setComposerVisible] = useState(false);
   const [composerTitle, setComposerTitle] = useState('');
@@ -475,7 +476,6 @@ export function CampusPingsScreen() {
   const [composerCategory, setComposerCategory] = useState<PingCategory>('Popup');
   const [composerTimePreset, setComposerTimePreset] = useState<TimePreset>('now');
   const [composerDurationHours, setComposerDurationHours] = useState<number>(3);
-  const [composerAnonymous, setComposerAnonymous] = useState(false);
   const [locationQuery, setLocationQuery] = useState('');
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [composerGeoLocation, setComposerGeoLocation] = useState<ComposerGeoLocation | null>(null);
@@ -485,6 +485,25 @@ export function CampusPingsScreen() {
   const [isResolvingCurrentLocation, setIsResolvingCurrentLocation] = useState(false);
 
   const [activeFeaturedEvent, setActiveFeaturedEvent] = useState<FeaturedEvent | null>(null);
+  const [activeCommentsPing, setActiveCommentsPing] = useState<PingCard | null>(null);
+
+  const { data: friends = [] } = useQuery({
+    queryKey: ['campus-ping-friends', API_URL, user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      return await getFriends(user.id);
+    },
+    enabled: Boolean(user?.id),
+    staleTime: 1000 * 60,
+  });
+
+  const friendIds = useMemo(() => {
+    return new Set(
+      friends
+        .map((friend: any) => String(friend?.id || '').trim())
+        .filter(Boolean),
+    );
+  }, [friends]);
 
   const locationSuggestions = useMemo(() => {
     const query = locationQuery.trim().toLowerCase();
@@ -499,6 +518,9 @@ export function CampusPingsScreen() {
   }, [directory, locationQuery]);
 
   const featuredCards = useMemo(() => {
+    if (categoryFilter === 'Friends') {
+      return [];
+    }
     return featuredEvents
       .filter((event) => categoryFilter === 'All' || mapOfficialEventCategory(event) === categoryFilter)
       .map((event) => {
@@ -536,14 +558,28 @@ export function CampusPingsScreen() {
   );
 
   const filteredFeed = useMemo(() => {
-    return feedPings.filter((ping) => categoryFilter === 'All' || ping.category === categoryFilter);
-  }, [categoryFilter, feedPings]);
+    return feedPings.filter((ping) => {
+      if (categoryFilter === 'All') {
+        return true;
+      }
+      if (categoryFilter === 'Friends') {
+        if (!ping.userId || ping.source !== 'user') {
+          return false;
+        }
+        return friendIds.has(String(ping.userId));
+      }
+      return ping.category === categoryFilter;
+    });
+  }, [categoryFilter, feedPings, friendIds]);
+
+  const isInitialPingsLoading = loadingPings && userPings.length === 0;
+  const isManuallyRefreshing = refreshing && !isInitialPingsLoading;
 
   const loadAll = useCallback(async () => {
     setRefreshing(true);
     try {
       if (user) {
-        connectFeedsUser(user);
+        initializeFeedUser(user);
         setFeedConnected(true);
       }
       await Promise.all([refetchFeatured(), refetchPings()]);
@@ -557,10 +593,10 @@ export function CampusPingsScreen() {
   useEffect(() => {
     if (user && !feedConnected) {
       try {
-        connectFeedsUser(user);
+        initializeFeedUser(user);
         setFeedConnected(true);
       } catch (e) {
-        setStreamError('Live pings are unavailable.');
+        setFeedError('Live pings are unavailable.');
       }
     }
   }, [user, feedConnected]);
@@ -766,13 +802,13 @@ export function CampusPingsScreen() {
     try {
       let uploadedImageUrl: string | undefined;
       if (composerImageUri) {
-        uploadedImageUrl = await uploadStreamImage(composerImageUri);
+        uploadedImageUrl = await uploadMediaImage(composerImageUri);
       }
 
-      await addPing({
+      const createdPing = await addPing({
         userId: user.id,
-        userName: composerAnonymous ? 'Aggie User' : displayName,
-        userImage: composerAnonymous ? undefined : user.imageUrl,
+        userName: displayName,
+        userImage: user.imageUrl,
         title: composerTitle.trim(),
         body: composerBody.trim(),
         category: composerCategory,
@@ -784,14 +820,23 @@ export function CampusPingsScreen() {
         startAt,
         endAt,
         mediaUrl: uploadedImageUrl,
-        isAnonymous: composerAnonymous,
       });
+
+      const createdActivity = createdPing?.activity;
+      if (createdActivity) {
+        const optimisticPing = mapActivityToPing(createdActivity, user, userMap);
+        queryClient.setQueryData(['campus-pings', API_URL], (current: PingCard[] | undefined) => {
+          const existing = current || [];
+          return [optimisticPing, ...existing.filter((entry) => entry.id !== optimisticPing.id)];
+        });
+      }
 
       setComposerVisible(false);
       resetComposer();
-      handleRefresh();
+      queryClient.invalidateQueries({ queryKey: ['campus-pings', API_URL] });
+      queryClient.invalidateQueries({ queryKey: ['campus-pulse', user?.id, API_URL] });
     } catch (error: any) {
-      console.error('[Pings] create failed', error);
+      console.warn('[Pings] create failed', error);
       Alert.alert('Could not post ping', error?.message || 'Something went wrong.');
     } finally {
       setIsPosting(false);
@@ -803,14 +848,14 @@ export function CampusPingsScreen() {
     composerDurationHours,
     composerTimePreset,
     composerImageUri,
-    composerAnonymous,
     composerGeoLocation,
     selectedLocation,
     feedConnected,
+    queryClient,
     handleUseCurrentLocation,
-    handleRefresh,
     resetComposer,
     user,
+    userMap,
     locationLookup,
     useCurrentLocation,
   ]);
@@ -821,16 +866,16 @@ export function CampusPingsScreen() {
 
       const currentVote = ping.userVote || 0;
       const targetKind = direction === 1 ? 'upvote' : 'downvote';
-      const finalKind = currentVote === direction ? 'none' : targetKind;
+      const nextUserVote = currentVote === direction ? 0 : direction;
 
       // Optimistic Update
-      const previousPings = queryClient.getQueryData<PingCard[]>(['campus-pings']);
+      const previousPings = queryClient.getQueryData<PingCard[]>(['campus-pings', API_URL]);
       if (previousPings) {
         const newPings = previousPings.map(p => {
           if (p.id !== ping.id) return p;
           
           let scoreAdjustment = 0;
-          if (finalKind === 'none') {
+          if (nextUserVote === 0) {
             scoreAdjustment = -currentVote; // Remove old vote
           } else if (currentVote === 0) {
             scoreAdjustment = direction; // Add new vote
@@ -840,23 +885,34 @@ export function CampusPingsScreen() {
 
           return {
             ...p,
-            userVote: finalKind === 'upvote' ? 1 : (finalKind === 'downvote' ? -1 : 0),
+            userVote: nextUserVote,
             score: (p.score || 0) + scoreAdjustment
           };
         });
-        queryClient.setQueryData(['campus-pings'], newPings);
+        queryClient.setQueryData(['campus-pings', API_URL], newPings);
       }
 
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        await toggleVote(ping.activityId, finalKind);
+        await toggleVote(ping.activityId, targetKind);
         // We don't invalidate here to keep the optimistic speed, 
         // rely on background refetch or next intentional refresh
       } catch (error) {
         console.warn('[Pings] vote failed', error);
         // Rollback
         if (previousPings) {
-          queryClient.setQueryData(['campus-pings'], previousPings);
+          queryClient.setQueryData(['campus-pings', API_URL], previousPings);
+        }
+        if (error instanceof Error && /blocked/i.test(error.message)) {
+          Alert.alert(
+            'Interaction unavailable',
+            'You cannot interact with a user you have blocked or who has blocked you.',
+          );
+        } else if (error instanceof Error && /rate limit/i.test(error.message)) {
+          Alert.alert(
+            'Slow down!',
+            'You are voting too fast. Please wait a minute before trying again.',
+          );
         }
       }
     },
@@ -874,13 +930,12 @@ export function CampusPingsScreen() {
           onPress: async () => {
             try {
               await deletePing(ping.activityId!);
-              queryClient.setQueryData(['campus-pings'], (current: PingCard[] | undefined) => {
+              queryClient.setQueryData(['campus-pings', API_URL], (current: PingCard[] | undefined) => {
                 if (!current) return current;
                 return current.filter((entry) => entry.id !== ping.id);
               });
             } catch (error) {
-              console.warn('[Pings] delete failed', error);
-              Alert.alert('Delete failed', 'This ping could not be removed right now.');
+              console.warn('[Pings] delete failed (silent)', error);
             }
           },
         },
@@ -888,6 +943,132 @@ export function CampusPingsScreen() {
     },
     [],
   );
+
+  const removeBlockedUserFromVisibleFeed = useCallback((blockedUserId: string) => {
+    queryClient.setQueryData(['campus-pings', API_URL], (current: PingCard[] | undefined) => {
+      if (!current) return current;
+      return current.filter((entry) => entry.userId !== blockedUserId);
+    });
+  }, [queryClient]);
+
+  const handleReportPing = useCallback((ping: PingCard) => {
+    if (!user?.id || !ping.userId) {
+      Alert.alert('Sign in required', 'Please sign in to report this post.');
+      return;
+    }
+
+    const submitReport = async (reason: string) => {
+      try {
+        await reportContent({
+          reporteeId: ping.userId!,
+          postType: 'crowdping',
+          postId: ping.activityId || ping.id,
+          reason,
+        });
+        Alert.alert('Report received', 'Thanks for helping keep Campus Pulse safe.');
+      } catch (error) {
+        console.warn('[Pings] report failed', error);
+        Alert.alert('Unable to submit report', 'We could not send that report right now.');
+      }
+    };
+
+    Alert.alert('Report post', 'What is the issue with this post?', [
+      { text: 'Spam', onPress: () => submitReport('spam') },
+      { text: 'Inappropriate', onPress: () => submitReport('inappropriate') },
+      { text: 'Harassment', onPress: () => submitReport('harassment') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [user?.id]);
+
+  const handleBlockPingAuthor = useCallback((ping: PingCard) => {
+    if (!user?.id || !ping.userId) {
+      Alert.alert('Sign in required', 'Please sign in to block this user.');
+      return;
+    }
+
+    const displayName = ping.userName;
+    Alert.alert(
+      'Block user?',
+      `You will stop seeing posts from ${displayName}, and you will no longer be able to interact with each other until you unblock them in Blocked Users.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await blockUser(ping.userId!, user.id);
+              removeBlockedUserFromVisibleFeed(ping.userId!);
+              Alert.alert('User blocked', `${displayName} has been blocked.`);
+            } catch (error) {
+              console.warn('[Pings] block failed', error);
+              Alert.alert('Unable to block user', 'We could not block this user right now.');
+            }
+          },
+        },
+      ],
+    );
+  }, [removeBlockedUserFromVisibleFeed, user?.id]);
+
+  const handleOpenComments = useCallback((ping: PingCard) => {
+    setActiveCommentsPing(ping);
+  }, []);
+
+  const handleCommentPosted = useCallback(() => {
+    if (!activeCommentsPing) return;
+    queryClient.setQueryData(['campus-pings', API_URL], (current: PingCard[] | undefined) => {
+      if (!current) return current;
+      return current.map((entry) =>
+        entry.id === activeCommentsPing.id
+          ? { ...entry, commentCount: (entry.commentCount || 0) + 1 }
+          : entry,
+      );
+    });
+  }, [activeCommentsPing, queryClient]);
+
+  const handleAddPingAuthorAsFriend = useCallback((ping: PingCard) => {
+    if (!user?.id || !ping.userId) {
+      Alert.alert('Sign in required', 'Please sign in to add a friend.');
+      return;
+    }
+    if (ping.userId === user.id) {
+      Alert.alert('Your post', 'You cannot add yourself as a friend.');
+      return;
+    }
+
+    const displayName = ping.userName;
+    Alert.alert(
+      'Add friend?',
+      `Add ${displayName} to your friends list?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Add Friend',
+          onPress: async () => {
+            try {
+              await addFriend(ping.userId!, user.id);
+              Alert.alert('Friend added', `${displayName} has been added to your friends.`);
+            } catch (error) {
+              console.warn('[Pings] add friend failed', error);
+              Alert.alert('Unable to add friend', 'We could not add this user right now.');
+            }
+          },
+        },
+      ],
+    );
+  }, [user?.id]);
+
+  const handleOpenPingMenu = useCallback((ping: PingCard) => {
+    const displayName = ping.userName;
+    const actions: Array<{ text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }> = [];
+    if (ping.userId && ping.userId !== user?.id) {
+      actions.push({ text: 'Add Friend', onPress: () => handleAddPingAuthorAsFriend(ping) });
+    }
+    actions.push({ text: 'Report', onPress: () => handleReportPing(ping) });
+    actions.push({ text: 'Block User', style: 'destructive', onPress: () => handleBlockPingAuthor(ping) });
+    actions.push({ text: 'Cancel', style: 'cancel' });
+    Alert.alert(displayName, 'Choose an action for this post.', actions);
+  }, [handleAddPingAuthorAsFriend, handleBlockPingAuthor, handleReportPing, user?.id]);
 
 
 
@@ -1009,6 +1190,7 @@ export function CampusPingsScreen() {
 
   const renderPingCard = ({ item }: { item: PingCard }) => {
     const canDelete = item.userId === user?.id;
+    const canModerateAuthor = !!user?.id && !!item.userId && item.userId !== user.id;
     const CategoryData = PING_CATEGORIES.find((c) => c.id === item.category) || PING_CATEGORIES[PING_CATEGORIES.length - 1];
     const { Icon, accent } = CategoryData;
 
@@ -1035,17 +1217,30 @@ export function CampusPingsScreen() {
             </View>
             <View style={styles.pingAuthorBlock}>
               <Text style={[styles.pingAuthorName, { color: textColor }]}>
-                {item.isAnonymous ? 'Anonymous' : item.userName}
+                {item.userName}
               </Text>
               <Text style={[styles.pingTimestamp, { color: secondaryTextColor }]}>
                 {formatRelativeAge(item.createdAt)} · {item.locationTag}
               </Text>
             </View>
-            {item.anchorType === 'geo' && (
-              <View style={[styles.geoIndicator, hasImage && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                <LocateFixed size={12} color={hasImage ? '#FFFFFF' : COLORS.textTertiary} />
-              </View>
-            )}
+            <View style={styles.pingHeaderActions}>
+              {item.anchorType === 'geo' && (
+                <View style={[styles.geoIndicator, hasImage && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                  <LocateFixed size={12} color={hasImage ? '#FFFFFF' : COLORS.textTertiary} />
+                </View>
+              )}
+              {canModerateAuthor ? (
+                <ScalePressable
+                  style={[
+                    styles.pingMenuButton,
+                    hasImage && styles.pingMenuButtonOverlay,
+                  ]}
+                  onPress={() => handleOpenPingMenu(item)}
+                >
+                  <MoreVertical size={16} color={hasImage ? '#FFFFFF' : COLORS.textSecondary} />
+                </ScalePressable>
+              ) : null}
+            </View>
           </View>
 
           {!hasImage && (
@@ -1110,6 +1305,19 @@ export function CampusPingsScreen() {
 
               <ScalePressable 
                 style={[styles.pingSecondaryAction, hasImage && { backgroundColor: 'rgba(0,0,0,0.4)', borderColor: 'rgba(255,255,255,0.1)' }]}
+                onPress={() => handleOpenComments(item)}
+              >
+                <MessageCircle size={18} color={hasImage ? '#FFFFFF' : COLORS.textTertiary} />
+                <Text style={[
+                  styles.pingSecondaryActionText,
+                  hasImage && { color: '#FFFFFF' },
+                ]}>
+                  {item.commentCount || 0}
+                </Text>
+              </ScalePressable>
+
+              <ScalePressable 
+                style={[styles.pingSecondaryAction, hasImage && { backgroundColor: 'rgba(0,0,0,0.4)', borderColor: 'rgba(255,255,255,0.1)' }]}
                 onPress={() => savePingToPlans(item)}
               >
                 <CalendarDays size={18} color={hasImage ? '#FFFFFF' : COLORS.textTertiary} />
@@ -1139,6 +1347,12 @@ export function CampusPingsScreen() {
         </View>
       </View>
 
+      {isManuallyRefreshing ? (
+        <View style={styles.refreshWheelWrap}>
+          <ActivityIndicator size="small" color={COLORS.textPrimary} />
+        </View>
+      ) : null}
+
       <TourTarget
         name="crowdping-cta"
         assistAction={() => {
@@ -1167,7 +1381,7 @@ export function CampusPingsScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.categoryRow}
       >
-        {(['All', ...PING_CATEGORIES.map((entry) => entry.id)] as Array<'All' | PingCategory>).map((option) => {
+        {(['All', 'Friends', ...PING_CATEGORIES.map((entry) => entry.id)] as FeedFilter[]).map((option) => {
           const active = categoryFilter === option;
           const meta =
             option === 'All'
@@ -1176,6 +1390,12 @@ export function CampusPingsScreen() {
                   accent: COLORS.primary,
                   Icon: Sparkles,
                 }
+              : option === 'Friends'
+                ? {
+                    id: 'Friends',
+                    accent: '#D85F8D',
+                    Icon: Users,
+                  }
               : categoryMeta(option);
           const Icon = meta.Icon;
           return (
@@ -1205,7 +1425,7 @@ export function CampusPingsScreen() {
   const canSubmitComposer =
     Boolean(composerTitle.trim()) && composerHasLocation && !isResolvingCurrentLocation;
 
-  if (loading) {
+  if (isInitialPingsLoading) {
     return (
       <View style={styles.loadingWrap}>
         <ActivityIndicator size="large" color={COLORS.primary} />
@@ -1218,7 +1438,7 @@ export function CampusPingsScreen() {
     <View style={styles.container}>
       <FlatList
         data={filteredFeed}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item, index) => item?.id || `ping-idx-${index}`}
         renderItem={renderPingCard}
         ListHeaderComponent={header}
         ListEmptyComponent={
@@ -1233,7 +1453,15 @@ export function CampusPingsScreen() {
           </View>
         }
         contentContainerStyle={styles.listContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="transparent"
+            colors={['transparent']}
+            progressBackgroundColor="transparent"
+          />
+        }
         showsVerticalScrollIndicator={false}
       />
 
@@ -1410,10 +1638,15 @@ export function CampusPingsScreen() {
                       </View>
 
                       {locationQuery.trim().length > 0 && !selectedLocation && !composerGeoLocation && (
-                        <View style={styles.suggestionsWrap}>
+                        <ScrollView
+                          style={styles.suggestionsWrap}
+                          nestedScrollEnabled
+                          keyboardShouldPersistTaps="handled"
+                          showsVerticalScrollIndicator={false}
+                        >
                           {locationSuggestions.map((loc) => (
                             <Pressable
-                              key={loc.location}
+                              key={`${loc.placeId || loc.location}-${loc.coord.lat}-${loc.coord.lng}`}
                               style={styles.suggestionItem}
                               onPress={() => handleSelectLocation(loc.location)}
                             >
@@ -1421,7 +1654,7 @@ export function CampusPingsScreen() {
                               <Text style={styles.suggestionText}>{loc.location}</Text>
                             </Pressable>
                           ))}
-                        </View>
+                        </ScrollView>
                       )}
 
                       {selectedLocation && (
@@ -1488,18 +1721,6 @@ export function CampusPingsScreen() {
                               <Text style={styles.stepperButtonText}>+</Text>
                             </ScalePressable>
                           </View>
-                        </View>
-                        <View style={styles.preferenceDivider} />
-                        <View style={styles.compactPreferenceRow}>
-                          <View style={styles.anonymousInlineLabel}>
-                            <Shield size={18} color={composerAnonymous ? COLORS.success : COLORS.textSecondary} />
-                            <Text style={styles.compactPreferenceLabel}>Post anonymously</Text>
-                          </View>
-                          <Switch
-                            value={composerAnonymous}
-                            onValueChange={setComposerAnonymous}
-                            trackColor={{ false: COLORS.border, true: COLORS.success }}
-                          />
                         </View>
                       </View>
                     </View>
@@ -1585,6 +1806,22 @@ export function CampusPingsScreen() {
           </View>
         </TouchableWithoutFeedback>
       </Modal>
+
+      <PingCommentsModal
+        visible={!!activeCommentsPing}
+        target={
+          activeCommentsPing?.activityId
+            ? {
+                activityId: activeCommentsPing.activityId,
+                title: activeCommentsPing.title,
+                subtitle: activeCommentsPing.locationTag,
+                commentCount: activeCommentsPing.commentCount,
+              }
+            : null
+        }
+        onClose={() => setActiveCommentsPing(null)}
+        onCommentPosted={handleCommentPosted}
+      />
     </View>
   );
 }
@@ -1608,6 +1845,12 @@ const getStyles = (theme: any) => {
       color: COLORS.textSecondary,
       fontSize: 15,
       fontWeight: '600',
+    },
+    refreshWheelWrap: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingTop: 5,
+      paddingBottom: 20,
     },
     listContent: {
       paddingBottom: 120,
@@ -1793,6 +2036,11 @@ const getStyles = (theme: any) => {
       flex: 1,
       marginLeft: 12,
     },
+    pingHeaderActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
     pingAuthorName: {
       color: COLORS.textPrimary,
       fontSize: 16,
@@ -1811,6 +2059,20 @@ const getStyles = (theme: any) => {
       backgroundColor: COLORS.surfaceElevated,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    pingMenuButton: {
+      width: 32,
+      height: 32,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: COLORS.surfaceElevated,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    pingMenuButtonOverlay: {
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      borderColor: 'rgba(255,255,255,0.1)',
     },
     pingContent: {
       marginBottom: 16,

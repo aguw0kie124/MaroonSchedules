@@ -17,6 +17,32 @@ import {
 } from "./campusData";
 import type { CampusLocation } from "./types";
 
+/** Overlay fields from GET /campus/places/{id}/detail (same snapshot as the map) when list merge dropped them. */
+function mergePlaceDetailSnapshot(
+  mapLoc: CampusLocation | undefined,
+  detailPayload: { place?: CampusLocation } | null,
+): CampusLocation | undefined {
+  if (!mapLoc) return undefined;
+  const snap = detailPayload?.place;
+  if (!snap || typeof snap !== "object") return mapLoc;
+  return {
+    ...mapLoc,
+    hours_today: snap.hours_today ?? mapLoc.hours_today,
+    hours_holiday_notice: snap.hours_holiday_notice ?? mapLoc.hours_holiday_notice,
+    visitor_parking_available: snap.visitor_parking_available ?? mapLoc.visitor_parking_available,
+    visitor_parking_code: snap.visitor_parking_code ?? mapLoc.visitor_parking_code,
+    visitor_parking_garage_name: snap.visitor_parking_garage_name ?? mapLoc.visitor_parking_garage_name,
+    visitor_parking_as_of: snap.visitor_parking_as_of ?? mapLoc.visitor_parking_as_of,
+    visitor_parking_source_url: snap.visitor_parking_source_url ?? mapLoc.visitor_parking_source_url,
+    percent_full:
+      typeof snap.percent_full === "number" ? snap.percent_full : mapLoc.percent_full,
+    available_seats: snap.available_seats ?? mapLoc.available_seats,
+    is_live: typeof snap.is_live === "boolean" ? snap.is_live : mapLoc.is_live,
+    capacity: snap.capacity ?? mapLoc.capacity,
+    current_count: snap.current_count ?? mapLoc.current_count,
+  };
+}
+
 function getLayerForPlace(loc: CampusLocation): string {
   if (loc.type === "Dining" || loc.type === "Hub") return "Dining";
   if (loc.type === "Rec") return "Rec";
@@ -28,12 +54,14 @@ function getLayerForPlace(loc: CampusLocation): string {
 type UsePlacesSelectionParams = {
   allMapLocations: CampusLocation[];
   setActiveLayer: (layer: string) => void;
+  currentLayer: string;
   onAfterSelectLocation?: (loc: CampusLocation, nextLayer: string) => void;
 };
 
 export function usePlacesSelection({
   allMapLocations,
   setActiveLayer,
+  currentLayer,
   onAfterSelectLocation,
 }: UsePlacesSelectionParams) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -45,10 +73,15 @@ export function usePlacesSelection({
   const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
   const [selectedPlaceDetail, setSelectedPlaceDetail] = useState<any | null>(null);
 
-  const selectedLoc = useMemo(
+  const selectedLocFromMap = useMemo(
     () =>
       allMapLocations.find((location) => getLocationSelectionId(location) === selectedId),
     [allMapLocations, selectedId],
+  );
+
+  const selectedLoc = useMemo(
+    () => mergePlaceDetailSnapshot(selectedLocFromMap, selectedPlaceDetail),
+    [selectedLocFromMap, selectedPlaceDetail],
   );
 
   const foodCourtVenues = useMemo(() => {
@@ -70,33 +103,11 @@ export function usePlacesSelection({
 
   const loadBestDiningPreview = useCallback(
     async (locationName: string, preferredMeal: DiningMealPeriod) => {
-      const mealOptions = getDiningMealOptionsForLocation(locationName);
-      const firstMeal =
-        mealOptions.find((meal) => meal === preferredMeal) ||
-        mealOptions[0] ||
-        preferredMeal;
-      const orderedMeals: DiningMealPeriod[] = [
-        firstMeal,
-        ...mealOptions.filter((meal) => meal !== firstMeal),
-      ];
-      let fallbackPreview: any = null;
-      let fallbackMeal = firstMeal;
-
-      for (const meal of orderedMeals) {
-        const preview = await fetchDiningFullMenuCached({
-          location: locationName,
-          mealPeriod: meal,
-        }).catch(() => null);
-        if (!fallbackPreview) {
-          fallbackPreview = preview;
-          fallbackMeal = meal;
-        }
-        if (preview?.success && preview?.categories?.length) {
-          return { preview, meal };
-        }
-      }
-
-      return { preview: fallbackPreview, meal: fallbackMeal };
+      const preview = await fetchDiningFullMenuCached({
+        location: locationName,
+        mealPeriod: preferredMeal,
+      }).catch(() => null);
+      return { preview, meal: preferredMeal };
     },
     [],
   );
@@ -155,7 +166,14 @@ export function usePlacesSelection({
 
   const handleSelectLocation = useCallback(
     (loc: CampusLocation) => {
-      const parentFoodCourtLocation = findFoodCourtParentLocation(loc, allMapLocations);
+      // Polo Road Fix: If we are already on a layer that the place supports (like Parking),
+      // don't resolve to its Hub/Dining parent.
+      const shouldJumpToHub = !(currentLayer === "Parking" && loc.type === "Parking");
+
+      const parentFoodCourtLocation = shouldJumpToHub
+        ? findFoodCourtParentLocation(loc, allMapLocations)
+        : null;
+
       const nextLocation = parentFoodCourtLocation || loc;
       const preferredMenu = shouldHideFoodCourtLocationInBrowse(loc, allMapLocations)
         ? getDiningMenuCandidates(loc.location)[0] || null
@@ -168,22 +186,22 @@ export function usePlacesSelection({
         );
       }
 
-      const nextLayer = getLayerForPlace(nextLocation);
+      const nextLayer = currentLayer === "Today" ? "Today" : getLayerForPlace(nextLocation);
       setActiveLayer(nextLayer);
       setSelectedId(getLocationSelectionId(nextLocation));
       onAfterSelectLocation?.(nextLocation, nextLayer);
     },
-    [allMapLocations, onAfterSelectLocation, setActiveLayer],
+    [allMapLocations, currentLayer, onAfterSelectLocation, setActiveLayer],
   );
 
   useEffect(() => {
-    if (!selectedLoc) {
+    if (!selectedLocFromMap) {
       setSelectedPlaceDetail(null);
       return;
     }
 
     let cancelled = false;
-    const identifier = selectedLoc.placeId || selectedLoc.location;
+    const identifier = selectedLocFromMap.placeId || selectedLocFromMap.location;
     fetchCampusPlaceDetail(identifier)
       .then((detail) => {
         if (!cancelled) setSelectedPlaceDetail(detail);
@@ -198,15 +216,15 @@ export function usePlacesSelection({
     return () => {
       cancelled = true;
     };
-  }, [selectedLoc?.location, selectedLoc?.placeId]);
+  }, [selectedLocFromMap?.location, selectedLocFromMap?.placeId]);
 
   useEffect(() => {
-    if (!selectedLoc || !isDiningHallMenuLocation(selectedLoc.location)) {
+    if (!selectedLocFromMap || !isDiningHallMenuLocation(selectedLocFromMap.location)) {
       resetDiningState();
       return;
     }
-    fetchDiningData(selectedLoc);
-  }, [fetchDiningData, resetDiningState, selectedLoc]);
+    fetchDiningData(selectedLocFromMap);
+  }, [fetchDiningData, resetDiningState, selectedLocFromMap]);
 
   useEffect(() => {
     if (!activeDiningMenu) return;
@@ -232,10 +250,12 @@ export function usePlacesSelection({
 
   const isPrimaryDiningHallSelection = useMemo(() => {
     const reference = (activeDiningMenu || selectedLoc?.location || "").toLowerCase();
+    const isHall = reference.includes("dining hall");
     return (
-      reference.includes("sbisa") ||
-      reference.includes("commons") ||
-      reference.includes("duncan")
+      isHall &&
+      (reference.includes("sbisa") ||
+        reference.includes("commons") ||
+        reference.includes("duncan"))
     );
   }, [activeDiningMenu, selectedLoc?.location]);
 

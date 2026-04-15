@@ -40,7 +40,7 @@ export function ClubAccessScreen() {
       const data = await requestJson(`/clubs?clerk_id=${encodeURIComponent(user.id)}`, {}, 15000);
       setClubs(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error(error);
+      console.warn(error);
       Alert.alert('Could not load clubs', error instanceof Error ? error.message : 'Please try again in a moment.');
     } finally {
       setLoading(false);
@@ -89,7 +89,7 @@ export function ClubAccessScreen() {
           : `Your request was sent to ${club.organization_name}.`,
       );
     } catch (error) {
-      console.error(error);
+      console.warn(error);
       Alert.alert('Request failed', 'We could not submit that join request.');
     } finally {
       setRequestingClubId(null);

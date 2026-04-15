@@ -30,6 +30,7 @@ export function useBusTransit(
   const [selectedBus, setSelectedBus] = useState<any | null>(null);
   const [selectedDirection, setSelectedDirection] = useState<'inbound' | 'outbound' | 'All'>('All');
   const [nearestBusInfo, setNearestBusInfo] = useState<string | null>(null);
+  const [routeTimetableEntries, setRouteTimetableEntries] = useState<any[]>([]);
 
   const busPollInterval = useRef<any>(null);
   const isFetchingRef = useRef(false);
@@ -117,6 +118,7 @@ export function useBusTransit(
       setBusVehicles([]); 
       setSelectedStop(null);
       setSelectedBus(null);
+      setRouteTimetableEntries([]);
 
       if (routeId === ALL_BUS_ROUTES_KEY) {
         await loadAllBusRoutes(availableRoutes);
@@ -306,8 +308,35 @@ export function useBusTransit(
       setRouteSearchQuery("");
       setSelectedBus(null);
       setSelectedStop(null);
+      setRouteTimetableEntries([]);
     }
   }, [activeLayer]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (activeLayer !== "Bus" || !selectedRoute || isAllBusRoutesSelected) {
+      setRouteTimetableEntries([]);
+      return;
+    }
+
+    transitService.getRouteTimetable(selectedRoute.Key, 12)
+      .then((entries) => {
+        if (!cancelled) {
+          setRouteTimetableEntries(entries);
+        }
+      })
+      .catch((error) => {
+        console.warn("[Transit] Timetable fetch failed:", error);
+        if (!cancelled) {
+          setRouteTimetableEntries([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLayer, isAllBusRoutesSelected, selectedRoute]);
 
   // Poll for bus locations using a safe recursive timeout
   useEffect(() => {
@@ -348,8 +377,42 @@ export function useBusTransit(
 
   // Computed timetable for selected route
   const stopTimetable = useMemo(() => {
-    if (activeLayer !== "Bus" || !selectedRoute || busStops.length === 0) {
+    if (
+      activeLayer !== "Bus" ||
+      !selectedRoute ||
+      (busStops.length === 0 && routeTimetableEntries.length === 0)
+    ) {
       return [];
+    }
+
+    if (routeTimetableEntries.length > 0) {
+      return routeTimetableEntries.map((entry, index) => {
+        const departures = Array.isArray(entry.departures) ? entry.departures : [];
+        const nextDeparture = departures[0] || null;
+        const stop = entry.stop || busStops[index];
+        const estimatedTime = nextDeparture?.estimated_depart_time_utc
+          ? new Date(nextDeparture.estimated_depart_time_utc)
+          : null;
+        const scheduledTime = nextDeparture?.scheduled_depart_time_utc
+          ? new Date(nextDeparture.scheduled_depart_time_utc)
+          : null;
+        const primaryTime = estimatedTime || scheduledTime;
+
+        return {
+          stop,
+          sequence: entry.sequence ?? index + 1,
+          etaLabel: primaryTime
+            ? primaryTime.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+              })
+            : 'No times',
+          detail: nextDeparture?.is_realtime
+            ? 'Live departure board'
+            : 'Scheduled departure board',
+          departures,
+        };
+      });
     }
 
     return busStops.slice(0, 12).map((stop, index) => {
@@ -387,9 +450,10 @@ export function useBusTransit(
         detail: nextBus.bus.RouteShortName
           ? `Route ${nextBus.bus.RouteShortName}`
           : nextBus.bus.Name || "Live bus",
+        departures: [],
       };
     });
-  }, [activeLayer, busStops, busVehicles, routePatterns, selectedRoute]);
+  }, [activeLayer, busStops, busVehicles, routePatterns, routeTimetableEntries, selectedRoute]);
 
   // All-routes board for overview mode
   const allRouteBoards = useMemo(() => {

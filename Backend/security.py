@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import os
 import secrets
@@ -9,12 +8,14 @@ from dotenv import load_dotenv
 from fastapi import Header, HTTPException, Request
 
 _THIS_DIR = Path(__file__).resolve().parent
+# Optional Backend/.env for local overrides; repo-root .env wins (same file Expo uses).
 load_dotenv(_THIS_DIR / ".env", override=False)
-load_dotenv(_THIS_DIR.parent / ".env", override=False)
+load_dotenv(_THIS_DIR.parent / ".env", override=True)
 
 
 def _get_expected_api_key() -> str:
-    api_key = os.getenv("API_KEY", "").strip() or os.getenv("EXPO_PUBLIC_API_KEY", "").strip()
+    # Prefer EXPO_PUBLIC_API_KEY so one value in repo-root .env matches the bundled app.
+    api_key = os.getenv("EXPO_PUBLIC_API_KEY", "").strip() or os.getenv("API_KEY", "").strip()
     if not api_key:
         raise HTTPException(status_code=500, detail="Missing required environment variable: API_KEY")
     return api_key

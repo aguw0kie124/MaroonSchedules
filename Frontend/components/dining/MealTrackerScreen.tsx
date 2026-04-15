@@ -40,7 +40,7 @@ export default function MealTrackerScreen({ navigation, embedded = false }: any)
       ]);
       setTracker(tRes);
       setProfile(pRes);
-    } catch (e) { console.error(e); }
+    } catch (e) { console.warn(e); }
     setLoading(false);
   }, [user, date]);
 

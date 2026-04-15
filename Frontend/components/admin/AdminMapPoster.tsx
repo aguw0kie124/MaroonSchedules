@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Text, TextInput, ScrollView, Alert, Platform, Image, Linking } from 'react-native';
 import { Pressable } from 'react-native';
 import { useUser, useAuth } from '@clerk/clerk-expo';
+import { useQueryClient } from '@tanstack/react-query';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../SharedUI';
@@ -11,7 +12,7 @@ import { requestJson } from '../../api/client';
 import { normalizeExternalUrl } from '../../services/url';
 import { getAdminLocationSuggestions, resolveAdminEventLocation } from '../../services/adminEventLocation';
 import { LogOut, PlusCircle, ImagePlus, Sparkles, MapPinned } from 'lucide-react-native';
-import { uploadStreamImage } from '../../services/streamFeeds';
+import { uploadMediaImage } from '../../services/socialFeedService';
 import { useSessionStore } from '../../store/sessionStore';
 import { TagSelector } from './TagSelector';
 import { TagChips } from '../common/TagChips';
@@ -29,6 +30,7 @@ export function AdminMapPoster() {
   const { user } = useUser();
   const { signOut } = useAuth();
   const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
+  const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [address, setAddress] = useState('');
@@ -52,18 +54,23 @@ export function AdminMapPoster() {
     if (!user?.id) return;
     requestJson(`/admin/tags?clerk_id=${encodeURIComponent(user.id)}`, {}, 15000)
       .then((data) => setAvailableTags(data.tags || []))
-      .catch((error) => console.error('Failed to load tag suggestions', error));
+      .catch((error) => console.warn('Failed to load tag suggestions', error));
   }, [user?.id]);
 
   const updateDatePart = (nextValue: Date) => {
+    const year = nextValue.getFullYear();
+    const month = nextValue.getMonth();
+    const date = nextValue.getDate();
+
     setStartTime((current) => {
       const next = new Date(current);
-      next.setFullYear(nextValue.getFullYear(), nextValue.getMonth(), nextValue.getDate());
+      next.setFullYear(year, month, date);
       return next;
     });
+
     setEndTime((current) => {
       const next = new Date(current);
-      next.setFullYear(nextValue.getFullYear(), nextValue.getMonth(), nextValue.getDate());
+      next.setFullYear(year, month, date);
       return next;
     });
   };
@@ -146,6 +153,10 @@ export function AdminMapPoster() {
       Alert.alert('Incomplete', `Please provide a ${postKind} title.`);
       return;
     }
+    if (!address.trim()) {
+      Alert.alert('Location Required', 'Please provide a campus building, room, or general location.');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -157,7 +168,7 @@ export function AdminMapPoster() {
       }
       const normalizedReviewUrl = normalizeExternalUrl(googleReviewUrl);
       const resolvedLocation = resolveAdminEventLocation(address);
-      const uploadedImageUrl = imageUri ? await uploadStreamImage(imageUri) : null;
+      const uploadedImageUrl = imageUri ? await uploadMediaImage(imageUri) : null;
 
       if (postKind === 'event') {
         await requestJson('/admin/events', {
@@ -213,6 +224,10 @@ export function AdminMapPoster() {
       }
 
       Alert.alert('Success', postKind === 'event' ? 'Event posted to the featured tab!' : 'Ping posted to Pulse.');
+      
+      // Invalidate events to force immediate refresh when navigating back
+      queryClient.invalidateQueries({ queryKey: ['campus-events'] });
+      
       setTitle('');
       setDescription('');
       setAddress('');

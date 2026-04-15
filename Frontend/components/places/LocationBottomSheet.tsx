@@ -26,8 +26,14 @@ import {
   Flag,
   Shield,
   Trash2,
+  ChevronUp,
+  ChevronDown,
+  Leaf,
+  Clock,
 } from "lucide-react-native";
 import { useUser } from "@clerk/clerk-expo";
+import { PillTabs } from "../PillTabs";
+import { ALL_DINING_MEAL_PERIODS } from "../../services/diningMenuCache";
 import * as Linking from "expo-linking";
 import * as Haptics from "expo-haptics";
 import type { CampusLocation } from "./types";
@@ -38,12 +44,16 @@ import {
   getLocationContextLink,
 } from "./utils";
 import { getCanonicalLocationName } from "./campusData";
+import { getStaticRestaurantMenu } from "../../data/restaurantMenus";
+import { getRestaurantHoursToday } from "../../data/restaurantHours";
 import {
   DiningMealPeriod,
   isDiningHallMenuLocation,
 } from "../../services/diningMenuCache";
-import { reportContent, blockUser, deleteReview } from "../../services/streamFeeds";
 import { Alert } from "react-native";
+
+import { ClassMeetingCard } from "./ClassMeetingCard";
+import { OccupancyChart } from "./OccupancyChart";
 
 const SHEET_HEIGHT = SCREEN_HEIGHT * 0.94;
 const SHEET_TOP_VISIBLE_HEIGHT = SCREEN_HEIGHT * 0.84;
@@ -133,6 +143,26 @@ function getOccupancyInsight(
   return "Plenty of open space right now.";
 }
 
+/**
+ * ClassMeetingList - Isolated component for better render performance
+ */
+const ClassMeetingList = React.memo(({ 
+  meetings, 
+}: { 
+  meetings: any[] | null | undefined;
+}) => {
+  if (!meetings?.length) return null;
+  return (
+    <View style={{ marginTop: 12 }}>
+      {meetings.slice(0, 3).map((meeting) => (
+        <ClassMeetingCard key={meeting.id} meeting={meeting} />
+      ))}
+    </View>
+  );
+});
+
+
+
 interface LocationBottomSheetProps {
   styles: any;
   COLORS: any;
@@ -140,20 +170,7 @@ interface LocationBottomSheetProps {
   setSelectedId: (v: string | null) => void;
   selectedLoc: CampusLocation | undefined;
   // Sheet state is managed internally
-  // Reviews
-  streamReviews: any[];
-  reviewModalVisible: boolean;
-  setReviewModalVisible: (v: boolean) => void;
-  newRating: number;
-  setNewRating: (v: number) => void;
-  newReviewText: string;
-  setNewReviewText: (v: string) => void;
-  isPostingReview: boolean;
-  handlePostReview: () => void;
-  allReviewsModalVisible: boolean;
-  setAllReviewsModalVisible: (v: boolean) => void;
-  isFetchingReviews: boolean;
-  fetchReviews: (placeId: string, limit?: number) => void;
+  isDark: boolean;
   // Dining
   foodCourtVenues: Array<{
     selectionId: string;
@@ -188,22 +205,10 @@ interface LocationBottomSheetProps {
 export function LocationBottomSheet({
   styles,
   COLORS,
+  isDark,
   selectedId,
   setSelectedId,
   selectedLoc,
-  streamReviews,
-  reviewModalVisible,
-  setReviewModalVisible,
-  newRating,
-  setNewRating,
-  newReviewText,
-  setNewReviewText,
-  isPostingReview,
-  handlePostReview,
-  allReviewsModalVisible,
-  setAllReviewsModalVisible,
-  isFetchingReviews,
-  fetchReviews,
   foodCourtVenues,
   diningMenuOptions,
   activeDiningMenu,
@@ -225,7 +230,6 @@ export function LocationBottomSheet({
 }: LocationBottomSheetProps) {
   const { user } = useUser();
   const { advanceStep, activeTargetName } = useTour();
-  const selectedReviewId = selectedLoc?.placeId || selectedLoc?.location || null;
   const selectedLabel = selectedLoc?.location || selectedId || "";
 
   // ── Bottom sheet animation ──────────────────────────────────
@@ -233,9 +237,26 @@ export function LocationBottomSheet({
   const sheetSnap = useRef<number>(SHEET_HIDDEN_SNAP);
   const panStartY = useRef<number>(SHEET_HIDDEN_SNAP);
   const [sheetMode, setSheetMode] = useState<SheetMode>("hidden");
-  const [diningDetailTab, setDiningDetailTab] = useState<"reviews" | "menus">(
-    "reviews",
-  );
+  const [diningDetailTab, setDiningDetailTab] = useState<"menus">("menus");
+
+  const [activeCategoryKey, setActiveCategoryKey] = useState("all");
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+
+  const toggleCategory = useCallback((categoryName: string) => {
+    setCollapsedCategories((current) => {
+      const next = new Set(current);
+      if (next.has(categoryName)) next.delete(categoryName);
+      else next.add(categoryName);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (diningMenuPreview?.categories) {
+      const categoryNames = diningMenuPreview.categories.map((c: any) => c.name);
+      setCollapsedCategories(new Set(categoryNames));
+    }
+  }, [diningMenuPreview]);
 
   const animateSheet = useCallback(
     (toValue: number, onDone?: () => void) => {
@@ -258,7 +279,7 @@ export function LocationBottomSheet({
     if (selectedLoc && (isDiningHallMenuLocation(selectedLoc.location) || foodCourtVenues.length > 0)) {
       setDiningDetailTab("menus");
     } else {
-      setDiningDetailTab("reviews");
+      setDiningDetailTab("menus");
     }
     if (selectedId) {
       animateSheet(
@@ -289,13 +310,26 @@ export function LocationBottomSheet({
         0,
         Math.min(
           100,
-          Number.isFinite(selectedLoc.percent_full) ? selectedLoc.percent_full : 0,
+          selectedLoc.capacity && selectedLoc.capacity > 0 && selectedLoc.current_count != null
+            ? Math.round((selectedLoc.current_count / selectedLoc.capacity) * 100)
+            : Number.isFinite(selectedLoc.percent_full)
+              ? selectedLoc.percent_full
+              : 0,
         ),
       )
     : 0;
   const occupancyToneColor = selectedLoc
     ? getStatusColor(occupancyPercent)
     : COLORS.primary;
+  const occupancyCountLabel = useMemo(() => {
+    if (!selectedLoc || !isCapacityPlace) return null;
+    const cap = selectedLoc.capacity;
+    const cur = selectedLoc.current_count;
+    if (cap != null && cur != null && cap > 0) {
+      return `About ${cur.toLocaleString()} of ${cap.toLocaleString()} people`;
+    }
+    return null;
+  }, [selectedLoc, isCapacityPlace]);
   const parkingRecommendation = useMemo(() => {
     if (!selectedLoc || selectedLoc.type !== "Parking") return null;
     const lower = selectedLoc.location.toLowerCase();
@@ -312,15 +346,21 @@ export function LocationBottomSheet({
   }, [selectedLoc]);
   const selectedHoursLabel = useMemo(() => {
     if (!selectedLoc) return null;
+    const holiday = selectedLoc.hours_holiday_notice;
+    const suffix = holiday ? ` · ${holiday}` : "";
+    if (selectedLoc.hours_today) {
+      return `${selectedLoc.hours_today}${suffix}`;
+    }
     if (selectedLoc.type === "Rec") {
-      return (
+      const rec =
         selectedRecreationFacility?.today_hours ||
         selectedRecreationFacility?.hours_hint ||
         selectedLoc.hours ||
-        null
-      );
+        null;
+      return rec ? `${rec}${suffix}` : holiday || null;
     }
-    return selectedLoc.hours || null;
+    const base = selectedLoc.hours || null;
+    return base ? `${base}${suffix}` : holiday || null;
   }, [selectedLoc, selectedRecreationFacility]);
   const peekMetaText = useMemo(() => {
     if (!selectedLoc) return "";
@@ -328,7 +368,17 @@ export function LocationBottomSheet({
     if (isCapacityPlace) {
       return `${occupancyPercent}% full`;
     }
+    if (
+      selectedLoc.type === "Parking" &&
+      selectedLoc.visitor_parking_available != null
+    ) {
+      const code = selectedLoc.visitor_parking_code || "";
+      const name = selectedLoc.visitor_parking_garage_name;
+      const label = code && name ? `${code} (${name})` : code || "Garage";
+      return `${label}: ${selectedLoc.visitor_parking_available.toLocaleString()} spaces (live)`;
+    }
     if (selectedHoursLabel) {
+      if (selectedLoc.hours_today) return selectedHoursLabel;
       return selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel;
     }
     if (isFoodCourtHub) {
@@ -367,9 +417,24 @@ export function LocationBottomSheet({
     if (selectedLoc.address) {
       bits.push(selectedLoc.address);
     }
-    if (selectedHoursLabel) {
-      bits.push(selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel);
-    } else if (selectedLoc.current_event) {
+    const hoursDetailTypes = new Set([
+      "Library",
+      "Dining",
+      "Rec",
+      "Parking",
+      "Hub",
+    ]);
+    const hoursShownInCard =
+      !!selectedLoc.hours_today && hoursDetailTypes.has(selectedLoc.type);
+    if (selectedHoursLabel && !hoursShownInCard) {
+      if (selectedLoc.hours_today) {
+        bits.push(selectedHoursLabel);
+      } else {
+        bits.push(selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel);
+      }
+    } else if (!selectedHoursLabel && selectedLoc.current_event) {
+      bits.push(selectedLoc.current_event);
+    } else if (hoursShownInCard && selectedLoc.current_event) {
       bits.push(selectedLoc.current_event);
     }
     if (!bits.length && isFoodCourtHub) {
@@ -425,9 +490,6 @@ export function LocationBottomSheet({
     });
   }, [contextLink]);
 
-  const openReviewComposer = useCallback(() => {
-    setReviewModalVisible(true);
-  }, [setReviewModalVisible]);
 
   const panResponder = useMemo(
     () =>
@@ -492,80 +554,7 @@ export function LocationBottomSheet({
     [animateSheet, preferredExpandedSnap, setSelectedId],
   );
 
-    const handleReportReview = (rev: any) => {
-        Alert.alert(
-            "Report Review",
-            "Why are you reporting this review?",
-            [
-                { text: "Inappropriate", onPress: () => submitReviewReport(rev, "inappropriate") },
-                { text: "Spam", onPress: () => submitReviewReport(rev, "spam") },
-                { text: "Harassment", onPress: () => submitReviewReport(rev, "harassment") },
-                { text: "Cancel", style: "cancel" },
-            ]
-        );
-    };
 
-    const submitReviewReport = async (rev: any, reason: string) => {
-        try {
-            await reportContent({
-                reporteeId: rev.userId || rev.user_id || rev.sub,
-                postType: 'review',
-                postId: rev.id,
-                reason: reason,
-                placeId: selectedReviewId || undefined
-            });
-            Alert.alert("Report Received", "Thank you for your report.");
-        } catch (err) {
-            Alert.alert("Error", "Failed to submit report.");
-        }
-    };
-
-    const handleBlockReviewer = (rev: any) => {
-        Alert.alert(
-            "Block User",
-            `Block ${rev.user}? You won't see their reviews.`,
-            [
-                { text: "Cancel", style: "cancel" },
-                { 
-                    text: "Block", 
-                    style: "destructive",
-                    onPress: async () => {
-                        try {
-                            await blockUser(rev.userId || rev.user_id || rev.sub);
-                            if (selectedReviewId) fetchReviews(selectedReviewId, 10);
-                            Alert.alert("User Blocked");
-                        } catch (err) {
-                            Alert.alert("Error", "Failed to block user.");
-                        }
-                    }
-                }
-            ]
-        );
-    };
-
-    const handleDeleteReview = (rev: any) => {
-        Alert.alert(
-            "Delete Review",
-            "Are you sure you want to remove your review?",
-            [
-                { text: "Cancel", style: "cancel" },
-                { 
-                    text: "Delete", 
-                    style: "destructive",
-                    onPress: async () => {
-                        try {
-                            if (!selectedReviewId) return;
-                            await deleteReview(selectedReviewId, rev.id);
-                            fetchReviews(selectedReviewId, 10);
-                            Alert.alert("Success", "Review deleted.");
-                        } catch (err) {
-                            Alert.alert("Error", "Failed to delete review.");
-                        }
-                    }
-                }
-            ]
-        );
-    };
 
   if (!selectedId || selectedStop || selectedBus) return null;
 
@@ -681,13 +670,175 @@ export function LocationBottomSheet({
               ) : null}
             </View>
 
-            {!isPeekSheet && parkingRecommendation ? (
+            {!isPeekSheet && selectedLoc.type === "Parking" ? (
+              <View style={[styles.occupancyBlock, { padding: 18 }]}>
+                {selectedLoc.visitor_parking_available != null ? (
+                  <View style={{ marginBottom: 14 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 6,
+                        marginBottom: 4,
+                      }}
+                    >
+                      <View
+                        style={[styles.heroBadgeDot, { backgroundColor: "#32D74B" }]}
+                      />
+                      <Text
+                        style={[
+                          styles.sectionTitle,
+                          { marginBottom: 0, color: "#32D74B" },
+                        ]}
+                      >
+                        Live Availability
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "baseline",
+                        gap: 6,
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.occupancyLiveText,
+                          {
+                            fontSize: 34,
+                            fontWeight: "900",
+                            color: COLORS.textPrimary,
+                          },
+                        ]}
+                      >
+                        {selectedLoc.visitor_parking_available.toLocaleString()}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.sectionTitle,
+                          {
+                            fontSize: 14,
+                            fontWeight: "800",
+                            color: COLORS.textSecondary,
+                          },
+                        ]}
+                      >
+                        SPACES OPEN
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={{ marginBottom: 14 }}>
+                    <Text style={[styles.sectionTitle, { marginBottom: 4 }]}>
+                      Visitor Parking
+                    </Text>
+                    <Text
+                      style={[
+                        styles.contextCardBody,
+                        { fontSize: 14, fontWeight: "600" },
+                      ]}
+                    >
+                      Available at this location
+                    </Text>
+                  </View>
+                )}
+
+                <View
+                  style={[styles.sheetDivider, { marginVertical: 12, opacity: 0.5 }]}
+                />
+
+                {selectedLoc.hours_today && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                      marginBottom: 12,
+                    }}
+                  >
+                    <Clock size={16} color={COLORS.textSecondary} />
+                    <View>
+                      <Text
+                        style={[styles.sectionTitle, { fontSize: 10, marginBottom: 2 }]}
+                      >
+                        Operating Hours
+                      </Text>
+                      <Text
+                        style={[
+                          styles.contextCardBody,
+                          { fontWeight: "700", color: COLORS.textPrimary },
+                        ]}
+                      >
+                        {selectedLoc.hours_today.includes("Typical")
+                          ? "Available 24/7"
+                          : selectedLoc.hours_today.replace(/.*?:\s*/, "")}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {selectedLoc.visitor_parking_available == null && (
+                  <Text
+                    style={[
+                      styles.contextCardBody,
+                      { fontSize: 12, fontStyle: "italic", marginBottom: 10 },
+                    ]}
+                  >
+                    Real-time counts only available for major visitor garages.
+                  </Text>
+                )}
+
+                <TouchableOpacity
+                  style={[
+                    styles.quickActionPill,
+                    {
+                      alignSelf: "flex-start",
+                      paddingVertical: 6,
+                      paddingHorizontal: 12,
+                    },
+                  ]}
+                  onPress={() =>
+                    Linking.openURL(
+                      "https://transport.tamu.edu/parking/realtime.aspx",
+                    ).catch(() => {})
+                  }
+                >
+                  <ExternalLink size={14} color={COLORS.textPrimary} />
+                  <Text style={styles.quickActionText}>Rates & Rules</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {!isPeekSheet &&
+            selectedLoc.type !== "Parking" &&
+            parkingRecommendation ? (
               <View style={styles.contextCard}>
                 <Text style={styles.contextCardTitle}>
                   {parkingRecommendation.badge}
                 </Text>
                 <Text style={styles.contextCardBody}>
                   {parkingRecommendation.detail}
+                </Text>
+              </View>
+            ) : null}
+
+            {!isPeekSheet &&
+            (selectedLoc.hours_today || getRestaurantHoursToday(selectedLoc.location)) &&
+            selectedLoc.type !== "Parking" &&
+            (selectedLoc.type === "Library" ||
+              selectedLoc.type === "Dining" ||
+              selectedLoc.type === "Rec" ||
+              selectedLoc.type === "Hub") ? (
+              <View style={styles.contextCard}>
+                <Text style={styles.contextCardTitle}>Open today</Text>
+                <Text style={styles.contextCardBody}>
+                  {(() => {
+                    const hoursSource = selectedLoc.hours_today || getRestaurantHoursToday(selectedLoc.location) || "";
+                    const matches = hoursSource.match(/\d{1,2}:\d{2}\s*(?:am|pm)\s*-\s*\d{1,2}:\d{2}\s*(?:am|pm)/gi);
+                    return matches && matches.length > 0 
+                      ? matches.join(", ") 
+                      : hoursSource.replace(/^(.*?:\s*)*Open Today:\s*/i, "").trim();
+                  })()}
                 </Text>
               </View>
             ) : null}
@@ -728,10 +879,21 @@ export function LocationBottomSheet({
                           width: `${occupancyPercent}%` as any,
                           backgroundColor: occupancyToneColor,
                         },
-                        ]}
-                      />
-                    </View>
+                      ]}
+                    />
+                  </View>
                 </View>
+
+                {occupancyCountLabel ? (
+                  <Text
+                    style={[
+                      styles.contextCardBody,
+                      { marginTop: 8, opacity: 0.9 },
+                    ]}
+                  >
+                    {occupancyCountLabel}
+                  </Text>
+                ) : null}
 
                 {officialFacilityUrl && officialFacilityUrl !== externalLink?.url ? (
                   <TouchableOpacity
@@ -761,7 +923,6 @@ export function LocationBottomSheet({
                   <View style={styles.detailTabsWrap}>
                     <View style={styles.mapsTabRow}>
                       {[
-                        { key: "reviews", label: "Reviews" },
                         {
                           key: "menus",
                           label: isDiningHallCard ? "Menu" : "Locations",
@@ -773,7 +934,7 @@ export function LocationBottomSheet({
                             key={tab.key}
                             style={styles.mapsTabButton}
                             onPress={() =>
-                              setDiningDetailTab(tab.key as "reviews" | "menus")
+                              setDiningDetailTab(tab.key as "menus")
                             }
                             activeOpacity={0.75}
                           >
@@ -826,22 +987,39 @@ export function LocationBottomSheet({
 
                       {!isDiningHallCard && foodCourtVenues.length > 0 ? (
                         <View style={styles.foodCourtVenueList}>
-                          {foodCourtVenues.map((venue) => (
-                            <View key={venue.selectionId} style={styles.foodCourtVenueCard}>
+                          {foodCourtVenues.map((venue, idx) => {
+                            const candidate = venue.menuCandidate || venue.location.location;
+                            const hasMenuSource = !!getStaticRestaurantMenu(candidate) || isDiningHallMenuLocation(candidate);
+                            
+                            return (
+                            <View key={`${venue.selectionId}-${idx}`} style={styles.foodCourtVenueCard}>
                               <View style={{ flex: 1, paddingRight: 12 }}>
                                 <Text style={styles.foodCourtVenueTitle}>
                                   {venue.label}
                                 </Text>
                                 <Text style={styles.foodCourtVenueMeta}>
-                                  {venue.location.shortName &&
-                                  venue.location.shortName !== venue.location.location
-                                    ? venue.location.shortName
-                                    : "Dining location"}
+                                  {getRestaurantHoursToday(venue.label) || 
+                                   (venue.location.shortName && venue.location.shortName !== venue.location.location
+                                     ? venue.location.shortName
+                                     : "Dining location")}
                                 </Text>
                               </View>
-                              <Text style={styles.foodCourtVenueAction}>Inside</Text>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <Text style={styles.foodCourtVenueAction}>Inside</Text>
+                                {hasMenuSource ? (
+                                  <TouchableOpacity
+                                    onPress={() => openFullMenu(candidate)}
+                                    style={styles.foodCourtVenueMenuBtn}
+                                    activeOpacity={0.7}
+                                  >
+                                    <Utensils size={11} color="#FFF" />
+                                    <Text style={styles.foodCourtVenueMenuBtnText}>Menu</Text>
+                                  </TouchableOpacity>
+                                ) : null}
+                              </View>
                             </View>
-                          ))}
+                            );
+                          })}
                         </View>
                       ) : null}
 
@@ -870,88 +1048,7 @@ export function LocationBottomSheet({
                         </View>
                       ) : null}
                     </View>
-                  ) : (
-                    <View style={styles.infoBlock}>
-                      <View style={styles.reviewsHeader}>
-                        <Text style={styles.sectionTitle}>Reviews</Text>
-                        <View style={{ flexDirection: "row", gap: 12 }}>
-                          <TouchableOpacity
-                            onPress={openReviewComposer}
-                          >
-                            <Text style={styles.addReviewText}>
-                              + Add Review
-                            </Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => {
-                              setAllReviewsModalVisible(true);
-                              if (selectedReviewId) fetchReviews(selectedReviewId, 30);
-                            }}
-                          >
-                            <Text style={styles.seeAllText}>See all</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-
-                      {streamReviews.length > 0 ? (
-                        streamReviews.slice(0, 3).map((rev, i) => (
-                          <View key={rev.id || i} style={styles.reviewItem}>
-                            <View style={styles.reviewMeta}>
-                              <View style={styles.reviewUserRow}>
-                                <View style={styles.userAvatar}>
-                                  <Text style={styles.avatarText}>
-                                    {rev.user[0]}
-                                  </Text>
-                                </View>
-                                <Text style={styles.reviewUser}>
-                                  {rev.user}
-                                </Text>
-                              </View>
-                              <View style={styles.reviewStars}>
-                                {[1, 2, 3, 4, 5].map((s) => (
-                                  <Star
-                                    key={s}
-                                    size={11}
-                                    fill={
-                                      s <= rev.rating ? "#FFD700" : "transparent"
-                                    }
-                                    color={s <= rev.rating ? "#FFD700" : "#555"}
-                                  />
-                                ))}
-                              </View>
-                            </View>
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.reviewComment} numberOfLines={3}>
-                                {rev.comment}
-                              </Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
-                                {rev.userId === user?.id ? (
-                                    <TouchableOpacity onPress={() => handleDeleteReview(rev)}>
-                                        <Trash2 size={14} color="#E56B6B" />
-                                    </TouchableOpacity>
-                                ) : (
-                                    <>
-                                        <TouchableOpacity onPress={() => handleReportReview(rev)}>
-                                            <Flag size={14} color="#888" />
-                                        </TouchableOpacity>
-                                        <TouchableOpacity onPress={() => handleBlockReviewer(rev)}>
-                                            <Shield size={14} color="#888" />
-                                        </TouchableOpacity>
-                                    </>
-                                )}
-                            </View>
-                          </View>
-                        ))
-                      ) : (
-                        <View style={styles.emptyReviews}>
-                          <Text style={styles.emptyReviewsText}>
-                            No reviews found for this location.
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  )}
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -961,25 +1058,7 @@ export function LocationBottomSheet({
                     <TourTarget name="rec-center-capacity">
                       <View style={styles.chartContainer}>
                         <Text style={styles.chartTitle}>Foot Traffic · Last 8h</Text>
-                        <View style={styles.chartBars}>
-                          {(
-                            selectedLoc.traffic_history || [
-                              20, 45, 15, 60, 40, 25, 20, 50,
-                            ]
-                          ).map((val: number, i: number) => (
-                            <View key={i} style={styles.barWrapper}>
-                              <View
-                                style={[
-                                  styles.barFill,
-                                  {
-                                    height: Math.max(8, (val / 100) * 45),
-                                    backgroundColor: getStatusColor(val),
-                                  },
-                                ]}
-                              />
-                            </View>
-                          ))}
-                        </View>
+                        <OccupancyChart history={selectedLoc.traffic_history} />
                       </View>
                     </TourTarget>
                   )}
@@ -994,297 +1073,242 @@ export function LocationBottomSheet({
                         </TouchableOpacity>
                       </View>
 
-                      <View style={styles.classMeetingList}>
-                        {selectedLoc.classMeetings.slice(0, 3).map((meeting) => (
-                          <View
-                            key={meeting.id}
-                            style={styles.classMeetingCard}
-                          >
-                            <View style={styles.classMeetingHeader}>
-                              <Text style={styles.classMeetingCode}>
-                                {meeting.code}
-                              </Text>
-                              <Text style={styles.classMeetingTime}>
-                                {meeting.timeLabel}
-                              </Text>
-                            </View>
-                            <Text style={styles.classMeetingName}>
-                              {meeting.name}
-                            </Text>
-                            <Text style={styles.classMeetingMeta}>
-                              {formatScheduleDays(meeting.days)}
-                              {meeting.room ? ` · Room ${meeting.room}` : ""}
-                            </Text>
-                            <Text style={styles.classMeetingScheduleLabel}>
-                              {meeting.scheduleLabel}
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
+                      <ClassMeetingList meetings={selectedLoc.classMeetings} />
                     </View>
                   ) : null}
 
-                  {/* Reviews */}
-                  <View style={styles.reviewsHeader}>
-                    <Text style={styles.sectionTitle}>Reviews</Text>
-                      <View style={{ flexDirection: "row", gap: 12 }}>
-                      <TouchableOpacity
-                        onPress={openReviewComposer}
-                      >
-                        <Text style={styles.addReviewText}>
-                          + Add Review
-                        </Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => {
-                          setAllReviewsModalVisible(true);
-                          if (selectedReviewId) fetchReviews(selectedReviewId, 30);
-                        }}
-                      >
-                        <Text style={styles.seeAllText}>See all</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
 
-                  {streamReviews.length > 0 ? (
-                    streamReviews.slice(0, 3).map((rev, i) => (
-                      <View key={rev.id || i} style={styles.reviewItem}>
-                        <View style={styles.reviewMeta}>
-                          <View style={styles.reviewUserRow}>
-                            <View style={styles.userAvatar}>
-                              <Text style={styles.avatarText}>
-                                {rev.user[0]}
-                              </Text>
-                            </View>
-                            <Text style={styles.reviewUser}>{rev.user}</Text>
-                          </View>
-                          <View style={styles.reviewStars}>
-                            {[1, 2, 3, 4, 5].map((s) => (
-                              <Star
-                                key={s}
-                                size={11}
-                                fill={s <= rev.rating ? "#FFD700" : "transparent"}
-                                color={s <= rev.rating ? "#FFD700" : "#555"}
-                              />
-                            ))}
-                          </View>
-                        </View>
-                        <Text style={styles.reviewComment} numberOfLines={3}>
-                          {rev.comment}
-                        </Text>
-                          <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-                            {rev.userId === user?.id ? (
-                              <TouchableOpacity onPress={() => handleDeleteReview(rev)}>
-                                <Trash2 size={14} color="#E56B6B" />
-                              </TouchableOpacity>
-                            ) : (
-                              <>
-                                <TouchableOpacity onPress={() => handleReportReview(rev)}>
-                                  <Flag size={14} color="#888" />
-                                </TouchableOpacity>
-                                <TouchableOpacity onPress={() => handleBlockReviewer(rev)}>
-                                  <Shield size={14} color="#888" />
-                                </TouchableOpacity>
-                              </>
-                            )}
-                          </View>
-                      </View>
-                    ))
-                  ) : (
-                    <View style={styles.emptyReviews}>
-                      <Text style={styles.emptyReviewsText}>
-                        No reviews found for this location.
-                      </Text>
-                    </View>
-                  )}
                 </>
               )}
             </ScrollView>
+            ) : null}
+
+            {!isPeekSheet && isDiningHallCard ? (
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 60, paddingTop: 12 }}
+                scrollEventThrottle={16}
+              >
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={styles.sectionTitle}>Menu</Text>
+                </View>
+
+                <View style={{ marginBottom: 16, flexDirection: 'row', gap: 24 }}>
+                  {ALL_DINING_MEAL_PERIODS.map((period) => {
+                    const isActive = activeDiningMealPeriod === period;
+                    return (
+                      <TouchableOpacity
+                        key={period}
+                        onPress={() => setActiveDiningMealPeriod(period)}
+                        style={{
+                          paddingBottom: 6,
+                          borderBottomWidth: 2,
+                          borderBottomColor: isActive ? COLORS.primary : 'transparent',
+                        }}
+                      >
+                        <Text style={{
+                          fontSize: 15,
+                          fontWeight: isActive ? '700' : '600',
+                          color: isActive ? COLORS.textPrimary : COLORS.textTertiary,
+                        }}>
+                          {period.charAt(0).toUpperCase() + period.slice(1)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {diningMenuPreview?.categories?.length > 0 ? (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ gap: 10, paddingHorizontal: 18, paddingRight: 30 }}
+                    style={{ marginBottom: 20, marginHorizontal: -18 }}
+                  >
+                    <TouchableOpacity
+                      style={[
+                        {
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                          borderWidth: 1,
+                          borderRadius: 999,
+                          paddingHorizontal: 14,
+                          paddingVertical: 10,
+                          backgroundColor: COLORS.card,
+                          borderColor: COLORS.border,
+                        },
+                        activeCategoryKey === "all" && {
+                          borderWidth: 1.5,
+                          borderColor: "transparent",
+                          backgroundColor: "#E8EEF9",
+                        },
+                      ]}
+                      onPress={() => {
+                        setActiveCategoryKey("all");
+                        const categoryNames = diningMenuPreview.categories.map((c: any) => c.name);
+                        setCollapsedCategories(new Set(categoryNames));
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          { fontSize: 13, fontWeight: "600", color: COLORS.textSecondary },
+                          activeCategoryKey === "all" && { color: "#4A6FA5", fontWeight: "800" },
+                        ]}
+                      >
+                        All stations
+                      </Text>
+                    </TouchableOpacity>
+
+                    {diningMenuPreview.categories.map((category: any) => (
+                      <TouchableOpacity
+                        key={category.name}
+                        style={[
+                          {
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: 8,
+                            borderWidth: 1,
+                            borderRadius: 999,
+                            paddingHorizontal: 14,
+                            paddingVertical: 10,
+                            backgroundColor: COLORS.card,
+                            borderColor: COLORS.border,
+                          },
+                          activeCategoryKey === category.name && {
+                            borderWidth: 1.5,
+                            borderColor: "transparent",
+                            backgroundColor: "#E8EEF9",
+                          },
+                        ]}
+                        onPress={() => {
+                          setActiveCategoryKey(category.name);
+                          setCollapsedCategories(new Set());
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text
+                          style={[
+                            { fontSize: 13, fontWeight: "600", color: COLORS.textSecondary },
+                            activeCategoryKey === category.name && { color: "#4A6FA5", fontWeight: "800" },
+                          ]}
+                        >
+                          {category.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                ) : null}
+
+                {isFetchingDining ? (
+                  <View style={{ paddingTop: 40, alignItems: "center" }}>
+                    <ActivityIndicator color={COLORS.primary} size="large" />
+                  </View>
+                ) : !diningMenuPreview?.categories || diningMenuPreview.categories.length === 0 ? (
+                  <View style={{ paddingVertical: 40, alignItems: "center" }}>
+                    <Utensils size={32} color={COLORS.textTertiary} style={{ marginBottom: 12, opacity: 0.5 }} />
+                    <Text style={{ fontSize: 16, fontWeight: "600", color: COLORS.textSecondary }}>
+                      No stations available right now
+                    </Text>
+                    <Text style={{ fontSize: 13, color: COLORS.textTertiary, marginTop: 6 }}>
+                      Check another meal period.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ paddingHorizontal: 0 }}>
+                    {(diningMenuPreview?.categories || [])
+                      .filter((c: any) => activeCategoryKey === "all" || c.name === activeCategoryKey)
+                      .map((category: any) => {
+                        const isAllSelected = activeCategoryKey === "all";
+                        const isCollapsed = isAllSelected && collapsedCategories.has(category.name);
+                        
+                        return (
+                          <View key={category.name} style={isAllSelected ? { marginBottom: 12, backgroundColor: COLORS.card, borderRadius: 16, overflow: "hidden" } : {}}>
+                            {isAllSelected && (
+                              <TouchableOpacity
+                                style={{
+                                  flexDirection: "row",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  paddingHorizontal: 16,
+                                  paddingVertical: 18,
+                                }}
+                                onPress={() => toggleCategory(category.name)}
+                                activeOpacity={0.7}
+                              >
+                                <Text style={{ fontSize: 18, fontWeight: "800", color: COLORS.textPrimary }}>
+                                  {category.name}
+                                </Text>
+                                {!isCollapsed ? (
+                                  <ChevronUp size={20} color={COLORS.primary} />
+                                ) : (
+                                  <ChevronDown size={20} color={COLORS.primary} />
+                                )}
+                              </TouchableOpacity>
+                            )}
+
+                            {!isCollapsed && (
+                              <View style={isAllSelected ? { paddingHorizontal: 16, paddingBottom: 16 } : {}}>
+                                {category.items.map((item: any, idx: number) => (
+                                  <View
+                                    key={`${category.name}-${item.name}-${idx}`}
+                                    style={{
+                                      paddingVertical: 14,
+                                      borderBottomWidth: idx === category.items.length - 1 ? 0 : 1,
+                                      borderBottomColor: COLORS.border,
+                                    }}
+                                  >
+                                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                      <View style={{ flex: 1, paddingRight: 12 }}>
+                                        <Text style={{ fontSize: 15, fontWeight: "700", color: COLORS.textPrimary, marginBottom: 8, lineHeight: 20 }}>
+                                          {item.name}
+                                        </Text>
+                                        <View style={{ flexDirection: "row", gap: 16 }}>
+                                          <View>
+                                            <Text style={{ fontSize: 9, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 2 }}>
+                                              Energy
+                                            </Text>
+                                            <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.textPrimary }}>
+                                              {Math.round(item.calories || 0)} kcal
+                                            </Text>
+                                          </View>
+                                          {item.protein ? (
+                                            <View>
+                                              <Text style={{ fontSize: 9, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 2 }}>
+                                                Protein
+                                              </Text>
+                                              <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.textPrimary }}>
+                                                {Math.round(item.protein)}g
+                                              </Text>
+                                            </View>
+                                          ) : null}
+                                        </View>
+                                      </View>
+                                      {item.dietary?.includes("Vegetarian") || item.dietary?.includes("Vegan") ? (
+                                        <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#E6EFDE", alignItems: "center", justifyContent: "center", marginTop: 2 }}>
+                                          <Leaf size={13} color="#5B9A68" />
+                                        </View>
+                                      ) : null}
+                                    </View>
+                                  </View>
+                                ))}
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
+                  </View>
+                )}
+              </ScrollView>
             ) : null}
           </>
         ) : null}
       </Animated.View>
 
-      {/* Review Modal */}
-      <Modal visible={reviewModalVisible} animationType="fade" transparent>
-        <TouchableWithoutFeedback
-          onPress={() => setReviewModalVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : "height"}
-              style={{ width: "100%", alignItems: "center" }}
-            >
-              <TouchableWithoutFeedback
-                onPress={(e) => e.stopPropagation()}
-              >
-                <View style={styles.reviewModalContainer}>
-                  <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>Rate {selectedLabel}</Text>
-                    <TouchableOpacity
-                      onPress={() => setReviewModalVisible(false)}
-                    >
-                      <X size={20} color="#666" />
-                    </TouchableOpacity>
-                  </View>
 
-                  <View style={styles.starRow}>
-                    {[1, 2, 3, 4, 5].map((s) => (
-                      <TouchableOpacity
-                        key={s}
-                        onPress={() => {
-                          setNewRating(s);
-                          Haptics.impactAsync(
-                            Haptics.ImpactFeedbackStyle.Light,
-                          );
-                        }}
-                        style={styles.starTouch}
-                      >
-                        <Star
-                          size={38}
-                          fill={s <= newRating ? "#FFD700" : "transparent"}
-                          color={s <= newRating ? "#FFD700" : "#333"}
-                        />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
 
-                  <View style={styles.inputContainer}>
-                    <TextInput
-                      style={styles.reviewInput}
-                      placeholder="Sharing your experience helps other Aggies..."
-                      placeholderTextColor="#555"
-                      multiline
-                      value={newReviewText}
-                      onChangeText={setNewReviewText}
-                      maxLength={500}
-                    />
-                    <Text style={styles.charCount}>
-                      {newReviewText.length}/500
-                    </Text>
-                  </View>
 
-                  <TouchableOpacity
-                    style={[
-                      styles.premiumPostBtn,
-                      (!newReviewText.trim() || newRating === 0) && {
-                        opacity: 0.4,
-                      },
-                    ]}
-                    onPress={handlePostReview}
-                    disabled={
-                      !newReviewText.trim() ||
-                      newRating === 0 ||
-                      isPostingReview
-                    }
-                  >
-                    <View style={styles.btnContent}>
-                      {isPostingReview ? (
-                        <ActivityIndicator size="small" color="#000" />
-                      ) : (
-                        <Text style={styles.premiumPostBtnText}>
-                          Post Review
-                        </Text>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                </View>
-              </TouchableWithoutFeedback>
-            </KeyboardAvoidingView>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      {/* Full Reviews Modal */}
-      <Modal
-        visible={allReviewsModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setAllReviewsModalVisible(false)}
-      >
-        <TouchableWithoutFeedback
-          onPress={() => setAllReviewsModalVisible(false)}
-        >
-          <View style={styles.fullReviewsOverlay}>
-            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-              <View style={styles.fullReviewsContainer}>
-                <View style={styles.dragHandle} />
-                <View style={styles.fullReviewsHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.fullReviewsTitle}>User Reviews</Text>
-                    <Text style={styles.fullReviewsSubtitle}>{selectedLabel}</Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => setAllReviewsModalVisible(false)}
-                    style={styles.backBtn}
-                  >
-                    <X size={18} color={COLORS.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-
-                {isFetchingReviews ? (
-                  <View style={styles.fullReviewsLoading}>
-                    <ActivityIndicator size="large" color={COLORS.primary} />
-                    <Text style={styles.fullReviewsLoadingText}>
-                      Loading reviews...
-                    </Text>
-                  </View>
-                ) : (
-                  <ScrollView
-                    contentContainerStyle={styles.fullReviewsScroll}
-                    showsVerticalScrollIndicator={false}
-                  >
-                    {streamReviews.length > 0 ? (
-                      streamReviews.map((rev, i) => (
-                        <View key={i} style={styles.reviewItem}>
-                          <View style={styles.reviewMeta}>
-                            <Text style={styles.reviewUser}>{rev.user}</Text>
-                            <View style={styles.reviewStars}>
-                              {[1, 2, 3, 4, 5].map((s) => (
-                                <Star
-                                  key={s}
-                                  size={11}
-                                  fill={
-                                    s <= rev.rating ? "#FFD700" : "transparent"
-                                  }
-                                  color={s <= rev.rating ? "#FFD700" : "#444"}
-                                />
-                              ))}
-                            </View>
-                          </View>
-                          <Text style={styles.reviewComment}>{rev.comment}</Text>
-                          <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-                                {rev.userId === user?.id ? (
-                                    <TouchableOpacity onPress={() => handleDeleteReview(rev)}>
-                                        <Trash2 size={14} color="#E56B6B" />
-                                    </TouchableOpacity>
-                                ) : (
-                                    <>
-                                        <TouchableOpacity onPress={() => handleReportReview(rev)}>
-                                            <Flag size={14} color="#888" />
-                                        </TouchableOpacity>
-                                        <TouchableOpacity onPress={() => handleBlockReviewer(rev)}>
-                                            <Shield size={14} color="#888" />
-                                        </TouchableOpacity>
-                                    </>
-                                )}
-                          </View>
-                        </View>
-                      ))
-                    ) : (
-                      <View style={styles.emptyReviews}>
-                        <Text style={styles.emptyReviewsText}>
-                          No reviews found for this location.
-                        </Text>
-                      </View>
-                    )}
-                  </ScrollView>
-                )}
-              </View>
-            </TouchableWithoutFeedback>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
     </>
   );
 }

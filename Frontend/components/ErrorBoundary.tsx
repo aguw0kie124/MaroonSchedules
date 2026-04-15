@@ -24,7 +24,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error(`[ErrorBoundary:${this.props.name || 'Unspecified'}] Uncaught error:`, error, errorInfo);
+    console.warn(`[ErrorBoundary:${this.props.name || 'Unspecified'}] Uncaught error:`, error, errorInfo);
   }
 
   private handleReset = () => {

@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from pydantic import BaseModel, Field
 from typing import Optional
 import psycopg
-from db_config import CONNECTION_PARAMS
+from db_config import CONNECTION_PARAMS, get_pool
 from auth.clerk_middleware import require_auth, ensure_matching_user
 from models.base import SanitizedBaseModel
 
@@ -29,7 +29,7 @@ class LikePostRequest(BaseModel):
 @limiter.limit("60/minute")
 def get_posts(request: Request, limit: int = 20, offset: int = 0):
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     SELECT 
@@ -65,7 +65,7 @@ def get_posts(request: Request, limit: int = 20, offset: int = 0):
 def create_post(request: Request, req: PostCreateRequest, auth_user_id: str = Depends(require_auth)):
     ensure_matching_user(auth_user_id, req.user_id, detail="You can only create posts as yourself")
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     INSERT INTO campus_posts 
@@ -88,7 +88,7 @@ def create_post(request: Request, req: PostCreateRequest, auth_user_id: str = De
 def toggle_like(request: Request, post_id: str, req: LikePostRequest, auth_user_id: str = Depends(require_auth)):
     ensure_matching_user(auth_user_id, req.user_id, detail="You can only like posts as yourself")
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as cur:
                 # First check if user already liked it
                 cur.execute("SELECT liked_by FROM campus_posts WHERE id = %s", (post_id,))
@@ -134,7 +134,7 @@ def toggle_like(request: Request, post_id: str, req: LikePostRequest, auth_user_
 def delete_post(post_id: str, user_id: str = Query(...), auth_user_id: str = Depends(require_auth)):
     ensure_matching_user(auth_user_id, user_id, detail="You can only delete your own posts")
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
                     DELETE FROM campus_posts 
@@ -165,7 +165,7 @@ class CreateReelRequest(BaseModel):
 @router.get("/reels")
 def get_reels(limit: int = 30, offset: int = 0):
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as cur:
                 # Create table if not exists
                 cur.execute("""
@@ -214,7 +214,7 @@ def get_reels(limit: int = 30, offset: int = 0):
 def create_reel(request: Request, req: CreateReelRequest, auth_user_id: str = Depends(require_auth)):
     ensure_matching_user(auth_user_id, req.user_id, detail="You can only create reels as yourself")
     try:
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as cur:
                 # Ensure table exists
                 cur.execute("""

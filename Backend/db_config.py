@@ -18,6 +18,9 @@ DB_PASS = os.getenv("DB_PASS", "admin")
 DB_PORT = os.getenv("DB_PORT", "5432")
 DB_CONNECT_TIMEOUT = os.getenv("DB_CONNECT_TIMEOUT", "8")
 
+from typing import Optional
+from psycopg_pool import ConnectionPool
+
 CONNECTION_PARAMS = (
     f"host={DB_HOST} "
     f"port={DB_PORT} "
@@ -28,6 +31,35 @@ CONNECTION_PARAMS = (
     f"options='-c statement_timeout=5000'"
 )
 
+_db_pool: Optional[ConnectionPool] = None
 
 def get_db_connection():
+    """Returns the connection string for backward compatibility."""
     return CONNECTION_PARAMS
+
+def init_pool():
+    """Initializes the global connection pool."""
+    global _db_pool
+    if _db_pool is None:
+        print("[db_config] Initializing DB connection pool...")
+        _db_pool = ConnectionPool(
+            CONNECTION_PARAMS,
+            min_size=2,      # Keep at least 2 connections alive
+            max_size=20,     # Scale up to 20 during bursts
+            open=True
+        )
+    return _db_pool
+
+def get_pool() -> ConnectionPool:
+    """Gets the global pool, initializing it if necessary."""
+    if _db_pool is None:
+        return init_pool()
+    return _db_pool
+
+def close_pool():
+    """Closes the global connection pool on shutdown."""
+    global _db_pool
+    if _db_pool is not None:
+        print("[db_config] Closing DB connection pool...")
+        _db_pool.close()
+        _db_pool = None

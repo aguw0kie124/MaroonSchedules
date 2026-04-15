@@ -1,5 +1,4 @@
-import axios from 'axios';
-import { API_URL } from '../config';
+import { apiFetch } from '../api/client';
 
 const BASE_URL = 'https://aggiespirit.ts.tamu.edu';
 const ROUTE_COLORS = ['#500000', '#7E0000', '#B34100', '#0B6E4F', '#165DFF', '#6B3FA0', '#007A78', '#A63D40'];
@@ -8,6 +7,9 @@ const ROUTE_COLORS = ['#500000', '#7E0000', '#B34100', '#0B6E4F', '#165DFF', '#6
 const METADATA_TTL = 1000 * 60 * 5; // 5 minutes
 const PATTERN_TTL = 1000 * 60 * 30; // 30 minutes
 const VEHICLE_TTL = 1000 * 5; // 5 seconds (internal buffer)
+
+/** Transit polls often; keep tighter than generic API calls so a bad host fails fast. */
+const TRANSIT_FETCH_TIMEOUT_MS = 6000;
 
 export interface BusRoute {
     id: string;
@@ -44,6 +46,7 @@ export const transitService = {
     routesCache: null as CacheEntry<{ routes: any[], activeIds: string[] }> | null,
     patternCache: new Map<string, CacheEntry<{ points: any[]; stops: any[] }>>(),
     vehicleCache: new Map<string, CacheEntry<any[]>>(),
+    timetableCache: new Map<string, CacheEntry<any[]>>(),
 
     /**
      * Initializes authentication for MaroonRides/AggieSpirit
@@ -62,7 +65,7 @@ export const transitService = {
                 return this.auth;
             }
         } catch (error) {
-            console.error('[TransitService] Dynamic auth failed, falling back...');
+            console.warn('[TransitService] Dynamic auth failed, falling back...');
             return this.initManualAuth();
         }
         return null;
@@ -91,7 +94,7 @@ export const transitService = {
                 return this.auth;
             }
         } catch (e) {
-            console.error('[TransitService] Manual fallback failed:', e);
+            console.warn('[TransitService] Manual fallback failed:', e);
         }
         return null;
     },
@@ -107,7 +110,7 @@ export const transitService = {
         }
 
         try {
-            const response = await fetch(`${API_URL}/traffic/transit/routes`);
+            const response = await apiFetch('/traffic/transit/routes', {}, TRANSIT_FETCH_TIMEOUT_MS);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             
@@ -123,7 +126,7 @@ export const transitService = {
             this.routesCache = { data: result, timestamp: now };
             return result;
         } catch (error) {
-            console.error('[TransitService] Error fetching routes:', error);
+            console.warn('[TransitService] Error fetching routes:', error);
             return this.routesCache?.data || { routes: [], activeIds: [] };
         }
     },
@@ -155,7 +158,11 @@ export const transitService = {
         }
 
         try {
-            const response = await fetch(`${API_URL}/traffic/transit/route/${encodeURIComponent(routeId)}`);
+            const response = await apiFetch(
+                `/traffic/transit/route/${encodeURIComponent(routeId)}`,
+                {},
+                TRANSIT_FETCH_TIMEOUT_MS,
+            );
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             
@@ -185,7 +192,7 @@ export const transitService = {
             this.patternCache.set(routeId, { data: result, timestamp: now });
             return result;
         } catch (error) {
-            console.error('[TransitService] Error fetching patterns:', error);
+            console.warn('[TransitService] Error fetching patterns:', error);
             return cached?.data || { points: [], stops: [], paths: [] };
         }
     },
@@ -204,7 +211,7 @@ export const transitService = {
 
         try {
             const query = routeId ? `?route_id=${encodeURIComponent(routeId)}` : '';
-            const response = await fetch(`${API_URL}/traffic/transit/vehicles${query}`);
+            const response = await apiFetch(`/traffic/transit/vehicles${query}`, {}, TRANSIT_FETCH_TIMEOUT_MS);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const payload = await response.json();
             const vehicles = payload.vehicles || [];
@@ -212,7 +219,7 @@ export const transitService = {
             this.vehicleCache.set(cacheKey, { data: vehicles, timestamp: now });
             return vehicles;
         } catch (error) {
-            console.error('[TransitService] Error fetching vehicles:', error);
+            console.warn('[TransitService] Error fetching vehicles:', error);
             return cached?.data || [];
         }
     },
@@ -220,6 +227,31 @@ export const transitService = {
     async getRouteStops(routeId: string): Promise<any[]> {
         const { stops } = await this.getRoutePattern(routeId);
         return stops;
+    },
+
+    async getRouteTimetable(routeId: string, maxStops = 12): Promise<any[]> {
+        const now = Date.now();
+        const cacheKey = `${routeId}:${maxStops}`;
+        const cached = this.timetableCache.get(cacheKey);
+        if (cached && (now - cached.timestamp < 30000)) {
+            return cached.data;
+        }
+
+        try {
+            const response = await apiFetch(
+                `/traffic/transit/timetable/${encodeURIComponent(routeId)}?max_stops=${encodeURIComponent(String(maxStops))}`,
+                {},
+                TRANSIT_FETCH_TIMEOUT_MS,
+            );
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const payload = await response.json();
+            const entries = Array.isArray(payload?.entries) ? payload.entries : [];
+            this.timetableCache.set(cacheKey, { data: entries, timestamp: now });
+            return entries;
+        } catch (error) {
+            console.warn('[TransitService] Error fetching timetable:', error);
+            return cached?.data || [];
+        }
     },
 
     getRouteColor(routeId?: string): string {

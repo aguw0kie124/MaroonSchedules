@@ -54,7 +54,7 @@ export function useEvents() {
       
       setEvents(parsed);
     } catch (err: any) {
-      console.error('[useEvents] Fetch error:', err);
+      console.warn('[useEvents] Fetch error:', err);
       setError(err.message);
     } finally {
       setLoading(false);

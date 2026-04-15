@@ -4,7 +4,9 @@ export const COLORS = {
   primaryLight: '#FFE5E5',
   accent: '#A00000', // Lighter Maroon
   darkBlue: '#330000', // Replaced with a deep maroon
+  textPrimary: '#111111',
   textSecondary: '#666666',
+  textTertiary: '#8E8E93',
   text: '#111111',
   white: '#FFFFFF',
   border: '#E5E5E5',

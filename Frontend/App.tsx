@@ -49,6 +49,7 @@ import FoodDatabaseScreen from './components/dining/FoodDatabaseScreen';
 import WeightTrackerScreen from './components/dining/WeightTrackerScreen';
 import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
+import RestaurantMenuScreen from './components/dining/RestaurantMenuScreen';
 
 import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio } from 'lucide-react-native';
 import { GlassPillTabBar } from './components/GlassPillTabBar';
@@ -127,53 +128,56 @@ function UserSync({ children }: { children: React.ReactNode }) {
           if (typeof data.tour_completed === 'boolean') {
             setTourCompleted(isTourCompleted || data.tour_completed);
           }
-          const hasLegacyPreferenceShape =
-            !('event_preferences_completed' in data) ||
-            (!Array.isArray(data.preferred_event_categories) &&
-              data.preferred_time == null &&
-              data.preferred_social_mode == null &&
-              !isMajorOption(data.major));
-          const nextEventPreferencesCompleted =
-            typeof data.event_preferences_completed === 'boolean'
-              ? data.event_preferences_completed
-              : hasLegacyPreferenceShape;
-          setEventPreferencesCompleted(
-            isEventPreferencesCompleted || nextEventPreferencesCompleted,
-          );
-          if (Array.isArray(data.preferred_event_categories)) {
-            setPreferredEventCategories(
-              data.preferred_event_categories.filter((entry: unknown): entry is string => typeof entry === 'string'),
+          const reopeningPrefs = useAppShellStore.getState().showEventPreferencesOnboarding;
+          if (!reopeningPrefs) {
+            const hasLegacyPreferenceShape =
+              !('event_preferences_completed' in data) ||
+              (!Array.isArray(data.preferred_event_categories) &&
+                data.preferred_time == null &&
+                data.preferred_social_mode == null &&
+                !isMajorOption(data.major));
+            const nextEventPreferencesCompleted =
+              typeof data.event_preferences_completed === 'boolean'
+                ? data.event_preferences_completed
+                : hasLegacyPreferenceShape;
+            setEventPreferencesCompleted(
+              isEventPreferencesCompleted || nextEventPreferencesCompleted,
             );
-          } else if (!isEventPreferencesCompleted) {
-            setPreferredEventCategories([]);
-          } else if (preferredEventCategories.length > 0) {
-            setPreferredEventCategories(preferredEventCategories);
-          } else {
-            setPreferredEventCategories([]);
-          }
-          if (
-            data.preferred_time === 'Morning' ||
-            data.preferred_time === 'Afternoon' ||
-            data.preferred_time === 'Evening' ||
-            data.preferred_time === 'Anytime'
-          ) {
-            setPreferredTime(data.preferred_time);
-          } else if (isEventPreferencesCompleted && preferredTime) {
-            setPreferredTime(preferredTime);
-          } else {
-            setPreferredTime(null);
-          }
-          if (data.preferred_social_mode === 'casual' || data.preferred_social_mode === 'professional') {
-            setPreferredSocialMode(data.preferred_social_mode);
-          } else if (isEventPreferencesCompleted && preferredSocialMode) {
-            setPreferredSocialMode(preferredSocialMode);
-          } else {
-            setPreferredSocialMode(null);
-          }
-          if (isMajorOption(data.major)) {
-            setSelectedMajor(data.major);
-          } else if (!isEventPreferencesCompleted) {
-            setMajorSpecific(false);
+            if (Array.isArray(data.preferred_event_categories)) {
+              setPreferredEventCategories(
+                data.preferred_event_categories.filter((entry: unknown): entry is string => typeof entry === 'string'),
+              );
+            } else if (!isEventPreferencesCompleted) {
+              setPreferredEventCategories([]);
+            } else if (preferredEventCategories.length > 0) {
+              setPreferredEventCategories(preferredEventCategories);
+            } else {
+              setPreferredEventCategories([]);
+            }
+            if (
+              data.preferred_time === 'Morning' ||
+              data.preferred_time === 'Afternoon' ||
+              data.preferred_time === 'Evening' ||
+              data.preferred_time === 'Anytime'
+            ) {
+              setPreferredTime(data.preferred_time);
+            } else if (isEventPreferencesCompleted && preferredTime) {
+              setPreferredTime(preferredTime);
+            } else {
+              setPreferredTime(null);
+            }
+            if (data.preferred_social_mode === 'casual' || data.preferred_social_mode === 'professional') {
+              setPreferredSocialMode(data.preferred_social_mode);
+            } else if (isEventPreferencesCompleted && preferredSocialMode) {
+              setPreferredSocialMode(preferredSocialMode);
+            } else {
+              setPreferredSocialMode(null);
+            }
+            if (isMajorOption(data.major)) {
+              setSelectedMajor(data.major);
+            } else if (!isEventPreferencesCompleted) {
+              setMajorSpecific(false);
+            }
           }
         }
       }).catch((err: any) => console.warn('UserSync failed:', err));
@@ -204,7 +208,7 @@ function ApiAuthBridge() {
         console.warn('Backend returned 401 after a Clerk token refresh attempt.');
       },
       onForbidden: async () => {
-        console.error('Backend rejected the configured API key.');
+        console.warn('Backend rejected the configured API key (403).');
       },
     });
 
@@ -277,11 +281,11 @@ function MainTabs(props: any) {
   const isGuest = useSessionStore((state) => state.isGuest);
   const visibleNavItems = React.useMemo(() => {
     if (!isGuest) {
-      return getOrderedVisibleItems(navItems);
+      return getOrderedVisibleItems(navItems).filter((item: any) => item.id !== 'Dining');
     }
     return getOrderedItems(navItems)
-      .filter((item) => item.id === 'Dashboard' || item.id === 'Places')
-      .map((item) => ({ ...item, visible: true }));
+      .filter((item: any) => (item.id === 'Dashboard' || item.id === 'Places') && item.id !== 'Dining')
+      .map((item: any) => ({ ...item, visible: true }));
   }, [isGuest, navItems]);
 
   const tabScreens = [
@@ -509,7 +513,7 @@ function RootNavigator() {
     isRegularUserFlow &&
     isTOSAccepted &&
     isNotificationPrompted &&
-    isAdmin === false &&
+    (showEventPreferencesOnboarding || isAdmin === false) &&
     (!isEventPreferencesCompleted || showEventPreferencesOnboarding) &&
     user?.id
   ) {
@@ -582,6 +586,11 @@ function RootNavigator() {
               component={FullMenuScreen}
               options={{ headerShown: false, presentation: 'modal' }}
             />
+            <Stack.Screen
+              name="RestaurantMenu"
+              component={RestaurantMenuScreen}
+              options={{ headerShown: false, presentation: 'modal' }}
+            />
             <Stack.Screen name="DiningDashboard" component={DiningDashboard} options={{ headerShown: false }} />
             <Stack.Screen name="DiningSettings" component={DiningSettingsScreen} options={{ headerShown: false }} />
             <Stack.Screen name="MealOptimizer" component={MealOptimizerScreen} options={{ headerShown: false }} />
@@ -627,6 +636,18 @@ const queryClient = new QueryClient({
     queries: {
       gcTime: 1000 * 60 * 60 * 24, // 24 hours
       staleTime: 1000 * 60 * 5, // 5 minutes default
+      /** Do not retry timeouts / dead hosts — that doubled perceived load time (two full abort windows). */
+      retry: (failureCount, error) => {
+        const message = String((error as Error)?.message ?? error ?? '');
+        if (/timed out|Network request failed|Failed to fetch/i.test(message)) {
+          return false;
+        }
+        return failureCount < 1;
+      },
+      refetchOnReconnect: true,
+    },
+    mutations: {
+      retry: 0,
     },
   },
 });

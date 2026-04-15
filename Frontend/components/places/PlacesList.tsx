@@ -328,16 +328,28 @@ export function PlacesList({
     const recreationFacility =
       recreationFacilityMap.get(getCanonicalLocationName(loc.location)) || null;
     const isCapacityType = loc.type === "Rec" || loc.type === "Library";
+    const hoursForList =
+      loc.hours_today ||
+      loc.hours ||
+      recreationFacility?.today_hours ||
+      recreationFacility?.hours_hint;
+    const displayPercent =
+      loc.capacity && loc.capacity > 0 && loc.current_count != null
+        ? Math.round((loc.current_count / loc.capacity) * 100)
+        : loc.percent_full != null && Number.isFinite(loc.percent_full)
+          ? loc.percent_full
+          : null;
+
     const primaryMeta = loc.classMeetings?.length
       ? `${loc.classMeetings.length} class${loc.classMeetings.length === 1 ? "" : "es"}`
       : isCapacityType
-        ? `${loc.percent_full != null ? `${loc.percent_full}% full` : loc.hours || recreationFacility?.today_hours || recreationFacility?.hours_hint || "Hours available"}`
-        : loc.hours || loc.type;
+        ? `${displayPercent != null ? `${displayPercent}% full` : hoursForList || "Hours available"}`
+        : loc.hours_today || loc.hours || loc.type;
     const secondaryMeta =
       loc.type === "Parking"
         ? parkingRecommendation?.badge || null
-        : loc.percent_full != null && isCapacityType
-          ? `${loc.percent_full}% full`
+        : displayPercent != null && isCapacityType
+          ? `${displayPercent}% full`
           : (loc.type !== "Dining" && loc.type !== "Hub" ? loc.type : null);
     const statusChips: string[] = [];
 
@@ -348,13 +360,13 @@ export function PlacesList({
       statusChips.push("Open");
     }
     if (
-      loc.percent_full != null &&
+      displayPercent != null &&
       isCapacityType
     ) {
       statusChips.push(
-        loc.percent_full >= 80
+        displayPercent >= 80
           ? "Busy"
-          : loc.percent_full >= 45
+          : displayPercent >= 45
             ? "Moderate"
             : "Light",
       );

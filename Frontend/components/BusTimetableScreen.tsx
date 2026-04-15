@@ -40,6 +40,22 @@ function getStopLabel(stop: any) {
   );
 }
 
+function formatDepartureList(entry: any) {
+  const departures = Array.isArray(entry?.departures) ? entry.departures : [];
+  const labels = departures
+    .map((departure: any) => departure?.estimated_depart_time_utc || departure?.scheduled_depart_time_utc)
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((value: string) =>
+      new Date(value).toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+      }),
+    );
+
+  return labels.join(" • ");
+}
+
 function TimetableRow({
   entry,
   routeName,
@@ -102,6 +118,9 @@ function TimetableRow({
       <View style={{ flex: 1 }}>
         <Text style={styles.stopName}>{getStopLabel(entry.stop)}</Text>
         <Text style={styles.stopMeta}>{entry.detail}</Text>
+        {formatDepartureList(entry) ? (
+          <Text style={styles.stopMeta}>{formatDepartureList(entry)}</Text>
+        ) : null}
       </View>
       <View style={{ alignItems: "flex-end", gap: 4 }}>
         <Text style={styles.eta}>{entry.etaLabel}</Text>

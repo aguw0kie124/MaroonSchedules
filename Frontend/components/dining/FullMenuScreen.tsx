@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -44,7 +44,7 @@ function formatMenuTitle(location?: string, title?: string) {
 }
 
 function buildMenuItemKey(item: any) {
-  return item.name;
+  return item?.name || 'unknown';
 }
 
 function buildFoodPayload(item: any, location: string, mealPeriod: DiningMealPeriod) {
@@ -61,10 +61,6 @@ function buildFoodPayload(item: any, location: string, mealPeriod: DiningMealPer
     meal_period: mealPeriod,
     quantity: 1,
   };
-}
-
-function buildCategoryKey(categoryName: string) {
-  return categoryName.trim().toLowerCase();
 }
 
 export default function FullMenuScreen({ navigation, route }: any) {
@@ -170,8 +166,12 @@ export default function FullMenuScreen({ navigation, route }: any) {
 
   useEffect(() => {
     const categoryNames = (menu?.categories || []).map((category: any) => category.name);
-    setCollapsedCategories(new Set(categoryNames));
-  }, [menu]);
+    if (activeCategoryKey === 'all') {
+      setCollapsedCategories(new Set(categoryNames));
+    } else {
+      setCollapsedCategories(new Set());
+    }
+  }, [menu, activeCategoryKey]);
 
   useEffect(() => {
     if (!location || isUTDCampus) return;
@@ -194,7 +194,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
       }, {});
       setPortionCounts(nextCounts);
     } catch (trackerError) {
-      console.error('Failed to refresh tracker counts', trackerError);
+      console.warn('Failed to refresh tracker counts', trackerError);
     }
   }, [activeMealPeriod, user]);
 
@@ -219,7 +219,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await refreshTrackerCounts();
     } catch (trackerError) {
-      console.error('Could not add menu item to tracker', trackerError);
+      console.warn('Could not add menu item to tracker', trackerError);
       Alert.alert('Error', 'Could not add this item right now.');
     } finally {
       setSyncingItemKey(null);
@@ -229,117 +229,110 @@ export default function FullMenuScreen({ navigation, route }: any) {
   const removePortion = useCallback(async (item: any) => {
     if (!user) return;
     const itemKey = buildMenuItemKey(item);
-    const tracked = portionCounts[itemKey];
-    const entryId = tracked?.entryIds?.[tracked.entryIds.length - 1];
-    if (!entryId) return;
+    const existing = portionCounts[itemKey];
+    if (!existing || existing.entryIds.length === 0) return;
 
     setSyncingItemKey(itemKey);
     try {
-      await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}/${entryId}`, { method: 'DELETE' });
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const entryId = existing.entryIds[existing.entryIds.length - 1];
+      await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}/entry/${entryId}`, {
+        method: 'DELETE',
+      });
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       await refreshTrackerCounts();
     } catch (trackerError) {
-      console.error('Could not remove menu item from tracker', trackerError);
+      console.warn('Could not remove menu item from tracker', trackerError);
       Alert.alert('Error', 'Could not remove this item right now.');
     } finally {
       setSyncingItemKey(null);
     }
   }, [portionCounts, refreshTrackerCounts, user]);
 
+  const categoryOptions = useMemo(() => {
+    const cats = menu?.categories || [];
+    const options = cats.map((c: any) => ({
+      key: c.name.trim().toLowerCase(),
+      label: c.name,
+      count: c.items.length,
+    }));
+    if (options.length > 0) {
+      options.unshift({
+        key: 'all',
+        label: 'All Stations',
+        count: cats.reduce((s: number, c: any) => s + c.items.length, 0),
+      });
+    }
+    return options;
+  }, [menu]);
+
+  const visibleCategories = useMemo(() => {
+    if (activeCategoryKey === 'all') return menu?.categories || [];
+    return (menu?.categories || []).filter((c: any) => c.name.trim().toLowerCase() === activeCategoryKey);
+  }, [menu, activeCategoryKey]);
+
   const categoryCount = menu?.categories?.length || 0;
-  const categoryOptions = (menu?.categories || []).map((category: any) => ({
-    key: buildCategoryKey(category.name),
-    label: category.name,
-    count: Array.isArray(category.items) ? category.items.length : 0,
-  }));
-  const visibleCategories = (menu?.categories || []).filter((category: any) => {
-    if (activeCategoryKey === 'all') return true;
-    return buildCategoryKey(category.name) === activeCategoryKey;
-  });
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
-      <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
+    <SafeAreaView style={[s.container, { backgroundColor: T.bg }]}>
+      <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
       {wallpaperSource ? (
         <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.58)' : 'rgba(255,255,255,0.72)' }]} />
+          <View style={[StyleSheet.absoluteFill, darkMode ? { backgroundColor: 'rgba(0,0,0,0.58)' } : { backgroundColor: 'rgba(255,255,255,0.72)' }]} />
         </ImageBackground>
       ) : (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: T.bg }]} />
       )}
 
-      <ScrollView style={s.container} contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
+      >
         <View style={s.header}>
-          <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>
-            <ChevronLeft size={24} color={T.text} />
+          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+            <ChevronLeft size={28} color={T.text} />
           </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={[s.title, { color: T.text }]} numberOfLines={1}>
-              {formatMenuTitle(location, title)}
-            </Text>
-            <Text style={[s.subtitle, { color: T.text3 }]}>
-              {formatMealLabel(activeMealPeriod)}
-              {isDiningHall ? ' service' : ' menu'}
-            </Text>
+          <View>
+            <Text style={[s.title, { color: T.text }]}>{formatMenuTitle(location, title)}</Text>
+            <Text style={[s.subtitle, { color: T.text3 }]}>Dining Hall Menu</Text>
           </View>
         </View>
 
-        <View style={s.mealTabsWrap}>
-          <PillTabs
-            items={availableMealPeriods.map((period) => ({
-              key: period,
-              label: formatMealLabel(period),
-            }))}
-            activeKey={activeMealPeriod}
-            onChange={(key) => setActiveMealPeriod(key as DiningMealPeriod)}
-            floating
-            compact
-          />
-        </View>
+        {availableMealPeriods.length > 1 && (
+          <View style={s.mealTabsWrap}>
+            <PillTabs
+              items={availableMealPeriods.map((m) => ({ key: m, label: formatMealLabel(m) }))}
+              activeKey={activeMealPeriod}
+              onChange={(key) => setActiveMealPeriod(key as DiningMealPeriod)}
+            />
+          </View>
+        )}
 
-        {categoryOptions.length > 0 ? (
+        {categoryOptions.length > 1 ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={s.categoryFilterRow}
             style={s.categoryFilterScroll}
+            contentContainerStyle={s.categoryFilterRow}
           >
-            <TouchableOpacity
-              style={[
-                s.categoryFilterChip,
-                activeCategoryKey === 'all' && [s.categoryFilterChipActive, { borderColor: T.text }],
-                { backgroundColor: T.bg2, borderColor: T.border },
-              ]}
-              onPress={() => setActiveCategoryKey('all')}
-              activeOpacity={0.8}
-            >
-              <Text
-                style={[
-                  s.categoryFilterLabel,
-                  { color: T.text2 },
-                  activeCategoryKey === 'all' && { color: T.text },
-                ]}
-              >
-                All stations
-              </Text>
-            </TouchableOpacity>
-
-            {categoryOptions.map((category) => (
+            {categoryOptions.map((category, idx) => (
               <TouchableOpacity
-                key={category.key}
+                key={`${category.key}-${idx}`}
                 style={[
                   s.categoryFilterChip,
-                  activeCategoryKey === category.key && [s.categoryFilterChipActive, { borderColor: T.text }],
                   { backgroundColor: T.bg2, borderColor: T.border },
+                  activeCategoryKey === category.key ? [s.categoryFilterChipActive, { borderColor: T.text }] : null,
                 ]}
-                onPress={() => setActiveCategoryKey(category.key)}
+                onPress={() => {
+                  setActiveCategoryKey(category.key);
+                  setCollapsedCategories(new Set()); 
+                }}
                 activeOpacity={0.8}
               >
                 <Text
                   style={[
                     s.categoryFilterLabel,
                     { color: T.text2 },
-                    activeCategoryKey === category.key && { color: T.text },
+                    activeCategoryKey === category.key ? { color: T.text } : null,
                   ]}
                 >
                   {category.label}
@@ -370,12 +363,12 @@ export default function FullMenuScreen({ navigation, route }: any) {
           </Card>
         ) : (
           <>
-            {menu?.locations?.length > 1 && (
+            {(menu?.locations?.length || 0) > 1 && (
               <Card>
                 <SectionLabel>Locations</SectionLabel>
                 <View style={s.locationWrap}>
-                  {(menu.locations || locations || []).map((entry: string) => (
-                    <View key={entry} style={[s.locationPill, { backgroundColor: T.bg3, borderColor: T.border }]}>
+                  {(menu.locations || locations || []).map((entry: string, idx: number) => (
+                    <View key={`${entry}-${idx}`} style={[s.locationPill, { backgroundColor: T.bg3, borderColor: T.border }]}>
                       <Text style={[s.locationText, { color: T.text2 }]}>{entry}</Text>
                     </View>
                   ))}
@@ -383,10 +376,11 @@ export default function FullMenuScreen({ navigation, route }: any) {
               </Card>
             )}
 
-            {visibleCategories.map((category: any) => {
+            {(visibleCategories || []).map((category: any, catIdx: number) => {
               const isCollapsed = collapsedCategories.has(category.name);
+              const categoryKey = `${category.name}-${catIdx}`;
               return (
-                <Card key={category.name} style={{ paddingHorizontal: 0 }}>
+                <Card key={categoryKey} style={{ paddingHorizontal: 0 }}>
                   <TouchableOpacity
                     style={s.categoryHeader}
                     onPress={() => toggleCategory(category.name)}
@@ -402,47 +396,53 @@ export default function FullMenuScreen({ navigation, route }: any) {
 
                   {!isCollapsed && (
                     <View style={{ paddingHorizontal: 20 }}>
-                      {category.items.map((item: any) => (
-                        <View key={`${category.name}-${item.location || 'menu'}-${item.name}`} style={[s.itemRow, { borderBottomColor: T.border }]}>
-                          <View style={{ flex: 1, paddingRight: 12 }}>
-                            <Text style={[s.itemName, { color: T.text }]}>{item.name}</Text>
-                            <Text style={[s.itemMeta, { color: T.text3 }]}>
-                              {Math.round(item.calories || 0)} kcal
-                              {!!item.protein && ` • ${Math.round(item.protein)}g protein`}
-                              {!!item.location && menu.locations?.length > 1 && ` • ${item.location}`}
-                            </Text>
-                          </View>
-                          <View style={s.actionWrap}>
-                            <View style={s.countSlot}>
-                              {portionCounts[buildMenuItemKey(item)]?.count > 0 ? (
-                                <Text style={[s.countText, { color: T.text3 }]}>
-                                  {portionCounts[buildMenuItemKey(item)]?.count}x
-                                </Text>
-                              ) : null}
+                      {(category.items || []).map((item: any, itmIdx: number) => {
+                        const itemKey = buildMenuItemKey(item);
+                        const count = portionCounts[itemKey]?.count || 0;
+                        const isSyncing = syncingItemKey === itemKey;
+
+                        return (
+                          <View key={`${category.name}-${item.name}-${itmIdx}`} style={[s.itemRow, { borderBottomColor: T.border }]}>
+                            <View style={{ flex: 1, paddingRight: 12 }}>
+                              <Text style={[s.itemName, { color: T.text }]}>{item.name}</Text>
+                              <Text style={[s.itemMeta, { color: T.text3 }]}>
+                                {Math.round(item.calories || 0)} kcal
+                                {!!item.protein && ` • ${Math.round(item.protein)}g protein`}
+                                {!!item.location && (menu.locations?.length || 0) > 1 && ` • ${item.location}`}
+                              </Text>
                             </View>
-                            {portionCounts[buildMenuItemKey(item)]?.count > 0 ? (
+                            <View style={s.actionWrap}>
+                              <View style={s.countSlot}>
+                                {count > 0 ? (
+                                  <Text style={[s.countText, { color: T.text3 }]}>
+                                    {count}x
+                                  </Text>
+                                ) : null}
+                              </View>
+                              {count > 0 ? (
+                                <TouchableOpacity
+                                  style={[s.actionButton, { borderColor: T.clay, backgroundColor: `${T.clay}18` }]}
+                                  onPress={() => removePortion(item)}
+                                  disabled={isSyncing}
+                                >
+                                  <Text style={[s.actionSymbol, { color: T.clay }]}>-</Text>
+                                </TouchableOpacity>
+                              ) : null}
                               <TouchableOpacity
-                                style={[s.actionButton, { borderColor: T.clay, backgroundColor: `${T.clay}18` }]}
-                                onPress={() => removePortion(item)}
-                                disabled={syncingItemKey === buildMenuItemKey(item)}
+                                style={[s.actionButton, { borderColor: T.sage, backgroundColor: `${T.sage}18` }]}
+                                onPress={() => addPortion(item)}
+                                disabled={isSyncing}
                               >
-                                <Text style={[s.actionSymbol, { color: T.clay }]}>-</Text>
+                                {isSyncing ? (
+                                  <ActivityIndicator color={T.sage} size="small" />
+                                ) : (
+                                  <Text style={[s.actionSymbol, { color: T.sage }]}>+</Text>
+                                )}
                               </TouchableOpacity>
-                            ) : null}
-                            <TouchableOpacity
-                              style={[s.actionButton, { borderColor: T.sage, backgroundColor: `${T.sage}18` }]}
-                              onPress={() => addPortion(item)}
-                              disabled={syncingItemKey === buildMenuItemKey(item)}
-                            >
-                              {syncingItemKey === buildMenuItemKey(item) ? (
-                                <ActivityIndicator color={T.sage} size="small" />
-                              ) : (
-                                <Text style={[s.actionSymbol, { color: T.sage }]}>+</Text>
-                              )}
-                            </TouchableOpacity>
+                            </View>
                           </View>
-                        </View>
-                      ))}
+                        );
+                      })}
                     </View>
                   )}
                 </Card>

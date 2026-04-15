@@ -9,7 +9,6 @@ import { fetchSectionById } from '../api/client';
 // Define Param List for Type Safety (Optional but good)
 type RootStackParamList = {
     CourseDetail: { id: string };
-    Builder: undefined;
 };
 
 type CourseDetailRouteProp = RouteProp<RootStackParamList, 'CourseDetail'>;
@@ -44,7 +43,7 @@ export function CourseDetail() {
             const res = await fetchSectionById(id);
             setSection(res);
         } catch (e) {
-            console.error(e);
+            console.warn(e);
         } finally {
             setLoading(false);
         }

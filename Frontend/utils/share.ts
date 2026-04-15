@@ -27,7 +27,7 @@ export const triggerNativeShare = async (options: ShareOptions) => {
     );
     return result;
   } catch (error) {
-    console.error('[Share] Native share failed:', error);
+    console.warn('[Share] Native share failed:', error);
   } finally {
     if (id && type) {
       trackShare(id, type).catch(e => console.warn('[Share] Tracking failed:', e));

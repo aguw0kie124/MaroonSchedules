@@ -48,7 +48,7 @@ export function ScheduleListScreen() {
             const data = await fetchSchedules(userId);
             setSchedules(data);
         } catch (e) {
-            console.error(e);
+            console.warn(e);
         } finally {
             setLoading(false);
         }
@@ -117,7 +117,6 @@ export function ScheduleListScreen() {
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.title}>My Schedules</Text>
                 <PrimaryButton title="+ New" onPress={() => setModalVisible(true)} style={styles.newBtn} />
             </View>
 
@@ -181,9 +180,7 @@ const getStyles = (COLORS: any) => StyleSheet.create({
         backgroundColor: COLORS.background
     },
     header: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
+        alignItems: 'stretch',
         paddingHorizontal: 20,
         paddingTop: Platform.OS === 'ios' ? 60 : 40,
         paddingBottom: 16,
@@ -191,16 +188,10 @@ const getStyles = (COLORS: any) => StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: COLORS.border,
     },
-    title: {
-        fontSize: 34,
-        fontWeight: '800',
-        letterSpacing: -1,
-        color: COLORS.textPrimary
-    },
     newBtn: {
-        paddingVertical: 8,
-        paddingHorizontal: 16,
-        borderRadius: 20,
+        width: '100%',
+        paddingVertical: 14,
+        borderRadius: 18,
     },
     listContainer: {
         padding: 16,

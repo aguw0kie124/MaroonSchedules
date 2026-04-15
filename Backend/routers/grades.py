@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 routers/grades.py
 -----------------
@@ -11,7 +12,6 @@ Uses only stdlib (urllib) for the live fetch so we don't add a hard
 dependency on the `requests` package at server startup.
 """
 
-from __future__ import annotations
 
 import json
 import os

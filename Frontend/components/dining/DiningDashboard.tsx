@@ -1,21 +1,21 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ArrowLeft,
-  Database,
-  Flame,
-  Scale,
   Settings2,
-  Ticket,
-  UtensilsCrossed,
-  ChevronRight,
 } from 'lucide-react-native';
+import { useUser } from '@clerk/clerk-expo';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
 import { getDiningMealPeriodForLocation } from '../../services/diningMenuCache';
-import { Card, SectionLabel, ActionButton } from './DiningUI';
+import { requestJson } from '../../api/client';
+import { getLocalDateString } from '../../services/dateUtils';
+import { Card, ActionButton } from './DiningUI';
+import { computeDiningStreakStats } from '../../services/diningStreaks';
+import FoodDatabaseScreen from './FoodDatabaseScreen';
 
 const TAMU_HALLS = [
   { key: 'Sbisa', label: 'Sbisa', sub: 'North Campus' },
@@ -28,52 +28,8 @@ const UTD_HALLS = [
   { key: 'Activity Center', label: 'Activity Center', sub: 'Campus Dining' },
 ];
 
-const DASHBOARD_TOOLS = [
-  {
-    key: 'tracker',
-    title: 'Meal Tracker',
-    subtitle: 'Daily calories, macros, micronutrients, and meal log history.',
-    route: 'MealTracker',
-    icon: UtensilsCrossed,
-  },
-  {
-    key: 'weight',
-    title: 'Weight Tracker',
-    subtitle: 'Body-weight logging and progress trends.',
-    route: 'WeightTracker',
-    icon: Scale,
-  },
-  {
-    key: 'streaks',
-    title: 'Streaks',
-    subtitle: 'View consistency, streak counts, and goal-hit calendar history.',
-    route: 'StreakHub',
-    icon: Flame,
-  },
-  {
-    key: 'swipes',
-    title: 'Retail Swipes',
-    subtitle: 'See the old retail swipe helper and related calculations.',
-    route: 'RetailSwipes',
-    icon: Ticket,
-  },
-  {
-    key: 'database',
-    title: 'Food Database',
-    subtitle: 'Search dining nutrition details directly.',
-    route: 'FoodDatabase',
-    icon: Database,
-  },
-  {
-    key: 'settings',
-    title: 'Settings',
-    subtitle: 'Body profile, goals, calorie targets, and advanced nutrition preferences.',
-    route: 'DiningSettings',
-    icon: Settings2,
-  },
-] as const;
-
 export default function DiningDashboard({ navigation }: any) {
+  const { user } = useUser();
   const { COLORS, theme } = useTheme();
   const darkMode = theme === 'dark';
   const styles = getStyles(COLORS, darkMode);
@@ -81,10 +37,11 @@ export default function DiningDashboard({ navigation }: any) {
 
   const [hall, setHall] = useState('Sbisa');
   const [selectedCampus, setSelectedCampus] = useState<'TAMU' | 'UTD'>('TAMU');
-  const halls = useMemo(
-    () => (selectedCampus === 'UTD' ? UTD_HALLS : TAMU_HALLS),
-    [selectedCampus],
-  );
+  const halls = selectedCampus === 'UTD' ? UTD_HALLS : TAMU_HALLS;
+  const [tracker, setTracker] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
+  const [history, setHistory] = useState<any[]>([]);
+  const [trackerLoading, setTrackerLoading] = useState(true);
 
   useEffect(() => {
     AsyncStorage.getItem('selected_campus')
@@ -114,9 +71,43 @@ export default function DiningDashboard({ navigation }: any) {
     });
   };
 
+  const loadTrackerSummary = useCallback(async () => {
+    if (!user) return;
+    setTrackerLoading(true);
+    try {
+      const [trackerRes, profileRes, historyRes] = await Promise.all([
+        requestJson(`/dining/tracker/${encodeURIComponent(user.id)}?date=${encodeURIComponent(getLocalDateString())}`),
+        requestJson(`/dining/profile/${encodeURIComponent(user.id)}`),
+        requestJson(`/dining/history/${encodeURIComponent(user.id)}?days=180`),
+      ]);
+      setTracker(trackerRes);
+      setProfile(profileRes);
+      setHistory(Array.isArray(historyRes) ? historyRes : []);
+    } catch (error) {
+      console.warn('Failed to load meal tracker summary', error);
+    } finally {
+      setTrackerLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadTrackerSummary();
+  }, [loadTrackerSummary]);
+
   const selectedGlassFill = darkMode ? T.tamuGold + '18' : 'rgba(12,12,14,0.84)';
   const selectedGlassText = darkMode ? T.tamuGold : '#FFFFFF';
   const selectedGlassSub = darkMode ? T.text3 : 'rgba(255,255,255,0.72)';
+  const totals = tracker?.totals || {};
+  const target = profile?.targetCalories || 2000;
+  const macros = profile?.macros || { protein: 150, carbs: 200, fat: 60 };
+  const streakMode = profile?.mode || 'maintain';
+  const currentStreak = computeDiningStreakStats(history, target, streakMode).currentStreak;
+  const trackerStats = [
+    { label: 'Calories', value: `${Math.round(totals.calories || 0)}`, suffix: `/ ${target} kcal`, color: T.text },
+    { label: 'Protein', value: `${Math.round(totals.protein || 0)}`, suffix: ` / ${Math.round(macros.protein)}`, color: T.sage },
+    { label: 'Carbs', value: `${Math.round(totals.carbs || 0)}`, suffix: ` / ${Math.round(macros.carbs)}`, color: T.sky },
+    { label: 'Fat', value: `${Math.round(totals.fat || 0)}`, suffix: ` / ${Math.round(macros.fat)}`, color: T.tamuGold },
+  ];
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -130,94 +121,218 @@ export default function DiningDashboard({ navigation }: any) {
             <ArrowLeft size={20} color={COLORS.textPrimary} />
           </Pressable>
           <View style={{ flex: 1 }}>
-            <Text style={styles.eyebrow}>Advanced</Text>
             <Text style={styles.title}>Nutrition Dashboard</Text>
-            <Text style={styles.subtitle}>
-              This stays off the main product path, but all the old calorie-tracker tools still live here.
-            </Text>
           </View>
         </View>
 
-        {/* New Live Menus Section */}
-        <Card style={{ paddingVertical: 14 }}>
-          <SectionLabel>Live Menus</SectionLabel>
-          <Text style={[styles.subtitle, { marginTop: -4, marginBottom: 12 }]}>
-            Jump straight into any dining hall menu without leaving the nutrition tools flow.
-          </Text>
+        <Card style={s.menuCard}>
           <View style={s.chipRow}>
             {halls.map(h => (
-              <TouchableOpacity key={h.key} 
-                  style={[
-                    s.chip,
-                    s.glassChip,
-                    { borderColor: T.btnBorder, backgroundColor: T.btnBg },
-                    hall === h.key && {
-                      borderColor: darkMode ? T.tamuGold : 'rgba(12,12,14,0.88)',
-                      backgroundColor: selectedGlassFill,
-                    },
-                  ]} 
-                  onPress={() => setHall(h.key)}>
-                <Text style={[s.chipText, { color: T.text2 }, hall === h.key && { color: selectedGlassText }]}>{h.label}</Text>
-                <Text style={[s.chipSub, { color: T.text3 }, hall === h.key && { color: selectedGlassSub }]}>{h.sub}</Text>
+              <TouchableOpacity
+                key={h.key}
+                style={[
+                  s.chip,
+                  s.glassChip,
+                  { borderColor: T.btnBorder, backgroundColor: T.btnBg },
+                  hall === h.key && {
+                    borderColor: darkMode ? T.tamuGold : 'rgba(12,12,14,0.88)',
+                    backgroundColor: selectedGlassFill,
+                  },
+                ]}
+                onPress={() => setHall(h.key)}
+              >
+                <Text style={[s.chipText, { color: T.text2 }, hall === h.key && { color: selectedGlassText }]}>
+                  {h.label}
+                </Text>
+                <Text style={[s.chipSub, { color: T.text3 }, hall === h.key && { color: selectedGlassSub }]}>
+                  {h.sub}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
-          <View style={{ marginTop: 14 }}>
+          <View style={s.menuActionRow}>
             <ActionButton 
-              label={`View ${hall} Dining Hall Menu`} 
+              label={`${hall} menu`}
               onPress={openFullMenu}
-              style={{ backgroundColor: T.tamuMaroon }}
-              textStyle={{ color: T.text }}
+              style={[s.menuActionButton, { backgroundColor: T.tamuMaroon }]}
+              textStyle={s.menuActionButtonText}
+              textColor="#FFFFFF"
             />
+            <View style={s.inlineSearchWrap}>
+              <FoodDatabaseScreen navigation={navigation} embedded />
+            </View>
           </View>
         </Card>
 
-        <View style={styles.card}>
-          {DASHBOARD_TOOLS.map((tool, index) => {
-            const Icon = tool.icon;
-            return (
-              <Pressable
-                key={tool.key}
-                style={[styles.toolRow, index === DASHBOARD_TOOLS.length - 1 && styles.toolRowLast]}
-                onPress={() => navigation.navigate(tool.route)}
+        <Card style={s.trackerCard}>
+          <View style={s.trackerHeaderRow}>
+            <View style={s.headerActions}>
+              <TouchableOpacity
+                style={[s.streakChip, { backgroundColor: `${T.amber}14`, borderColor: `${T.amber}30` }]}
+                onPress={() => navigation.navigate('StreakHub')}
+                activeOpacity={0.8}
               >
-                <View style={styles.toolIconWrap}>
-                  <Icon size={20} color={COLORS.primary} />
+                <Text style={s.streakEmoji}>🔥</Text>
+                <Text style={[s.streakChipText, { color: T.amber }]}>{currentStreak}d</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.settingsChip, { backgroundColor: T.bg3, borderColor: T.border }]}
+                onPress={() => navigation.navigate('DiningSettings')}
+                activeOpacity={0.8}
+              >
+                <Settings2 size={14} color={T.text2} />
+                <Text style={[s.settingsChipText, { color: T.text2 }]}>Goal</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          {trackerLoading ? (
+            <ActivityIndicator color={T.amber} style={{ marginVertical: 10 }} />
+          ) : (
+            <View style={s.trackerGrid}>
+              {trackerStats.map((stat) => (
+                <View key={stat.label} style={[s.trackerStat, { backgroundColor: T.bg3, borderColor: T.border }]}>
+                  <Text style={[s.trackerStatLabel, { color: T.text3 }]}>{stat.label}</Text>
+                  <Text style={[s.trackerStatValue, { color: stat.color }]} numberOfLines={1}>
+                    {stat.value}
+                  </Text>
+                  <Text style={[s.trackerStatSuffix, { color: T.text3 }]} numberOfLines={1}>
+                    {stat.suffix}
+                  </Text>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.toolTitle}>{tool.title}</Text>
-                  <Text style={styles.toolSubtitle}>{tool.subtitle}</Text>
-                </View>
-                <ChevronRight size={16} color={COLORS.textTertiary} />
-              </Pressable>
-            );
-          })}
-        </View>
+              ))}
+            </View>
+          )}
+        </Card>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  chipRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 12 },
+  menuCard: {
+    paddingTop: 16,
+    paddingBottom: 18,
+  },
+  chipRow: { flexDirection: 'row', gap: 10, marginTop: 8, justifyContent: 'space-between' },
   chip: { 
-    flex: 1, 
-    minWidth: 80,
+    flex: 1,
+    maxWidth: '31.5%',
     alignItems: 'center', 
-    padding: 13, 
-    borderRadius: 20, 
+    justifyContent: 'center',
+    minHeight: 124,
+    paddingHorizontal: 10,
+    paddingVertical: 16,
+    borderRadius: 22,
     borderWidth: 1,
-    gap: 3 
+    gap: 6,
   },
   glassChip: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.08,
     shadowRadius: 16,
-    elevation: 6,
+    elevation: 3,
   },
-  chipText: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-  chipSub: { fontSize: 10, fontWeight: '600' },
+  chipText: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.1, textAlign: 'center', width: '100%' },
+  chipSub: { fontSize: 9, fontWeight: '600', textAlign: 'center', lineHeight: 13, minHeight: 28 },
+  menuActionRow: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  menuActionButton: {
+    width: '38%',
+    minHeight: 0,
+    marginTop: 0,
+    paddingVertical: 16,
+    borderRadius: 22,
+  },
+  menuActionButtonText: {
+    fontSize: 10,
+    letterSpacing: 0.9,
+  },
+  inlineSearchWrap: {
+    flex: 1,
+  },
+  trackerCard: {
+    paddingTop: 18,
+    paddingBottom: 18,
+  },
+  trackerHeaderRow: {
+    marginBottom: 14,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+  },
+  streakChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+  },
+  streakEmoji: {
+    fontSize: 12,
+  },
+  streakChipText: {
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+  },
+  settingsChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+  },
+  settingsChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  trackerGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 4,
+  },
+  trackerStat: {
+    width: '48%',
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 18,
+  },
+  trackerStatLabel: {
+    fontSize: 9,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginBottom: 7,
+  },
+  trackerStatValue: {
+    fontSize: 28,
+    fontWeight: '900',
+    lineHeight: 30,
+  },
+  trackerStatSuffix: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 8,
+  },
 });
 
 const getStyles = (COLORS: any, isDark: boolean) =>
@@ -231,15 +346,16 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       backgroundColor: COLORS.background,
     },
     contentContainer: {
-      padding: 18,
-      paddingTop: 20,
-      paddingBottom: 48,
-      gap: 16,
+      paddingHorizontal: 18,
+      paddingTop: 14,
+      paddingBottom: 40,
+      gap: 14,
     },
     header: {
       flexDirection: 'row',
       gap: 14,
-      alignItems: 'flex-start',
+      alignItems: 'center',
+      marginBottom: 4,
     },
     backButton: {
       width: 40,
@@ -251,32 +367,18 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       borderWidth: 1,
       borderColor: COLORS.border,
     },
-    eyebrow: {
-      fontSize: 12,
-      fontWeight: '800',
-      letterSpacing: 0.8,
-      textTransform: 'uppercase',
-      color: COLORS.textSecondary,
-      marginBottom: 6,
-    },
     title: {
-      fontSize: 29,
+      fontSize: 27,
       fontWeight: '900',
-      letterSpacing: -0.8,
+      letterSpacing: -1,
       color: COLORS.textPrimary,
-    },
-    subtitle: {
-      marginTop: 8,
-      fontSize: 14,
-      lineHeight: 20,
-      color: COLORS.textSecondary,
     },
     card: {
       backgroundColor: isDark ? 'rgba(18,18,20,0.82)' : 'rgba(255,255,255,0.88)',
       borderRadius: 24,
       borderWidth: 1,
       borderColor: COLORS.border,
-      paddingHorizontal: 18,
+      paddingHorizontal: 16,
       paddingVertical: 6,
     },
     toolRow: {

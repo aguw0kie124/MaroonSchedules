@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
+import math
 import psycopg
 
 from services import cache_service, campus_hub_service, place_registry_service, tag_access_service
@@ -37,6 +38,23 @@ def _safe_decrypt(value: Optional[str]) -> Optional[str]:
     return encryption_service.decrypt_string(value)
 
 
+def _copy_place(place: Optional[Dict[str, Any]], *, name: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    if not place:
+        return None
+    copied = dict(place)
+    if name:
+        copied["name"] = name
+    return copied
+
+
+def _format_clock_time(value: datetime) -> str:
+    return value.strftime("%I:%M %p").lstrip("0")
+
+
+def _format_month_day(value: datetime) -> str:
+    return f"{value.strftime('%b')} {value.day}"
+
+
 def _format_time_label(iso_value: str) -> str:
     target = _parse_iso(iso_value)
     if not target:
@@ -45,19 +63,18 @@ def _format_time_label(iso_value: str) -> str:
     now = datetime.now(timezone.utc)
     diff_hours = (target - now).total_seconds() / 3600
     local_time = target.astimezone()
+    local_now = now.astimezone()
 
     if -1.5 <= diff_hours <= 1:
         return "Now"
-    if local_time.date() == now.astimezone().date():
-        return local_time.strftime("Today · %I:%M %p").replace("· 0", "· ")
+    if local_time.date() == local_now.date():
+        return f"Today · {_format_clock_time(local_time)}"
 
-    tomorrow = now.astimezone().date() + timedelta(days=1)
+    tomorrow = local_now.date() + timedelta(days=1)
     if local_time.date() == tomorrow:
-        return local_time.strftime("Tomorrow · %#I:%M %p")
-        return local_time.strftime("Tomorrow · %#I:%M %p")
+        return f"Tomorrow · {_format_clock_time(local_time)}"
 
-    return local_time.strftime("%b %#d · %#I:%M %p")
-    return local_time.strftime("%b %#d · %#I:%M %p")
+    return f"{_format_month_day(local_time)} · {_format_clock_time(local_time)}"
 
 
 def _recency_weight(iso_value: str) -> float:
@@ -87,6 +104,14 @@ def _ping_category_boost(category: str) -> int:
     if "hangout" in normalized or "popup" in normalized:
         return 5
     return 3
+
+
+def _haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    R = 6371000.0
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    delta_phi, delta_lambda = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
+    a = math.sin(delta_phi / 2.0)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0)**2
+    return R * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
 
 
 def _is_pulse_ping_post(ping: Dict[str, Any]) -> bool:
@@ -226,9 +251,11 @@ def invalidate_pulse_map_cache() -> None:
         cache_service.delete(f"campus:pulse:map:v2:{limit}")
 
 
-def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None) -> Dict[str, Any]:
+def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh: bool = False) -> Dict[str, Any]:
     cache_key = f"campus:pulse:map:v2:{limit}"
-    if not clerk_id:
+    if force_refresh and not clerk_id:
+        cache_service.delete(cache_key)
+    if not clerk_id and not force_refresh:
         cached = cache_service.get_json(cache_key)
         if cached is not None:
             return cached
@@ -278,6 +305,16 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None) -> Dict[str, 
         interactions = {}
 
     try:
+        user_reactions = (
+            feed_repository.get_user_interactions_batch(clerk_id, post_ids)
+            if clerk_id and post_ids
+            else {}
+        )
+    except Exception as exc:
+        print(f"[pulse_service] DB query failed for user reactions: {exc}")
+        user_reactions = {}
+
+    try:
         occupancy_by_place = _load_occupancy_by_place()
     except Exception as exc:
         print(f"[pulse_service] occupancy load failed: {exc}")
@@ -305,43 +342,75 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None) -> Dict[str, 
         custom = ping.get("custom_data") or {}
         
         # Robust extraction from both top-level columns and custom metadata
-        place_id = ping.get("place_id") # Note: registry pings might not have this top-level yet
-        location_tag = ping.get("location_tag")
+        place_id = ping.get("place_id") or custom.get("place_id")
+        location_tag = (
+            ping.get("location_tag")
+            or custom.get("location_tag")
+            or custom.get("place_name")
+        )
         
         lat = ping.get("lat") or custom.get("lat") or custom.get("place_lat") or custom.get("location_lat")
         lng = ping.get("lng") or custom.get("lng") or custom.get("place_lng") or custom.get("location_lng")
 
         place = None
         if place_id:
-             place = place_registry_service.get_place_by_id(place_id)
+             place = _copy_place(place_registry_service.get_place_by_id(place_id))
         
         if not place and location_tag:
              # Fallback: resolve using the building name
-             place = place_registry_service.resolve_place(location_tag, lat, lng)
+             place = _copy_place(place_registry_service.resolve_place(location_tag, lat, lng))
 
-        # 2. If no campus building, but we have geographic coordinates, create a synthetic place
+        # 2. If no campus building, but we have geographic coordinates, create a synthetic place (or cluster with nearby)
         if not place and lat is not None and lng is not None:
-            # We use a synthetic place ID for coordinates outside the registry
-            place_id = f"geo:{location_tag.lower().replace(' ', '-') if location_tag else 'ping'}:{lat}:{lng}"
-            place = {
-                "place_id": place_id,
-                "name": location_tag or "Current Location",
-                "lat": float(lat),
-                "lng": float(lng),
-                "is_synthetic": True
-            }
+            fl_lat, fl_lng = float(lat), float(lng)
+            
+            nearby_place = None
+            for g_place_id, g_group in grouped.items():
+                if g_place_id.startswith("geo:"):
+                    dist = _haversine_distance(fl_lat, fl_lng, g_group["coord"]["lat"], g_group["coord"]["lng"])
+                    if dist <= 120.0:  # 120 meters cluster radius
+                        nearby_place = {
+                            "place_id": g_place_id,
+                            "name": g_group["locationName"],
+                            "lat": g_group["coord"]["lat"],
+                            "lng": g_group["coord"]["lng"],
+                            "is_synthetic": True
+                        }
+                        break
+            
+            if nearby_place:
+                place = nearby_place
+            else:
+                # We use a synthetic place ID for coordinates outside the registry
+                place_id = f"geo:{location_tag.lower().replace(' ', '-') if location_tag else 'ping'}:{fl_lat}:{fl_lng}"
+                place = {
+                    "place_id": place_id,
+                    "name": location_tag or "Current Location",
+                    "lat": fl_lat,
+                    "lng": fl_lng,
+                    "is_synthetic": True
+                }
         
         # 3. Last fallback: MSC (just to ensure it's not discarded if it's on campus without a match)
         if not place and location_tag:
-             place = place_registry_service.resolve_place("Memorial Student Center", None, None)
+             place = _copy_place(
+                 place_registry_service.resolve_place("Memorial Student Center", None, None),
+                 name=location_tag,
+             )
              if place:
-                 place["name"] = location_tag # Preserve the user's tag
+                 place["is_fallback"] = True
         
         # FINAL SAFETY: If still no place (no tag, no GPS), default to MSC just to keep markers visible
         if not place:
-             place = place_registry_service.get_place_by_id("MSC") or place_registry_service.resolve_place("Memorial Student Center", None, None)
+             fallback_name = location_tag or custom.get("place_name") or "Campus"
+             place = _copy_place(place_registry_service.get_place_by_id("MSC"), name=fallback_name)
+             if not place:
+                 place = _copy_place(
+                     place_registry_service.resolve_place("Memorial Student Center", None, None),
+                     name=fallback_name,
+                 )
              if place:
-                 place["name"] = location_tag or "Campus Event"
+                 place["is_fallback"] = True
         
         if not place:
             print(f"[pulse_service] Discarding ping {ping_id}: No location or fallback possible.")
@@ -357,19 +426,16 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None) -> Dict[str, 
         start_at = str(custom.get("start_at") or ping.get("created_at") or datetime.now(timezone.utc).isoformat())
 
         target_time = _parse_iso(start_at)
-        # DISABLE TIME FILTERING: Show all pings regardless of age for total restoration
-        # if target_time:
-        #     dh = (target_time - datetime.now(timezone.utc)).total_seconds() / 3600
-        #     if dh < -18 or dh > 72:
-        #         continue
-        # else:
-        #     # Fallback: assume fresh if parsing fails rather than discarding
-        #     target_time = datetime.now(timezone.utc)
+        if target_time:
+            age_hours = (datetime.now(timezone.utc) - target_time).total_seconds() / 3600
+            if age_hours > 24:
+                continue
 
         counts = interactions.get(ping_id, {})
+        own_reactions = user_reactions.get(ping_id, {})
         upvote_count = int(counts.get("upvote") or counts.get("like") or 0)
         downvote_count = int(counts.get("downvote") or 0)
-        item_score = upvote_count - downvote_count + 20 # Base boost to ensure visibility
+        item_score = upvote_count - downvote_count
         comment_count = int(counts.get("comment") or 0)
 
         weight = (
@@ -396,15 +462,19 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None) -> Dict[str, 
                 "source": "ping",
                 "title": custom.get("ping_title") or ping.get("content") or "Campus Ping",
                 "subtitle": custom.get("user_name") or ping.get("user_name") or "Aggie",
+                "body": ping.get("content") or "",
                 "category": category,
                 "timeLabel": _format_time_label(start_at),
                 "startAt": start_at,
                 "link": None,
+                "activityId": ping_id,
+                "locationTag": place["name"],
                 "imageUrl": ping.get("image_url") or custom.get("image_url") or (ping.get("media_urls") and ping.get("media_urls")[0] if ping.get("media_urls") else None) or (ping.get("images") and ping.get("images")[0] if ping.get("images") else None),
                 "upvotes": upvote_count,
                 "downvotes": downvote_count,
+                "commentCount": comment_count,
                 "itemScore": item_score,
-                "userVote": 0 # userVote can be mapped client-side or handled dynamically
+                "userVote": 1 if own_reactions.get("upvote") else (-1 if own_reactions.get("downvote") else 0),
             }
         )
 
@@ -525,7 +595,15 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None) -> Dict[str, 
                     group["eventCount"],
                     percent_full,
                 ),
-                "items": sorted(group["items"], key=lambda item: item["startAt"])[:6],
+                "items": sorted(
+                    group["items"],
+                    key=lambda item: (
+                        0 if item["source"] == "ping" else 1,
+                        -int(item.get("itemScore") or 0),
+                        -int(item.get("commentCount") or 0),
+                        item.get("startAt") or "",
+                    ),
+                )[:6],
                 "place": place_registry_service.serialize_place(resolved_place) if resolved_place else None,
             }
         )

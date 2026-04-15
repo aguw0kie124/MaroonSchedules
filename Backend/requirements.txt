@@ -3,10 +3,8 @@ uvicorn
 requests
 python-dotenv
 python-multipart
-stream-python
 pydantic
 psycopg[binary]
-stream_chat
 protobuf<5.0.0
 jsonschema<3.0.0
 pytz
@@ -18,3 +16,4 @@ PyJWT==2.10.1
 cryptography>=42,<45
 slowapi
 bleach
+psycopg-pool

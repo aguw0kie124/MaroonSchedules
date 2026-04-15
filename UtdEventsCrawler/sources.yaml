@@ -1,0 +1,74 @@
+sources:
+  - name: comet_calendar
+    type: localist_api
+    url: https://calendar.utdallas.edu/api/2/events
+    priority: high
+    campus_filter: richardson
+    days: 45
+    page_size: 100
+    max_pages: 8
+  - name: auxiliary_services
+    type: localist_html
+    url: https://calendar.utdallas.edu/department/services/calendar
+    priority: high
+    campus_filter: richardson
+    extra_tags:
+      - commuter
+      - transit
+      - shuttle
+      - comet cruiser
+      - dining
+  - name: departments
+    type: localist_directory
+    url: https://calendar.utdallas.edu/api/2/departments
+    priority: high
+    campus_filter: richardson
+    entity_kind: department
+    page_size: 100
+    max_pages: 2
+    max_entities: 16
+    selection_keywords:
+      - services
+      - registrar
+      - recreation
+      - counseling
+      - career
+      - undergraduate
+      - graduate
+      - international
+      - library
+      - arts
+      - technology
+      - student
+      - admission
+  - name: groups
+    type: localist_directory
+    url: https://calendar.utdallas.edu/api/2/groups
+    priority: high
+    campus_filter: richardson
+    entity_kind: group
+    page_size: 100
+    max_pages: 2
+    max_entities: 24
+    selection_keywords:
+      - fraternity
+      - sorority
+      - greek
+      - student government
+      - programming
+      - chess
+      - esports
+      - cultural
+      - international
+      - engineering
+      - computer
+      - finance
+      - business
+      - entrepreneurship
+      - dance
+      - music
+      - active minds
+      - comet
+      - volunteer
+      - community
+      - professional

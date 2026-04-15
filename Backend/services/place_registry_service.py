@@ -1,3 +1,4 @@
+from __future__ import annotations
 import sqlite3
 import re
 from functools import lru_cache
@@ -81,7 +82,19 @@ def get_all_places() -> List[Dict[str, Any]]:
 def get_place_by_id(place_id: Optional[str]) -> Optional[Dict[str, Any]]:
     if not place_id:
         return None
-    return _build_registry()["by_id"].get(place_id)
+    registry = _build_registry()
+    direct = registry["by_id"].get(place_id)
+    if direct:
+        return direct
+
+    normalized_id = _normalize_key(place_id)
+    if not normalized_id:
+        return None
+
+    for candidate_id, place in registry["by_id"].items():
+        if _normalize_key(candidate_id) == normalized_id:
+            return place
+    return None
 
 
 def serialize_place(place: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -113,6 +126,7 @@ def serialize_place(place: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]
     }
 
 
+@lru_cache(maxsize=512)
 def resolve_place(
     location_name: Optional[str] = None,
     lat: Optional[float] = None,

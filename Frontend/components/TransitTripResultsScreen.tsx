@@ -18,6 +18,7 @@ import {
   CampusTransitPlan,
   TransitTripPreference,
 } from '../services/campusTransitRouting';
+import { formatDistance, formatTime } from '../services/campusDirections';
 
 type PlannerLocation = {
   id: string;
@@ -54,6 +55,21 @@ function getTripWindow(plan: CampusTransitPlan, plannedTimestamp: number, timing
     depart: anchor,
     arrive,
   };
+}
+
+function buildStepWindows(plan: CampusTransitPlan, depart: Date) {
+  let cursor = depart.getTime();
+  return plan.steps.map((step) => {
+    const durationMinutes = Math.max(0, step.durationMinutes || 0);
+    const start = new Date(cursor);
+    const end = new Date(cursor + durationMinutes * 60_000);
+    cursor = end.getTime();
+    return {
+      ...step,
+      start,
+      end,
+    };
+  });
 }
 
 export function TransitTripResultsScreen() {
@@ -110,7 +126,7 @@ export function TransitTripResultsScreen() {
         setOptions(plans);
       })
       .catch((plannerError) => {
-        console.error('[TripResults] Failed to build trip options:', plannerError);
+        console.warn('[TripResults] Failed to build trip options:', plannerError);
         if (mounted) {
           setError('Trip planning is temporarily unavailable.');
           setOptions([]);
@@ -191,6 +207,7 @@ export function TransitTripResultsScreen() {
           <View style={styles.optionStack}>
             {options.map((plan, index) => {
               const tripWindow = getTripWindow(plan, plannedTimestamp, timingMode);
+              const stepWindows = buildStepWindows(plan, tripWindow.depart);
               return (
                 <Pressable
                   key={`${plan.routeKey}-${index}`}
@@ -268,6 +285,28 @@ export function TransitTripResultsScreen() {
                         <Text style={styles.detailText}>{plan.nearestVehicleLabel}</Text>
                       </View>
                     ) : null}
+                  </View>
+
+                  <View style={styles.stepList}>
+                    {stepWindows.map((step) => (
+                      <View key={`${plan.routeKey}-${step.id}`} style={styles.stepCard}>
+                        <View style={styles.stepCardHeader}>
+                          <Text style={styles.stepInstruction}>{step.instruction}</Text>
+                          {step.durationMinutes ? (
+                            <Text style={styles.stepDuration}>{formatTime(step.durationMinutes)}</Text>
+                          ) : null}
+                        </View>
+                        <Text style={styles.stepMeta}>
+                          {[
+                            step.durationMinutes ? `${formatClockTime(step.start)}-${formatClockTime(step.end)}` : null,
+                            step.distanceMeters ? formatDistance(step.distanceMeters) : null,
+                            step.detail || null,
+                          ]
+                            .filter(Boolean)
+                            .join(' • ')}
+                        </Text>
+                      </View>
+                    ))}
                   </View>
                 </Pressable>
               );
@@ -452,5 +491,39 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       color: COLORS.textSecondary,
       fontSize: 12,
       lineHeight: 18,
+    },
+    stepList: {
+      gap: 8,
+    },
+    stepCard: {
+      borderRadius: 16,
+      padding: 12,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F7F8FA',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(12,12,14,0.06)',
+    },
+    stepCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    stepInstruction: {
+      flex: 1,
+      color: COLORS.textPrimary,
+      fontSize: 13,
+      lineHeight: 18,
+      fontWeight: '700',
+    },
+    stepDuration: {
+      color: COLORS.textPrimary,
+      fontSize: 12,
+      fontWeight: '800',
+    },
+    stepMeta: {
+      marginTop: 6,
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      lineHeight: 17,
     },
   });

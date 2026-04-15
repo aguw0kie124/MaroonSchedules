@@ -1010,6 +1010,21 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       textTransform: "uppercase",
       letterSpacing: 0.4,
     },
+    foodCourtVenueMenuBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      backgroundColor: "#500000",
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: 999,
+    } as any,
+    foodCourtVenueMenuBtnText: {
+      color: "#FFF",
+      fontSize: 11,
+      fontWeight: "800",
+      letterSpacing: 0.3,
+    },
     restaurantChipList: {
       flexDirection: "row",
       flexWrap: "wrap",

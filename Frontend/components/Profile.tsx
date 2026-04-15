@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -42,22 +43,31 @@ import {
   UserX,
   Bell,
   LifeBuoy,
+  CalendarDays,
 } from 'lucide-react-native';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
 
 import { fetchCampusOverview, fetchUserProfile } from '../api/client';
+import { SUPPORT_CONTACT_URL } from '../config';
 import { PARKING_PERMIT_OPTIONS, useAppShellStore } from '../store/appShellStore';
 import { useSessionStore } from '../store/sessionStore';
-import { deleteAccount, getBlockedUsers, unblockUser } from '../services/streamFeeds';
+import {
+  addFriend,
+  deleteAccount,
+  getBlockedUsers,
+  getFriends,
+  removeFriend,
+  searchUsers,
+  unblockUser,
+} from '../services/socialFeedService';
 import { useTour, TourTarget } from './onboarding/TourProvider';
 import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme } from './SharedUI';
 
 import { TagChips } from './common/TagChips';
 
-const SUPPORT_CONTACT_URL = 'https://maroonlife-web-private.vercel.app/support';
 
 const SETTINGS_TABS = [
   { key: 'personal', label: 'Personal', icon: UserRound },
@@ -179,34 +189,24 @@ export function Profile() {
   const setNotificationLeadTime = useAppShellStore((state) => state.setNotificationLeadTime);
   const notificationsEnabled = useAppShellStore((state) => state.notificationsEnabled);
   const setNotificationsEnabled = useAppShellStore((state) => state.setNotificationsEnabled);
-  const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
-  const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
-  const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
-  const preferredTime = useAppShellStore((state) => state.preferredTime);
-  const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+  const [friends, setFriends] = useState<any[]>([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
+  const [loadingFriends, setLoadingFriends] = useState(false);
   const [profileTags, setProfileTags] = useState<string[]>([]);
+  const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
+  const [showFriendsPanel, setShowFriendsPanel] = useState(false);
+  const [showBlockedPanel, setShowBlockedPanel] = useState(false);
+  const [showFriendSearchPanel, setShowFriendSearchPanel] = useState(false);
+  const [friendSearchQuery, setFriendSearchQuery] = useState('');
+  const [friendSearchResults, setFriendSearchResults] = useState<any[]>([]);
+  const [searchingFriends, setSearchingFriends] = useState(false);
   const scrollRef = React.useRef<ScrollView | null>(null);
   const finishCardYRef = React.useRef(0);
 
   const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
   const accentRatio = useMemo(() => getRatioFromColor(accentColor), [accentColor]);
   const accentPreviewColor = useMemo(() => getSpectrumColorFromRatio(accentRatio), [accentRatio]);
-  const preferenceSummary = useMemo(() => {
-    const parts: string[] = [];
-    if (preferredEventCategories.length > 0) {
-      parts.push(preferredEventCategories.join(', '));
-    }
-    if (preferredTime) {
-      parts.push(preferredTime);
-    }
-    if (preferredSocialMode) {
-      parts.push(preferredSocialMode === 'casual' ? 'Casual social vibe' : 'Professional social vibe');
-    }
-    return parts.length > 0 ? parts.join(' • ') : 'Currently broad and open-ended.';
-  }, [preferredEventCategories, preferredSocialMode, preferredTime]);
-
   const updateAccentFromPosition = React.useCallback((locationX: number) => {
     if (!accentSliderWidth) return;
     const clamped = Math.min(Math.max(locationX, 0), accentSliderWidth);
@@ -265,9 +265,47 @@ export function Profile() {
 
   useEffect(() => {
     if (activeTab === 'personal' && user) {
+        loadFriends();
         loadBlockedUsers();
     }
   }, [activeTab, isGuest, user]);
+
+  useEffect(() => {
+    if (!user?.id || !showFriendSearchPanel) {
+      setFriendSearchResults([]);
+      setSearchingFriends(false);
+      return;
+    }
+
+    const query = friendSearchQuery.trim();
+    if (!query) {
+      setFriendSearchResults([]);
+      setSearchingFriends(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      setSearchingFriends(true);
+      searchUsers(query, user.id, 8)
+        .then((results) => {
+          if (!cancelled) {
+            setFriendSearchResults(results.filter((entry) => entry.id !== user.id));
+          }
+        })
+        .catch((error) => console.warn('Failed to search users', error))
+        .finally(() => {
+          if (!cancelled) {
+            setSearchingFriends(false);
+          }
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [friendSearchQuery, showFriendSearchPanel, user?.id]);
 
   useEffect(() => {
     if ((activeTargetName === 'tour-finish' || activeTargetName === 'settings-tab') && activeTab !== 'personal') {
@@ -292,9 +330,26 @@ export function Profile() {
         const data = await getBlockedUsers(user.id);
         setBlockedUsers(data);
     } catch (err) {
-        console.error('Failed to load blocked users', err);
+        if (__DEV__) {
+          console.warn('Failed to load blocked users', err);
+        }
     } finally {
         setLoadingBlocked(false);
+    }
+  };
+
+  const loadFriends = async () => {
+    if (!user) return;
+    setLoadingFriends(true);
+    try {
+      const data = await getFriends(user.id);
+      setFriends(data);
+    } catch (err) {
+      if (__DEV__) {
+        console.warn('Failed to load friends', err);
+      }
+    } finally {
+      setLoadingFriends(false);
     }
   };
 
@@ -309,8 +364,42 @@ export function Profile() {
         await loadBlockedUsers();
         Alert.alert('Success', 'User unblocked.');
     } catch (err) {
-        console.error('Failed to unblock user', err);
+        console.warn('Failed to unblock user', err);
         Alert.alert('Error', 'Failed to unblock user.');
+    }
+  };
+
+  const handleAddFriend = async (targetId: string, name?: string) => {
+    if (!user?.id) {
+      Alert.alert('Error', 'You must be signed in to add a friend.');
+      return;
+    }
+    try {
+      await addFriend(targetId, user.id);
+      await loadFriends();
+      setFriendSearchResults((current) =>
+        current.map((item) => (item.id === targetId ? { ...item, is_friend: true } : item)),
+      );
+      Alert.alert('Friend added', `${name || 'User'} has been added to your friends.`);
+    } catch (err) {
+      console.warn('Failed to add friend', err);
+      Alert.alert('Error', 'Failed to add friend.');
+    }
+  };
+
+  const handleRemoveFriend = async (targetId: string) => {
+    if (!user?.id) {
+      Alert.alert('Error', 'You must be signed in to remove a friend.');
+      return;
+    }
+    try {
+      await removeFriend(targetId, user.id);
+      setFriends((current) => current.filter((item) => item.id !== targetId));
+      await loadFriends();
+      Alert.alert('Friend removed', 'User removed from your friends.');
+    } catch (err) {
+      console.warn('Failed to remove friend', err);
+      Alert.alert('Error', 'Failed to remove friend.');
     }
   };
 
@@ -323,6 +412,7 @@ export function Profile() {
       const profile = await fetchUserProfile(user.id);
       setProfileTags(Array.isArray(profile?.tags) ? profile.tags : []);
       if (activeTab === 'personal') {
+        await loadFriends();
         await loadBlockedUsers();
       }
     } catch (error) {
@@ -362,7 +452,7 @@ export function Profile() {
         }
         Alert.alert('Updated', 'Your profile photo has been updated.');
       } catch (error) {
-        console.error('Failed to upload image:', error);
+        console.warn('Failed to upload image:', error);
         Alert.alert('Error', 'Unable to update your profile photo.');
       }
     }
@@ -387,7 +477,7 @@ export function Profile() {
         await setCustomWallpaper(result.assets[0].uri);
         setBackgroundMode('custom');
       } catch (error) {
-        console.error('Failed to set wallpaper:', error);
+        console.warn('Failed to set wallpaper:', error);
         Alert.alert('Error', 'Unable to save this wallpaper.');
       } finally {
         setUploadingWallpaper(false);
@@ -457,7 +547,6 @@ export function Profile() {
       <View style={styles.heroCard}>
         <View style={styles.heroHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.eyebrow}>Identity</Text>
             <Text style={styles.title}>Personal</Text>
           </View>
           <View style={styles.heroBadge}>
@@ -576,14 +665,13 @@ export function Profile() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Club Access</Text>
-
+        <Text style={styles.sectionTitle}>Life & Safety</Text>
         <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('ClubAccess')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(80, 0, 0, 0.12)' }]}>
-            <Shield size={20} color={COLORS.primary} />
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 211, 153, 0.12)' }]}>
+            <CalendarDays size={20} color="#10B981" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Request club event access</Text>
+            <Text style={styles.toolTitle}>Club Access</Text>
           </View>
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
@@ -591,7 +679,6 @@ export function Profile() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Nutrition</Text>
-
         <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('DiningDashboard')}>
           <View style={[styles.toolIconBg, { backgroundColor: 'rgba(0, 207, 199, 0.14)' }]}>
             <Flame size={20} color="#00CFC7" />
@@ -602,60 +689,41 @@ export function Profile() {
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
       </View>
-      
-      {renderNotificationsTab()}
-      {renderBlockedTab()}
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Privacy & Notifications</Text>
+        {renderNotificationsTab(true, false)}
+        {renderFriendsTab(true, false)}
+        {renderBlockedTab(true, true)}
+      </View>
 
 
-      <Pressable 
-        style={[styles.heroCard, { 
-          padding: 16, 
-          backgroundColor: isDark ? COLORS.surface : '#F8FAFC', 
-          borderColor: COLORS.primary, 
-          borderWidth: 1.5,
-          flexDirection: 'row', 
-          alignItems: 'center', 
-          gap: 12,
-          marginTop: 8
-        }]} 
-        onPress={() => startTour()}
-      >
-        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary + '15', alignItems: 'center', justifyContent: 'center' }}>
-          <Compass size={24} color={COLORS.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Restart App Tour</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Replay the guided walkthrough for Events, Places, and Pings.</Text>
-        </View>
-        <ChevronRight size={20} color={COLORS.textTertiary} />
-      </Pressable>
+      <View style={styles.quickActionRow}>
+        <Pressable
+          style={[styles.quickActionCard, { borderColor: COLORS.primary }]}
+          onPress={() => startTour()}
+        >
+          <View style={[styles.quickActionIconWrap, { backgroundColor: COLORS.primary + '15' }]}>
+            <Compass size={18} color={COLORS.primary} />
+          </View>
+          <Text style={styles.quickActionTitle}>Restart Tour</Text>
+        </Pressable>
 
-      <Pressable 
-        style={[styles.heroCard, { 
-          padding: 16, 
-          backgroundColor: isDark ? COLORS.surface : '#F8FAFC', 
-          borderColor: '#2F80ED', 
-          borderWidth: 1.5,
-          flexDirection: 'row', 
-          alignItems: 'center', 
-          gap: 12,
-          marginTop: 10
-        }]} 
-        onPress={() => {
-          setEventPreferencesCompleted(false);
-          setShowEventPreferencesOnboarding(true);
-        }}
-      >
-        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(47, 128, 237, 0.12)', alignItems: 'center', justifyContent: 'center' }}>
-          <Sparkles size={24} color="#2F80ED" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: COLORS.textPrimary, fontSize: 17, fontWeight: '800' }}>Redo Preference Questions</Text>
-          <Text style={{ color: COLORS.textSecondary, fontSize: 13, marginTop: 1 }}>Reopen the 4 Events setup questions.</Text>
-          <Text style={{ color: COLORS.textTertiary, fontSize: 12, marginTop: 6, lineHeight: 17 }}>{preferenceSummary}</Text>
-        </View>
-        <ChevronRight size={20} color={COLORS.textTertiary} />
-      </Pressable>
+        <Pressable
+          style={[styles.quickActionCard, { borderColor: '#2F80ED' }]}
+          onPress={() => {
+            useAppShellStore.setState({
+              isEventPreferencesCompleted: false,
+              showEventPreferencesOnboarding: true,
+            });
+          }}
+        >
+          <View style={[styles.quickActionIconWrap, { backgroundColor: 'rgba(47, 128, 237, 0.12)' }]}>
+            <Sparkles size={18} color="#2F80ED" />
+          </View>
+          <Text style={styles.quickActionTitle}>Redo Questions</Text>
+        </Pressable>
+      </View>
 
       <Pressable style={styles.logoutButton} onPress={handleLogout}>
         <LogOut size={18} color={COLORS.textPrimary} />
@@ -833,87 +901,129 @@ export function Profile() {
     </>
   );
 
-  const renderNotificationsTab = () => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Notifications</Text>
-      
-      <View style={{ marginTop: 8 }}>
-        <View style={styles.inlineSwitchRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.inlineSwitchTitle}>Event Reminders</Text>
-          </View>
-          <Switch
-            value={eventNotifications}
-            onValueChange={(v) => setNotificationPreference('event', v)}
-            trackColor={{ false: COLORS.border, true: COLORS.primary }}
-            thumbColor="#FFFFFF"
-          />
+  const renderNotificationsTab = (embedded = false, isLast = false) => {
+    const content = (
+      <>
+      <Pressable
+        style={[styles.toolRow, (showNotificationsPanel || isLast) && styles.toolRowLast]}
+        onPress={() => setShowNotificationsPanel((current) => !current)}
+      >
+        <View style={[styles.toolIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+          <Bell size={20} color="#F59E0B" />
         </View>
-
-        <View style={[styles.inlineSwitchRow, { marginTop: 12 }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.inlineSwitchTitle}>Transit Alerts</Text>
-          </View>
-          <Switch
-            value={placeNotifications}
-            onValueChange={(v) => setNotificationPreference('place', v)}
-            trackColor={{ false: COLORS.border, true: COLORS.primary }}
-            thumbColor="#FFFFFF"
-          />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.toolTitle}>Notifications</Text>
         </View>
+        <ChevronRight
+          size={20}
+          color={COLORS.textTertiary}
+          style={{ transform: [{ rotate: showNotificationsPanel ? '90deg' : '0deg' }] }}
+        />
+      </Pressable>
 
-        <View style={[styles.inlineSwitchRow, { marginTop: 12 }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.inlineSwitchTitle}>Social Pings</Text>
+      {showNotificationsPanel ? (
+        <>
+          <View style={styles.inlinePanel}>
+            <View style={styles.inlineSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inlineSwitchTitle}>Event Reminders</Text>
+              </View>
+              <Switch
+                value={eventNotifications}
+                onValueChange={(v) => setNotificationPreference('event', v)}
+                trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            <View style={[styles.inlineSwitchRow, { marginTop: 12 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inlineSwitchTitle}>Transit Alerts</Text>
+              </View>
+              <Switch
+                value={placeNotifications}
+                onValueChange={(v) => setNotificationPreference('place', v)}
+                trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            <View style={[styles.inlineSwitchRow, { marginTop: 12 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inlineSwitchTitle}>Social Pings</Text>
+              </View>
+              <Switch
+                value={pingNotifications}
+                onValueChange={(v) => setNotificationPreference('ping', v)}
+                trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
           </View>
-          <Switch
-            value={pingNotifications}
-            onValueChange={(v) => setNotificationPreference('ping', v)}
-            trackColor={{ false: COLORS.border, true: COLORS.primary }}
-            thumbColor="#FFFFFF"
-          />
+
+          <Text style={[styles.preferenceLabel, { marginTop: 24, marginBottom: 12, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 }]}>
+            Alert Lead Time
+          </Text>
+          <View style={styles.segmentedRow}>
+            {[
+              { id: 5, label: '5m' },
+              { id: 10, label: '10m' },
+              { id: 15, label: '15m' },
+              { id: 30, label: '30m' },
+              { id: 60, label: '1h' },
+            ].map((option) => {
+              const selected = notificationLeadTime === option.id;
+              return (
+                <Pressable
+                  key={option.id}
+                  style={[styles.segmentButton, selected && styles.segmentButtonActive]}
+                  onPress={() => setNotificationLeadTime(option.id)}
+                >
+                  <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
+      {showNotificationsPanel && !isLast && (
+        <View style={{ borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 8 }} />
+      )}
+      </>
+    );
+
+    if (embedded) return content;
+    return <View style={styles.section}>{content}</View>;
+  };
+
+  const renderBlockedTab = (embedded = false, isLast = false) => {
+    const content = (
+      <>
+      <Pressable
+        style={[styles.toolRow, (showBlockedPanel || isLast) && styles.toolRowLast]}
+        onPress={() => setShowBlockedPanel((current) => !current)}
+      >
+        <View style={[styles.toolIconBg, { backgroundColor: 'rgba(239, 68, 68, 0.12)' }]}>
+          <UserX size={20} color={COLORS.primary} />
         </View>
-      </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.toolTitle}>Blocked Users</Text>
+        </View>
+        <ChevronRight
+          size={20}
+          color={COLORS.textTertiary}
+          style={{ transform: [{ rotate: showBlockedPanel ? '90deg' : '0deg' }] }}
+        />
+      </Pressable>
 
-      <Text style={[styles.preferenceLabel, { marginTop: 24, marginBottom: 12, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 }]}>
-        Alert Lead Time
-      </Text>
-      <View style={styles.segmentedRow}>
-        {[
-          { id: 5, label: '5m' },
-          { id: 10, label: '10m' },
-          { id: 15, label: '15m' },
-          { id: 30, label: '30m' },
-          { id: 60, label: '1h' },
-        ].map((option) => {
-          const selected = notificationLeadTime === option.id;
-          return (
-            <Pressable
-              key={option.id}
-              style={[styles.segmentButton, selected && styles.segmentButtonActive]}
-              onPress={() => setNotificationLeadTime(option.id)}
-            >
-              <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
-                {option.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-
-  const renderBlockedTab = () => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Blocked Users</Text>
-      <Text style={styles.sectionSubtitle}>
-        People and organizers you've blocked will be hidden only for this account.
-      </Text>
-
-      {loadingBlocked ? (
+      {showBlockedPanel ? (
+      loadingBlocked ? (
         <ActivityIndicator color={COLORS.primary} style={{ marginTop: 24 }} />
       ) : blockedUsers.length > 0 ? (
-        blockedUsers.map((item, index) => (
+        <View style={styles.inlinePanel}>
+        {blockedUsers.map((item, index) => (
           <View 
             key={item.id} 
             style={[
@@ -946,15 +1056,173 @@ export function Profile() {
                 <UserX size={18} color={COLORS.danger || '#FF4444'} />
             </Pressable>
           </View>
-        ))
+        ))}
+        </View>
       ) : (
-        <View style={{ alignItems: 'center', padding: 40, opacity: 0.5 }}>
+        <View style={[styles.inlinePanel, { alignItems: 'center', padding: 40, opacity: 0.5 }]}>
             <Shield size={48} color={COLORS.textTertiary} strokeWidth={1} />
             <Text style={{ color: COLORS.textTertiary, marginTop: 12, fontSize: 15 }}>No blocked users</Text>
         </View>
+      )
+      ) : null}
+      {showBlockedPanel && !isLast && (
+        <View style={{ borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 8 }} />
       )}
-    </View>
-  );
+      </>
+    );
+
+    if (embedded) return content;
+    return <View style={styles.section}>{content}</View>;
+  };
+
+  const renderFriendsTab = (embedded = false, isLast = false) => {
+    const content = (
+      <>
+        <Pressable
+          style={[styles.toolRow, (showFriendsPanel || isLast) && styles.toolRowLast]}
+          onPress={() => setShowFriendsPanel((current) => !current)}
+        >
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
+            <UserRound size={20} color={COLORS.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>Friends</Text>
+          </View>
+          <ChevronRight
+            size={20}
+            color={COLORS.textTertiary}
+            style={{ transform: [{ rotate: showFriendsPanel ? '90deg' : '0deg' }] }}
+          />
+        </Pressable>
+
+        {showFriendsPanel ? (
+          <>
+            <View style={styles.inlinePanel}>
+              <Pressable
+                style={styles.friendSearchToggle}
+                onPress={() => setShowFriendSearchPanel((current) => !current)}
+              >
+                <Search size={16} color={COLORS.primary} />
+                <Text style={styles.friendSearchToggleText}>Search user</Text>
+              </Pressable>
+
+              {showFriendSearchPanel ? (
+                <View style={styles.friendSearchCard}>
+                  <View style={styles.friendSearchInputWrap}>
+                    <Search size={16} color={COLORS.textTertiary} />
+                    <TextInput
+                      value={friendSearchQuery}
+                      onChangeText={setFriendSearchQuery}
+                      placeholder="Search by name, email, or major"
+                      placeholderTextColor={COLORS.textTertiary}
+                      style={styles.friendSearchInput}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                  </View>
+
+                  {searchingFriends ? (
+                    <ActivityIndicator color={COLORS.primary} style={{ marginTop: 12 }} />
+                  ) : friendSearchResults.length > 0 ? (
+                    <View style={{ marginTop: 12 }}>
+                      {friendSearchResults.map((item, index) => (
+                        <View
+                          key={item.id}
+                          style={[
+                            styles.toolRow,
+                            index === friendSearchResults.length - 1 && styles.toolRowLast,
+                            { paddingVertical: 12 },
+                          ]}
+                        >
+                          <View style={styles.avatar}>
+                            {item.profile_image_url ? (
+                              <Image source={{ uri: item.profile_image_url }} style={styles.avatarImage} />
+                            ) : (
+                              <Text style={styles.avatarText}>{item.name?.[0] || 'U'}</Text>
+                            )}
+                          </View>
+                          <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={styles.toolTitle}>{item.name}</Text>
+                            <Text style={styles.email} numberOfLines={1}>
+                              {item.major || item.id}
+                            </Text>
+                          </View>
+                          <Pressable
+                            style={[
+                              styles.friendActionButton,
+                              item.is_friend && styles.friendActionButtonDisabled,
+                            ]}
+                            disabled={item.is_friend}
+                            onPress={() => handleAddFriend(item.id, item.name)}
+                          >
+                            <Text
+                              style={[
+                                styles.friendActionButtonText,
+                                item.is_friend && styles.friendActionButtonTextDisabled,
+                              ]}
+                            >
+                              {item.is_friend ? 'Friends' : 'Add'}
+                            </Text>
+                          </Pressable>
+                        </View>
+                      ))}
+                    </View>
+                  ) : friendSearchQuery.trim() ? (
+                    <Text style={styles.friendSearchEmpty}>No users found.</Text>
+                  ) : null}
+                </View>
+              ) : null}
+            </View>
+
+            {loadingFriends ? (
+              <ActivityIndicator color={COLORS.primary} style={{ marginTop: 24 }} />
+            ) : friends.length > 0 ? (
+              <View style={styles.inlinePanel}>
+                {friends.map((item, index) => (
+                  <View
+                    key={item.id}
+                    style={[
+                      styles.toolRow,
+                      index === friends.length - 1 && styles.toolRowLast,
+                      { paddingVertical: 12 },
+                    ]}
+                  >
+                    <View style={styles.avatar}>
+                      {item.profile_image_url ? (
+                        <Image source={{ uri: item.profile_image_url }} style={styles.avatarImage} />
+                      ) : (
+                        <Text style={styles.avatarText}>{item.name?.[0] || 'U'}</Text>
+                      )}
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={styles.toolTitle}>{item.name}</Text>
+                      <Text style={styles.email} numberOfLines={1}>
+                        {item.major || item.id}
+                      </Text>
+                    </View>
+                    <Pressable style={styles.friendActionButton} onPress={() => handleRemoveFriend(item.id)}>
+                      <Text style={styles.friendActionButtonText}>Unfriend</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={[styles.inlinePanel, { alignItems: 'center', padding: 40, opacity: 0.5 }]}>
+                <UserRound size={48} color={COLORS.textTertiary} strokeWidth={1} />
+                <Text style={{ color: COLORS.textTertiary, marginTop: 12, fontSize: 15 }}>No friends yet</Text>
+              </View>
+            )}
+          </>
+        ) : null}
+        {showFriendsPanel && !isLast && (
+          <View style={{ borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 8 }} />
+        )}
+      </>
+    );
+
+    if (embedded) return content;
+    return <View style={styles.section}>{content}</View>;
+  };
 
   const renderResourcesTab = () => (
     <View style={styles.section}>
@@ -1258,6 +1526,37 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       borderWidth: 1,
       borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'transparent',
     },
+    quickActionRow: {
+      flexDirection: 'row',
+      gap: 12,
+      marginTop: 8,
+    },
+    quickActionCard: {
+      flex: 1,
+      minHeight: 92,
+      borderRadius: 24,
+      borderWidth: 1.5,
+      backgroundColor: isDark ? COLORS.surface : '#F8FAFC',
+      paddingHorizontal: 14,
+      paddingVertical: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 10,
+    },
+    quickActionIconWrap: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    quickActionTitle: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+      textAlign: 'center',
+      letterSpacing: -0.2,
+    },
     tabShell: {
       marginTop: 2,
     },
@@ -1387,6 +1686,10 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       borderBottomWidth: 0,
       paddingBottom: 0,
     },
+    toolRowExpanded: {
+      borderBottomWidth: 0,
+      paddingBottom: 0,
+    },
     toolIconBg: {
       width: 42,
       height: 42,
@@ -1403,6 +1706,74 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
     toolSubtitle: {
       fontSize: 13,
       lineHeight: 18,
+      color: COLORS.textSecondary,
+    },
+    inlinePanel: {
+      marginTop: 12,
+    },
+    friendSearchToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      alignSelf: 'flex-start',
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 14,
+      backgroundColor: COLORS.surfaceElevated,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    friendSearchToggleText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
+    },
+    friendSearchCard: {
+      marginTop: 12,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: COLORS.surfaceElevated,
+      padding: 12,
+    },
+    friendSearchInputWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      paddingHorizontal: 12,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.7)',
+    },
+    friendSearchInput: {
+      flex: 1,
+      minHeight: 44,
+      color: COLORS.textPrimary,
+      fontSize: 14,
+    },
+    friendSearchEmpty: {
+      marginTop: 12,
+      color: COLORS.textSecondary,
+      fontSize: 14,
+    },
+    friendActionButton: {
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 12,
+      backgroundColor: COLORS.surfaceElevated,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    friendActionButtonDisabled: {
+      opacity: 0.65,
+    },
+    friendActionButtonText: {
+      color: COLORS.textPrimary,
+      fontSize: 13,
+      fontWeight: '800',
+    },
+    friendActionButtonTextDisabled: {
       color: COLORS.textSecondary,
     },
     accentSliderCard: {

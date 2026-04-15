@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Animated,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -634,7 +635,11 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
             <Text style={[styles.helperText, { color: COLORS.textSecondary }]}>{question.helper}</Text>
           </View>
 
-          <View style={styles.optionsWrap}>
+          <ScrollView 
+            style={{ flex: 1, marginTop: 4, marginBottom: 4 }} 
+            contentContainerStyle={styles.optionsWrap}
+            showsVerticalScrollIndicator={false}
+          >
             {question.options.map((option, index) => {
               const selected =
                 (question.id === 'categories' && categorySelection.includes(option.id)) ||
@@ -654,7 +659,7 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
                 />
               );
             })}
-          </View>
+          </ScrollView>
 
           <Animated.View style={{ transform: [{ scale: continuePulse }] }}>
             <Pressable

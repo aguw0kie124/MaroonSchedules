@@ -66,8 +66,9 @@ import { useAppShellStore } from '../store/appShellStore';
 import { useSessionStore } from '../store/sessionStore';
 import { scheduleAdminEventReviewNotification, scheduleEventNotification } from '../services/notificationService';
 import { promptGuestLogin } from '../utils/guestAccess';
-import { blockUser, reportContent } from '../services/streamFeeds';
+import { blockUser, reportContent } from '../services/socialFeedService';
 import { TagChips } from './common/TagChips';
+import { getEventImage } from './events/EventImages';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
@@ -178,6 +179,7 @@ const ALL_CATEGORIES: ExploreCategory[] = [
 ];
 
 const PERSONALIZATION_CATEGORY_LIMIT = 3;
+const DEFAULT_SELECTED_CATEGORIES: ExploreCategory[] = ['Featured', 'For U'];
 
 const MAJOR_OPTIONS: MajorOption[] = [
   'Engineering',
@@ -194,6 +196,16 @@ const MAJOR_OPTIONS: MajorOption[] = [
 
 function isExploreCategory(value: string): value is ExploreCategory {
   return ALL_CATEGORIES.includes(value as ExploreCategory);
+}
+
+function selectedCategoriesFromDeselects(deselected: string[]): Set<ExploreCategory> {
+  const next = new Set(DEFAULT_SELECTED_CATEGORIES);
+  deselected.forEach((cat) => {
+    if (isExploreCategory(cat)) {
+      next.delete(cat as ExploreCategory);
+    }
+  });
+  return next.size ? next : new Set(DEFAULT_SELECTED_CATEGORIES);
 }
 
 function normalizePreferredCategories(categories: string[] | undefined) {
@@ -819,7 +831,7 @@ function handleGoogleCalendar(event: TAMUEvent) {
   const desc = encodeURIComponent(stripHtml(event.description || ''));
   const loc = encodeURIComponent(event.location || '');
   const url = `https://www.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${desc}&location=${loc}`;
-  Linking.openURL(url).catch((err) => console.error('Error opening Google Calendar', err));
+  Linking.openURL(url).catch((err) => console.warn('Error opening Google Calendar', err));
 }
 
 function openNativeMaps(lat: number, lng: number, label?: string | null) {
@@ -863,7 +875,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const [view, setView] = useState<EventsView>('discover');
 
-  const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(new Set(['Featured', 'For U']));
+  const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(
+    () => new Set(DEFAULT_SELECTED_CATEGORIES),
+  );
+  const hasSelectedCategory = selectedCategories.size > 0;
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [searchQuery, setSearchQuery] = useState('');
   const [detailEvent, setDetailEvent] = useState<TAMUEvent | null>(null);
@@ -901,7 +916,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const pan = useRef(new Animated.ValueXY()).current;
   const opacity = useRef(new Animated.Value(1)).current;
-  const lastAppliedPreferenceKey = useRef<string | null>(null);
   const hydratedProfileMajorForUser = useRef<string | null>(null);
   const nowTs = Math.floor(Date.now() / 1000);
 
@@ -978,6 +992,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const [rewardToast, setRewardToast] = useState<{ title: string; body: string } | null>(null);
   const rewardToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasAppliedInitialCategorySync = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1080,6 +1095,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   );
 
   const isEventPreferencesCompleted = !!preferredEventCategories && preferredEventCategories.length > 0;
+
+  useEffect(() => {
+    if (hasAppliedInitialCategorySync.current) {
+      return;
+    }
+    hasAppliedInitialCategorySync.current = true;
+    setSelectedCategories(selectedCategoriesFromDeselects(deselectedCategories));
+  }, [deselectedCategories]);
 
   // On mount, ensure we respect persistent deselections for the default set
   useEffect(() => {
@@ -1269,32 +1292,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     if (!isEventPreferencesCompleted) {
       return;
     }
-    const preferenceKey = JSON.stringify({
-      categories: normalizedPreferenceCategories,
-      socialMode: preferredSocialMode,
-      preferredTime,
-    });
-    if (lastAppliedPreferenceKey.current === preferenceKey) {
-      return;
-    }
-    lastAppliedPreferenceKey.current = preferenceKey;
-    setSelectedCategories((prev) => {
-      const next = new Set(normalizedPreferenceCategories);
-      if (prev.has('For U') && !deselectedCategories.includes('For U')) {
-        next.add('For U');
-      }
-      if (prev.has('Featured')) {
-        next.add('Featured');
-      }
-      return next;
-    });
+    setSelectedCategories(new Set(DEFAULT_SELECTED_CATEGORIES));
     if (preferredSocialMode) {
       setSocialMode(preferredSocialMode);
     }
     if (!embedded) {
       setView('discover');
     }
-  }, [embedded, isEventPreferencesCompleted, normalizedPreferenceCategories, preferredSocialMode, preferredTime]);
+  }, [embedded, isEventPreferencesCompleted, preferredSocialMode]);
 
 
 
@@ -1304,19 +1309,25 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     });
   }, []);
 
-  const toggleCategory = useCallback((category: ExploreCategory) => {
-    setSelectedCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(category)) {
-        next.delete(category);
-        toggleCategoryDeselection(category, true);
-      } else {
-        next.add(category);
-        toggleCategoryDeselection(category, false);
-      }
-      return next;
-    });
-  }, [toggleCategoryDeselection]);
+  const toggleCategory = useCallback(
+    (category: ExploreCategory) => {
+      const wasSelected = selectedCategories.has(category);
+      setSelectedCategories(() => {
+        if (wasSelected && selectedCategories.size <= 1) {
+          queueMicrotask(() => {
+            toggleCategoryDeselection(category, true);
+          });
+          return new Set(DEFAULT_SELECTED_CATEGORIES);
+        }
+
+        queueMicrotask(() => {
+          toggleCategoryDeselection(category, false);
+        });
+        return new Set([category]);
+      });
+    },
+    [selectedCategories, toggleCategoryDeselection],
+  );
 
   const handleSchedule = useCallback(
     async (event: TAMUEvent) => {
@@ -1347,7 +1358,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               response: 'none',
             });
           } catch (error) {
-            console.error('[Events] RSVP remove error:', error);
+            console.warn('[Events] RSVP remove error:', error);
           }
         }
         triggerRewardToast('Removed from your plans', 'No problem. You can always add it back later.');
@@ -1406,7 +1417,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             advanceStep('event-rsvp');
           }
         } catch (error) {
-          console.error('[Events] RSVP error:', error);
+          console.warn('[Events] RSVP error:', error);
         }
       }
       triggerRewardToast('Added to your schedule', 'Nice. We will keep this one easy to come back to.');
@@ -1519,7 +1530,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 removeOrganizerEvents(event.admin_clerk_id as string);
                 Alert.alert('Organizer muted', `You will no longer see events from ${organizerName}.`);
               } catch (error) {
-                console.error('[Events] Unsubscribe organizer error:', error);
+                console.warn('[Events] Unsubscribe organizer error:', error);
                 Alert.alert('Unable to update', 'We could not unsubscribe you from this organizer right now.');
               }
             },
@@ -1552,7 +1563,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 removeOrganizerEvents(event.admin_clerk_id as string);
                 Alert.alert('Organizer blocked', `${organizerName} has been blocked.`);
               } catch (error) {
-                console.error('[Events] Block organizer error:', error);
+                console.warn('[Events] Block organizer error:', error);
                 Alert.alert('Unable to block', 'We could not block this organizer right now.');
               }
             },
@@ -1579,7 +1590,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         });
         Alert.alert('Report received', 'Thank you for helping keep the community safe.');
       } catch (error) {
-        console.error('[Events] Report organizer error:', error);
+        console.warn('[Events] Report organizer error:', error);
         Alert.alert('Unable to submit report', 'We could not send that report right now.');
       }
     };
@@ -1736,7 +1747,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
 
                 <View style={s.categoryWrap}>
-                  {categoriesExpanded ? (
+                    {categoriesExpanded ? (
                     <>
                       <View style={s.categoryHeaderRow}>
                         <Text style={s.categorySectionLabel}>Filters</Text>
@@ -1751,6 +1762,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                             category={category}
                             count={categoryCounts[category] || 0}
                             active={selectedCategories.has(category)}
+                            dimmed={hasSelectedCategory && !selectedCategories.has(category)}
                             onPress={() => toggleCategory(category)}
                           />
                         ))}
@@ -1775,6 +1787,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                             category={category}
                             count={categoryCounts[category] || 0}
                             active={selectedCategories.has(category)}
+                            dimmed={hasSelectedCategory && !selectedCategories.has(category)}
                             onPress={() => toggleCategory(category)}
                           />
                         ))}
@@ -1805,27 +1818,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                     </View>
                   ) : null}
                 </View>
-
-                <View style={s.spotlightIntro}>
-                  <Text style={s.spotlightEyebrow}>Discover</Text>
-                  <Text style={s.spotlightTitle}>Spotlight events</Text>
-                </View>
-
-                {isForYouSelected ? (
-                  <Text style={s.filterHintText}>
-                    {hasForYouPrefs
-                      ? `For U is personalized using your saved ${[
-                        profileMajor ? `${profileMajor} major` : null,
-                        profilePreferences.preferredTime && profilePreferences.preferredTime !== 'No Preference'
-                          ? `${profilePreferences.preferredTime.toLowerCase()} time preference`
-                          : null,
-                        profilePreferences.avoidFriday ? 'avoid Friday preference' : null,
-                      ]
-                        .filter(Boolean)
-                        .join(', ')}.`
-                      : 'For U needs saved onboarding or planner preferences before it can personalize events.'}
-                  </Text>
-                ) : null}
 
                 <ScrollView
                   horizontal
@@ -1880,9 +1872,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 clearButtonMode="while-editing"
               />
             </View>
-            <Pressable style={s.filterButton} onPress={() => setSettingsVisible(true)}>
-              <Filter size={18} color={COLORS.textPrimary} />
-            </Pressable>
           </View>
 
           <View style={[s.categoryWrap, { marginBottom: 16, marginTop: 4 }]}>
@@ -1962,6 +1951,18 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                       ? 'Add your profile preferences in onboarding or planner settings, then try For U again.'
                       : 'Try another category, turn off major-specific filtering, or clear hidden events.'}
                   </Text>
+                  {(searchQuery || isMajorSpecific || selectedCategories.size !== DEFAULT_SELECTED_CATEGORIES.length) && (
+                    <Pressable
+                      style={[s.emptyActionButton, { backgroundColor: COLORS.primary }]}
+                      onPress={() => {
+                        setSearchQuery('');
+                        setMajorSpecific(false);
+                        setSelectedCategories(new Set(DEFAULT_SELECTED_CATEGORIES));
+                      }}
+                    >
+                      <Text style={s.emptyActionText}>Clear All Filters</Text>
+                    </Pressable>
+                  )}
                 </View>
               }
             />
@@ -2053,7 +2054,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         socialMode={socialMode}
         setSocialMode={setSocialMode}
         selectedCategories={selectedCategories}
-        setSelectedCategories={setSelectedCategories}
         dislikedEventIds={dislikedEventIds}
         events={personalizedEvents}
         onRestoreCategory={handleRestoreCategory}
@@ -2082,11 +2082,13 @@ function CategoryChip({
   category,
   count,
   active,
+  dimmed = false,
   onPress,
 }: {
   category: ExploreCategory;
   count: number;
   active: boolean;
+  dimmed?: boolean;
   onPress: () => void;
 }) {
   const { accent, chipBg, chipText, icon: Icon } = CATEGORY_META[category];
@@ -2097,9 +2099,10 @@ function CategoryChip({
         stylesStatic.categoryChip,
         {
           backgroundColor: active ? accent : chipBg,
-          opacity: count ? 1 : 0.48,
+          opacity: dimmed ? 0.42 : 1,
           borderWidth: active ? 2 : 1,
           borderColor: active ? '#FFFFFF' : `${chipText}26`,
+          shadowOpacity: active ? 0.1 : 0.04,
         },
       ]}
     >
@@ -2137,19 +2140,38 @@ function HeroEventCard({
   const category = classifyCategory(event);
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
+  const eventImage = getEventImage(event as any);
+
+  // DEBUG: remove after fixing
+  if (!eventImage) {
+    const { classifyCategory: cc } = require('./events/EventUtils');
+    console.log('NO IMAGE:', event.title, '| category:', cc(event), '| has categories:', !!event.categories);
+  }
 
   return (
     <Pressable
       onPress={onPress}
       style={[stylesStatic.heroCard, { backgroundColor: meta.cardTint }]}
     >
-      {event.imageUrl ? <Image source={{ uri: event.imageUrl }} style={stylesStatic.heroImage} resizeMode="cover" /> : null}
-      {event.imageUrl ? <View style={stylesStatic.heroImageOverlay} /> : null}
-      <View style={[stylesStatic.heroGlow, { backgroundColor: 'rgba(255,255,255,0.18)' }]} />
-      <View style={[stylesStatic.heroGlowSmall, { backgroundColor: 'rgba(255,255,255,0.12)' }]} />
-      <View style={[stylesStatic.heroIconHalo, event.imageUrl ? stylesStatic.heroIconHaloWithImage : null]}>
-        <Icon size={88} color="rgba(255,255,255,0.12)" />
-      </View>
+      {eventImage ? (
+        <View style={StyleSheet.absoluteFill}>
+          <Image source={eventImage} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          <LinearGradient
+            colors={['rgba(0,0,0,0.16)', 'rgba(0,0,0,0.28)', 'rgba(0,0,0,0.78)']}
+            locations={[0, 0.45, 1]}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+        </View>
+      ) : (
+        <>
+          <View style={[stylesStatic.heroGlow, { backgroundColor: 'rgba(255,255,255,0.18)' }]} />
+          <View style={[stylesStatic.heroGlowSmall, { backgroundColor: 'rgba(255,255,255,0.12)' }]} />
+          <View style={[stylesStatic.heroIconHalo]}>
+            <Icon size={88} color="rgba(255,255,255,0.12)" />
+          </View>
+        </>
+      )}
 
       <View style={stylesStatic.heroTopRow}>
         <View style={stylesStatic.heroCategoryPill}>
@@ -2366,7 +2388,6 @@ function SettingsModal({
   socialMode,
   setSocialMode,
   selectedCategories,
-  setSelectedCategories,
   dislikedEventIds,
   events,
   onRestoreCategory,
@@ -2380,13 +2401,11 @@ function SettingsModal({
   socialMode: SocialMode;
   setSocialMode: (mode: SocialMode) => void;
   selectedCategories: Set<ExploreCategory>;
-  setSelectedCategories: (val: Set<ExploreCategory>) => void;
   dislikedEventIds: string[];
   events: TAMUEvent[];
   onRestoreCategory: (category?: ExploreCategory) => void;
 }) {
-  const { COLORS, theme } = useTheme();
-  const isDark = theme === 'dark';
+  const { COLORS } = useTheme();
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -2400,41 +2419,10 @@ function SettingsModal({
         >
           <ScrollView showsVerticalScrollIndicator={false}>
             <Text style={[stylesStatic.modalTitle, { color: COLORS.textPrimary }]}>Filters</Text>
-            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 12 }]}>
-              Categories
-            </Text>
-
-            {ALL_CATEGORIES.map((category) => (
-              <Pressable
-                key={category}
-                style={stylesStatic.modalOption}
-                onPress={() => {
-                  const next = new Set(selectedCategories);
-                  if (next.has(category)) {
-                    next.delete(category);
-                    toggleCategoryDeselection(category, true);
-                  } else {
-                    next.add(category);
-                    toggleCategoryDeselection(category, false);
-                  }
-                  setSelectedCategories(next);
-                }}
-              >
-                <Text
-                  style={[
-                    stylesStatic.modalOptionText,
-                    { color: selectedCategories.has(category) ? COLORS.primary : COLORS.textPrimary },
-                  ]}
-                >
-                  {category}
-                </Text>
-                {selectedCategories.has(category) ? <Check size={16} color={COLORS.primary} /> : null}
-              </Pressable>
-            ))}
 
             {selectedCategories.has('Social') ? (
               <>
-                <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary }]}>
+                <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 12 }]}>
                   Social mode
                 </Text>
                 {(['casual', 'professional'] as SocialMode[]).map((mode) => (
@@ -2457,7 +2445,7 @@ function SettingsModal({
               </>
             ) : null}
 
-            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary }]}>
+            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 12 }]}>
               Major filter
             </Text>
             <Pressable
@@ -2803,7 +2791,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       backgroundColor: COLORS.background,
     },
     headerBlock: {
-      paddingTop: embedded ? 10 : 38,
+      paddingTop: embedded ? 10 : 54,
       paddingHorizontal: 20,
       paddingBottom: 6,
       gap: 10,
@@ -3073,12 +3061,6 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       fontSize: 12,
       fontWeight: '600',
     },
-    filterHintText: {
-      marginTop: 6,
-      color: COLORS.textSecondary,
-      fontSize: 12,
-      lineHeight: 18,
-    },
     socialModeWrap: {
       flexDirection: 'row',
       gap: 8,
@@ -3102,25 +3084,13 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     socialModeTextActive: {
       color: COLORS.textPrimary,
     },
-    spotlightIntro: {
-      marginTop: 14,
-      marginBottom: 2,
-      gap: 4,
-    },
-    spotlightEyebrow: {
+    filterHintText: {
+      marginTop: 6,
       color: COLORS.textSecondary,
-      fontSize: 11,
-      fontWeight: '900',
-      letterSpacing: 1.5,
-      textTransform: 'uppercase',
+      fontSize: 12,
+      lineHeight: 18,
     },
-    spotlightTitle: {
-      color: COLORS.textPrimary,
-      fontSize: 24,
-      lineHeight: 28,
-      fontWeight: '900',
-      letterSpacing: -0.8,
-    },
+
     heroRail: {
       paddingTop: 14,
       paddingLeft: 0,
@@ -3193,6 +3163,23 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       fontSize: 14,
       lineHeight: 20,
       textAlign: 'center',
+    },
+    emptyActionButton: {
+      marginTop: 20,
+      paddingHorizontal: 24,
+      paddingVertical: 12,
+      borderRadius: 18,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      elevation: 5,
+    },
+    emptyActionText: {
+      color: '#FFFFFF',
+      fontSize: 15,
+      fontWeight: '800',
+      letterSpacing: 0.2,
     },
     swipeHeader: {
       paddingTop: embedded ? 10 : 52,
@@ -3495,6 +3482,9 @@ const stylesStatic = StyleSheet.create({
     fontWeight: '900',
     textTransform: 'uppercase',
     letterSpacing: 1.4,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   verifiedPill: {
     flexDirection: 'row',
@@ -3509,6 +3499,9 @@ const stylesStatic = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '800',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   heroBottom: {
     flex: 1,
@@ -3527,6 +3520,9 @@ const stylesStatic = StyleSheet.create({
     fontWeight: '900',
     letterSpacing: -1.0,
     maxWidth: '88%',
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
   heroOrganizerPill: {
     alignSelf: 'flex-start',
@@ -3554,6 +3550,9 @@ const stylesStatic = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     flex: 1,
+    textShadowColor: 'rgba(0,0,0,0.6)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   heroActionRow: {
     flexDirection: 'row',

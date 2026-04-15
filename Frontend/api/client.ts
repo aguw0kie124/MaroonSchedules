@@ -1,7 +1,10 @@
-import { API_KEY, API_URL } from '../config';
+import { API_KEY, API_REQUEST_TIMEOUT_MS, API_URL } from '../config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const DEFAULT_TIMEOUT_MS = 10000;
+/** Bounded so wrong/offline EXPO_PUBLIC_API_URL fails fast instead of blocking the UI for ~20s. */
+const DEFAULT_TIMEOUT_MS = API_REQUEST_TIMEOUT_MS;
+
+let hasLoggedTimeoutDevHint = false;
 const API_BASE = API_URL.replace(/\/+$/, '');
 
 type TokenProviderOptions = {
@@ -154,7 +157,7 @@ async function handleSecurityResponse(response: Response) {
     }
 
     if (response.status === 403) {
-        console.error('[API] Backend rejected the request with 403. Check EXPO_PUBLIC_API_KEY and backend API_KEY.');
+        console.warn('[API] Backend rejected the request with 403. Check EXPO_PUBLIC_API_KEY and backend API_KEY.');
         if (forbiddenHandler) {
             await forbiddenHandler(response.clone());
         }
@@ -187,6 +190,13 @@ async function performFetch(
         return response;
     } catch (error: any) {
         if (error?.name === 'AbortError') {
+            if (__DEV__ && !hasLoggedTimeoutDevHint) {
+                hasLoggedTimeoutDevHint = true;
+                console.warn(
+                    '[API] Request timed out. Buses, dining, occupancy, and feeds all use this host.',
+                    'Update EXPO_PUBLIC_API_URL in .env to your Mac/PC LAN IP (same Wi‑Fi as the phone) or your deployed API, then restart Expo.',
+                );
+            }
             throw new Error(`Request timed out for ${url}`);
         }
         throw error;
@@ -265,7 +275,7 @@ export const syncUser = async (clerkId: string, email?: string, fullName?: strin
 };
 
 export const fetchUserProfile = async (clerkId: string) => {
-    return requestJson(`/users/${clerkId}`, {}, 8000);
+    return requestJson(`/users/${clerkId}`, {}, DEFAULT_TIMEOUT_MS);
 };
 
 export const updateUserProfile = async (clerkId: string, fields: Record<string, any>) => {
@@ -373,13 +383,18 @@ export const fetchCampusPlacesMap = async () => {
     return requestJson('/campus/places/map');
 };
 
+export const fetchCampusParkingRealtime = async () => {
+    return requestJson('/campus/places/parking-realtime');
+};
+
 export const fetchCampusPlaceDetail = async (placeIdOrIdentifier: string) => {
     return requestJson(`/campus/places/${encodeURIComponent(placeIdOrIdentifier)}/detail`);
 };
 
-export const fetchCampusPulseMap = async (limit = 12, clerkId?: string) => {
+export const fetchCampusPulseMap = async (limit = 12, clerkId?: string, refresh = false) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (clerkId) params.set('clerk_id', clerkId);
+    if (refresh) params.set('refresh', 'true');
     return requestJson(`/campus/pulse/map?${params.toString()}`);
 };
 

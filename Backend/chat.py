@@ -10,7 +10,7 @@ import traceback
 
 from services import ping_service, cache_service, campus_hub_service, pulse_service, tag_access_service
 from repositories import feed_repository, user_repository, tag_repository
-from db_config import CONNECTION_PARAMS
+from db_config import CONNECTION_PARAMS, get_pool
 from auth.clerk_middleware import require_auth, optional_auth, ensure_matching_user
 
 # Force reload from the exact .env file
@@ -44,6 +44,10 @@ class ReportRequest(SanitizedBaseModel):
     reason: str
     comment: Optional[str] = None
     place_id: Optional[str] = None
+
+
+class FriendRequest(SanitizedBaseModel):
+    target_id: str
 
 
 def _ensure_social_schema() -> None:
@@ -126,27 +130,32 @@ async def list_users(request: Request, exclude_id: str = "", _auth_user_id: str 
         print(f"Clerk API Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/token")
-@router.post("/feeds/token")
-@limiter.limit("5/minute")
-async def get_noop_token(request: Request, body: Dict[str, Any], auth_user_id: str = Depends(require_auth)):
-    """Actually sync the user to our DB during the connection phase to fix the Aggie bug."""
-    clerk_id = body.get("clerk_user_id") or auth_user_id
-    ensure_matching_user(auth_user_id, clerk_id, detail="You can only initialize chat as yourself")
-    if clerk_id:
-        user_repository.upsert_user(
-            clerk_id=clerk_id,
-            full_name=body.get("name"),
-            profile_image_url=body.get("image")
-        )
-    
-    return {
-        "stream_user_id": clerk_id or "native_user",
-        "stream_user_token": "native_flow_no_stream_needed",
-        "stream_api_key": "native"
-    }
-
 # --- Feed Proxy (Now 100% Native) ---
+
+def _resolve_access_scope_cached(clerk_id: Optional[str]) -> tuple[List[str], bool]:
+    """Retrieves user tags and admin status with Redis caching (5 min TTL)."""
+    if not clerk_id:
+        return [], False
+    
+    cache_key = f"auth:access_scope:{clerk_id}"
+    cached = cache_service.get_json(cache_key)
+    if cached:
+        return cached["tags"], cached["is_admin"]
+    
+    # Cache miss
+    from repositories import tag_repository, user_repository
+    profile = user_repository.get_user(clerk_id) or {}
+    try:
+        user_tags = tag_repository.get_user_tags(clerk_id)
+    except Exception as exc:
+        print(f"[chat] failed to load user tags for {clerk_id}: {exc}")
+        user_tags = []
+    
+    is_admin = bool(profile.get("is_admin"))
+    result = {"tags": user_tags, "is_admin": is_admin}
+    cache_service.set_json(cache_key, result, ttl_seconds=300)
+    return user_tags, is_admin
+
 
 @router.get("/feeds/proxy/{feed_group}/{feed_id}")
 @limiter.limit("120/minute")
@@ -154,8 +163,9 @@ async def proxy_get_feed(
     request: Request,
     feed_group: str,
     feed_id: str,
-    limit: int = 25,
-    clerk_id: Optional[str] = Header(None, alias="X-Clerk-User-Id"),
+    limit: int = Query(25, ge=1, le=100),
+    clerk_id: Optional[str] = Query(None),
+    refresh: bool = Query(False),
     auth_user_id: Optional[str] = Depends(optional_auth),
 ):
     """Fetch feed activities natively (Postgres) with Redis Backbone caching."""
@@ -164,11 +174,18 @@ async def proxy_get_feed(
         if auth_user_id and clerk_id:
             ensure_matching_user(auth_user_id, clerk_id, detail="Feed identity header does not match the signed-in user")
         resolved_user_id = auth_user_id or clerk_id
-        user_access_tags, bypass_access_restrictions = _resolve_access_scope(resolved_user_id)
+        user_access_tags, bypass_access_restrictions = _resolve_access_scope_cached(resolved_user_id)
 
         # 1. Check Backbone Cache
         cache_key = f"feed:backbone:{feed_group}:{feed_id}"
-        backbone = cache_service.get_json(cache_key)
+        if feed_id == "for_u" and resolved_user_id:
+            cache_key = f"feed:backbone:{feed_group}:for_u:{resolved_user_id}"
+            
+        if refresh:
+            cache_service.delete(cache_key)
+            backbone = None
+        else:
+            backbone = cache_service.get_json(cache_key)
         
         raw_items = []
         if backbone:
@@ -176,21 +193,26 @@ async def proxy_get_feed(
         else:
             # Backbone Miss - Fetch from DB (unfiltered by user)
             if feed_group == "flat":
-                if feed_id.startswith("place_review_"):
+                if feed_id == "for_u":
+                    if resolved_user_id:
+                        raw_items = feed_repository.get_tailored_feed_for_user(resolved_user_id, limit=limit*2)
+                    else:
+                        raw_items = feed_repository.get_crowdping_feed(post_types=['ping', 'post'], limit=limit*2)
+                elif feed_id.startswith("place_review_"):
                     place_id = feed_id.replace("place_review_", "")
-                    raw_items = feed_repository.get_place_reviews(place_id, limit=limit*2) # Get extra for filtering headroom
+                    raw_items = feed_repository.get_place_reviews(place_id, limit=limit*2)
                 elif feed_id in ["campus_global", "campus_pings", "reels_global"]:
                     post_types = ['post', 'reel', 'ping']
                     if feed_id == "campus_pings": post_types = ['ping', 'post']
                     elif feed_id == "reels_global": post_types = ['reel']
                     raw_items = feed_repository.get_crowdping_feed(post_types=post_types, limit=limit*2)
             
-            # Store in Backbone Cache (60s TTL for active session freshness)
+            # Keep the feed warm, but refresh often enough that recent pings don't disappear.
             if raw_items:
                 cache_service.set_json(cache_key, raw_items, ttl_seconds=60)
 
         # 2. In-Memory Personalization (Filtering & Hydration)
-        blocked_ids = _get_blocked_ids_cached(resolved_user_id) if resolved_user_id else []
+        blocked_ids = _get_block_relationship_ids_cached(resolved_user_id) if resolved_user_id else []
         
         filtered_items = [
             item
@@ -204,15 +226,20 @@ async def proxy_get_feed(
         ids_to_hydrate = [item["id"] for item in final_list]
         interaction_map = feed_repository.get_batch_interaction_counts(ids_to_hydrate)
         
+        # Batch fetch own reactions for the user (Fix N+1)
+        user_reactions_map = {}
+        if resolved_user_id:
+            user_reactions_map = feed_repository.get_user_interactions_batch(resolved_user_id, ids_to_hydrate)
+        
         results = []
         for item in final_list:
             pid = item["id"]
             # Detect own reactions for this specific caller
             own_reactions = {}
-            if resolved_user_id:
-                post_type = item.get("post_type") or ("review" if feed_id.startswith("place_review_") else "post")
-                all_ints = feed_repository.get_post_interactions(pid, post_type)
-                own_reactions = {i["interaction_type"]: [True] for i in all_ints if i["user_id"] == resolved_user_id}
+            user_reactions = user_reactions_map.get(pid, {})
+            # Format reactions for frontend Stream compatibility
+            for r_type in user_reactions:
+                own_reactions[r_type] = [True]
             
             if feed_id.startswith("place_review_"):
                 results.append(_transform_review_to_activity(item, interaction_map.get(pid, {}), own_reactions))
@@ -301,8 +328,9 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
         verb = activity.get("verb", "post")
         custom = activity.get("custom", {})
         
+        created_activity: Optional[Dict[str, Any]] = None
         if feed_group == "flat" and feed_id.startswith("place_review_"):
-            feed_repository.add_place_review(
+            created_review = feed_repository.add_place_review(
                 place_id=custom.get("place_id", ""),
                 user_id=user_id,
                 rating=custom.get("rating", 0),
@@ -310,7 +338,12 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
                 user_name=custom.get("user_name", "Aggie"),
                 user_image=custom.get("user_image", ""),
                 images=custom.get("images", []),
-                is_anonymous=custom.get("is_anonymous", False)
+                is_anonymous=False,
+            )
+            created_activity = _transform_review_to_activity(
+                created_review,
+                {"like": 0, "comment": 0, "upvote": 0, "downvote": 0, "score": 0},
+                {},
             )
         elif feed_group == "flat" and feed_id in ["campus_global", "campus_pings", "reels_global"]:
             if feed_id == "campus_pings":
@@ -321,25 +354,49 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
             if not images and "attachments" in activity:
                 images = [att.get("image_url") or att.get("asset_url") for att in activity["attachments"] if att.get("image_url") or att.get("asset_url")]
 
-            lat = custom.get("lat") or custom.get("place_lat") or custom.get("location_lat")
-            lng = custom.get("lng") or custom.get("place_lng") or custom.get("location_lng")
+            lat = custom.get("lat")
+            if lat in (None, ""): lat = custom.get("place_lat")
+            if lat in (None, ""): lat = custom.get("location_lat")
+            
+            lng = custom.get("lng")
+            if lng in (None, ""): lng = custom.get("place_lng")
+            if lng in (None, ""): lng = custom.get("location_lng")
 
-            feed_repository.add_crowdping_post(
+            try:
+                fl_lat = float(lat) if lat not in (None, "") else None
+            except ValueError:
+                fl_lat = None
+
+            try:
+                fl_lng = float(lng) if lng not in (None, "") else None
+            except ValueError:
+                fl_lng = None
+
+            created_post = feed_repository.add_crowdping_post(
                 user_id=user_id,
                 content=content,
                 post_type=verb,
                 user_name=custom.get("user_name", "Aggie"),
                 user_image=custom.get("user_image", ""),
-                lat=float(lat) if lat is not None else None,
-                lng=float(lng) if lng is not None else None,
+                lat=fl_lat,
+                lng=fl_lng,
                 location_tag=custom.get("location_tag", ""),
                 images=images,
-                is_anonymous=bool(custom.get("is_anonymous", False)),
-                custom_data=custom
+                is_anonymous=False,
+                custom_data={**custom, "is_anonymous": False},
+            )
+            created_activity = _transform_post_to_activity(
+                created_post,
+                {"like": 0, "comment": 0, "upvote": 0, "downvote": 0, "score": 0},
+                {},
             )
         
         _invalidate_ping_related_caches(feed_group, feed_id)
-        return {"status": "success", "message": "Activity recorded natively"}
+        return {
+            "status": "success",
+            "message": "Activity recorded natively",
+            "activity": created_activity,
+        }
     except Exception as e:
         print(f"Native Write Error: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -386,6 +443,9 @@ async def proxy_add_reaction(request: Request, body: ReactionPayload, auth_user_
     try:
         _ensure_social_schema()
         ensure_matching_user(auth_user_id, body.user_id, detail="You can only react as yourself")
+        post_owner_id = feed_repository.get_crowdping_post_owner(body.activity_id)
+        if post_owner_id and post_owner_id != body.user_id and feed_repository.has_block_relationship(body.user_id, post_owner_id):
+            raise HTTPException(status_code=403, detail="You cannot interact with a user you have blocked or who has blocked you")
         # 1. Resolve naming/image from DB if possible to fix "Aggie" bug
         user_profile = user_repository.get_user(body.user_id)
         final_name = user_profile.get("full_name") if user_profile else (body.data.get("name") if body.data else "Aggie")
@@ -422,11 +482,17 @@ async def proxy_add_reaction(request: Request, body: ReactionPayload, auth_user_
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/feeds/proxy/reactions/{activity_id}/{kind}")
-async def proxy_get_reactions(activity_id: str, kind: str):
+async def proxy_get_reactions(activity_id: str, kind: str, auth_user_id: Optional[str] = Depends(optional_auth)):
     """Fetch reactions natively from Postgres."""
     try:
         _ensure_social_schema()
-        interactions = feed_repository.get_post_interactions(activity_id, "crowdping", interaction_type=kind)
+        exclude_user_ids = _get_block_relationship_ids_cached(auth_user_id) if auth_user_id else None
+        interactions = feed_repository.get_post_interactions(
+            activity_id,
+            "crowdping",
+            interaction_type=kind,
+            exclude_user_ids=exclude_user_ids,
+        )
         # Transform to Stream reaction format for frontend compatibility
         results = []
         for i in interactions:
@@ -458,6 +524,8 @@ async def proxy_block_user(request: Request, clerk_id: str, body: BlockRequest =
         feed_repository.add_block(clerk_id, body.target_id)
         # Invalidate cached blocked list
         cache_service.delete(f"user:blocks:{clerk_id}")
+        cache_service.delete(f"user:block-relationships:{clerk_id}")
+        cache_service.delete(f"user:block-relationships:{body.target_id}")
         return {"status": "success"}
     except Exception as e:
         print(f"Block Error: {e}")
@@ -473,7 +541,7 @@ async def get_blocked_users(clerk_id: str, auth_user_id: str = Depends(require_a
             return []
             
         profiles = []
-        with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with get_pool().connection() as conn:
             with conn.cursor() as cur:
                 for bid in blocked_ids:
                     profile = user_repository.get_user(bid)
@@ -520,11 +588,74 @@ async def proxy_unblock_user(clerk_id: str, target_id: str, auth_user_id: str = 
         if not removed:
             raise HTTPException(status_code=404, detail="Block record not found")
         cache_service.delete(f"user:blocks:{clerk_id}")
+        cache_service.delete(f"user:block-relationships:{clerk_id}")
+        cache_service.delete(f"user:block-relationships:{target_id}")
         return {"status": "success"}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/users/{clerk_id}/friends")
+@limiter.limit("20/minute")
+async def add_friend_for_user(
+    request: Request,
+    clerk_id: str,
+    body: FriendRequest = Body(...),
+    auth_user_id: str = Depends(require_auth),
+):
+    try:
+        _ensure_social_schema()
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only add friends from your own account")
+        if feed_repository.has_block_relationship(clerk_id, body.target_id):
+            raise HTTPException(status_code=403, detail="You cannot friend a blocked user")
+        result = user_repository.add_friend(clerk_id, body.target_id)
+        return {"status": "success", "friendship": result}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/users/{clerk_id}/friends")
+async def get_friends_for_user(clerk_id: str, auth_user_id: str = Depends(require_auth)):
+    try:
+        _ensure_social_schema()
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only view your own friends list")
+        return user_repository.list_friends(clerk_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.delete("/users/{clerk_id}/friends/{target_id}")
+async def remove_friend_for_user(clerk_id: str, target_id: str, auth_user_id: str = Depends(require_auth)):
+    try:
+        _ensure_social_schema()
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only remove friends from your own account")
+        removed = user_repository.remove_friend(clerk_id, target_id)
+        if not removed:
+            raise HTTPException(status_code=404, detail="Friendship not found")
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/users/{clerk_id}/friends/search")
+async def search_users_for_friends(
+    clerk_id: str,
+    query: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=25),
+    auth_user_id: str = Depends(require_auth),
+):
+    try:
+        _ensure_social_schema()
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only search friends for your own account")
+        return user_repository.search_users(clerk_id, query, limit=limit)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 @router.post("/reports")
 @limiter.limit("5/minute")
@@ -553,5 +684,17 @@ def _get_blocked_ids_cached(clerk_id: str) -> List[str]:
         return cached
     
     ids = feed_repository.get_blocked_user_ids(clerk_id)
+    cache_service.set_json(cache_key, ids, ttl_seconds=3600)
+    return ids
+
+
+def _get_block_relationship_ids_cached(clerk_id: str) -> List[str]:
+    """Users the caller has blocked or who have blocked the caller."""
+    cache_key = f"user:block-relationships:{clerk_id}"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+
+    ids = feed_repository.get_block_relationship_user_ids(clerk_id)
     cache_service.set_json(cache_key, ids, ttl_seconds=3600)
     return ids

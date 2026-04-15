@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, KeyboardAvo
 import { Star, X } from 'lucide-react-native';
 import { useTheme, PrimaryButton } from './SharedUI';
 import { useUser } from '@clerk/clerk-expo';
+import { API_URL } from '../config';
 
 interface ReviewModalProps {
   visible: boolean;
@@ -24,7 +25,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({ visible, onClose, loca
 
     setSubmitting(true);
     try {
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/reviews/`, {
+      const response = await fetch(`${API_URL}/reviews/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -43,7 +44,7 @@ export const ReviewModal: React.FC<ReviewModalProps> = ({ visible, onClose, loca
         onClose();
       }
     } catch (error) {
-      console.error('Failed to submit review:', error);
+      console.warn('Failed to submit review:', error);
     } finally {
       setSubmitting(false);
     }

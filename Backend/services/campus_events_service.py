@@ -9,30 +9,99 @@ from typing import Any, Dict, List, Tuple
 from services import cache_service, place_registry_service
 
 
-CRAWLER_OUTPUT = (
-    Path(__file__).resolve().parents[2]
-    / "TamuEventsCrawler"
-    / "data"
-    / "normalized"
-    / "events.jsonl"
-)
+CAMPUS_EVENT_SOURCES = {
+    "tamu": {
+        "crawler_output": (
+            Path(__file__).resolve().parents[2]
+            / "TamuEventsCrawler"
+            / "data"
+            / "normalized"
+            / "events.jsonl"
+        ),
+        "center_lat": 30.6123,
+        "center_lng": -96.3415,
+        "lat_window": 0.25,
+        "lng_window": 0.35,
+        "affiliation": "tamu",
+        "label": "college_station",
+        "non_local_patterns": (
+            "galveston",
+            "qatar",
+            "houston",
+            "dallas",
+            "san antonio",
+            "austin",
+            "mcallen",
+            "round rock",
+            "fort worth",
+            "corpus christi",
+        ),
+        "student_signals": (
+            "student",
+            "organization",
+            "club",
+            "association",
+            "society",
+            "aggie",
+            "msc",
+            "reslife",
+            "student affairs",
+        ),
+        "commuter_signals": (),
+    },
+    "utd": {
+        "crawler_output": (
+            Path(__file__).resolve().parents[2]
+            / "UtdEventsCrawler"
+            / "data"
+            / "normalized"
+            / "events.jsonl"
+        ),
+        "center_lat": 32.9858,
+        "center_lng": -96.7501,
+        "lat_window": 0.45,
+        "lng_window": 0.55,
+        "affiliation": "utd",
+        "label": "richardson",
+        "non_local_patterns": (
+            "austin",
+            "houston",
+            "san antonio",
+            "galveston",
+            "corpus christi",
+            "el paso",
+            "washington, dc",
+            "new york",
+            "los angeles",
+        ),
+        "student_signals": (
+            "student",
+            "organization",
+            "club",
+            "association",
+            "society",
+            "comet",
+            "student union",
+            "student affairs",
+            "utd",
+            "ut dallas",
+        ),
+        "commuter_signals": (
+            "commuter",
+            "transit",
+            "shuttle",
+            "cruiser",
+            "comet cruiser",
+            "dart",
+            "parking",
+        ),
+    },
+}
+
 EVENTS_SNAPSHOT_TTL_SECONDS = 300
-_EVENT_CACHE: List[Dict[str, Any]] | None = None
-_EVENT_CACHE_MTIME_NS: int | None = None
-TAMU_CENTER_LAT = 30.6123
-TAMU_CENTER_LNG = -96.3415
-NON_CS_PATTERNS = (
-    "galveston",
-    "qatar",
-    "houston",
-    "dallas",
-    "san antonio",
-    "austin",
-    "mcallen",
-    "round rock",
-    "fort worth",
-    "corpus christi",
-)
+EVENT_CACHE_VERSION = "v2"
+_EVENT_CACHE: Dict[str, List[Dict[str, Any]]] = {}
+_EVENT_CACHE_MTIME_NS: Dict[str, int] = {}
 
 HIGH_SIGNAL_TERMS = (
     "concert",
@@ -61,6 +130,8 @@ HIGH_SIGNAL_TERMS = (
     "pizza",
     "lunch",
     "dinner",
+    "pop up",
+    "wellness",
 )
 
 LOW_SIGNAL_TERMS = (
@@ -89,17 +160,10 @@ LOW_SIGNAL_TERMS = (
     "syllabus",
 )
 
-STUDENT_ORG_SIGNALS = (
-    "student",
-    "organization",
-    "club",
-    "association",
-    "society",
-    "aggie",
-    "msc",
-    "reslife",
-    "student affairs",
-)
+
+def _campus_key(campus: str | None) -> str:
+    key = (campus or "tamu").strip().lower()
+    return key if key in CAMPUS_EVENT_SOURCES else "tamu"
 
 
 def _parse_coordinate_fallback(value: str | None) -> Tuple[float | None, float | None]:
@@ -142,11 +206,18 @@ def _clean_location_label(location: str | None, lat: float | None, lng: float | 
     return location
 
 
-def _is_college_station_event(event: Dict[str, Any]) -> bool:
+def _is_campus_event(event: Dict[str, Any], campus: str) -> bool:
+    config = CAMPUS_EVENT_SOURCES[_campus_key(campus)]
     lat = event.get("location_lat")
     lng = event.get("location_lng")
     if lat is not None and lng is not None:
-      return abs(float(lat) - TAMU_CENTER_LAT) <= 0.25 and abs(float(lng) - TAMU_CENTER_LNG) <= 0.35
+        try:
+            return (
+                abs(float(lat) - float(config["center_lat"])) <= float(config["lat_window"])
+                and abs(float(lng) - float(config["center_lng"])) <= float(config["lng_window"])
+            )
+        except (TypeError, ValueError):
+            pass
 
     combined = " ".join(
         str(part or "").lower()
@@ -158,10 +229,13 @@ def _is_college_station_event(event: Dict[str, Any]) -> bool:
             event.get("host_name"),
         )
     )
-    return not any(pattern in combined for pattern in NON_CS_PATTERNS)
+    return not any(pattern in combined for pattern in config["non_local_patterns"])
 
 
-def _normalize_event_row(raw: Dict[str, Any]) -> Dict[str, Any] | None:
+def _normalize_event_row(raw: Dict[str, Any], campus: str) -> Dict[str, Any] | None:
+    campus_key = _campus_key(campus)
+    config = CAMPUS_EVENT_SOURCES[campus_key]
+
     start_time = raw.get("start_time")
     if not start_time:
         return None
@@ -181,6 +255,20 @@ def _normalize_event_row(raw: Dict[str, Any]) -> Dict[str, Any] | None:
 
     lat = raw.get("location_lat")
     lng = raw.get("location_lng")
+    
+    if lat is None or lng is None:
+        # Check raw_payload (common for crawler events)
+        payload = raw.get("raw_payload") or {}
+        if isinstance(payload, str):
+            try:
+                import json
+                payload = json.loads(payload)
+            except:
+                payload = {}
+        
+        lat = lat if lat is not None else payload.get("location_latitude")
+        lng = lng if lng is not None else payload.get("location_longitude")
+
     if lat is None or lng is None:
         fallback_lat, fallback_lng = _parse_coordinate_fallback(raw.get("location"))
         lat = lat if lat is not None else fallback_lat
@@ -195,17 +283,16 @@ def _normalize_event_row(raw: Dict[str, Any]) -> Dict[str, Any] | None:
     raw_location = raw.get("location")
     if not raw_location and int(raw.get("sports", 0) or 0) == 1:
         title = raw.get("title") or ""
-        at_match = re.search(r'\s+at\s+(.+)$', title, re.IGNORECASE)
+        at_match = re.search(r"\s+at\s+(.+)$", title, re.IGNORECASE)
         if at_match:
             raw_location = at_match.group(1).strip()
-        elif re.search(r'\s+vs\.?\s+', title, re.IGNORECASE):
-            raw_location = "College Station, TX"
-            if lat is None and lng is None:
-                lat = TAMU_CENTER_LAT
-                lng = TAMU_CENTER_LNG
 
     raw_location = _clean_location_label(raw_location, lat, lng)
-    resolved_place = place_registry_service.resolve_place(raw_location, lat, lng)
+    resolved_place = (
+        place_registry_service.resolve_place(raw_location, lat, lng)
+        if campus_key == "tamu"
+        else None
+    )
     location = resolved_place["name"] if resolved_place else raw_location
 
     normalized = {
@@ -216,8 +303,8 @@ def _normalize_event_row(raw: Dict[str, Any]) -> Dict[str, Any] | None:
         "raw_location": raw_location,
         "location": location,
         "place_id": resolved_place["place_id"] if resolved_place else None,
-        "location_lat": lat,
-        "location_lng": lng,
+        "location_lat": resolved_place["lat"] if resolved_place else lat,
+        "location_lng": resolved_place["lng"] if resolved_place else lng,
         "start_time": start_dt.isoformat(),
         "end_time": end_dt.isoformat() if end_dt else None,
         "link": raw.get("event_url") or raw.get("source_url"),
@@ -229,6 +316,8 @@ def _normalize_event_row(raw: Dict[str, Any]) -> Dict[str, Any] | None:
         "food_confidence": float(raw.get("food_confidence") or 0.0),
         "food_type": raw.get("food_type") or "unknown",
         "food_reasons": raw.get("food_reasons") or [],
+        "campus": raw.get("campus") or config["label"],
+        "affiliation": raw.get("affiliation") or config["affiliation"],
         "categories": {
             "social": int(raw.get("social", 0)),
             "sports": int(raw.get("sports", 0)),
@@ -237,36 +326,41 @@ def _normalize_event_row(raw: Dict[str, Any]) -> Dict[str, Any] | None:
             "advocacy": int(raw.get("advocacy", 1) if raw.get("advocacy") else 0),
             "entertainment": int(raw.get("entertainment", 0)),
             "health_wellness": int(raw.get("health_wellness", 0)),
-            "miscellaneous": int(raw.get("miscellaneous", 0) or raw.get("religion", 0) or (
-                not any([
-                    int(raw.get("social", 0)),
-                    int(raw.get("sports", 0)),
-                    int(raw.get("academic", 0)),
-                    int(raw.get("food", 0)),
-                    int(raw.get("advocacy", 0)),
-                    int(raw.get("entertainment", 0)),
-                    int(raw.get("health_wellness", 0)),
-                ])
-            )),
+            "miscellaneous": int(
+                raw.get("miscellaneous", 0)
+                or raw.get("religion", 0)
+                or (
+                    not any(
+                        [
+                            int(raw.get("social", 0)),
+                            int(raw.get("sports", 0)),
+                            int(raw.get("academic", 0)),
+                            int(raw.get("food", 0)),
+                            int(raw.get("advocacy", 0)),
+                            int(raw.get("entertainment", 0)),
+                            int(raw.get("health_wellness", 0)),
+                        ]
+                    )
+                )
+            ),
             "casual": int(raw.get("casual", 0)),
             "professional": int(raw.get("professional", 0)),
         },
-        "map_available": lat is not None and lng is not None,
+        "map_available": (resolved_place is not None) or (lat is not None and lng is not None),
     }
 
     if resolved_place:
-        normalized["location_lat"] = resolved_place["lat"]
-        normalized["location_lng"] = resolved_place["lng"]
         normalized["place"] = place_registry_service.serialize_place(resolved_place)
 
-    score, label, reasons = _score_student_relevance(normalized)
+    score, label, reasons = _score_student_relevance(normalized, campus_key)
     normalized["campus_interest_score"] = score
     normalized["campus_interest_label"] = label
     normalized["campus_interest_reasons"] = reasons
     return normalized
 
 
-def _score_student_relevance(event: Dict[str, Any]) -> Tuple[int, str, List[str]]:
+def _score_student_relevance(event: Dict[str, Any], campus: str) -> Tuple[int, str, List[str]]:
+    config = CAMPUS_EVENT_SOURCES[_campus_key(campus)]
     text_parts = [
         str(event.get("title") or ""),
         str(event.get("summary") or ""),
@@ -278,7 +372,7 @@ def _score_student_relevance(event: Dict[str, Any]) -> Tuple[int, str, List[str]
     ]
     text = " ".join(text_parts).lower()
     categories = event.get("categories") or {}
-    score = 35
+    score = 40
     reasons: List[str] = []
 
     category_weights = {
@@ -303,9 +397,13 @@ def _score_student_relevance(event: Dict[str, Any]) -> Tuple[int, str, List[str]
         score += 14
         reasons.append("high_signal_keywords")
 
-    if any(term in text for term in STUDENT_ORG_SIGNALS):
+    if any(term in text for term in config["student_signals"]):
         score += 10
         reasons.append("student_org_signal")
+
+    if any(term in text for term in config["commuter_signals"]):
+        score += 8
+        reasons.append("commuter_signal")
 
     if event.get("map_available"):
         score += 4
@@ -320,52 +418,65 @@ def _score_student_relevance(event: Dict[str, Any]) -> Tuple[int, str, List[str]
         score -= 18
         reasons.append("title_looks_like_admin_or_class")
 
-    if not event.get("host_name") and not event.get("tags") and not categories.get("social") and not categories.get("entertainment"):
+    if (
+        not event.get("host_name")
+        and not event.get("tags")
+        and not categories.get("social")
+        and not categories.get("entertainment")
+    ):
         score -= 6
         reasons.append("low_context")
 
     score = max(0, min(100, score))
     if score >= 70:
         label = "high"
-    elif score >= 45:
+    elif score >= 25:
         label = "medium"
     else:
         label = "low"
     return score, label, reasons
 
 
-def load_campus_events(force_refresh: bool = False) -> Dict[str, Any]:
-    global _EVENT_CACHE, _EVENT_CACHE_MTIME_NS
+def load_campus_events(force_refresh: bool = False, campus: str = "tamu") -> Dict[str, Any]:
+    campus_key = _campus_key(campus)
+    config = CAMPUS_EVENT_SOURCES[campus_key]
+    cache_key = f"campus:events:normalized:{EVENT_CACHE_VERSION}:{campus_key}"
 
-    cache_key = "campus:events:normalized:v1"
     if not force_refresh:
         cached = cache_service.get_json(cache_key)
         if cached is not None:
             return cached
 
-    if not CRAWLER_OUTPUT.exists():
+    crawler_output = Path(config["crawler_output"])
+    if not crawler_output.exists():
         payload = {
             "generated_at": datetime.utcnow().isoformat() + "Z",
-            "stale_after": EVENTS_SNAPSHOT_TTL_SECONDS,
+            "stale_after": 30,  # [FIX] Short TTL for missing state to allow faster recovery
             "source_status": "missing",
+            "campus": campus_key,
             "events": [],
         }
-        cache_service.set_json(cache_key, payload, EVENTS_SNAPSHOT_TTL_SECONDS)
+        cache_service.set_json(cache_key, payload, 30)
         return payload
 
-    mtime_ns = CRAWLER_OUTPUT.stat().st_mtime_ns
-    if not force_refresh and _EVENT_CACHE is not None and _EVENT_CACHE_MTIME_NS == mtime_ns:
+    mtime_ns = crawler_output.stat().st_mtime_ns
+    if (
+        not force_refresh
+        and campus_key in _EVENT_CACHE
+        and _EVENT_CACHE_MTIME_NS.get(campus_key) == mtime_ns
+    ):
         payload = {
             "generated_at": datetime.utcnow().isoformat() + "Z",
             "stale_after": EVENTS_SNAPSHOT_TTL_SECONDS,
             "source_status": "live",
-            "events": _EVENT_CACHE,
+            "campus": campus_key,
+            "events": _EVENT_CACHE[campus_key],
         }
         cache_service.set_json(cache_key, payload, EVENTS_SNAPSHOT_TTL_SECONDS)
         return payload
 
     events: List[Dict[str, Any]] = []
-    with CRAWLER_OUTPUT.open("r", encoding="utf-8") as handle:
+    with crawler_output.open("r", encoding="utf-8") as handle:
         for line in handle:
             if not line.strip():
                 continue
@@ -373,17 +484,17 @@ def load_campus_events(force_refresh: bool = False) -> Dict[str, Any]:
                 raw = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            normalized = _normalize_event_row(raw)
+            normalized = _normalize_event_row(raw, campus_key)
             if normalized:
                 events.append(normalized)
 
-    cutoff = datetime.now() - timedelta(days=1)
+    cutoff = datetime.now() - timedelta(days=3)
     events = [
         event
         for event in events
         if (
             datetime.fromisoformat(event["start_time"].replace("Z", "+00:00")).replace(tzinfo=None) >= cutoff
-            and _is_college_station_event(event)
+            and _is_campus_event(event, campus_key)
         )
     ]
     events.sort(
@@ -393,12 +504,13 @@ def load_campus_events(force_refresh: bool = False) -> Dict[str, Any]:
         )
     )
 
-    _EVENT_CACHE = events
-    _EVENT_CACHE_MTIME_NS = mtime_ns
+    _EVENT_CACHE[campus_key] = events
+    _EVENT_CACHE_MTIME_NS[campus_key] = mtime_ns
     payload = {
         "generated_at": datetime.utcnow().isoformat() + "Z",
         "stale_after": EVENTS_SNAPSHOT_TTL_SECONDS,
         "source_status": "live",
+        "campus": campus_key,
         "events": events,
     }
     cache_service.set_json(cache_key, payload, EVENTS_SNAPSHOT_TTL_SECONDS)

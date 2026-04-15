@@ -6,7 +6,7 @@ import threading
 from functools import lru_cache
 import psycopg
 from psycopg.rows import dict_row
-from db_config import CONNECTION_PARAMS
+from db_config import CONNECTION_PARAMS, get_pool
 from typing import Any, Dict, Optional, Tuple, Union
 from services import encryption_service
 
@@ -53,7 +53,7 @@ def _execute_optional_ddl(conn: psycopg.Connection, sql: str) -> None:
 
 @lru_cache(maxsize=8)
 def _get_table_columns(table_name: str) -> Tuple[str, ...]:
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
@@ -234,7 +234,7 @@ def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile
 
     select_clause = _user_select_clause()
     placeholders = ", ".join(["%s"] * len(insert_columns))
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -259,7 +259,7 @@ def upsert_user(clerk_id: str, email: str = None, full_name: str = None, profile
 def get_user(clerk_id: str) -> Optional[dict]:
     """Return full user record by Clerk ID, or None."""
     select_clause = _user_select_clause()
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -305,7 +305,7 @@ def update_profile(clerk_id: str, fields: dict) -> Optional[dict]:
         set_clause = f"{set_clause}, updated_at = NOW()"
     select_clause = _user_select_clause()
 
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -335,7 +335,7 @@ def get_schedules(clerk_id: str) -> list:
     """Return the schedules JSONB array for a user."""
     if "schedules" not in _user_columns():
         return []
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor() as cur:
             cur.execute("SELECT schedules FROM users WHERE clerk_id = %s", (clerk_id,))
@@ -353,7 +353,7 @@ def save_schedules(clerk_id: str, schedules: list) -> None:
     columns = _user_columns()
     if "schedules" not in columns:
         return
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor() as cur:
             insert_columns = ["clerk_id", "schedules"]
@@ -372,6 +372,154 @@ def save_schedules(clerk_id: str, schedules: list) -> None:
                 tuple(values),
             )
         conn.commit()
+
+
+def add_friend(requester_id: str, friend_id: str) -> Dict[str, Any]:
+    if not requester_id or not friend_id:
+        return {"status": "error", "message": "Missing user id"}
+    if requester_id == friend_id:
+        return {"status": "error", "message": "Cannot friend yourself"}
+
+    with get_pool().connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                INSERT INTO network_connections (requester_id, recipient_id, status, updated_at)
+                VALUES (%s, %s, 'accepted', NOW())
+                ON CONFLICT (requester_id, recipient_id)
+                DO UPDATE SET status = 'accepted', updated_at = NOW()
+                RETURNING requester_id, recipient_id, status, updated_at
+                """,
+                (requester_id, friend_id),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return dict(row or {})
+
+
+def remove_friend(user_id: str, friend_id: str) -> bool:
+    if not user_id or not friend_id:
+        return False
+
+    with get_pool().connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                DELETE FROM network_connections
+                WHERE status = 'accepted'
+                  AND (
+                    (requester_id = %s AND recipient_id = %s)
+                    OR (requester_id = %s AND recipient_id = %s)
+                  )
+                """,
+                (user_id, friend_id, friend_id, user_id),
+            )
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted
+
+
+def list_friends(clerk_id: str) -> list[dict]:
+    if not clerk_id:
+        return []
+
+    with get_pool().connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT
+                    CASE
+                        WHEN requester_id = %s THEN recipient_id
+                        ELSE requester_id
+                    END AS friend_id
+                FROM network_connections
+                WHERE status = 'accepted'
+                  AND (requester_id = %s OR recipient_id = %s)
+                ORDER BY updated_at DESC
+                """,
+                (clerk_id, clerk_id, clerk_id),
+            )
+            rows = cur.fetchall() or []
+
+    friends: list[dict] = []
+    seen_ids: set[str] = set()
+    for row in rows:
+        friend_id = row.get("friend_id")
+        if not friend_id or friend_id in seen_ids:
+            continue
+        seen_ids.add(friend_id)
+        profile = get_user(friend_id)
+        if not profile:
+            continue
+        friends.append(
+            {
+                "id": profile["clerk_id"],
+                "name": profile.get("full_name") or profile.get("email") or "Aggie User",
+                "profile_image_url": profile.get("profile_image_url"),
+                "major": profile.get("major"),
+                "graduation_year": profile.get("graduation_year"),
+            }
+        )
+    return friends
+
+
+def search_users(searcher_id: str, query: str, limit: int = 10) -> list[dict]:
+    normalized_query = (query or "").strip().lower()
+    if not normalized_query:
+        return []
+
+    blocked_ids: set[str] = set()
+    try:
+        from repositories import feed_repository
+
+        blocked_ids = set(feed_repository.get_block_relationship_user_ids(searcher_id))
+    except Exception:
+        blocked_ids = set()
+
+    friends = {friend["id"] for friend in list_friends(searcher_id)}
+
+    with get_pool().connection() as conn:
+        _ensure_user_schema_once(conn)
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT clerk_id, full_name, email, profile_image_url, major, graduation_year, updated_at
+                FROM users
+                WHERE clerk_id <> %s
+                ORDER BY updated_at DESC NULLS LAST
+                LIMIT 500
+                """,
+                (searcher_id,),
+            )
+            rows = cur.fetchall() or []
+
+    results: list[dict] = []
+    for row in rows:
+        clerk_id = row.get("clerk_id")
+        if not clerk_id or clerk_id in blocked_ids:
+            continue
+
+        full_name = _safe_decrypt(row.get("full_name")) or ""
+        email = _safe_decrypt(row.get("email")) or ""
+        major = row.get("major") or ""
+        haystack = " ".join([full_name, email, major]).lower()
+        if normalized_query not in haystack:
+            continue
+
+        results.append(
+            {
+                "id": clerk_id,
+                "name": full_name or email or "Aggie User",
+                "profile_image_url": row.get("profile_image_url"),
+                "major": major or None,
+                "graduation_year": row.get("graduation_year") or None,
+                "is_friend": clerk_id in friends,
+            }
+        )
+        if len(results) >= limit:
+            break
+
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -452,7 +600,7 @@ def save_canvas_tokens(clerk_id: str, access_token: str, refresh_token: str, exp
     required = {"canvas_access_token", "canvas_refresh_token", "canvas_expires_at", "canvas_instance_url"}
     if not required.issubset(columns):
         return
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor() as cur:
             update_clause = "canvas_access_token = %s, canvas_refresh_token = %s, canvas_expires_at = %s, canvas_instance_url = %s"
@@ -480,7 +628,7 @@ def set_tour_completed(clerk_id: str) -> None:
     columns = _user_columns()
     if "tour_completed" not in columns:
         return
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor() as cur:
             update_clause = "tour_completed = TRUE"
@@ -498,7 +646,7 @@ def set_tos_accepted(clerk_id: str) -> None:
     columns = _user_columns()
     if "tos_accepted" not in columns:
         return
-    with psycopg.connect(CONNECTION_PARAMS) as conn:
+    with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
         with conn.cursor() as cur:
             update_clause = "tos_accepted = TRUE"

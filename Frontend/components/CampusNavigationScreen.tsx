@@ -42,29 +42,17 @@ import {
   getPinnedItems,
   getNearbyItems,
 } from '../services/campusSearch';
-import {
-  speakRouteIntro,
-  speakStep,
-  stopSpeech,
-} from '../services/campusTTS';
-import {
-  requestMicPermission,
-  startRecording,
-  stopRecording as stopVoiceRecording,
-  isCurrentlyRecording,
-  processVoiceCommand,
-  VoiceIntent,
-} from '../services/campusVoice';
+
 import { buildTransitPlan, CampusTransitPlan } from '../services/campusTransitRouting';
 import type { CampusLocation } from './places/types';
 import { buildExpandedPlacesDirectory, getLocationSelectionId } from './places/campusData';
 import { getCategoryColor, getCategoryIcon } from './places/utils';
 import { buildGlobalRoute, isCoordinateNearTexasAM, searchGlobalPlaces } from '../services/globalMap';
 import {
-  MapLibreMarker,
-  MapLibrePolylineOverlay,
-  useMapLibreCamera,
-} from './map/mapLibreUtils';
+  MapMarker,
+  MapPolylineOverlay,
+  useMapCamera,
+} from './map/mapUtils';
 
 type NavMode = 'idle' | 'selected' | 'navigating';
 type TravelMode = 'walk' | 'drive' | 'bus';
@@ -306,13 +294,11 @@ export function CampusNavigationScreen() {
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeNotice, setRouteNotice] = useState<string | null>(null);
   const [nearbyItems, setNearbyItems] = useState<CampusSearchResult[]>([]);
-  const [voiceState, setVoiceState] = useState<'idle' | 'listening' | 'processing'>('idle');
-  const [voiceBanner, setVoiceBanner] = useState<{ text?: string; error?: string } | null>(null);
   const [userCoord, setUserCoord] = useState<Coordinate>({
     latitude: DEFAULT_USER_LOCATION.latitude,
     longitude: DEFAULT_USER_LOCATION.longitude,
   });
-  const { cameraRef, defaultCamera, animateToRegion, animateCamera, fitToCoordinates } = useMapLibreCamera(TAMU_CENTER);
+  const { cameraRef, defaultCamera, animateToRegion, animateCamera, fitToCoordinates } = useMapCamera(TAMU_CENTER);
   const mapRef = useRef<{
     animateToRegion: typeof animateToRegion;
     animateCamera: typeof animateCamera;
@@ -550,7 +536,7 @@ export function CampusNavigationScreen() {
         );
         locationSubRef.current = sub;
       } catch (e) {
-        console.error('[CampusNav] Location error:', e);
+        console.warn('[CampusNav] Location error:', e);
       }
     })();
 
@@ -685,7 +671,7 @@ export function CampusNavigationScreen() {
           fitMapToCoordinates(routedTrip.route.polyline);
         }
       } catch (error) {
-        console.error('[CampusNav] Route planning error:', error);
+        console.warn('[CampusNav] Route planning error:', error);
         if (!cancelled && generationId === routeGenerationRef.current) {
           setTransitPlan(null);
           setActiveRoute(fallbackRoute);
@@ -813,37 +799,20 @@ export function CampusNavigationScreen() {
     }
   };
 
-  const handleStartDirections = async () => {
+  const handleStartDirections = () => {
     const summaryDistance = displayedDistanceLabel;
     const summaryEta = displayedEtaLabel;
     if ((!activeRoute && !activeTransitPlan) || !steps.length || !summaryDistance || !summaryEta) return;
+    
     setNavMode('navigating');
     fitMapToCoordinates(activeTransitPlan?.polyline || activeRoute?.polyline || [], 'navigating');
-
-    try {
-      await stopSpeech();
-      await speakRouteIntro(
-        destination?.name || 'destination',
-        summaryDistance,
-        summaryEta,
-        effectiveMode,
-      );
-      // Speak first step after intro
-      if (steps.length > 0) {
-        await speakStep(steps[0].instruction);
-      }
-    } catch (e) {
-      console.error('[CampusNav] TTS error:', e);
-    }
   };
 
   const handleEndDirections = async () => {
-    await stopSpeech();
     setNavMode('selected');
   };
 
   const handleClearRoute = async () => {
-    await stopSpeech();
     setDestination(null);
     setActiveRoute(null);
     setTransitPlan(null);
@@ -856,104 +825,9 @@ export function CampusNavigationScreen() {
     }
   };
 
-  // ─── Voice Handler ──────────────────────────────────────────
-  const handleVoicePress = async () => {
-    try {
-      if (voiceState === 'idle') {
-        await stopSpeech();
-        const granted = await requestMicPermission();
-        if (!granted) {
-          setVoiceBanner({ error: 'Microphone permission required' });
-          return;
-        }
-        setVoiceBanner(null);
-        await startRecording();
-        setVoiceState('listening');
-        if (Platform.OS !== 'web') Vibration.vibrate(50);
-      } else if (voiceState === 'listening') {
-        setVoiceState('processing');
-        const uri = await stopVoiceRecording();
-        if (!uri) {
-          setVoiceState('idle');
-          setVoiceBanner({ error: 'Recording failed' });
-          return;
-        }
-
-        const { transcript, intent } = await processVoiceCommand(uri);
-        setVoiceBanner({ text: transcript || '(no transcript)' });
-
-        // Execute intent
-        executeVoiceIntent(intent);
-        setVoiceState('idle');
-
-        // Auto-dismiss banner after 4s
-        setTimeout(() => setVoiceBanner(null), 4000);
-      }
-    } catch (e) {
-      console.error('[CampusNav] Voice error:', e);
-      setVoiceState('idle');
-      setVoiceBanner({ error: 'Voice command failed' });
-    }
-  };
-
-  const executeVoiceIntent = (intent: VoiceIntent) => {
-    switch (intent.type) {
-      case 'BUILDING': {
-        const matchedLocation = navigationLocations.find((location) => (
-          location.placeId === intent.buildingId || getLocationSelectionId(location) === intent.buildingId
-        ));
-        if (matchedLocation) {
-          selectDestination(matchedLocation);
-        } else {
-          setVoiceBanner({ error: `Building "${intent.raw}" not found` });
-        }
-        break;
-      }
-      case 'NEAREST': {
-        const commandByCategory: Record<string, string> = {
-          restroom: 'nearest-restroom',
-          coffee: 'nearest-coffee',
-          dining: 'nearest-dining',
-          library: 'nearest-library',
-          study: 'nearest-study',
-          parking: 'nearest-parking',
-        };
-        const commandType = commandByCategory[intent.category];
-        const location = commandType ? resolveQuickActionLocation(commandType, userCoord) : null;
-        if (location) {
-          selectDestination(location);
-        } else {
-          setVoiceBanner({ error: `No ${intent.category} found nearby` });
-        }
-        break;
-      }
-      case 'SEARCH': {
-        const results = searchCampus(intent.query, userCoord, 1);
-        if (results.length > 0) {
-          handleSearchSelect(results[0]);
-        } else {
-          searchGlobalPlaces(intent.query, { limit: 1 })
-            .then((matches) => {
-              if (matches.length > 0) {
-                selectDestination(matches[0]);
-              } else {
-                setVoiceBanner({ error: `Could not find "${intent.query}"` });
-              }
-            })
-            .catch(() => {
-              setVoiceBanner({ error: `Could not find "${intent.query}"` });
-            });
-        }
-        break;
-      }
-      default:
-        setVoiceBanner({ error: 'Could not understand. Try "nearest coffee" or "Zachry"' });
-    }
-  };
 
   // ─── Render ─────────────────────────────────────────────────
   const isNavigating = navMode === 'navigating';
-  const showVoiceFab = !hasActiveRoute && !isNavigating;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -971,7 +845,7 @@ export function CampusNavigationScreen() {
         >
           {/* Route polyline */}
           {(activeTransitPlan || activeRoute) && (
-            <MapLibrePolylineOverlay
+            <MapPolylineOverlay
               id="campus-navigation-route"
               coordinates={activeTransitPlan?.polyline || activeRoute?.polyline || []}
               color={activeTransitPlan?.routeColor || COLORS.primary}
@@ -981,7 +855,7 @@ export function CampusNavigationScreen() {
           )}
 
           {/* User location marker */}
-          <MapLibreMarker
+          <MapMarker
             id="campus-navigation-user"
             coordinate={userCoord}
             anchor={{ x: 0.5, y: 0.5 }}
@@ -989,9 +863,9 @@ export function CampusNavigationScreen() {
             <Animated.View style={[styles.userMarker, { transform: [{ scale: pulseAnim }] }]}>
               <MapPin size={18} color="#FFFFFF" />
             </Animated.View>
-          </MapLibreMarker>
+          </MapMarker>
           {manualOrigin && (
-            <MapLibreMarker
+            <MapMarker
               id="campus-navigation-origin"
               coordinate={manualOrigin.coordinate}
               anchor={{ x: 0.5, y: 0.5 }}
@@ -999,10 +873,10 @@ export function CampusNavigationScreen() {
               <View style={styles.startMarker}>
                 <Text style={styles.startMarkerText}>S</Text>
               </View>
-            </MapLibreMarker>
+            </MapMarker>
           )}
           {transitStopMarkers.map((stop) => (
-            <MapLibreMarker
+            <MapMarker
               key={stop.key}
               id={`campus-navigation-stop-${stop.key}`}
               coordinate={stop.coordinate}
@@ -1023,10 +897,10 @@ export function CampusNavigationScreen() {
                   stop.badge === 'Board' ? styles.transitStopPinBoard : styles.transitStopPinExit,
                 ]} />
               </View>
-            </MapLibreMarker>
+            </MapMarker>
           ))}
           {destinationCoord ? (
-            <MapLibreMarker
+            <MapMarker
               id="campus-navigation-destination"
               coordinate={destinationCoord}
               anchor={{ x: 0.5, y: 0.5 }}
@@ -1034,9 +908,9 @@ export function CampusNavigationScreen() {
               <View style={styles.destinationMarker}>
                 <Text style={styles.destinationMarkerText}>E</Text>
               </View>
-            </MapLibreMarker>
+            </MapMarker>
           ) : null}
-          <MapLibreMarker
+          <MapMarker
             id="campus-navigation-user-label"
             coordinate={{ latitude: userCoord.latitude + 0.00012, longitude: userCoord.longitude }}
             anchor={{ x: 0.5, y: 1 }}
@@ -1044,13 +918,13 @@ export function CampusNavigationScreen() {
             <View style={styles.youBadge}>
               <Text style={styles.youBadgeText}>You are here</Text>
             </View>
-          </MapLibreMarker>
+          </MapMarker>
 
           {/* Discovery markers */}
           {discoveryMarkers.map((location) => {
             const markerColor = getCategoryColor(location.type);
             return (
-              <MapLibreMarker
+              <MapMarker
                 key={getLocationSelectionId(location)}
                 id={`campus-navigation-discovery-${getLocationSelectionId(location)}`}
                 coordinate={toCoordinateFromLocation(location)}
@@ -1068,7 +942,7 @@ export function CampusNavigationScreen() {
                 >
                   {getCategoryIcon(location.type, '#FFFFFF', 18)}
                 </View>
-              </MapLibreMarker>
+              </MapMarker>
             );
           })}
         </MapView>
@@ -1170,20 +1044,11 @@ export function CampusNavigationScreen() {
             </View>
           </View>
 
-          {voiceBanner && (
-            <View style={styles.voiceBannerContainer}>
-              {voiceBanner.text && <Text style={styles.voiceBannerText}>🎙 "{voiceBanner.text}"</Text>}
-              {voiceBanner.error && <Text style={styles.voiceBannerError}>⚠️ {voiceBanner.error}</Text>}
-              <Pressable onPress={() => setVoiceBanner(null)} style={styles.voiceDismiss}>
-                <Text style={styles.voiceDismissText}>✕</Text>
-              </Pressable>
-            </View>
-          )}
         </View>
       ) : null}
 
       {/* Directions Panel */}
-      {isNavigating && activeRoute && destination && steps.length > 0 && (
+      {isNavigating && (activeRoute || activeTransitPlan) && destination && steps.length > 0 && (
         <View style={styles.directionsContainer}>
           <CampusDirectionsPanel
             destinationName={destination.name}
@@ -1224,31 +1089,6 @@ export function CampusNavigationScreen() {
         />
       )}
 
-      {/* Voice FAB */}
-      {showVoiceFab ? (
-        <Pressable
-          style={({ pressed }) => [
-            styles.voiceFab,
-            isNavigating ? styles.voiceFabNavigating : styles.voiceFabDocked,
-            voiceState === 'listening' && styles.voiceFabListening,
-            voiceState === 'processing' && styles.voiceFabProcessing,
-            pressed && styles.btnPressed,
-          ]}
-          onPress={handleVoicePress}
-          disabled={voiceState === 'processing'}
-        >
-          {voiceState === 'processing' ? (
-            <ActivityIndicator size="small" color="#FFF" />
-          ) : (
-            <Text style={styles.voiceFabIcon}>
-              {voiceState === 'listening' ? '⏹️' : '🎤'}
-            </Text>
-          )}
-          <Text style={styles.voiceFabText}>
-            {voiceState === 'listening' ? 'Tap to stop' : voiceState === 'processing' ? 'Processing…' : 'Voice'}
-          </Text>
-        </Pressable>
-      ) : null}
     </SafeAreaView>
   );
 }

@@ -56,7 +56,9 @@ export function AdminApplicationScreen() {
         setStatus('none');
       }
     } catch (err) {
-      console.error(err);
+      if (__DEV__) {
+        console.warn('[AdminApplication] checkStatus failed:', err);
+      }
       if (options?.showError) {
         Alert.alert('Refresh failed', 'We could not check your approval status right now.');
       }
