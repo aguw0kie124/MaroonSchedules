@@ -603,6 +603,9 @@ export function LocationBottomSheet({
   const handlePeekExpand = useCallback(() => {
     animateSheet(preferredExpandedSnap);
   }, [animateSheet, preferredExpandedSnap]);
+  const handleDiningMenuExpand = useCallback(() => {
+    animateSheet(SHEET_TOP_SNAP);
+  }, [animateSheet]);
 
   const handleExternalLinkPress = useCallback(() => {
     if (!selectedLoc || !externalLink) return;
@@ -694,124 +697,125 @@ export function LocationBottomSheet({
     <>
       <Animated.View
         style={[styles.bottomSheet, { transform: [{ translateY: sheetY }] }]}
-        {...panResponder.panHandlers}
       >
-        <View style={styles.dragHandle} />
-
         {selectedLoc ? (
           <>
-            <View style={[styles.heroCard, isPeekSheet && styles.heroCardPeek]}>
-              <View style={[styles.heroHeadingRow, isPeekSheet && styles.heroHeadingRowPeek]}>
-                <View style={styles.heroHeadingText}>
-                  <Text
-                    style={[
-                      styles.locationName,
-                      isPeekSheet ? styles.locationNamePeek : styles.locationNameExpanded,
-                    ]}
-                    numberOfLines={isPeekSheet ? 1 : 3}
-                  >
-                    {selectedLoc.location}
-                  </Text>
+            <View {...panResponder.panHandlers}>
+              <View style={styles.dragHandle} />
 
-                  {((isPeekSheet ? peekMetaText : heroMetaText) || "").length ? (
+              <View style={[styles.heroCard, isPeekSheet && styles.heroCardPeek]}>
+                <View style={[styles.heroHeadingRow, isPeekSheet && styles.heroHeadingRowPeek]}>
+                  <View style={styles.heroHeadingText}>
                     <Text
                       style={[
-                        styles.heroMetaText,
-                        isPeekSheet && styles.heroMetaTextPeek,
+                        styles.locationName,
+                        isPeekSheet ? styles.locationNamePeek : styles.locationNameExpanded,
                       ]}
-                      numberOfLines={1}
+                      numberOfLines={isPeekSheet ? 1 : 3}
                     >
-                      {isPeekSheet ? peekMetaText : heroMetaText}
+                      {selectedLoc.location}
                     </Text>
-                  ) : null}
+
+                    {((isPeekSheet ? peekMetaText : heroMetaText) || "").length ? (
+                      <Text
+                        style={[
+                          styles.heroMetaText,
+                          isPeekSheet && styles.heroMetaTextPeek,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {isPeekSheet ? peekMetaText : heroMetaText}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  {isPeekSheet ? (
+                    <TouchableOpacity
+                      style={styles.peekPrimaryAction}
+                      activeOpacity={0.85}
+                      onPress={handlePeekExpand}
+                    >
+                      <ChevronRight size={18} color={COLORS.primary} />
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => setSelectedId(null)}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      style={styles.dismissBtn}
+                    >
+                      <X size={16} color="#888" />
+                    </TouchableOpacity>
+                  )}
                 </View>
 
-                {isPeekSheet ? (
-                  <TouchableOpacity
-                    style={styles.peekPrimaryAction}
-                    activeOpacity={0.85}
-                    onPress={handlePeekExpand}
-                  >
-                    <ChevronRight size={18} color={COLORS.primary} />
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    onPress={() => setSelectedId(null)}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    style={styles.dismissBtn}
-                  >
-                    <X size={16} color="#888" />
-                  </TouchableOpacity>
-                )}
+                {!isPeekSheet ? (
+                  <View style={styles.quickActionRow}>
+                    <TouchableOpacity
+                      style={styles.quickActionPill}
+                      onPress={handleNavigatePress}
+                    >
+                      <Navigation size={14} color={COLORS.textPrimary} />
+                      <Text style={styles.quickActionText}>Directions</Text>
+                    </TouchableOpacity>
+
+                    {externalLink && externalLink.label !== "Open in Maps" ? (
+                      <TouchableOpacity
+                        style={styles.quickActionPill}
+                        onPress={handleExternalLinkPress}
+                      >
+                        <ExternalLink size={14} color={COLORS.textPrimary} />
+                        <Text style={styles.quickActionText}>
+                          {externalLink.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {activeDiningMenu && isDiningHallCard ? (
+                      <TouchableOpacity
+                        style={styles.quickActionPill}
+                        onPress={handleDiningMenuExpand}
+                      >
+                        <Utensils size={14} color={COLORS.textPrimary} />
+                        <Text style={styles.quickActionText}>Menus</Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {selectedLoc.classMeetings?.length ? (
+                      <TouchableOpacity
+                        style={styles.quickActionPill}
+                        onPress={openScheduleList}
+                      >
+                        <Calendar size={14} color={COLORS.textPrimary} />
+                        <Text style={styles.quickActionText}>Today</Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {contextLink ? (
+                      <TouchableOpacity
+                        style={styles.quickActionPill}
+                        onPress={handleContextLinkPress}
+                      >
+                        <ExternalLink size={14} color={COLORS.textPrimary} />
+                        <Text style={styles.quickActionText}>
+                          {contextLink.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {officialFacilityUrl && officialFacilityUrl !== externalLink?.url ? (
+                      <TouchableOpacity
+                        style={styles.quickActionPill}
+                        onPress={() =>
+                          Linking.openURL(officialFacilityUrl).catch(() => {})
+                        }
+                      >
+                        <ExternalLink size={14} color={COLORS.textPrimary} />
+                        <Text style={styles.quickActionText}>Facility Page</Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                ) : null}
               </View>
-
-              {!isPeekSheet ? (
-                <View style={styles.quickActionRow}>
-                  <TouchableOpacity
-                    style={styles.quickActionPill}
-                    onPress={handleNavigatePress}
-                  >
-                    <Navigation size={14} color={COLORS.textPrimary} />
-                    <Text style={styles.quickActionText}>Directions</Text>
-                  </TouchableOpacity>
-
-                  {externalLink && externalLink.label !== "Open in Maps" ? (
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={handleExternalLinkPress}
-                    >
-                      <ExternalLink size={14} color={COLORS.textPrimary} />
-                      <Text style={styles.quickActionText}>
-                        {externalLink.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-
-                  {activeDiningMenu && isDiningHallCard ? (
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={() => openFullMenu(activeDiningMenu, activeDiningMealPeriod)}
-                    >
-                      <Utensils size={14} color={COLORS.textPrimary} />
-                      <Text style={styles.quickActionText}>Menus</Text>
-                    </TouchableOpacity>
-                  ) : null}
-
-                  {selectedLoc.classMeetings?.length ? (
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={openScheduleList}
-                    >
-                      <Calendar size={14} color={COLORS.textPrimary} />
-                      <Text style={styles.quickActionText}>Today</Text>
-                    </TouchableOpacity>
-                  ) : null}
-
-                  {contextLink ? (
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={handleContextLinkPress}
-                    >
-                      <ExternalLink size={14} color={COLORS.textPrimary} />
-                      <Text style={styles.quickActionText}>
-                        {contextLink.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-
-                  {officialFacilityUrl && officialFacilityUrl !== externalLink?.url ? (
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={() =>
-                        Linking.openURL(officialFacilityUrl).catch(() => {})
-                      }
-                    >
-                      <ExternalLink size={14} color={COLORS.textPrimary} />
-                      <Text style={styles.quickActionText}>Facility Page</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              ) : null}
             </View>
 
             {!isPeekSheet && selectedLoc.type === "Parking" ? (
@@ -1116,22 +1120,10 @@ export function LocationBottomSheet({
                           </Text>
                           <Text style={styles.menuIntroText}>
                             {isDiningHallCard
-                              ? "Use the Menus button above to open the full dining hall menu."
+                              ? "Browse the current dining hall menu below."
                               : "Browse the dining locations available inside this hub."}
                           </Text>
                         </View>
-                        {isDiningHallCard && activeDiningMenu ? (
-                          <TouchableOpacity
-                            onPress={() =>
-                              openFullMenu(
-                                activeDiningMenu || selectedLoc.location,
-                                activeDiningMealPeriod,
-                              )
-                            }
-                          >
-                            <Text style={styles.seeAllText}>Open full menu</Text>
-                          </TouchableOpacity>
-                        ) : null}
                       </View>
 
                       {!isDiningHallCard && foodCourtVenues.length > 0 ? (
