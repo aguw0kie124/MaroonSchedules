@@ -23,6 +23,9 @@ export interface DirectionStep {
   id: number;
   instruction: string;
   icon: string;
+  distanceMeters?: number;
+  durationMinutes?: number;
+  detail?: string;
 }
 
 // ─── Haversine Distance ─────────────────────────────────────
@@ -119,12 +122,16 @@ export function buildDirectionSteps(
     id: id++,
     instruction: `Starting from ${startName}. Your destination is ${destName}, about ${formatDistance(distanceMeters)} away (${formatTime(etaMinutes)} walk).`,
     icon: '🚶',
+    distanceMeters,
+    durationMinutes: etaMinutes,
   });
 
   steps.push({
     id: id++,
     instruction: `Head ${cardinal} from ${startName}.`,
     icon: '🧭',
+    distanceMeters: Math.round(distanceMeters * 0.2),
+    durationMinutes: Math.max(1, Math.round(etaMinutes * 0.2)),
   });
 
   if (landmark) {
@@ -132,6 +139,7 @@ export function buildDirectionSteps(
       id: id++,
       instruction: `Continue past ${landmark}. Stay on the main walkway.`,
       icon: '➡️',
+      detail: `Watch for signage near ${landmark}.`,
     });
   }
 
@@ -140,6 +148,8 @@ export function buildDirectionSteps(
       id: id++,
       instruction: `Continue walking ${cardinal} for about ${formatDistance(distanceMeters * 0.6)}.`,
       icon: '🚶',
+      distanceMeters: Math.round(distanceMeters * 0.6),
+      durationMinutes: Math.max(1, Math.round(etaMinutes * 0.6)),
     });
   }
 
@@ -147,12 +157,15 @@ export function buildDirectionSteps(
     id: id++,
     instruction: `You are approaching ${destName}. Look for the building entrance.`,
     icon: '📍',
+    distanceMeters: Math.round(distanceMeters * 0.2),
+    durationMinutes: Math.max(1, Math.round(etaMinutes * 0.2)),
   });
 
   steps.push({
     id: id++,
     instruction: `You have arrived at ${destName}. Gig 'em! 👍`,
     icon: '🎯',
+    detail: 'Arrival',
   });
 
   return steps;

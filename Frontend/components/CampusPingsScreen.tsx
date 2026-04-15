@@ -866,7 +866,7 @@ export function CampusPingsScreen() {
 
       const currentVote = ping.userVote || 0;
       const targetKind = direction === 1 ? 'upvote' : 'downvote';
-      const finalKind = currentVote === direction ? 'none' : targetKind;
+      const nextUserVote = currentVote === direction ? 0 : direction;
 
       // Optimistic Update
       const previousPings = queryClient.getQueryData<PingCard[]>(['campus-pings', API_URL]);
@@ -875,7 +875,7 @@ export function CampusPingsScreen() {
           if (p.id !== ping.id) return p;
           
           let scoreAdjustment = 0;
-          if (finalKind === 'none') {
+          if (nextUserVote === 0) {
             scoreAdjustment = -currentVote; // Remove old vote
           } else if (currentVote === 0) {
             scoreAdjustment = direction; // Add new vote
@@ -885,7 +885,7 @@ export function CampusPingsScreen() {
 
           return {
             ...p,
-            userVote: finalKind === 'upvote' ? 1 : (finalKind === 'downvote' ? -1 : 0),
+            userVote: nextUserVote,
             score: (p.score || 0) + scoreAdjustment
           };
         });
@@ -894,7 +894,7 @@ export function CampusPingsScreen() {
 
       try {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        await toggleVote(ping.activityId, finalKind);
+        await toggleVote(ping.activityId, targetKind);
         // We don't invalidate here to keep the optimistic speed, 
         // rely on background refetch or next intentional refresh
       } catch (error) {

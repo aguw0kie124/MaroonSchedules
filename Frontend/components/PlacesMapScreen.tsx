@@ -452,6 +452,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const [selectedBusRouteId, setSelectedBusRouteId] = useState<string | null>(
     ALL_BUS_ROUTES_KEY,
   );
+  const [temporaryBusFocusRouteId, setTemporaryBusFocusRouteId] = useState<string | null>(null);
   const [routePatterns, setRoutePatterns] = useState<any[]>([]);
   const [routePaths, setRoutePaths] = useState<any[]>([]);
   const [allRoutePatternsById, setAllRoutePatternsById] = useState<
@@ -1400,13 +1401,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setAllRoutePatternsById({});
       return;
     }
-    const patternEntries = await Promise.all(
+    const patternEntries = await Promise.allSettled(
       routesToLoad.map(
-        async (r) =>
-          [r.Key, await transitService.getRoutePattern(r.Key)] as const,
+        async (r) => [r.Key, await transitService.getRoutePattern(r.Key)] as const,
       ),
     );
-    const nextPatterns = patternEntries.reduce((acc, [k, p]) => {
+    const nextPatterns = patternEntries.reduce((acc, result) => {
+      if (result.status !== "fulfilled") return acc;
+      const [k, p] = result.value;
       acc[k] = p;
       return acc;
     }, {} as any);
@@ -1419,7 +1421,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
         ? pattern.points.map((point: any) => ({
           latitude: point.latitude,
           longitude: point.longitude,
-        }))
+        })).filter(
+          (coord: any) =>
+            typeof coord.latitude === "number" &&
+            Number.isFinite(coord.latitude) &&
+            typeof coord.longitude === "number" &&
+            Number.isFinite(coord.longitude),
+        )
         : [],
     );
     const vehicleCoords = (vehicles || [])
@@ -1573,6 +1581,38 @@ export function PlacesMapScreen({ route, navigation }: any) {
     userCoord,
   ]);
 
+  const normalizeTransitValue = useCallback(
+    (value: unknown) => (value || "").toString().trim().toLowerCase(),
+    [],
+  );
+
+  const resolveRouteIdForBus = useCallback(
+    (bus: any) => {
+      const directMatch = bus.RouteKey || bus.routeKey || bus.routeId || null;
+      if (directMatch) return directMatch;
+
+      const routeShortName = normalizeTransitValue(
+        bus.RouteShortName || bus.routeShortName,
+      );
+      const routeName = normalizeTransitValue(bus.RouteName || bus.routeName);
+
+      const matchedRoute = busRoutes.find((route) => {
+        const key = normalizeTransitValue(route.Key);
+        const shortName = normalizeTransitValue(route.ShortName);
+        const name = normalizeTransitValue(route.Name);
+        return (
+          (routeShortName &&
+            (shortName === routeShortName || key === routeShortName)) ||
+          (routeName && name === routeName)
+        );
+      });
+
+      return matchedRoute?.Key || null;
+    },
+    [busRoutes, normalizeTransitValue],
+  );
+
+
   // ── Auto-zoom and fitting logic ───────────────────────────
   useEffect(() => {
     if (!mapRef.current) return;
@@ -1649,10 +1689,45 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setSelectedId(null);
       setSelectedStop(null);
       setSelectedBus(null);
+      setTemporaryBusFocusRouteId(null);
       setIsRouteDropdownOpen(false);
       await handleSelectBusRoute(route.Key);
     },
     [handleSelectBusRoute],
+  );
+
+  const restoreAllRoutesFromTemporaryFocus = useCallback(() => {
+    if (!temporaryBusFocusRouteId) return;
+    setTemporaryBusFocusRouteId(null);
+    handleSelectBusRoute(ALL_BUS_ROUTES_KEY);
+  }, [handleSelectBusRoute, temporaryBusFocusRouteId]);
+
+  const handleBusMarkerPress = useCallback(
+    async (bus: any) => {
+      const routeId = resolveRouteIdForBus(bus);
+      const shouldFocusRoute = isAllBusRoutesSelected && !!routeId;
+
+      if (shouldFocusRoute && routeId) {
+        setTemporaryBusFocusRouteId(routeId);
+        await handleSelectBusRoute(routeId);
+      } else if (
+        temporaryBusFocusRouteId &&
+        routeId &&
+        routeId !== temporaryBusFocusRouteId
+      ) {
+        setTemporaryBusFocusRouteId(null);
+      }
+
+      setSelectedStop(null);
+      setSelectedBus(bus);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    },
+    [
+      handleSelectBusRoute,
+      isAllBusRoutesSelected,
+      resolveRouteIdForBus,
+      temporaryBusFocusRouteId,
+    ],
   );
 
   const {
@@ -2262,8 +2337,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   longitude: bus.Longitude || bus.lng,
                 }}
                 onPress={() => {
-                  setSelectedBus(bus);
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  handleBusMarkerPress(bus);
                 }}
                 anchor={{ x: 0.5, y: 0.5 }}
               >
@@ -2530,6 +2604,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   setSelectedId(null);
                   setSelectedStop(null);
                   setSelectedBus(null);
+                  setTemporaryBusFocusRouteId(null);
                   setIsRouteDropdownOpen(false);
                   setHasManualMapMovement(false);
                 }}
@@ -2611,6 +2686,20 @@ export function PlacesMapScreen({ route, navigation }: any) {
                           </Text>
                         </View>
                       </View>
+                      <View style={{ marginTop: 10, alignItems: "flex-start" }}>
+                        <TouchableOpacity
+                          onPress={() => handleGetDirections(nextEntry)}
+                          style={styles.nextUpDirectionsPill}
+                          activeOpacity={0.85}
+                        >
+                          <Navigation size={14} color="#FFFFFF" />
+                          <Text style={styles.nextUpDirectionsPillText}>
+                            {activeWalkingRoute?.estimatedTimeMinutes
+                              ? `Get Directions (${activeWalkingRoute.estimatedTimeMinutes} min)`
+                              : "Get Directions"}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   )}
                 </View>
@@ -2629,7 +2718,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   isRouteDropdownOpen={isRouteDropdownOpen}
                   setIsRouteDropdownOpen={setIsRouteDropdownOpen}
                   filteredBusRoutes={filteredBusRoutes}
-                  handleSelectBusRoute={handleSelectBusRoute}
+                  handleSelectBusRoute={(routeId) => {
+                    setTemporaryBusFocusRouteId(null);
+                    handleSelectBusRoute(routeId);
+                  }}
                   openBusTimetable={() => setIsTimetableSheetOpen(true)}
                   openTransitTripPlanner={() =>
                     navigation.navigate("TransitTripPlanner")
@@ -2827,7 +2919,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
           setSelectedStop(stop);
           if (!stop) {
             requestAnimationFrame(() => {
-              fitMapToActiveOverview();
+              if (temporaryBusFocusRouteId && !selectedBus) {
+                restoreAllRoutesFromTemporaryFocus();
+              } else {
+                fitMapToActiveOverview();
+              }
             });
           }
         }}
@@ -2842,7 +2938,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
           setSelectedBus(bus);
           if (!bus) {
             requestAnimationFrame(() => {
-              fitMapToActiveOverview();
+              if (temporaryBusFocusRouteId && !selectedStop) {
+                restoreAllRoutesFromTemporaryFocus();
+              } else {
+                fitMapToActiveOverview();
+              }
             });
           }
         }}

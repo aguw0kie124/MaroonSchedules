@@ -1048,7 +1048,7 @@ export function CampusNavigationScreen() {
       ) : null}
 
       {/* Directions Panel */}
-      {isNavigating && activeRoute && destination && steps.length > 0 && (
+      {isNavigating && (activeRoute || activeTransitPlan) && destination && steps.length > 0 && (
         <View style={styles.directionsContainer}>
           <CampusDirectionsPanel
             destinationName={destination.name}

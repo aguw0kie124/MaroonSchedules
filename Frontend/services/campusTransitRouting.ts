@@ -38,7 +38,14 @@ type PlanCandidate = {
   walkingFromStopMeters: number;
   busDistanceMeters: number;
   totalMinutes: number;
+  walkingToStopMinutes: number;
+  walkingFromStopMinutes: number;
+  busMinutes: number;
+  estimatedWaitMinutes: number;
 };
+
+const WALKING_METERS_PER_MINUTE = 84;
+const BUS_METERS_PER_MINUTE = 300;
 
 function polylineDistance(points: Coordinate[]): number {
   let total = 0;
@@ -152,21 +159,38 @@ function buildSteps(
       id: 1,
       instruction: `Walk from ${startName} to ${candidate.nearestOrigin.stop.Name}.`,
       icon: '🚶',
+      distanceMeters: candidate.walkingToStopMeters,
+      durationMinutes: candidate.walkingToStopMinutes,
+      detail: `Board at ${candidate.nearestOrigin.stop.Name}.`,
     },
     {
       id: 2,
-      instruction: `Board route ${candidate.route.ShortName} ${candidate.route.Name ? `(${candidate.route.Name})` : ''} at ${candidate.nearestOrigin.stop.Name}.`,
-      icon: '🚌',
+      instruction: `Wait for route ${candidate.route.ShortName} ${candidate.route.Name ? `(${candidate.route.Name})` : ''} at ${candidate.nearestOrigin.stop.Name}.`,
+      icon: '⏳',
+      durationMinutes: candidate.estimatedWaitMinutes,
+      detail: nearestVehicleLabel || 'Live arrival estimates update as buses move.',
     },
     {
       id: 3,
-      instruction: `Ride to ${candidate.nearestDestination.stop.Name}${nearestVehicleLabel ? `, ${nearestVehicleLabel}.` : '.'}`,
-      icon: '🎟️',
+      instruction: `Ride to ${candidate.nearestDestination.stop.Name}.`,
+      icon: '🚌',
+      distanceMeters: candidate.busDistanceMeters,
+      durationMinutes: candidate.busMinutes,
+      detail: nearestVehicleLabel || `${candidate.route.ShortName} toward ${candidate.nearestDestination.stop.Name}.`,
     },
     {
       id: 4,
       instruction: `Walk from ${candidate.nearestDestination.stop.Name} to ${destinationName}.`,
       icon: '🚶',
+      distanceMeters: candidate.walkingFromStopMeters,
+      durationMinutes: candidate.walkingFromStopMinutes,
+      detail: `Exit at ${candidate.nearestDestination.stop.Name}.`,
+    },
+    {
+      id: 5,
+      instruction: `Arrive at ${destinationName}.`,
+      icon: '📍',
+      detail: 'Destination reached.',
     },
   ];
 }
@@ -208,7 +232,7 @@ function toTransitPlan(
     walkingToStopMeters: candidate.walkingToStopMeters,
     walkingFromStopMeters: candidate.walkingFromStopMeters,
     busDistanceMeters: candidate.busDistanceMeters,
-    estimatedWaitMinutes: 5,
+    estimatedWaitMinutes: candidate.estimatedWaitMinutes,
     transferCount: 0,
     nearestVehicleLabel,
     steps: buildSteps(candidate, startName, destinationName, nearestVehicleLabel),
@@ -258,10 +282,12 @@ export async function buildTransitPlanOptions(
     const walkingToStopMeters = nearestOrigin.distanceMeters;
     const walkingFromStopMeters = nearestDestination.distanceMeters;
     const estimatedWaitMinutes = 5;
-    const busMinutes = Math.max(2, Math.round(busDistanceMeters / 300));
+    const walkingToStopMinutes = Math.max(1, Math.round(walkingToStopMeters / WALKING_METERS_PER_MINUTE));
+    const walkingFromStopMinutes = Math.max(1, Math.round(walkingFromStopMeters / WALKING_METERS_PER_MINUTE));
+    const busMinutes = Math.max(2, Math.round(busDistanceMeters / BUS_METERS_PER_MINUTE));
     const totalMinutes = Math.max(
       3,
-      Math.round(walkingToStopMeters / 84) + estimatedWaitMinutes + busMinutes + Math.round(walkingFromStopMeters / 84),
+      walkingToStopMinutes + estimatedWaitMinutes + busMinutes + walkingFromStopMinutes,
     );
 
     planCandidates.push({
@@ -273,6 +299,10 @@ export async function buildTransitPlanOptions(
       walkingFromStopMeters,
       busDistanceMeters,
       totalMinutes,
+      walkingToStopMinutes,
+      walkingFromStopMinutes,
+      busMinutes,
+      estimatedWaitMinutes,
     });
   }
 

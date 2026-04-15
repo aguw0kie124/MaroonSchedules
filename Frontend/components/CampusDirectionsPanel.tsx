@@ -10,6 +10,7 @@ import {
 import { Bus, MapPin, Navigation, X as XIcon } from 'lucide-react-native';
 import { useTheme } from './SharedUI';
 import { DirectionStep } from '../services/campusDirections';
+import { formatDistance, formatTime } from '../services/campusDirections';
 
 
 interface CampusDirectionsPanelProps {
@@ -104,6 +105,17 @@ export function CampusDirectionsPanel({
             </View>
             <View style={styles.stepBody}>
               <Text style={styles.stepInstruction}>{step.instruction}</Text>
+              {(step.durationMinutes || step.distanceMeters || step.detail) ? (
+                <Text style={styles.stepMeta}>
+                  {[
+                    step.durationMinutes ? formatTime(step.durationMinutes) : null,
+                    step.distanceMeters ? formatDistance(step.distanceMeters) : null,
+                    step.detail || null,
+                  ]
+                    .filter(Boolean)
+                    .join(' • ')}
+                </Text>
+              ) : null}
             </View>
           </View>
         ))}
@@ -240,5 +252,11 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     fontSize: 15,
     color: COLORS.textPrimary,
     lineHeight: 22,
+  },
+  stepMeta: {
+    marginTop: 4,
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
   },
 });

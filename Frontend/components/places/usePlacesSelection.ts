@@ -186,7 +186,7 @@ export function usePlacesSelection({
         );
       }
 
-      const nextLayer = getLayerForPlace(nextLocation);
+      const nextLayer = currentLayer === "Today" ? "Today" : getLayerForPlace(nextLocation);
       setActiveLayer(nextLayer);
       setSelectedId(getLocationSelectionId(nextLocation));
       onAfterSelectLocation?.(nextLocation, nextLayer);
