@@ -49,7 +49,6 @@ import StreakHubScreen from './components/dining/StreakHubScreen';
 import RestaurantMenuScreen from './components/dining/RestaurantMenuScreen';
 
 import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio } from 'lucide-react-native';
-import { GlassPillTabBar } from './components/GlassPillTabBar';
 import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
@@ -273,7 +272,6 @@ const AnimatedSettingsScreen = withTabMotion(Profile, 80);
 function MainTabs(props: any) {
   const { COLORS } = useTheme();
   const navItems = useAppShellStore((state) => state.navItems);
-  const tabBarMode = useAppShellStore((state) => state.tabBarMode);
   const isGuest = useSessionStore((state) => state.isGuest);
   const visibleNavItems = React.useMemo(() => {
     if (!isGuest) {
@@ -308,7 +306,7 @@ function MainTabs(props: any) {
         return {
           name: 'Social',
           component: AnimatedSocialScreen,
-          title: 'Pings',
+          title: 'Social',
           icon: Radio,
           initialParams: undefined,
         };
@@ -343,20 +341,18 @@ function MainTabs(props: any) {
   const initialRouteName = availableRouteNames.includes('Dashboard')
     ? 'Dashboard'
     : availableRouteNames[0];
-  const shellKey = `${tabBarMode}:${availableRouteNames.join('|')}`;
+  const shellKey = availableRouteNames.join('|');
 
   return (
     <Tab.Navigator
       key={shellKey}
       id="MainTabs"
       initialRouteName={initialRouteName}
-      tabBar={tabBarMode === 'floating' ? (props) => <GlassPillTabBar {...props} /> : undefined}
       screenOptions={{
         headerShown: false,
-        tabBarShowLabel: tabBarMode !== 'floating',
+        tabBarShowLabel: true,
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          display: tabBarMode === 'floating' ? 'none' : 'flex',
           height: 70,
           borderTopWidth: 1,
           borderTopColor: COLORS.border,

@@ -809,9 +809,24 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       marginBottom: 10,
       backgroundColor: isDark ? "#16181C" : "#F6F7FB",
       padding: 16,
-      borderRadius: 24,
+      borderRadius: 22,
       borderWidth: 1,
       borderColor: isDark ? "#252830" : "#E3E7EF",
+    },
+    facilityPickerWrap: {
+      marginTop: 12,
+      alignItems: "flex-start",
+    },
+    facilityPickerTrigger: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingVertical: 2,
+    },
+    facilityPickerText: {
+      color: COLORS.textSecondary,
+      fontSize: 11,
+      fontWeight: "600",
     },
     occupancySummaryRow: {
       flexDirection: "row",
@@ -838,6 +853,36 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       marginBottom: 0,
     },
     occupancyFill: { height: "100%", borderRadius: 999 },
+    facilityListBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.18)",
+      justifyContent: "center",
+      paddingHorizontal: 40,
+    },
+    facilityListModal: {
+      maxHeight: SCREEN_HEIGHT * 0.4,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: isDark ? "#252830" : "#E1E6EF",
+      backgroundColor: isDark ? "#13161A" : "#FFFFFF",
+      overflow: "hidden",
+    },
+    facilityListContent: {
+      paddingVertical: 6,
+    },
+    facilityListRow: {
+      minHeight: 42,
+      justifyContent: "center",
+      paddingHorizontal: 14,
+    },
+    facilityListRowActive: {
+      backgroundColor: isDark ? "#1A2027" : "#F4F8FF",
+    },
+    facilityListRowText: {
+      color: COLORS.textPrimary,
+      fontSize: 13,
+      fontWeight: "600",
+    },
     inlineLinkRow: {
       flexDirection: "row",
       alignItems: "center",
@@ -948,6 +993,9 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       letterSpacing: 0.5,
       textTransform: "uppercase",
     },
+    sectionTitleCompact: {
+      marginBottom: 2,
+    },
     reviewItem: {
       paddingVertical: 12,
       borderTopWidth: 1,
@@ -1016,26 +1064,23 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       marginTop: 3,
     },
     foodCourtVenueList: {
-      gap: 10,
-      marginTop: 10,
+      marginTop: 8,
     },
-    foodCourtVenueCard: {
+    foodCourtVenueRow: {
       flexDirection: "row",
       alignItems: "center",
-      borderRadius: 22,
-      borderWidth: 1,
-      borderColor: isDark ? "#252525" : "rgba(12,12,14,0.08)",
-      backgroundColor: isDark ? "#131313" : "#F8F9FB",
-      paddingHorizontal: 14,
-      paddingVertical: 12,
+      justifyContent: "space-between",
+      paddingVertical: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: isDark ? "#1E2228" : "rgba(12,12,14,0.08)",
     },
-    foodCourtVenueCardActive: {
-      borderColor: COLORS.primary,
-      backgroundColor: isDark ? "rgba(80,0,0,0.24)" : "rgba(80,0,0,0.08)",
+    foodCourtVenueRowMain: {
+      flex: 1,
+      paddingRight: 12,
     },
     foodCourtVenueTitle: {
       color: COLORS.textPrimary,
-      fontSize: 14,
+      fontSize: 15,
       fontWeight: "800",
     },
     foodCourtVenueMeta: {
@@ -1044,24 +1089,15 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       fontWeight: "600",
       marginTop: 3,
     },
-    foodCourtVenueAction: {
-      color: COLORS.primary,
-      fontSize: 11,
-      fontWeight: "800",
-      textTransform: "uppercase",
-      letterSpacing: 0.4,
-    },
-    foodCourtVenueMenuBtn: {
+    foodCourtVenueMenuLink: {
       flexDirection: "row",
       alignItems: "center",
       gap: 5,
-      backgroundColor: "#500000",
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-      borderRadius: 999,
-    } as any,
-    foodCourtVenueMenuBtnText: {
-      color: "#FFF",
+      paddingVertical: 4,
+      paddingLeft: 8,
+    },
+    foodCourtVenueMenuLinkText: {
+      color: COLORS.primary,
       fontSize: 11,
       fontWeight: "800",
       letterSpacing: 0.3,
@@ -1160,6 +1196,10 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       alignItems: "center",
       marginBottom: 14,
       marginTop: 8,
+    },
+    reviewsHeaderCompact: {
+      marginTop: 0,
+      marginBottom: 6,
     },
     seeAllText: {
       color: "#FFD700",

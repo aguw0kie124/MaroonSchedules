@@ -1,6 +1,5 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import {
-  ActivityIndicator,
   ImageBackground,
   SafeAreaView,
   ScrollView,
@@ -11,10 +10,15 @@ import {
   View,
 } from 'react-native';
 import { ChevronDown, ChevronLeft, ChevronUp } from 'lucide-react-native';
-import { Card, SectionLabel, Badge } from './DiningUI';
 import { useTheme } from '../SharedUI';
 import { useDiningTheme } from './DiningTheme';
 import { getStaticRestaurantMenu } from '../../data/restaurantMenus';
+
+function formatRetailMenuTitle(location?: string, title?: string) {
+  const rawValue = (title || location || 'Menu').trim();
+  const stripped = rawValue.replace(/\s+Menu$/i, '');
+  return `${stripped || 'Menu'} Menu`;
+}
 
 export default function RestaurantMenuScreen({ navigation, route }: any) {
   const { theme, wallpaperUri } = useTheme();
@@ -91,7 +95,12 @@ export default function RestaurantMenuScreen({ navigation, route }: any) {
     );
   }
 
-  const menuTitle = title || location || 'Restaurant';
+  const menuTitle = formatRetailMenuTitle(location, title);
+  const itemCount = (staticMenu.categories || []).reduce(
+    (acc, cat) => acc + (cat.items?.length || 0),
+    0,
+  );
+  const stationCount = staticMenu.categories?.length || 0;
 
   return (
     <SafeAreaView style={[s.container, { backgroundColor: T.bg }]}>
@@ -115,7 +124,7 @@ export default function RestaurantMenuScreen({ navigation, route }: any) {
           </TouchableOpacity>
           <View>
             <Text style={[s.title, { color: T.text }]}>{menuTitle}</Text>
-            <Text style={[s.subtitle, { color: T.textSecondary }]}>Retail Restaurant</Text>
+            <Text style={[s.subtitle, { color: T.textSecondary }]}>Restaurant Menu</Text>
           </View>
         </View>
 
@@ -159,17 +168,38 @@ export default function RestaurantMenuScreen({ navigation, route }: any) {
           </ScrollView>
         ) : null}
 
-        <View style={s.metaRow}>
-          <Badge label={`${(staticMenu.categories || []).reduce((acc, cat) => acc + (cat.items?.length || 0), 0)} items`} color={T.amber} />
-          <Badge label={`${staticMenu.categories?.length || 0} stations`} color={T.sky} />
-          <Badge label="RETAIL" color={T.sage} />
-        </View>
+        <Text style={[s.metaSummary, { color: T.text3 }]}>
+          {itemCount} items • {stationCount} stations
+        </Text>
+
+        {(staticMenu.locations || []).length > 1 ? (
+          <View style={s.locationWrap}>
+            {(staticMenu.locations || []).map((entry: string, idx: number) => (
+              <View
+                key={`${entry}-${idx}`}
+                style={[
+                  s.locationPill,
+                  { backgroundColor: T.bg2, borderColor: T.border },
+                ]}
+              >
+                <Text style={[s.locationText, { color: T.text2 }]}>{entry}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         {staticMenu.maroonMeals && activeCategoryKey === 'maroon-meals' && (
-          <Card style={{ backgroundColor: darkMode ? 'rgba(80,0,0,0.15)' : 'rgba(80,0,0,0.05)', borderColor: '#500000' }}>
+          <View
+            style={[
+              s.featureBlock,
+              {
+                backgroundColor: darkMode ? 'rgba(80,0,0,0.16)' : 'rgba(80,0,0,0.05)',
+                borderColor: darkMode ? 'rgba(185, 28, 28, 0.35)' : 'rgba(80,0,0,0.18)',
+              },
+            ]}
+          >
             <View style={s.maroonMealsHeader}>
-              <SectionLabel style={{ color: '#500000', marginBottom: 0 }}>Maroon Meals</SectionLabel>
-              <Badge label="RETAIL SWIPE" color="#500000" />
+              <Text style={[s.featureLabel, { color: T.text }]}>Maroon Meals</Text>
             </View>
             <Text style={[s.maroonMealsNote, { color: T.text2 }]}>
               {staticMenu.maroonMeals.note}
@@ -188,20 +218,33 @@ export default function RestaurantMenuScreen({ navigation, route }: any) {
                 </View>
               ))}
             </View>
-          </Card>
+          </View>
         )}
 
         {(visibleCategories || []).map((category: any, catIdx: number) => {
           const isCollapsed = collapsedCategories.has(category.name);
           const categoryKey = `${category.name}-${catIdx}`;
           return (
-            <Card key={categoryKey} style={{ paddingHorizontal: 0 }}>
+            <View
+              key={categoryKey}
+              style={[
+                s.categoryBlock,
+                { backgroundColor: T.bg2 },
+              ]}
+            >
               <TouchableOpacity
                 style={s.categoryHeader}
                 onPress={() => toggleCategory(category.name)}
                 activeOpacity={0.7}
               >
-                <SectionLabel style={{ marginBottom: isCollapsed ? 0 : 16 }}>{category.name}</SectionLabel>
+                  <Text
+                    style={[
+                      s.categoryTitle,
+                      { color: T.text },
+                    ]}
+                  >
+                    {category.name}
+                </Text>
                 {isCollapsed ? (
                   <ChevronDown size={16} color={T.amber} />
                 ) : (
@@ -210,7 +253,7 @@ export default function RestaurantMenuScreen({ navigation, route }: any) {
               </TouchableOpacity>
 
               {!isCollapsed && (
-                <View style={{ paddingHorizontal: 20 }}>
+                <View style={s.categoryItemsWrap}>
                   {(category.items || []).map((item: any, itmIdx: number) => (
                     <View key={`${category.name}-${item.name}-${itmIdx}`} style={[s.itemRow, { borderBottomColor: T.border }]}>
                       <View style={{ flex: 1 }}>
@@ -230,7 +273,7 @@ export default function RestaurantMenuScreen({ navigation, route }: any) {
                   ))}
                 </View>
               )}
-            </Card>
+            </View>
           );
         })}
       </ScrollView>
@@ -244,46 +287,91 @@ const s = StyleSheet.create({
   backBtn: { width: 44, height: 44, justifyContent: 'center' },
   title: { fontSize: 30, fontWeight: '900', letterSpacing: -0.5 },
   subtitle: { fontSize: 12, marginTop: 2, fontWeight: '600' },
-  categoryFilterScroll: { marginBottom: 14 },
-  categoryFilterRow: { gap: 10, paddingRight: 8 },
+  categoryFilterScroll: { marginBottom: 16 },
+  categoryFilterRow: { gap: 8, paddingRight: 8 },
   categoryFilterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   categoryFilterChipActive: {
     borderWidth: 1.5,
   },
-  categoryFilterLabel: { fontSize: 13, fontWeight: '800' },
+  categoryFilterLabel: { fontSize: 12, fontWeight: '700' },
   categoryFilterCount: {
-    minWidth: 26,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    minWidth: 22,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
     borderRadius: 999,
     alignItems: 'center',
   },
-  categoryFilterCountText: { fontSize: 11, fontWeight: '800' },
-  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  categoryFilterCountText: { fontSize: 10, fontWeight: '800' },
+  metaSummary: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 16,
+  },
   emptyText: { fontSize: 14, textAlign: 'center', lineHeight: 21 },
+  locationWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 16,
+  },
+  locationPill: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  locationText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  featureBlock: {
+    marginBottom: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  featureLabel: {
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  categoryBlock: {
+    marginBottom: 12,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
   categoryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
   },
-  itemRow: { paddingVertical: 12, borderBottomWidth: 1 },
+  categoryTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  categoryItemsWrap: {
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+  },
+  itemRow: { paddingVertical: 13, borderBottomWidth: 1 },
   itemName: { fontSize: 15, fontWeight: '800' },
-  itemDescription: { fontSize: 12, marginTop: 2, fontWeight: '400', lineHeight: 16 },
-  itemMeta: { fontSize: 12, marginTop: 4, fontWeight: '500' },
+  itemDescription: { fontSize: 12, marginTop: 4, fontWeight: '400', lineHeight: 17 },
+  itemMeta: { fontSize: 12, marginTop: 5, fontWeight: '500' },
   maroonMealsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     marginBottom: 8,
   },
   maroonMealsNote: {
@@ -295,7 +383,7 @@ const s = StyleSheet.create({
   maroonMealRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
   },
   maroonMealValueBadge: {

@@ -16,7 +16,6 @@ export type PlacesPillId =
   | 'Heatmap';
 export type ParkingPermit = 'visitor' | 'garage' | 'any_valid' | 'west_campus' | 'resident';
 export type SettingsTabId = 'personal' | 'layout' | 'resources';
-export type TabBarMode = 'floating' | 'solid';
 export type EventTimePreference = 'Morning' | 'Afternoon' | 'Evening' | 'Anytime';
 export type EventSocialPreference = 'casual' | 'professional';
 
@@ -38,7 +37,7 @@ export const PARKING_PERMIT_OPTIONS: Array<{ id: ParkingPermit; label: string; d
 export const DEFAULT_NAV_ITEMS: ToggleLayoutItem<NavItemId>[] = [
   { id: 'Dashboard', label: 'Events', visible: true, order: 0 },
   { id: 'Places', label: 'Places', visible: true, order: 1 },
-  { id: 'Social', label: 'Pings', visible: true, order: 2 },
+  { id: 'Social', label: 'Social', visible: true, order: 2 },
   { id: 'Dining', label: 'Dining', visible: false, order: 3 },
 ];
 
@@ -120,16 +119,11 @@ function isSettingsTabId(value: unknown): value is SettingsTabId {
   return value === 'personal' || value === 'layout' || value === 'resources';
 }
 
-function isTabBarMode(value: unknown): value is TabBarMode {
-  return value === 'floating' || value === 'solid';
-}
-
 type AppShellState = {
   parkingPermit: ParkingPermit;
   placesPills: ToggleLayoutItem<PlacesPillId>[];
   navItems: ToggleLayoutItem<NavItemId>[];
   settingsTab: SettingsTabId;
-  tabBarMode: TabBarMode;
   isBottomBarHidden: boolean;
   selectedScheduleId: string | null;
   isTOSAccepted: boolean;
@@ -152,7 +146,6 @@ type AppShellState = {
   toggleNavItem: (id: NavItemId) => void;
   moveNavItem: (id: NavItemId, direction: -1 | 1) => void;
   setSettingsTab: (tab: SettingsTabId) => void;
-  setTabBarMode: (mode: TabBarMode) => void;
   setBottomBarHidden: (hidden: boolean) => void;
   setSelectedScheduleId: (id: string | null) => void;
   setTOSAccepted: (accepted: boolean) => void;
@@ -176,7 +169,6 @@ export const useAppShellStore = create<AppShellState>()(
       placesPills: DEFAULT_PLACES_PILLS,
       navItems: DEFAULT_NAV_ITEMS,
       settingsTab: 'personal',
-      tabBarMode: 'solid',
       isBottomBarHidden: false,
       selectedScheduleId: null,
       isTOSAccepted: false,
@@ -211,7 +203,6 @@ export const useAppShellStore = create<AppShellState>()(
           navItems: moveItem(state.navItems, id, direction),
         })),
       setSettingsTab: (settingsTab) => set({ settingsTab }),
-      setTabBarMode: (tabBarMode) => set({ tabBarMode }),
       setBottomBarHidden: (isBottomBarHidden) => set({ isBottomBarHidden }),
       setSelectedScheduleId: (selectedScheduleId) => set({ selectedScheduleId }),
       setTOSAccepted: (isTOSAccepted) => set({ isTOSAccepted }),
@@ -238,7 +229,6 @@ export const useAppShellStore = create<AppShellState>()(
         placesPills: state.placesPills,
         navItems: state.navItems,
         settingsTab: state.settingsTab,
-        tabBarMode: state.tabBarMode,
         selectedScheduleId: state.selectedScheduleId,
         isTOSAccepted: state.isTOSAccepted,
         isTourCompleted: state.isTourCompleted,
@@ -265,9 +255,6 @@ export const useAppShellStore = create<AppShellState>()(
           settingsTab: isSettingsTabId(persisted.settingsTab)
             ? persisted.settingsTab
             : currentState.settingsTab,
-          tabBarMode: isTabBarMode(persisted.tabBarMode)
-            ? persisted.tabBarMode
-            : currentState.tabBarMode,
           selectedScheduleId:
             typeof persisted.selectedScheduleId === 'string' || persisted.selectedScheduleId === null
               ? persisted.selectedScheduleId
@@ -316,7 +303,6 @@ export const useAppShellStore = create<AppShellState>()(
           const newState = { ...state };
           
           newState.navItems = DEFAULT_NAV_ITEMS;
-          newState.tabBarMode = 'solid';
 
           if (state.placesPills && Array.isArray(state.placesPills)) {
             newState.placesPills = state.placesPills.map(p => 
@@ -345,7 +331,6 @@ export const useAppShellStore = create<AppShellState>()(
           const newState = { ...state };
           
           newState.settingsTab = 'personal';
-          newState.tabBarMode = 'solid';
 
           return newState;
         }
