@@ -1103,16 +1103,26 @@ export function LocationBottomSheet({
 
                   {diningDetailTab === "menus" ? (
                     <View style={styles.infoBlock}>
-                      <View style={styles.reviewsHeader}>
+                      <View
+                        style={[
+                          styles.reviewsHeader,
+                          !isDiningHallCard && styles.reviewsHeaderCompact,
+                        ]}
+                      >
                         <View>
-                          <Text style={styles.sectionTitle}>
-                            {isDiningHallCard ? "Menu" : "Inside this Food Court"}
+                          <Text
+                            style={[
+                              styles.sectionTitle,
+                              !isDiningHallCard && styles.sectionTitleCompact,
+                            ]}
+                          >
+                            {isDiningHallCard ? "Menu" : "Dining Locations"}
                           </Text>
-                          <Text style={styles.menuIntroText}>
-                            {isDiningHallCard
-                              ? "Browse the current dining hall menu below."
-                              : "Browse the dining locations available inside this hub."}
-                          </Text>
+                          {isDiningHallCard ? (
+                            <Text style={styles.menuIntroText}>
+                              Browse the current dining hall menu below.
+                            </Text>
+                          ) : null}
                         </View>
                       </View>
 
@@ -1357,14 +1367,27 @@ export function LocationBottomSheet({
                         const isCollapsed = isAllSelected && collapsedCategories.has(category.name);
                         
                         return (
-                          <View key={category.name} style={isAllSelected ? { marginBottom: 12, backgroundColor: COLORS.card, borderRadius: 16, overflow: "hidden" } : {}}>
+                          <View
+                            key={category.name}
+                            style={
+                              isAllSelected
+                                ? {
+                                    marginBottom: 12,
+                                    marginHorizontal: -4,
+                                    backgroundColor: COLORS.card,
+                                    borderRadius: 16,
+                                    overflow: "hidden",
+                                  }
+                                : {}
+                            }
+                          >
                             {isAllSelected && (
                               <TouchableOpacity
                                 style={{
                                   flexDirection: "row",
                                   alignItems: "center",
                                   justifyContent: "space-between",
-                                  paddingHorizontal: 16,
+                                  paddingHorizontal: 12,
                                   paddingVertical: 18,
                                 }}
                                 onPress={() => toggleCategory(category.name)}
@@ -1382,7 +1405,13 @@ export function LocationBottomSheet({
                             )}
 
                             {!isCollapsed && (
-                              <View style={isAllSelected ? { paddingHorizontal: 16, paddingBottom: 16 } : {}}>
+                              <View
+                                style={
+                                  isAllSelected
+                                    ? { paddingHorizontal: 12, paddingBottom: 16 }
+                                    : {}
+                                }
+                              >
                                 {category.items.map((item: any, idx: number) => (
                                   <View
                                     key={`${category.name}-${item.name}-${idx}`}

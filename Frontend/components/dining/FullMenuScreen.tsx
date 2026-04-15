@@ -348,7 +348,10 @@ export default function FullMenuScreen({ navigation, route }: any) {
               const isCollapsed = collapsedCategories.has(category.name);
               const categoryKey = `${category.name}-${catIdx}`;
               return (
-                <Card key={categoryKey} style={{ paddingHorizontal: 0 }}>
+                <Card
+                  key={categoryKey}
+                  style={s.allStationsCategoryCard}
+                >
                   <TouchableOpacity
                     style={s.categoryHeader}
                     onPress={() => toggleCategory(category.name)}
@@ -479,5 +482,9 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 4,
+  },
+  allStationsCategoryCard: {
+    paddingHorizontal: 0,
+    marginHorizontal: -8,
   },
 });

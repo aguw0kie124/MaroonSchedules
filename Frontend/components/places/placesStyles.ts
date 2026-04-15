@@ -993,6 +993,9 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       letterSpacing: 0.5,
       textTransform: "uppercase",
     },
+    sectionTitleCompact: {
+      marginBottom: 2,
+    },
     reviewItem: {
       paddingVertical: 12,
       borderTopWidth: 1,
@@ -1193,6 +1196,10 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       alignItems: "center",
       marginBottom: 14,
       marginTop: 8,
+    },
+    reviewsHeaderCompact: {
+      marginTop: 0,
+      marginBottom: 6,
     },
     seeAllText: {
       color: "#FFD700",
