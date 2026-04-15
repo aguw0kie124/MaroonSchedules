@@ -220,12 +220,12 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     marginBottom: 8,
   },
   routeCard: {
-    padding: 18,
+    padding: 14,
     backgroundColor: isDark ? 'rgba(8,8,8,0.96)' : 'rgba(255,255,255,0.98)',
-    borderRadius: 30,
+    borderRadius: 26,
     borderWidth: 1,
     borderColor: COLORS.primary,
-    gap: 16,
+    gap: 10,
   },
   routeHeader: {
     flexDirection: 'row',
@@ -249,13 +249,13 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   },
   routeTitle: {
     color: COLORS.textPrimary,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
-    lineHeight: 24,
+    lineHeight: 21,
   },
   routeSub: {
     color: COLORS.textSecondary,
-    fontSize: 13,
+    fontSize: 12,
   },
   routeMetaText: {
     color: COLORS.textPrimary,

@@ -670,14 +670,26 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   const busRouteSearchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
-    const q = searchQuery.toLowerCase();
-    return busRoutes
-      .filter((route) => {
-        const shortName = (route.ShortName || "").toString().toLowerCase();
-        const name = (route.Name || "").toString().toLowerCase();
-        return shortName.includes(q) || name.includes(q);
-      })
-      .slice(0, 4);
+    const q = searchQuery.trim().toLowerCase();
+    const isNumericQuery = /^\d+$/.test(q);
+    const matches = busRoutes.filter((route) => {
+      const shortName = (route.ShortName || "").toString().toLowerCase();
+      const name = (route.Name || "").toString().toLowerCase();
+      if (isNumericQuery) {
+        // For numeric queries, require exact ShortName match or name substring
+        return shortName === q || name.includes(q);
+      }
+      return shortName.includes(q) || name.includes(q);
+    });
+    // Sort exact ShortName matches first
+    matches.sort((a, b) => {
+      const aShort = (a.ShortName || "").toString().toLowerCase();
+      const bShort = (b.ShortName || "").toString().toLowerCase();
+      const aExact = aShort === q ? 0 : 1;
+      const bExact = bShort === q ? 0 : 1;
+      return aExact - bExact;
+    });
+    return matches.slice(0, 4);
   }, [busRoutes, searchQuery]);
 
   useEffect(() => {
@@ -2694,24 +2706,24 @@ export function PlacesMapScreen({ route, navigation }: any) {
                           <Text style={styles.nextUpTitle} numberOfLines={1}>
                             {nextEntry.name}
                           </Text>
-                          <Text style={styles.nextUpLocation} numberOfLines={1}>
-                            {nextEntry.locationLabel}
-                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, gap: 8 }}>
+                            <Text style={[styles.nextUpLocation, { flex: 1 }]} numberOfLines={1}>
+                              {nextEntry.locationLabel}
+                            </Text>
+                            <TouchableOpacity
+                              onPress={() => handleGetDirections(nextEntry)}
+                              style={[styles.nextUpDirectionsPill, { paddingVertical: 6, paddingHorizontal: 10 }]}
+                              activeOpacity={0.85}
+                            >
+                              <Navigation size={13} color="#FFFFFF" />
+                              <Text style={[styles.nextUpDirectionsPillText, { fontSize: 11 }]}>
+                                {activeWalkingRoute?.estimatedTimeMinutes
+                                  ? `Get Directions (${activeWalkingRoute.estimatedTimeMinutes} min)`
+                                  : "Get Directions"}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                      </View>
-                      <View style={{ marginTop: 10, alignItems: "flex-start" }}>
-                        <TouchableOpacity
-                          onPress={() => handleGetDirections(nextEntry)}
-                          style={styles.nextUpDirectionsPill}
-                          activeOpacity={0.85}
-                        >
-                          <Navigation size={14} color="#FFFFFF" />
-                          <Text style={styles.nextUpDirectionsPillText}>
-                            {activeWalkingRoute?.estimatedTimeMinutes
-                              ? `Get Directions (${activeWalkingRoute.estimatedTimeMinutes} min)`
-                              : "Get Directions"}
-                          </Text>
-                        </TouchableOpacity>
                       </View>
                     </View>
                   )}

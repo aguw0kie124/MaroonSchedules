@@ -10,6 +10,7 @@ import pytz
 import json
 import re
 from threading import Lock
+from collections import defaultdict
 
 from services import cache_service, place_registry_service
 
@@ -600,13 +601,13 @@ class AggieSpiritProxy:
         headers = dict(headers)
         headers["Content-Type"] = content_type
         response = self.session.post(
-            f"{self.base_url}{path}", headers=headers, data=body, timeout=20)
+            f"{self.base_url}{path}", headers=headers, data=body, timeout=30)
         if response.status_code in (401, 403) and retry:
             headers = self._build_auth_headers(force_refresh=True)
             headers = dict(headers)
             headers["Content-Type"] = content_type
             response = self.session.post(
-                f"{self.base_url}{path}", headers=headers, data=body, timeout=20)
+                f"{self.base_url}{path}", headers=headers, data=body, timeout=30)
         response.raise_for_status()
         return response.json()
 
@@ -883,6 +884,7 @@ class AggieSpiritProxy:
 
 
 transit_proxy = AggieSpiritProxy()
+_TRANSIT_LOCKS = defaultdict(Lock)
 
 
 class QueryRequest(BaseModel):
@@ -918,12 +920,17 @@ def get_transit_routes(request: Request):
     if cached is not None:
         return cached
 
-    payload = {
-        "routes": transit_proxy.get_routes(),
-        "activeRouteIds": transit_proxy.get_active_routes(),
-    }
-    cache_service.set_json(cache_key, payload, 60)
-    return payload
+    with _TRANSIT_LOCKS[cache_key]:
+        cached = cache_service.get_json(cache_key)
+        if cached is not None:
+            return cached
+
+        payload = {
+            "routes": transit_proxy.get_routes(),
+            "activeRouteIds": transit_proxy.get_active_routes(),
+        }
+        cache_service.set_json(cache_key, payload, 300)
+        return payload
 
 
 @router.get("/transit/route/{route_key}")
@@ -934,9 +941,14 @@ def get_transit_route(request: Request, route_key: str):
     if cached is not None:
         return cached
 
-    payload = transit_proxy.get_pattern(route_key)
-    cache_service.set_json(cache_key, payload, 120)
-    return payload
+    with _TRANSIT_LOCKS[cache_key]:
+        cached = cache_service.get_json(cache_key)
+        if cached is not None:
+            return cached
+
+        payload = transit_proxy.get_pattern(route_key)
+        cache_service.set_json(cache_key, payload, 3600)
+        return payload
 
 
 @router.get("/transit/vehicles")
@@ -947,9 +959,14 @@ def get_transit_vehicles(request: Request, route_id: str = Query("")):
     if cached is not None:
         return cached
 
-    payload = transit_proxy.get_vehicles(route_id)
-    cache_service.set_json(cache_key, payload, 15)
-    return payload
+    with _TRANSIT_LOCKS[cache_key]:
+        cached = cache_service.get_json(cache_key)
+        if cached is not None:
+            return cached
+
+        payload = transit_proxy.get_vehicles(route_id)
+        cache_service.set_json(cache_key, payload, 15)
+        return payload
 
 
 @router.get("/transit/timetable/{route_key}")
@@ -960,9 +977,14 @@ def get_transit_timetable(request: Request, route_key: str, max_stops: int = Que
     if cached is not None:
         return cached
 
-    payload = transit_proxy.get_route_timetable(route_key, max_stops=max_stops)
-    cache_service.set_json(cache_key, payload, 30)
-    return payload
+    with _TRANSIT_LOCKS[cache_key]:
+        cached = cache_service.get_json(cache_key)
+        if cached is not None:
+            return cached
+
+        payload = transit_proxy.get_route_timetable(route_key, max_stops=max_stops)
+        cache_service.set_json(cache_key, payload, 30)
+        return payload
 
 
 @router.post("/create-event")

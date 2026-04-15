@@ -310,7 +310,19 @@ export async function buildTransitPlanOptions(
     return [];
   }
 
-  const rankedCandidates = sortCandidates(planCandidates, preference).slice(0, limit);
+  let rankedCandidates = sortCandidates(planCandidates, preference);
+  // Pin the explicitly preferred route to position 0 so clicking "Route 47"
+  // actually navigates to Route 47 instead of whichever route scores best.
+  if (preferredRouteKey) {
+    const preferredIndex = rankedCandidates.findIndex(
+      (c) => c.route.Key === preferredRouteKey,
+    );
+    if (preferredIndex > 0) {
+      const [preferred] = rankedCandidates.splice(preferredIndex, 1);
+      rankedCandidates.unshift(preferred);
+    }
+  }
+  rankedCandidates = rankedCandidates.slice(0, limit);
   const liveVehicles = await transitService.getVehicles();
 
   return rankedCandidates.map((candidate) => {

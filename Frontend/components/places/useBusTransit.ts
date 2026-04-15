@@ -65,11 +65,25 @@ export function useBusTransit(
       return busRouteOptions;
     }
 
-    return busRouteOptions.filter((route) => {
+    const isNumericQuery = /^\d+$/.test(query);
+    const matches = busRouteOptions.filter((route) => {
       const shortName = (route.ShortName || "").toString().toLowerCase();
       const name = (route.Name || "").toString().toLowerCase();
+      if (isNumericQuery) {
+        // For numeric queries, require exact ShortName match or name substring
+        return shortName === query || name.includes(query);
+      }
       return shortName.includes(query) || name.includes(query);
     });
+    // Sort exact ShortName matches first
+    matches.sort((a, b) => {
+      const aShort = (a.ShortName || "").toString().toLowerCase();
+      const bShort = (b.ShortName || "").toString().toLowerCase();
+      const aExact = aShort === query ? 0 : 1;
+      const bExact = bShort === query ? 0 : 1;
+      return aExact - bExact;
+    });
+    return matches;
   }, [busRouteOptions, routeSearchQuery]);
 
   const loadAllBusRoutes = useCallback(async (routesToLoad: any[]) => {

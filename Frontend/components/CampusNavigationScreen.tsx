@@ -5,13 +5,13 @@ import {
   StyleSheet,
   ActivityIndicator,
   Platform,
-  SafeAreaView,
   Pressable,
   Animated,
   Vibration,
   Keyboard,
   Dimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView from 'react-native-maps';
@@ -315,12 +315,18 @@ export function CampusNavigationScreen() {
   const seededOriginKeyRef = useRef<string | null>(null);
   const seededTravelModeRef = useRef<TravelMode | null>(null);
   const didAutoCenterOnUserRef = useRef(false);
+  // Debounced coordinate for route computation — only updates when user moves >50m
+  const [debouncedUserCoord, setDebouncedUserCoord] = useState<Coordinate>({
+    latitude: DEFAULT_USER_LOCATION.latitude,
+    longitude: DEFAULT_USER_LOCATION.longitude,
+  });
+  const lastRouteCoordRef = useRef<Coordinate>(debouncedUserCoord);
 
   const initialRegion = TAMU_CENTER;
 
   const preferredRouteKey = route.params?.preferredRouteKey as string | null | undefined;
   const tripPreference = route.params?.tripPreference as 'best' | 'fewer_transfers' | 'less_walking' | undefined;
-  const routeStartCoord = manualOrigin?.coordinate || userCoord;
+  const routeStartCoord = manualOrigin?.coordinate || debouncedUserCoord;
   const routeStartName = manualOrigin?.name || 'Current Location';
   const isUserNearCampus = isCoordinateNearTexasAM(userCoord, CAMPUS_DISCOVERY_RADIUS_METERS);
   const pinnedItems = useMemo(
@@ -575,6 +581,15 @@ export function CampusNavigationScreen() {
     };
   }, []);
 
+  // Debounce user coord for route computation: only update when moved >50m
+  useEffect(() => {
+    const delta = computeDistanceMeters(userCoord, lastRouteCoordRef.current);
+    if (delta > 50) {
+      lastRouteCoordRef.current = userCoord;
+      setDebouncedUserCoord(userCoord);
+    }
+  }, [userCoord]);
+
   // Update nearby items when location changes
   useEffect(() => {
     setNearbyItems(isUserNearCampus ? getNearbyItems(userCoord, 10) : []);
@@ -725,6 +740,8 @@ export function CampusNavigationScreen() {
     return () => {
       cancelled = true;
     };
+  // routeStartCoord is derived from debouncedUserCoord (50m threshold)
+  // so this effect no longer fires on every GPS tick
   }, [
     busModeAvailable,
     destination,
@@ -894,11 +911,13 @@ export function CampusNavigationScreen() {
               <MapPin size={18} color="#FFFFFF" />
             </Animated.View>
           </MapMarker>
+          {/* Manual origin marker */}
           {manualOrigin && manualOrigin.coordinate?.latitude != null && manualOrigin.coordinate?.longitude != null && (
             <MapMarker
               id="campus-navigation-origin"
               coordinate={manualOrigin.coordinate}
               anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={false}
             >
               <View style={styles.startMarker}>
                 <Text style={styles.startMarkerText}>S</Text>
@@ -911,6 +930,7 @@ export function CampusNavigationScreen() {
               id={`campus-navigation-stop-${stop.key}`}
               coordinate={stop.coordinate}
               anchor={{ x: 0.5, y: 1 }}
+              tracksViewChanges={false}
             >
               <View style={styles.transitStopMarkerWrap}>
                 <View style={[
@@ -930,32 +950,33 @@ export function CampusNavigationScreen() {
             </MapMarker>
           ))}
           {/* Bus route stops (intermediate stops along the selected transit route) */}
-          {activeTransitPlan && busRouteStops.length > 0 && busRouteStops.map((stop) => {
+          {activeTransitPlan && busRouteStops.length > 0 && busRouteStops.map((stop, idx) => {
             const sLat = stop.Latitude != null ? stop.Latitude : stop.lat;
             const sLng = stop.Longitude != null ? stop.Longitude : stop.lng;
-            if (sLat == null || sLng == null) return null;
+            if (sLat == null || sLng == null || !Number.isFinite(sLat) || !Number.isFinite(sLng)) return null;
             // Skip board/exit stops — they already have distinct markers
             const boardCode = activeTransitPlan.originStop?.StopCode || activeTransitPlan.originStop?.Name;
             const exitCode = activeTransitPlan.destinationStop?.StopCode || activeTransitPlan.destinationStop?.Name;
             const stopCode = stop.StopCode || stop.Name;
             if (stopCode && (stopCode === boardCode || stopCode === exitCode)) return null;
+            const stableKey = `route-stop-${stopCode || idx}-${String(sLat).slice(0,8)}`;
             return (
               <MapMarker
-                key={`route-stop-${stopCode || sLat}-${sLng}`}
-                id={`route-stop-${stopCode || sLat}-${sLng}`}
+                key={stableKey}
+                id={stableKey}
                 coordinate={{ latitude: sLat, longitude: sLng }}
                 anchor={{ x: 0.5, y: 0.5 }}
                 tracksViewChanges={false}
               >
                 <View style={{
-                  width: 18,
-                  height: 18,
-                  borderRadius: 9,
+                  width: 12,
+                  height: 12,
+                  borderRadius: 6,
                   backgroundColor: activeTransitPlan.routeColor || COLORS.primary,
-                  borderWidth: 3,
+                  borderWidth: 2.5,
                   borderColor: '#FFFFFF',
                   shadowColor: '#000',
-                  shadowOpacity: 0.3,
+                  shadowOpacity: 0.25,
                   shadowRadius: 2,
                   shadowOffset: { width: 0, height: 1 },
                 }} />
@@ -967,6 +988,7 @@ export function CampusNavigationScreen() {
               id="campus-navigation-destination"
               coordinate={destinationCoord}
               anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={false}
             >
               <View style={styles.destinationMarker}>
                 <Text style={styles.destinationMarkerText}>E</Text>
@@ -977,6 +999,7 @@ export function CampusNavigationScreen() {
             id="campus-navigation-user-label"
             coordinate={{ latitude: userCoord.latitude + 0.00012, longitude: userCoord.longitude }}
             anchor={{ x: 0.5, y: 1 }}
+            tracksViewChanges={false}
           >
             <View style={styles.youBadge}>
               <Text style={styles.youBadgeText}>You are here</Text>
@@ -1368,17 +1391,20 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     alignItems: 'center',
   },
   transitStopPill: {
-    maxWidth: 190,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginBottom: 6,
+    maxWidth: 140,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginBottom: 4,
     borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
   },
   transitStopPillBoard: {
     backgroundColor: isDark ? 'rgba(8,8,8,0.94)' : 'rgba(255,255,255,0.98)',
@@ -1390,21 +1416,21 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   },
   transitStopPillBadge: {
     color: COLORS.textSecondary,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 2,
+    letterSpacing: 0.4,
   },
   transitStopPillTitle: {
     color: COLORS.textPrimary,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
+    flexShrink: 1,
   },
   transitStopPin: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     borderWidth: 2,
     borderColor: '#FFF',
   },
