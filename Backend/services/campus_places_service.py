@@ -85,6 +85,7 @@ def get_places_capacity_realtime_snapshot() -> Dict[str, Any]:
             "capacity": live_count.get("capacity"),
             "current_count": live_count.get("current_count"),
             "occupancy_name": live_count.get("location_name"),
+            "facility_counts": live_count.get("facility_counts") or [],
             "capacity_last_updated": last_updated,
             "capacity_source_url": tracker.rec_api,
             "capacity_as_of": last_updated,

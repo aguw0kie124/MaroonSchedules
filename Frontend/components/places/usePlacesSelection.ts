@@ -51,6 +51,10 @@ function mergePlaceDetailSnapshot(
       isCapacityPlace
         ? mapLoc.capacity_as_of ?? snap.capacity_as_of
         : snap.capacity_as_of ?? mapLoc.capacity_as_of,
+    facility_counts:
+      isCapacityPlace
+        ? mapLoc.facility_counts ?? snap.facility_counts
+        : snap.facility_counts ?? mapLoc.facility_counts,
     percent_full:
       isCapacityPlace
         ? (typeof mapLoc.percent_full === "number" ? mapLoc.percent_full : snap.percent_full)

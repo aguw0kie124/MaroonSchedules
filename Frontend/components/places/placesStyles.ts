@@ -850,6 +850,47 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
       fontSize: 12,
       fontWeight: "700",
     },
+    facilityCountsPanel: {
+      gap: 10,
+    },
+    facilityCountCard: {
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: isDark ? "#252830" : "#E5E9F0",
+      backgroundColor: isDark ? "#13161A" : "#F8FAFD",
+      padding: 14,
+    },
+    facilityCountHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      marginBottom: 8,
+    },
+    facilityCountName: {
+      flex: 1,
+      color: COLORS.textPrimary,
+      fontSize: 14,
+      fontWeight: "800",
+    },
+    facilityCountMeta: {
+      color: COLORS.textSecondary,
+      fontSize: 12,
+      lineHeight: 17,
+    },
+    facilityCountBadge: {
+      borderRadius: 999,
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      backgroundColor: isDark ? "#2A1A1A" : "#FEECEC",
+    },
+    facilityCountBadgeText: {
+      color: isDark ? "#FFB4B4" : "#B42318",
+      fontSize: 10,
+      fontWeight: "800",
+      textTransform: "uppercase",
+      letterSpacing: 0.4,
+    },
     metaPillRow: {
       flexDirection: "row",
       flexWrap: "wrap",

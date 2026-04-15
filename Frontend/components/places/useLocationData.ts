@@ -4,7 +4,7 @@ import {
   fetchCampusParkingRealtime,
   fetchCampusPlacesMap,
 } from "../../api/client";
-import type { CampusLocation } from "./types";
+import type { CampusLocation, FacilityCountEntry } from "./types";
 import {
   buildExpandedPlacesDirectory,
   mergeCampusLocations,
@@ -44,6 +44,7 @@ type CapacityRealtimeLocation = {
   capacity_last_updated?: string | null;
   capacity_source_url?: string | null;
   capacity_as_of?: string | null;
+  facility_counts?: FacilityCountEntry[];
   is_live?: boolean;
 };
 
@@ -103,6 +104,7 @@ function applyCapacityRealtimeOverlay(
       capacity_last_updated: live.capacity_last_updated ?? loc.capacity_last_updated,
       capacity_source_url: live.capacity_source_url ?? loc.capacity_source_url,
       capacity_as_of: live.capacity_as_of ?? loc.capacity_as_of,
+      facility_counts: live.facility_counts ?? loc.facility_counts,
       is_live: typeof live.is_live === "boolean" ? live.is_live : loc.is_live,
     };
   });

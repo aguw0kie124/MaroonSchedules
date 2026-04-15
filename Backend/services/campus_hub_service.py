@@ -1421,30 +1421,35 @@ def get_recreation_snapshot() -> Dict[str, Any]:
     notices = _fetch_rec_notices()
 
     facilities = []
-    # Major Aggie Rec IDs for the Hub Snapshot
-    MAJOR_REC_IDS = ["rec", "southside-rec", "polo-rec"]
-    
-    # Get Rec places from registry and filter to ONLY the major ones
-    rec_places = [
-        p for p in place_registry_service.get_all_places() 
-        if p["place_id"] in MAJOR_REC_IDS
-    ]
-    
-    # Sort them according to MAJOR_REC_IDS order (Student Rec first)
-    rec_places.sort(key=lambda x: MAJOR_REC_IDS.index(x["place_id"]) if x["place_id"] in MAJOR_REC_IDS else 99)
-    
-    for place in rec_places:
+    rec_place_ids = ["rec", "southside-rec", "polo-rec", "aquatics", "peap", "penberthy"]
+    rec_places_by_id = {
+        place["place_id"]: place
+        for place in place_registry_service.get_all_places()
+        if place["place_id"] in rec_place_ids
+    }
+    rec_places_by_id.update(
+        {
+            place_id: dict(place)
+            for place_id, place in tracker.get_rec_place_catalog().items()
+            if place_id in rec_place_ids and place_id not in rec_places_by_id
+        }
+    )
+    source_url_by_place_id = {
+        "rec": "https://recsports.tamu.edu/facilities/student-rec-center/",
+        "southside-rec": "https://recsports.tamu.edu/facilities/southside-rec/",
+        "polo-rec": "https://recsports.tamu.edu/facilities/polo-road-rec/",
+        "aquatics": "https://recsports.tamu.edu/programs/aquatics/",
+        "peap": "https://recsports.tamu.edu/facilities/peap/",
+        "penberthy": "https://recsports.tamu.edu/facilities/penberthy-rec-sports-complex/",
+    }
+
+    for pid in rec_place_ids:
+        place = rec_places_by_id.get(pid)
+        if not place:
+            continue
         pid = place["place_id"]
         live_count = live_counts_by_place_id.get(pid)
-        
-        # Determine source URL (some might have them in features, fallback to Google search or hardcoded common ones)
-        source_url = f"https://recsports.tamu.edu/facilities/{pid}/" # Guessing URL pattern
-        if pid == "rec":
-            source_url = "https://recsports.tamu.edu/facilities/student-rec-center/"
-        elif pid == "southside-rec":
-            source_url = "https://recsports.tamu.edu/facilities/southside-rec/"
-        elif pid == "polo-rec":
-            source_url = "https://recsports.tamu.edu/facilities/polo-road-rec/"
+        source_url = source_url_by_place_id.get(pid) or f"https://recsports.tamu.edu/facilities/{pid}/"
 
         page_details = _fetch_rec_facility_page_details(source_url)
         
@@ -1473,6 +1478,7 @@ def get_recreation_snapshot() -> Dict[str, Any]:
             "capacity": capacity,
             "occupancy_name": live_count.get("location_name") if live_count else None,
             "last_updated": live_count.get("last_updated") if live_count else None,
+            "facility_counts": live_count.get("facility_counts") if live_count else [],
             "source_url": source_url,
             "today_hours": weekly_hours_payload.get("today_hours"),
             "hours_weekly": weekly_hours_payload.get("weekly_hours"),
@@ -1546,6 +1552,7 @@ def get_place_detail_snapshot(place_id: str) -> Dict[str, Any]:
                 "capacity",
                 "current_count",
                 "occupancy_name",
+                "facility_counts",
                 "capacity_last_updated",
                 "capacity_source_url",
                 "capacity_as_of",

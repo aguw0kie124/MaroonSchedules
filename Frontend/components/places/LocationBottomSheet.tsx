@@ -36,7 +36,7 @@ import { PillTabs } from "../PillTabs";
 import { ALL_DINING_MEAL_PERIODS } from "../../services/diningMenuCache";
 import * as Linking from "expo-linking";
 import * as Haptics from "expo-haptics";
-import type { CampusLocation } from "./types";
+import type { CampusLocation, FacilityCountEntry } from "./types";
 import { SHEET_BOTTOM_OFFSET, SCREEN_HEIGHT } from "./types";
 import {
   getStatusColor,
@@ -143,6 +143,24 @@ function getOccupancyInsight(
   return "Plenty of open space right now.";
 }
 
+function parseLiveTimestamp(value?: string | null) {
+  if (!value) return null;
+  const normalized = value.includes("T") ? value : value.replace(" ", "T");
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatLiveTimestamp(value?: string | null) {
+  const parsed = parseLiveTimestamp(value);
+  if (!parsed) return null;
+  return parsed.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 /**
  * ClassMeetingList - Isolated component for better render performance
  */
@@ -238,6 +256,7 @@ export function LocationBottomSheet({
   const panStartY = useRef<number>(SHEET_HIDDEN_SNAP);
   const [sheetMode, setSheetMode] = useState<SheetMode>("hidden");
   const [diningDetailTab, setDiningDetailTab] = useState<"menus">("menus");
+  const [isFacilityCountsExpanded, setIsFacilityCountsExpanded] = useState(false);
 
   const [activeCategoryKey, setActiveCategoryKey] = useState("all");
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
@@ -257,6 +276,10 @@ export function LocationBottomSheet({
       setCollapsedCategories(new Set(categoryNames));
     }
   }, [diningMenuPreview]);
+
+  useEffect(() => {
+    setIsFacilityCountsExpanded(false);
+  }, [selectedId]);
 
   const animateSheet = useCallback(
     (toValue: number, onDone?: () => void) => {
@@ -330,6 +353,34 @@ export function LocationBottomSheet({
     }
     return null;
   }, [selectedLoc, isCapacityPlace]);
+  const recreationFacilityCounts = useMemo<FacilityCountEntry[]>(() => {
+    if (selectedLoc?.type !== "Rec") return [];
+    if (Array.isArray(selectedLoc.facility_counts) && selectedLoc.facility_counts.length) {
+      return selectedLoc.facility_counts;
+    }
+    if (Array.isArray(selectedRecreationFacility?.facility_counts)) {
+      return selectedRecreationFacility.facility_counts;
+    }
+    return [];
+  }, [selectedLoc, selectedRecreationFacility]);
+  const recCapacityLastUpdatedLabel = useMemo(() => {
+    if (selectedLoc?.type !== "Rec") return null;
+    return formatLiveTimestamp(
+      selectedLoc.capacity_last_updated ||
+        selectedLoc.capacity_as_of ||
+        selectedRecreationFacility?.last_updated ||
+        null,
+    );
+  }, [
+    selectedLoc?.capacity_as_of,
+    selectedLoc?.capacity_last_updated,
+    selectedLoc?.type,
+    selectedRecreationFacility?.last_updated,
+  ]);
+  const recLiveSourceLabel = useMemo(() => {
+    if (selectedLoc?.type !== "Rec") return null;
+    return selectedLoc.occupancy_name || selectedRecreationFacility?.occupancy_name || null;
+  }, [selectedLoc?.occupancy_name, selectedLoc?.type, selectedRecreationFacility?.occupancy_name]);
   const parkingRecommendation = useMemo(() => {
     if (!selectedLoc || selectedLoc.type !== "Parking") return null;
     const lower = selectedLoc.location.toLowerCase();
@@ -666,6 +717,26 @@ export function LocationBottomSheet({
                       </Text>
                     </TouchableOpacity>
                   ) : null}
+
+                  {selectedLoc.type === "Rec" && recreationFacilityCounts.length ? (
+                    <TouchableOpacity
+                      style={styles.quickActionPill}
+                      onPress={() =>
+                        setIsFacilityCountsExpanded((current) => !current)
+                      }
+                    >
+                      <ChevronDown
+                        size={14}
+                        color={COLORS.textPrimary}
+                        style={{
+                          transform: [
+                            { rotate: isFacilityCountsExpanded ? "180deg" : "0deg" },
+                          ],
+                        }}
+                      />
+                      <Text style={styles.quickActionText}>Facility Counts</Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               ) : null}
             </View>
@@ -895,6 +966,28 @@ export function LocationBottomSheet({
                   </Text>
                 ) : null}
 
+                {selectedLoc.type === "Rec" && recLiveSourceLabel ? (
+                  <Text
+                    style={[
+                      styles.contextCardBody,
+                      { marginTop: occupancyCountLabel ? 6 : 8, opacity: 0.95 },
+                    ]}
+                  >
+                    Live source: {recLiveSourceLabel}
+                  </Text>
+                ) : null}
+
+                {selectedLoc.type === "Rec" && recCapacityLastUpdatedLabel ? (
+                  <Text
+                    style={[
+                      styles.contextCardBody,
+                      { marginTop: 4, opacity: 0.8, fontSize: 12 },
+                    ]}
+                  >
+                    Last updated: {recCapacityLastUpdatedLabel}
+                  </Text>
+                ) : null}
+
                 {officialFacilityUrl && officialFacilityUrl !== externalLink?.url ? (
                   <TouchableOpacity
                     style={styles.inlineLinkRow}
@@ -1052,6 +1145,68 @@ export function LocationBottomSheet({
                 </>
               ) : (
                 <>
+                  {selectedLoc.type === "Rec" &&
+                  isFacilityCountsExpanded &&
+                  recreationFacilityCounts.length ? (
+                    <View style={styles.infoBlock}>
+                      <View style={styles.reviewsHeader}>
+                        <View>
+                          <Text style={styles.sectionTitle}>Facility Counts</Text>
+                          <Text style={styles.menuIntroText}>
+                            Live sub-facility counts from the rec API.
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.facilityCountsPanel}>
+                        {recreationFacilityCounts.map((entry, index) => {
+                          const percentLabel =
+                            typeof entry.percent_full === "number"
+                              ? `${Math.round(entry.percent_full)}% full`
+                              : "No live percentage";
+                          const countLabel =
+                            entry.current_count != null && entry.capacity != null
+                              ? `${entry.current_count.toLocaleString()} / ${entry.capacity.toLocaleString()} people`
+                              : entry.current_count != null
+                                ? `${entry.current_count.toLocaleString()} people`
+                                : "No live count";
+                          const updatedLabel = formatLiveTimestamp(entry.last_updated);
+
+                          return (
+                            <View
+                              key={`${entry.location_name}-${index}`}
+                              style={styles.facilityCountCard}
+                            >
+                              <View style={styles.facilityCountHeader}>
+                                <Text style={styles.facilityCountName}>
+                                  {entry.location_name}
+                                </Text>
+                                {entry.is_closed ? (
+                                  <View style={styles.facilityCountBadge}>
+                                    <Text style={styles.facilityCountBadgeText}>
+                                      Closed
+                                    </Text>
+                                  </View>
+                                ) : null}
+                              </View>
+                              <Text style={styles.facilityCountMeta}>
+                                {countLabel}
+                              </Text>
+                              <Text style={styles.facilityCountMeta}>
+                                {percentLabel}
+                              </Text>
+                              {updatedLabel ? (
+                                <Text style={styles.facilityCountMeta}>
+                                  Last updated: {updatedLabel}
+                                </Text>
+                              ) : null}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ) : null}
+
                   {/* Traffic chart */}
                   {(selectedLoc.type === "Library" ||
                     selectedLoc.type === "Rec") && (

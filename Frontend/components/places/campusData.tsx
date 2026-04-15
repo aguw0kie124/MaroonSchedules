@@ -30,6 +30,10 @@ export const CANONICAL_LOCATION_ALIASES: Record<string, string> = {
   "Rec": "Student Recreation Center",
   "Southside Rec Center": "Southside Recreation Center",
   "Polo Road Rec Center": "Polo Road Recreation Center",
+  "Physical Education Activity Room (PEAP)": "PEAP",
+  "Physical Education Activity Program": "PEAP",
+  "Physical Education Activities Program Building": "PEAP",
+  "Penberthy Rec Sports Complex": "Penberthy Rec Sports Complex-Tennis",
   "Evans Library": "Sterling C. Evans Library",
   "Sterling C. Evans Library Annex": "Evans Library Annex",
   "Commons Dining Hall": "The Commons Dining Hall",
@@ -221,6 +225,24 @@ export const STATIC_LOCATION_META: Record<string, Partial<CampusLocation>> = {
     hours: "6:00 AM – 10:00 PM",
     description: "Located on North Campus, the Polo Road Recreation Center offers 28,000 square feet of fitness space, specializing in cardio and strength training for the north campus community.",
     features: ["Strength & Conditioning", "Cardio Equipment", "Indoor Walking Track", "Adjacent to Polo Rd Garage"],
+    type: "Rec"
+  },
+  "Aquatics": {
+    hours: "Pool schedule varies Â· check aquatics site",
+    description: "Rec Sports aquatics programming centered around the pools at the Student Recreation Center, including lap swimming, diving, and instructional water spaces.",
+    features: ["50-Meter Pool", "Lap Pool", "Outdoor Pool", "Dive Well"],
+    type: "Rec"
+  },
+  "PEAP": {
+    hours: "Evening hours Â· check PEAP schedule",
+    description: "The Physical Education Activity Room offers wellness classes, court space, and activity areas in partnership with Texas A&M Kinesiology & Sport Management.",
+    features: ["Indoor Courts", "Wellness Classes", "Gymnastics Space", "Activity Studios"],
+    type: "Rec"
+  },
+  "Penberthy Rec Sports Complex-Tennis": {
+    hours: "Rec fields and courts schedule varies",
+    description: "Penberthy Rec Sports Complex includes tennis and pickleball courts plus outdoor fields for intramurals, club sports, and open recreation.",
+    features: ["Tennis Courts", "Pickleball Courts", "Multipurpose Fields", "Softball Fields"],
     type: "Rec"
   },
   "Sbisa Dining Hall": {
@@ -418,7 +440,7 @@ function toRegistryCampusLocation(place: CampusRegistryPlaceRecord): CampusLocat
   };
 }
 
-const INJECTED_RESTAURANTS: CampusLocation[] = [
+const INJECTED_RESTAURANTS = [
   // MSC Food Court
   { placeId: "msc-abu-omar", location: "Abu Omar Halal - MSC", type: "Dining", coord: { lat: 30.6123, lng: -96.3414 }, source: "snapshot", searchOnly: true },
   { placeId: "msc-cabo", location: "Cabo Grill - MSC", type: "Dining", coord: { lat: 30.6122, lng: -96.3413 }, source: "snapshot", searchOnly: true },
@@ -455,6 +477,56 @@ const INJECTED_RESTAURANTS: CampusLocation[] = [
   { placeId: "mkt-white-creek", location: "White Creek Market", type: "Dining", coord: { lat: 30.6076, lng: -96.3562 }, source: "snapshot", searchOnly: true },
   { placeId: "mkt-ag-cafe", location: "Market - Ag Cafe", type: "Dining", coord: { lat: 30.6055, lng: -96.3510 }, source: "snapshot", searchOnly: true },
   { placeId: "mkt-blcc", location: "Market Express - Business Library (BLCC)", type: "Dining", coord: { lat: 30.6115, lng: -96.3502 }, source: "snapshot", searchOnly: true },
+].map((location) => ({
+  percent_full: 0,
+  is_live: false,
+  available_seats: null,
+  ...location,
+})) satisfies CampusLocation[];
+
+const INJECTED_REC_PLACES: CampusLocation[] = [
+  {
+    placeId: "aquatics",
+    location: "Aquatics",
+    shortName: "AQUATICS",
+    percent_full: 0,
+    type: "Rec",
+    is_live: false,
+    available_seats: null,
+    coord: { lat: 30.60755, lng: -96.34215 },
+    hours: STATIC_LOCATION_META["Aquatics"].hours,
+    description: STATIC_LOCATION_META["Aquatics"].description,
+    features: STATIC_LOCATION_META["Aquatics"].features,
+    source: "snapshot",
+  },
+  {
+    placeId: "peap",
+    location: "PEAP",
+    shortName: "PEAP",
+    percent_full: 0,
+    type: "Rec",
+    is_live: false,
+    available_seats: null,
+    coord: { lat: 30.60442587454078, lng: -96.35188398861327 },
+    hours: STATIC_LOCATION_META["PEAP"].hours,
+    description: STATIC_LOCATION_META["PEAP"].description,
+    features: STATIC_LOCATION_META["PEAP"].features,
+    source: "snapshot",
+  },
+  {
+    placeId: "penberthy",
+    location: "Penberthy Rec Sports Complex-Tennis",
+    shortName: "PENBERTHY",
+    percent_full: 0,
+    type: "Rec",
+    is_live: false,
+    available_seats: null,
+    coord: { lat: 30.6012303882534, lng: -96.34964369057107 },
+    hours: STATIC_LOCATION_META["Penberthy Rec Sports Complex-Tennis"].hours,
+    description: STATIC_LOCATION_META["Penberthy Rec Sports Complex-Tennis"].description,
+    features: STATIC_LOCATION_META["Penberthy Rec Sports Complex-Tennis"].features,
+    source: "snapshot",
+  },
 ];
 
 export function buildCampusDirectory(): CampusLocation[] {
@@ -462,7 +534,9 @@ export function buildCampusDirectory(): CampusLocation[] {
   
   // Inject missing restaurants so they show up in food court lists
   const existingPlaceIds = new Set(directory.map(p => p.placeId));
-  const missing = INJECTED_RESTAURANTS.filter(p => !existingPlaceIds.has(p.placeId));
+  const missing = [...INJECTED_RESTAURANTS, ...INJECTED_REC_PLACES].filter(
+    (p) => !existingPlaceIds.has(p.placeId),
+  );
   
   return [...directory, ...missing];
 }

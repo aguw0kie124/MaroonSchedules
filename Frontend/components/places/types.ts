@@ -67,6 +67,17 @@ export interface ScheduleMapOption {
   entries: ScheduleMeetingEntry[];
 }
 
+export interface FacilityCountEntry {
+  location_name: string;
+  facility_name?: string | null;
+  current_count?: number | null;
+  capacity?: number | null;
+  percent_full?: number | null;
+  available_seats?: number | null;
+  last_updated?: string | null;
+  is_closed?: boolean;
+}
+
 export interface CampusLocation {
   placeId?: string;
   location: string;
@@ -80,6 +91,7 @@ export interface CampusLocation {
   capacity_last_updated?: string | null;
   capacity_source_url?: string | null;
   capacity_as_of?: string | null;
+  facility_counts?: FacilityCountEntry[];
   coord: { lat: number; lng: number };
   current_event?: string;
   aliases?: string[];

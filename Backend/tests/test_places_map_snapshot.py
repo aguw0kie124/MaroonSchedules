@@ -84,6 +84,16 @@ class PlacesMapSnapshotTests(unittest.TestCase):
                 "percent_full": 21.8,
                 "available_seats": 313,
                 "last_updated": "2026-04-14T23:02:19.193",
+                "facility_counts": [
+                    {
+                        "location_name": "Student Rec Center Strength & Conditioning",
+                        "current_count": 87,
+                        "capacity": 400,
+                        "percent_full": 21.8,
+                        "last_updated": "2026-04-14T23:02:19.193",
+                        "is_closed": False,
+                    }
+                ],
             }
         }
         mock_fetch_library_data.return_value = {
@@ -105,6 +115,7 @@ class PlacesMapSnapshotTests(unittest.TestCase):
         self.assertEqual(rec["current_count"], 87)
         self.assertEqual(rec["capacity"], 400)
         self.assertEqual(rec["occupancy_name"], "Student Rec Center Strength & Conditioning")
+        self.assertEqual(rec["facility_counts"][0]["location_name"], "Student Rec Center Strength & Conditioning")
         self.assertEqual(annex["current_count"], 171)
         self.assertEqual(annex["capacity"], 1134)
         self.assertEqual(annex["capacity_as_of"], "2026-04-15 01:43:01")
