@@ -1216,6 +1216,7 @@ export function CampusPingsScreen() {
     const CategoryData = PING_CATEGORIES.find((c) => c.id === item.category) || PING_CATEGORIES[PING_CATEGORIES.length - 1];
     const { Icon, accent } = CategoryData;
     const hasImage = !!item.imageUrl;
+    const isActive = isPingActiveNow(item.startAt, item.endAt);
 
     return (
       <View style={styles.pingCard}>
@@ -1340,9 +1341,25 @@ export function CampusPingsScreen() {
               {item.body ? <Text style={styles.pingBody}>{item.body}</Text> : null}
             </>
           ) : null}
-          <Text style={styles.pingMetaSummary}>
-            {item.locationTag}
-          </Text>
+          <Pressable
+            style={[
+              styles.pingLocationChip,
+              isActive && styles.pingLocationChipActive,
+            ]}
+            onPress={() => openPingOnMap(item)}
+            hitSlop={6}
+          >
+            <MapPin size={13} color={isActive ? COLORS.primary : COLORS.textSecondary} />
+            <Text
+              style={[
+                styles.pingMetaSummary,
+                isActive && styles.pingMetaSummaryActive,
+              ]}
+              numberOfLines={1}
+            >
+              {item.locationTag}
+            </Text>
+          </Pressable>
         </View>
 
         {canDelete ? (
@@ -2267,10 +2284,31 @@ const getStyles = (theme: any) => {
       color: '#D8616E',
     },
     pingMetaSummary: {
-      marginTop: 10,
       color: COLORS.textSecondary,
       fontSize: 12,
       fontWeight: '500',
+    },
+    pingMetaSummaryActive: {
+      color: COLORS.primary,
+      fontWeight: '700',
+    },
+    pingLocationChip: {
+      marginTop: 10,
+      alignSelf: 'flex-start',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: COLORS.surfaceElevated,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      maxWidth: '100%',
+    },
+    pingLocationChipActive: {
+      backgroundColor: `${COLORS.primary}10`,
+      borderColor: `${COLORS.primary}26`,
     },
     pingDeleteAction: {
       flexDirection: 'row',
