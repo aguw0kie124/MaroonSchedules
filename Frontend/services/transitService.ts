@@ -8,8 +8,11 @@ const METADATA_TTL = 1000 * 60 * 5; // 5 minutes
 const PATTERN_TTL = 1000 * 60 * 30; // 30 minutes
 const VEHICLE_TTL = 1000 * 5; // 5 seconds (internal buffer)
 
-/** Transit polls often; keep tighter than generic API calls so a bad host fails fast. */
-const TRANSIT_FETCH_TIMEOUT_MS = 6000;
+/** Transit polls often; keep tighter than generic API calls so a bad host fails fast. 
+ * Patterns and heavy geometry need more headroom than live bus locations.
+ */
+const TRANSIT_FETCH_TIMEOUT_MS = 30000;
+const TRANSIT_LIVE_TIMEOUT_MS = 15000;
 
 export interface BusRoute {
     id: string;
@@ -211,7 +214,7 @@ export const transitService = {
 
         try {
             const query = routeId ? `?route_id=${encodeURIComponent(routeId)}` : '';
-            const response = await apiFetch(`/traffic/transit/vehicles${query}`, {}, TRANSIT_FETCH_TIMEOUT_MS);
+            const response = await apiFetch(`/traffic/transit/vehicles${query}`, {}, TRANSIT_LIVE_TIMEOUT_MS);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const payload = await response.json();
             const vehicles = payload.vehicles || [];

@@ -203,7 +203,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
     setSyncingItemKey(itemKey);
     try {
       const entryId = existing.entryIds[existing.entryIds.length - 1];
-      await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}/entry/${entryId}`, {
+      await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}/${entryId}`, {
         method: 'DELETE',
       });
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -261,7 +261,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
           </TouchableOpacity>
           <View>
             <Text style={[s.title, { color: T.text }]}>{formatMenuTitle(location, title)}</Text>
-            <Text style={[s.subtitle, { color: T.textSecondary }]}>Dining Hall Menu</Text>
+            <Text style={[s.subtitle, { color: T.text2 }]}>Dining Hall Menu</Text>
           </View>
         </View>
 
@@ -348,7 +348,10 @@ export default function FullMenuScreen({ navigation, route }: any) {
               const isCollapsed = collapsedCategories.has(category.name);
               const categoryKey = `${category.name}-${catIdx}`;
               return (
-                <Card key={categoryKey} style={{ paddingHorizontal: 0 }}>
+                <Card
+                  key={categoryKey}
+                  style={s.allStationsCategoryCard}
+                >
                   <TouchableOpacity
                     style={s.categoryHeader}
                     onPress={() => toggleCategory(category.name)}
@@ -479,5 +482,9 @@ const s = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 4,
+  },
+  allStationsCategoryCard: {
+    paddingHorizontal: 0,
+    marginHorizontal: -8,
   },
 });

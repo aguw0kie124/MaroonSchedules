@@ -52,8 +52,6 @@ function isLegacyDefaultAccent(accentColor: string | null | undefined) {
 // Zustand Theme Store
 export const useThemeStore = create<any>((set, get) => ({
   theme: 'light', // 'dark' | 'light'
-  backgroundMode: 'solid', // 'solid' | 'custom'
-  customWallpaperUri: null as string | null,
   accentColor: DEFAULT_DARK_ACCENT,
   applyAccentToText: false,
   setTheme: (newTheme: string) => {
@@ -78,33 +76,9 @@ export const useThemeStore = create<any>((set, get) => ({
     set({ applyAccentToText });
     AsyncStorage.setItem('accent_text_enabled', JSON.stringify(applyAccentToText)).catch(() => {});
   },
-  setUseWallpaper: (val: boolean) => {
-    const nextMode = val && get().customWallpaperUri ? 'custom' : 'solid';
-    set({ backgroundMode: nextMode });
-    AsyncStorage.setItem('background_mode', nextMode).catch(() => {});
-  },
-  setBackgroundMode: (mode: 'solid' | 'custom') => {
-    const nextMode = mode === 'custom' && !get().customWallpaperUri ? 'solid' : mode;
-    set({ backgroundMode: nextMode });
-    AsyncStorage.setItem('background_mode', nextMode).catch(() => {});
-  },
-  setCustomWallpaper: async (uri: string | null) => {
-    if (!uri) {
-      set({ customWallpaperUri: null, backgroundMode: 'solid' });
-      await AsyncStorage.removeItem('custom_wallpaper_uri');
-      await AsyncStorage.setItem('background_mode', 'solid');
-      return;
-    }
-    set({ customWallpaperUri: uri, backgroundMode: 'custom' });
-    await AsyncStorage.setItem('custom_wallpaper_uri', uri);
-    await AsyncStorage.setItem('background_mode', 'custom');
-  },
   loadWallpaperPref: async () => {
-    const [legacy, storedTheme, backgroundMode, customWallpaperUri, accentColor, accentTextEnabled] = await Promise.all([
-      AsyncStorage.getItem('use_wallpaper'),
+    const [storedTheme, accentColor, accentTextEnabled] = await Promise.all([
       AsyncStorage.getItem('theme_mode'),
-      AsyncStorage.getItem('background_mode'),
-      AsyncStorage.getItem('custom_wallpaper_uri'),
       AsyncStorage.getItem('accent_color'),
       AsyncStorage.getItem('accent_text_enabled'),
     ]);
@@ -125,25 +99,11 @@ export const useThemeStore = create<any>((set, get) => ({
       nextState.applyAccentToText = accentTextEnabled === 'true';
     }
 
-    if (customWallpaperUri) {
-      set({
-        ...nextState,
-        customWallpaperUri,
-        backgroundMode: backgroundMode === 'custom' ? 'custom' : 'solid',
-      });
-      return;
-    }
-
-    if (backgroundMode) {
-      set({ ...nextState, backgroundMode });
-      return;
-    }
-
-    if (legacy !== null) {
-      set({ ...nextState, backgroundMode: JSON.parse(legacy) ? 'solid' : 'solid' });
-      return;
-    }
-
+    await Promise.all([
+      AsyncStorage.removeItem('use_wallpaper'),
+      AsyncStorage.removeItem('background_mode'),
+      AsyncStorage.removeItem('custom_wallpaper_uri'),
+    ]);
     if (Object.keys(nextState).length) {
       set(nextState);
     }
@@ -152,11 +112,8 @@ export const useThemeStore = create<any>((set, get) => ({
 
 export const useTheme = () => {
   const theme = useThemeStore((s: any) => s.theme);
-  const backgroundMode = useThemeStore((s: any) => s.backgroundMode);
-  const wallpaperUri = useThemeStore((s: any) => s.customWallpaperUri);
   const accentColor = useThemeStore((s: any) => s.accentColor);
   const applyAccentToText = useThemeStore((s: any) => s.applyAccentToText);
-  const useWallpaper = backgroundMode === 'custom' && !!wallpaperUri;
   const palette = theme === 'dark' ? DARK_COLORS : LIGHT_COLORS;
   const COLORS = {
     ...palette,
@@ -165,11 +122,8 @@ export const useTheme = () => {
     accentText: applyAccentToText ? accentColor : palette.textPrimary,
   };
   return {
-    COLORS, theme, useWallpaper, backgroundMode, wallpaperUri, accentColor, applyAccentToText,
+    COLORS, theme, useWallpaper: false, backgroundMode: 'solid', wallpaperUri: null, accentColor, applyAccentToText,
     setTheme: useThemeStore.getState().setTheme,
-    setUseWallpaper: useThemeStore.getState().setUseWallpaper,
-    setBackgroundMode: useThemeStore.getState().setBackgroundMode,
-    setCustomWallpaper: useThemeStore.getState().setCustomWallpaper,
     setAccentColor: useThemeStore.getState().setAccentColor,
     setApplyAccentToText: useThemeStore.getState().setApplyAccentToText,
   };

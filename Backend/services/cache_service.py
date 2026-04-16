@@ -176,3 +176,16 @@ def delete(key: str) -> None:
         except Exception:
             pass
     _MEMORY_CACHE.pop(key, None)
+
+
+def delete_many(keys: list[str]) -> None:
+    if not keys:
+        return
+    client = _get_client()
+    if client is not None:
+        try:
+            client.delete(*keys)
+        except Exception:
+            pass
+    for k in keys:
+        _MEMORY_CACHE.pop(k, None)

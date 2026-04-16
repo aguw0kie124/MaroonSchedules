@@ -83,8 +83,9 @@ function CircularProgress({ percent, isClosed, size = 80, strokeWidth = 6, isDar
 }
 
 export default function FacilityCountsScreen() {
-  const { isDark } = useTheme();
-  const T = useDiningTheme();
+  const { COLORS, theme } = useTheme();
+  const isDark = theme === "dark";
+  const T = { ...useDiningTheme(isDark), primary: COLORS.primary };
   const navigation = useNavigation();
   const route = useRoute<any>();
   const [searchQuery, setSearchQuery] = useState("");
@@ -198,7 +199,7 @@ export default function FacilityCountsScreen() {
              {location?.traffic_history && (
                <View style={styles.heroChart}>
                  <Text style={[styles.chartHeader, { color: T.text2 }]}>Foot Traffic Trend</Text>
-                 <OccupancyChart history={location.traffic_history} height={80} />
+                  <OccupancyChart history={location.traffic_history} />
                </View>
              )}
           </View>

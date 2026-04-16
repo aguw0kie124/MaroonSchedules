@@ -3,6 +3,10 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, Touch
 import {
   ArrowLeft,
   Settings2,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -34,6 +38,14 @@ export default function DiningDashboard({ navigation }: any) {
   const [profile, setProfile] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [trackerLoading, setTrackerLoading] = useState(true);
+  const [trackerDate, setTrackerDate] = useState(getLocalDateString());
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+
+  const shiftDate = useCallback((days: number) => {
+    const d = new Date(trackerDate + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + days);
+    setTrackerDate(d.toISOString().split('T')[0]);
+  }, [trackerDate]);
 
   const openFullMenu = () => {
     const mealPeriod = getDiningMealPeriodForLocation(hall);
@@ -50,7 +62,7 @@ export default function DiningDashboard({ navigation }: any) {
     setTrackerLoading(true);
     try {
       const [trackerRes, profileRes, historyRes] = await Promise.all([
-        requestJson(`/dining/tracker/${encodeURIComponent(user.id)}?date=${encodeURIComponent(getLocalDateString())}`),
+        requestJson(`/dining/tracker/${encodeURIComponent(user.id)}?date=${encodeURIComponent(trackerDate)}`),
         requestJson(`/dining/profile/${encodeURIComponent(user.id)}`),
         requestJson(`/dining/history/${encodeURIComponent(user.id)}?days=180`),
       ]);
@@ -62,7 +74,7 @@ export default function DiningDashboard({ navigation }: any) {
     } finally {
       setTrackerLoading(false);
     }
-  }, [user]);
+  }, [user, trackerDate]);
 
   useEffect(() => {
     loadTrackerSummary();
@@ -144,6 +156,16 @@ export default function DiningDashboard({ navigation }: any) {
         </Card>
 
         <Card style={s.trackerCard}>
+          <View style={[s.daySwitcherRow, { borderBottomColor: T.border }]}>
+            <TouchableOpacity onPress={() => shiftDate(-1)} style={s.dateAction}>
+              <ChevronLeft size={24} color={T.text2} />
+            </TouchableOpacity>
+            <Text style={[s.dayText, { color: T.text }]}>{trackerDate === getLocalDateString() ? 'Today' : trackerDate}</Text>
+            <TouchableOpacity onPress={() => shiftDate(1)} style={s.dateAction} disabled={trackerDate === getLocalDateString()}>
+              <ChevronRight size={24} color={trackerDate === getLocalDateString() ? T.border : T.text2} />
+            </TouchableOpacity>
+          </View>
+
           <View style={s.trackerHeaderRow}>
             <View style={s.headerActions}>
               <TouchableOpacity
@@ -179,6 +201,40 @@ export default function DiningDashboard({ navigation }: any) {
                   </Text>
                 </View>
               ))}
+            </View>
+          )}
+
+          {tracker?.entries?.length > 0 && !trackerLoading && (
+            <View style={[s.historySection, { borderColor: T.border, backgroundColor: T.bg3 }]}>
+              <TouchableOpacity style={s.historyHeader} onPress={() => setHistoryExpanded(!historyExpanded)} activeOpacity={0.7}>
+                <Text style={[s.historyTitle, { color: T.text }]}>What you ate</Text>
+                {historyExpanded ? <ChevronUp size={20} color={T.text2} /> : <ChevronDown size={20} color={T.text2} />}
+              </TouchableOpacity>
+              {historyExpanded && (
+                <View style={s.historyContent}>
+                  {(() => {
+                    const grouped = (tracker.entries || []).reduce((acc: any, entry: any) => {
+                       const p = entry.meal_period === 'every-day' ? 'Restaurants' : (entry.meal_period || 'Other');
+                       if (!acc[p]) acc[p] = [];
+                       acc[p].push(entry);
+                       return acc;
+                    }, {});
+                    return Object.entries(grouped).map(([period, items]: any) => (
+                      <View key={period} style={s.historyGroup}>
+                           <Text style={[s.historyGroupLabel, { color: T.text3 }]}>{period.toUpperCase()}</Text>
+                           {items.map((it: any) => (
+                             <View key={it.id} style={s.historyItem}>
+                               <Text style={[s.historyItemName, { color: T.text }]}>{it.label}</Text>
+                               <Text style={[s.historyItemMacros, { color: T.text3 }]}>
+                                 {Math.round(it.calories)} kcal • {Math.round(it.protein)}g P • {Math.round(it.carbs)}g C • {Math.round(it.fat)}g F
+                               </Text>
+                             </View>
+                           ))}
+                      </View>
+                    ));
+                  })()}
+                </View>
+              )}
             </View>
           )}
         </Card>
@@ -235,11 +291,28 @@ const s = StyleSheet.create({
     flex: 1,
   },
   trackerCard: {
-    paddingTop: 18,
+    paddingTop: 0,
     paddingBottom: 18,
+  },
+  daySwitcherRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    marginBottom: 14,
+    borderBottomWidth: 1,
+  },
+  dateAction: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  dayText: {
+    fontSize: 16,
+    fontWeight: '800',
   },
   trackerHeaderRow: {
     marginBottom: 14,
+    paddingHorizontal: 16,
   },
   headerActions: {
     flexDirection: 'row',
@@ -287,6 +360,7 @@ const s = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
     marginTop: 4,
+    paddingHorizontal: 16,
   },
   trackerStat: {
     width: '48%',
@@ -311,6 +385,54 @@ const s = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginTop: 8,
+  },
+  historySection: {
+    marginTop: 18,
+    marginHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  historyTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  historyContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    paddingTop: 4,
+  },
+  historyGroup: {
+    marginTop: 12,
+  },
+  historyGroupLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  historyItemName: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    paddingRight: 10,
+  },
+  historyItemMacros: {
+    fontSize: 12,
+    fontWeight: '500',
   },
 });
 

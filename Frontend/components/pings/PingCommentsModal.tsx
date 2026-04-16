@@ -1,8 +1,10 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Animated,
   KeyboardAvoidingView,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -77,6 +79,7 @@ export function PingCommentsModal({
   const [draft, setDraft] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+  const translateY = React.useRef(new Animated.Value(0)).current;
 
   const loadComments = React.useCallback(async () => {
     if (!target?.activityId) return;
@@ -103,8 +106,62 @@ export function PingCommentsModal({
       setComments([]);
       setLoading(false);
       setSubmitting(false);
+      translateY.setValue(0);
     }
-  }, [visible]);
+  }, [translateY, visible]);
+
+  const closeSheet = React.useCallback(() => {
+    Animated.spring(translateY, {
+      toValue: 560,
+      useNativeDriver: true,
+      damping: 20,
+      stiffness: 210,
+      mass: 0.95,
+      overshootClamping: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        translateY.setValue(0);
+        onClose();
+      }
+    });
+  }, [onClose, translateY]);
+
+  const panResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dy) > 6,
+        onPanResponderGrant: () => {
+          translateY.stopAnimation();
+        },
+        onPanResponderMove: (_, gestureState) => {
+          translateY.setValue(Math.max(0, gestureState.dy));
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          const shouldClose = gestureState.dy > 120 || gestureState.vy > 1.2;
+          if (shouldClose) {
+            closeSheet();
+            return;
+          }
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            damping: 18,
+            stiffness: 220,
+            mass: 0.9,
+          }).start();
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+            damping: 18,
+            stiffness: 220,
+            mass: 0.9,
+          }).start();
+        },
+      }),
+    [closeSheet, translateY],
+  );
 
   const handleSubmit = React.useCallback(async () => {
     if (!target?.activityId || !draft.trim() || !user) return;
@@ -123,27 +180,37 @@ export function PingCommentsModal({
   }, [draft, loadComments, onCommentPosted, target?.activityId, user]);
 
   return (
-    <Modal visible={visible} animationType="fade" transparent statusBarTranslucent>
-      <TouchableWithoutFeedback onPress={onClose}>
+    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
+      <TouchableWithoutFeedback onPress={closeSheet}>
         <View style={styles.backdrop}>
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={styles.keyboardWrap}
           >
             <TouchableWithoutFeedback>
-              <View style={[styles.card, { backgroundColor: COLORS.surface }]}>
-                <View style={styles.header}>
-                  <View style={styles.headerCopy}>
-                    <Text style={[styles.title, { color: COLORS.textPrimary }]} numberOfLines={2}>
-                      {target?.title || 'Comments'}
-                    </Text>
-                    <Text style={[styles.subtitle, { color: COLORS.textSecondary }]} numberOfLines={2}>
-                      {target?.subtitle || `${target?.commentCount || 0} comments`}
-                    </Text>
+              <Animated.View
+                style={[
+                  styles.card,
+                  { backgroundColor: COLORS.surface, transform: [{ translateY }] },
+                ]}
+              >
+                <View style={styles.sheetTopZone} {...panResponder.panHandlers}>
+                  <View style={styles.handleWrap}>
+                    <View style={[styles.handle, { backgroundColor: COLORS.border }]} />
                   </View>
-                  <Pressable onPress={onClose} style={styles.closeButton}>
-                    <X size={18} color={COLORS.textPrimary} />
-                  </Pressable>
+                  <View style={styles.header}>
+                    <View style={styles.headerCopy}>
+                      <Text style={[styles.title, { color: COLORS.textPrimary }]} numberOfLines={2}>
+                        {target?.title || 'Comments'}
+                      </Text>
+                      <Text style={[styles.subtitle, { color: COLORS.textSecondary }]} numberOfLines={2}>
+                        {target?.subtitle || `${target?.commentCount || 0} comments`}
+                      </Text>
+                    </View>
+                    <Pressable onPress={closeSheet} style={styles.closeButton}>
+                      <X size={18} color={COLORS.textPrimary} />
+                    </Pressable>
+                  </View>
                 </View>
 
                 <View style={[styles.threadCard, { borderColor: COLORS.border }]}>
@@ -218,7 +285,7 @@ export function PingCommentsModal({
                     )}
                   </Pressable>
                 </View>
-              </View>
+              </Animated.View>
             </TouchableWithoutFeedback>
           </KeyboardAvoidingView>
         </View>
@@ -231,17 +298,32 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.36)',
-    justifyContent: 'center',
-    paddingHorizontal: 18,
+    justifyContent: 'flex-end',
   },
   keyboardWrap: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
   },
   card: {
-    borderRadius: 28,
-    padding: 18,
-    maxHeight: '78%',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 18,
+    paddingTop: 8,
+    paddingBottom: 18,
+    height: '86%',
+  },
+  sheetTopZone: {
+    flexShrink: 0,
+  },
+  handleWrap: {
+    alignItems: 'center',
+    paddingTop: 2,
+    paddingBottom: 10,
+  },
+  handle: {
+    width: 42,
+    height: 5,
+    borderRadius: 999,
   },
   header: {
     flexDirection: 'row',
@@ -270,22 +352,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   threadCard: {
-    borderWidth: 1,
-    borderRadius: 22,
-    minHeight: 220,
-    maxHeight: 360,
+    flex: 1,
+    borderWidth: 0,
+    borderRadius: 0,
+    minHeight: 0,
     overflow: 'hidden',
   },
   loadingWrap: {
-    minHeight: 220,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   threadScroll: {
-    flexGrow: 0,
+    flex: 1,
   },
   threadContent: {
     padding: 14,
+    paddingBottom: 20,
   },
   commentRow: {
     flexDirection: 'row',
@@ -324,7 +407,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   emptyWrap: {
-    minHeight: 220,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
@@ -340,10 +423,11 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   composer: {
-    marginTop: 14,
+    marginTop: 12,
     borderWidth: 1,
-    borderRadius: 22,
-    padding: 12,
+    borderRadius: 24,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 12,
