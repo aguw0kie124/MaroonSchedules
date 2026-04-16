@@ -576,11 +576,20 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const allMapLocations = useMemo(() => {
     // API `locations` must merge last: schedule rows set percent_full: 0 and omit hours_today /
     // visitor_parking_* and would otherwise overwrite live campus map snapshot fields.
-    return mergeCampusLocations(
+    const merged = mergeCampusLocations(
       scheduleLocations as CampusLocation[],
       dynamicSearchLocations,
       locations,
     );
+
+    // Remove the fake/duplicate Evans Library sitting at the Memorial Student Center (MSC) location
+    // The real one is near the Annex (~30.616, -96.339). The ghost one is ~30.612, -96.341.
+    return merged.filter(l => {
+      const isIncorrectEvans = l.location.includes("Evans Library") && 
+                              l.coord.lat < 30.615 && 
+                              l.coord.lng < -96.340;
+      return !isIncorrectEvans;
+    });
   }, [dynamicSearchLocations, locations, scheduleLocations]);
 
   const pulsePlaces = useMemo(() => {
@@ -650,6 +659,36 @@ export function PlacesMapScreen({ route, navigation }: any) {
         )
         : null;
       if (activeLayer === "Parking") {
+        const visitorGarageIds = [
+          "osm:way:91100311", 
+          "garage-polo", 
+          "osm:way:450686873", 
+          "garage-university-center", 
+          "garage-west-campus"
+        ];
+        const aLoc = a.location || "";
+        const bLoc = b.location || "";
+        const isAVisitor = visitorGarageIds.includes(a.placeId) || 
+                          aLoc.includes("Central Campus Garage") ||
+                          aLoc.includes("Polo") ||
+                          aLoc.includes("Stallings") ||
+                          aLoc.includes("University Center Garage") ||
+                          aLoc.includes("West Campus Garage");
+        const isBVisitor = visitorGarageIds.includes(b.placeId) || 
+                          bLoc.includes("Central Campus Garage") ||
+                          bLoc.includes("Polo") ||
+                          bLoc.includes("Stallings") ||
+                          bLoc.includes("University Center Garage") ||
+                          bLoc.includes("West Campus Garage");
+        
+        if (isAVisitor && !isBVisitor) return -1;
+        if (!isAVisitor && isBVisitor) return 1;
+        if (isAVisitor && isBVisitor) {
+           const aSpots = (a as any).visitor_parking_available ?? 0;
+           const bSpots = (b as any).visitor_parking_available ?? 0;
+           if (aSpots !== bSpots) return bSpots - aSpots;
+        }
+
         const aP = getParkingRecommendation(a.location, parkingPermit);
         const bP = getParkingRecommendation(b.location, parkingPermit);
         if (aP.score !== bP.score) return aP.score - bP.score;

@@ -224,10 +224,19 @@ export function LocationBottomSheet({
   const preferredExpandedSnap = isDiningHallCard ? SHEET_DINING_HALL_SNAP : SHEET_MID_SNAP;
   const isPeekSheet = sheetMode === "peek";
   const isParking = selectedLoc?.type === "Parking";
-  const isCapacityPlace = selectedLoc?.type === "Library" || selectedLoc?.type === "Rec" || isParking;
+  const isVisitorGarage = isParking && (
+    selectedLoc?.placeId === "osm:way:91100311" || 
+    selectedLoc?.placeId === "garage-polo" || 
+    selectedLoc?.placeId === "osm:way:450686873" || 
+    selectedLoc?.placeId === "garage-university-center" || 
+    selectedLoc?.placeId === "garage-west-campus" ||
+    selectedLoc?.location?.includes("Garage")
+  );
+  const isCapacityPlace = (selectedLoc?.type === "Library" || selectedLoc?.type === "Rec") && 
+                         !selectedLoc?.location?.includes("Bush");
   
-  const hasLiveParking = isParking && selectedLoc?.visitor_parking_available != null;
-  const hasLiveOccupancy = (selectedLoc?.type === "Library" || selectedLoc?.type === "Rec") && selectedLoc?.percent_full != null;
+  const hasLiveParking = isVisitorGarage && selectedLoc?.visitor_parking_available != null;
+  const hasLiveOccupancy = isCapacityPlace && selectedLoc?.percent_full != null && selectedLoc?.is_live;
   const hasAnyLiveData = hasLiveParking || hasLiveOccupancy;
 
   const occupancyPercent = selectedLoc ? Math.max(0, Math.min(100, 
@@ -254,9 +263,9 @@ export function LocationBottomSheet({
 
   const peekMetaText = useMemo(() => {
     if (!selectedLoc) return "";
-    if (isFetchingDetail && !hasAnyLiveData && isCapacityPlace) return "Loading..."; 
+    if (isFetchingDetail && !hasAnyLiveData && (isCapacityPlace || isParking)) return "Loading..."; 
     if (hasLiveParking) return `Visitor: ${selectedLoc.visitor_parking_available.toLocaleString()} spaces (live)`;
-    if (isCapacityPlace && !shouldHideCapacityOnCard && !isParking) return `${occupancyPercent}% full`;
+    if (isCapacityPlace && !shouldHideCapacityOnCard) return `${occupancyPercent}% full`;
     
     const dynamicHours = getLiveHoursForFacility(selectedLoc.location);
     if (dynamicHours) return dynamicHours;
@@ -264,7 +273,7 @@ export function LocationBottomSheet({
     if (selectedLoc.hours_today) return selectedLoc.hours_today;
     if (isFoodCourtHub) return `${foodCourtVenues.length} locations`;
     return selectedLoc.type || "";
-  }, [foodCourtVenues.length, isCapacityPlace, isFoodCourtHub, occupancyPercent, selectedLoc, shouldHideCapacityOnCard]);
+  }, [foodCourtVenues.length, hasAnyLiveData, isCapacityPlace, isFetchingDetail, isParking, hasLiveParking, occupancyPercent, selectedLoc, shouldHideCapacityOnCard]);
 
   const externalLink = useMemo(() => (selectedLoc ? getPlaceExternalLink(selectedLoc) : null), [getPlaceExternalLink, selectedLoc]);
   const heroMetaText = useMemo(() => {
@@ -397,66 +406,12 @@ export function LocationBottomSheet({
             )}
           </View>
 
-          {isCapacityPlace && !isPeekSheet && !shouldHideCapacityOnCard && (
-            (isFetchingDetail && !hasAnyLiveData) ? (
-               <View style={{ paddingVertical: 60, alignItems: 'center' }}>
-                 <ActivityIndicator color={COLORS.primary} size="large" />
-                 <Text style={{ marginTop: 12, color: COLORS.textTertiary, fontSize: 13, fontWeight: '600' }}>Fetching live data...</Text>
-               </View>
-            ) : (
-              <View style={styles.occupancyBlock}>
-                {isParking ? (
-                   <View style={styles.occupancyHeader}>
-                     <View>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                          <View style={[styles.heroBadgeDot, { backgroundColor: "#32D74B" }]} />
-                          <Text style={[styles.sectionTitle, { marginBottom: 0, color: COLORS.textPrimary }]}>Visitor Parking</Text>
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                          <Text style={styles.occupancyValueText}>{selectedLoc.visitor_parking_available?.toLocaleString() ?? 0} spaces</Text>
-                          {selectedLoc.visitor_parking_as_of && (
-                            <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.textTertiary }}>
-                              Updated {formatLiveTimestamp(selectedLoc.visitor_parking_as_of)}
-                            </Text>
-                          )}
-                        </View>
-                        <Text style={{ fontSize: 12, fontWeight: '500', color: COLORS.textSecondary, marginTop: 4 }}>
-                           Real-time availability for visitor spaces in {selectedLoc.location}.
-                        </Text>
-                     </View>
-                   </View>
-                ) : (
-                  <>
-                    <View style={styles.occupancyHeader}>
-                      <View>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                          <View style={[styles.heroBadgeDot, { backgroundColor: occupancyToneColor }]} />
-                          <Text style={[styles.sectionTitle, { marginBottom: 0, color: occupancyToneColor }]}>{getOccupancyLabel(occupancyPercent)}</Text>
-                        </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
-                          <Text style={styles.occupancyValueText}>{occupancyPercent}% full</Text>
-                          {(selectedLoc.capacity_last_updated || selectedLoc.capacity_as_of) && (
-                            <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.textTertiary }}>
-                              Updated {formatLiveTimestamp(selectedLoc.capacity_last_updated || selectedLoc.capacity_as_of)}
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                    </View>
-                    <TourTarget name="rec-center-capacity">
-                      {!isParking && (
-                        <View style={{ marginTop: 16 }}>
-                          <OccupancyChart history={selectedLoc.traffic_history} height={100} />
-                        </View>
-                      )}
-                    </TourTarget>
-                  </>
-                )}
-              </View>
-            )
-          )}
-
-          {!isPeekSheet && !isDiningHallCard && (
+          {isFetchingDetail && !hasAnyLiveData && (isCapacityPlace || isVisitorGarage) ? (
+             <View style={{ paddingVertical: 80, alignItems: 'center', justifyContent: 'center' }}>
+               <ActivityIndicator color={COLORS.primary} size="large" />
+               <Text style={{ marginTop: 16, color: COLORS.textTertiary, fontSize: 13, fontWeight: '600' }}>Fetching live data...</Text>
+             </View>
+          ) : !isPeekSheet && !isDiningHallCard && (
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }} scrollEventThrottle={16}>
               {isFoodCourtHub ? (
                 <View style={styles.infoBlock}>
@@ -477,7 +432,51 @@ export function LocationBottomSheet({
                 </View>
               ) : (
                 <>
-                  {isCapacityPlace && !shouldHideCapacityOnCard && !isFetchingDetail && (
+                  {isParking && hasLiveParking && (
+                    <View style={styles.infoBlock}>
+                      <View style={styles.occupancySummaryRow}>
+                        <Text style={styles.occupancyLiveLabel}>Visitor Parking</Text>
+                        <Text style={[styles.occupancyLiveText, { color: COLORS.primary }]}>{selectedLoc.visitor_parking_available?.toLocaleString()} spaces</Text>
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                         <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#32D74B' }} />
+                         <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textSecondary }}>Real-time available</Text>
+                        {selectedLoc.visitor_parking_as_of && (
+                          <Text style={{ fontSize: 11, fontWeight: '600', color: COLORS.textTertiary, marginLeft: 'auto' }}>
+                            Updated {formatLiveTimestamp(selectedLoc.visitor_parking_as_of)}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  )}
+                  {isCapacityPlace && !shouldHideCapacityOnCard && hasLiveOccupancy && (
+                    <View style={styles.infoBlock}>
+                      <View style={styles.occupancySummaryRow}>
+                        <Text style={styles.occupancyLiveLabel}>Live Occupancy</Text>
+                        <Text style={[styles.occupancyLiveText, { color: occupancyToneColor }]}>{occupancyPercent}%</Text>
+                      </View>
+                      <View style={styles.occupancyTrack}>
+                        <View style={[styles.occupancyFill, { width: `${occupancyPercent}%`, backgroundColor: occupancyToneColor }]} />
+                      </View>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Activity size={10} color={COLORS.textTertiary} />
+                            <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.textSecondary }}>
+                               {selectedLoc.type === "Rec" && selectedLoc.facility_counts?.length 
+                                 ? `${selectedLoc.facility_counts.filter(f => !f.is_closed).length} of ${selectedLoc.facility_counts.length} areas open`
+                                 : getOccupancyLabel(occupancyPercent)
+                               }
+                            </Text>
+                         </View>
+                         {(selectedLoc.capacity_last_updated || selectedLoc.capacity_as_of) && (
+                          <Text style={{ fontSize: 10, fontWeight: '600', color: COLORS.textTertiary, opacity: 0.8 }}>
+                            Updated {formatLiveTimestamp(selectedLoc.capacity_last_updated || selectedLoc.capacity_as_of)}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  )}
+                  {isCapacityPlace && !shouldHideCapacityOnCard && hasLiveOccupancy && (
                     <TourTarget name="rec-center-capacity">
                       <View style={styles.chartContainer}>
                         <Text style={styles.chartTitle}>Foot Traffic · Last 8h</Text>

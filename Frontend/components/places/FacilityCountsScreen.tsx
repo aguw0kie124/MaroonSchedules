@@ -145,25 +145,55 @@ export default function FacilityCountsScreen() {
          </TouchableOpacity>
       </View>
 
-      <View style={styles.searchContainer}>
-        <View style={[styles.searchBar, { backgroundColor: T.bg2, borderColor: T.border }]}>
-          <Search size={18} color={T.text3} style={{ marginRight: 8 }} />
-          <TextInput
-            placeholder="Search area..."
-            placeholderTextColor={T.text3}
-            style={[styles.searchInput, { color: T.text }]}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery("")}>
-               <X size={18} color={T.text3} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        {!loading && (
+          <View style={[styles.heroSection, { backgroundColor: T.bg2, borderColor: T.border }]}>
+             <View style={styles.heroMain}>
+                <CircularProgress 
+                  percent={location?.percent_full ?? (location?.current_count && location?.capacity ? (location.current_count / location.capacity) * 100 : 0)} 
+                  isClosed={isOverallClosed} 
+                  size={90} 
+                  strokeWidth={8} 
+                  isDark={isDark} 
+                  T={T} 
+                />
+                <View style={styles.heroText}>
+                   <Text style={[styles.heroLabel, { color: T.text3 }]}>Overall Occupancy</Text>
+                   <Text style={[styles.heroValue, { color: T.text }]}>
+                      {isOverallClosed ? "Facility Closed" : `${Math.round(location?.percent_full ?? 0)}% Full`}
+                   </Text>
+                   <View style={styles.metaRowInline}>
+                      <Activity size={14} color={T.primary} />
+                      <Text style={[styles.heroMeta, { color: T.text2 }]}>
+                         {facilityCounts.length > 0 
+                           ? `${facilityCounts.filter(f => !f.is_closed).length} of ${facilityCounts.length} areas open`
+                           : "Live occupancy data"}
+                      </Text>
+                   </View>
+                </View>
+             </View>
+             {location?.traffic_history && (
+               <View style={styles.heroChart}>
+                 <Text style={[styles.chartHeader, { color: T.text2 }]}>Foot Traffic Trend</Text>
+                 <OccupancyChart history={location.traffic_history} height={80} />
+               </View>
+             )}
+          </View>
+        )}
+
+        <View style={styles.sectionHeader}>
+           <Text style={[styles.sectionTitleLabel, { color: T.text }]}>Facility Areas</Text>
+           <View style={[styles.searchBar, { backgroundColor: T.bg2, borderColor: T.border, flex: 1, marginLeft: 16 }]}>
+             <Search size={16} color={T.text3} style={{ marginRight: 8 }} />
+             <TextInput
+               placeholder="Search..."
+               placeholderTextColor={T.text3}
+               style={[styles.searchInput, { color: T.text }]}
+               value={searchQuery}
+               onChangeText={setSearchQuery}
+             />
+           </View>
+        </View>
         {loading ? (
           <View style={{ paddingVertical: 100, alignItems: 'center' }}>
             <ActivityIndicator color={T.primary} size="large" />
@@ -354,5 +384,61 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  heroSection: {
+    padding: 24,
+    borderRadius: 24,
+    marginBottom: 24,
+    borderWidth: 1,
+    gap: 20,
+  },
+  heroMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 20,
+  },
+  heroText: {
+    flex: 1,
+    gap: 4,
+  },
+  heroLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  heroValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  metaRowInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  heroMeta: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  heroChart: {
+    marginTop: 8,
+    gap: 12,
+  },
+  chartHeader: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    paddingHorizontal: 4,
+  },
+  sectionTitleLabel: {
+    fontSize: 18,
+    fontWeight: '800',
   },
 });
