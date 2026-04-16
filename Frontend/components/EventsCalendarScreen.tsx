@@ -10,6 +10,7 @@ import {
   Modal,
   PanResponder,
   Platform,
+  LayoutAnimation,
   Pressable,
   RefreshControl,
   Image,
@@ -19,6 +20,21 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { 
+  GestureHandlerRootView, 
+  PanGestureHandler, 
+  State,
+  Gesture,
+  GestureDetector
+} from 'react-native-gesture-handler';
+import AnimatedReanimated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withSpring, 
+  runOnJS,
+  interpolate,
+  Extrapolate
+} from 'react-native-reanimated';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import * as Haptics from 'expo-haptics';
@@ -861,11 +877,13 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const hasSelectedCategory = selectedCategories.size > 0;
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   const [detailEvent, setDetailEvent] = useState<TAMUEvent | null>(null);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [swipeIndex, setSwipeIndex] = useState(0);
   const [categoriesExpanded, setCategoriesExpanded] = useState(false);
   const [profilePreferences, setProfilePreferences] = useState<UserEventPreferences>(DEFAULT_USER_EVENT_PREFERENCES);
+  const [displayMode, setDisplayMode] = useState<'expanded' | 'compact'>('expanded');
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const {
@@ -880,7 +898,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     saveEvent,
     unsaveEvent,
     dislikedEventIds: persistedDislikedEventIds,
-    dislikeEvent,
+    dislikeEvent: storeDislikeEvent,
     removeIdsFromDisliked,
     clearDisliked,
     receivedInvites: persistedReceivedInvites,
@@ -889,10 +907,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     deselectedCategories,
     toggleCategoryDeselection,
   } = useEventStore();
-  const scheduledEvents = persistedScheduledEvents;
-  const savedEventIds = persistedSavedEventIds;
-  const dislikedEventIds = persistedDislikedEventIds;
-  const receivedInvites = persistedReceivedInvites;
+  const scheduledEvents = persistedScheduledEvents || [];
+  const savedEventIds = persistedSavedEventIds || [];
+  const dislikedEventIds = persistedDislikedEventIds || [];
+  const receivedInvites = persistedReceivedInvites || [];
 
   const pan = useRef(new Animated.ValueXY()).current;
   const opacity = useRef(new Animated.Value(1)).current;
@@ -1183,6 +1201,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     }
 
     next = next.filter((event) => !dislikedEventIds.includes(String(event.id)));
+    next = next.filter((event) => !scheduledEvents.some((s) => String(s.id) === String(event.id)));
 
     if (isForYouSelected) {
       next = [...next].sort((a, b) => {
@@ -1237,9 +1256,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     selectedMajor,
     socialMode,
     standardSelectedCategories,
+    scheduledEvents,
   ]);
 
-  const discoverEvents = useMemo(() => filteredUpcomingEvents.slice(0, 8), [filteredUpcomingEvents]);
+  const discoverEvents = useMemo(() => filteredUpcomingEvents, [filteredUpcomingEvents]);
   const collapsedCategories = useMemo(() => ALL_CATEGORIES.slice(0, 5), []);
 
   const swipeDeck = useMemo(() => {
@@ -1299,6 +1319,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const handleSchedule = useCallback(
     async (event: TAMUEvent) => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       if (!user) {
         promptGuestLogin(
           navigation,
@@ -1325,7 +1346,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             console.warn('[Events] RSVP remove error:', error);
           }
         }
-        triggerRewardToast('Removed from your plans', 'No problem. You can always add it back later.');
         return;
       }
       const scheduled: ScheduledEvent = {
@@ -1384,8 +1404,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           console.warn('[Events] RSVP error:', error);
         }
       }
-      triggerRewardToast('Added to your schedule', 'Nice. We will keep this one easy to come back to.');
-      Alert.alert('Successfully RSVPed', `${event.title} is now in your schedule.`);
     },
     [activeTargetName, advanceStep, navigation, removeScheduledEvent, scheduleEvent, scheduledEvents, triggerRewardToast, user],
   );
@@ -1439,11 +1457,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       if (savedEventIds.includes(id)) {
         unsaveEvent(id);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-        triggerRewardToast('Saved event removed', 'Your shortlist just got a little cleaner.');
       } else {
         saveEvent(id);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
-        triggerRewardToast('Saved for later', 'Good pick. This one is waiting for you.');
       }
     },
     [navigation, saveEvent, savedEventIds, triggerRewardToast, unsaveEvent, user],
@@ -1577,6 +1593,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     [clearDisliked, dislikedEventIds, personalizedEvents, removeIdsFromDisliked],
   );
 
+  const dislikeEvent = useCallback(
+    (eventId: string) => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      storeDislikeEvent(eventId);
+    },
+    [storeDislikeEvent],
+  );
+
   const renderHeader = (title: string) => (
     <View style={s.headerBlock}>
       <View style={s.headerTopRow}>
@@ -1584,48 +1608,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           <Text style={s.pageTitle}>{title}</Text>
         </View>
         <Pressable style={s.headerIconButton} onPress={() => setSettingsVisible(true)}>
-          <Funnel size={24} color={COLORS.textPrimary} strokeWidth={2.2} />
+          <Filter size={24} color={COLORS.textPrimary} strokeWidth={2.4} />
         </Pressable>
-      </View>
-
-      <View style={s.modeTabs}>
-        {([
-          { id: 'discover', label: 'Discover' },
-          { id: 'list', label: 'List' },
-        ] as const).map((tab) => {
-          const active = view === tab.id;
-          const tabItem = (
-            <Pressable
-              key={tab.id}
-              style={[s.modeTab, active && s.modeTabActive]}
-              onPress={() => {
-                changeView(tab.id);
-                if (tab.id === 'list' && activeTargetName === 'switch-to-list') {
-                  advanceStep('switch-to-list');
-                }
-              }}
-            >
-              <Text style={[s.modeTabText, active && s.modeTabTextActive]}>{tab.label}</Text>
-              {active ? <View style={s.modeTabUnderline} /> : null}
-            </Pressable>
-          );
-
-          if (tab.id === 'list') {
-            return (
-              <TourTarget
-                key={tab.id}
-                name="switch-to-list"
-                assistAction={() => {
-                  changeView('list');
-                  setTimeout(() => advanceStep('switch-to-list'), 250);
-                }}
-              >
-                {tabItem}
-              </TourTarget>
-            );
-          }
-          return tabItem;
-        })}
       </View>
     </View>
   );
@@ -1633,11 +1617,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   return (
     <View style={s.container}>
       <WallpaperWrapper>
-        <EventRewardToast
-          visible={!!rewardToast}
-          title={rewardToast?.title || ''}
-          body={rewardToast?.body || ''}
-        />
+        <GestureHandlerRootView style={{ flex: 1 }}>
         {view === 'discover' && (
           <>
             {renderHeader('Events')}
@@ -1650,13 +1630,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             </View>
           ) : (
             <View style={s.discoverLayout}>
-              <ScrollView
-                style={s.discoverScroll}
-                contentContainerStyle={s.scrollContent}
-                showsVerticalScrollIndicator={false}
-                nestedScrollEnabled
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
-              >
+              <View style={s.discoverHeaderSection}>
 
 
                 <View style={s.categoryWrap}>
@@ -1689,22 +1663,88 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                           <Text style={s.categoryToggleText}>More</Text>
                         </Pressable>
                       </View>
-                      <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={s.categoryCollapsedRow}
-                      >
-                        {collapsedCategories.map((category) => (
-                          <CategoryChip
-                            key={category}
-                            category={category}
-                            count={categoryCounts[category] || 0}
-                            active={selectedCategories.has(category)}
-                            dimmed={hasSelectedCategory && !selectedCategories.has(category)}
-                            onPress={() => toggleCategory(category)}
-                          />
-                        ))}
-                      </ScrollView>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 20 }}>
+                        {!isSearching ? (
+                          <Pressable 
+                            onPress={() => setIsSearching(true)}
+                            style={{ 
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              paddingHorizontal: 12,
+                              paddingVertical: 10,
+                              marginRight: 6,
+                              borderRadius: 12,
+                              backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+                              gap: 6,
+                            }}
+                          >
+                            <Search size={18} color={COLORS.textSecondary} />
+                            <Text style={{ color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' }}>Search</Text>
+                          </Pressable>
+                        ) : (
+                          <View style={{ 
+                            flex: 1, 
+                            flexDirection: 'row', 
+                            alignItems: 'center', 
+                            backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+                            borderRadius: 12,
+                            paddingHorizontal: 12,
+                            marginRight: 20,
+                            height: 40
+                          }}>
+                            <Search size={16} color={COLORS.textTertiary} />
+                            <TextInput
+                              autoFocus
+                              placeholder="Search events..."
+                              placeholderTextColor={COLORS.textTertiary}
+                              value={searchQuery}
+                              onChangeText={setSearchQuery}
+                              style={{ 
+                                flex: 1, 
+                                marginLeft: 8, 
+                                color: COLORS.textPrimary,
+                                fontSize: 14,
+                                fontWeight: '600',
+                                padding: 0,
+                              }}
+                            />
+                            {searchQuery.length > 0 && (
+                              <Pressable onPress={() => setSearchQuery('')} style={{ padding: 4 }}>
+                                <XIcon size={16} color={COLORS.textTertiary} />
+                              </Pressable>
+                            )}
+                            <Pressable 
+                              onPress={() => {
+                                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                setIsSearching(false);
+                                setSearchQuery('');
+                              }}
+                              style={{ marginLeft: 10 }}
+                            >
+                              <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 13 }}>Cancel</Text>
+                            </Pressable>
+                          </View>
+                        )}
+
+                        {!isSearching && (
+                          <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={[s.categoryCollapsedRow, { paddingHorizontal: 0, paddingLeft: 0 }]}
+                          >
+                            {collapsedCategories.map((category) => (
+                              <CategoryChip
+                                key={category}
+                                category={category}
+                                count={categoryCounts[category] || 0}
+                                active={selectedCategories.has(category)}
+                                dimmed={hasSelectedCategory && !selectedCategories.has(category)}
+                                onPress={() => toggleCategory(category)}
+                              />
+                            ))}
+                          </ScrollView>
+                        )}
+                      </View>
                     </>
                   )}
                 </View>
@@ -1732,38 +1772,48 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   ) : null}
                 </View>
 
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  nestedScrollEnabled
-                  directionalLockEnabled
-                  contentContainerStyle={s.heroRail}
-                  snapToOffsets={discoverEvents.map((_, index) => index * HERO_CARD_SNAP_INTERVAL)}
-                  snapToAlignment="start"
-                  disableIntervalMomentum
-                  decelerationRate="fast"
-                >
-                  {discoverEvents.map((event, i) => {
-                    const card = (
-                      <StaggeredReveal key={String(event.id)} index={i}>
-                        <View
-                          style={{ marginRight: i === discoverEvents.length - 1 ? 0 : HERO_CARD_GAP }}
-                        >
-                          <HeroEventCard
-                            event={event}
-
-                            scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
-                            onSchedule={() => handleSchedule(event)}
-                            onPress={() => setDetailEvent(event)}
-                            onMap={() => handleMapOpen(event)}
+                <FlatList
+                  data={discoverEvents || []}
+                  keyExtractor={(item) => String(item?.id || Math.random())}
+                  renderItem={({ item, index }) => {
+                    if (!item) return null;
+                    return displayMode === 'expanded' ? (
+                      <View style={{ height: HERO_CARD_HEIGHT + 32, justifyContent: 'center' }}>
+                        <StaggeredReveal index={index}>
+                          <SwipeableHeroCard
+                            event={item}
+                            scheduled={(scheduledEvents || []).some((scheduled) => String(scheduled.id) === String(item.id))}
+                            onSchedule={() => handleSchedule(item)}
+                            onPress={() => setDetailEvent(item)}
+                            onMap={() => handleMapOpen(item)}
+                            onDislike={() => dislikeEvent(String(item.id))}
                           />
-                        </View>
-                      </StaggeredReveal>
+                        </StaggeredReveal>
+                      </View>
+                    ) : (
+                      <View style={{ paddingHorizontal: 20 }}>
+                        <StaggeredReveal index={index}>
+                          <ListEventRow
+                            event={item}
+                            isGuest={isGuest}
+                            saved={(savedEventIds || []).includes(String(item.id))}
+                            scheduled={(scheduledEvents || []).some((scheduled) => String(scheduled.id) === String(item.id))}
+                            onPress={() => setDetailEvent(item)}
+                            onDelete={() => dislikeEvent(String(item.id))}
+                            onShare={() => handleShare(item)}
+                            onSchedule={() => handleSchedule(item)}
+                          />
+                        </StaggeredReveal>
+                      </View>
                     );
-                    return card;
-                  })}
-                </ScrollView>
-              </ScrollView>
+                  }}
+                  scrollEnabled={!loading}
+                  contentContainerStyle={{ paddingBottom: 120 }}
+                  showsVerticalScrollIndicator={false}
+                  removeClippedSubviews={Platform.OS === 'android'}
+                  initialNumToRender={5}
+                />
+              </View>
             </View>
           )}
         </>
@@ -1970,6 +2020,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         dislikedEventIds={dislikedEventIds}
         events={personalizedEvents}
         onRestoreCategory={handleRestoreCategory}
+        scheduledEvents={scheduledEvents}
+        onPress={(ev) => setDetailEvent(ev)}
+        onSchedule={handleSchedule}
+        displayMode={displayMode}
+        setDisplayMode={setDisplayMode}
       />
 
       <DetailModal
@@ -1987,6 +2042,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         scheduled={detailEvent ? scheduledEvents.some((scheduled) => String(scheduled.id) === String(detailEvent.id)) : false}
         isGuest={isGuest}
       />
+      </GestureHandlerRootView>
       </WallpaperWrapper>
     </View>
   );
@@ -2033,6 +2089,117 @@ function CategoryChip({
         {count}
       </Text>
     </Pressable>
+  );
+}
+
+function SwipeableHeroCard({
+  event,
+  scheduled,
+  onSchedule,
+  onPress,
+  onMap,
+  onDislike,
+}: {
+  event: TAMUEvent;
+  scheduled: boolean;
+  onSchedule: () => void;
+  onPress: () => void;
+  onMap: () => void;
+  onDislike: () => void;
+}) {
+  const translateX = useSharedValue(0);
+  const opacity = useSharedValue(1);
+  const isDark = useAppShellStore(s => s.theme === 'dark');
+
+  const panGesture = Gesture.Pan()
+    .onUpdate((e) => {
+      translateX.value = e.translationX;
+    })
+    .onEnd((e) => {
+      if (e.translationX > 100) {
+        runOnJS(LayoutAnimation.configureNext)(LayoutAnimation.Presets.easeInEaseOut);
+        translateX.value = withSpring(SCREEN_WIDTH);
+        opacity.value = withSpring(0);
+        runOnJS(onSchedule)();
+      } else if (e.translationX < -100) {
+        runOnJS(LayoutAnimation.configureNext)(LayoutAnimation.Presets.easeInEaseOut);
+        translateX.value = withSpring(-SCREEN_WIDTH);
+        opacity.value = withSpring(0);
+        runOnJS(onDislike)();
+      } else {
+        translateX.value = withSpring(0);
+      }
+    });
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+    opacity: opacity.value,
+  }));
+
+  const leftIndicatorStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(translateX.value, [20, 80], [0, 1], Extrapolate.CLAMP),
+    transform: [{ scale: interpolate(translateX.value, [20, 80], [0.6, 1], Extrapolate.CLAMP) }],
+  }));
+
+  const rightIndicatorStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(translateX.value, [-80, -20], [1, 0], Extrapolate.CLAMP),
+    transform: [{ scale: interpolate(translateX.value, [-80, -20], [1, 0.6], Extrapolate.CLAMP) }],
+  }));
+
+  return (
+    <GestureDetector gesture={panGesture}>
+      <AnimatedReanimated.View style={[animatedStyle, { position: 'relative', width: HERO_CARD_WIDTH, alignSelf: 'center' }]}>
+        <AnimatedReanimated.View 
+          style={[
+            {
+              position: 'absolute',
+              left: -60,
+              top: '50%',
+              marginTop: -30,
+              width: 60,
+              height: 60,
+              borderRadius: 30,
+              backgroundColor: '#3CCB6C',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10,
+            },
+            leftIndicatorStyle
+          ]}
+        >
+          <Check size={32} color="#FFFFFF" strokeWidth={3} />
+        </AnimatedReanimated.View>
+
+        <AnimatedReanimated.View 
+          style={[
+            {
+              position: 'absolute',
+              right: -60,
+              top: '50%',
+              marginTop: -30,
+              width: 60,
+              height: 60,
+              borderRadius: 30,
+              backgroundColor: '#FF4D6D',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10,
+            },
+            rightIndicatorStyle
+          ]}
+        >
+          <XIcon size={32} color="#FFFFFF" strokeWidth={3} />
+        </AnimatedReanimated.View>
+
+        <HeroEventCard
+          event={event}
+          scheduled={scheduled}
+          onSchedule={onSchedule}
+          onPress={onPress}
+          onMap={onMap}
+        />
+      </AnimatedReanimated.View>
+    </GestureDetector>
   );
 }
 
@@ -2288,6 +2455,11 @@ function SettingsModal({
   dislikedEventIds,
   events,
   onRestoreCategory,
+  displayMode,
+  setDisplayMode,
+  scheduledEvents,
+  onPress,
+  onSchedule,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -2301,8 +2473,14 @@ function SettingsModal({
   dislikedEventIds: string[];
   events: TAMUEvent[];
   onRestoreCategory: (category?: ExploreCategory) => void;
+  displayMode: 'expanded' | 'compact';
+  setDisplayMode: (mode: 'expanded' | 'compact') => void;
+  scheduledEvents: TAMUEvent[];
+  onPress: (event: TAMUEvent) => void;
+  onSchedule: (event: TAMUEvent) => void;
 }) {
-  const { COLORS } = useTheme();
+  const { COLORS, theme } = useTheme();
+  const isDark = theme === 'dark';
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -2314,8 +2492,99 @@ function SettingsModal({
           ]}
           onPress={() => { }}
         >
+          <Text style={[stylesStatic.modalTitle, { color: COLORS.textPrimary }]}>Filters</Text>
           <ScrollView showsVerticalScrollIndicator={false}>
-            <Text style={[stylesStatic.modalTitle, { color: COLORS.textPrimary }]}>Filters</Text>
+            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 4 }]}>
+              Display Layout
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+              {(['expanded', 'compact'] as const).map((mode) => (
+                <Pressable
+                  key={mode}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setDisplayMode(mode);
+                  }}
+                  style={[
+                    {
+                      flex: 1,
+                      paddingVertical: 12,
+                      borderRadius: 16,
+                      borderWidth: 1.5,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: displayMode === mode ? COLORS.primary : 'transparent',
+                      borderColor: displayMode === mode ? COLORS.primary : COLORS.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: '800',
+                      color: displayMode === mode ? '#FFFFFF' : COLORS.textSecondary,
+                    }}
+                  >
+                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {(scheduledEvents?.length || 0) > 0 && (
+              <>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
+                  <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 0 }]}>
+                    Saved Events ({scheduledEvents?.length || 0})
+                  </Text>
+                </View>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false} 
+                  style={{ marginHorizontal: -20, paddingHorizontal: 20 }}
+                  contentContainerStyle={{ gap: 12, paddingBottom: 12 }}
+                >
+                  {(scheduledEvents || []).map((event) => (
+                    <Pressable
+                      key={String(event?.id)}
+                      onPress={() => {
+                        onClose();
+                        onPress(event);
+                      }}
+                      style={{
+                        width: 240,
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
+                        borderRadius: 18,
+                        padding: 14,
+                        gap: 8,
+                      }}
+                    >
+                      <Text style={{ color: COLORS.textPrimary, fontWeight: '800', fontSize: 13 }} numberOfLines={2}>
+                        {event?.title}
+                      </Text>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text style={{ color: COLORS.textSecondary, fontSize: 11, fontWeight: '600' }}>
+                          {formatDate(event?.date_ts)}
+                        </Text>
+                        <Pressable 
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            onSchedule(event);
+                          }}
+                          style={{
+                            padding: 6,
+                            borderRadius: 10,
+                            backgroundColor: 'rgba(255,77,109,0.1)',
+                          }}
+                        >
+                          <Trash2 size={14} color="#FF4D6D" />
+                        </Pressable>
+                      </View>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </>
+            )}
 
             {selectedCategories.has('Social') ? (
               <>
@@ -2397,9 +2666,9 @@ function SettingsModal({
                 Restore all hidden events
               </Text>
             </Pressable>
-            {ALL_CATEGORIES.map((category) => {
-              const count = dislikedEventIds.filter((id) => {
-                const event = events.find((candidate) => String(candidate.id) === id);
+            {(ALL_CATEGORIES || []).map((category) => {
+              const count = (dislikedEventIds || []).filter((id) => {
+                const event = (events || []).find((candidate) => String(candidate?.id) === id);
                 return event && classifyCategory(event) === category;
               }).length;
               if (!count) return null;
@@ -2853,6 +3122,8 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+      marginBottom: 12,
+      paddingHorizontal: 20,
     },
     categorySectionLabel: {
       color: COLORS.textSecondary,
@@ -2867,17 +3138,20 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       fontWeight: '900',
     },
     categoryCollapsedRow: {
+      paddingHorizontal: 20,
+      paddingBottom: 8,
       gap: 10,
-      paddingRight: 10,
     },
     categoryExpandedGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: 10,
+      paddingHorizontal: 20,
     },
     inlineControls: {
       marginTop: 10,
       gap: 10,
+      paddingHorizontal: 20,
     },
     inlineControl: {
       borderRadius: 16,

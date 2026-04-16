@@ -122,6 +122,7 @@ import {
   getZoneDensity,
   mergeCampusLocations,
   shouldHideFoodCourtLocationInBrowse,
+  normalizeBuildingKey,
 } from "./places/campusData";
 import {
   getStatusColor,
@@ -418,6 +419,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     useState<WalkingRoute | null>(null);
   const [isTodayExpanded, setIsTodayExpanded] = useState(false);
   const [hasManualMapMovement, setHasManualMapMovement] = useState(false);
+  const [isCompactDetail, setIsCompactDetail] = useState(false);
   const timelineHeight = useSharedValue(0);
 
   // ── Meal Tracking state ───────────────────────────────────
@@ -914,6 +916,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setIsSearchExpanded(false);
       setSearchQuery("");
       setShowSearchResults(false);
+      setIsCompactDetail(false);
 
       if (
         activeTargetName === "rec-center-item" &&
@@ -975,7 +978,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   }, [selectedId]);
 
   const markerLocations = useMemo(() => {
-    if (activeLayer === "Pulse") return [];
+    if (activeLayer === "Pulse") return selectedLoc ? [selectedLoc] : [];
     if (activeLayer === "Heatmap" || activeLayer === "Bus")
       return selectedLoc ? [selectedLoc] : [];
 
@@ -1438,9 +1441,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (activeLayer !== "Pulse") return;
     if (!hasSeenPulseLayer.current) {
       hasSeenPulseLayer.current = true;
-      return;
+    } else {
+      fetchPulseHotspots({ force: true });
     }
-    fetchPulseHotspots({ force: true });
+    setIsCompactDetail(false);
   }, [activeLayer, fetchPulseHotspots]);
 
   useFocusEffect(
@@ -1826,21 +1830,33 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setPendingInitialLocation(
       typeof nextLocation === "string" ? nextLocation : null,
     );
+    if (nextLocation) {
+        setIsCompactDetail(true);
+    }
   }, [
     route.params?.focusToken,
     route.params?.initialLayer,
     route.params?.initialLocation,
+    route.params?.isCompact,
   ]);
 
   useEffect(() => {
     if (!pendingInitialLocation) return;
     const targetName = getCanonicalLocationName(pendingInitialLocation);
-    const match = allMapLocations.find(
-      (loc) => getCanonicalLocationName(loc.location) === targetName,
-    );
+    const targetKey = normalizeBuildingKey(pendingInitialLocation);
+    
+    const match = allMapLocations.find((loc) => {
+      const locName = getCanonicalLocationName(loc.location);
+      if (locName === targetName) return true;
+      if (normalizeBuildingKey(loc.location) === targetKey) return true;
+      if (loc.shortName && normalizeBuildingKey(loc.shortName) === targetKey) return true;
+      if (Array.isArray(loc.aliases) && loc.aliases.some(a => normalizeBuildingKey(a) === targetKey)) return true;
+      return false;
+    });
     if (!match) return;
     setSelectedId(getLocationSelectionId(match));
     setPendingInitialLocation(null);
+    suppressNextOverviewFitRef.current = true;
   }, [allMapLocations, pendingInitialLocation]);
 
   useEffect(() => {
@@ -1853,6 +1869,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
     setSelectedHotspotId(hotspotMatch.id);
     setPendingInitialLocation(null);
+    suppressNextOverviewFitRef.current = true;
 
     if (!mapRef.current) return;
     mapRef.current.animateToRegion(
@@ -2258,6 +2275,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
                       />
                       <View style={styles.pulseMarkerHighlight} />
                     </View>
+                    {hotspot.commentCount > 0 && (
+                      <View style={[styles.pulseCommentBadge, { backgroundColor: hotspot.pulseColor }]}>
+                        <MessageCircle size={10} color="#FFFFFF" strokeWidth={3} />
+                        <Text style={styles.pulseCommentBadgeText}>{hotspot.commentCount}</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
               </MapMarker>
@@ -2844,6 +2867,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         onAddMeal={(item) => selectedLoc && addMealEntry(item, selectedLoc.location, getDiningMealPeriodForLocation(selectedLoc.location))}
         onRemoveMeal={(item) => selectedLoc && removeMealEntry(item, selectedLoc.location, getDiningMealPeriodForLocation(selectedLoc.location))}
         isSyncingTracker={isSyncingTracker}
+        isCompact={isCompactDetail}
       />
 
       {/* Module editor modal */}

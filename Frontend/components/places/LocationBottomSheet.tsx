@@ -255,6 +255,7 @@ interface LocationBottomSheetProps {
   onAddMeal?: (item: any) => void;
   onRemoveMeal?: (item: any) => void;
   isSyncingTracker?: boolean;
+  isCompact?: boolean;
 }
 
 export function LocationBottomSheet({
@@ -288,6 +289,7 @@ export function LocationBottomSheet({
   onAddMeal,
   onRemoveMeal,
   isSyncingTracker = false,
+  isCompact = false,
 }: LocationBottomSheetProps) {
   const { user } = useUser();
   const { advanceStep, activeTargetName } = useTour();
@@ -345,15 +347,16 @@ export function LocationBottomSheet({
       setDiningDetailTab("menus");
     }
     if (selectedId) {
-      animateSheet(
-        selectedLoc && isDiningHallMenuLocation(selectedLoc.location) && isPrimaryDiningHallSelection
-          ? SHEET_DINING_HALL_SNAP
-          : SHEET_MID_SNAP,
-      );
+      const snap = isCompact 
+        ? SHEET_PEEK_SNAP 
+        : (selectedLoc && isDiningHallMenuLocation(selectedLoc.location) && isPrimaryDiningHallSelection
+            ? SHEET_DINING_HALL_SNAP
+            : SHEET_MID_SNAP);
+      animateSheet(snap);
     } else {
       animateSheet(SHEET_HIDDEN_SNAP);
     }
-  }, [selectedId, animateSheet, activeTargetName, foodCourtVenues.length, selectedLoc?.location, selectedLoc?.type]);
+  }, [selectedId, animateSheet, activeTargetName, foodCourtVenues.length, selectedLoc?.location, selectedLoc?.type, isCompact]);
 
   const isDiningHallCard =
     !!selectedLoc &&
@@ -822,80 +825,59 @@ export function LocationBottomSheet({
                     </TouchableOpacity>
                   )}
                 </View>
-
-
-                {!isPeekSheet ? (
-                  <View style={styles.quickActionRow}>
+                
+                {(isCompact || !isPeekSheet) && (
+                  <View style={[styles.quickActionRow, isCompact && { marginTop: 12 }]}>
                     <TouchableOpacity
                       style={styles.quickActionPill}
                       onPress={handleNavigatePress}
                     >
-                      <Navigation size={14} color={COLORS.textPrimary} />
+                      <Navigation size={14} color={COLORS.textPrimary} strokeWidth={3} />
                       <Text style={styles.quickActionText}>Directions</Text>
                     </TouchableOpacity>
-
-                    {selectedLoc.type === "Rec" ? (
-                      <TouchableOpacity
-                        style={styles.quickActionPill}
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          openFacilityCounts(selectedLoc);
-                        }}
-                      >
-                        <Activity size={14} color={COLORS.textPrimary} />
-                        <Text style={styles.quickActionText}>Live Counts</Text>
-                      </TouchableOpacity>
-                    ) : null}
-
-                    {externalLink && externalLink.label !== "Open in Maps" ? (
-                      <TouchableOpacity
-                        style={styles.quickActionPill}
-                        onPress={handleExternalLinkPress}
-                      >
-                        <ExternalLink size={14} color={COLORS.textPrimary} />
-                        <Text style={styles.quickActionText}>
-                          {externalLink.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ) : null}
-
-                    {/* Menu button removed for dining halls per user request */}
-
-                    {selectedLoc.classMeetings?.length ? (
-                      <TouchableOpacity
-                        style={styles.quickActionPill}
-                        onPress={openScheduleList}
-                      >
-                        <Calendar size={14} color={COLORS.textPrimary} />
-                        <Text style={styles.quickActionText}>Today</Text>
-                      </TouchableOpacity>
-                    ) : null}
 
                     {contextLink ? (
                       <TouchableOpacity
                         style={styles.quickActionPill}
                         onPress={handleContextLinkPress}
                       >
-                        <ExternalLink size={14} color={COLORS.textPrimary} />
+                        <ExternalLink size={14} color={COLORS.textPrimary} strokeWidth={3} />
                         <Text style={styles.quickActionText}>
                           {contextLink.label}
                         </Text>
                       </TouchableOpacity>
                     ) : null}
 
-                    {officialFacilityUrl && officialFacilityUrl !== externalLink?.url ? (
-                      <TouchableOpacity
-                        style={styles.quickActionPill}
-                        onPress={() =>
-                          Linking.openURL(officialFacilityUrl).catch(() => {})
-                        }
-                      >
-                        <ExternalLink size={14} color={COLORS.textPrimary} />
-                        <Text style={styles.quickActionText}>Facility Page</Text>
-                      </TouchableOpacity>
-                    ) : null}
+                    {!isCompact && (
+                      <>
+                        {selectedLoc.type === "Rec" && (
+                          <TouchableOpacity
+                            style={styles.quickActionPill}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              openFacilityCounts(selectedLoc);
+                            }}
+                          >
+                            <Activity size={14} color={COLORS.textPrimary} />
+                            <Text style={styles.quickActionText}>Live Counts</Text>
+                          </TouchableOpacity>
+                        )}
+
+                        {externalLink && externalLink.label !== "Open in Maps" && (
+                          <TouchableOpacity
+                            style={styles.quickActionPill}
+                            onPress={handleExternalLinkPress}
+                          >
+                            <ExternalLink size={14} color={COLORS.textPrimary} />
+                            <Text style={styles.quickActionText}>
+                              {externalLink.label}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </>
+                    )}
                   </View>
-                ) : null}
+                )}
               </View>
             </View>
 
