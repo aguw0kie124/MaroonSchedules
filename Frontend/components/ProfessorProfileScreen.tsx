@@ -6,6 +6,7 @@ import {
   ScrollView,
   ActivityIndicator,
   FlatList,
+  Pressable,
 } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import { MapPin, Star, ThumbsUp, MessageSquare, AlertCircle } from 'lucide-react-native';
@@ -46,6 +47,20 @@ export function ProfessorProfileScreen() {
 
   const [details, setDetails] = useState<ProfessorDetails | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
+
+  const coursesList = React.useMemo(() => {
+    if (!details?.recent_reviews) return [];
+    const set = new Set<string>();
+    details.recent_reviews.forEach((r) => set.add(r.course_code || 'General'));
+    return Array.from(set).sort();
+  }, [details]);
+
+  const filteredReviews = React.useMemo(() => {
+    if (!details?.recent_reviews) return [];
+    if (!selectedCourse) return details.recent_reviews;
+    return details.recent_reviews.filter((r) => (r.course_code || 'General') === selectedCourse);
+  }, [details, selectedCourse]);
 
   useEffect(() => {
     fetchDetails();
@@ -209,6 +224,33 @@ export function ProfessorProfileScreen() {
       marginTop: 8,
       textAlign: 'right',
     },
+    filterScroll: {
+      marginBottom: 16,
+    },
+    filterContent: {
+      gap: 8,
+      paddingHorizontal: 4,
+    },
+    filterPill: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+      backgroundColor: COLORS.surface,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    filterPillActive: {
+      backgroundColor: COLORS.primary,
+      borderColor: COLORS.primary,
+    },
+    filterPillText: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: COLORS.textSecondary,
+    },
+    filterPillTextActive: {
+      color: '#fff',
+    },
   });
 
   if (loading) {
@@ -288,9 +330,29 @@ export function ProfessorProfileScreen() {
 
         <Text style={styles.sectionTitle}>Recent Reviews</Text>
         
-        {details.recent_reviews?.length > 0 ? (
-          details.recent_reviews.map((review) => (
-            <View key={review.id} style={styles.reviewCard}>
+        {coursesList.length > 1 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContent}>
+            <Pressable
+              style={[styles.filterPill, !selectedCourse && styles.filterPillActive]}
+              onPress={() => setSelectedCourse(null)}
+            >
+              <Text style={[styles.filterPillText, !selectedCourse && styles.filterPillTextActive]}>All Courses</Text>
+            </Pressable>
+            {coursesList.map(c => (
+              <Pressable
+                key={c}
+                style={[styles.filterPill, selectedCourse === c && styles.filterPillActive]}
+                onPress={() => setSelectedCourse(c)}
+              >
+                <Text style={[styles.filterPillText, selectedCourse === c && styles.filterPillTextActive]}>{c}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
+        
+        {filteredReviews?.length > 0 ? (
+          filteredReviews.map((review, idx) => (
+            <View key={review.id || `rev-${idx}`} style={styles.reviewCard}>
               <View style={styles.reviewHeader}>
                 <View style={styles.courseBadge}>
                   <Text style={styles.courseText}>{review.course_code || 'General'}</Text>
