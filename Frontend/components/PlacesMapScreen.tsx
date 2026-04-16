@@ -100,6 +100,7 @@ import { TodayTimeline } from "./places/TodayTimeline";
 import { useLocationData } from "./places/useLocationData";
 import { usePlacesSelection } from "./places/usePlacesSelection";
 import { useScheduleMap } from "./places/useScheduleMap";
+import { useBusTransit } from "./places/useBusTransit";
 
 // ── Shared data / utilities ───────────────────────────────────
 import { TourProvider, TourTarget, useTour } from "./onboarding/TourProvider";
@@ -448,61 +449,43 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // Onboarding: Fallback idle timers removed to enforce distinct user actions.
 
-  // ── Bus state ─────────────────────────────────────────────
-  const [busRoutes, setBusRoutes] = useState<any[]>([]);
-  const [busVehicles, setBusVehicles] = useState<any[]>([]);
-  const [busStops, setBusStops] = useState<any[]>([]);
-  const [selectedBusRouteId, setSelectedBusRouteId] = useState<string | null>(
-    ALL_BUS_ROUTES_KEY,
-  );
-  const [temporaryBusFocusRouteId, setTemporaryBusFocusRouteId] = useState<string | null>(null);
-  const [routePatterns, setRoutePatterns] = useState<any[]>([]);
-  const [routePaths, setRoutePaths] = useState<any[]>([]);
-  const [allRoutePatternsById, setAllRoutePatternsById] = useState<
-    Record<string, { points: any[]; stops: any[]; paths?: any[] }>
-  >({});
-  const [isFetchingBus, setIsFetchingBus] = useState(false);
-  const [isRouteDropdownOpen, setIsRouteDropdownOpen] = useState(false);
-  const [selectedStop, setSelectedStop] = useState<any | null>(null);
-  const [selectedBus, setSelectedBus] = useState<any | null>(null);
-  const [selectedDirection, setSelectedDirection] = useState<string>("All");
-  const [routeTimetableEntries, setRouteTimetableEntries] = useState<any[]>([]);
+  // ── Unified Bus Transit Hook ──────────────────────────────
+  const {
+    busRoutes,
+    busVehicles,
+    busStops,
+    selectedBusRouteId,
+    setSelectedBusRouteId,
+    selectedRoute,
+    busRouteOptions,
+    isRouteDropdownOpen,
+    setIsRouteDropdownOpen,
+    selectedDirection,
+    setSelectedDirection,
+    selectedStop,
+    setSelectedStop,
+    selectedBus,
+    setSelectedBus,
+    nearestBusInfo,
+    setNearestBusInfo,
+    isAllBusRoutesSelected,
+    routePatterns,
+    routePaths,
+    allRoutePatternsById,
+    temporaryBusFocusRouteId,
+    setTemporaryBusFocusRouteId,
+    handleSelectBusRoute,
+    resolveNearestBusForStop,
+    stopTimetable,
+    allRouteBoards,
+    filteredBusRoutes,
+    isFetchingBus,
+    setIsFetchingBus,
+    getNearbyTransitInsight,
+    availableDirections
+  } = useBusTransit(activeLayer, mapRef);
 
-  const isAllBusRoutesSelected =
-    !selectedBusRouteId ||
-    selectedBusRouteId === ALL_BUS_ROUTES_KEY ||
-    selectedBusRouteId === "all";
-
-  const availableDirections = useMemo(() => {
-    if (isAllBusRoutesSelected) return ["All"];
-    const dirs = new Set<string>();
-    busVehicles.forEach((bus) => {
-      const dir = bus.direction || bus.DirectionName;
-      if (dir && typeof dir === "string") dirs.add(dir.trim());
-    });
-    // Add any missing directions from the stops just in case vehicles are offline
-    busStops.forEach((stop) => {
-      const dir = stop.DirectionName || stop.direction;
-      if (dir && typeof dir === "string") dirs.add(dir.trim());
-    });
-    return Array.from(dirs).filter(Boolean);
-  }, [busVehicles, busStops, isAllBusRoutesSelected]);
-
-  useEffect(() => {
-    if (!isAllBusRoutesSelected && availableDirections.length > 0) {
-      if (
-        !availableDirections.includes(selectedDirection) ||
-        selectedDirection === "All"
-      ) {
-        setSelectedDirection(availableDirections[0]);
-      }
-    } else {
-      setSelectedDirection("All");
-    }
-  }, [availableDirections, isAllBusRoutesSelected]);
-
-  const [nearestBusInfo, setNearestBusInfo] = useState<string | null>(null);
-  const busPollInterval = useRef<any>(null);
+  const nearbyTransitInsight = useMemo(() => getNearbyTransitInsight(userCoord), [getNearbyTransitInsight, userCoord]);
 
   useEffect(() => {
     setIsListDroppedDown(false);
@@ -812,52 +795,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
     return Array.from(merged.values());
   }, [activeLayer, filteredLocations, selectedLoc]);
 
-  const selectedRoute = useMemo(
-    () =>
-      isAllBusRoutesSelected
-        ? null
-        : (busRoutes.find((r) => r.Key === selectedBusRouteId) ?? null),
-    [busRoutes, isAllBusRoutesSelected, selectedBusRouteId],
-  );
-  useEffect(() => {
-    let cancelled = false;
-
-    if (activeLayer !== "Bus" || !selectedRoute || isAllBusRoutesSelected) {
-      setRouteTimetableEntries([]);
-      return;
-    }
-
-    transitService.getRouteTimetable(selectedRoute.Key, 12)
-      .then((entries) => {
-        if (!cancelled) {
-          setRouteTimetableEntries(entries);
-        }
-      })
-      .catch((error) => {
-        console.warn("[Transit] Failed to fetch timetable", error);
-        if (!cancelled) {
-          setRouteTimetableEntries([]);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeLayer, isAllBusRoutesSelected, selectedRoute]);
-  const busRouteOptions = useMemo(
-    () => [
-      {
-        Key: ALL_BUS_ROUTES_KEY,
-        ShortName: "ALL",
-        Name: "All Routes",
-        Color: "#1E1E1E",
-      },
-      ...busRoutes,
-    ],
-    [busRoutes],
-  );
-  const filteredBusRoutes = busRouteOptions;
-
   const selectedRecreationFacility = useMemo(() => {
     if (!selectedLoc) return null;
     return (
@@ -868,148 +805,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
       null
     );
   }, [recreationFacilityMap, selectedLoc, selectedPlaceDetail?.recreation]);
-
-  const stopTimetable = useMemo(() => {
-    if (
-      activeLayer !== "Bus" ||
-      !selectedRoute ||
-      (busStops.length === 0 && routeTimetableEntries.length === 0)
-    )
-      return [];
-    if (routeTimetableEntries.length > 0) {
-      return routeTimetableEntries.map((entry, i) => {
-        const departures = Array.isArray(entry.departures) ? entry.departures : [];
-        const nextDeparture = departures[0] || null;
-        const primaryTimeValue =
-          nextDeparture?.estimated_depart_time_utc ||
-          nextDeparture?.scheduled_depart_time_utc;
-        const primaryTime = primaryTimeValue
-          ? new Date(primaryTimeValue).toLocaleTimeString("en-US", {
-            hour: "numeric",
-            minute: "2-digit",
-          })
-          : "No times";
-        return {
-          stop: entry.stop || busStops[i],
-          sequence: entry.sequence ?? i + 1,
-          etaLabel: primaryTime,
-          detail: nextDeparture?.is_realtime
-            ? "Live departure board"
-            : "Scheduled departure board",
-          departures,
-        };
-      });
-    }
-    return busStops.slice(0, 12).map((stop, i) => {
-      if (busVehicles.length === 0)
-        return {
-          stop,
-          sequence: i + 1,
-          etaLabel: "Route loaded",
-          detail: "ETA pending",
-          departures: [],
-        };
-      const ranked = busVehicles
-        .map((bus) => ({
-          bus,
-          etaMinutes: getApproximateEtaMinutes(routePatterns, stop, bus),
-        }))
-        .sort((a, b) => a.etaMinutes - b.etaMinutes);
-      const next = ranked[0];
-      if (!next)
-        return {
-          stop,
-          sequence: i + 1,
-          etaLabel: "No estimate",
-          detail: "Live feed unavailable",
-          departures: [],
-        };
-      return {
-        stop,
-        sequence: i + 1,
-        etaLabel: next.etaMinutes <= 1 ? "Now" : `${next.etaMinutes} min`,
-        detail: next.bus.RouteShortName
-          ? `Route ${next.bus.RouteShortName}`
-          : next.bus.Name || "Live bus",
-        departures: [],
-      };
-    });
-  }, [activeLayer, busStops, busVehicles, routePatterns, routeTimetableEntries, selectedRoute]);
-
-  const allRouteBoards = useMemo(() => {
-    if (!isAllBusRoutesSelected) return [];
-    return busRoutes
-      .map((route) => {
-        const pattern = allRoutePatternsById[route.Key];
-        if (!pattern) return { route, liveCount: 0, entries: [] };
-        const routePoints = pattern.points || [];
-        const routeStops = pattern.stops || [];
-        const routeVehicles = busVehicles.filter((bus) =>
-          isVehicleOnRoute(bus, route),
-        );
-        const entries = routeStops.slice(0, 4).map((stop: any, i: number) => {
-          const ranked = routeVehicles
-            .map((bus) => ({
-              bus,
-              etaMinutes: getApproximateEtaMinutes(routePoints, stop, bus),
-            }))
-            .sort((a: any, b: any) => a.etaMinutes - b.etaMinutes);
-          const next = ranked[0];
-          return {
-            stop,
-            sequence: i + 1,
-            etaLabel: next
-              ? next.etaMinutes <= 1
-                ? "Now"
-                : `${next.etaMinutes} min`
-              : "Route loaded",
-            detail: next?.bus?.RouteShortName
-              ? `Route ${next.bus.RouteShortName}`
-              : route.Name || "Transit route",
-          };
-        });
-        return { route, liveCount: routeVehicles.length, entries };
-      })
-      .filter((b: any) => b.entries.length > 0 || b.liveCount > 0);
-  }, [allRoutePatternsById, busRoutes, busVehicles, isAllBusRoutesSelected]);
-
-  const nearbyTransitInsight = useMemo(() => {
-    if (!userCoord || activeLayer !== "Bus" || !selectedRoute) return null;
-    const nearestStop = busStops.reduce((best: any, stop) => {
-      const sLat = stop.Latitude !== undefined ? stop.Latitude : stop.lat;
-      const sLng = stop.Longitude !== undefined ? stop.Longitude : stop.lng;
-      if (sLat == null || sLng == null) return best;
-      const d = haversineDistanceMeters(
-        userCoord.latitude,
-        userCoord.longitude,
-        sLat,
-        sLng,
-      );
-      return !best || d < best.distanceMeters
-        ? { stop, distanceMeters: d }
-        : best;
-    }, null as any);
-    const nearestVehicle = busVehicles.reduce((best: any, v) => {
-      const vLat = v.Latitude !== undefined ? v.Latitude : v.lat;
-      const vLng = v.Longitude !== undefined ? v.Longitude : v.lng;
-      if (vLat == null || vLng == null) return best;
-      const d = haversineDistanceMeters(
-        userCoord.latitude,
-        userCoord.longitude,
-        vLat,
-        vLng,
-      );
-      return !best || d < best.distanceMeters
-        ? { vehicle: v, distanceMeters: d }
-        : best;
-    }, null as any);
-    if (
-      (!nearestStop || nearestStop.distanceMeters > 320) &&
-      (!nearestVehicle || nearestVehicle.distanceMeters > 380)
-    )
-      return null;
-    return { nearestStop, nearestVehicle };
-  }, [activeLayer, busStops, busVehicles, selectedRoute, userCoord]);
 
   // ── Callbacks ─────────────────────────────────────────────
   const runGlobalSearch = useCallback(
@@ -1447,8 +1242,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
         longitude: bus.Longitude,
       }))
       .filter(
-        (coord: { latitude?: number; longitude?: number }) =>
-          typeof coord.latitude === "number" && typeof coord.longitude === "number",
+          (coord: { latitude?: number; longitude?: number }) =>
+            coord && Number.isFinite(coord.latitude) && Number.isFinite(coord.longitude),
       ) as { latitude: number; longitude: number }[];
 
     const fitCoords = [...routeCoords, ...vehicleCoords];
@@ -1467,12 +1262,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
       coords: { latitude: number; longitude: number }[],
       edgePadding = { top: 180, right: 48, bottom: 220, left: 48 },
     ) => {
-      if (coords.length === 0) return;
-      if (coords.length === 1) {
+      const sanitizedCoords = coords.filter(
+        c => c && Number.isFinite(c.latitude) && Number.isFinite(c.longitude)
+      );
+      if (sanitizedCoords.length === 0) return;
+      if (sanitizedCoords.length === 1) {
         mapRef.current.animateToRegion(
           {
-            latitude: coords[0].latitude - 0.0018,
-            longitude: coords[0].longitude,
+            latitude: sanitizedCoords[0].latitude - 0.0018,
+            longitude: sanitizedCoords[0].longitude,
             latitudeDelta: 0.008,
             longitudeDelta: 0.008,
           },
@@ -1480,7 +1278,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         );
         return;
       }
-      mapRef.current.fitToCoordinates(coords, {
+      mapRef.current.fitToCoordinates(sanitizedCoords, {
         edgePadding,
         animated: true,
       });
@@ -1503,7 +1301,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           }))
           .filter(
             (coord: { latitude?: number; longitude?: number }) =>
-              typeof coord.latitude === "number" && typeof coord.longitude === "number",
+              coord && Number.isFinite(coord.latitude) && Number.isFinite(coord.longitude),
           ) as { latitude: number; longitude: number }[];
         fitToCoords([...routeCoords, ...vehicleCoords]);
         return;
@@ -1648,48 +1446,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
     hasManualMapMovement,
   ]);
 
-  const handleSelectBusRoute = useCallback(
-    async (routeId: string, availableRoutes: any[] = busRoutes) => {
-      setSelectedBusRouteId(routeId);
-      currentBusRouteFetchId.current = routeId;
-      setBusVehicles([]);
-      setSelectedStop(null);
-      setSelectedBus(null);
-      setHasManualMapMovement(false);
-      setRoutePatterns([]); // Clear previous traces
-      setRoutePaths([]);
-      setBusStops([]);
-      setRouteTimetableEntries([]);
-
-      if (routeId === ALL_BUS_ROUTES_KEY) {
-        await loadAllBusRoutes(availableRoutes);
-        return;
-      }
-      try {
-        const { points, stops, paths } =
-          await transitService.getRoutePattern(routeId);
-
-        if (currentBusRouteFetchId.current !== routeId) return; // Prevent race condition crashes
-
-        setRoutePatterns(points?.length ? points : []);
-        setRoutePaths(paths?.length ? paths : []);
-        setBusStops(stops?.length ? stops : []);
-        if (mapRef.current && points?.length)
-          mapRef.current.fitToCoordinates(points, {
-            edgePadding: { top: 220, right: 60, bottom: 80, left: 60 },
-            animated: true,
-          });
-
-        const vehicles = await transitService.getVehicles(routeId);
-        if (currentBusRouteFetchId.current === routeId) {
-          setBusVehicles(vehicles);
-        }
-      } catch (e) {
-        console.warn("Failed to select bus route", e);
-      }
-    },
-    [busRoutes, loadAllBusRoutes],
-  );
 
   const handleSelectBusRouteFromSearch = useCallback(
     async (route: any) => {
@@ -1741,80 +1497,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     ],
   );
 
-  const {
-    getClosestProgressMeters,
-    haversineDistanceMeters: hav,
-    formatBusDistance,
-  } = require("./places/utils");
-  const resolveNearestBusForStop = useCallback(
-    (stop: any, vehicles: any[]) => {
-      if (!stop || vehicles.length === 0) {
-        setNearestBusInfo(
-          selectedRoute ? "Route loaded" : "Transit route loaded",
-        );
-        return;
-      }
-      const sLatP = stop.Latitude !== undefined ? stop.Latitude : stop.lat;
-      const sLngP = stop.Longitude !== undefined ? stop.Longitude : stop.lng;
-      if (sLatP == null || sLngP == null) return;
 
-      const stopProgress = getClosestProgressMeters(routePatterns, {
-        latitude: sLatP,
-        longitude: sLngP,
-      });
-      const ranked = vehicles
-        .map((bus) => {
-          const busLat = bus.Latitude !== undefined ? bus.Latitude : bus.lat;
-          const busLng = bus.Longitude !== undefined ? bus.Longitude : bus.lng;
-          const stopLat =
-            stop.Latitude !== undefined ? stop.Latitude : stop.lat;
-          const stopLng =
-            stop.Longitude !== undefined ? stop.Longitude : stop.lng;
-
-          if (!busLat || !busLng || !stopLat || !stopLng) {
-            return { bus, distanceMeters: Infinity };
-          }
-
-          const direct = hav(busLat, busLng, stopLat, stopLng);
-          if (!stopProgress) return { bus, distanceMeters: direct };
-          const busProgress = getClosestProgressMeters(routePatterns, {
-            latitude: busLat,
-            longitude: busLng,
-          });
-          if (!busProgress) return { bus, distanceMeters: direct };
-          const delta = Math.abs(
-            stopProgress.progressMeters - busProgress.progressMeters,
-          );
-          const wrapped =
-            stopProgress.totalRouteMeters > 0
-              ? Math.min(delta, stopProgress.totalRouteMeters - delta)
-              : delta;
-          return {
-            bus,
-            distanceMeters: Math.min(
-              direct,
-              wrapped + stopProgress.offsetMeters + busProgress.offsetMeters,
-            ),
-          };
-        })
-        .sort((a, b) => a.distanceMeters - b.distanceMeters);
-      const nearest = ranked[0];
-      if (!nearest) {
-        setNearestBusInfo(
-          selectedRoute ? "Route loaded" : "Transit route loaded",
-        );
-        return;
-      }
-      const eta = Math.max(1, Math.round(nearest.distanceMeters / 220));
-      const label = nearest.bus.RouteShortName
-        ? `Route ${nearest.bus.RouteShortName}`
-        : nearest.bus.Name
-          ? `Bus ${nearest.bus.Name}`
-          : undefined;
-      setNearestBusInfo(formatBusDistance(nearest.distanceMeters, eta, label));
-    },
-    [routePatterns, selectedRoute],
-  );
 
   const handleStopPress = useCallback(
     (stop: any) => {
@@ -2005,79 +1688,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setActiveScheduleId(scheduleOptions[0].id);
   }, [activeScheduleId, scheduleOptions]);
 
-  // Bus fetch on layer switch
-  useEffect(() => {
-    if (activeLayer === "Bus") {
-      (async () => {
-        if (isFetchingRef.current) return;
-        isFetchingRef.current = true;
-        setIsFetchingBus(true);
-        try {
-          const metadata = await transitService.getRoutesMetadata();
-          const activeIds = await transitService.getActiveRoutes();
-          const active = metadata.filter(
-            (m: any) =>
-              activeIds.includes(m.ShortName) ||
-              activeIds.includes(m.Key) ||
-              activeIds.includes(m.Name),
-          );
-          const final = active.length ? active : metadata;
-          setBusRoutes(final);
-          const valid = final.some((r: any) => r.Key === selectedBusRouteId);
-          if (
-            final.length &&
-            (isAllBusRoutesSelected || !selectedBusRouteId || !valid)
-          )
-            handleSelectBusRoute(ALL_BUS_ROUTES_KEY, final);
-        } catch (e) {
-          console.warn("Failed to fetch bus routes", e);
-        } finally {
-          setIsFetchingBus(false);
-          isFetchingRef.current = false;
-        }
-      })();
-    }
-  }, [activeLayer]);
 
-  // Bus polling — wrapped in try/catch with stale-guard to prevent crashes
-  useEffect(() => {
-    let cancelled = false;
-    if (activeLayer === "Bus" && selectedBusRouteId) {
-      busPollInterval.current = setInterval(async () => {
-        try {
-          const updated = isAllBusRoutesSelected
-            ? await transitService.getVehicles()
-            : await transitService.getVehicles(selectedBusRouteId);
-          if (!cancelled) setBusVehicles(updated || []);
-        } catch (e) {
-          console.warn('[Transit] Polling error:', e);
-        }
-      }, 5000);
-    } else {
-      if (busPollInterval.current) clearInterval(busPollInterval.current);
-    }
-    return () => {
-      cancelled = true;
-      if (busPollInterval.current) clearInterval(busPollInterval.current);
-    };
-  }, [activeLayer, isAllBusRoutesSelected, selectedBusRouteId]);
 
   // Today selection should not auto-generate directions.
   useEffect(() => {
     setActiveWalkingRoute(null);
   }, [activeLayer, nextEntry, userCoord, selectedDate]);
 
-  // Update nearest bus when vehicles change
-  useEffect(() => {
-    if (activeLayer === "Bus" && selectedStop)
-      resolveNearestBusForStop(selectedStop, busVehicles);
-  }, [
-    activeLayer,
-    busVehicles,
-    routePatterns,
-    selectedStop,
-    resolveNearestBusForStop,
-  ]);
+
 
   // Auto-fit map to filtered locations
   useEffect(() => {
@@ -2211,7 +1829,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           })}
 
         {activeLayer === "Pulse" &&
-          pulseHotspots.filter(h => h && h.coord && h.coord.lat != null && h.coord.lng != null).map((hotspot) => (
+          pulseHotspots.filter(h => h && h.coord && Number.isFinite(h.coord.lat) && Number.isFinite(h.coord.lng)).map((hotspot) => (
             <MapCircleOverlay
               key={`pulse-radius-${hotspot.id}`}
               id={`pulse-radius-${hotspot.id}`}
@@ -2236,11 +1854,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 (path.DirectionName || "")
                   .toLowerCase()
                   .includes((selectedDirection || "All").toLowerCase());
-              return (path.points || []).length > 0 ? (
+              const validPoints = (path.points || []).filter((pt: any) => pt && Number.isFinite(pt.latitude) && Number.isFinite(pt.longitude));
+              return validPoints.length >= 2 ? (
                 <MapPolylineOverlay
                   key={`path-${idx}`}
                   id={`path-${idx}`}
-                  coordinates={path.points}
+                  coordinates={validPoints}
                   color={
                     isSelected
                       ? getNeonColor(selectedRoute?.Color || "#007AFF")
@@ -2250,23 +1869,28 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 />
               ) : null;
             })
-            : routePatterns.length > 0 && (
-              <MapPolylineOverlay
-                id="bus-route-pattern"
-                coordinates={routePatterns}
-                color={getNeonColor(selectedRoute?.Color || "#007AFF")}
-                width={4}
-              />
-            ))}
+            : (() => {
+                const validPoints = routePatterns.filter((pt: any) => pt && Number.isFinite(pt.latitude) && Number.isFinite(pt.longitude));
+                return validPoints.length >= 2 ? (
+                  <MapPolylineOverlay
+                    id="bus-route-pattern"
+                    coordinates={validPoints}
+                    color={getNeonColor(selectedRoute?.Color || "#007AFF")}
+                    width={4}
+                  />
+                ) : null;
+              })()
+          )}
         {activeLayer === "Bus" &&
           isAllBusRoutesSelected &&
           Object.entries(allRoutePatternsById).map(([routeKey, pattern]) => {
             const route = busRoutes.find((r) => r.Key === routeKey);
-            return pattern?.points?.length > 0 ? (
+            const validPoints = (pattern?.points || []).filter((pt: any) => pt && typeof pt.latitude === "number" && Number.isFinite(pt.latitude) && typeof pt.longitude === "number" && Number.isFinite(pt.longitude));
+            return validPoints.length >= 2 ? (
               <MapPolylineOverlay
                 key={routeKey}
                 id={`all-route-${routeKey}`}
-                coordinates={pattern.points}
+                coordinates={validPoints}
                 color={getNeonColor(route?.Color || "#007AFF")}
                 width={4}
               />
@@ -2276,9 +1900,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
         {activeLayer === "Bus" &&
           busStops.map((stop) => {
             const sLat = stop.Latitude != null ? stop.Latitude : stop.lat;
-            const sLng =
-              stop.Longitude != null ? stop.Longitude : stop.lng;
-            if (sLat == null || sLng == null || typeof sLat !== 'number' || typeof sLng !== 'number') return null;
+            const sLng = stop.Longitude != null ? stop.Longitude : stop.lng;
+            if (sLat == null || sLng == null || !Number.isFinite(sLat) || !Number.isFinite(sLng)) return null;
 
             const stopDir = stop.DirectionName || stop.direction || "Unknown";
             const stopSelected =
@@ -2316,7 +1939,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
             const bLat = bus.Latitude != null ? bus.Latitude : bus.lat;
             const bLng = bus.Longitude != null ? bus.Longitude : bus.lng;
             // CRITICAL: skip buses with invalid coordinates — nil coords crash AIRMap
-            if (bLat == null || bLng == null || typeof bLat !== 'number' || typeof bLng !== 'number') return null;
+            if (bLat == null || bLng == null || !Number.isFinite(bLat) || !Number.isFinite(bLng)) return null;
 
             const isTrackedBus =
               selectedBus?.Key && bus.Key
@@ -2334,7 +1957,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
               bus.RouteColor ||
               selectedRoute?.Color ||
               "#007AFF";
-            const heading = bus.heading || bus.Heading || 0;
+            const rawHeading = bus.heading || bus.Heading || 0;
+            const heading = Number.isFinite(Number(rawHeading)) ? Number(rawHeading) : 0;
             const busDir =
               bus.direction || bus.DirectionName || "Unknown Direction";
 
@@ -2351,10 +1975,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
               ? routeShortName.slice(0, 3)
               : routeShortName;
 
+            const busCompositeKey = `bus-${bus.RouteKey}-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`;
+
             return (
               <MapMarker
-                key={`bus-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`}
-                id={`bus-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`}
+                key={busCompositeKey}
+                id={busCompositeKey}
                 coordinate={{
                   latitude: bLat,
                   longitude: bLng,
@@ -2434,7 +2060,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           />
         )}
         {activeLayer === "Pulse" &&
-          pulseHotspots.filter(h => h && h.coord && h.coord.lat != null && h.coord.lng != null).map((hotspot) => {
+          pulseHotspots.filter(h => h && h.coord && Number.isFinite(h.coord.lat) && Number.isFinite(h.coord.lng)).map((hotspot) => {
             return (
               <MapMarker
                 key={hotspot.id}
@@ -2524,7 +2150,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
               return null;
             }
 
-            if (!loc.coord || loc.coord.lat == null || loc.coord.lng == null) return null;
+            if (!loc.coord || !Number.isFinite(loc.coord.lat) || !Number.isFinite(loc.coord.lng)) return null;
 
             return (
               <MapMarker

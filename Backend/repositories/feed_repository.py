@@ -176,6 +176,7 @@ def get_crowdping_feed(post_types: List[str] = None, limit: int = 40, exclude_us
             
             cur.execute(sql, tuple(params))
             rows = cur.fetchall()
+            
     return [_row_to_post_dict(r) for r in rows]
 
 # --- Interactions ---

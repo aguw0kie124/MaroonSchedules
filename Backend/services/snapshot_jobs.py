@@ -91,7 +91,7 @@ def _refresh_transit_route_patterns() -> object:
 
 def _refresh_transit_vehicles() -> object:
     return _rebuild_in_place(
-        "traffic:transit:vehicles:v1:__all__",
+        "traffic:transit:vehicles:v2:__all__",
         lambda: traffic.transit_proxy.get_vehicles(""),
         ttl_seconds=60
     )

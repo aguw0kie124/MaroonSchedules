@@ -247,8 +247,12 @@ def _load_occupancy_by_place() -> Dict[str, int]:
 
 
 def invalidate_pulse_map_cache() -> None:
-    for limit in PULSE_CACHE_LIMITS:
-        cache_service.delete(f"campus:pulse:map:v2:{limit}")
+    keys = [f"campus:pulse:map:v2:{limit}" for limit in PULSE_CACHE_LIMITS]
+    if hasattr(cache_service, 'delete_many'):
+        cache_service.delete_many(keys)
+    else:
+        for limit in PULSE_CACHE_LIMITS:
+            cache_service.delete(f"campus:pulse:map:v2:{limit}")
 
 
 def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh: bool = False) -> Dict[str, Any]:
@@ -425,10 +429,16 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
         category = str(custom.get("ping_category") or ping.get("post_type") or "Popup")
         start_at = str(custom.get("start_at") or ping.get("created_at") or datetime.now(timezone.utc).isoformat())
 
+        end_at = str(custom.get("end_at") or "")
+        end_time = _parse_iso(end_at)
         target_time = _parse_iso(start_at)
-        if target_time:
+
+        if end_time:
+            if datetime.now(timezone.utc) > end_time:
+                continue
+        elif target_time:
             age_hours = (datetime.now(timezone.utc) - target_time).total_seconds() / 3600
-            if age_hours > 24:
+            if age_hours > 3:
                 continue
 
         counts = interactions.get(ping_id, {})

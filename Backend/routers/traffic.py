@@ -717,70 +717,114 @@ class AggieSpiritProxy:
 
     def get_vehicles(self, route_id: str = "") -> Dict[str, Any]:
         normalized_route_id = (route_id or "").strip().lower()
-        try:
-            route_keys: List[str] = []
-            route_lookup = {
-                route["Key"]: route for route in self.get_routes() if route.get("Key")}
-            if route_id:
-                route_keys = [route_id]
-            else:
-                route_keys = list(route_lookup.keys())
-
+        
+        # Determine which routes to fetch
+        if normalized_route_id and normalized_route_id != "__all__":
+            # Single route fetch - direct and efficient
+            route_batches = [[route_id]]
+            is_bulk = False
+        else:
+            # Bulk fetch - map active human-readable IDs back to UUIDs
+            active_labels = self.get_active_routes()
+            full_routes = self.get_routes()
+            
+            # Map active labels (like '01') back to their UUID keys
+            route_keys = []
+            active_set = set(active_labels)
+            for r in full_routes:
+                rk = r.get("Key")
+                sn = r.get("ShortName")
+                if rk in active_set or sn in active_set:
+                    if rk:
+                        route_keys.append(rk)
+            
+            # Fallback if no active routes found
             if not route_keys:
-                cache_key = normalized_route_id or "__all__"
-                cached = self._vehicle_cache.get(cache_key, [])
-                return {"vehicles": cached, "live": False, "used_cache": bool(cached)}
+                 route_keys = [r["Key"] for r in full_routes if r.get("Key")][:30]
+            
+            # Chunk keys into batches of 8 to avoid server-side timeouts or truncation
+            route_batches = [route_keys[i:i + 8] for i in range(0, len(route_keys), 8)]
+            is_bulk = True
 
-            payload = "&".join(
-                [f"routeKeys%5B%5D={quote(route_key)}" for route_key in route_keys])
-            data = self._post("/RouteMap/GetVehicles/", payload)
-            vehicles: List[Dict[str, Any]] = []
-            for route in data or []:
-                route_meta = route_lookup.get(route.get("routeKey"))
-                identifiers = [
-                    str(route.get("routeKey") or "").strip().lower(),
-                    str(route.get("shortName") or route_meta.get(
-                        "ShortName") if route_meta else "").strip().lower(),
-                    str(route.get("name") or route_meta.get("Name")
-                        if route_meta else "").strip().lower(),
-                ]
-                if normalized_route_id and normalized_route_id not in identifiers:
+        vehicles: List[Dict[str, Any]] = []
+        try:
+            route_lookup = {
+                route["Key"]: route for route in self.get_routes() if route.get("Key")
+            }
+
+            for batch in route_batches:
+                if not batch:
                     continue
-                for direction in route.get("vehiclesByDirections", []) or []:
-                    dir_key = direction.get("directionKey")
-                    for vehicle in direction.get("vehicles", []) or []:
-                        location = vehicle.get("location") or {}
 
-                        # Prioritize destination cache over raw direction name for consistency
-                        v_dir_key = vehicle.get("directionKey") or dir_key
-                        v_dir_name = self._direction_cache.get(v_dir_key)
+                payload = "&".join(
+                    [f"routeKeys%5B%5D={quote(str(rk))}" for rk in batch])
+                
+                try:
+                    data = self._post("/RouteMap/GetVehicles/", payload)
+                    if not data:
+                        continue
 
-                        if not v_dir_name:
-                            v_dir_name = vehicle.get("directionName") or direction.get(
-                                "directionName") or direction.get("name") or "Unknown"
+                    for route_data in data:
+                        r_key = route_data.get("routeKey")
+                        route_meta = route_lookup.get(r_key)
+                        
+                        # Verify identity matches if not in bulk mode
+                        identifiers = [
+                            str(r_key or "").strip().lower(),
+                            str(route_data.get("shortName") or (route_meta.get("ShortName") if route_meta else "")).strip().lower(),
+                            str(route_data.get("name") or (route_meta.get("Name") if route_meta else "")).strip().lower(),
+                        ]
+                        if not is_bulk and normalized_route_id not in identifiers:
+                            continue
 
-                        vehicles.append({
-                            "Key": vehicle.get("key"),
-                            "Name": vehicle.get("name"),
-                            "Latitude": location.get("latitude"),
-                            "Longitude": location.get("longitude"),
-                            "Heading": location.get("heading") or location.get("direction"),
-                            "Speed": location.get("speed") or vehicle.get("speed"),
-                            "DirectionName": v_dir_name,
-                            "DirectionKey": vehicle.get("directionKey"),
-                            "PassengersOnboard": vehicle.get("passengersOnboard"),
-                            "Capacity": vehicle.get("passengerCapacity"),
-                            "RouteKey": route.get("routeKey"),
-                            "RouteShortName": route.get("shortName") or (route_meta.get("ShortName") if route_meta else None),
-                            "RouteName": route.get("name") or (route_meta.get("Name") if route_meta else None),
-                            "RouteColor": (route_meta.get("Color") if route_meta else None) or self._route_color(route.get("routeKey") or route.get("shortName") or route.get("name") or ""),
-                        })
+                        for direction in route_data.get("vehiclesByDirections", []) or []:
+                            dir_key = direction.get("directionKey")
+                            for vehicle in direction.get("vehicles", []) or []:
+                                location = vehicle.get("location") or {}
+                                v_dir_key = vehicle.get("directionKey") or dir_key
+                                v_dir_name = self._direction_cache.get(v_dir_key)
+                                if not v_dir_name:
+                                    v_dir_name = vehicle.get("directionName") or direction.get("directionName") or "Unknown"
 
-            cache_key = normalized_route_id or "__all__"
+                                # Clean and coerce numeric fields to prevent frontend crashes
+                                try:
+                                    lat = location.get("latitude")
+                                    lng = location.get("longitude")
+                                    if lat is None or lng is None:
+                                        continue
+                                    v_lat = float(lat)
+                                    v_lng = float(lng)
+                                    v_heading = float(location.get("heading") or location.get("direction") or 0)
+                                    v_speed = float(location.get("speed") or vehicle.get("speed") or 0)
+                                except (TypeError, ValueError):
+                                    continue
+
+                                vehicles.append({
+                                    "Key": vehicle.get("key"),
+                                    "Name": vehicle.get("name"),
+                                    "Latitude": v_lat,
+                                    "Longitude": v_lng,
+                                    "Heading": v_heading,
+                                    "Speed": v_speed,
+                                    "DirectionName": v_dir_name,
+                                    "DirectionKey": v_dir_key,
+                                    "PassengersOnboard": vehicle.get("passengersOnboard"),
+                                    "Capacity": vehicle.get("passengerCapacity"),
+                                    "RouteKey": r_key,
+                                    "RouteShortName": route_data.get("shortName") or (route_meta.get("ShortName") if route_meta else None),
+                                    "RouteName": route_data.get("name") or (route_meta.get("Name") if route_meta else None),
+                                    "RouteColor": (route_meta.get("Color") if route_meta else None) or self._route_color(r_key or ""),
+                                })
+                except Exception as e:
+                    print(f"[TransitProxy] Batch fetch error: {e}")
+                    continue
+
+            cache_key = f"v2:{normalized_route_id or '__all__'}"
             if vehicles:
                 self._vehicle_cache[cache_key] = vehicles
-                self._vehicle_cache["__all__"] = vehicles if not normalized_route_id else self._vehicle_cache.get(
-                    "__all__", vehicles)
+                if is_bulk:
+                    self._vehicle_cache["v2:__all__"] = vehicles
+            
             cached = self._vehicle_cache.get(cache_key, [])
             return {"vehicles": vehicles if vehicles else cached, "live": bool(vehicles), "used_cache": not bool(vehicles) and bool(cached)}
         except Exception:
@@ -954,7 +998,7 @@ def get_transit_route(request: Request, route_key: str):
 @router.get("/transit/vehicles")
 @limiter.limit("120/minute")
 def get_transit_vehicles(request: Request, route_id: str = Query("")):
-    cache_key = f"traffic:transit:vehicles:v1:{route_id or '__all__'}"
+    cache_key = f"traffic:transit:vehicles:v2:{route_id or '__all__'}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
         return cached
@@ -965,7 +1009,13 @@ def get_transit_vehicles(request: Request, route_id: str = Query("")):
             return cached
 
         payload = transit_proxy.get_vehicles(route_id)
-        cache_service.set_json(cache_key, payload, 15)
+        
+        # Don't aggressively cache empty payloads (which causes buses to flicker off)
+        if not payload.get("vehicles") and not payload.get("live"):
+            cache_service.set_json(cache_key, payload, 2)
+        else:
+            cache_service.set_json(cache_key, payload, 15)
+            
         return payload
 
 
@@ -983,7 +1033,12 @@ def get_transit_timetable(request: Request, route_key: str, max_stops: int = Que
             return cached
 
         payload = transit_proxy.get_route_timetable(route_key, max_stops=max_stops)
-        cache_service.set_json(cache_key, payload, 30)
+        
+        if not payload.get("entries"):
+            cache_service.set_json(cache_key, payload, 2)
+        else:
+            cache_service.set_json(cache_key, payload, 30)
+            
         return payload
 
 

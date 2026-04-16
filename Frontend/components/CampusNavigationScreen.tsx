@@ -891,28 +891,34 @@ export function CampusNavigationScreen() {
           rotateEnabled={false}
         >
           {/* Route polyline */}
-          {(activeTransitPlan || activeRoute) && (
-            <MapPolylineOverlay
-              id="campus-navigation-route"
-              coordinates={activeTransitPlan?.polyline || activeRoute?.polyline || []}
-              color={activeTransitPlan?.routeColor || COLORS.primary}
-              width={4}
-              lineDasharray={activeTransitPlan ? undefined : [2, 2]}
-            />
-          )}
+          {(activeTransitPlan || activeRoute) && (() => {
+            const polyCoords = activeTransitPlan?.polyline || activeRoute?.polyline || [];
+            const validPoly = polyCoords.filter((pt: any) => pt && Number.isFinite(pt.latitude) && Number.isFinite(pt.longitude));
+            return validPoly.length >= 2 ? (
+              <MapPolylineOverlay
+                id="campus-navigation-route"
+                coordinates={validPoly}
+                color={activeTransitPlan?.routeColor || COLORS.primary}
+                width={4}
+                lineDasharray={activeTransitPlan ? undefined : [2, 2]}
+              />
+            ) : null;
+          })()}
 
           {/* User location marker */}
-          <MapMarker
-            id="campus-navigation-user"
-            coordinate={userCoord}
-            anchor={{ x: 0.5, y: 0.5 }}
-          >
-            <Animated.View style={[styles.userMarker, { transform: [{ scale: pulseAnim }] }]}>
-              <MapPin size={18} color="#FFFFFF" />
-            </Animated.View>
-          </MapMarker>
+          {Number.isFinite(userCoord.latitude) && Number.isFinite(userCoord.longitude) && (
+            <MapMarker
+              id="campus-navigation-user"
+              coordinate={userCoord}
+              anchor={{ x: 0.5, y: 0.5 }}
+            >
+              <Animated.View style={[styles.userMarker, { transform: [{ scale: pulseAnim }] }]}>
+                <MapPin size={18} color="#FFFFFF" />
+              </Animated.View>
+            </MapMarker>
+          )}
           {/* Manual origin marker */}
-          {manualOrigin && manualOrigin.coordinate?.latitude != null && manualOrigin.coordinate?.longitude != null && (
+          {manualOrigin && manualOrigin.coordinate?.latitude != null && manualOrigin.coordinate?.longitude != null && Number.isFinite(manualOrigin.coordinate.latitude) && Number.isFinite(manualOrigin.coordinate.longitude) && (
             <MapMarker
               id="campus-navigation-origin"
               coordinate={manualOrigin.coordinate}
@@ -924,7 +930,7 @@ export function CampusNavigationScreen() {
               </View>
             </MapMarker>
           )}
-          {transitStopMarkers.filter(s => s.coordinate?.latitude != null && s.coordinate?.longitude != null).map((stop) => (
+          {transitStopMarkers.filter(s => s.coordinate?.latitude != null && s.coordinate?.longitude != null && Number.isFinite(s.coordinate.latitude) && Number.isFinite(s.coordinate.longitude)).map((stop) => (
             <MapMarker
               key={stop.key}
               id={`campus-navigation-stop-${stop.key}`}
@@ -983,7 +989,7 @@ export function CampusNavigationScreen() {
               </MapMarker>
             );
           })}
-          {destinationCoord ? (
+          {destinationCoord && Number.isFinite(destinationCoord.latitude) && Number.isFinite(destinationCoord.longitude) ? (
             <MapMarker
               id="campus-navigation-destination"
               coordinate={destinationCoord}
@@ -995,16 +1001,18 @@ export function CampusNavigationScreen() {
               </View>
             </MapMarker>
           ) : null}
-          <MapMarker
-            id="campus-navigation-user-label"
-            coordinate={{ latitude: userCoord.latitude + 0.00012, longitude: userCoord.longitude }}
-            anchor={{ x: 0.5, y: 1 }}
-            tracksViewChanges={false}
-          >
-            <View style={styles.youBadge}>
-              <Text style={styles.youBadgeText}>You are here</Text>
-            </View>
-          </MapMarker>
+          {Number.isFinite(userCoord.latitude) && Number.isFinite(userCoord.longitude) && (
+            <MapMarker
+              id="campus-navigation-user-label"
+              coordinate={{ latitude: userCoord.latitude + 0.00012, longitude: userCoord.longitude }}
+              anchor={{ x: 0.5, y: 1 }}
+              tracksViewChanges={false}
+            >
+              <View style={styles.youBadge}>
+                <Text style={styles.youBadgeText}>You are here</Text>
+              </View>
+            </MapMarker>
+          )}
 
           {/* Discovery markers */}
           {discoveryMarkers.map((location) => {

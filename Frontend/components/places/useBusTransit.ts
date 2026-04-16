@@ -20,9 +20,11 @@ export function useBusTransit(
     ALL_BUS_ROUTES_KEY,
   );
   const [routePatterns, setRoutePatterns] = useState<any[]>([]);
+  const [routePaths, setRoutePaths] = useState<any[]>([]);
   const [allRoutePatternsById, setAllRoutePatternsById] = useState<
-    Record<string, { points: any[]; stops: any[] }>
+    Record<string, { points: any[]; stops: any[]; paths?: any[] }>
   >({});
+  const [temporaryBusFocusRouteId, setTemporaryBusFocusRouteId] = useState<string | null>(null);
   const [isFetchingBus, setIsFetchingBus] = useState(false);
   const [isRouteDropdownOpen, setIsRouteDropdownOpen] = useState(false);
   const [routeSearchQuery, setRouteSearchQuery] = useState("");
@@ -58,6 +60,34 @@ export function useBusTransit(
     ],
     [busRoutes],
   );
+  
+  const availableDirections = useMemo(() => {
+    if (isAllBusRoutesSelected) return ["All"];
+    const dirs = new Set<string>();
+    busVehicles.forEach((bus) => {
+      const dir = bus.direction || bus.DirectionName;
+      if (dir && typeof dir === "string") dirs.add(dir.trim());
+    });
+    // Add any missing directions from the stops just in case vehicles are offline
+    busStops.forEach((stop) => {
+      const dir = stop.DirectionName || stop.direction;
+      if (dir && typeof dir === "string") dirs.add(dir.trim());
+    });
+    return Array.from(dirs).filter(Boolean);
+  }, [busVehicles, busStops, isAllBusRoutesSelected]);
+
+  useEffect(() => {
+    if (!isAllBusRoutesSelected && availableDirections.length > 0) {
+      if (
+        !availableDirections.includes(selectedDirection) ||
+        selectedDirection === "All"
+      ) {
+        setSelectedDirection(availableDirections[0] as any);
+      }
+    } else {
+      setSelectedDirection("All");
+    }
+  }, [availableDirections, isAllBusRoutesSelected]);
 
   const filteredBusRoutes = useMemo(() => {
     const query = routeSearchQuery.trim().toLowerCase();
@@ -105,7 +135,7 @@ export function useBusTransit(
         acc[routeKey] = pattern;
         return acc;
       },
-      {} as Record<string, { points: any[]; stops: any[] }>,
+      {} as Record<string, { points: any[]; stops: any[]; paths?: any[] }>,
     );
     setAllRoutePatternsById(nextPatterns);
 
@@ -113,6 +143,7 @@ export function useBusTransit(
     setBusVehicles(vehicles);
     setBusStops([]);
     setRoutePatterns([]);
+    setRoutePaths([]);
 
     const allPoints = patternEntries.flatMap(
       ([, pattern]) => pattern.points || [],
@@ -140,13 +171,19 @@ export function useBusTransit(
       }
 
       try {
-        const { points, stops } = await transitService.getRoutePattern(routeId);
+        const { points, stops, paths } = await transitService.getRoutePattern(routeId);
         if (points && points.length > 0) {
           console.log("[Transit] Route trace points found:", points.length);
           setRoutePatterns(points);
         } else {
           console.warn("[Transit] No route trace found for:", routeId);
           setRoutePatterns([]);
+        }
+
+        if (paths && paths.length > 0) {
+          setRoutePaths(paths);
+        } else {
+          setRoutePaths([]);
         }
 
         if (stops && stops.length > 0) {
@@ -364,11 +401,17 @@ export function useBusTransit(
         const updated = isAllBusRoutesSelected
           ? await transitService.getVehicles()
           : await transitService.getVehicles(selectedBusRouteId);
-        if (isActive) setBusVehicles(updated);
+        
+        if (isActive && updated && updated.length > 0) {
+          setBusVehicles(updated);
+        }
       } catch (e) {
         console.warn("[Transit] Polling error:", e);
       } finally {
-        if (isActive) timeoutId = setTimeout(poll, 5000);
+        if (isActive) {
+          const interval = isAllBusRoutesSelected ? 8000 : 5000;
+          timeoutId = setTimeout(poll, interval);
+        }
       }
     };
 
@@ -591,7 +634,10 @@ export function useBusTransit(
     setNearestBusInfo,
     isAllBusRoutesSelected,
     routePatterns,
+    routePaths,
     allRoutePatternsById,
+    temporaryBusFocusRouteId,
+    setTemporaryBusFocusRouteId,
     handleSelectBusRoute,
     resolveNearestBusForStop,
     stopTimetable,
@@ -599,6 +645,7 @@ export function useBusTransit(
     getNearbyTransitInsight,
     filteredBusRoutes,
     isFetchingBus,
-    setIsFetchingBus
+    setIsFetchingBus,
+    availableDirections
   };
 }
