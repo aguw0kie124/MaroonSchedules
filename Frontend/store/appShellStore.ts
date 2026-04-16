@@ -140,6 +140,10 @@ type AppShellState = {
   placeNotifications: boolean;
   pingNotifications: boolean;
   notificationLeadTime: number;
+  showWelcomeGreeting: boolean;
+  tabBarMode: 'floating' | 'solid';
+  useWallpaper: boolean;
+  wallpaperUri: string | null;
   setParkingPermit: (permit: ParkingPermit) => void;
   togglePlacesPill: (id: PlacesPillId) => void;
   movePlacesPill: (id: PlacesPillId, direction: -1 | 1) => void;
@@ -160,6 +164,10 @@ type AppShellState = {
   setNotificationsEnabled: (enabled: boolean) => void;
   setNotificationPreference: (key: 'event' | 'place' | 'ping', value: boolean) => void;
   setNotificationLeadTime: (time: number) => void;
+  setShowWelcomeGreeting: (show: boolean) => void;
+  setTabBarMode: (mode: 'floating' | 'solid') => void;
+  setUseWallpaper: (use: boolean) => void;
+  setWallpaperUri: (uri: string | null) => void;
 };
 
 export const useAppShellStore = create<AppShellState>()(
@@ -185,6 +193,10 @@ export const useAppShellStore = create<AppShellState>()(
       placeNotifications: true,
       pingNotifications: true,
       notificationLeadTime: 5,
+      showWelcomeGreeting: true,
+      tabBarMode: 'solid',
+      useWallpaper: false,
+      wallpaperUri: null,
       setParkingPermit: (parkingPermit) => set({ parkingPermit }),
       togglePlacesPill: (id) =>
         set((state) => ({
@@ -219,6 +231,10 @@ export const useAppShellStore = create<AppShellState>()(
         [`${key}Notifications`]: value,
       })),
       setNotificationLeadTime: (notificationLeadTime) => set({ notificationLeadTime }),
+      setShowWelcomeGreeting: (showWelcomeGreeting) => set({ showWelcomeGreeting }),
+      setTabBarMode: (tabBarMode) => set({ tabBarMode }),
+      setUseWallpaper: (useWallpaper) => set({ useWallpaper }),
+      setWallpaperUri: (wallpaperUri) => set({ wallpaperUri }),
     }),
     {
       name: 'app-shell-store',
@@ -242,6 +258,10 @@ export const useAppShellStore = create<AppShellState>()(
         placeNotifications: state.placeNotifications,
         pingNotifications: state.pingNotifications,
         notificationLeadTime: state.notificationLeadTime,
+        showWelcomeGreeting: state.showWelcomeGreeting,
+        tabBarMode: state.tabBarMode,
+        useWallpaper: state.useWallpaper,
+        wallpaperUri: state.wallpaperUri,
       }),
       merge: (persistedState, currentState) => {
         const persisted = (persistedState as Partial<AppShellState>) || {};
@@ -295,6 +315,18 @@ export const useAppShellStore = create<AppShellState>()(
           notificationLeadTime: typeof persisted.notificationLeadTime === 'number'
             ? persisted.notificationLeadTime
             : currentState.notificationLeadTime,
+          showWelcomeGreeting: typeof persisted.showWelcomeGreeting === 'boolean'
+            ? persisted.showWelcomeGreeting
+            : currentState.showWelcomeGreeting,
+          tabBarMode: persisted.tabBarMode === 'floating' || persisted.tabBarMode === 'solid'
+            ? persisted.tabBarMode
+            : currentState.tabBarMode,
+          useWallpaper: typeof persisted.useWallpaper === 'boolean'
+            ? persisted.useWallpaper
+            : currentState.useWallpaper,
+          wallpaperUri: typeof persisted.wallpaperUri === 'string' || persisted.wallpaperUri === null
+            ? persisted.wallpaperUri
+            : currentState.wallpaperUri,
         };
       },
       migrate: (persistedState: any, version: number) => {

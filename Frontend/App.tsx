@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable, ImageBackground } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
@@ -51,6 +51,7 @@ import StreakHubScreen from './components/dining/StreakHubScreen';
 import RestaurantMenuScreen from './components/dining/RestaurantMenuScreen';
 
 import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio } from 'lucide-react-native';
+import { GlassPillTabBar } from './components/GlassPillTabBar';
 import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
@@ -345,16 +346,20 @@ function MainTabs(props: any) {
     : availableRouteNames[0];
   const shellKey = availableRouteNames.join('|');
 
+  const { tabBarMode } = useAppShellStore();
+
   return (
     <Tab.Navigator
-      key={shellKey}
+      key={`${shellKey}-${tabBarMode}`}
       id="MainTabs"
       initialRouteName={initialRouteName}
+      tabBar={tabBarMode === 'floating' ? (props) => <GlassPillTabBar {...props} /> : undefined}
       screenOptions={{
         headerShown: false,
-        tabBarShowLabel: true,
+        tabBarShowLabel: tabBarMode !== 'floating',
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
+          display: tabBarMode === 'floating' ? 'none' : 'flex',
           height: 70,
           borderTopWidth: 1,
           borderTopColor: COLORS.border,
@@ -424,14 +429,16 @@ function RootNavigator() {
   }, []);
 
 
+  const { showWelcomeGreeting } = useAppShellStore();
+
   React.useEffect(() => {
-    if (isSignedIn && user?.firstName && !hasShownWelcomeRef.current) {
+    if (isSignedIn && user?.firstName && !hasShownWelcomeRef.current && showWelcomeGreeting) {
       setShowWelcome(true);
       hasShownWelcomeRef.current = true;
     } else if (!isSignedIn) {
       hasShownWelcomeRef.current = false;
     }
-  }, [isSignedIn, user?.firstName]);
+  }, [isSignedIn, user?.firstName, showWelcomeGreeting]);
 
   React.useEffect(() => {
     if (isSignedIn && user?.id) {
@@ -576,20 +583,36 @@ function RootNavigator() {
     );
   }
 
-  return (
-    <>
-      <ApiAuthBridge />
-      {isSignedIn ? <UserSync>{content}</UserSync> : content}
-      {isSignedIn && <PendingReviewInterceptor />}
-      {showWelcome && user?.firstName && (
-        <WelcomeBackOverlay 
-          firstName={user.firstName} 
-          onFinished={handleWelcomeFinished} 
-        />
-      )}
-    </>
-  );
-}
+    const { useWallpaper, wallpaperUri } = useTheme();
+
+    return (
+      <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+        <ApiAuthBridge />
+        {isSignedIn ? (
+          <UserSync>
+            {useWallpaper && wallpaperUri ? (
+              <ImageBackground 
+                source={{ uri: wallpaperUri }} 
+                style={{ flex: 1 }}
+                imageStyle={{ opacity: theme === 'dark' ? 0.3 : 0.8 }}
+              >
+                {content}
+              </ImageBackground>
+            ) : (
+              content
+            )}
+          </UserSync>
+        ) : content}
+        {isSignedIn && <PendingReviewInterceptor />}
+        {showWelcome && user?.firstName && (
+          <WelcomeBackOverlay 
+            firstName={user.firstName} 
+            onFinished={handleWelcomeFinished} 
+          />
+        )}
+      </View>
+    );
+  }
 
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { navigationRef } from './navigation/Refs';

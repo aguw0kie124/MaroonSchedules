@@ -326,7 +326,9 @@ export function PingCommentsModal({
             onPress={() => handleReply(comment)}
             style={styles.actionLink}
           >
-            <Text style={[styles.actionLinkText, { color: COLORS.textTertiary }]}>Reply</Text>
+            <Text style={[styles.actionLinkText, { color: COLORS.textTertiary }]}>
+              Reply {!isReply && comment.replies && comment.replies.length > 0 ? `(${comment.replies.length})` : ''}
+            </Text>
           </Pressable>
         </View>
       </View>

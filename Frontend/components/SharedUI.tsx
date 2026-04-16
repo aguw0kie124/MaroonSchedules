@@ -77,10 +77,13 @@ export const useThemeStore = create<any>((set, get) => ({
     AsyncStorage.setItem('accent_text_enabled', JSON.stringify(applyAccentToText)).catch(() => {});
   },
   loadWallpaperPref: async () => {
-    const [storedTheme, accentColor, accentTextEnabled] = await Promise.all([
+    const [storedTheme, accentColor, accentTextEnabled, useWallpaper, backgroundMode, wallpaperUri] = await Promise.all([
       AsyncStorage.getItem('theme_mode'),
       AsyncStorage.getItem('accent_color'),
       AsyncStorage.getItem('accent_text_enabled'),
+      AsyncStorage.getItem('use_wallpaper'),
+      AsyncStorage.getItem('background_mode'),
+      AsyncStorage.getItem('custom_wallpaper_uri'),
     ]);
 
     const nextState: Record<string, unknown> = {};
@@ -99,21 +102,37 @@ export const useThemeStore = create<any>((set, get) => ({
       nextState.applyAccentToText = accentTextEnabled === 'true';
     }
 
-    await Promise.all([
-      AsyncStorage.removeItem('use_wallpaper'),
-      AsyncStorage.removeItem('background_mode'),
-      AsyncStorage.removeItem('custom_wallpaper_uri'),
-    ]);
+    if (useWallpaper !== null) nextState.useWallpaper = useWallpaper === 'true';
+    if (backgroundMode !== null) nextState.backgroundMode = backgroundMode;
+    if (wallpaperUri !== null) nextState.wallpaperUri = wallpaperUri;
+
     if (Object.keys(nextState).length) {
       set(nextState);
     }
   },
+  setUseWallpaper: (val: boolean) => {
+    set({ useWallpaper: val });
+    AsyncStorage.setItem('use_wallpaper', String(val)).catch(() => {});
+  },
+  setWallpaperUri: (uri: string | null) => {
+    set({ wallpaperUri: uri });
+    if (uri) AsyncStorage.setItem('custom_wallpaper_uri', uri).catch(() => {});
+    else AsyncStorage.removeItem('custom_wallpaper_uri').catch(() => {});
+  },
+  setBackgroundMode: (mode: string) => {
+    set({ backgroundMode: mode });
+    AsyncStorage.setItem('background_mode', mode).catch(() => {});
+  }
 }));
 
 export const useTheme = () => {
   const theme = useThemeStore((s: any) => s.theme);
   const accentColor = useThemeStore((s: any) => s.accentColor);
   const applyAccentToText = useThemeStore((s: any) => s.applyAccentToText);
+  const useWallpaper = useThemeStore((s: any) => s.useWallpaper);
+  const backgroundMode = useThemeStore((s: any) => s.backgroundMode);
+  const wallpaperUri = useThemeStore((s: any) => s.wallpaperUri);
+  
   const palette = theme === 'dark' ? DARK_COLORS : LIGHT_COLORS;
   const COLORS = {
     ...palette,
@@ -122,12 +141,29 @@ export const useTheme = () => {
     accentText: applyAccentToText ? accentColor : palette.textPrimary,
   };
   return {
-    COLORS, theme, useWallpaper: false, backgroundMode: 'solid', wallpaperUri: null, accentColor, applyAccentToText,
+    COLORS, 
+    theme, 
+    useWallpaper, 
+    backgroundMode: backgroundMode || 'solid', 
+    wallpaperUri, 
+    accentColor, 
+    applyAccentToText,
     setTheme: useThemeStore.getState().setTheme,
     setAccentColor: useThemeStore.getState().setAccentColor,
     setApplyAccentToText: useThemeStore.getState().setApplyAccentToText,
+    setUseWallpaper: useThemeStore.getState().setUseWallpaper,
+    setWallpaperUri: useThemeStore.getState().setWallpaperUri,
+    setBackgroundMode: useThemeStore.getState().setBackgroundMode,
   };
 };
+
+export const WALLPAPER_OPTIONS = [
+  { id: 'none', label: 'None', uri: null },
+  { id: 'abstract_aggie', label: 'Aggie Abstract', uri: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=800' },
+  { id: 'geometric_maroon', label: 'Maroon Geometry', uri: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&q=80&w=800' },
+  { id: 'dark_texture', label: 'Carbon Fiber', uri: 'https://images.unsplash.com/photo-1558591710-4b4a1ae0f04d?auto=format&fit=crop&q=80&w=800' },
+  { id: 'soft_gradient', label: 'Soft Sunset', uri: 'https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&q=80&w=800' },
+];
 
 export const COLORS = DARK_COLORS; // Fallback for static usage
 

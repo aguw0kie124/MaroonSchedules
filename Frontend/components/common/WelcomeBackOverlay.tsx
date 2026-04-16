@@ -40,10 +40,10 @@ export function WelcomeBackOverlay({ firstName, onFinished }: WelcomeBackOverlay
       Animated.parallel([
         Animated.timing(confettiProgress, { 
           toValue: 1, 
-          duration: 6000, 
+          duration: 2000, 
           useNativeDriver: true 
         }),
-        Animated.delay(5000), // Hold for 5 seconds
+        Animated.delay(1500), // Hold for 1.5 seconds
       ]),
       // 3. Exit
       Animated.parallel([
