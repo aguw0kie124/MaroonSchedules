@@ -61,7 +61,7 @@ import {
 } from '../services/socialFeedService';
 import { useTour, TourTarget } from './onboarding/TourProvider';
 import { PillTabs } from './PillTabs';
-import { getDefaultAccentColor, useTheme, WALLPAPER_OPTIONS } from './SharedUI';
+import { getDefaultAccentColor, useTheme } from './SharedUI';
 
 import { TagChips } from './common/TagChips';
 
@@ -180,35 +180,6 @@ export function Profile() {
   const setNotificationsEnabled = useAppShellStore((state) => state.setNotificationsEnabled);
   const showWelcomeGreeting = useAppShellStore((state) => state.showWelcomeGreeting);
   const setShowWelcomeGreeting = useAppShellStore((state) => state.setShowWelcomeGreeting);
-  const tabBarMode = useAppShellStore((state) => state.tabBarMode);
-  const setTabBarMode = useAppShellStore((state) => state.setTabBarMode);
-  const useWallpaper = useAppShellStore((state) => state.useWallpaper);
-  const setUseWallpaper = useAppShellStore((state) => state.setUseWallpaper);
-  const wallpaperUri = useAppShellStore((state) => state.wallpaperUri);
-  const setWallpaperUri = useAppShellStore((state) => state.setWallpaperUri);
-
-  const handlePickCustomWallpaper = async () => {
-    try {
-      const { granted } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!granted) {
-        Alert.alert('Permission needed', 'Allow access to your photos to pick a custom wallpaper.');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 0.9,
-      });
-
-      if (!result.canceled && result.assets[0].uri) {
-        setWallpaperUri(result.assets[0].uri);
-      }
-    } catch (error) {
-      console.warn('Failed to pick custom wallpaper:', error);
-      Alert.alert('Error', 'Could not open photo library.');
-    }
-  };
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [friends, setFriends] = useState<any[]>([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
@@ -835,101 +806,6 @@ export function Profile() {
             </View>
           </View>
 
-          <View style={styles.preferenceBlock}>
-            <Text style={styles.preferenceLabel}>Navigation Style</Text>
-            <View style={styles.segmentedRow}>
-              {['solid', 'floating'].map((mode) => {
-                const selected = tabBarMode === mode;
-                return (
-                  <Pressable
-                    key={mode}
-                    style={[styles.segmentButton, selected && styles.segmentButtonActive]}
-                    onPress={() => setTabBarMode(mode as 'solid' | 'floating')}
-                  >
-                    <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
-                      {mode === 'solid' ? 'Solid' : 'Floating'}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
-          <View style={styles.preferenceBlock}>
-            <Text style={styles.preferenceLabel}>Wallpaper</Text>
-            <View style={styles.inlineSwitchRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inlineSwitchTitle}>Show background wallpaper</Text>
-              </View>
-              <Switch
-                value={useWallpaper}
-                onValueChange={setUseWallpaper}
-                trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-            
-            {useWallpaper && (
-              <ScrollView 
-                horizontal 
-                showsHorizontalScrollIndicator={false} 
-                contentContainerStyle={{ gap: 12, paddingVertical: 10 }}
-              >
-                <Pressable 
-                  onPress={handlePickCustomWallpaper}
-                  style={{ alignItems: 'center', gap: 6 }}
-                >
-                  <View style={{ 
-                    width: 80, 
-                    height: 120, 
-                    borderRadius: 12, 
-                    backgroundColor: COLORS.surfaceElevated,
-                    borderWidth: 2,
-                    borderColor: COLORS.border,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderStyle: 'dashed'
-                  }}>
-                    <Camera size={24} color={COLORS.primary} />
-                    <Text style={{ fontSize: 10, color: COLORS.textTertiary, marginTop: 4 }}>Custom</Text>
-                  </View>
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: COLORS.textSecondary }}>Pick Image</Text>
-                </Pressable>
-
-                {WALLPAPER_OPTIONS.map((opt) => {
-                  const isSelected = wallpaperUri === opt.uri;
-                  return (
-                    <Pressable 
-                      key={opt.id} 
-                      onPress={() => setWallpaperUri(opt.uri)}
-                      style={{ alignItems: 'center', gap: 6 }}
-                    >
-                      <View style={{ 
-                        width: 80, 
-                        height: 120, 
-                        borderRadius: 12, 
-                        backgroundColor: COLORS.surfaceElevated,
-                        borderWidth: 2,
-                        borderColor: isSelected ? COLORS.primary : 'transparent',
-                        overflow: 'hidden'
-                      }}>
-                        {opt.uri ? (
-                          <Image source={{ uri: opt.uri }} style={{ width: '100%', height: '100%' }} />
-                        ) : (
-                          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                            <Text style={{ fontSize: 10, color: COLORS.textTertiary }}>Solid</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? COLORS.primary : COLORS.textSecondary }}>
-                        {opt.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            )}
-          </View>
         </View>
       </>
     );

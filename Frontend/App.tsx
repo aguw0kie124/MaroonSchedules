@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React from 'react';
-import { View, StyleSheet, Pressable, ImageBackground } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
@@ -53,7 +53,6 @@ import StreakHubScreen from './components/dining/StreakHubScreen';
 import RestaurantMenuScreen from './components/dining/RestaurantMenuScreen';
 
 import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio } from 'lucide-react-native';
-import { GlassPillTabBar } from './components/GlassPillTabBar';
 import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
@@ -348,20 +347,16 @@ function MainTabs(props: any) {
     : availableRouteNames[0];
   const shellKey = availableRouteNames.join('|');
 
-  const { tabBarMode } = useAppShellStore();
-
   return (
     <Tab.Navigator
-      key={`${shellKey}-${tabBarMode}`}
+      key={shellKey}
       id="MainTabs"
       initialRouteName={initialRouteName}
-      tabBar={tabBarMode === 'floating' ? (props) => <GlassPillTabBar {...props} /> : undefined}
       screenOptions={{
         headerShown: false,
-        tabBarShowLabel: tabBarMode !== 'floating',
+        tabBarShowLabel: true,
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          display: tabBarMode === 'floating' ? 'none' : 'flex',
           height: 70,
           borderTopWidth: 1,
           borderTopColor: COLORS.border,
@@ -585,24 +580,12 @@ function RootNavigator() {
     );
   }
 
-    const { useWallpaper, wallpaperUri } = useTheme();
-
     return (
       <View style={{ flex: 1, backgroundColor: COLORS.background }}>
         <ApiAuthBridge />
         {isSignedIn ? (
           <UserSync>
-            {useWallpaper && wallpaperUri ? (
-              <ImageBackground 
-                source={{ uri: wallpaperUri }} 
-                style={{ flex: 1 }}
-                imageStyle={{ opacity: theme === 'dark' ? 0.3 : 0.8 }}
-              >
-                {content}
-              </ImageBackground>
-            ) : (
-              content
-            )}
+            {content}
           </UserSync>
         ) : content}
         {isSignedIn && <PendingReviewInterceptor />}

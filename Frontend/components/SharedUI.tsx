@@ -77,13 +77,10 @@ export const useThemeStore = create<any>((set, get) => ({
     AsyncStorage.setItem('accent_text_enabled', JSON.stringify(applyAccentToText)).catch(() => {});
   },
   loadWallpaperPref: async () => {
-    const [storedTheme, accentColor, accentTextEnabled, useWallpaper, backgroundMode, wallpaperUri] = await Promise.all([
+    const [storedTheme, accentColor, accentTextEnabled] = await Promise.all([
       AsyncStorage.getItem('theme_mode'),
       AsyncStorage.getItem('accent_color'),
       AsyncStorage.getItem('accent_text_enabled'),
-      AsyncStorage.getItem('use_wallpaper'),
-      AsyncStorage.getItem('background_mode'),
-      AsyncStorage.getItem('custom_wallpaper_uri'),
     ]);
 
     const nextState: Record<string, unknown> = {};
@@ -102,13 +99,14 @@ export const useThemeStore = create<any>((set, get) => ({
       nextState.applyAccentToText = accentTextEnabled === 'true';
     }
 
-    if (useWallpaper !== null) nextState.useWallpaper = useWallpaper === 'true';
-    if (backgroundMode !== null) nextState.backgroundMode = backgroundMode;
-    if (wallpaperUri !== null) nextState.wallpaperUri = wallpaperUri;
+    nextState.useWallpaper = false;
+    nextState.backgroundMode = 'solid';
+    nextState.wallpaperUri = null;
 
     if (Object.keys(nextState).length) {
       set(nextState);
     }
+    AsyncStorage.multiRemove(['use_wallpaper', 'background_mode', 'custom_wallpaper_uri']).catch(() => {});
   },
   setUseWallpaper: (val: boolean) => {
     set({ useWallpaper: val });
@@ -143,27 +141,19 @@ export const useTheme = () => {
   return {
     COLORS, 
     theme, 
-    useWallpaper, 
-    backgroundMode: backgroundMode || 'solid', 
-    wallpaperUri, 
+    useWallpaper: false,
+    backgroundMode: 'solid',
+    wallpaperUri: null,
     accentColor, 
     applyAccentToText,
     setTheme: useThemeStore.getState().setTheme,
     setAccentColor: useThemeStore.getState().setAccentColor,
     setApplyAccentToText: useThemeStore.getState().setApplyAccentToText,
-    setUseWallpaper: useThemeStore.getState().setUseWallpaper,
-    setWallpaperUri: useThemeStore.getState().setWallpaperUri,
-    setBackgroundMode: useThemeStore.getState().setBackgroundMode,
+    setUseWallpaper: () => {},
+    setWallpaperUri: () => {},
+    setBackgroundMode: () => {},
   };
 };
-
-export const WALLPAPER_OPTIONS = [
-  { id: 'none', label: 'None', uri: null },
-  { id: 'abstract_aggie', label: 'Aggie Abstract', uri: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&q=80&w=800' },
-  { id: 'geometric_maroon', label: 'Maroon Geometry', uri: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&q=80&w=800' },
-  { id: 'dark_texture', label: 'Carbon Fiber', uri: 'https://images.unsplash.com/photo-1558591710-4b4a1ae0f04d?auto=format&fit=crop&q=80&w=800' },
-  { id: 'soft_gradient', label: 'Soft Sunset', uri: 'https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&q=80&w=800' },
-];
 
 export const COLORS = DARK_COLORS; // Fallback for static usage
 
