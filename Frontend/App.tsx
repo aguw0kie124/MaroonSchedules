@@ -20,7 +20,6 @@ import { LoginScreen } from './components/LoginScreen';
 import { AnnexHubScreen } from './components/AnnexHubScreen';
 import { AnnexLibraryDetailScreen } from './components/AnnexLibraryDetailScreen';
 import { AnnexRentalDetailScreen } from './components/AnnexRentalDetailScreen';
-import { WelcomeBackOverlay } from './components/common/WelcomeBackOverlay';
 
 import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
 import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
@@ -273,10 +272,14 @@ const AnimatedDiningScreen = withTabMotion(
 const AnimatedTimerScreen = withTabMotion(TimerScreen, 80);
 const AnimatedSettingsScreen = withTabMotion(Profile, 80);
 
+import { GlassPillTabBar } from './components/GlassPillTabBar';
+
 function MainTabs(props: any) {
   const { COLORS } = useTheme();
   const navItems = useAppShellStore((state) => state.navItems);
   const isGuest = useSessionStore((state) => state.isGuest);
+  const tabBarMode = useAppShellStore((state) => state.tabBarMode);
+
   const visibleNavItems = React.useMemo(() => {
     if (!isGuest) {
       return getOrderedVisibleItems(navItems).filter((item: any) => item.id !== 'Dining');
@@ -352,11 +355,12 @@ function MainTabs(props: any) {
       key={shellKey}
       id="MainTabs"
       initialRouteName={initialRouteName}
+      tabBar={(tabProps) => tabBarMode === 'floating' ? <GlassPillTabBar {...tabProps} /> : undefined}
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: true,
         tabBarHideOnKeyboard: true,
-        tabBarStyle: {
+        tabBarStyle: tabBarMode === 'floating' ? { display: 'none' } : {
           height: 70,
           borderTopWidth: 1,
           borderTopColor: COLORS.border,
@@ -379,8 +383,9 @@ function MainTabs(props: any) {
           initialParams={screen.initialParams}
           options={{
             title: screen.title,
-            tabBarButton: (props) => {
-              return <TabButtonWrapper screenName={screen.name} props={props} />;
+            tabBarButton: (p) => {
+              if (tabBarMode === 'floating') return null; // Let GlassPill handle it
+              return <TabButtonWrapper screenName={screen.name} props={p} />;
             },
             tabBarIcon: ({ color, focused }) => {
               return (
@@ -418,25 +423,6 @@ function RootNavigator() {
   const isAdmin = useAppShellStore((state) => state.adminAccessStatus);
   const setIsAdmin = useAppShellStore((state) => state.setAdminAccessStatus);
   const isRegularUserFlow = isSignedIn && authMode !== 'admin';
-  const [showWelcome, setShowWelcome] = React.useState(false);
-  const hasShownWelcomeRef = React.useRef(false);
-
-  const handleWelcomeFinished = React.useCallback(() => {
-    setShowWelcome(false);
-  }, []);
-
-
-  const { showWelcomeGreeting } = useAppShellStore();
-
-  React.useEffect(() => {
-    if (isSignedIn && user?.firstName && !hasShownWelcomeRef.current && showWelcomeGreeting) {
-      setShowWelcome(true);
-      hasShownWelcomeRef.current = true;
-    } else if (!isSignedIn) {
-      hasShownWelcomeRef.current = false;
-    }
-  }, [isSignedIn, user?.firstName, showWelcomeGreeting]);
-
   React.useEffect(() => {
     if (isSignedIn && user?.id) {
        requestJson(`/admin/status?clerk_id=${encodeURIComponent(user.id)}`)
@@ -589,12 +575,6 @@ function RootNavigator() {
           </UserSync>
         ) : content}
         {isSignedIn && <PendingReviewInterceptor />}
-        {showWelcome && user?.firstName && (
-          <WelcomeBackOverlay 
-            firstName={user.firstName} 
-            onFinished={handleWelcomeFinished} 
-          />
-        )}
       </View>
     );
   }

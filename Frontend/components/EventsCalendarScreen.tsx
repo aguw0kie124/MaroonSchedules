@@ -60,7 +60,7 @@ import { TourTarget, useTour } from './onboarding/TourProvider';
 import { triggerNativeShare } from '../utils/share';
 import { useEventStore } from '../store/eventStore';
 import type { MajorOption, ScheduledEvent } from '../store/eventStore';
-import { useTheme } from './SharedUI';
+import { useTheme, WallpaperWrapper } from './SharedUI';
 import { useAppShellStore } from '../store/appShellStore';
 import { useSessionStore } from '../store/sessionStore';
 import { scheduleAdminEventReviewNotification, scheduleEventNotification } from '../services/notificationService';
@@ -1632,14 +1632,15 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   return (
     <View style={s.container}>
-      <EventRewardToast
-        visible={!!rewardToast}
-        title={rewardToast?.title || ''}
-        body={rewardToast?.body || ''}
-      />
-      {view === 'discover' && (
-        <>
-          {renderHeader('Events')}
+      <WallpaperWrapper>
+        <EventRewardToast
+          visible={!!rewardToast}
+          title={rewardToast?.title || ''}
+          body={rewardToast?.body || ''}
+        />
+        {view === 'discover' && (
+          <>
+            {renderHeader('Events')}
 
 
           {loading ? (
@@ -1986,6 +1987,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         scheduled={detailEvent ? scheduledEvents.some((scheduled) => String(scheduled.id) === String(detailEvent.id)) : false}
         isGuest={isGuest}
       />
+      </WallpaperWrapper>
     </View>
   );
 }

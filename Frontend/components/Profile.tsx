@@ -159,6 +159,14 @@ export function Profile() {
     setAccentColor,
     applyAccentToText,
     setApplyAccentToText,
+    useWallpaper,
+    setUseWallpaper,
+    wallpaperUri,
+    setWallpaperUri,
+    backgroundMode,
+    setBackgroundMode,
+    tabBarMode,
+    setTabBarMode,
   } = useTheme();
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark, accentColor);
@@ -709,12 +717,32 @@ export function Profile() {
     </>
   );
 
+  const pickWallpaper = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Denied', 'Camera roll permission is required to select a wallpaper.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      const asset = result.assets[0];
+      setWallpaperUri(asset.uri);
+      setUseWallpaper(true);
+    }
+  };
+
   const renderLayoutTab = () => {
     return (
       <>
         <View style={styles.section}>
           <View style={styles.preferenceBlock}>
-            <Text style={styles.preferenceLabel}>Theme</Text>
+            <Text style={styles.preferenceLabel}>Theme Mode</Text>
             <View style={styles.segmentedRow}>
               {['light', 'dark'].map((mode) => {
                 const selected = theme === mode;
@@ -734,12 +762,73 @@ export function Profile() {
           </View>
 
           <View style={styles.preferenceBlock}>
+            <Text style={styles.preferenceLabel}>Navigation Style</Text>
+            <Text style={styles.sectionSubtitle}>Choose between a classic solid bar or a modern floating nav.</Text>
+            <View style={styles.segmentedRow}>
+              {[
+                { key: 'solid', label: 'Classic Solid' },
+                { key: 'floating', label: 'Floating Pill' },
+              ].map((item) => {
+                const selected = tabBarMode === item.key;
+                return (
+                  <Pressable
+                    key={item.key}
+                    style={[styles.segmentButton, { flex: 1, justifyContent: 'center' }, selected && styles.segmentButtonActive]}
+                    onPress={() => setTabBarMode(item.key as 'solid' | 'floating')}
+                  >
+                    <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={styles.preferenceBlock}>
+            <Text style={styles.preferenceLabel}>Custom Wallpaper</Text>
+            <View style={styles.inlineSwitchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inlineSwitchTitle}>Enable Wallpaper</Text>
+                <Text style={styles.sectionSubtitle}>Apply your custom background across the app.</Text>
+              </View>
+              <Switch
+                value={useWallpaper}
+                onValueChange={setUseWallpaper}
+                trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+            
+            <Pressable 
+              style={[
+                styles.toolRow, 
+                { marginTop: 8, borderTopWidth: 1, borderTopColor: COLORS.border, borderBottomWidth: 0 }
+              ]} 
+              onPress={pickWallpaper}
+            >
+              <View style={[styles.toolIconBg, { backgroundColor: COLORS.primary + '15' }]}>
+                <Camera size={20} color={COLORS.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.toolTitle}>{wallpaperUri ? 'Change Wallpaper' : 'Choose Wallpaper'}</Text>
+                {wallpaperUri && (
+                  <Text style={[styles.email, { color: COLORS.success, fontWeight: '600' }]} numberOfLines={1}>
+                    Image active ✓
+                  </Text>
+                )}
+              </View>
+              <ChevronRight size={20} color={COLORS.textTertiary} />
+            </Pressable>
+          </View>
+
+          <View style={styles.preferenceBlock}>
             <Text style={styles.preferenceLabel}>Accent Color</Text>
             <View style={styles.accentSliderCard}>
               <View style={styles.accentSliderHeader}>
                 <View style={[styles.accentPreview, { backgroundColor: accentPreviewColor }]} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.inlineSwitchTitle}>Accent Spectrum</Text>
+                  <Text style={styles.inlineSwitchTitle}>Custom Accent</Text>
                 </View>
               </View>
 
@@ -774,19 +863,20 @@ export function Profile() {
               </View>
 
               <View style={styles.accentScaleRow}>
-                <Text style={styles.accentScaleLabel}>Light</Text>
+                <Text style={styles.accentScaleLabel}>Cool</Text>
                 <Pressable
                   style={styles.accentResetButton}
                   onPress={() => setAccentColor(getDefaultAccentColor(theme))}
                 >
-                  <Text style={styles.accentResetText}>Use Theme Default</Text>
+                  <Text style={styles.accentResetText}>Default Accent</Text>
                 </Pressable>
-                <Text style={styles.accentScaleLabel}>Dark</Text>
+                <Text style={styles.accentScaleLabel}>Warm</Text>
               </View>
             </View>
             <View style={styles.inlineSwitchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.inlineSwitchTitle}>Apply accent to accent text</Text>
+                <Text style={styles.inlineSwitchTitle}>Vibrant Headings</Text>
+                <Text style={styles.sectionSubtitle}>Apply color to titles and icons.</Text>
               </View>
               <Switch
                 value={applyAccentToText}
@@ -796,22 +886,6 @@ export function Profile() {
               />
             </View>
           </View>
-
-          <View style={styles.preferenceBlock}>
-            <Text style={styles.preferenceLabel}>Welcome Greeting</Text>
-            <View style={styles.inlineSwitchRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inlineSwitchTitle}>Show greeting popup on startup</Text>
-              </View>
-              <Switch
-                value={showWelcomeGreeting}
-                onValueChange={setShowWelcomeGreeting}
-                trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-          </View>
-
         </View>
       </>
     );
@@ -1344,13 +1418,14 @@ export function Profile() {
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        ref={scrollRef}
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
-      >
+      <WallpaperWrapper>
+        <ScrollView
+          ref={scrollRef}
+          style={styles.container}
+          contentContainerStyle={styles.contentContainer}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
+        >
         {isGuest ? (
           renderGuestView()
         ) : (
@@ -1375,8 +1450,9 @@ export function Profile() {
 
         <View style={{ height: 120 }} />
       </ScrollView>
-    </View>
-  );
+    </WallpaperWrapper>
+  </View>
+);
 }
 
 const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>

@@ -60,7 +60,7 @@ import { FocusMotionView, ScalePressable } from './common/Motion';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { API_URL } from '../config';
-import { useTheme } from './SharedUI';
+import { useTheme, WallpaperWrapper } from './SharedUI';
 import { useAppShellStore } from '../store/appShellStore';
 import { useEventStore } from '../store/eventStore';
 import { TourTarget, useTour } from './onboarding/TourProvider';
@@ -1469,7 +1469,8 @@ export function CampusPingsScreen() {
 
   return (
     <View style={styles.container}>
-      <FlatList
+      <WallpaperWrapper>
+        <FlatList
         ref={pingsListRef}
         data={filteredFeed}
         keyExtractor={(item, index) => item?.id || `ping-idx-${index}`}
@@ -1895,6 +1896,7 @@ export function CampusPingsScreen() {
         onClose={() => setActiveCommentsPing(null)}
         onCommentPosted={handleCommentPosted}
       />
+      </WallpaperWrapper>
     </View>
   );
 }

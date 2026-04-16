@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, ImageBackground } from 'react-native';
 import { MapPin, Bookmark } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
@@ -77,10 +77,13 @@ export const useThemeStore = create<any>((set, get) => ({
     AsyncStorage.setItem('accent_text_enabled', JSON.stringify(applyAccentToText)).catch(() => {});
   },
   loadWallpaperPref: async () => {
-    const [storedTheme, accentColor, accentTextEnabled] = await Promise.all([
+    const [storedTheme, accentColor, accentTextEnabled, useWallpaper, backgroundMode, wallpaperUri] = await Promise.all([
       AsyncStorage.getItem('theme_mode'),
       AsyncStorage.getItem('accent_color'),
       AsyncStorage.getItem('accent_text_enabled'),
+      AsyncStorage.getItem('use_wallpaper'),
+      AsyncStorage.getItem('background_mode'),
+      AsyncStorage.getItem('custom_wallpaper_uri'),
     ]);
 
     const nextState: Record<string, unknown> = {};
@@ -99,14 +102,19 @@ export const useThemeStore = create<any>((set, get) => ({
       nextState.applyAccentToText = accentTextEnabled === 'true';
     }
 
-    nextState.useWallpaper = false;
-    nextState.backgroundMode = 'solid';
-    nextState.wallpaperUri = null;
+    if (useWallpaper !== null) {
+      nextState.useWallpaper = useWallpaper === 'true';
+    }
+    if (backgroundMode !== null) {
+      nextState.backgroundMode = backgroundMode;
+    }
+    if (wallpaperUri !== null) {
+      nextState.wallpaperUri = wallpaperUri;
+    }
 
     if (Object.keys(nextState).length) {
       set(nextState);
     }
-    AsyncStorage.multiRemove(['use_wallpaper', 'background_mode', 'custom_wallpaper_uri']).catch(() => {});
   },
   setUseWallpaper: (val: boolean) => {
     set({ useWallpaper: val });
@@ -141,17 +149,17 @@ export const useTheme = () => {
   return {
     COLORS, 
     theme, 
-    useWallpaper: false,
-    backgroundMode: 'solid',
-    wallpaperUri: null,
+    useWallpaper,
+    backgroundMode,
+    wallpaperUri,
     accentColor, 
     applyAccentToText,
     setTheme: useThemeStore.getState().setTheme,
     setAccentColor: useThemeStore.getState().setAccentColor,
     setApplyAccentToText: useThemeStore.getState().setApplyAccentToText,
-    setUseWallpaper: () => {},
-    setWallpaperUri: () => {},
-    setBackgroundMode: () => {},
+    setUseWallpaper: useThemeStore.getState().setUseWallpaper,
+    setWallpaperUri: useThemeStore.getState().setWallpaperUri,
+    setBackgroundMode: useThemeStore.getState().setBackgroundMode,
   };
 };
 
@@ -171,6 +179,29 @@ export const useSavedStore = create<any>((set, get) => ({
     await AsyncStorage.setItem('saved_sections_store', JSON.stringify(newSaved));
   }
 }));
+
+export const WallpaperWrapper = ({ children }: { children: React.ReactNode }) => {
+  const { COLORS, useWallpaper, wallpaperUri, theme } = useTheme();
+  
+  if (!useWallpaper || !wallpaperUri) {
+    return <View style={{ flex: 1, backgroundColor: COLORS.background }}>{children}</View>;
+  }
+
+  return (
+    <ImageBackground
+      source={{ uri: wallpaperUri }}
+      style={{ flex: 1, backgroundColor: COLORS.background }}
+      resizeMode="cover"
+    >
+      <View style={{ 
+        flex: 1, 
+        backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.7)' 
+      }}>
+        {children}
+      </View>
+    </ImageBackground>
+  );
+};
 
 export const Card = ({ children, style }: any) => {
   const { COLORS, theme } = useTheme();
