@@ -18,6 +18,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { AnnexHubScreen } from './components/AnnexHubScreen';
 import { AnnexLibraryDetailScreen } from './components/AnnexLibraryDetailScreen';
 import { AnnexRentalDetailScreen } from './components/AnnexRentalDetailScreen';
+import { WelcomeBackOverlay } from './components/common/WelcomeBackOverlay';
 
 import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
 import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
@@ -419,6 +420,22 @@ function RootNavigator() {
   const isAdmin = useAppShellStore((state) => state.adminAccessStatus);
   const setIsAdmin = useAppShellStore((state) => state.setAdminAccessStatus);
   const isRegularUserFlow = isSignedIn && authMode !== 'admin';
+  const [showWelcome, setShowWelcome] = React.useState(false);
+  const hasShownWelcomeRef = React.useRef(false);
+
+  const handleWelcomeFinished = React.useCallback(() => {
+    setShowWelcome(false);
+  }, []);
+
+
+  React.useEffect(() => {
+    if (isSignedIn && user?.firstName && !hasShownWelcomeRef.current) {
+      setShowWelcome(true);
+      hasShownWelcomeRef.current = true;
+    } else if (!isSignedIn) {
+      hasShownWelcomeRef.current = false;
+    }
+  }, [isSignedIn, user?.firstName]);
 
   React.useEffect(() => {
     if (isSignedIn && user?.id) {
@@ -568,6 +585,12 @@ function RootNavigator() {
       <ApiAuthBridge />
       {isSignedIn ? <UserSync>{content}</UserSync> : content}
       {isSignedIn && <PendingReviewInterceptor />}
+      {showWelcome && user?.firstName && (
+        <WelcomeBackOverlay 
+          firstName={user.firstName} 
+          onFinished={handleWelcomeFinished} 
+        />
+      )}
     </>
   );
 }

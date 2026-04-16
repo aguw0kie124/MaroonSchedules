@@ -260,7 +260,7 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
 
   const renderInitialFlow = () => (
     <>
-      <Text style={styles.title}>Continue to MaroonSchedules</Text>
+      <Text style={styles.title}>Continue to MaroonLife</Text>
       <Text style={styles.subtitle}>Pick the account type that fits your role on campus.</Text>
 
       <View style={styles.accountCard}>
@@ -524,7 +524,7 @@ export function LoginScreen({ onBack }: LoginScreenProps) {
       </Pressable>
 
       <Text style={styles.flowTitle}>Create Account</Text>
-      <Text style={styles.flowSubtitle}>Join MaroonSchedules as a {authMode === 'admin' ? 'Campus Admin' : 'Student'}.</Text>
+      <Text style={styles.flowSubtitle}>Join MaroonLife as a {authMode === 'admin' ? 'Campus Admin' : 'Student'}.</Text>
 
       <View style={styles.inputWrapper}>
         <Mail size={20} color={COLORS.textTertiary} style={styles.inputIcon} />
