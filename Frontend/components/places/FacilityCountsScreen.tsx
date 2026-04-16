@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
+import * as Haptics from "expo-haptics";
 import {
   View,
   Text,
@@ -92,6 +93,20 @@ export default function FacilityCountsScreen() {
   const [lazyCounts, setLazyCounts] = useState<FacilityCountEntry[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const refreshData = useCallback(() => {
+    if (!location?.placeId) return;
+    setLoading(true);
+    getLazyFacilityCounts(location.placeId, true)
+      .then(res => {
+        if (res?.facility_counts) {
+          setLazyCounts(res.facility_counts);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      })
+      .catch(err => console.error("[FacilityCountsScreen] Refresh error:", err))
+      .finally(() => setLoading(false));
+  }, [location?.placeId]);
+
   useEffect(() => {
     if (location?.placeId && !location.facility_counts?.length) {
       setLoading(true);
@@ -140,8 +155,16 @@ export default function FacilityCountsScreen() {
               </View>
             )}
          </View>
-         <TouchableOpacity style={styles.refreshBtn} onPress={() => {  }}>
-            <RefreshCw size={22} color={T.primary} />
+         <TouchableOpacity 
+           style={styles.refreshBtn} 
+           onPress={refreshData}
+           disabled={loading}
+         >
+            {loading ? (
+              <ActivityIndicator size="small" color={T.primary} />
+            ) : (
+              <RefreshCw size={22} color={T.primary} />
+            )}
          </TouchableOpacity>
       </View>
 

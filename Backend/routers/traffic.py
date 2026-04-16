@@ -3,7 +3,7 @@ from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
 import requests
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import random
 from urllib.parse import quote
 import pytz
@@ -957,12 +957,21 @@ def retrieve_locations(request: Request):
 
 @router.get("/capacity/facility-counts/{place_id}")
 @limiter.limit("120/minute")
-def get_detailed_facility_counts(request: Request, place_id: str):
+def get_detailed_facility_counts(request: Request, place_id: str, sid: Optional[str] = Query(None), refresh: bool = Query(False)):
     """Returns detailed sub-area counts for a specific recreation facility."""
+    cache_key = f"traffic:capacity:facility-counts:{sid or 'global'}:{place_id}"
+    
+    if not refresh:
+        cached = cache_service.get_json(cache_key)
+        if cached is not None:
+            return cached
+
     # Note: We fetch ALL rec data once and filter, since we likely have it cached.
     rec_live_counts = tracker.get_rec_center_live_counts(include_sub_areas=True)
     if place_id in rec_live_counts:
-        return {"facility_counts": rec_live_counts[place_id].get("facility_counts", [])}
+        payload = {"facility_counts": rec_live_counts[place_id].get("facility_counts", [])}
+        cache_service.set_json(cache_key, payload, 1800) # 30 min cache
+        return payload
     
     return {"facility_counts": []}
 

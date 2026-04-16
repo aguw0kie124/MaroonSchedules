@@ -841,14 +841,37 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (activeLayer === "Pulse") return [];
     if (activeLayer === "Heatmap" || activeLayer === "Bus")
       return selectedLoc ? [selectedLoc] : [];
+      
     const merged = new Map<string, CampusLocation>();
-    filteredLocations.forEach((l) => merged.set(getLocationSelectionId(l), l));
+    
+    // Canonicalize keys to prevent overlaps for major garages
+    const getGarageStableKey = (l: CampusLocation) => {
+      const name = l.location.toLowerCase();
+      if (name.includes("central campus") || (name.includes("central") && name.includes("garage"))) return "garage-central-canonical";
+      if (name.includes("cain") && name.includes("garage")) return "garage-cain-canonical";
+      if (name.includes("polo") && name.includes("garage")) return "garage-polo-canonical";
+      if (name.includes("stallings") && name.includes("garage")) return "garage-stallings-canonical";
+      if (name.includes("university center") && name.includes("garage")) return "garage-ucg-canonical";
+      if (name.includes("west campus") && name.includes("garage")) return "garage-wcg-canonical";
+      return getLocationSelectionId(l);
+    };
+
+    filteredLocations.forEach((l) => {
+      const key = getGarageStableKey(l);
+      const existing = merged.get(key);
+      // If we have multiple, prefer the one with live data or more detail
+      if (!existing || (l.visitor_parking_available != null && existing.visitor_parking_available == null)) {
+        merged.set(key, l);
+      }
+    });
     
     // Stable Marker Fix: Only add selectedLoc if it's NOT already in the layer's 
-    // filtered list. Overwriting with the merged selectedLoc object causes 
-    // re-mount flickers because of object identity changes.
-    if (selectedLoc && !merged.has(getLocationSelectionId(selectedLoc))) {
-      merged.set(getLocationSelectionId(selectedLoc), selectedLoc);
+    // filtered list (using the stable key)
+    if (selectedLoc) {
+      const key = getGarageStableKey(selectedLoc);
+      if (!merged.has(key)) {
+        merged.set(key, selectedLoc);
+      }
     }
     return Array.from(merged.values());
   }, [activeLayer, filteredLocations, selectedLoc]);
@@ -2548,7 +2571,25 @@ export function PlacesMapScreen({ route, navigation }: any) {
           markerLocations.map((loc) => {
             const isSelected = getLocationSelectionId(loc) === selectedId;
             const isTodayLayer = activeLayer === "Today";
-            const isCapacityType = loc.type === "Library" || loc.type === "Rec";
+            const visitorGarageIds = [
+              "osm:way:91100311", 
+              "garage-polo", 
+              "osm:way:450686873", 
+              "garage-university-center", 
+              "garage-west-campus"
+            ];
+            const isVisitorParkingGarage = loc.type === "Parking" && (
+              visitorGarageIds.includes(loc.placeId) || 
+              loc.location.includes("Central Campus Garage") ||
+              loc.location.includes("Polo") ||
+              loc.location.includes("Stallings") ||
+              loc.location.includes("University Center Garage") ||
+              loc.location.includes("West Campus Garage")
+            );
+            const isCapacityType = loc.type === "Library" || loc.type === "Rec" || isVisitorParkingGarage;
+            
+            const tracksChanges = isMapTransitionsStable || isSelected || !!selectedId || isCapacityType;
+
             const displayPercent =
               loc.capacity && loc.capacity > 0 && loc.current_count != null
                 ? Math.round((loc.current_count / loc.capacity) * 100)
@@ -2583,9 +2624,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   latitude: loc.coord.lat,
                   longitude: loc.coord.lng,
                 }}
-                onPress={() => handleSelectLocation(loc)}
+                onPress={() => {
+                  setIsMapTransitionsStable(true);
+                  handleSelectLocation(loc);
+                }}
                 anchor={{ x: 0.5, y: 1 }}
-                tracksViewChanges={isMapTransitionsStable || isSelected || isCapacityType}
+                tracksViewChanges={tracksChanges}
               >
                 {isTodayLayer ? (
                   <View
@@ -3049,7 +3093,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
         COLORS={COLORS}
         isDark={isDark}
         selectedId={selectedId}
-        setSelectedId={setSelectedId}
+        setSelectedId={(id) => {
+          setIsMapTransitionsStable(true);
+          setSelectedId(id);
+        }}
         selectedLoc={selectedLoc}
         foodCourtVenues={foodCourtVenues}
         diningMenuOptions={diningMenuOptions}
