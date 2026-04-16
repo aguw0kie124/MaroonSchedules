@@ -2,6 +2,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Dimensions,
   KeyboardAvoidingView,
   Modal,
   PanResponder,
@@ -93,6 +94,11 @@ export function PingCommentsModal({
   onClose,
   onCommentPosted,
 }: PingCommentsModalProps) {
+  const SCREEN_HEIGHT = Dimensions.get('window').height;
+  const SHEET_HEIGHT = Math.round(SCREEN_HEIGHT * 0.86);
+  const SHEET_TOP_SNAP = 0;
+  const SHEET_MID_SNAP = Math.round(SHEET_HEIGHT * 0.22);
+  const SHEET_HIDDEN_SNAP = SHEET_HEIGHT + 32;
   const { COLORS } = useTheme();
   const { user } = useUser();
 
@@ -102,7 +108,11 @@ export function PingCommentsModal({
   const [expandedThreads, setExpandedThreads] = React.useState<Set<string>>(new Set());
   const [loading, setLoading] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
-  const translateY = React.useRef(new Animated.Value(0)).current;
+  const sheetY = React.useRef(new Animated.Value(SHEET_HIDDEN_SNAP)).current;
+  const sheetSnap = React.useRef<number>(SHEET_HIDDEN_SNAP);
+  const panStartY = React.useRef<number>(SHEET_HIDDEN_SNAP);
+  const scrollOffsetY = React.useRef(0);
+  const [sheetMode, setSheetMode] = React.useState<'hidden' | 'mid' | 'top'>('hidden');
   const inputRef = React.useRef<TextInput>(null);
 
   const { data: userProfiles = [] } = useQuery({
@@ -158,6 +168,23 @@ export function PingCommentsModal({
   }, [loadComments, target?.activityId, visible]);
 
   React.useEffect(() => {
+    if (visible) {
+      scrollOffsetY.current = 0;
+      sheetSnap.current = SHEET_HIDDEN_SNAP;
+      setSheetMode('hidden');
+      sheetY.setValue(SHEET_HIDDEN_SNAP);
+      Animated.spring(sheetY, {
+        toValue: SHEET_MID_SNAP,
+        useNativeDriver: true,
+        damping: 30,
+        stiffness: 260,
+        mass: 0.92,
+      }).start(() => {
+        sheetSnap.current = SHEET_MID_SNAP;
+        setSheetMode('mid');
+      });
+      return;
+    }
     if (!visible) {
       setDraft('');
       setReplyingTo(null);
@@ -165,61 +192,107 @@ export function PingCommentsModal({
       setComments([]);
       setLoading(false);
       setSubmitting(false);
-      translateY.setValue(0);
+      setSheetMode('hidden');
+      sheetSnap.current = SHEET_HIDDEN_SNAP;
+      sheetY.setValue(SHEET_HIDDEN_SNAP);
     }
-  }, [translateY, visible]);
+  }, [SHEET_HIDDEN_SNAP, SHEET_MID_SNAP, sheetY, visible]);
+
+  const backdropOpacity = sheetY.interpolate({
+    inputRange: [SHEET_TOP_SNAP, SHEET_MID_SNAP, SHEET_HIDDEN_SNAP],
+    outputRange: [1, 0.88, 0],
+    extrapolate: 'clamp',
+  });
+
+  const animateSheet = React.useCallback((toValue: number, onDone?: () => void) => {
+    sheetSnap.current = toValue;
+    setSheetMode(
+      toValue === SHEET_TOP_SNAP ? 'top' : toValue === SHEET_MID_SNAP ? 'mid' : 'hidden',
+    );
+    Animated.spring(sheetY, {
+      toValue,
+      useNativeDriver: true,
+      damping: 30,
+      stiffness: 260,
+      mass: 0.92,
+    }).start(() => {
+      if (onDone) onDone();
+    });
+  }, [SHEET_HIDDEN_SNAP, SHEET_MID_SNAP, SHEET_TOP_SNAP, sheetY]);
 
   const closeSheet = React.useCallback(() => {
-    Animated.spring(translateY, {
-      toValue: 560,
-      useNativeDriver: true,
-      damping: 20,
-      stiffness: 210,
-      mass: 0.95,
-      overshootClamping: true,
-    }).start(({ finished }) => {
-      if (finished) {
-        translateY.setValue(0);
-        onClose();
-      }
-    });
-  }, [onClose, translateY]);
+    animateSheet(SHEET_HIDDEN_SNAP, onClose);
+  }, [SHEET_HIDDEN_SNAP, animateSheet, onClose]);
 
-  const panResponder = React.useMemo(
+  const beginGesture = React.useCallback(() => {
+    panStartY.current = sheetSnap.current;
+    sheetY.stopAnimation();
+  }, [sheetY]);
+
+  const moveGesture = React.useCallback((dy: number) => {
+    const next = Math.max(
+      SHEET_TOP_SNAP,
+      Math.min(SHEET_HIDDEN_SNAP, panStartY.current + dy),
+    );
+    sheetY.setValue(next);
+  }, [SHEET_HIDDEN_SNAP, SHEET_TOP_SNAP, sheetY]);
+
+  const settleGesture = React.useCallback((dy: number, vy: number) => {
+    const liveY = panStartY.current + dy;
+    if (vy < -1.0) {
+      animateSheet(SHEET_TOP_SNAP);
+      return;
+    }
+    if (vy > 1.0) {
+      if (liveY > SHEET_MID_SNAP + 80) {
+        closeSheet();
+      } else {
+        animateSheet(SHEET_MID_SNAP);
+      }
+      return;
+    }
+
+    const topMidThreshold = (SHEET_TOP_SNAP + SHEET_MID_SNAP) / 2;
+    const midHiddenThreshold = (SHEET_MID_SNAP + SHEET_HIDDEN_SNAP) / 2;
+
+    if (liveY <= topMidThreshold) {
+      animateSheet(SHEET_TOP_SNAP);
+    } else if (liveY >= midHiddenThreshold) {
+      closeSheet();
+    } else {
+      animateSheet(SHEET_MID_SNAP);
+    }
+  }, [SHEET_HIDDEN_SNAP, SHEET_MID_SNAP, SHEET_TOP_SNAP, animateSheet, closeSheet]);
+
+  const bodyPanResponder = React.useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dy) > 6,
-        onPanResponderGrant: () => {
-          translateY.stopAnimation();
-        },
-        onPanResponderMove: (_, gestureState) => {
-          translateY.setValue(Math.max(0, gestureState.dy));
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          const shouldClose = gestureState.dy > 120 || gestureState.vy > 1.2;
-          if (shouldClose) {
-            closeSheet();
-            return;
-          }
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            damping: 18,
-            stiffness: 220,
-            mass: 0.9,
-          }).start();
-        },
-        onPanResponderTerminate: () => {
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            damping: 18,
-            stiffness: 220,
-            mass: 0.9,
-          }).start();
-        },
+        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+          gestureState.dy > 6 &&
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx) &&
+          scrollOffsetY.current <= 0,
+        onPanResponderGrant: beginGesture,
+        onPanResponderMove: (_, gestureState) => moveGesture(Math.max(0, gestureState.dy)),
+        onPanResponderRelease: (_, gestureState) =>
+          settleGesture(Math.max(0, gestureState.dy), gestureState.vy),
+        onPanResponderTerminate: () => animateSheet(sheetSnap.current),
       }),
-    [closeSheet, translateY],
+    [animateSheet, beginGesture, moveGesture, settleGesture],
+  );
+
+  const headerPanResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          Math.abs(gestureState.dy) > 6 &&
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+        onPanResponderGrant: beginGesture,
+        onPanResponderMove: (_, gestureState) => moveGesture(gestureState.dy),
+        onPanResponderRelease: (_, gestureState) =>
+          settleGesture(gestureState.dy, gestureState.vy),
+        onPanResponderTerminate: () => animateSheet(sheetSnap.current),
+      }),
+    [animateSheet, beginGesture, moveGesture, settleGesture],
   );
 
   const handleSubmit = React.useCallback(async () => {
@@ -336,21 +409,28 @@ export function PingCommentsModal({
   );
 
   return (
-    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
-      <TouchableWithoutFeedback onPress={closeSheet}>
-        <View style={styles.backdrop}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.keyboardWrap}
+    <Modal visible={visible} animationType="none" transparent statusBarTranslucent>
+      <View style={styles.backdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={closeSheet}>
+          <Animated.View pointerEvents="none" style={[styles.backdropScrim, { opacity: backdropOpacity }]} />
+        </Pressable>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardWrap}
+          pointerEvents="box-none"
+        >
+          <Animated.View
+            {...bodyPanResponder.panHandlers}
+            style={[
+              styles.card,
+              {
+                backgroundColor: COLORS.surface,
+                height: SHEET_HEIGHT,
+                transform: [{ translateY: sheetY }],
+              },
+            ]}
           >
-            <TouchableWithoutFeedback>
-              <Animated.View
-                style={[
-                  styles.card,
-                  { backgroundColor: COLORS.surface, transform: [{ translateY }] },
-                ]}
-              >
-                <View style={styles.sheetTopZone} {...panResponder.panHandlers}>
+            <View style={styles.sheetTopZone} {...headerPanResponder.panHandlers}>
                   <View style={styles.handleWrap}>
                     <View style={[styles.handle, { backgroundColor: COLORS.border }]} />
                   </View>
@@ -369,102 +449,105 @@ export function PingCommentsModal({
                   </View>
                 </View>
 
-                <View style={[styles.threadCard, { borderColor: COLORS.border }]}>
-                  {loading ? (
-                    <View style={styles.loadingWrap}>
-                      <ActivityIndicator size="small" color={COLORS.primary} />
-                    </View>
-                  ) : comments.length ? (
-                    <ScrollView
-                      style={styles.threadScroll}
-                      contentContainerStyle={styles.threadContent}
-                      keyboardShouldPersistTaps="handled"
-                      showsVerticalScrollIndicator={false}
-                    >
-                      {comments.map((root) => {
-                        const isExpanded = expandedThreads.has(root.id);
-                        const allReplies = root.replies || [];
-                        const visibleReplies = isExpanded ? allReplies : allReplies.slice(0, 3);
-                        const hasMore = allReplies.length > 3;
+            <View style={[styles.threadCard, { borderColor: COLORS.border }]}>
+              {loading ? (
+                <View style={styles.loadingWrap}>
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                </View>
+              ) : comments.length ? (
+                <ScrollView
+                  style={styles.threadScroll}
+                  contentContainerStyle={styles.threadContent}
+                  scrollEnabled={sheetMode === 'top'}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                  scrollEventThrottle={16}
+                  onScroll={(event) => {
+                    scrollOffsetY.current = event.nativeEvent.contentOffset.y;
+                  }}
+                >
+                  {comments.map((root) => {
+                    const isExpanded = expandedThreads.has(root.id);
+                    const allReplies = root.replies || [];
+                    const visibleReplies = isExpanded ? allReplies : allReplies.slice(0, 3);
+                    const hasMore = allReplies.length > 3;
 
-                        return (
-                          <View key={root.id}>
-                            {renderComment(root)}
-                            {visibleReplies.map(child => renderComment(child, true))}
-                            
-                            {hasMore && (
-                              <Pressable 
-                                onPress={() => toggleThread(root.id)}
-                                style={styles.viewMoreReplies}
-                              >
-                                <CornerDownRight size={14} color={COLORS.primary} />
-                                <Text style={[styles.viewMoreText, { color: COLORS.primary }]}>
-                                  {isExpanded 
-                                    ? 'Show fewer replies' 
-                                    : `View ${allReplies.length - 3} more replies...`
-                                  }
-                                </Text>
-                              </Pressable>
-                            )}
-                          </View>
-                        );
-                      })}
-                    </ScrollView>
+                    return (
+                      <View key={root.id}>
+                        {renderComment(root)}
+                        {visibleReplies.map(child => renderComment(child, true))}
+                        
+                        {hasMore && (
+                          <Pressable 
+                            onPress={() => toggleThread(root.id)}
+                            style={styles.viewMoreReplies}
+                          >
+                            <CornerDownRight size={14} color={COLORS.primary} />
+                            <Text style={[styles.viewMoreText, { color: COLORS.primary }]}>
+                              {isExpanded 
+                                ? 'Show fewer replies' 
+                                : `View ${allReplies.length - 3} more replies...`
+                              }
+                            </Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              ) : (
+                <View style={styles.emptyWrap}>
+                  <Text style={[styles.emptyTitle, { color: COLORS.textPrimary }]}>
+                    No comments yet
+                  </Text>
+                  <Text style={[styles.emptySubtitle, { color: COLORS.textSecondary }]}>
+                    Start the conversation for this ping.
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={[styles.composerWrap, { borderColor: COLORS.border }]}>
+              {replyingTo && (
+                <View style={[styles.replyHeader, { borderBottomColor: COLORS.border }]}>
+                  <CornerDownRight size={12} color={COLORS.textTertiary} />
+                  <Text style={[styles.replyToText, { color: COLORS.textTertiary }]}>
+                    Replying to <Text style={{ fontWeight: '700' }}>{replyingTo.userName}</Text>
+                  </Text>
+                  <Pressable onPress={() => setReplyingTo(null)} style={styles.replyCancel}>
+                    <X size={14} color={COLORS.textTertiary} />
+                  </Pressable>
+                </View>
+              )}
+              <View style={styles.composer}>
+                <TextInput
+                  ref={inputRef}
+                  value={draft}
+                  onChangeText={setDraft}
+                  placeholder={replyingTo ? "Add a reply..." : "Add a comment..."}
+                  placeholderTextColor={COLORS.textTertiary}
+                  style={[styles.input, { color: COLORS.textPrimary }]}
+                  multiline
+                />
+                <Pressable
+                  style={[
+                    styles.sendButton,
+                    { backgroundColor: draft.trim() ? COLORS.primary : COLORS.border },
+                  ]}
+                  disabled={!draft.trim() || submitting || !user}
+                  onPress={handleSubmit}
+                >
+                  {submitting ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
                   ) : (
-                    <View style={styles.emptyWrap}>
-                      <Text style={[styles.emptyTitle, { color: COLORS.textPrimary }]}>
-                        No comments yet
-                      </Text>
-                      <Text style={[styles.emptySubtitle, { color: COLORS.textSecondary }]}>
-                        Start the conversation for this ping.
-                      </Text>
-                    </View>
+                    <Send size={15} color="#FFFFFF" />
                   )}
-                </View>
-
-                <View style={[styles.composerWrap, { borderColor: COLORS.border }]}>
-                  {replyingTo && (
-                    <View style={[styles.replyHeader, { borderBottomColor: COLORS.border }]}>
-                      <CornerDownRight size={12} color={COLORS.textTertiary} />
-                      <Text style={[styles.replyToText, { color: COLORS.textTertiary }]}>
-                        Replying to <Text style={{ fontWeight: '700' }}>{replyingTo.userName}</Text>
-                      </Text>
-                      <Pressable onPress={() => setReplyingTo(null)} style={styles.replyCancel}>
-                        <X size={14} color={COLORS.textTertiary} />
-                      </Pressable>
-                    </View>
-                  )}
-                  <View style={styles.composer}>
-                    <TextInput
-                      ref={inputRef}
-                      value={draft}
-                      onChangeText={setDraft}
-                      placeholder={replyingTo ? "Add a reply..." : "Add a comment..."}
-                      placeholderTextColor={COLORS.textTertiary}
-                      style={[styles.input, { color: COLORS.textPrimary }]}
-                      multiline
-                    />
-                    <Pressable
-                      style={[
-                        styles.sendButton,
-                        { backgroundColor: draft.trim() ? COLORS.primary : COLORS.border },
-                      ]}
-                      disabled={!draft.trim() || submitting || !user}
-                      onPress={handleSubmit}
-                    >
-                      {submitting ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <Send size={15} color="#FFFFFF" />
-                      )}
-                    </Pressable>
-                  </View>
-                </View>
-              </Animated.View>
-            </TouchableWithoutFeedback>
-          </KeyboardAvoidingView>
-        </View>
-      </TouchableWithoutFeedback>
+                </Pressable>
+              </View>
+            </View>
+          </Animated.View>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -472,20 +555,26 @@ export function PingCommentsModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.36)',
     justifyContent: 'flex-end',
+  },
+  backdropScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.36)',
   },
   keyboardWrap: {
     flex: 1,
     justifyContent: 'flex-end',
   },
   card: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingHorizontal: 18,
     paddingTop: 8,
     paddingBottom: 18,
-    height: '86%',
   },
   sheetTopZone: {
     flexShrink: 0,

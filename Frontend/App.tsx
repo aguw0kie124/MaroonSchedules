@@ -1,8 +1,10 @@
+import 'react-native-gesture-handler';
 import React from 'react';
 import { View, StyleSheet, Pressable, ImageBackground } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import { useTheme, useThemeStore } from './components/SharedUI';
@@ -708,19 +710,21 @@ function App() {
   }, [COLORS.background, COLORS.border, COLORS.primary, COLORS.surface, COLORS.textPrimary, theme]);
 
   return (
-    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-      <ClerkLoaded>
-        <QueryClientProvider client={queryClient}>
-          <NavigationContainer theme={navigationTheme} ref={navigationRef}>
-            <TourProvider>
-              <ErrorBoundary name="Root Navigator">
-                <RootNavigator />
-              </ErrorBoundary>
-            </TourProvider>
-          </NavigationContainer>
-        </QueryClientProvider>
-      </ClerkLoaded>
-    </ClerkProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+        <ClerkLoaded>
+          <QueryClientProvider client={queryClient}>
+            <NavigationContainer theme={navigationTheme} ref={navigationRef}>
+              <TourProvider>
+                <ErrorBoundary name="Root Navigator">
+                  <RootNavigator />
+                </ErrorBoundary>
+              </TourProvider>
+            </NavigationContainer>
+          </QueryClientProvider>
+        </ClerkLoaded>
+      </ClerkProvider>
+    </GestureHandlerRootView>
   );
 }
 

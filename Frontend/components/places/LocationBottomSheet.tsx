@@ -770,11 +770,12 @@ export function LocationBottomSheet({
   return (
     <>
       <Animated.View
+        {...(sheetMode !== "top" ? panResponder.panHandlers : {})}
         style={[styles.bottomSheet, { transform: [{ translateY: sheetY }] }]}
       >
         {selectedLoc ? (
           <>
-            <View {...panResponder.panHandlers}>
+            <View {...(sheetMode === "top" ? panResponder.panHandlers : {})}>
               <View style={styles.dragHandle} />
 
               <View style={[styles.heroCard, isPeekSheet && styles.heroCardPeek]}>
