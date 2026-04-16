@@ -9,19 +9,43 @@ interface WelcomeBackOverlayProps {
   onFinished: () => void;
 }
 
+const ENCOURAGEMENT_PHRASES = [
+  "You've got this", "Make it happen", "Keep pushing", "Stay focused", "Believe in yourself",
+  "Think big", "Keep moving forward", "Do your best", "Stay positive", "Never give up",
+  "You are capable", "Keep reaching", "One step at a time", "Success awaits you", "Trust the process",
+  "Stay strong", "Keep it up", "You're doing great", "Make today count", "Fortune favors the bold",
+  "Just do it", "Never settle", "Stay hungry", "Stay foolish", "Think different",
+  "Be your own hero", "Rise and grind", "Keep the faith", "Don't stop now", "Dream big",
+  "Work hard", "Stay humble", "Hustle hard", "Make your mark", "Seize the day",
+  "Carpe diem", "Find your fire", "Keep your chin up", "Stay gold", "Go for gold",
+  "Break a leg", "Push your limits", "Expect great things", "Make it work", "Stay true",
+  "Own your day", "Lead the way", "Keep your head up", "Eyes on the prize", "Be the change",
+  "Chase your dreams", "Live your truth", "Stay sharp", "Be your best", "You're a winner",
+  "Finish strong", "Start today", "Make a difference", "Find your path", "Go the distance",
+  "Give it your all", "Be fearless", "Stand tall", "Keep growing", "Master your craft",
+  "Small wins matter", "Consistency is key", "Keep exploring", "Be bold", "Aim high",
+  "Do great things", "Your turn now", "Take the lead", "Build your future", "Stay driven",
+  "Focus and execute", "Win the day", "Leave a legacy", "Be incredible", "Reach higher",
+  "Defy the odds", "Show your strength", "Empower yourself", "Act with purpose", "Keep adventuring",
+  "Make waves", "Ignite your spirit", "Fuel your passion", "Stay inspired", "Be unstoppable",
+  "Craft your story", "Navigate with heart", "Lead with kindness", "Shape your world", "Keep climbing",
+  "Find your rhythm", "Celebrate the journey", "Live with intent", "Master the moment", "Keep it real"
+];
+
 export function WelcomeBackOverlay({ firstName, onFinished }: WelcomeBackOverlayProps) {
   const opacity = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.9)).current;
   const confettiProgress = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
+  const phraseRef = useRef(ENCOURAGEMENT_PHRASES[Math.floor(Math.random() * ENCOURAGEMENT_PHRASES.length)]);
 
   useEffect(() => {
     const animation = Animated.sequence([
-      // 1. Entry
+      // 1. Entry (300ms)
       Animated.parallel([
         Animated.timing(opacity, { 
           toValue: 1, 
-          duration: 400, 
+          duration: 300, 
           useNativeDriver: true 
         }),
         Animated.spring(scale, { 
@@ -32,29 +56,29 @@ export function WelcomeBackOverlay({ firstName, onFinished }: WelcomeBackOverlay
         }),
         Animated.timing(contentOpacity, {
           toValue: 1,
-          duration: 400,
+          duration: 300,
           useNativeDriver: true
         })
       ]),
-      // 2. Celebration Hold
+      // 2. Celebration Hold (700ms)
       Animated.parallel([
         Animated.timing(confettiProgress, { 
           toValue: 1, 
-          duration: 2000, 
+          duration: 1000, 
           useNativeDriver: true 
         }),
-        Animated.delay(1500), // Hold for 1.5 seconds
+        Animated.delay(700), // Hold for 0.7 seconds
       ]),
-      // 3. Exit
+      // 3. Exit (500ms)
       Animated.parallel([
         Animated.timing(opacity, { 
           toValue: 0, 
-          duration: 600, 
+          duration: 500, 
           useNativeDriver: true 
         }),
         Animated.timing(scale, { 
           toValue: 1.05, 
-          duration: 600, 
+          duration: 500, 
           useNativeDriver: true 
         }),
       ]),
@@ -130,14 +154,11 @@ export function WelcomeBackOverlay({ firstName, onFinished }: WelcomeBackOverlay
       
       <Animated.View style={[styles.card, { opacity, transform: [{ scale }] }]}>
         <Animated.View style={{ opacity: contentOpacity, alignItems: 'center' }}>
-            <View style={styles.badge}>
-                <Text style={styles.badgeText}>🦉</Text>
-            </View>
             <Text style={styles.title}>WELCOME BACK,</Text>
             <Text style={styles.name}>{firstName.toUpperCase()}!</Text>
             
             <View style={styles.celebrationRow}>
-                <Text style={styles.celebrationText}>You're doing great! ✨</Text>
+                <Text style={styles.celebrationText}>{phraseRef.current}</Text>
             </View>
         </Animated.View>
       </Animated.View>
@@ -172,22 +193,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 8,
     borderBottomColor: '#D0D0D0', // 3D effect
     minWidth: SCREEN_WIDTH * 0.8,
-  },
-  badge: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#F7F7F7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.lg,
-    borderWidth: 2,
-    borderColor: '#E5E5E5',
-    borderBottomWidth: 4,
-    borderBottomColor: '#D0D0D0',
-  },
-  badgeText: {
-    fontSize: 44,
   },
   title: {
     fontSize: 14,
