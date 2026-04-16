@@ -343,8 +343,8 @@ function MainTabs(props: any) {
   ];
 
   const availableRouteNames = tabScreens.map((screen) => screen.name);
-  const initialRouteName = availableRouteNames.includes('Dashboard')
-    ? 'Dashboard'
+  const initialRouteName = availableRouteNames.includes('Places')
+    ? 'Places'
     : availableRouteNames[0];
   const shellKey = availableRouteNames.join('|');
 
