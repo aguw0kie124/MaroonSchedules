@@ -49,6 +49,7 @@ export const transitService = {
     routesCache: null as CacheEntry<{ routes: any[], activeIds: string[] }> | null,
     patternCache: new Map<string, CacheEntry<{ points: any[]; stops: any[] }>>(),
     vehicleCache: new Map<string, CacheEntry<any[]>>(),
+    ongoingVehicleRequests: new Map<string, Promise<any[]>>(),
     timetableCache: new Map<string, CacheEntry<any[]>>(),
 
     /**
@@ -200,31 +201,86 @@ export const transitService = {
         }
     },
 
+
+    /**
+     * Fetches multiple route patterns in a single bulk request.
+     */
+    async getBulkRoutePatterns(routeIds: string[]): Promise<Record<string, { points: any[], stops: any[], paths?: any[] }>> {
+        if (routeIds.length === 0) return {};
+        const now = Date.now();
+        
+        try {
+            const query = `ids=${encodeURIComponent(routeIds.join(','))}`;
+            const response = await apiFetch(`/traffic/transit/patterns?${query}`, {}, TRANSIT_FETCH_TIMEOUT_MS);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            const results = await response.json();
+            
+            // Cache each result individually so subsequent single-route requests are zero-cost
+            Object.entries(results).forEach(([rk, data]: [string, any]) => {
+                const points = (data.points || []).map((pt: any) => ({
+                    latitude: pt.latitude,
+                    longitude: pt.longitude
+                }));
+                const paths = (data.paths || []).map((path: any) => ({
+                    DirectionName: path.DirectionName,
+                    points: (path.points || []).map((p: any) => ({
+                        latitude: p.latitude,
+                        longitude: p.longitude
+                    }))
+                }));
+                const stops = data.stops || [];
+                
+                this.patternCache.set(rk, { 
+                    data: { points, stops, paths }, 
+                    timestamp: now 
+                });
+            });
+            
+            return results;
+        } catch (error) {
+            console.warn('[TransitService] Error fetching bulk patterns:', error);
+            return {};
+        }
+    },
+
     /**
      * Fetches real-time vehicle locations. Internal buffer prevents slamming the API.
      */
     async getVehicles(routeId?: string): Promise<any[]> {
         const now = Date.now();
         const cacheKey = routeId || '__all__';
-        const cached = this.vehicleCache.get(cacheKey);
         
-        if (cached && (now - cached.timestamp < 1000)) { // 1s deduplication
+        // 1. Check for ongoing request
+        const ongoing = this.ongoingVehicleRequests.get(cacheKey);
+        if (ongoing) return ongoing;
+
+        // 2. Check for fresh cache (1s deduplication)
+        const cached = this.vehicleCache.get(cacheKey);
+        if (cached && (now - cached.timestamp < 1000)) {
             return cached.data;
         }
 
-        try {
-            const query = routeId ? `?route_id=${encodeURIComponent(routeId)}` : '';
-            const response = await apiFetch(`/traffic/transit/vehicles${query}`, {}, TRANSIT_LIVE_TIMEOUT_MS);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const payload = await response.json();
-            const vehicles = payload.vehicles || [];
+        const requestPromise = (async () => {
+            try {
+                const query = routeId ? `?route_id=${encodeURIComponent(routeId)}` : '';
+                const response = await apiFetch(`/traffic/transit/vehicles${query}`, {}, TRANSIT_LIVE_TIMEOUT_MS);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                const payload = await response.json();
+                const vehicles = payload.vehicles || [];
 
-            this.vehicleCache.set(cacheKey, { data: vehicles, timestamp: now });
-            return vehicles;
-        } catch (error) {
-            console.warn('[TransitService] Error fetching vehicles:', error);
-            return cached?.data || [];
-        }
+                this.vehicleCache.set(cacheKey, { data: vehicles, timestamp: now });
+                return vehicles;
+            } catch (error) {
+                console.warn('[TransitService] Error fetching vehicles:', error);
+                return cached?.data || [];
+            } finally {
+                this.ongoingVehicleRequests.delete(cacheKey);
+            }
+        })();
+
+        this.ongoingVehicleRequests.set(cacheKey, requestPromise);
+        return requestPromise;
     },
 
     async getRouteStops(routeId: string): Promise<any[]> {

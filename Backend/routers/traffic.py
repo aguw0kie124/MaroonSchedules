@@ -753,6 +753,68 @@ class AggieSpiritProxy:
         except Exception:
             return self._pattern_cache.get(route_key, {"points": [], "stops": [], "paths": []})
 
+    def get_bulk_patterns(self, route_keys: List[str]) -> Dict[str, Any]:
+        results = {}
+        # Batch these similarly to vehicles to avoid upstream timeouts
+        batches = [route_keys[i:i+8] for i in range(0, len(route_keys), 8)]
+        for batch in batches:
+            try:
+                payload = "&".join([f"routeKeys%5B%5D={quote(str(rk))}" for rk in batch])
+                data = self._post("/RouteMap/GetPatternPaths/", payload)
+                if not data:
+                    continue
+                
+                for route_data in data:
+                    rk = route_data.get("routeKey")
+                    if not rk:
+                        continue
+                    
+                    points = []
+                    stops = []
+                    paths = []
+                    seen_stops = set()
+                    
+                    for item in route_data.get("patternPaths", []):
+                        dkey = item.get("directionKey")
+                        direction_name = self._direction_cache.get(dkey) or ""
+                        
+                        path_points = []
+                        raw_points = item.get("patternPoints", [])
+                        
+                        # Downsample if too many points for high-perf overview
+                        step = 1
+                        if len(raw_points) > 300:
+                            step = 2 # Skip every other point
+                        
+                        for i in range(0, len(raw_points), step):
+                            point = raw_points[i]
+                            pt = {"latitude": point.get("latitude"), "longitude": point.get("longitude")}
+                            points.append(pt)
+                            path_points.append(pt)
+                            
+                            stop = point.get("stop")
+                            if stop and stop.get("stopCode") not in seen_stops:
+                                stop_name = stop.get("name") or ""
+                                seen_stops.add(stop.get("stopCode"))
+                                stops.append({
+                                    "Name": stop_name,
+                                    "Latitude": point.get("latitude"),
+                                    "Longitude": point.get("longitude"),
+                                    "StopCode": stop.get("stopCode"),
+                                })
+                        
+                        paths.append({
+                            "directionKey": dkey,
+                            "directionName": direction_name,
+                            "points": path_points
+                        })
+                    
+                    results[rk] = {"points": points, "stops": stops, "paths": paths}
+            except Exception as e:
+                print(f"[TransitProxy] Bulk pattern error: {e}")
+                continue
+        return results
+
     def get_vehicles(self, route_id: str = "") -> Dict[str, Any]:
         normalized_route_id = (route_id or "").strip().lower()
         
@@ -786,9 +848,13 @@ class AggieSpiritProxy:
 
         vehicles: List[Dict[str, Any]] = []
         try:
-            route_lookup = {
-                route["Key"]: route for route in self.get_routes() if route.get("Key")
-            }
+            # Use a case-insensitive lookup for route metadata to handle UUID case variations
+            routes_list = self.get_routes()
+            route_lookup = {}
+            for r in routes_list:
+                k = str(r.get("Key") or "").strip().lower()
+                if k:
+                    route_lookup[k] = r
 
             for batch in route_batches:
                 if not batch:
@@ -803,17 +869,18 @@ class AggieSpiritProxy:
                         continue
 
                     for route_data in data:
-                        r_key = route_data.get("routeKey")
+                        r_key = str(route_data.get("routeKey") or "").strip().lower()
                         route_meta = route_lookup.get(r_key)
                         
                         # Verify identity matches if not in bulk mode
-                        identifiers = [
-                            str(r_key or "").strip().lower(),
-                            str(route_data.get("shortName") or (route_meta.get("ShortName") if route_meta else "")).strip().lower(),
-                            str(route_data.get("name") or (route_meta.get("Name") if route_meta else "")).strip().lower(),
-                        ]
-                        if not is_bulk and normalized_route_id not in identifiers:
-                            continue
+                        if not is_bulk:
+                            identifiers = [
+                                r_key,
+                                str(route_data.get("shortName") or (route_meta.get("ShortName") if route_meta else "")).strip().lower(),
+                                str(route_data.get("name") or (route_meta.get("Name") if route_meta else "")).strip().lower(),
+                            ]
+                            if normalized_route_id not in identifiers:
+                                continue
 
                         for direction in route_data.get("vehiclesByDirections", []) or []:
                             dir_key = direction.get("directionKey")
@@ -1059,6 +1126,27 @@ def get_transit_route(request: Request, route_key: str):
         payload = transit_proxy.get_pattern(route_key)
         cache_service.set_json(cache_key, payload, 3600)
         return payload
+
+
+@router.get("/transit/patterns")
+@limiter.limit("20/minute")
+def get_bulk_transit_patterns(request: Request, ids: str = Query("")):
+    if not ids:
+        return {}
+    
+    id_list = [i.strip() for i in ids.split(",") if i.strip()]
+    import hashlib
+    h = hashlib.md5(",".join(sorted(id_list)).encode()).hexdigest()
+    cache_key = f"traffic:transit:patterns:v1:{h}"
+    
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+    
+    payload = transit_proxy.get_bulk_patterns(id_list)
+    cache_service.set_json(cache_key, payload, 3600)
+    return payload
+
 
 
 @router.get("/transit/vehicles")

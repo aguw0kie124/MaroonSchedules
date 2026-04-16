@@ -219,6 +219,106 @@ const zoomFromLatitudeDelta = (latitudeDelta?: number) => {
   return Math.log2(360 / latitudeDelta);
 };
 
+// ── Memoized Bus Marker ────────────────────────────────────
+const BusMarker = React.memo(({ 
+  bus, 
+  onPress, 
+  isDark, 
+  routeColor, 
+  routeShortName, 
+  isAllBusRoutesSelected, 
+  selectedDirection,
+  isTrackedBus
+}: any) => {
+  const bLat = bus.Latitude != null ? bus.Latitude : bus.lat;
+  const bLng = bus.Longitude != null ? bus.Longitude : bus.lng;
+  const rawHeading = bus.heading || bus.Heading || 0;
+  const heading = Number.isFinite(Number(rawHeading)) ? Number(rawHeading) : 0;
+
+  // Performance optimization: only track view changes for 250ms when coordinates change
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+
+  useEffect(() => {
+    setTracksViewChanges(true);
+    const timer = setTimeout(() => {
+      setTracksViewChanges(false);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [bLat, bLng, heading]);
+
+  if (bLat == null || bLng == null || !Number.isFinite(bLat) || !Number.isFinite(bLng)) return null;
+
+  const busDir = bus.direction || bus.DirectionName || "Unknown Direction";
+  const matchesDirection =
+    isAllBusRoutesSelected ||
+    selectedDirection === "All" ||
+    (busDir || "").toLowerCase().includes((selectedDirection || "All").toLowerCase());
+  
+  const opacity = matchesDirection ? (isTrackedBus ? 1 : 0.9) : 0.3;
+  const displayName = routeShortName.length > 3 ? routeShortName.slice(0, 3) : routeShortName;
+  const busCompositeKey = `bus-${bus.RouteKey}-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`;
+
+  return (
+    <MapMarker
+      id={busCompositeKey}
+      coordinate={{ latitude: bLat, longitude: bLng }}
+      onPress={onPress}
+      anchor={{ x: 0.5, y: 0.5 }}
+      tracksViewChanges={tracksViewChanges}
+    >
+      <View
+        style={{
+          opacity,
+          alignItems: "center",
+          justifyContent: "center",
+          transform: [{ rotate: `${heading}deg` }],
+        }}
+        renderToHardwareTextureAndroid={true}
+        shouldRasterizeIOS={true}
+      >
+        <View
+          style={{
+            width: 0,
+            height: 0,
+            borderLeftWidth: 6,
+            borderRightWidth: 6,
+            borderBottomWidth: 8,
+            borderLeftColor: "transparent",
+            borderRightColor: "transparent",
+            borderBottomColor: isDark ? "#fff" : "#000",
+            marginBottom: -2,
+            zIndex: 2,
+          }}
+        />
+        <View
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 15,
+            backgroundColor: routeColor,
+            alignItems: "center",
+            justifyContent: "center",
+            borderWidth: 2,
+            borderColor: isDark ? "#fff" : "#000",
+          }}
+        >
+          <Text
+            style={{
+              color: "#fff",
+              fontSize: 10,
+              fontWeight: "800",
+              textAlign: "center",
+              transform: [{ rotate: `${-heading}deg` }],
+            }}
+          >
+            {displayName}
+          </Text>
+        </View>
+      </View>
+    </MapMarker>
+  );
+});
+
 export function PlacesMapScreen({ route, navigation }: any) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === "dark";
@@ -489,6 +589,41 @@ export function PlacesMapScreen({ route, navigation }: any) {
     getNearbyTransitInsight,
     availableDirections
   } = useBusTransit(activeLayer, mapRef);
+
+  const memoizedBusMarkers = useMemo(() => {
+    return busVehicles.map((bus) => {
+      const isTrackedBus =
+        selectedBus?.Key && bus.Key
+          ? selectedBus.Key === bus.Key
+          : selectedBus?.Name === bus.Name;
+
+      const routeShortName =
+        (bus.routeShortName ||
+        bus.RouteShortName ||
+        selectedRoute?.ShortName ||
+        "").toString();
+
+      const routeColor =
+        bus.routeColor ||
+        bus.RouteColor ||
+        selectedRoute?.Color ||
+        "#007AFF";
+
+      return (
+        <BusMarker
+          key={`bus-${bus.Key || bus.Id || bus.Name}`}
+          bus={bus}
+          isDark={isDark}
+          routeColor={routeColor}
+          routeShortName={routeShortName}
+          isAllBusRoutesSelected={isAllBusRoutesSelected}
+          selectedDirection={selectedDirection}
+          isTrackedBus={isTrackedBus}
+          onPress={() => handleBusMarkerPress(bus)}
+        />
+      );
+    });
+  }, [busVehicles, isDark, isAllBusRoutesSelected, selectedDirection, selectedBus, selectedRoute, handleBusMarkerPress]);
 
   const nearbyTransitInsight = useMemo(() => getNearbyTransitInsight(userCoord), [getNearbyTransitInsight, userCoord]);
 
@@ -2012,6 +2147,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
             ) : null;
           })}
 
+        {/* Bus Layer: Vehicles and Stops */}
+        {activeLayer === "Bus" && memoizedBusMarkers}
+
         {activeLayer === "Bus" &&
           busStops.map((stop) => {
             const sLat = stop.Latitude != null ? stop.Latitude : stop.lat;
@@ -2049,121 +2187,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
             );
           })}
 
-        {activeLayer === "Bus" &&
-          busVehicles.map((bus) => {
-            const bLat = bus.Latitude != null ? bus.Latitude : bus.lat;
-            const bLng = bus.Longitude != null ? bus.Longitude : bus.lng;
-            // CRITICAL: skip buses with invalid coordinates — nil coords crash AIRMap
-            if (bLat == null || bLng == null || !Number.isFinite(bLat) || !Number.isFinite(bLng)) return null;
 
-            const isTrackedBus =
-              selectedBus?.Key && bus.Key
-                ? selectedBus.Key === bus.Key
-                : selectedBus?.Name === bus.Name;
 
-            const routeShortName =
-              (bus.routeShortName ||
-              bus.RouteShortName ||
-              selectedRoute?.ShortName ||
-              "").toString();
-
-            const routeColor =
-              bus.routeColor ||
-              bus.RouteColor ||
-              selectedRoute?.Color ||
-              "#007AFF";
-            const rawHeading = bus.heading || bus.Heading || 0;
-            const heading = Number.isFinite(Number(rawHeading)) ? Number(rawHeading) : 0;
-            const busDir =
-              bus.direction || bus.DirectionName || "Unknown Direction";
-
-            const matchesDirection =
-              isAllBusRoutesSelected ||
-              selectedDirection === "All" ||
-              (busDir || "")
-                .toLowerCase()
-                .includes((selectedDirection || "All").toLowerCase());
-            const opacity = matchesDirection ? (isTrackedBus ? 1 : 0.9) : 0.3;
-
-            // Uniform circular marker for all bus names
-            const displayName = routeShortName.length > 3
-              ? routeShortName.slice(0, 3)
-              : routeShortName;
-
-            const busCompositeKey = `bus-${bus.RouteKey}-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`;
-
-            return (
-              <MapMarker
-                key={busCompositeKey}
-                id={busCompositeKey}
-                coordinate={{
-                  latitude: bLat,
-                  longitude: bLng,
-                }}
-                onPress={() => {
-                  handleBusMarkerPress(bus);
-                }}
-                anchor={{ x: 0.5, y: 0.5 }}
-              >
-                <View
-                  style={{
-                    opacity,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    transform: [{ rotate: `${heading}deg` }],
-                    shadowColor: "#000",
-                    shadowOpacity: 0.3,
-                    shadowRadius: 3,
-                    shadowOffset: { width: 0, height: 2 },
-                  }}
-                >
-                  {/* Small directional arrow */}
-                  <View
-                    style={{
-                      width: 0,
-                      height: 0,
-                      borderLeftWidth: 6,
-                      borderRightWidth: 6,
-                      borderBottomWidth: 10,
-                      borderLeftColor: "transparent",
-                      borderRightColor: "transparent",
-                      borderBottomColor: routeColor,
-                      marginBottom: -3,
-                      zIndex: 2,
-                    }}
-                  />
-
-                  {/* Circular Bus Marker */}
-                  <View
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
-                      backgroundColor: routeColor,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderWidth: isTrackedBus ? 3 : 2,
-                      borderColor: isTrackedBus ? "#FFD700" : "white",
-                      zIndex: 1,
-                    }}
-                  >
-                    <View style={{ transform: [{ rotate: `-${heading}deg` }] }}>
-                      <Text
-                        style={{
-                          color: isTrackedBus ? "#FFD700" : "white",
-                          fontSize: displayName.length > 2 ? 10 : 13,
-                          fontWeight: "900",
-                          textAlign: "center",
-                        }}
-                      >
-                        {displayName || "?"}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              </MapMarker>
-            );
-          })}
 
         {activeLayer === "Today" && activeWalkingRoute && (
           <MapPolylineOverlay

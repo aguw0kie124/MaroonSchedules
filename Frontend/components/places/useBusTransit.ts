@@ -123,44 +123,56 @@ export function useBusTransit(
       return;
     }
 
-    const patternEntries = await Promise.all(
-      routesToLoad.map(async (route) => {
-        const pattern = await transitService.getRoutePattern(route.Key);
-        return [route.Key, pattern] as const;
-      }),
-    );
+    // Initial vehicles fetch to show something quickly
+    transitService.getVehicles().then((v) => {
+      stabilizedSetBusVehicles(v);
+    });
 
-    const nextPatterns = patternEntries.reduce(
-      (acc, [routeKey, pattern]) => {
-        acc[routeKey] = pattern;
-        return acc;
-      },
-      {} as Record<string, { points: any[]; stops: any[]; paths?: any[] }>,
-    );
-    setAllRoutePatternsById(nextPatterns);
+    // Load patterns in bulk for high performance
+    transitService.getBulkRoutePatterns(routesToLoad.map(r => r.Key)).then(results => {
+      setAllRoutePatternsById(results);
+    }).catch(err => {
+      console.warn("[Transit] Bulk pattern load failed:", err);
+    });
 
-    const vehicles = await transitService.getVehicles();
-    setBusVehicles(vehicles);
+
     setBusStops([]);
     setRoutePatterns([]);
     setRoutePaths([]);
+  }, [mapRef, stabilizedSetBusVehicles]);
 
-    const allPoints = patternEntries.flatMap(
-      ([, pattern]) => pattern.points || [],
-    );
-    if (mapRef.current && allPoints.length > 0) {
-      mapRef.current.fitToCoordinates(allPoints, {
-        edgePadding: { top: 220, right: 60, bottom: 110, left: 60 },
-        animated: true,
-      });
+  // Handle flickering stabilization
+  const emptyUpdateCountRef = useRef(0);
+  const lastValidVehiclesRef = useRef<any[]>([]);
+
+  const stabilizedSetBusVehicles = useCallback((updated: any[]) => {
+    if (updated.length > 0) {
+      emptyUpdateCountRef.current = 0;
+      setBusVehicles(updated);
+    } else if (lastValidVehiclesRef.current.length > 0) {
+      emptyUpdateCountRef.current += 1;
+      // If we see 3 consecutive empty updates, then we accept the buses are truly offline
+      if (emptyUpdateCountRef.current >= 3) {
+        setBusVehicles([]);
+      } else {
+        console.log(`[Transit] Suppressing flickering (empty update #${emptyUpdateCountRef.current})`);
+      }
+    } else {
+      setBusVehicles([]);
     }
-  }, [mapRef]);
+  }, []);
+
+  useEffect(() => {
+    if (busVehicles.length > 0) {
+      lastValidVehiclesRef.current = busVehicles;
+      emptyUpdateCountRef.current = 0;
+    }
+  }, [busVehicles]);
 
   const handleSelectBusRoute = useCallback(
     async (routeId: string, availableRoutes: any[] = busRoutes) => {
       console.log("[Transit] Selecting route:", routeId);
       setSelectedBusRouteId(routeId);
-      setBusVehicles([]); 
       setSelectedStop(null);
       setSelectedBus(null);
       setRouteTimetableEntries([]);
@@ -200,19 +212,6 @@ export function useBusTransit(
             animated: true,
           });
         }
-
-        const vehicles = await transitService.getVehicles(routeId);
-        console.log(
-          `[Transit] Found ${vehicles.length} vehicles for route ${routeId}`,
-        );
-        if (vehicles.length > 0) {
-          console.log(
-            "[Transit] Sample vehicle coords:",
-            vehicles[0].Latitude,
-            vehicles[0].Longitude,
-          );
-        }
-        setBusVehicles(vehicles);
       } catch (e) {
         console.warn("Failed to select bus route", e);
       }
@@ -402,8 +401,8 @@ export function useBusTransit(
           ? await transitService.getVehicles()
           : await transitService.getVehicles(selectedBusRouteId);
         
-        if (isActive && updated && updated.length > 0) {
-          setBusVehicles(updated);
+        if (isActive && updated) {
+          stabilizedSetBusVehicles(updated);
         }
       } catch (e) {
         console.warn("[Transit] Polling error:", e);
