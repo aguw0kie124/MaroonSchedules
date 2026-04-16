@@ -136,6 +136,7 @@ export async function addPing(params: {
   latitude?: number;
   longitude?: number;
   anchorType?: 'place' | 'geo';
+  isAnonymous?: boolean;
 }): Promise<any> {
   const attachments: any[] = [];
   if (params.mediaUrl) {
@@ -162,7 +163,7 @@ export async function addPing(params: {
       start_at: params.startAt,
       end_at: params.endAt || '',
       content_type: 'ping',
-      is_anonymous: false,
+      is_anonymous: Boolean(params.isAnonymous),
       anchor_type: params.anchorType || 'place',
       place_lat: params.latitude,
       place_lng: params.longitude,

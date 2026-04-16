@@ -350,6 +350,8 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
             if feed_id == "campus_pings":
                  activity = ping_service.normalize_ping_activity_payload(activity)
                  custom = activity.get("custom", {})
+
+            is_anonymous = bool(custom.get("is_anonymous"))
             
             images = custom.get("images", [])
             if not images and "attachments" in activity:
@@ -383,8 +385,8 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
                 lng=fl_lng,
                 location_tag=custom.get("location_tag", ""),
                 images=images,
-                is_anonymous=False,
-                custom_data={**custom, "is_anonymous": False},
+                is_anonymous=is_anonymous,
+                custom_data={**custom, "is_anonymous": is_anonymous},
             )
             created_activity = _transform_post_to_activity(
                 created_post,

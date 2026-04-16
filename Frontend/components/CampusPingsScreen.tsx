@@ -38,6 +38,7 @@ import {
   Bookmark,
   CalendarDays,
   Clock,
+  EyeOff,
   ExternalLink,
   Flame,
   LocateFixed,
@@ -295,6 +296,7 @@ function mapActivityToPing(activity: any, currentUser: any, userMap: Map<string,
   const actor = activity.actor || {};
   const userId = (actor.id || activity.actor || '').replace('SU:', '');
   const rawName = actor.name || actor.data?.name || custom.user_name || 'Aggie User';
+  const isAnonymous = Boolean(custom.is_anonymous);
 
   // Resolve name: Current User match > User Directory match > Raw Name (if not encrypted) > 'Aggie User'
   const resolvedName = resolveDisplayName(userId, rawName, currentUser, userMap);
@@ -327,13 +329,13 @@ function mapActivityToPing(activity: any, currentUser: any, userMap: Map<string,
     endAt: custom.end_at || null,
     createdAt: activity.time || activity.created_at || new Date().toISOString(),
     userId,
-    userName: resolvedName,
-    userImage: actor.image || actor.data?.image || custom.user_image || null,
+    userName: isAnonymous ? 'Anonymous' : resolvedName,
+    userImage: isAnonymous ? null : actor.image || actor.data?.image || custom.user_image || null,
     score: activity.reaction_counts?.score ?? activity.reaction_counts?.upvote ?? 0,
     userVote: activity.own_reactions?.upvote ? 1 : (activity.own_reactions?.downvote ? -1 : 0),
     commentCount: activity.reaction_counts?.comment || 0,
     activityId: activity.id,
-    isAnonymous: false,
+    isAnonymous,
     imageUrl: imageUrl,
     locationLat: locationLat,
     locationLng: locationLng,
@@ -368,6 +370,7 @@ export function CampusPingsScreen() {
     setSelectedLocation(null);
     setComposerGeoLocation(null);
     setComposerImageUri(null);
+    setComposerAnonymous(false);
     setUseCurrentLocation(true);
   }, []);
 
@@ -463,6 +466,7 @@ export function CampusPingsScreen() {
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [composerGeoLocation, setComposerGeoLocation] = useState<ComposerGeoLocation | null>(null);
   const [composerImageUri, setComposerImageUri] = useState<string | null>(null);
+  const [composerAnonymous, setComposerAnonymous] = useState(false);
   const [useCurrentLocation, setUseCurrentLocation] = useState(true);
   const [isPosting, setIsPosting] = useState(false);
   const [isResolvingCurrentLocation, setIsResolvingCurrentLocation] = useState(false);
@@ -839,6 +843,7 @@ export function CampusPingsScreen() {
         anchorType,
         startAt,
         endAt,
+        isAnonymous: composerAnonymous,
         mediaUrl: uploadedImageUrl,
       });
 
@@ -868,6 +873,7 @@ export function CampusPingsScreen() {
     composerDurationHours,
     composerTimePreset,
     composerImageUri,
+    composerAnonymous,
     composerGeoLocation,
     selectedLocation,
     feedConnected,
@@ -1224,7 +1230,7 @@ export function CampusPingsScreen() {
           <View style={styles.pingAuthorBlock}>
             <Text style={styles.pingAuthorName}>{item.userName}</Text>
             <Text style={styles.pingAuthorMeta} numberOfLines={1}>
-              {item.locationTag}
+              {item.isAnonymous ? `Anonymous · ${item.locationTag}` : item.locationTag}
             </Text>
           </View>
           <View style={styles.pingHeaderActions}>
@@ -1740,6 +1746,31 @@ export function CampusPingsScreen() {
 
                     <View style={styles.composerSectionBlock}>
                       <Text style={styles.composerSectionLabel}>Details</Text>
+                      <Pressable
+                        style={[
+                          styles.anonymousCard,
+                          composerAnonymous && styles.anonymousCardActive,
+                        ]}
+                        onPress={() => setComposerAnonymous((current) => !current)}
+                      >
+                        <View
+                          style={[
+                            styles.anonymousIconWrap,
+                            composerAnonymous && styles.anonymousIconWrapActive,
+                          ]}
+                        >
+                          <EyeOff
+                            size={18}
+                            color={composerAnonymous ? COLORS.success : COLORS.primary}
+                          />
+                        </View>
+                        <View style={styles.anonymousCopy}>
+                          <Text style={styles.anonymousTitle}>Post anonymously</Text>
+                          <Text style={styles.anonymousSubtitle}>
+                            Your ping will show as Anonymous in the feed while still staying tied to your account for moderation.
+                          </Text>
+                        </View>
+                      </Pressable>
                       <View style={styles.composerPreferenceCard}>
                         <View style={styles.compactPreferenceRow}>
                           <Clock size={18} color={COLORS.textSecondary} />
@@ -2681,6 +2712,11 @@ const getStyles = (theme: any) => {
       shadowOpacity: 0.04,
       shadowRadius: 16,
       elevation: 2,
+      marginBottom: 14,
+    },
+    anonymousCardActive: {
+      borderColor: `${COLORS.success}40`,
+      backgroundColor: `${COLORS.success}08`,
     },
     anonymousIconWrap: {
       width: 44,
