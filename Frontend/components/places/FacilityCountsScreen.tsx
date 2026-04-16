@@ -1,0 +1,358 @@
+import React, { useState, useMemo, useEffect } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Platform,
+  Dimensions,
+  TextInput,
+  ActivityIndicator,
+} from "react-native";
+import Svg, { Circle } from "react-native-svg";
+import { ArrowLeft, Clock, Activity, MapPin, RefreshCw, AlertCircle, Search, X } from "lucide-react-native";
+import { useTheme } from "../SharedUI";
+import { useNavigation, useRoute } from "@react-navigation/native";
+import { OccupancyChart } from "./OccupancyChart";
+import type { CampusLocation, FacilityCountEntry } from "./types";
+import { useDiningTheme } from "../dining/DiningTheme";
+import { Card, SectionLabel, Badge } from "../dining/DiningUI";
+import { getLiveHoursForFacility } from "./campusData";
+import { getStatusColor as getCapacityColorRaw } from "./utils";
+import { fetchFacilityCounts as getLazyFacilityCounts } from "../../api/client";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+function getCapacityColor(percent: number | null, T: any) {
+  return getCapacityColorRaw(percent);
+}
+
+function CircularProgress({ percent, isClosed, size = 80, strokeWidth = 6, isDark, T }: { 
+  percent: number | null, 
+  isClosed: boolean,
+  size?: number, 
+  strokeWidth?: number, 
+  isDark: boolean,
+  T: any
+}) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const validPercent = isClosed || percent === null ? 0 : Math.max(0, Math.min(100, percent));
+  const strokeDashoffset = circumference - (validPercent / 100) * circumference;
+  
+  const statusColor = isClosed ? "#EF4444" : getCapacityColor(percent, T);
+
+  return (
+    <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)"}
+          strokeWidth={strokeWidth}
+          fill="transparent"
+        />
+        {!isClosed && percent !== null && (
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke={statusColor}
+            strokeWidth={strokeWidth}
+            fill="transparent"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+          />
+        )}
+      </Svg>
+      <View style={{ position: 'absolute', alignItems: 'center' }}>
+          <Text style={{ 
+            fontSize: size * 0.22, 
+            fontWeight: '800', 
+            color: isClosed ? "#EF4444" : getCapacityColor(percent, T) 
+          }}>
+            {isClosed ? "OFF" : (percent !== null ? `${Math.round(percent)}%` : "N/A")}
+          </Text>
+      </View>
+    </View>
+  );
+}
+
+export default function FacilityCountsScreen() {
+  const { isDark } = useTheme();
+  const T = useDiningTheme();
+  const navigation = useNavigation();
+  const route = useRoute<any>();
+  const [searchQuery, setSearchQuery] = useState("");
+  const location = route.params?.location as CampusLocation;
+  
+  const [lazyCounts, setLazyCounts] = useState<FacilityCountEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (location?.placeId && !location.facility_counts?.length) {
+      setLoading(true);
+      getLazyFacilityCounts(location.placeId)
+        .then(res => {
+          if (res?.facility_counts) {
+            setLazyCounts(res.facility_counts);
+          }
+        })
+        .catch(err => console.error("[FacilityCountsScreen] fetch error:", err))
+        .finally(() => setLoading(false));
+    }
+  }, [location?.placeId, location?.facility_counts]);
+
+  const facilityCounts = (location?.facility_counts?.length ? location.facility_counts : lazyCounts) || [];
+  const dynamicHours = getLiveHoursForFacility(location?.location);
+  const isOverallClosed = dynamicHours?.toLowerCase().includes("closed");
+
+  const filteredCounts = useMemo(() => {
+    if (!searchQuery.trim()) return facilityCounts;
+    const q = searchQuery.toLowerCase();
+    return facilityCounts.filter(f => f.location_name.toLowerCase().includes(q));
+  }, [facilityCounts, searchQuery]);
+
+  const formatLiveTimestamp = (value?: string | null) => {
+    if (!value) return null;
+    const date = new Date(value.includes("T") ? value : value.replace(" ", "T"));
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toLocaleString("en-US", {
+      month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+    });
+  };
+
+  return (
+    <View style={[styles.container, { backgroundColor: T.bg }]}>
+      <View style={styles.header}>
+         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+           <ArrowLeft size={24} color={T.text} />
+         </TouchableOpacity>
+         <View style={{ flex: 1 }}>
+            <Text style={[styles.title, { color: T.text }]} numberOfLines={1}>{location?.location || "Occupancy"}</Text>
+            {dynamicHours && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                <Clock size={12} color={T.text3} />
+                <Text style={[styles.subtitle, { color: T.text3 }]}>{dynamicHours}</Text>
+              </View>
+            )}
+         </View>
+         <TouchableOpacity style={styles.refreshBtn} onPress={() => {  }}>
+            <RefreshCw size={22} color={T.primary} />
+         </TouchableOpacity>
+      </View>
+
+      <View style={styles.searchContainer}>
+        <View style={[styles.searchBar, { backgroundColor: T.bg2, borderColor: T.border }]}>
+          <Search size={18} color={T.text3} style={{ marginRight: 8 }} />
+          <TextInput
+            placeholder="Search area..."
+            placeholderTextColor={T.text3}
+            style={[styles.searchInput, { color: T.text }]}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery("")}>
+               <X size={18} color={T.text3} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        {loading ? (
+          <View style={{ paddingVertical: 100, alignItems: 'center' }}>
+            <ActivityIndicator color={T.primary} size="large" />
+            <Text style={{ marginTop: 12, color: T.text3, fontSize: 14 }}>Loading live data...</Text>
+          </View>
+        ) : filteredCounts.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <AlertCircle size={48} color={T.text3} style={{ opacity: 0.3, marginBottom: 12 }} />
+            <Text style={[styles.emptyText, { color: T.text3 }]}>No facilities found matching your search.</Text>
+          </View>
+        ) : (
+          <View style={styles.grid}>
+            {filteredCounts.map((item, idx) => {
+              const isClosed = item.is_closed || isOverallClosed;
+              const statusColor = isClosed ? "#FF3B30" : getCapacityColor(item.percent_full, T);
+              
+              return (
+                <View key={`${item.location_name}-${idx}`} style={[styles.gridItem, { width: (SCREEN_WIDTH - 48) / 2 }]}>
+                   <Card style={[styles.facilityCard, { backgroundColor: T.bg2, borderColor: T.border }]}>
+                      <View style={styles.cardHeader}>
+                         <CircularProgress 
+                           percent={item.percent_full} 
+                           isClosed={isClosed} 
+                           size={64} 
+                           strokeWidth={5} 
+                           isDark={isDark} 
+                           T={T} 
+                         />
+                      </View>
+                      
+                      <View style={styles.cardBody}>
+                         <Text style={[styles.cardTitle, { color: T.text }]} numberOfLines={2}>{item.location_name}</Text>
+                         
+                         <View style={styles.statusRow}>
+                            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+                            <Text style={[styles.statusText, { color: statusColor }]}>
+                               {isClosed ? "CLOSED" : (item.percent_full != null ? "OPEN" : "N/A")}
+                            </Text>
+                         </View>
+
+                         <View style={styles.metaRow}>
+                            <Activity size={12} color={T.text3} />
+                            <Text style={[styles.metaText, { color: T.text3 }]}>{item.current_count ?? 0} active</Text>
+                         </View>
+                      </View>
+
+                      <View style={[styles.cardFooter, { borderTopColor: T.border }]}>
+                         <Text style={[styles.updatedText, { color: T.text3 }]}>
+                            {item.last_updated ? formatLiveTimestamp(item.last_updated) : "Live"}
+                         </Text>
+                      </View>
+                   </Card>
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: Platform.OS === 'ios' ? 60 : 30,
+    paddingHorizontal: 20,
+    paddingBottom: 15,
+    gap: 15,
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  refreshBtn: {
+    padding: 8,
+  },
+  searchContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 50,
+    borderRadius: 14,
+    paddingHorizontal: 15,
+    borderWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 100,
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 16,
+  },
+  gridItem: {
+    marginBottom: 0,
+  },
+  facilityCard: {
+    borderRadius: 20,
+    padding: 16,
+    height: 230,
+    justifyContent: 'space-between',
+    borderWidth: 1,
+  },
+  cardHeader: {
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  cardBody: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  cardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  metaText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  cardFooter: {
+    paddingTop: 10,
+    borderTopWidth: 1,
+    marginTop: 10,
+    alignItems: 'center',
+  },
+  updatedText: {
+    fontSize: 10,
+    fontWeight: '600',
+    opacity: 0.8,
+  },
+  emptyContainer: {
+    paddingVertical: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+});

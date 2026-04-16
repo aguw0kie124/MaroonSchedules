@@ -380,6 +380,11 @@ export const fetchCampusPlaceDetail = async (placeIdOrIdentifier: string) => {
     return requestJson(`/campus/places/${encodeURIComponent(placeIdOrIdentifier)}/detail`);
 };
 
+export const fetchFacilityCounts = async (placeId: string) => {
+    const encoded = encodeURIComponent(placeId);
+    return requestJson(`/traffic/capacity/facility-counts/${encoded}`);
+};
+
 export const fetchCampusPulseMap = async (limit = 12, clerkId?: string, refresh = false) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (clerkId) params.set('clerk_id', clerkId);

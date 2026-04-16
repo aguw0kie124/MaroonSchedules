@@ -105,8 +105,9 @@ export function getCategoryPillIcon(id: string) {
 }
 
 // ── Color helpers ─────────────────────────────────────────────
-export const getStatusColor = (pct: number) => {
-  if (pct < 40) return "#32D74B";
+export const getStatusColor = (pct: number | null | undefined) => {
+  if (pct == null) return "#8E8E93"; 
+  if (pct < 35) return "#32D74B";
   if (pct < 75) return "#FF9500";
   return "#FF3B30";
 };

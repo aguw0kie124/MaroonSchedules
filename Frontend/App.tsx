@@ -23,6 +23,7 @@ import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
 import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
 import { ScheduleListScreen } from './components/ScheduleListScreen';
 import { ScheduleDetailScreen } from './components/ScheduleDetailScreen';
+import FacilityCountsScreen from './components/places/FacilityCountsScreen';
 import { CampusNavigationScreen } from './components/CampusNavigationScreen';
 import BusTimetableScreen from './components/BusTimetableScreen';
 import TransitTripPlannerScreen from './components/TransitTripPlannerScreen';
@@ -526,6 +527,7 @@ function RootNavigator() {
             <Stack.Screen name="ClubAccess" component={ClubAccessScreen} options={{ headerShown: true, title: 'Club Access' }} />
             <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
             <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="FacilityCounts" component={FacilityCountsScreen} options={{ headerShown: false }} />
             <Stack.Screen
               name="FullMenu"
               component={FullMenuScreen}

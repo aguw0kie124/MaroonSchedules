@@ -707,6 +707,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setSelectedId,
     selectedLoc,
     selectedPlaceDetail,
+    isFetchingDetail,
     foodCourtVenues,
     isFetchingDining,
     diningMenuOptions,
@@ -789,14 +790,27 @@ export function PlacesMapScreen({ route, navigation }: any) {
   }, [pulseHotspots]);
   const hottestHotspot = pulseHotspots[0] || null;
 
+  const [isMapTransitionsStable, setIsMapTransitionsStable] = useState(false);
+
+  useEffect(() => {
+    setIsMapTransitionsStable(true);
+    const timer = setTimeout(() => setIsMapTransitionsStable(false), 2500);
+    return () => clearTimeout(timer);
+  }, [selectedId]);
+
   const markerLocations = useMemo(() => {
     if (activeLayer === "Pulse") return [];
     if (activeLayer === "Heatmap" || activeLayer === "Bus")
       return selectedLoc ? [selectedLoc] : [];
     const merged = new Map<string, CampusLocation>();
     filteredLocations.forEach((l) => merged.set(getLocationSelectionId(l), l));
-    if (selectedLoc)
+    
+    // Stable Marker Fix: Only add selectedLoc if it's NOT already in the layer's 
+    // filtered list. Overwriting with the merged selectedLoc object causes 
+    // re-mount flickers because of object identity changes.
+    if (selectedLoc && !merged.has(getLocationSelectionId(selectedLoc))) {
       merged.set(getLocationSelectionId(selectedLoc), selectedLoc);
+    }
     return Array.from(merged.values());
   }, [activeLayer, filteredLocations, selectedLoc]);
 
@@ -1097,6 +1111,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
     },
     [navigation],
   );
+  
+  const openFacilityCounts = useCallback((loc: CampusLocation) => {
+    const rootNav = navigation.getParent?.("RootStack") || navigation.getParent?.();
+    (rootNav?.navigate || navigation.navigate)("FacilityCounts", { location: loc });
+  }, [navigation]);
 
   const openScheduleList = useCallback(() => {
     const rootNav =
@@ -2498,10 +2517,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   ? loc.percent_full
                   : null;
 
+            const isClosed = loc.hours_today?.toLowerCase().includes("closed") || 
+                             loc.hours_holiday_notice?.toLowerCase().includes("closed");
+
             const pinColor = isTodayLayer
               ? getCategoryColor(loc.classMeetings?.[0]?.category)
               : isCapacityType
-                ? getStatusColor(displayPercent)
+                ? (isClosed ? "#FF3B30" : getStatusColor(displayPercent))
                 : COLORS.primary;
             const pinText =
               isTodayLayer && loc.sequenceIndex
@@ -2524,6 +2546,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 }}
                 onPress={() => handleSelectLocation(loc)}
                 anchor={{ x: 0.5, y: 1 }}
+                tracksViewChanges={isMapTransitionsStable || isSelected || isCapacityType}
               >
                 {isTodayLayer ? (
                   <View
@@ -3002,11 +3025,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
         openScheduleList={openScheduleList}
         selectedRecreationFacility={selectedRecreationFacility}
         recreationFacilityMap={recreationFacilityMap}
+        openFacilityCounts={openFacilityCounts}
         navigation={navigation}
         getPlaceExternalLink={getPlaceExternalLink}
         selectedStop={selectedStop}
         selectedBus={selectedBus}
         openNavigationToLocation={openNavigationToLocation}
+        isFetchingDetail={isFetchingDetail}
       />
 
       {/* Module editor modal */}
