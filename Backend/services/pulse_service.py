@@ -17,6 +17,18 @@ BUBBLING_COLOR = "#5ACD7C"
 BOOSTED_GOLD_COLOR = "#F5B301"
 PULSE_SNAPSHOT_TTL_SECONDS = 60
 PULSE_CACHE_LIMITS: Tuple[int, ...] = tuple(range(1, 251))
+CAMPUS_CENTERS: Dict[str, Tuple[float, float]] = {
+    "tamu": (30.61598, -96.34014),
+    "utd": (32.9858, -96.7501),
+}
+CAMPUS_RADIUS_METERS: Dict[str, float] = {
+    "tamu": 12000.0,
+    "utd": 9000.0,
+}
+
+
+def _normalize_campus(campus: Optional[str]) -> str:
+    return "utd" if str(campus or "").strip().lower() == "utd" else "tamu"
 
 
 def _parse_iso(iso_value: Optional[str]) -> Optional[datetime]:
@@ -112,6 +124,71 @@ def _haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> f
     delta_phi, delta_lambda = math.radians(lat2 - lat1), math.radians(lon2 - lon1)
     a = math.sin(delta_phi / 2.0)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0)**2
     return R * (2 * math.atan2(math.sqrt(a), math.sqrt(1 - a)))
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if math.isfinite(parsed):
+        return parsed
+    return None
+
+
+def _extract_ping_coordinates(ping: Dict[str, Any]) -> Tuple[Optional[float], Optional[float]]:
+    custom = ping.get("custom_data") or {}
+    lat = _safe_float(
+        ping.get("lat")
+        or custom.get("lat")
+        or custom.get("place_lat")
+        or custom.get("location_lat")
+    )
+    lng = _safe_float(
+        ping.get("lng")
+        or custom.get("lng")
+        or custom.get("place_lng")
+        or custom.get("location_lng")
+    )
+    return lat, lng
+
+
+def _campus_for_coordinates(lat: Optional[float], lng: Optional[float]) -> Optional[str]:
+    if lat is None or lng is None:
+        return None
+    distances = {
+        campus_id: _haversine_distance(lat, lng, center_lat, center_lng)
+        for campus_id, (center_lat, center_lng) in CAMPUS_CENTERS.items()
+    }
+    nearest_campus = min(distances, key=distances.get)
+    if distances[nearest_campus] <= CAMPUS_RADIUS_METERS[nearest_campus]:
+        return nearest_campus
+    return None
+
+
+def _matches_requested_campus(
+    campus: str,
+    lat: Optional[float],
+    lng: Optional[float],
+    *,
+    allow_unknown: bool,
+) -> bool:
+    inferred_campus = _campus_for_coordinates(lat, lng)
+    if inferred_campus is None:
+        return allow_unknown
+    return inferred_campus == campus
+
+
+def _ping_matches_campus_scope(ping: Dict[str, Any], campus: str) -> bool:
+    lat, lng = _extract_ping_coordinates(ping)
+    return _matches_requested_campus(
+        campus,
+        lat,
+        lng,
+        allow_unknown=campus != "utd",
+    )
 
 
 def _is_pulse_ping_post(ping: Dict[str, Any]) -> bool:
@@ -246,13 +323,31 @@ def _load_occupancy_by_place() -> Dict[str, int]:
     return occupancy
 
 
+def _event_matches_campus_scope(event: Dict[str, Any], campus: str) -> bool:
+    lat = _safe_float(event.get("lat"))
+    lng = _safe_float(event.get("lng"))
+    return _matches_requested_campus(
+        campus,
+        lat,
+        lng,
+        allow_unknown=campus != "utd",
+    )
+
+
 def invalidate_pulse_map_cache() -> None:
     for limit in PULSE_CACHE_LIMITS:
-        cache_service.delete(f"campus:pulse:map:v2:{limit}")
+        for campus in ("tamu", "utd"):
+            cache_service.delete(f"campus:pulse:map:v3:{campus}:{limit}")
 
 
-def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh: bool = False) -> Dict[str, Any]:
-    cache_key = f"campus:pulse:map:v2:{limit}"
+def get_pulse_map(
+    limit: int = 60,
+    clerk_id: Optional[str] = None,
+    campus: Optional[str] = None,
+    force_refresh: bool = False,
+) -> Dict[str, Any]:
+    campus_key = _normalize_campus(campus)
+    cache_key = f"campus:pulse:map:v3:{campus_key}:{limit}"
     if force_refresh and not clerk_id:
         cache_service.delete(cache_key)
     if not clerk_id and not force_refresh:
@@ -286,6 +381,7 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
             ping
             for ping in raw_pings
             if _is_pulse_ping_post(ping)
+            and _ping_matches_campus_scope(ping, campus_key)
             and tag_access_service.has_matching_access_tag(
                 user_tags=user_access_tags,
                 access_tags=_coerce_access_tags((ping.get("custom_data") or {}).get("access_tags")),
@@ -348,9 +444,8 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
             or custom.get("location_tag")
             or custom.get("place_name")
         )
-        
-        lat = ping.get("lat") or custom.get("lat") or custom.get("place_lat") or custom.get("location_lat")
-        lng = ping.get("lng") or custom.get("lng") or custom.get("place_lng") or custom.get("location_lng")
+
+        lat, lng = _extract_ping_coordinates(ping)
 
         place = None
         if place_id:
@@ -360,9 +455,17 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
              # Fallback: resolve using the building name
              place = _copy_place(place_registry_service.resolve_place(location_tag, lat, lng))
 
+        if place and not _matches_requested_campus(
+            campus_key,
+            _safe_float(place.get("lat")),
+            _safe_float(place.get("lng")),
+            allow_unknown=campus_key != "utd",
+        ):
+            place = None
+
         # 2. If no campus building, but we have geographic coordinates, create a synthetic place (or cluster with nearby)
         if not place and lat is not None and lng is not None:
-            fl_lat, fl_lng = float(lat), float(lng)
+            fl_lat, fl_lng = lat, lng
             
             nearby_place = None
             for g_place_id, g_group in grouped.items():
@@ -391,8 +494,8 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
                     "is_synthetic": True
                 }
         
-        # 3. Last fallback: MSC (just to ensure it's not discarded if it's on campus without a match)
-        if not place and location_tag:
+        # 3. TAMU-only fallback: MSC (legacy safety for historic TAMU posts without precise coords)
+        if not place and location_tag and campus_key == "tamu":
              place = _copy_place(
                  place_registry_service.resolve_place("Memorial Student Center", None, None),
                  name=location_tag,
@@ -400,8 +503,8 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
              if place:
                  place["is_fallback"] = True
         
-        # FINAL SAFETY: If still no place (no tag, no GPS), default to MSC just to keep markers visible
-        if not place:
+        # FINAL SAFETY: TAMU-only default to MSC to preserve legacy behavior.
+        if not place and campus_key == "tamu":
              fallback_name = location_tag or custom.get("place_name") or "Campus"
              place = _copy_place(place_registry_service.get_place_by_id("MSC"), name=fallback_name)
              if not place:
@@ -479,6 +582,8 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
         )
 
     for event in _load_admin_events():
+        if not _event_matches_campus_scope(event, campus_key):
+            continue
         if not tag_access_service.has_matching_access_tag(
             user_tags=user_access_tags,
             access_tags=_coerce_access_tags(event.get("access_tags")),
@@ -499,7 +604,28 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
             event.get("lng"),
         )
         boosted = False
-        if not resolved_place:
+        if (
+            resolved_place
+            and not _matches_requested_campus(
+                campus_key,
+                _safe_float(resolved_place.get("lat")),
+                _safe_float(resolved_place.get("lng")),
+                allow_unknown=campus_key != "utd",
+            )
+        ):
+            resolved_place = None
+
+        event_lat = _safe_float(event.get("lat"))
+        event_lng = _safe_float(event.get("lng"))
+        if not resolved_place and event_lat is not None and event_lng is not None:
+            resolved_place = {
+                "place_id": f"event-geo:{event.get('id')}",
+                "name": event.get("location_name") or "Campus Event",
+                "lat": event_lat,
+                "lng": event_lng,
+                "type": "General",
+            }
+        elif not resolved_place and campus_key == "tamu":
             resolved_place = place_registry_service.resolve_place("Memorial Student Center", None, None)
             boosted = True
 
@@ -612,6 +738,7 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
     ordered_hotspots = hotspots[:limit]
     payload = {
         "status": status,
+        "campus": campus_key,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "hotspots": ordered_hotspots,
     }

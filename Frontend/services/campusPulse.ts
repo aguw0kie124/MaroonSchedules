@@ -211,26 +211,55 @@ function normalizePlace(
 
 const PULSE_CACHE_TTL_MS = 30_000;
 const PULSE_MAX_LIMIT = 100;
+type CampusId = "TAMU" | "UTD";
 
-let _cachedHotspots: CampusHotspot[] | null = null;
-let _cachedAt = 0;
+let _cachedHotspotsByCampus: Record<CampusId, CampusHotspot[] | null> = {
+  TAMU: null,
+  UTD: null,
+};
+let _cachedAtByCampus: Record<CampusId, number> = {
+  TAMU: 0,
+  UTD: 0,
+};
 
-export function invalidateCampusPulseCache() {
-  _cachedHotspots = null;
-  _cachedAt = 0;
+function normalizeCampus(campus?: string | null): CampusId {
+  return String(campus || "").trim().toUpperCase() === "UTD" ? "UTD" : "TAMU";
+}
+
+export function invalidateCampusPulseCache(campus?: string | null) {
+  const normalizedCampus = campus ? normalizeCampus(campus) : null;
+  if (normalizedCampus) {
+    _cachedHotspotsByCampus[normalizedCampus] = null;
+    _cachedAtByCampus[normalizedCampus] = 0;
+    return;
+  }
+
+  _cachedHotspotsByCampus = { TAMU: null, UTD: null };
+  _cachedAtByCampus = { TAMU: 0, UTD: 0 };
 }
 
 export async function fetchCampusPulseMap(
   limit = 12,
-  options: { force?: boolean; clerkId?: string } = {},
+  options: { force?: boolean; clerkId?: string; campus?: CampusId } = {},
 ): Promise<{ hotspots: CampusHotspot[], status: string }> {
+  const campus = normalizeCampus(options.campus);
   const safeLimit = Math.min(limit, PULSE_MAX_LIMIT);
   const now = Date.now();
-  if (!options.force && _cachedHotspots && now - _cachedAt < PULSE_CACHE_TTL_MS) {
-    return { hotspots: _cachedHotspots, status: 'live' };
+  const cachedHotspots = _cachedHotspotsByCampus[campus];
+  if (
+    !options.force &&
+    cachedHotspots &&
+    now - _cachedAtByCampus[campus] < PULSE_CACHE_TTL_MS
+  ) {
+    return { hotspots: cachedHotspots, status: 'live' };
   }
 
-  const data = await apiFetchPulseMap(safeLimit, options.clerkId, Boolean(options.force));
+  const data = await apiFetchPulseMap(
+    safeLimit,
+    options.clerkId,
+    Boolean(options.force),
+    campus,
+  );
   const hotspots = Array.isArray(data) ? data : Array.isArray(data?.hotspots) ? data.hotspots : [];
   const status = data?.status || data?.source_status || 'live';
 
@@ -282,8 +311,8 @@ export async function fetchCampusPulseMap(
     })
     .filter((hotspot): hotspot is CampusHotspot => hotspot != null);
 
-  _cachedHotspots = mapped;
-  _cachedAt = now;
+  _cachedHotspotsByCampus[campus] = mapped;
+  _cachedAtByCampus[campus] = now;
 
   return { hotspots: mapped, status };
 }
@@ -294,23 +323,26 @@ export async function fetchCampusPulseMap(
  * @param newUserVote The desired vote state (-1, 0, 1)
  */
 export async function voteHotspotItem(itemId: string, newUserVote: number) {
-  if (!_cachedHotspots) return;
-  
-  for (const hotspot of _cachedHotspots) {
-    if (!hotspot.items) continue;
-    
-    const item = hotspot.items.find((i) => i.id === itemId);
-    if (item) {
-      const currentVote = normalizeVoteValue(item.userVote);
-      const nextVote = normalizeVoteValue(newUserVote);
-      const delta = nextVote - currentVote;
-      const updatedItem = applyCampusHotspotItemVote(item, nextVote);
-      
-      Object.assign(item, updatedItem);
+  for (const campus of Object.keys(_cachedHotspotsByCampus) as CampusId[]) {
+    const hotspots = _cachedHotspotsByCampus[campus];
+    if (!hotspots) continue;
 
-      // Update the parent hotspot's aggregate visual fields
-      hotspot.score = toSafeNumber(hotspot.score) + delta;
-      return;
+    for (const hotspot of hotspots) {
+      if (!hotspot.items) continue;
+
+      const item = hotspot.items.find((i) => i.id === itemId);
+      if (item) {
+        const currentVote = normalizeVoteValue(item.userVote);
+        const nextVote = normalizeVoteValue(newUserVote);
+        const delta = nextVote - currentVote;
+        const updatedItem = applyCampusHotspotItemVote(item, nextVote);
+
+        Object.assign(item, updatedItem);
+
+        // Update the parent hotspot's aggregate visual fields
+        hotspot.score = toSafeNumber(hotspot.score) + delta;
+        return;
+      }
     }
   }
 }

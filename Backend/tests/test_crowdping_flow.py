@@ -329,8 +329,48 @@ class PulseServiceTests(unittest.TestCase):
         mock_cache_delete,
     ):
         pulse_service.get_pulse_map(limit=12, force_refresh=True)
-        mock_cache_delete.assert_called_once_with("campus:pulse:map:v2:12")
+        mock_cache_delete.assert_called_once_with("campus:pulse:map:v3:tamu:12")
         mock_cache_get_json.assert_not_called()
+
+    @mock.patch.object(pulse_service.cache_service, "set_json")
+    @mock.patch.object(pulse_service.cache_service, "get_json", return_value=None)
+    @mock.patch.object(pulse_service, "_resolve_access_scope", return_value=([], False))
+    @mock.patch.object(pulse_service, "_load_admin_events", return_value=[])
+    @mock.patch.object(pulse_service, "_load_occupancy_by_place", return_value={})
+    @mock.patch.object(pulse_service.feed_repository, "get_batch_interaction_counts", return_value={})
+    @mock.patch.object(pulse_service.feed_repository, "get_crowdping_feed")
+    @mock.patch.object(pulse_service.campus_hub_service, "_ensure_social_tables")
+    def test_get_pulse_map_scopes_results_by_requested_campus(
+        self,
+        _mock_ensure_tables,
+        mock_get_crowdping_feed,
+        _mock_get_batch_counts,
+        _mock_load_occupancy,
+        _mock_load_admin_events,
+        _mock_resolve_access_scope,
+        _mock_get_json,
+        _mock_set_json,
+    ):
+        now = datetime.now(timezone.utc)
+        mock_get_crowdping_feed.return_value = [
+            {
+                "id": "tamu-ping-only",
+                "location_tag": "Memorial Student Center",
+                "lat": 30.61223,
+                "lng": -96.34137,
+                "post_type": "ping",
+                "created_at": now.isoformat(),
+                "custom_data": {
+                    "ping_title": "Pizza now",
+                    "ping_category": "Free Food",
+                    "start_at": now.isoformat(),
+                },
+            }
+        ]
+
+        result = pulse_service.get_pulse_map(limit=12, campus="utd")
+        self.assertEqual(result.get("campus"), "utd")
+        self.assertEqual(result["hotspots"], [])
 
     @mock.patch.object(pulse_service.cache_service, "set_json")
     @mock.patch.object(pulse_service.cache_service, "get_json", return_value=None)

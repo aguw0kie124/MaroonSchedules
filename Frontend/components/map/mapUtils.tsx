@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import type { ReactElement } from 'react';
 import { Dimensions } from 'react-native';
 import MapView, {
@@ -85,11 +85,11 @@ function regionDeltaFromZoom(zoom = 16) {
 export function useMapCamera(initialRegion: MapRegion) {
   const cameraRef = useRef<MapView>(null);
 
-  const animateToRegion = (region: MapRegion, duration = 800) => {
+  const animateToRegion = useCallback((region: MapRegion, duration = 800) => {
     cameraRef.current?.animateToRegion(region, duration);
-  };
+  }, []);
 
-  const animateCamera = (
+  const animateCamera = useCallback((
     config: {
       center?: MapCoordinate;
       zoom?: number;
@@ -114,9 +114,9 @@ export function useMapCamera(initialRegion: MapRegion) {
       camera.zoom = config.zoom;
     }
     cameraRef.current?.animateCamera(camera, { duration: options?.duration ?? 700 });
-  };
+  }, []);
 
-  const fitToCoordinates = (
+  const fitToCoordinates = useCallback((
     coordinates: MapCoordinate[],
     options?: {
       edgePadding?: { top?: number; right?: number; bottom?: number; left?: number };
@@ -148,7 +148,7 @@ export function useMapCamera(initialRegion: MapRegion) {
       edgePadding: normalizePadding(options?.edgePadding),
       animated: options?.animated !== false,
     });
-  };
+  }, []);
 
   const defaultCamera = useMemo(
     (): Region => ({

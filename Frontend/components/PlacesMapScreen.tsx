@@ -202,6 +202,9 @@ const UTD_CENTER = {
   latitudeDelta: 0.03,
   longitudeDelta: 0.03,
 };
+const UTD_DINING_SITE_URL = "https://dineoncampus.com/utdallas";
+const UTD_LIBRARY_SITE_URL = "https://library.utdallas.edu/";
+const UTD_PARKING_INFO_URL = "https://services.utdallas.edu/transit/park/";
 
 const isPulseCoordNearCampus = (
   latitude: number,
@@ -318,7 +321,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
   }, [activeCampusCenter, animateToRegion]);
 
   // ── UI state ──────────────────────────────────────────────
-  const [activeLayer, setActiveLayer] = useState<string>("Pulse");
+  const [activeLayer, setActiveLayer] = useState<string>(
+    isUTDCampus ? "Academic" : "Pulse",
+  );
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(
     null,
   );
@@ -363,6 +368,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
       current === campusFromTheme ? current : campusFromTheme,
     );
   }, [campusTheme.campus]);
+
+  useEffect(() => {
+    if (isUTDCampus && activeLayer === "Pulse") {
+      setActiveLayer("Academic");
+    }
+  }, [activeLayer, isUTDCampus]);
 
   // ── Location data ─────────────────────────────────────────
   const {
@@ -421,15 +432,20 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const selectedHotspotIdRef = useRef<string | null>(null);
 
   const queryClient = useQueryClient();
+  const pulseQueryKey = useMemo(
+    () => ['campus-pulse', user?.id, API_URL, selectedCampus] as const,
+    [user?.id, selectedCampus],
+  );
   const {
     data: pulseHotspots = [],
     isLoading: isLoadingPulse,
     refetch: refetchPulse,
   } = useQuery({
-    queryKey: ['campus-pulse', user?.id, API_URL],
+    queryKey: pulseQueryKey,
     queryFn: async () => {
       const { hotspots: rawHotspots } = await fetchCampusPulseMap(60, {
         clerkId: user?.id || undefined,
+        campus: selectedCampus,
         force: true
       });
 
@@ -1147,11 +1163,20 @@ export function PlacesMapScreen({ route, navigation }: any) {
       if (rec?.source_url)
         return { label: "Open Official Page", url: rec.source_url };
       if (loc.type === "Dining" || loc.type === "Hub")
-        return { label: "Dining Site", url: "https://dineoncampus.com/tamu" };
+        return {
+          label: "Dining Site",
+          url: isUTDCampus ? UTD_DINING_SITE_URL : "https://dineoncampus.com/tamu",
+        };
       if (loc.type === "Library")
-        return { label: "Library Site", url: "https://library.tamu.edu/" };
+        return {
+          label: "Library Site",
+          url: isUTDCampus ? UTD_LIBRARY_SITE_URL : "https://library.tamu.edu/",
+        };
       if (loc.type === "Parking")
-        return { label: "Parking Guide", url: PARKING_INFO_URL };
+        return {
+          label: "Parking Guide",
+          url: isUTDCampus ? UTD_PARKING_INFO_URL : PARKING_INFO_URL,
+        };
       if (loc.source === "global") {
         return {
           label: "Open in Maps",
@@ -1162,10 +1187,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
       }
       return {
         label: "Open in Maps",
-        url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${loc.location} Texas A&M University`)}`,
+        url: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+          `${loc.location} ${isUTDCampus ? "UT Dallas" : "Texas A&M University"}`,
+        )}`,
       };
     },
-    [recreationFacilityMap],
+    [isUTDCampus, recreationFacilityMap],
   );
 
   const openFullMenu = useCallback(
@@ -1186,12 +1213,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
           location: locationName,
           mealPeriod: mealPeriod || getDiningMealPeriodForLocation(locationName),
           title: `${locationName} Menu`,
-          sourceHint: "cached",
+          sourceHint: isUTDCampus ? "utd-live" : "cached",
         };
         (rootNav?.navigate || navigation.navigate)("FullMenu", params);
       }
     },
-    [navigation],
+    [isUTDCampus, navigation],
   );
 
   const openScheduleList = useCallback(() => {
@@ -1349,7 +1376,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   );
 
   const toggleHotspotVote = useCallback(async (hotspotId: string, itemId: string, targetVote: number) => {
-    const pulseKey = ['campus-pulse', user?.id, API_URL];
+    const pulseKey = pulseQueryKey;
     const prevPulseData = queryClient.getQueryData(pulseKey) as CampusHotspot[] | undefined;
     if (!prevPulseData) return;
 
@@ -1413,15 +1440,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
         console.warn("[Pulse] Connection error during vote commit");
       }
     }
-  }, [user?.id, queryClient, applyCampusHotspotItemVote, pulseHotspots]);
+  }, [queryClient, applyCampusHotspotItemVote, pulseHotspots, pulseQueryKey]);
 
 
   const fetchPulseHotspots = useCallback(async (options: { force?: boolean } = {}) => {
     if (options.force) {
-      invalidateCampusPulseCache();
+      invalidateCampusPulseCache(selectedCampus);
     }
     await refetchPulse();
-  }, [refetchPulse]);
+  }, [refetchPulse, selectedCampus]);
 
 
   const hasSeenPulseLayer = useRef(false);
@@ -1967,10 +1994,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // Keep active layer valid
   useEffect(() => {
+    if (activeLayer === "Academic") return;
     if (!visibleCategories.some((c) => c.id === activeLayer)) {
-      setActiveLayer(visibleCategories[0]?.id || "Pulse");
+      const fallbackLayer = visibleCategories[0]?.id || (isUTDCampus ? "Academic" : "Pulse");
+      if (fallbackLayer !== activeLayer) {
+        setActiveLayer(fallbackLayer);
+      }
     }
-  }, [activeLayer, visibleCategories]);
+  }, [activeLayer, isUTDCampus, visibleCategories]);
 
   // Route param: initialLayer focus
   useEffect(() => {
@@ -2689,7 +2720,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
             triggerNativeShare({
               title: "Campus Map",
               message: "Check out the live campus map on MaroonSchedules!",
-              url: "https://maroonschedules.tamu.edu/places",
+              url: isUTDCampus
+                ? "https://maroonschedules.com/places"
+                : "https://maroonschedules.tamu.edu/places",
               type: "place",
             })
           }

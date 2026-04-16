@@ -391,10 +391,16 @@ export const fetchCampusPlaceDetail = async (placeIdOrIdentifier: string) => {
     return requestJson(`/campus/places/${encodeURIComponent(placeIdOrIdentifier)}/detail`);
 };
 
-export const fetchCampusPulseMap = async (limit = 12, clerkId?: string, refresh = false) => {
+export const fetchCampusPulseMap = async (
+    limit = 12,
+    clerkId?: string,
+    refresh = false,
+    campus?: 'TAMU' | 'UTD',
+) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (clerkId) params.set('clerk_id', clerkId);
     if (refresh) params.set('refresh', 'true');
+    if (campus) params.set('campus', campus.toLowerCase());
     return requestJson(`/campus/pulse/map?${params.toString()}`);
 };
 

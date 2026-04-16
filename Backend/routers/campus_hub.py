@@ -105,7 +105,7 @@ def get_events(
     limit: int = Query(250, ge=1, le=1000),
     category: Optional[str] = Query(None),
     student_relevant_only: bool = Query(True),
-    campus: str = Query("tamu"),
+    campus: Optional[str] = Query(None),
     refresh: bool = Query(False),
     auth_user_id: Optional[str] = Depends(optional_auth),
 ) -> Dict[str, Any]:
@@ -115,11 +115,17 @@ def get_events(
 
     if clerk_id is not None:
         ensure_matching_user(auth_user_id, clerk_id, detail="You can only personalize events for your own account")
+
+    header_campus = request.headers.get("x-campus-id") or request.headers.get("X-Campus-Id")
+    normalized_campus = (campus or header_campus or "tamu").strip().lower()
+    if normalized_campus not in {"tamu", "utd"}:
+        normalized_campus = "tamu"
+
     return campus_hub_service.get_events_snapshot(
         clerk_id,
         limit=limit,
         student_relevant_only=student_relevant_only,
-        campus=campus,
+        campus=normalized_campus,
         force_refresh=refresh,
     )
 
@@ -155,6 +161,7 @@ def get_pulse_map(
     request: Request,
     limit: int = Query(60, ge=1, le=100),
     clerk_id: Optional[str] = Query(default=None),
+    campus: Optional[str] = Query(default=None),
     refresh: bool = Query(default=False),
     auth_user_id: Optional[str] = Depends(optional_auth),
 ):
@@ -171,8 +178,18 @@ def get_pulse_map(
             clerk_id,
             detail="You can only request your own personalized pulse map",
         )
-    
-    return pulse_service.get_pulse_map(limit=limit, clerk_id=effective_clerk_id, force_refresh=refresh)
+
+    header_campus = request.headers.get("x-campus-id") or request.headers.get("X-Campus-Id")
+    normalized_campus = (campus or header_campus or "tamu").strip().lower()
+    if normalized_campus not in {"tamu", "utd"}:
+        normalized_campus = "tamu"
+
+    return pulse_service.get_pulse_map(
+        limit=limit,
+        clerk_id=effective_clerk_id,
+        campus=normalized_campus,
+        force_refresh=refresh,
+    )
 
 
 @router.post("/events/rsvp")

@@ -197,10 +197,8 @@ def _require_owned_admin_event(cur, event_id: str, clerk_id: str):
 
 
 def _invalidate_admin_event_caches() -> None:
+    pulse_service.invalidate_pulse_map_cache()
     for key in [
-        "campus:pulse:map:v2:12",
-        "campus:pulse:map:v2:25",
-        "campus:pulse:map:v2:8",
         "campus:events:normalized:v2:tamu",
         "campus:events:normalized:v2:utd",
     ]:

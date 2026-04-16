@@ -56,9 +56,12 @@ def _refresh_places() -> object:
 
 
 def _refresh_pulse() -> object:
-    # Match the v2 cache key used in pulse_service.py
-    cache_key = f"campus:pulse:map:v2:{PULSE_LIMIT}"
-    return _rebuild_in_place(cache_key, lambda: pulse_service.get_pulse_map(limit=PULSE_LIMIT), ttl_seconds=600)
+    tamu = pulse_service.get_pulse_map(limit=PULSE_LIMIT, campus="tamu", force_refresh=True)
+    utd = pulse_service.get_pulse_map(limit=PULSE_LIMIT, campus="utd", force_refresh=True)
+    return {
+        "tamuHotspots": len(tamu.get("hotspots") or []),
+        "utdHotspots": len(utd.get("hotspots") or []),
+    }
 
 
 def _refresh_events() -> object:
