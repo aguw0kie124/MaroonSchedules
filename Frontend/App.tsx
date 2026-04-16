@@ -278,7 +278,7 @@ function MainTabs(props: any) {
   const { COLORS } = useTheme();
   const navItems = useAppShellStore((state) => state.navItems);
   const isGuest = useSessionStore((state) => state.isGuest);
-  const tabBarMode = useAppShellStore((state) => state.tabBarMode);
+  const { tabBarMode } = useTheme();
 
   const visibleNavItems = React.useMemo(() => {
     if (!isGuest) {
@@ -355,7 +355,7 @@ function MainTabs(props: any) {
       key={shellKey}
       id="MainTabs"
       initialRouteName={initialRouteName}
-      tabBar={(tabProps) => tabBarMode === 'floating' ? <GlassPillTabBar {...tabProps} /> : undefined}
+      tabBar={tabBarMode === 'floating' ? (tabProps) => <GlassPillTabBar {...tabProps} /> : undefined}
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: true,
@@ -423,6 +423,7 @@ function RootNavigator() {
   const isAdmin = useAppShellStore((state) => state.adminAccessStatus);
   const setIsAdmin = useAppShellStore((state) => state.setAdminAccessStatus);
   const isRegularUserFlow = isSignedIn && authMode !== 'admin';
+
   React.useEffect(() => {
     if (isSignedIn && user?.id) {
        requestJson(`/admin/status?clerk_id=${encodeURIComponent(user.id)}`)
@@ -641,7 +642,9 @@ function TabButtonWrapper({ screenName, props }: { screenName: string; props: an
           },
         ]}
       >
-        <Pressable {...rest} onPress={handlePress} onLongPress={onLongPress} />
+        <Pressable {...rest} onPress={handlePress} onLongPress={onLongPress}>
+          {props.children}
+        </Pressable>
       </View>
     </TourTarget>
   );

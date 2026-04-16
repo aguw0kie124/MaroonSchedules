@@ -23,10 +23,9 @@ export function GlassPillTabBar({
   descriptors,
   navigation,
 }: BottomTabBarProps) {
-  const { COLORS, theme } = useTheme();
+  const { COLORS, theme, tabBarMode } = useTheme();
   const { activeTargetName, advanceStep } = useTour();
   const isBottomBarHidden = useAppShellStore((store) => store.isBottomBarHidden);
-  const tabBarMode = useAppShellStore((store) => store.tabBarMode);
 
   const [collapsedRouteKey, setCollapsedRouteKey] = React.useState<string | null>(
     tabBarMode === 'floating' ? state.routes[state.index]?.key ?? null : null,

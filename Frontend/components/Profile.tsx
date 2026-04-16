@@ -61,7 +61,7 @@ import {
 } from '../services/socialFeedService';
 import { useTour, TourTarget } from './onboarding/TourProvider';
 import { PillTabs } from './PillTabs';
-import { getDefaultAccentColor, useTheme } from './SharedUI';
+import { getDefaultAccentColor, useTheme, WallpaperWrapper } from './SharedUI';
 
 import { TagChips } from './common/TagChips';
 
@@ -762,67 +762,6 @@ export function Profile() {
           </View>
 
           <View style={styles.preferenceBlock}>
-            <Text style={styles.preferenceLabel}>Navigation Style</Text>
-            <Text style={styles.sectionSubtitle}>Choose between a classic solid bar or a modern floating nav.</Text>
-            <View style={styles.segmentedRow}>
-              {[
-                { key: 'solid', label: 'Classic Solid' },
-                { key: 'floating', label: 'Floating Pill' },
-              ].map((item) => {
-                const selected = tabBarMode === item.key;
-                return (
-                  <Pressable
-                    key={item.key}
-                    style={[styles.segmentButton, { flex: 1, justifyContent: 'center' }, selected && styles.segmentButtonActive]}
-                    onPress={() => setTabBarMode(item.key as 'solid' | 'floating')}
-                  >
-                    <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
-          <View style={styles.preferenceBlock}>
-            <Text style={styles.preferenceLabel}>Custom Wallpaper</Text>
-            <View style={styles.inlineSwitchRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inlineSwitchTitle}>Enable Wallpaper</Text>
-                <Text style={styles.sectionSubtitle}>Apply your custom background across the app.</Text>
-              </View>
-              <Switch
-                value={useWallpaper}
-                onValueChange={setUseWallpaper}
-                trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-            
-            <Pressable 
-              style={[
-                styles.toolRow, 
-                { marginTop: 8, borderTopWidth: 1, borderTopColor: COLORS.border, borderBottomWidth: 0 }
-              ]} 
-              onPress={pickWallpaper}
-            >
-              <View style={[styles.toolIconBg, { backgroundColor: COLORS.primary + '15' }]}>
-                <Camera size={20} color={COLORS.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.toolTitle}>{wallpaperUri ? 'Change Wallpaper' : 'Choose Wallpaper'}</Text>
-                {wallpaperUri && (
-                  <Text style={[styles.email, { color: COLORS.success, fontWeight: '600' }]} numberOfLines={1}>
-                    Image active ✓
-                  </Text>
-                )}
-              </View>
-              <ChevronRight size={20} color={COLORS.textTertiary} />
-            </Pressable>
-          </View>
-
-          <View style={styles.preferenceBlock}>
             <Text style={styles.preferenceLabel}>Accent Color</Text>
             <View style={styles.accentSliderCard}>
               <View style={styles.accentSliderHeader}>
@@ -863,28 +802,69 @@ export function Profile() {
               </View>
 
               <View style={styles.accentScaleRow}>
-                <Text style={styles.accentScaleLabel}>Cool</Text>
+                <Text style={styles.accentScaleLabel}>Light</Text>
                 <Pressable
                   style={styles.accentResetButton}
                   onPress={() => setAccentColor(getDefaultAccentColor(theme))}
                 >
-                  <Text style={styles.accentResetText}>Default Accent</Text>
+                  <Text style={styles.accentResetText}>Use Theme Default</Text>
                 </Pressable>
-                <Text style={styles.accentScaleLabel}>Warm</Text>
+                <Text style={styles.accentScaleLabel}>Dark</Text>
               </View>
             </View>
+          </View>
+
+          <View style={styles.preferenceBlock}>
+            <Text style={styles.preferenceLabel}>Navigation Style</Text>
+            <View style={styles.segmentedRow}>
+              {[
+                { key: 'solid', label: 'Solid' },
+                { key: 'floating', label: 'Floating' },
+              ].map((item) => {
+                const selected = tabBarMode === item.key;
+                return (
+                  <Pressable
+                    key={item.key}
+                    style={[styles.segmentButton, selected && styles.segmentButtonActive]}
+                    onPress={() => setTabBarMode(item.key as 'solid' | 'floating')}
+                  >
+                    <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={styles.preferenceBlock}>
+            <Text style={styles.preferenceLabel}>Custom Wallpaper</Text>
             <View style={styles.inlineSwitchRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.inlineSwitchTitle}>Vibrant Headings</Text>
-                <Text style={styles.sectionSubtitle}>Apply color to titles and icons.</Text>
+                <Text style={styles.inlineSwitchTitle}>Enable Wallpaper</Text>
               </View>
               <Switch
-                value={applyAccentToText}
-                onValueChange={setApplyAccentToText}
+                value={useWallpaper}
+                onValueChange={setUseWallpaper}
                 trackColor={{ false: COLORS.border, true: COLORS.primary }}
                 thumbColor="#FFFFFF"
               />
             </View>
+            
+            {useWallpaper && (
+              <Pressable 
+                style={[styles.toolRow, { marginTop: 8, borderTopWidth: 1, borderTopColor: COLORS.border, borderBottomWidth: 0 }]} 
+                onPress={pickWallpaper}
+              >
+                <View style={[styles.toolIconBg, { backgroundColor: COLORS.primary + '15' }]}>
+                  <Camera size={20} color={COLORS.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.toolTitle}>{wallpaperUri ? 'Change Wallpaper' : 'Choose Wallpaper'}</Text>
+                </View>
+                <ChevronRight size={20} color={COLORS.textTertiary} />
+              </Pressable>
+            )}
           </View>
         </View>
       </>

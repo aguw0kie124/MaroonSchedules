@@ -53,7 +53,8 @@ function isLegacyDefaultAccent(accentColor: string | null | undefined) {
 export const useThemeStore = create<any>((set, get) => ({
   theme: 'light', // 'dark' | 'light'
   accentColor: DEFAULT_DARK_ACCENT,
-  applyAccentToText: false,
+  applyAccentToText: true,
+  tabBarMode: 'solid', // 'solid' | 'floating'
   setTheme: (newTheme: string) => {
     const currentTheme = get().theme as 'light' | 'dark';
     const currentAccent = get().accentColor;
@@ -77,13 +78,14 @@ export const useThemeStore = create<any>((set, get) => ({
     AsyncStorage.setItem('accent_text_enabled', JSON.stringify(applyAccentToText)).catch(() => {});
   },
   loadWallpaperPref: async () => {
-    const [storedTheme, accentColor, accentTextEnabled, useWallpaper, backgroundMode, wallpaperUri] = await Promise.all([
+    const [storedTheme, accentColor, accentTextEnabled, useWallpaper, backgroundMode, wallpaperUri, tabBarMode] = await Promise.all([
       AsyncStorage.getItem('theme_mode'),
       AsyncStorage.getItem('accent_color'),
       AsyncStorage.getItem('accent_text_enabled'),
       AsyncStorage.getItem('use_wallpaper'),
       AsyncStorage.getItem('background_mode'),
       AsyncStorage.getItem('custom_wallpaper_uri'),
+      AsyncStorage.getItem('tab_bar_mode'),
     ]);
 
     const nextState: Record<string, unknown> = {};
@@ -111,6 +113,9 @@ export const useThemeStore = create<any>((set, get) => ({
     if (wallpaperUri !== null) {
       nextState.wallpaperUri = wallpaperUri;
     }
+    if (tabBarMode !== null) {
+      nextState.tabBarMode = tabBarMode;
+    }
 
     if (Object.keys(nextState).length) {
       set(nextState);
@@ -128,6 +133,10 @@ export const useThemeStore = create<any>((set, get) => ({
   setBackgroundMode: (mode: string) => {
     set({ backgroundMode: mode });
     AsyncStorage.setItem('background_mode', mode).catch(() => {});
+  },
+  setTabBarMode: (mode: 'floating' | 'solid') => {
+    set({ tabBarMode: mode });
+    AsyncStorage.setItem('tab_bar_mode', mode).catch(() => {});
   }
 }));
 
@@ -138,6 +147,7 @@ export const useTheme = () => {
   const useWallpaper = useThemeStore((s: any) => s.useWallpaper);
   const backgroundMode = useThemeStore((s: any) => s.backgroundMode);
   const wallpaperUri = useThemeStore((s: any) => s.wallpaperUri);
+  const tabBarMode = useThemeStore((s: any) => s.tabBarMode);
   
   const palette = theme === 'dark' ? DARK_COLORS : LIGHT_COLORS;
   const COLORS = {
@@ -154,12 +164,14 @@ export const useTheme = () => {
     wallpaperUri,
     accentColor, 
     applyAccentToText,
+    tabBarMode,
     setTheme: useThemeStore.getState().setTheme,
     setAccentColor: useThemeStore.getState().setAccentColor,
     setApplyAccentToText: useThemeStore.getState().setApplyAccentToText,
     setUseWallpaper: useThemeStore.getState().setUseWallpaper,
     setWallpaperUri: useThemeStore.getState().setWallpaperUri,
     setBackgroundMode: useThemeStore.getState().setBackgroundMode,
+    setTabBarMode: useThemeStore.getState().setTabBarMode,
   };
 };
 
