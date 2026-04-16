@@ -1016,7 +1016,7 @@ def get_detailed_facility_counts(request: Request, place_id: str, sid: Optional[
     rec_live_counts = tracker.get_rec_center_live_counts(include_sub_areas=True)
     if place_id in rec_live_counts:
         payload = {"facility_counts": rec_live_counts[place_id].get("facility_counts", [])}
-        cache_service.set_json(cache_key, payload, 1800) # 30 min cache
+        cache_service.set_json(cache_key, payload, 120) # 2 min cache
         return payload
     
     return {"facility_counts": []}

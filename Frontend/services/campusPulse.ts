@@ -209,15 +209,12 @@ function normalizePlace(
   };
 }
 
-const PULSE_CACHE_TTL_MS = 30_000;
 const PULSE_MAX_LIMIT = 100;
 
 let _cachedHotspots: CampusHotspot[] | null = null;
-let _cachedAt = 0;
 
 export function invalidateCampusPulseCache() {
   _cachedHotspots = null;
-  _cachedAt = 0;
 }
 
 export async function fetchCampusPulseMap(
@@ -225,11 +222,6 @@ export async function fetchCampusPulseMap(
   options: { force?: boolean; clerkId?: string } = {},
 ): Promise<{ hotspots: CampusHotspot[], status: string }> {
   const safeLimit = Math.min(limit, PULSE_MAX_LIMIT);
-  const now = Date.now();
-  if (!options.force && _cachedHotspots && now - _cachedAt < PULSE_CACHE_TTL_MS) {
-    return { hotspots: _cachedHotspots, status: 'live' };
-  }
-
   const data = await apiFetchPulseMap(safeLimit, options.clerkId, Boolean(options.force));
   const hotspots = Array.isArray(data) ? data : Array.isArray(data?.hotspots) ? data.hotspots : [];
   const status = data?.status || data?.source_status || 'live';
@@ -283,7 +275,6 @@ export async function fetchCampusPulseMap(
     .filter((hotspot): hotspot is CampusHotspot => hotspot != null);
 
   _cachedHotspots = mapped;
-  _cachedAt = now;
 
   return { hotspots: mapped, status };
 }

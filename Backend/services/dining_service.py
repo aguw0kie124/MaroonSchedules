@@ -5,9 +5,13 @@ import psycopg
 import psycopg.rows
 from typing import Optional, Dict, List, Any
 from pulp import LpMaximize, LpProblem, LpVariable, lpSum, value as pulp_value, PULP_CBC_CMD
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from db_config import get_db_connection, get_pool
 from services import cache_service
+
+CENTRAL_TZ = ZoneInfo("America/Chicago")
+DINING_MENU_ERROR_TTL_SECONDS = 600
 
 def get_db_conn():
     return get_pool().connection()
@@ -493,6 +497,33 @@ def group_menu_items(items: List[Dict[str, Any]], meal_period: Optional[str] = N
     return result
 
 
+def _menu_success_ttl_seconds(date_str: Optional[str] = None) -> int:
+    now = datetime.now(CENTRAL_TZ)
+    target_date = now.date()
+
+    if date_str:
+        try:
+            target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            target_date = now.date()
+
+    if target_date < now.date():
+        return 60 * 60
+
+    next_midnight = datetime(
+        target_date.year,
+        target_date.month,
+        target_date.day,
+        0,
+        0,
+        0,
+        0,
+        tzinfo=CENTRAL_TZ,
+    ) + timedelta(days=1)
+    ttl_seconds = int((next_midnight - now).total_seconds())
+    return max(60, ttl_seconds)
+
+
 def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str = None) -> Dict[str, Any]:
     cache_key = f"dining:full-menu:v1:{location_name.lower()}:{(meal_period or 'lunch').lower()}:{date_str or datetime.now().strftime('%Y-%m-%d')}"
     cached = cache_service.get_json(cache_key)
@@ -557,7 +588,8 @@ def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str 
         "count": len(items),
         "categories": grouped_items,
     }
-    cache_service.set_json(cache_key, payload, 120)
+    ttl_seconds = _menu_success_ttl_seconds(date_str) if payload["success"] else DINING_MENU_ERROR_TTL_SECONDS
+    cache_service.set_json(cache_key, payload, ttl_seconds)
     return payload
 
 
@@ -732,13 +764,13 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
             "resolvedPeriod": resolved_period,
             "apiBase": menu_url.rsplit('/locations/', 1)[0],
         }
-        cache_service.set_json(cache_key, payload, 300)
+        cache_service.set_json(cache_key, payload, _menu_success_ttl_seconds(date_str))
         return payload
     except Exception as e:
         last_error = str(e)
 
     payload = {"success": False, "error": last_error or "Unable to reach DineOnCampus", "items": []}
-    cache_service.set_json(cache_key, payload, 60)
+    cache_service.set_json(cache_key, payload, DINING_MENU_ERROR_TTL_SECONDS)
     return payload
 
 

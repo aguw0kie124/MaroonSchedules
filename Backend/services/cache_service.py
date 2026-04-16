@@ -16,7 +16,10 @@ except Exception:  # pragma: no cover - optional dependency
     redis = None
 
 
-REDIS_URL = os.environ.get("REDIS_URL", "").strip()
+REDIS_URL = (
+    os.environ.get("REDIS_URL", "").strip()
+    or os.environ.get("UPSTASH_REDIS_URL", "").strip()
+)
 REDIS_HOST = os.environ.get("REDIS_HOST", "").strip()
 REDIS_PORT = os.environ.get("REDIS_PORT", "").strip()
 REDIS_USERNAME = os.environ.get("REDIS_USERNAME", "default").strip()
