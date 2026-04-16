@@ -25,6 +25,8 @@ import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
 import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
 import { ScheduleListScreen } from './components/ScheduleListScreen';
 import { ScheduleDetailScreen } from './components/ScheduleDetailScreen';
+import { ProfessorSearchScreen } from './components/ProfessorSearchScreen';
+import { ProfessorProfileScreen } from './components/ProfessorProfileScreen';
 import FacilityCountsScreen from './components/places/FacilityCountsScreen';
 import { CampusNavigationScreen } from './components/CampusNavigationScreen';
 import BusTimetableScreen from './components/BusTimetableScreen';
@@ -516,6 +518,8 @@ function RootNavigator() {
             <Stack.Screen name="NewCourseDetail" component={NewCourseDetailScreen} options={{ headerShown: true, title: 'Course Details' }} />
             <Stack.Screen name="ScheduleList" component={ScheduleListScreen} options={{ headerShown: true, title: 'My Schedules' }} />
             <Stack.Screen name="ScheduleDetail" component={ScheduleDetailScreen} options={{ headerShown: true, title: 'Schedule Details' }} />
+            <Stack.Screen name="ProfessorSearchScreen" component={ProfessorSearchScreen} options={{ headerShown: true, title: 'Professor Reviews' }} />
+            <Stack.Screen name="ProfessorProfileScreen" component={ProfessorProfileScreen} options={{ headerShown: true, title: 'Professor Profile' }} />
             <Stack.Screen name="CampusNavigation" component={CampusNavigationScreen} options={{ headerShown: false }} />
             <Stack.Screen
               name="BusTimetable"

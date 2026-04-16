@@ -22,6 +22,7 @@ from routers.annex import router as annex_router
 from routers.campus_hub import router as campus_hub_router
 from routers.clubs import router as clubs_router
 from routers.dining import router as dining_router
+from routers.professors import router as professors_router
 from routers.grades import router as grades_router
 from routers.maps import router as maps_router
 from routers.posts import router as posts_router
@@ -109,6 +110,7 @@ optional_protected_router.include_router(campus_hub_router)
 optional_protected_router.include_router(annex_router)
 optional_protected_router.include_router(clubs_router)
 optional_protected_router.include_router(maps_router)
+optional_protected_router.include_router(professors_router)
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")

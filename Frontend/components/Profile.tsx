@@ -628,12 +628,22 @@ export function Profile() {
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
 
-        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('ScheduleList')}>
+        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('ScheduleList')}>
           <View style={[styles.toolIconBg, { backgroundColor: 'rgba(139,92,246,0.15)' }]}>
             <Settings2 size={20} color="#8B5CF6" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.toolTitle}>Manage Academic Schedules</Text>
+          </View>
+          <ChevronRight size={20} color={COLORS.textTertiary} />
+        </Pressable>
+
+        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('ProfessorSearchScreen')}>
+          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(56, 189, 248, 0.15)' }]}>
+            <Search size={20} color="#38BDF8" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toolTitle}>TAMU Professor Reviews</Text>
           </View>
           <ChevronRight size={20} color={COLORS.textTertiary} />
         </Pressable>
