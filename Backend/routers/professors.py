@@ -71,7 +71,18 @@ def get_professor_details(professor_id: str):
         url = f"{API_BASE}/professor/{quote(professor_id)}"
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()
-        return resp.json()
+        details = resp.json()
+        
+        # Override the limited default 'recent_reviews' array with the full list of reviews
+        try:
+            reviews_url = f"{API_BASE}/professor/{quote(professor_id)}/reviews?limit=100000"
+            reviews_resp = requests.get(reviews_url, timeout=15)
+            if reviews_resp.status_code == 200:
+                details['recent_reviews'] = reviews_resp.json()
+        except Exception as e:
+            print(f"Warning: Failed to fetch all reviews for {professor_id}: {e}")
+            
+        return details
     except requests.exceptions.RequestException as e:
         print(f"Error fetching professor details for {professor_id}: {e}")
         raise HTTPException(status_code=404, detail="Professor not found")
