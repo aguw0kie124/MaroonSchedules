@@ -203,7 +203,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
     setSyncingItemKey(itemKey);
     try {
       const entryId = existing.entryIds[existing.entryIds.length - 1];
-      await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}/entry/${entryId}`, {
+      await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}/${entryId}`, {
         method: 'DELETE',
       });
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);

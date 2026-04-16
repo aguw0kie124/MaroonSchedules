@@ -224,7 +224,7 @@ export default function DiningDashboard({ navigation }: any) {
                            <Text style={[s.historyGroupLabel, { color: T.text3 }]}>{period.toUpperCase()}</Text>
                            {items.map((it: any) => (
                              <View key={it.id} style={s.historyItem}>
-                               <Text style={[s.historyItemName, { color: T.text }]} numberOfLines={1}>{it.label}</Text>
+                               <Text style={[s.historyItemName, { color: T.text }]}>{it.label}</Text>
                                <Text style={[s.historyItemMacros, { color: T.text3 }]}>
                                  {Math.round(it.calories)} kcal • {Math.round(it.protein)}g P • {Math.round(it.carbs)}g C • {Math.round(it.fat)}g F
                                </Text>

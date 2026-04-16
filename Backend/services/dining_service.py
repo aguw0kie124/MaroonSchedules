@@ -41,8 +41,11 @@ def init_db():
 # Full mapping of TAMU DineOnCampus locations to their API IDs
 DINING_LOCATIONS = {
     "The Commons Dining Hall (South Campus)": "59972586ee596fe55d2eef75",
+    "The Commons Dining Hall": "59972586ee596fe55d2eef75",
     "Sbisa Dining Hall (North Campus)": "587909deee596f31cedc179c",
+    "Sbisa Dining Hall": "587909deee596f31cedc179c",
     "Duncan Dining Hall (South Campus/Quad)": "5878eb5cee596f847636f114",
+    "Duncan Dining Hall": "5878eb5cee596f847636f114",
     "1876 Burgers - Sbisa Complex": "5873c5f43191a200e44eba43",
     "Chick-Fil-A - Sbisa Underground Food Court": "586d0bf1ee596f6e75049512",
     "Copperhead Jack's - Sbisa Complex": "5c9a291319e02b0c4cd18d87",
@@ -321,9 +324,9 @@ def compute_totals(foods: List[Dict]) -> Dict[str, float]:
 # ============ PERIOD MATCHING ============
 # Which DB meal_period slugs count for each user-facing meal
 PERIOD_ALIASES = {
-    'breakfast': ['breakfast', 'every-day', 'everyday', 'all-day'],
-    'lunch':     ['lunch', 'every-day', 'everyday', 'all-day'],
-    'dinner':    ['dinner', 'every-day', 'everyday', 'all-day'],
+    'breakfast': ['breakfast', 'every-day', 'everyday', 'all-day', 'standard-breakfast', 'weekday-breakfast', 'weekend-breakfast'],
+    'lunch':     ['lunch', 'brunch', 'every-day', 'everyday', 'all-day', 'standard-lunch', 'weekday-lunch', 'weekend-lunch', 'midday'],
+    'dinner':    ['dinner', 'every-day', 'everyday', 'all-day', 'standard-dinner', 'weekday-dinner', 'weekend-dinner', 'evening'],
 }
 
 SEMANTIC_PERIOD_ALIASES = {

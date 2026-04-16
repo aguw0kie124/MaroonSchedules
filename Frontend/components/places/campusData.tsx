@@ -578,8 +578,8 @@ const FOOD_COURT_GROUPS: FoodCourtGroupConfig[] = [
     id: "underground-food-court",
     canonicalParentPlaceId: "underground-food",
     canonicalParentName: "Underground Food Court",
-    aliasParentPlaceIds: ["underground-food", "sbisa-underground", "sbisa"],
-    aliasParentNames: ["Underground Food Court", "Sbisa Underground", "Sbisa Complex"],
+    aliasParentPlaceIds: ["underground-food"],
+    aliasParentNames: ["Underground Food Court"],
     childPlaceIds: [
       "und-1876", "und-cfa", "und-copperhead", "und-einstein", "und-houston", "und-bagel", "und-pizza", "und-smoothie",
       "chick-fil-a-sbisa", "houston-sbisa", "1876-burgers", "copperhead-sbisa"

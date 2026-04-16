@@ -247,6 +247,11 @@ interface LocationBottomSheetProps {
   selectedStop: any;
   selectedBus: any;
   openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "drive" | "bus") => void;
+  // Meal Tracking integration
+  trackerCounts?: Record<string, { count: number; entryIds: number[] }>;
+  onAddMeal?: (item: any) => void;
+  onRemoveMeal?: (item: any) => void;
+  isSyncingTracker?: boolean;
 }
 
 export function LocationBottomSheet({
@@ -274,6 +279,10 @@ export function LocationBottomSheet({
   selectedStop,
   selectedBus,
   openNavigationToLocation,
+  trackerCounts = {},
+  onAddMeal,
+  onRemoveMeal,
+  isSyncingTracker = false,
 }: LocationBottomSheetProps) {
   const { user } = useUser();
   const { advanceStep, activeTargetName } = useTour();
@@ -748,6 +757,7 @@ export function LocationBottomSheet({
                   )}
                 </View>
 
+
                 {!isPeekSheet ? (
                   <View style={styles.quickActionRow}>
                     <TouchableOpacity
@@ -770,15 +780,7 @@ export function LocationBottomSheet({
                       </TouchableOpacity>
                     ) : null}
 
-                    {activeDiningMenu && isDiningHallCard ? (
-                      <TouchableOpacity
-                        style={styles.quickActionPill}
-                        onPress={handleDiningMenuExpand}
-                      >
-                        <Utensils size={14} color={COLORS.textPrimary} />
-                        <Text style={styles.quickActionText}>Menus</Text>
-                      </TouchableOpacity>
-                    ) : null}
+                    {/* Menu button removed for dining halls per user request */}
 
                     {selectedLoc.classMeetings?.length ? (
                       <TouchableOpacity
@@ -1447,7 +1449,69 @@ export function LocationBottomSheet({
                                           ) : null}
                                         </View>
                                       </View>
-                                      {item.dietary?.includes("Vegetarian") || item.dietary?.includes("Vegan") ? (
+                                      
+                                      {/* Calorie Tracking Controls */}
+                                      {isDiningHallCard && onAddMeal && onRemoveMeal && (
+                                        <View style={{ 
+                                          flexDirection: 'row', 
+                                          alignItems: 'center', 
+                                          gap: 8,
+                                          marginLeft: 4,
+                                          marginTop: 4
+                                        }}>
+                                          <View style={{ minWidth: 26, alignItems: 'flex-end', justifyContent: 'center' }}>
+                                            {(trackerCounts[item.name]?.count || 0) > 0 && (
+                                              <Text style={{ fontSize: 12, fontWeight: "800", color: COLORS.textSecondary }}>
+                                                {trackerCounts[item.name].count}x
+                                              </Text>
+                                            )}
+                                          </View>
+                                          
+                                          {(trackerCounts[item.name]?.count || 0) > 0 && (
+                                            <TouchableOpacity
+                                              onPress={() => onRemoveMeal(item)}
+                                              disabled={isSyncingTracker}
+                                              style={{
+                                                width: 32,
+                                                height: 32,
+                                                borderRadius: 16,
+                                                borderWidth: 1.5,
+                                                borderColor: "#FF4D6D",
+                                                backgroundColor: isDark ? "rgba(255,77,109,0.12)" : "rgba(255,77,109,0.08)",
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                opacity: isSyncingTracker ? 0.6 : 1
+                                              }}
+                                            >
+                                              <Text style={{ fontSize: 20, fontWeight: "900", color: "#FF4D6D", lineHeight: 22 }}>-</Text>
+                                            </TouchableOpacity>
+                                          )}
+
+                                          <TouchableOpacity
+                                            onPress={() => onAddMeal(item)}
+                                            disabled={isSyncingTracker}
+                                            style={{
+                                              width: 32,
+                                              height: 32,
+                                              borderRadius: 16,
+                                              borderWidth: 1.5,
+                                              borderColor: "#5B9A68",
+                                              backgroundColor: isDark ? "rgba(91,154,104,0.12)" : "rgba(91,154,104,0.08)",
+                                              alignItems: 'center',
+                                              justifyContent: 'center',
+                                              opacity: isSyncingTracker ? 0.6 : 1
+                                            }}
+                                          >
+                                            {isSyncingTracker ? (
+                                              <ActivityIndicator size="small" color="#5B9A68" />
+                                            ) : (
+                                              <Text style={{ fontSize: 20, fontWeight: "900", color: "#5B9A68", lineHeight: 22 }}>+</Text>
+                                            )}
+                                          </TouchableOpacity>
+                                        </View>
+                                      )}
+                                      
+                                      {!isDiningHallCard && (item.dietary?.includes("Vegetarian") || item.dietary?.includes("Vegan")) ? (
                                         <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#E6EFDE", alignItems: "center", justifyContent: "center", marginTop: 2 }}>
                                           <Leaf size={13} color="#5B9A68" />
                                         </View>

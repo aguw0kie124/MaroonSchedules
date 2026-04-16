@@ -68,6 +68,8 @@ import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { initializeFeedUser, toggleVote } from "../services/socialFeedService";
+import { requestJson } from "../api/client";
+import { getLocalDateString } from "../services/dateUtils";
 import { API_URL } from "../config";
 
 import { useCampusHubStore } from "../store/campusHubStore";
@@ -318,6 +320,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const [isTodayExpanded, setIsTodayExpanded] = useState(false);
   const [hasManualMapMovement, setHasManualMapMovement] = useState(false);
   const timelineHeight = useSharedValue(0);
+
+  // ── Meal Tracking state ───────────────────────────────────
+  const [trackerCounts, setTrackerCounts] = useState<Record<string, { count: number; entryIds: number[] }>>({});
+  const [isSyncingTracker, setIsSyncingTracker] = useState(false);
 
   // ── Location data ─────────────────────────────────────────
   const {
@@ -1126,6 +1132,81 @@ export function PlacesMapScreen({ route, navigation }: any) {
     }
   }, [user?.id, queryClient, applyCampusHotspotItemVote, pulseHotspots]);
 
+  const refreshTrackerCounts = useCallback(async (locName: string, mealPeriod: DiningMealPeriod) => {
+    if (!user) return;
+    try {
+      const tracker = await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}?date=${encodeURIComponent(getLocalDateString())}`);
+      const entries = Array.isArray(tracker?.entries) ? tracker.entries : [];
+      const nextCounts = entries.reduce((acc: Record<string, { count: number; entryIds: number[] }>, entry: any) => {
+        if (entry.meal_period !== mealPeriod) return acc;
+        const key = entry.label;
+        const existing = acc[key] || { count: 0, entryIds: [] };
+        existing.count += 1;
+        existing.entryIds.push(entry.id);
+        acc[key] = existing;
+        return acc;
+      }, {});
+      setTrackerCounts(nextCounts);
+    } catch (e) {
+      console.warn('Failed to refresh tracker counts in map screen', e);
+    }
+  }, [user]);
+
+  const addMealEntry = useCallback(async (item: any, location: string, mealPeriod: DiningMealPeriod) => {
+    if (!user) {
+      Alert.alert("Sign In", "Please sign in to track meals.");
+      return;
+    }
+    setIsSyncingTracker(true);
+    try {
+      await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          date: getLocalDateString(),
+          meal_period: mealPeriod,
+          label: item.name,
+          foods: [{
+            name: item.name,
+            source: 'dining_menu',
+            calories: Number(item.calories || 0),
+            protein: Number(item.protein || 0),
+            carbs: Number(item.carbs || 0),
+            fat: Number(item.fat || 0),
+            location: location,
+            meal_period: mealPeriod,
+            quantity: 1,
+          }],
+        }),
+      });
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch (_) {}
+      await refreshTrackerCounts(location, mealPeriod);
+    } catch (e) {
+      console.warn('Meal add failed', e);
+    } finally {
+      setIsSyncingTracker(false);
+    }
+  }, [user, refreshTrackerCounts]);
+
+  const removeMealEntry = useCallback(async (item: any, location: string, mealPeriod: DiningMealPeriod) => {
+    if (!user) return;
+    const existing = trackerCounts[item.name];
+    if (!existing || existing.entryIds.length === 0) return;
+
+    setIsSyncingTracker(true);
+    try {
+      const entryId = existing.entryIds[existing.entryIds.length - 1];
+      await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}/${entryId}`, {
+        method: 'DELETE',
+      });
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch (_) {}
+      await refreshTrackerCounts(location, mealPeriod);
+    } catch (e) {
+      console.warn('Meal remove failed', e);
+    } finally {
+      setIsSyncingTracker(false);
+    }
+  }, [user, trackerCounts, refreshTrackerCounts]);
+
 
   const fetchPulseHotspots = useCallback(async (options: { force?: boolean } = {}) => {
     if (options.force) {
@@ -1446,6 +1527,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
     hasManualMapMovement,
   ]);
 
+
+  // ── Meal Tracking Hydration ──────────────────────────────
+  useEffect(() => {
+    if (selectedLoc && isDiningHallMenuLocation(selectedLoc.location)) {
+      const activePeriod = getDiningMealPeriodForLocation(selectedLoc.location);
+      refreshTrackerCounts(selectedLoc.location, activePeriod);
+    } else if (!selectedLoc) {
+      setTrackerCounts({});
+    }
+  }, [selectedLoc, refreshTrackerCounts]);
 
   const handleSelectBusRouteFromSearch = useCallback(
     async (route: any) => {
@@ -2645,6 +2736,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
         selectedStop={selectedStop}
         selectedBus={selectedBus}
         openNavigationToLocation={openNavigationToLocation}
+        trackerCounts={trackerCounts}
+        onAddMeal={(item) => selectedLoc && addMealEntry(item, selectedLoc.location, getDiningMealPeriodForLocation(selectedLoc.location))}
+        onRemoveMeal={(item) => selectedLoc && removeMealEntry(item, selectedLoc.location, getDiningMealPeriodForLocation(selectedLoc.location))}
+        isSyncingTracker={isSyncingTracker}
       />
 
       {/* Module editor modal */}
