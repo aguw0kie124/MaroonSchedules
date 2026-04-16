@@ -223,6 +223,12 @@ export function Profile() {
   }, []);
 
   useEffect(() => {
+    if (isFocused) {
+      setActiveTab('personal');
+    }
+  }, [isFocused, setActiveTab]);
+
+  useEffect(() => {
     let cancelled = false;
     if (!user || !isFocused) return;
 
