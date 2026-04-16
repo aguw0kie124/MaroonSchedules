@@ -5,6 +5,7 @@ const DEFAULT_TIMEOUT_MS = API_REQUEST_TIMEOUT_MS;
 
 let hasLoggedTimeoutDevHint = false;
 const API_BASE = API_URL.replace(/\/+$/, '');
+const SESSION_SID = Math.random().toString(36).substring(2, 12);
 
 type TokenProviderOptions = {
     forceRefresh?: boolean;
@@ -378,6 +379,13 @@ export const fetchCampusCapacityRealtime = async () => {
 
 export const fetchCampusPlaceDetail = async (placeIdOrIdentifier: string) => {
     return requestJson(`/campus/places/${encodeURIComponent(placeIdOrIdentifier)}/detail`);
+};
+
+export const fetchFacilityCounts = async (placeId: string, force = false) => {
+    const encoded = encodeURIComponent(placeId);
+    let url = `/traffic/capacity/facility-counts/${encoded}?sid=${SESSION_SID}`;
+    if (force) url += '&refresh=true';
+    return requestJson(url);
 };
 
 export const fetchCampusPulseMap = async (limit = 12, clerkId?: string, refresh = false) => {

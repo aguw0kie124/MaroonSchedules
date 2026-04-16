@@ -194,7 +194,7 @@ def _merge_operational_state(locations: Dict[str, Dict[str, Any]]) -> None:
                 row.get("location"),
                 coord.get("lat"),
                 coord.get("lng"),
-            )
+                )
             if not resolved_place:
                 continue
             existing = locations.get(resolved_place["place_id"])
@@ -221,12 +221,16 @@ def _merge_operational_state(locations: Dict[str, Dict[str, Any]]) -> None:
                 "features": existing.get("features") or (resolved_place.get("features") if resolved_place else None),
                 "current_event": row.get("current_event") or existing.get("current_event"),
                 "source": existing.get("source") or "snapshot",
+                "capacity_last_updated": row.get("last_updated"),
+                "address": row.get("address") or existing.get("address"),
             }
         )
         if row.get("capacity") is not None:
             existing["capacity"] = row.get("capacity")
         if row.get("current_count") is not None:
             existing["current_count"] = row.get("current_count")
+        if row.get("last_updated") is not None:
+            existing["last_updated"] = row.get("last_updated")
 
         for alias_place_id in CAPACITY_ALIAS_PLACE_IDS.get(existing["placeId"], ()):
             alias_existing = locations.get(alias_place_id)

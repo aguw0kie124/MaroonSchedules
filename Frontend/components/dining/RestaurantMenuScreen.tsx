@@ -215,7 +215,7 @@ export default function RestaurantMenuScreen({ navigation, route }: any) {
           </TouchableOpacity>
           <View>
             <Text style={[s.title, { color: T.text }]}>{menuTitle}</Text>
-            <Text style={[s.subtitle, { color: T.textSecondary }]}>Restaurant Menu</Text>
+            <Text style={[s.subtitle, { color: T.text2 }]}>Restaurant Menu</Text>
           </View>
         </View>
 

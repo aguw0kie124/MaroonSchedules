@@ -9,6 +9,9 @@ REC_PLACE_ID_TO_FACILITY_KEY: Dict[str, str] = {
     "rec": "student-rec",
     "southside-rec": "southside-rec",
     "polo-rec": "polo-road-rec",
+    "aquatics": "student-rec",
+    "peap": "peap",
+    "penberthy": "tennis-center",
 }
 
 FALL_SPRING_HOURS_BY_FACILITY: Dict[str, Dict[str, str]] = {

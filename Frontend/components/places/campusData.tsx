@@ -72,6 +72,38 @@ export function getCanonicalLocationName(name: string): string {
   return CANONICAL_LOCATION_ALIASES[name] || name;
 }
 
+export function getLiveHoursForFacility(locationName: string): string {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  const canonicalName = getCanonicalLocationName(locationName);
+
+  if (canonicalName === "PEAP") {
+    // Wed Apr 15 is day 3
+    if (day === 3 || day === 4 || day === 0 || day === 1 || day === 2) return "6:00 PM – 11:00 PM";
+    if (day === 5 || day === 6) return "Closed";
+  }
+
+  if (canonicalName === "Aquatics") {
+    if (day === 3) return "1:30 PM – 11:00 PM (Lap Pool)";
+    if (day === 4) return "6:00 AM – 7:30 PM (Lap Pool)";
+    if (day === 5) return "6:00 AM – 10:00 PM (Lap Pool)";
+    if (day === 6) return "10:00 AM – 10:00 PM (Lap Pool)";
+    if (day === 0) return "12:00 PM – 11:00 PM (Lap Pool)";
+    if (day === 1) return "6:00 AM – 11:00 PM (Lap Pool)";
+    if (day === 2) return "6:00 AM – 7:30 PM (Lap Pool)";
+  }
+
+  if (canonicalName === "Penberthy Rec Sports Complex-Tennis") {
+    if (day === 3 || day === 1 || day === 2) return "5:00 PM – 10:00 PM";
+    if (day === 4) return "5:00 PM – 10:00 PM";
+    if (day === 5) return "5:00 PM – 8:00 PM";
+    if (day === 6) return "12:00 PM – 8:00 PM";
+    if (day === 0) return "5:00 PM – 10:00 PM";
+  }
+
+  return "";
+}
+
 export function getCanonicalCoords(
   name: string
 ): { lat: number; lng: number } {
@@ -84,6 +116,7 @@ export function getCanonicalCoords(
   }
   return coords;
 }
+
 
 // ── Campus density zones ──────────────────────────────────────
 export const CAMPUS_ZONES: Array<{
@@ -482,7 +515,7 @@ const INJECTED_RESTAURANTS = [
   is_live: false,
   available_seats: null,
   ...location,
-})) satisfies CampusLocation[];
+})) as CampusLocation[];
 
 const INJECTED_REC_PLACES: CampusLocation[] = [
   {
@@ -493,6 +526,7 @@ const INJECTED_REC_PLACES: CampusLocation[] = [
     type: "Rec",
     is_live: false,
     available_seats: null,
+    searchOnly: false,
     coord: { lat: 30.60755, lng: -96.34215 },
     hours: STATIC_LOCATION_META["Aquatics"].hours,
     description: STATIC_LOCATION_META["Aquatics"].description,
@@ -507,6 +541,7 @@ const INJECTED_REC_PLACES: CampusLocation[] = [
     type: "Rec",
     is_live: false,
     available_seats: null,
+    searchOnly: false,
     coord: { lat: 30.60442587454078, lng: -96.35188398861327 },
     hours: STATIC_LOCATION_META["PEAP"].hours,
     description: STATIC_LOCATION_META["PEAP"].description,
@@ -521,10 +556,56 @@ const INJECTED_REC_PLACES: CampusLocation[] = [
     type: "Rec",
     is_live: false,
     available_seats: null,
+    searchOnly: false,
     coord: { lat: 30.6012303882534, lng: -96.34964369057107 },
     hours: STATIC_LOCATION_META["Penberthy Rec Sports Complex-Tennis"].hours,
     description: STATIC_LOCATION_META["Penberthy Rec Sports Complex-Tennis"].description,
     features: STATIC_LOCATION_META["Penberthy Rec Sports Complex-Tennis"].features,
+    source: "snapshot",
+  },
+];
+
+const INJECTED_LIBRARY_PLACES: CampusLocation[] = [
+  {
+    placeId: "evans",
+    location: "Sterling C. Evans Library",
+    shortName: "EVANS LIBRARY",
+    percent_full: 0,
+    type: "Library",
+    is_live: false,
+    available_seats: null,
+    searchOnly: false,
+    coord: { lat: 30.6125, lng: -96.3414 },
+    hours: STATIC_LOCATION_META["Sterling C. Evans Library"].hours,
+    description: STATIC_LOCATION_META["Sterling C. Evans Library"].description,
+    source: "snapshot",
+  },
+  {
+    placeId: "annex",
+    location: "Evans Library Annex",
+    shortName: "ANNEX",
+    percent_full: 0,
+    type: "Library",
+    is_live: false,
+    available_seats: null,
+    searchOnly: false,
+    coord: { lat: 30.6128, lng: -96.3418 },
+    hours: STATIC_LOCATION_META["Evans Library Annex"].hours,
+    description: STATIC_LOCATION_META["Evans Library Annex"].description,
+    source: "snapshot",
+  },
+  {
+    placeId: "wcl",
+    location: "West Campus Library",
+    shortName: "WCL",
+    percent_full: 0,
+    type: "Library",
+    is_live: false,
+    available_seats: null,
+    searchOnly: false,
+    coord: { lat: 30.6116, lng: -96.3503 },
+    hours: STATIC_LOCATION_META["West Campus Library"].hours,
+    description: STATIC_LOCATION_META["West Campus Library"].description,
     source: "snapshot",
   },
 ];
@@ -534,7 +615,7 @@ export function buildCampusDirectory(): CampusLocation[] {
   
   // Inject missing restaurants so they show up in food court lists
   const existingPlaceIds = new Set(directory.map(p => p.placeId));
-  const missing = [...INJECTED_RESTAURANTS, ...INJECTED_REC_PLACES].filter(
+  const missing = [...INJECTED_RESTAURANTS, ...INJECTED_REC_PLACES, ...INJECTED_LIBRARY_PLACES].filter(
     (p) => !existingPlaceIds.has(p.placeId),
   );
   

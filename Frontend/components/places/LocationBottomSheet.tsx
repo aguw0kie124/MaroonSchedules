@@ -23,6 +23,7 @@ import {
   Utensils,
   Star,
   Navigation,
+  Activity,
   Flag,
   Shield,
   Trash2,
@@ -43,7 +44,7 @@ import {
   formatScheduleDays,
   getLocationContextLink,
 } from "./utils";
-import { getCanonicalLocationName } from "./campusData";
+import { getCanonicalLocationName, getLiveHoursForFacility } from "./campusData";
 import { getStaticRestaurantMenu } from "../../data/restaurantMenus";
 import { getRestaurantHoursToday } from "../../data/restaurantHours";
 import {
@@ -193,9 +194,9 @@ function formatTodayHoursLine(hoursSource?: string | null) {
 /**
  * ClassMeetingList - Isolated component for better render performance
  */
-const ClassMeetingList = React.memo(({ 
-  meetings, 
-}: { 
+const ClassMeetingList = React.memo(({
+  meetings,
+}: {
   meetings: any[] | null | undefined;
 }) => {
   if (!meetings?.length) return null;
@@ -239,6 +240,7 @@ interface LocationBottomSheetProps {
   // Recreation
   selectedRecreationFacility: any | null;
   recreationFacilityMap: Map<string, any>;
+  openFacilityCounts: (loc: CampusLocation) => void;
   // Navigation
   navigation: any;
   // External link
@@ -247,6 +249,7 @@ interface LocationBottomSheetProps {
   selectedStop: any;
   selectedBus: any;
   openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "drive" | "bus") => void;
+  isFetchingDetail?: boolean;
   // Meal Tracking integration
   trackerCounts?: Record<string, { count: number; entryIds: number[] }>;
   onAddMeal?: (item: any) => void;
@@ -274,11 +277,13 @@ export function LocationBottomSheet({
   openScheduleList,
   selectedRecreationFacility,
   recreationFacilityMap,
+  openFacilityCounts,
   navigation,
   getPlaceExternalLink,
   selectedStop,
   selectedBus,
   openNavigationToLocation,
+  isFetchingDetail,
   trackerCounts = {},
   onAddMeal,
   onRemoveMeal,
@@ -361,8 +366,30 @@ export function LocationBottomSheet({
     : SHEET_MID_SNAP;
 
   const isPeekSheet = sheetMode === "peek";
+  const isParking = selectedLoc?.type === "Parking";
+  const isVisitorGarage =
+    isParking &&
+    (selectedLoc?.placeId === "osm:way:91100311" ||
+      selectedLoc?.placeId === "garage-polo" ||
+      selectedLoc?.placeId === "osm:way:450686873" ||
+      selectedLoc?.placeId === "garage-university-center" ||
+      selectedLoc?.placeId === "garage-west-campus");
   const isCapacityPlace =
     selectedLoc?.type === "Library" || selectedLoc?.type === "Rec";
+  const shouldHideCapacityOnCard = useMemo(() => {
+    if (!selectedLoc) return false;
+    const canonicalName = getCanonicalLocationName(selectedLoc.location);
+    const shortName = (selectedLoc.shortName || "").toUpperCase();
+    return (
+      canonicalName === "PEAP" ||
+      canonicalName === "Aquatics" ||
+      canonicalName === "Penberthy Rec Sports Complex-Tennis" ||
+      canonicalName === "Tennis Courts" ||
+      shortName === "PEAP" ||
+      shortName === "PENBERTHY" ||
+      shortName === "AQUATICS"
+    );
+  }, [selectedLoc]);
   const recreationFacilityCounts = useMemo<FacilityCountEntry[]>(() => {
     if (selectedLoc?.type !== "Rec") return [];
     if (Array.isArray(selectedLoc.facility_counts) && selectedLoc.facility_counts.length) {
@@ -448,6 +475,16 @@ export function LocationBottomSheet({
   const occupancyToneColor = selectedLoc
     ? getStatusColor(occupancyPercent)
     : COLORS.primary;
+  const hasLiveParking =
+    isVisitorGarage && selectedLoc?.visitor_parking_available != null;
+  const hasLiveOccupancy =
+    isCapacityPlace &&
+    !shouldHideCapacityOnCard &&
+    liveCapacitySource != null &&
+    (liveCapacitySource.currentCount != null ||
+      selectedLoc?.percent_full != null ||
+      selectedLoc?.type === "Rec");
+  const hasAnyLiveData = hasLiveParking || hasLiveOccupancy;
   const occupancyCountLabel = useMemo(() => {
     if (!selectedLoc || !isCapacityPlace || !liveCapacitySource) return null;
     const cap = liveCapacitySource.capacity;
@@ -499,9 +536,13 @@ export function LocationBottomSheet({
     if (!selectedLoc) return null;
     const holiday = selectedLoc.hours_holiday_notice;
     const suffix = holiday ? ` · ${holiday}` : "";
-    if (selectedLoc.hours_today) {
-      return `${selectedLoc.hours_today}${suffix}`;
-    }
+      if (selectedLoc.hours_today) {
+        return `${selectedLoc.hours_today}${suffix}`;
+      }
+      const dynamicHours = getLiveHoursForFacility(selectedLoc.location);
+      if (dynamicHours) {
+        return `${dynamicHours}${suffix}`;
+      }
     if (selectedLoc.type === "Rec") {
       const rec =
         selectedRecreationFacility?.today_hours ||
@@ -518,6 +559,7 @@ export function LocationBottomSheet({
 
     const hoursSource =
       selectedLoc.hours_today ||
+      getLiveHoursForFacility(selectedLoc.location) ||
       (selectedLoc.type === "Rec"
         ? selectedRecreationFacility?.today_hours ||
           selectedRecreationFacility?.hours_hint ||
@@ -534,10 +576,22 @@ export function LocationBottomSheet({
   const peekMetaText = useMemo(() => {
     if (!selectedLoc) return "";
 
+    if (isFetchingDetail && !hasAnyLiveData && isVisitorGarage) {
+      return "Loading...";
+    }
+    if (hasLiveParking) {
+      return `Visitor: ${selectedLoc.visitor_parking_available.toLocaleString()} spaces (live)`;
+    }
+    if (hasLiveOccupancy) {
+      return `${liveCapacitySource?.percentFull ?? occupancyPercent}% full`;
+    }
     if (selectedTodayHoursLine) {
       return selectedTodayHoursLine;
     }
-    if (isCapacityPlace) {
+    if (selectedHoursLabel) {
+      return selectedHoursLabel;
+    }
+    if (isCapacityPlace && !shouldHideCapacityOnCard) {
       return `${liveCapacitySource?.percentFull ?? occupancyPercent}% full`;
     }
     if (
@@ -566,10 +620,17 @@ export function LocationBottomSheet({
     foodCourtVenues.length,
     isCapacityPlace,
     isFoodCourtHub,
+    hasAnyLiveData,
+    hasLiveOccupancy,
+    hasLiveParking,
+    isFetchingDetail,
+    isVisitorGarage,
     liveCapacitySource?.percentFull,
     occupancyPercent,
+    selectedHoursLabel,
     selectedTodayHoursLine,
     selectedLoc,
+    shouldHideCapacityOnCard,
   ]);
   const contextLink = useMemo(
     () => (selectedLoc ? getLocationContextLink(selectedLoc) : null),
@@ -581,8 +642,12 @@ export function LocationBottomSheet({
   );
   const heroMetaText = useMemo(() => {
     if (!selectedLoc) return "";
-    return selectedTodayHoursLine || "";
-  }, [selectedLoc, selectedTodayHoursLine]);
+    const parts = [
+      selectedLoc.address,
+      selectedTodayHoursLine || selectedHoursLabel,
+    ].filter(Boolean);
+    return parts.slice(0, 2).join(" • ");
+  }, [selectedHoursLabel, selectedLoc, selectedTodayHoursLine]);
   const officialFacilityUrl = useMemo(
     () =>
       selectedLoc?.type === "Rec"
@@ -768,6 +833,19 @@ export function LocationBottomSheet({
                       <Text style={styles.quickActionText}>Directions</Text>
                     </TouchableOpacity>
 
+                    {selectedLoc.type === "Rec" ? (
+                      <TouchableOpacity
+                        style={styles.quickActionPill}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          openFacilityCounts(selectedLoc);
+                        }}
+                      >
+                        <Activity size={14} color={COLORS.textPrimary} />
+                        <Text style={styles.quickActionText}>Live Counts</Text>
+                      </TouchableOpacity>
+                    ) : null}
+
                     {externalLink && externalLink.label !== "Open in Maps" ? (
                       <TouchableOpacity
                         style={styles.quickActionPill}
@@ -820,7 +898,25 @@ export function LocationBottomSheet({
               </View>
             </View>
 
-            {!isPeekSheet && selectedLoc.type === "Parking" ? (
+            {!isPeekSheet && isFetchingDetail && !hasAnyLiveData && isVisitorGarage ? (
+              <View style={{ paddingVertical: 80, alignItems: "center", justifyContent: "center" }}>
+                <ActivityIndicator color={COLORS.primary} size="large" />
+                <Text
+                  style={{
+                    marginTop: 16,
+                    color: COLORS.textTertiary,
+                    fontSize: 13,
+                    fontWeight: "600",
+                  }}
+                >
+                  Fetching live data...
+                </Text>
+              </View>
+            ) : null}
+
+            {!isPeekSheet &&
+            selectedLoc.type === "Parking" &&
+            !(isFetchingDetail && !hasAnyLiveData && isVisitorGarage) ? (
               <View style={[styles.occupancyBlock, { padding: 18 }]}>
                 {selectedLoc.visitor_parking_available != null ? (
                   <View style={{ marginBottom: 14 }}>
@@ -860,10 +956,10 @@ export function LocationBottomSheet({
                             color: COLORS.textPrimary,
                           },
                         ]}
-                      >
-                        {selectedLoc.visitor_parking_available.toLocaleString()}
-                      </Text>
-                      <Text
+                    >
+                      {selectedLoc.visitor_parking_available.toLocaleString()}
+                    </Text>
+                    <Text
                         style={[
                           styles.sectionTitle,
                           {
@@ -872,12 +968,22 @@ export function LocationBottomSheet({
                             color: COLORS.textSecondary,
                           },
                         ]}
-                      >
-                        SPACES OPEN
-                      </Text>
-                    </View>
+                    >
+                      SPACES OPEN
+                    </Text>
                   </View>
-                ) : (
+                  {selectedLoc.visitor_parking_as_of ? (
+                    <Text
+                      style={[
+                        styles.contextCardBody,
+                        { marginTop: 6, opacity: 0.8, fontSize: 12 },
+                      ]}
+                    >
+                      Updated {formatLiveTimestamp(selectedLoc.visitor_parking_as_of)}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : (
                   <View style={{ marginBottom: 14 }}>
                     <Text style={[styles.sectionTitle, { marginBottom: 4 }]}>
                       Visitor Parking
@@ -897,7 +1003,7 @@ export function LocationBottomSheet({
                   style={[styles.sheetDivider, { marginVertical: 12, opacity: 0.5 }]}
                 />
 
-                {selectedLoc.hours_today && (
+                {(selectedTodayHoursLine || selectedHoursLabel) ? (
                   <View
                     style={{
                       flexDirection: "row",
@@ -919,13 +1025,11 @@ export function LocationBottomSheet({
                           { fontWeight: "700", color: COLORS.textPrimary },
                         ]}
                       >
-                        {selectedLoc.hours_today.includes("Typical")
-                          ? "Available 24/7"
-                          : selectedLoc.hours_today.replace(/.*?:\s*/, "")}
+                        {selectedTodayHoursLine || selectedHoursLabel}
                       </Text>
                     </View>
                   </View>
-                )}
+                ) : null}
 
                 {selectedLoc.visitor_parking_available == null && (
                   <Text
@@ -960,7 +1064,7 @@ export function LocationBottomSheet({
             ) : null}
 
             {!isPeekSheet &&
-            selectedLoc.type !== "Parking" &&
+            selectedLoc.type === "Parking" &&
             parkingRecommendation ? (
               <View style={styles.contextCard}>
                 <Text style={styles.contextCardTitle}>
@@ -984,7 +1088,7 @@ export function LocationBottomSheet({
             ) : null}
 
             {/* Occupancy / links */}
-            {!isPeekSheet && isCapacityPlace ? (
+            {!isPeekSheet && isCapacityPlace && !shouldHideCapacityOnCard ? (
               <View style={styles.infoBlock}>
                 <View style={styles.occupancyBlock}>
                   <View style={styles.occupancySummaryRow}>
@@ -1133,7 +1237,7 @@ export function LocationBottomSheet({
                           {foodCourtVenues.map((venue, idx) => {
                             const candidate = venue.menuCandidate || venue.location.location;
                             const hasMenuSource = !!getStaticRestaurantMenu(candidate) || isDiningHallMenuLocation(candidate);
-                            
+
                             return (
                             <View
                               key={`${venue.selectionId}-${idx}`}
@@ -1367,7 +1471,7 @@ export function LocationBottomSheet({
                       .map((category: any) => {
                         const isAllSelected = activeCategoryKey === "all";
                         const isCollapsed = isAllSelected && collapsedCategories.has(category.name);
-                        
+
                         return (
                           <View
                             key={category.name}
@@ -1449,12 +1553,12 @@ export function LocationBottomSheet({
                                           ) : null}
                                         </View>
                                       </View>
-                                      
+
                                       {/* Calorie Tracking Controls */}
                                       {isDiningHallCard && onAddMeal && onRemoveMeal && (
-                                        <View style={{ 
-                                          flexDirection: 'row', 
-                                          alignItems: 'center', 
+                                        <View style={{
+                                          flexDirection: 'row',
+                                          alignItems: 'center',
                                           gap: 8,
                                           marginLeft: 4,
                                           marginTop: 4
@@ -1466,7 +1570,7 @@ export function LocationBottomSheet({
                                               </Text>
                                             )}
                                           </View>
-                                          
+
                                           {(trackerCounts[item.name]?.count || 0) > 0 && (
                                             <TouchableOpacity
                                               onPress={() => onRemoveMeal(item)}
@@ -1510,7 +1614,7 @@ export function LocationBottomSheet({
                                           </TouchableOpacity>
                                         </View>
                                       )}
-                                      
+
                                       {!isDiningHallCard && (item.dietary?.includes("Vegetarian") || item.dietary?.includes("Vegan")) ? (
                                         <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#E6EFDE", alignItems: "center", justifyContent: "center", marginTop: 2 }}>
                                           <Leaf size={13} color="#5B9A68" />

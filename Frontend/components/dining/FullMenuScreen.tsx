@@ -261,7 +261,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
           </TouchableOpacity>
           <View>
             <Text style={[s.title, { color: T.text }]}>{formatMenuTitle(location, title)}</Text>
-            <Text style={[s.subtitle, { color: T.textSecondary }]}>Dining Hall Menu</Text>
+            <Text style={[s.subtitle, { color: T.text2 }]}>Dining Hall Menu</Text>
           </View>
         </View>
 

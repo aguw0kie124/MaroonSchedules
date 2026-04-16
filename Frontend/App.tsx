@@ -18,11 +18,13 @@ import { LoginScreen } from './components/LoginScreen';
 import { AnnexHubScreen } from './components/AnnexHubScreen';
 import { AnnexLibraryDetailScreen } from './components/AnnexLibraryDetailScreen';
 import { AnnexRentalDetailScreen } from './components/AnnexRentalDetailScreen';
+import { WelcomeBackOverlay } from './components/common/WelcomeBackOverlay';
 
 import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
 import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
 import { ScheduleListScreen } from './components/ScheduleListScreen';
 import { ScheduleDetailScreen } from './components/ScheduleDetailScreen';
+import FacilityCountsScreen from './components/places/FacilityCountsScreen';
 import { CampusNavigationScreen } from './components/CampusNavigationScreen';
 import BusTimetableScreen from './components/BusTimetableScreen';
 import TransitTripPlannerScreen from './components/TransitTripPlannerScreen';
@@ -414,6 +416,22 @@ function RootNavigator() {
   const isAdmin = useAppShellStore((state) => state.adminAccessStatus);
   const setIsAdmin = useAppShellStore((state) => state.setAdminAccessStatus);
   const isRegularUserFlow = isSignedIn && authMode !== 'admin';
+  const [showWelcome, setShowWelcome] = React.useState(false);
+  const hasShownWelcomeRef = React.useRef(false);
+
+  const handleWelcomeFinished = React.useCallback(() => {
+    setShowWelcome(false);
+  }, []);
+
+
+  React.useEffect(() => {
+    if (isSignedIn && user?.firstName && !hasShownWelcomeRef.current) {
+      setShowWelcome(true);
+      hasShownWelcomeRef.current = true;
+    } else if (!isSignedIn) {
+      hasShownWelcomeRef.current = false;
+    }
+  }, [isSignedIn, user?.firstName]);
 
   React.useEffect(() => {
     if (isSignedIn && user?.id) {
@@ -522,6 +540,7 @@ function RootNavigator() {
             <Stack.Screen name="ClubAccess" component={ClubAccessScreen} options={{ headerShown: true, title: 'Club Access' }} />
             <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
             <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="FacilityCounts" component={FacilityCountsScreen} options={{ headerShown: false }} />
             <Stack.Screen
               name="FullMenu"
               component={FullMenuScreen}
@@ -562,6 +581,12 @@ function RootNavigator() {
       <ApiAuthBridge />
       {isSignedIn ? <UserSync>{content}</UserSync> : content}
       {isSignedIn && <PendingReviewInterceptor />}
+      {showWelcome && user?.firstName && (
+        <WelcomeBackOverlay 
+          firstName={user.firstName} 
+          onFinished={handleWelcomeFinished} 
+        />
+      )}
     </>
   );
 }

@@ -763,7 +763,6 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
     },
     quickActionRow: {
       flexDirection: "row",
-      flexWrap: "wrap",
       gap: 6,
       marginTop: 8,
     },

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
 import requests
 from datetime import datetime
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import random
 from urllib.parse import quote
 import pytz
@@ -41,6 +41,9 @@ REC_OCCUPANCY_LOCATION_PREFERENCES: Dict[str, tuple[str, ...]] = {
         "tennis courts",
         "pickleball courts",
     ),
+    "peap": (
+        "peap strength conditioning",
+    ),
 }
 
 REC_FALLBACK_PLACE_BY_ID: Dict[str, Dict[str, Any]] = {
@@ -75,6 +78,7 @@ REC_FALLBACK_PLACE_BY_ID: Dict[str, Dict[str, Any]] = {
         "type": "Rec",
         "lat": 30.60755,
         "lng": -96.34215,
+        "address": "187 Corrington Dr, College Station, TX 77843",
     },
     "peap": {
         "place_id": "peap",
@@ -83,6 +87,7 @@ REC_FALLBACK_PLACE_BY_ID: Dict[str, Dict[str, Any]] = {
         "type": "Rec",
         "lat": 30.60442587454078,
         "lng": -96.35188398861327,
+        "address": "632 Penberthy Blvd, College Station, TX 77843",
     },
     "penberthy": {
         "place_id": "penberthy",
@@ -91,6 +96,7 @@ REC_FALLBACK_PLACE_BY_ID: Dict[str, Dict[str, Any]] = {
         "type": "Rec",
         "lat": 30.6012303882534,
         "lng": -96.34964369057107,
+        "address": "Penberthy Blvd, College Station, TX 77840",
     },
 }
 
@@ -173,7 +179,14 @@ class TAMUFacilityTracker:
 
     def fetch_rec_data(self) -> List[Dict]:
         """Returns raw sub-location list from GoBoard."""
-        return self._get_json(self.rec_api) or []
+        cache_key = "traffic:capacity:raw_rec:v3"
+        cached = cache_service.get_json(cache_key)
+        if cached is not None:
+            return cached
+        data = self._get_json(self.rec_api) or []
+        if data:
+            cache_service.set_json(cache_key, data, 60)
+        return data
 
     def get_rec_place_catalog(self) -> Dict[str, Dict[str, Any]]:
         catalog: Dict[str, Dict[str, Any]] = {}
@@ -228,7 +241,7 @@ class TAMUFacilityTracker:
 
         return max(rows, key=rank)
 
-    def get_rec_center_live_counts(self, rec_rows: List[Dict] | None = None) -> Dict[str, Dict[str, Any]]:
+    def get_rec_center_live_counts(self, rec_rows: List[Dict] | None = None, include_sub_areas: bool = False) -> Dict[str, Dict[str, Any]]:
         rows = rec_rows if rec_rows is not None else self.fetch_rec_data()
         grouped: Dict[str, Dict[str, Any]] = {}
 
@@ -237,6 +250,18 @@ class TAMUFacilityTracker:
             if not place:
                 continue
             grouped.setdefault(place["place_id"], {"place": place, "rows": []})["rows"].append(row)
+
+        def _parse_is_closed(row: Dict[str, Any]) -> bool:
+            val = row.get("IsClosed")
+            if val is None:
+                # Heuristic: If capacity is 0 or -1, it's effectively closed or offline
+                cap = _safe_int(row.get("TotalCapacity"))
+                if cap <= 0:
+                    return True
+                return False
+            if isinstance(val, str):
+                return val.lower() in ("true", "1", "yes")
+            return bool(val)
 
         summaries: Dict[str, Dict[str, Any]] = {}
         for place_id, payload in grouped.items():
@@ -248,35 +273,36 @@ class TAMUFacilityTracker:
             capacity = _safe_int(display_row.get("TotalCapacity"))
             percent_full = round((current_count / capacity) * 100, 1) if capacity > 0 else None
             facility_counts = []
-            for row in sorted(
-                payload["rows"],
-                key=lambda candidate: (
-                    0 if candidate.get("IsClosed") else 1,
-                    _safe_int(candidate.get("LastCount")),
-                    _safe_int(candidate.get("TotalCapacity")),
-                    _parse_goboard_timestamp(candidate.get("LastUpdatedDateAndTime")),
-                ),
-                reverse=True,
-            ):
-                row_current_count = _safe_int(row.get("LastCount"))
-                row_capacity = _safe_int(row.get("TotalCapacity"))
-                row_percent_full = (
-                    round((row_current_count / row_capacity) * 100, 1)
-                    if row_capacity > 0
-                    else None
-                )
-                facility_counts.append(
-                    {
-                        "location_name": row.get("LocationName") or payload["place"]["name"],
-                        "facility_name": row.get("FacilityName") or payload["place"]["name"],
-                        "current_count": row_current_count,
-                        "capacity": row_capacity,
-                        "percent_full": row_percent_full,
-                        "available_seats": max(0, row_capacity - row_current_count) if row_capacity > 0 else None,
-                        "last_updated": row.get("LastUpdatedDateAndTime"),
-                        "is_closed": bool(row.get("IsClosed")),
-                    }
-                )
+            if include_sub_areas:
+                for row in sorted(
+                    payload["rows"],
+                    key=lambda candidate: (
+                        0 if _parse_is_closed(candidate) else 1,
+                        _safe_int(candidate.get("LastCount")),
+                        _safe_int(candidate.get("TotalCapacity")),
+                        _parse_goboard_timestamp(candidate.get("LastUpdatedDateAndTime")),
+                    ),
+                    reverse=True,
+                ):
+                    row_current_count = _safe_int(row.get("LastCount"))
+                    row_capacity = _safe_int(row.get("TotalCapacity"))
+                    row_percent_full = (
+                        round((row_current_count / row_capacity) * 100, 1)
+                        if row_capacity > 0
+                        else None
+                    )
+                    facility_counts.append(
+                        {
+                            "location_name": row.get("LocationName") or payload["place"]["name"],
+                            "facility_name": row.get("FacilityName") or payload["place"]["name"],
+                            "current_count": row_current_count,
+                            "capacity": row_capacity,
+                            "percent_full": row_percent_full,
+                            "available_seats": max(0, row_capacity - row_current_count) if row_capacity > 0 else None,
+                            "last_updated": row.get("LastUpdatedDateAndTime"),
+                            "is_closed": _parse_is_closed(row),
+                        }
+                    )
 
             summaries[place_id] = {
                 "place": payload["place"],
@@ -288,7 +314,7 @@ class TAMUFacilityTracker:
                 "percent_full": percent_full,
                 "available_seats": max(0, capacity - current_count) if capacity > 0 else None,
                 "last_updated": display_row.get("LastUpdatedDateAndTime"),
-                "is_closed": bool(display_row.get("IsClosed")),
+                "is_closed": _parse_is_closed(display_row),
                 "facility_counts": facility_counts,
             }
 
@@ -296,12 +322,21 @@ class TAMUFacilityTracker:
 
     def fetch_library_data(self) -> Dict[str, Any]:
         """Returns the full library API dict (keyed by abbreviation)."""
+        cache_key = "traffic:capacity:raw_libraries:v3"
+        cached = cache_service.get_json(cache_key)
+        if cached is not None:
+            return cached
         data = self._get_json(self.library_api)
         if not data or not isinstance(data, dict):
             return {}
+        cache_service.set_json(cache_key, data, 60)
         return data
 
     def fetch_event_data(self, limit: int = 20) -> List[Dict]:
+        cache_key = f"traffic:events:limit_{limit}"
+        cached = cache_service.get_json(cache_key)
+        if cached is not None:
+            return cached
         data = self._get_json(self.events_api)
         if not data:
             return []
@@ -335,7 +370,9 @@ class TAMUFacilityTracker:
                 })
             except Exception:
                 pass
-        return sorted(parsed, key=lambda e: e["start_time"])[:limit]
+        result = sorted(parsed, key=lambda e: e["start_time"])[:limit]
+        cache_service.set_json(cache_key, result, 300) # 5 min cache
+        return result
 
     def load_all_data(self):
         self.data = {
@@ -391,7 +428,7 @@ class TAMUFacilityTracker:
         resolved_ids = set()
 
         # ── 1. Rec Centers ───────────────────────────────────────────────────
-        rec_live_counts = self.get_rec_center_live_counts()
+        rec_live_counts = self.get_rec_center_live_counts(include_sub_areas=False)
         for live_count in rec_live_counts.values():
             place = live_count["place"]
             percent = live_count.get("percent_full")
@@ -456,6 +493,7 @@ class TAMUFacilityTracker:
                 "capacity": capacity if capacity > 0 else None,
                 "current_count": occupancy,
                 "place_id": place["place_id"],
+                "last_updated": lib_raw.get("lastupdate"),
                 **meta,
             })
 
@@ -953,7 +991,35 @@ def ask_perplexity(request: Request, body_request: QueryRequest):
 @router.get("/retrieve")
 @limiter.limit("60/minute")
 def retrieve_locations(request: Request):
-    return tracker.get_all_locations_with_events()
+    cache_key = "traffic:retrieve:main:v2"
+    cached = cache_service.get_json(cache_key)
+    if cached is not None:
+        return cached
+    
+    payload = tracker.get_all_locations_with_events()
+    cache_service.set_json(cache_key, payload, 30) # 30s cache for heartbeat
+    return payload
+
+
+@router.get("/capacity/facility-counts/{place_id}")
+@limiter.limit("120/minute")
+def get_detailed_facility_counts(request: Request, place_id: str, sid: Optional[str] = Query(None), refresh: bool = Query(False)):
+    """Returns detailed sub-area counts for a specific recreation facility."""
+    cache_key = f"traffic:capacity:facility-counts:{sid or 'global'}:{place_id}"
+    
+    if not refresh:
+        cached = cache_service.get_json(cache_key)
+        if cached is not None:
+            return cached
+
+    # Note: We fetch ALL rec data once and filter, since we likely have it cached.
+    rec_live_counts = tracker.get_rec_center_live_counts(include_sub_areas=True)
+    if place_id in rec_live_counts:
+        payload = {"facility_counts": rec_live_counts[place_id].get("facility_counts", [])}
+        cache_service.set_json(cache_key, payload, 1800) # 30 min cache
+        return payload
+    
+    return {"facility_counts": []}
 
 
 @router.get("/transit/routes")

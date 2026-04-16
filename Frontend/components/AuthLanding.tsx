@@ -400,13 +400,12 @@ export function AuthLanding() {
           <View style={styles.colorAccentTop} />
           {authFlow === 'initial' && (
             <>
-              <View style={styles.logoContainer}>
-                <Image source={require('../../assets/login-logo-transparent.png')} style={styles.logoImage} resizeMode="contain" />
+              <View style={styles.titleContainer}>
+                <Text style={styles.appTitle}>Welcome to MaroonLife!</Text>
+                <View style={styles.accentLine} />
               </View>
-              <View><Text style={styles.appTitle}>MaroonSchedules</Text></View>
-              <View style={styles.accentLine} />
-              <View style={styles.spacer} />
               {renderInitialFlow()}
+              <Text style={styles.oneTimeSignInSubtitle}>One-time sign in</Text>
             </>
           )}
           {authFlow === 'email_signin' && renderEmailSignIn()}
@@ -435,11 +434,13 @@ const styles = StyleSheet.create({
   content: {
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.xl,
+    paddingBottom: SPACING.xl,
+    paddingTop: SPACING.md,
     maxWidth: 420,
     width: '100%',
     alignSelf: 'center',
     position: 'relative',
+    marginTop: -40, // Move content up slightly for better balance
   },
   colorAccentTop: {
     position: 'absolute',
@@ -462,35 +463,26 @@ const styles = StyleSheet.create({
     borderRadius: 90,
     zIndex: 0,
   },
-  logoContainer: {
-    marginBottom: SPACING.lg,
+  titleContainer: {
     alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: SPACING.lg,
     zIndex: 1,
-  },
-  logoImage: {
-    width: 140,
-    height: 140,
   },
   appTitle: {
     ...TYPOGRAPHY.title,
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#000000',
-    marginBottom: SPACING.sm,
+    fontSize: 34,
+    fontWeight: '800',
+    color: COLORS.primary,
+    marginBottom: SPACING.xs,
     textAlign: 'center',
-    zIndex: 1,
+    letterSpacing: -0.5,
   },
   accentLine: {
-    width: 60,
+    width: 48,
     height: 4,
     backgroundColor: COLORS.accent,
     borderRadius: 2,
-    marginBottom: SPACING.lg,
-    zIndex: 1,
-  },
-  spacer: {
-    height: SPACING.xs,
+    marginTop: 4,
   },
   buttonGroup: {
     width: '100%',
@@ -674,5 +666,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     marginTop: 12,
+  },
+  oneTimeSignInSubtitle: {
+    ...TYPOGRAPHY.body,
+    fontSize: 14,
+    color: COLORS.textTertiary,
+    marginTop: SPACING.xl,
+    textAlign: 'center',
+    fontWeight: '500',
+    opacity: 0.8,
   },
 });

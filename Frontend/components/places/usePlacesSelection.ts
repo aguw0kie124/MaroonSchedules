@@ -100,6 +100,7 @@ export function usePlacesSelection({
     useState<DiningMealPeriod>("lunch");
   const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
   const [selectedPlaceDetail, setSelectedPlaceDetail] = useState<any | null>(null);
+  const [isFetchingDetail, setIsFetchingDetail] = useState(false);
 
   const selectedLocFromMap = useMemo(
     () =>
@@ -225,11 +226,13 @@ export function usePlacesSelection({
   useEffect(() => {
     if (!selectedLocFromMap) {
       setSelectedPlaceDetail(null);
+      setIsFetchingDetail(false);
       return;
     }
 
     let cancelled = false;
     const identifier = selectedLocFromMap.placeId || selectedLocFromMap.location;
+    setIsFetchingDetail(true);
     fetchCampusPlaceDetail(identifier)
       .then((detail) => {
         if (!cancelled) setSelectedPlaceDetail(detail);
@@ -239,6 +242,9 @@ export function usePlacesSelection({
           setSelectedPlaceDetail(null);
           console.warn("Failed to fetch place detail snapshot", error);
         }
+      })
+      .finally(() => {
+        if (!cancelled) setIsFetchingDetail(false);
       });
 
     return () => {
@@ -292,6 +298,7 @@ export function usePlacesSelection({
     setSelectedId,
     selectedLoc,
     selectedPlaceDetail,
+    isFetchingDetail,
     foodCourtVenues,
     isFetchingDining,
     diningMenuOptions,

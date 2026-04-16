@@ -24,6 +24,7 @@ export type MaroonMealCombo = {
 
 export type StaticRestaurantMenu = {
   categories: StaticMenuCategory[];
+  locations?: string[];
   maroonMeals?: {
     note: string;
     combos: MaroonMealCombo[];

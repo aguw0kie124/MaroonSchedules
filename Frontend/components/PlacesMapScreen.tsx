@@ -133,7 +133,6 @@ import {
   getApproximateEtaMinutes,
   isVehicleOnRoute,
 } from "./places/utils";
-import { transitService } from "../services/transitService";
 import { getStyles } from "./places/placesStyles";
 import {
   applyCampusHotspotItemVote,
@@ -565,11 +564,22 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const allMapLocations = useMemo(() => {
     // API `locations` must merge last: schedule rows set percent_full: 0 and omit hours_today /
     // visitor_parking_* and would otherwise overwrite live campus map snapshot fields.
-    return mergeCampusLocations(
+    const merged = mergeCampusLocations(
       scheduleLocations as CampusLocation[],
       dynamicSearchLocations,
       locations,
     );
+
+    // Remove the fake/duplicate Evans Library sitting at the Memorial Student Center (MSC) location
+    // The real one is near the Annex (~30.616, -96.339). The ghost one is ~30.612, -96.341.
+    return merged.filter(l => {
+      const isIncorrectEvans = l.location.includes("Evans Library") &&
+                              l.coord.lat < 30.615 &&
+                              l.coord.lng < -96.340;
+      const isCainGarage = l.location.toLowerCase().includes("cain") &&
+                           l.location.toLowerCase().includes("garage");
+      return !isIncorrectEvans && !isCainGarage;
+    });
   }, [dynamicSearchLocations, locations, scheduleLocations]);
 
   const pulsePlaces = useMemo(() => {
@@ -590,12 +600,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (activeLayer === "Heatmap") return [];
     if (activeLayer === "Today") return scheduleLocations;
     if (activeLayer === "Dining") {
-      const isMarket = (l: CampusLocation) => 
+      const isMarket = (l: CampusLocation) =>
         l.location.includes("Market") || l.location.includes("Aggie Express");
 
       return allMapLocations.filter(
         (l) =>
-          ((l.type === "Dining" || l.type === "Hub") && 
+          ((l.type === "Dining" || l.type === "Hub") &&
            (!l.searchOnly || isMarket(l))) &&
           !shouldHideFoodCourtLocationInBrowse(l, allMapLocations),
       );
@@ -639,6 +649,36 @@ export function PlacesMapScreen({ route, navigation }: any) {
         )
         : null;
       if (activeLayer === "Parking") {
+        const visitorGarageIds = [
+          "osm:way:91100311",
+          "garage-polo",
+          "osm:way:450686873",
+          "garage-university-center",
+          "garage-west-campus"
+        ];
+        const aLoc = a.location || "";
+        const bLoc = b.location || "";
+        const isAVisitor = visitorGarageIds.includes(("placeId" in a ? a.placeId : "")) ||
+                          aLoc.includes("Central Campus Garage") ||
+                          aLoc.includes("Polo") ||
+                          aLoc.includes("Stallings") ||
+                          aLoc.includes("University Center Garage") ||
+                          aLoc.includes("West Campus Garage");
+        const isBVisitor = visitorGarageIds.includes(("placeId" in b ? b.placeId : "")) ||
+                          bLoc.includes("Central Campus Garage") ||
+                          bLoc.includes("Polo") ||
+                          bLoc.includes("Stallings") ||
+                          bLoc.includes("University Center Garage") ||
+                          bLoc.includes("West Campus Garage");
+
+        if (isAVisitor && !isBVisitor) return -1;
+        if (!isAVisitor && isBVisitor) return 1;
+        if (isAVisitor && isBVisitor) {
+           const aSpots = (a as any).visitor_parking_available ?? 0;
+           const bSpots = (b as any).visitor_parking_available ?? 0;
+           if (aSpots !== bSpots) return bSpots - aSpots;
+        }
+
         const aP = getParkingRecommendation(a.location, parkingPermit);
         const bP = getParkingRecommendation(b.location, parkingPermit);
         if (aP.score !== bP.score) return aP.score - bP.score;
@@ -708,6 +748,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setSelectedId,
     selectedLoc,
     selectedPlaceDetail,
+    isFetchingDetail,
     foodCourtVenues,
     isFetchingDining,
     diningMenuOptions,
@@ -790,14 +831,50 @@ export function PlacesMapScreen({ route, navigation }: any) {
   }, [pulseHotspots]);
   const hottestHotspot = pulseHotspots[0] || null;
 
+  const [isMapTransitionsStable, setIsMapTransitionsStable] = useState(false);
+
+  useEffect(() => {
+    setIsMapTransitionsStable(true);
+    const timer = setTimeout(() => setIsMapTransitionsStable(false), 2500);
+    return () => clearTimeout(timer);
+  }, [selectedId]);
+
   const markerLocations = useMemo(() => {
     if (activeLayer === "Pulse") return [];
     if (activeLayer === "Heatmap" || activeLayer === "Bus")
       return selectedLoc ? [selectedLoc] : [];
+
     const merged = new Map<string, CampusLocation>();
-    filteredLocations.forEach((l) => merged.set(getLocationSelectionId(l), l));
-    if (selectedLoc)
-      merged.set(getLocationSelectionId(selectedLoc), selectedLoc);
+
+    // Canonicalize keys to prevent overlaps for major garages
+    const getGarageStableKey = (l: CampusLocation) => {
+      const name = l.location.toLowerCase();
+      if (name.includes("central campus") || (name.includes("central") && name.includes("garage"))) return "garage-central-canonical";
+      if (name.includes("cain") && name.includes("garage")) return "garage-cain-canonical";
+      if (name.includes("polo") && name.includes("garage")) return "garage-polo-canonical";
+      if (name.includes("stallings") && name.includes("garage")) return "garage-stallings-canonical";
+      if (name.includes("university center") && name.includes("garage")) return "garage-ucg-canonical";
+      if (name.includes("west campus") && name.includes("garage")) return "garage-wcg-canonical";
+      return getLocationSelectionId(l);
+    };
+
+    filteredLocations.forEach((l) => {
+      const key = getGarageStableKey(l);
+      const existing = merged.get(key);
+      // If we have multiple, prefer the one with live data or more detail
+      if (!existing || (l.visitor_parking_available != null && existing.visitor_parking_available == null)) {
+        merged.set(key, l);
+      }
+    });
+
+    // Stable Marker Fix: Only add selectedLoc if it's NOT already in the layer's
+    // filtered list (using the stable key)
+    if (selectedLoc) {
+      const key = getGarageStableKey(selectedLoc);
+      if (!merged.has(key)) {
+        merged.set(key, selectedLoc);
+      }
+    }
     return Array.from(merged.values());
   }, [activeLayer, filteredLocations, selectedLoc]);
 
@@ -889,7 +966,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     (locationName: string, mealPeriod?: DiningMealPeriod) => {
       const rootNav =
         navigation.getParent?.("RootStack") || navigation.getParent?.();
-      
+
       const isHall = isDiningHallMenuLocation(locationName);
       const staticMenu = getStaticRestaurantMenu(locationName);
 
@@ -910,6 +987,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
     },
     [navigation],
   );
+
+  const openFacilityCounts = useCallback((loc: CampusLocation) => {
+    const rootNav = navigation.getParent?.("RootStack") || navigation.getParent?.();
+    (rootNav?.navigate || navigation.navigate)("FacilityCounts", { location: loc });
+  }, [navigation]);
 
   const openScheduleList = useCallback(() => {
     const rootNav =
@@ -1098,16 +1180,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
     try {
       try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch (_) {}
-      
+
       // 2. Dispatch real vote to backend
       const kind = finalVote === 1 ? 'upvote' : (finalVote === -1 ? 'downvote' : 'none');
       await toggleVote(itemId, kind);
-      
+
       // 3. Sync memory-based cache for non-query-client consumers
       await voteHotspotItem(itemId, finalVote);
     } catch (e) {
       console.warn("[Pulse] vote failed", e);
-      
+
       // 4. Rollback on failure
       if (prevPulseData) {
         queryClient.setQueryData(pulseKey, prevPulseData);
@@ -1116,13 +1198,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       if (/rate limit/i.test(errorMsg)) {
         Alert.alert(
-          "Slow down!", 
+          "Slow down!",
           "You are voting too fast. Please wait a minute before trying again.",
           [{ text: "Understood" }]
         );
       } else if (/blocked/i.test(errorMsg)) {
         Alert.alert(
-          "Interaction unavailable", 
+          "Interaction unavailable",
           "You cannot interact with this content due to a block relationship."
         );
       } else {
@@ -1277,64 +1359,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // ── Transit handlers ──────────────────────────────────────
   // transitService is now imported at top level
-
-  const loadAllBusRoutes = useCallback(async (routesToLoad: any[]) => {
-    setBusVehicles([]);
-    setBusStops([]);
-    setRoutePatterns([]);
-    setRoutePaths([]);
-    setRouteTimetableEntries([]);
-    if (!routesToLoad.length) {
-      setAllRoutePatternsById({});
-      return;
-    }
-    const patternEntries = await Promise.allSettled(
-      routesToLoad.map(
-        async (r) => [r.Key, await transitService.getRoutePattern(r.Key)] as const,
-      ),
-    );
-    const nextPatterns = patternEntries.reduce((acc, result) => {
-      if (result.status !== "fulfilled") return acc;
-      const [k, p] = result.value;
-      acc[k] = p;
-      return acc;
-    }, {} as any);
-    setAllRoutePatternsById(nextPatterns);
-    const vehicles = await transitService.getVehicles();
-    setBusVehicles(vehicles || []);
-
-    const routeCoords = Object.values(nextPatterns).flatMap((pattern: any) =>
-      Array.isArray(pattern?.points)
-        ? pattern.points.map((point: any) => ({
-          latitude: point.latitude,
-          longitude: point.longitude,
-        })).filter(
-          (coord: any) =>
-            typeof coord.latitude === "number" &&
-            Number.isFinite(coord.latitude) &&
-            typeof coord.longitude === "number" &&
-            Number.isFinite(coord.longitude),
-        )
-        : [],
-    );
-    const vehicleCoords = (vehicles || [])
-      .map((bus: any) => ({
-        latitude: bus.Latitude,
-        longitude: bus.Longitude,
-      }))
-      .filter(
-          (coord: { latitude?: number; longitude?: number }) =>
-            coord && Number.isFinite(coord.latitude) && Number.isFinite(coord.longitude),
-      ) as { latitude: number; longitude: number }[];
-
-    const fitCoords = [...routeCoords, ...vehicleCoords];
-    if (mapRef.current && fitCoords.length > 1) {
-      mapRef.current.fitToCoordinates(fitCoords, {
-        edgePadding: { top: 180, right: 50, bottom: 220, left: 50 },
-        animated: true,
-      });
-    }
-  }, []);
 
   const fitMapToActiveOverview = useCallback(() => {
     if (!mapRef.current) return;
@@ -2036,7 +2060,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
               selectedBus?.Key && bus.Key
                 ? selectedBus.Key === bus.Key
                 : selectedBus?.Name === bus.Name;
-            
+
             const routeShortName =
               (bus.routeShortName ||
               bus.RouteShortName ||
@@ -2219,7 +2243,25 @@ export function PlacesMapScreen({ route, navigation }: any) {
           markerLocations.map((loc) => {
             const isSelected = getLocationSelectionId(loc) === selectedId;
             const isTodayLayer = activeLayer === "Today";
-            const isCapacityType = loc.type === "Library" || loc.type === "Rec";
+            const visitorGarageIds = [
+              "osm:way:91100311",
+              "garage-polo",
+              "osm:way:450686873",
+              "garage-university-center",
+              "garage-west-campus"
+            ];
+            const isVisitorParkingGarage = loc.type === "Parking" && (
+              visitorGarageIds.includes(("placeId" in loc ? loc.placeId : "")) ||
+              loc.location.includes("Central Campus Garage") ||
+              loc.location.includes("Polo") ||
+              loc.location.includes("Stallings") ||
+              loc.location.includes("University Center Garage") ||
+              loc.location.includes("West Campus Garage")
+            );
+            const isCapacityType = loc.type === "Library" || loc.type === "Rec" || isVisitorParkingGarage;
+
+            const tracksChanges = isMapTransitionsStable || isSelected || !!selectedId || isCapacityType;
+
             const displayPercent =
               loc.capacity && loc.capacity > 0 && loc.current_count != null
                 ? Math.round((loc.current_count / loc.capacity) * 100)
@@ -2227,10 +2269,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   ? loc.percent_full
                   : null;
 
+            const isClosed = loc.hours_today?.toLowerCase().includes("closed") ||
+                             loc.hours_holiday_notice?.toLowerCase().includes("closed");
+
             const pinColor = isTodayLayer
               ? getCategoryColor(loc.classMeetings?.[0]?.category)
               : isCapacityType
-                ? getStatusColor(displayPercent)
+                ? (isClosed ? "#FF3B30" : getStatusColor(displayPercent))
                 : COLORS.primary;
             const pinText =
               isTodayLayer && loc.sequenceIndex
@@ -2251,8 +2296,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   latitude: loc.coord.lat,
                   longitude: loc.coord.lng,
                 }}
-                onPress={() => handleSelectLocation(loc)}
+                onPress={() => {
+                  setIsMapTransitionsStable(true);
+                  handleSelectLocation(loc);
+                }}
                 anchor={{ x: 0.5, y: 1 }}
+                tracksViewChanges={tracksChanges}
               >
                 {isTodayLayer ? (
                   <View
@@ -2469,7 +2518,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     navigation.navigate("TransitTripPlanner")
                   }
                   selectedDirection={selectedDirection}
-                  setSelectedDirection={setSelectedDirection}
+                  setSelectedDirection={(value) =>
+                    setSelectedDirection(value as "All" | "inbound" | "outbound")
+                  }
                   availableDirections={availableDirections}
                   selectedStop={selectedStop}
                   setSelectedStop={setSelectedStop}
@@ -2537,9 +2588,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
                                 ? loc.percent_full
                                 : null;
                           const recUpdatedLabel =
-                            loc.type === "Rec" && (loc.capacity_last_updated || loc.capacity_as_of)
+                            loc.type === "Rec" &&
+                            (("capacity_last_updated" in loc && loc.capacity_last_updated) ||
+                              ("capacity_as_of" in loc && loc.capacity_as_of))
                               ? (() => {
-                                  const raw = loc.capacity_last_updated || loc.capacity_as_of;
+                                  const raw =
+                                    ("capacity_last_updated" in loc && loc.capacity_last_updated) ||
+                                    ("capacity_as_of" in loc && loc.capacity_as_of);
                                   const parsed = new Date(
                                     String(raw).includes("T")
                                       ? String(raw)
@@ -2557,6 +2612,23 @@ export function PlacesMapScreen({ route, navigation }: any) {
                           const isRecCenterTourItem =
                             getCanonicalLocationName(loc.location) ===
                             getCanonicalLocationName("Student Recreation Center");
+
+                          const visitorGarageIds = [
+                            "osm:way:91100311",
+                            "garage-polo",
+                            "osm:way:450686873",
+                            "garage-university-center",
+                            "garage-west-campus"
+                          ];
+                          const isVisitorParkingGarage = loc.type === "Parking" && (
+                            visitorGarageIds.includes(("placeId" in loc ? loc.placeId : "")) ||
+                            loc.location.includes("Central Campus Garage") ||
+                            loc.location.includes("Polo") ||
+                            loc.location.includes("Stallings") ||
+                            loc.location.includes("University Center Garage") ||
+                            loc.location.includes("West Campus Garage")
+                          );
+                          const parkingAvailable = (loc as any).visitor_parking_available;
 
                           const item = (
                             <TouchableOpacity
@@ -2601,7 +2673,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
                                     loc.type === "Rec") &&
                                     displayPercent != null
                                     ? `${displayPercent}% full${recUpdatedLabel ? ` · ${recUpdatedLabel}` : ""} · `
-                                    : ""}
+                                    : isVisitorParkingGarage && parkingAvailable != null
+                                      ? `${parkingAvailable.toLocaleString()} spaces available · `
+                                      : ""}
                                   {loc.type !== "Dining" && loc.type !== "Hub"
                                     ? loc.type
                                     : ""}
@@ -2716,7 +2790,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
         COLORS={COLORS}
         isDark={isDark}
         selectedId={selectedId}
-        setSelectedId={setSelectedId}
+        setSelectedId={(id) => {
+          setIsMapTransitionsStable(true);
+          setSelectedId(id);
+        }}
         selectedLoc={selectedLoc}
         foodCourtVenues={foodCourtVenues}
         diningMenuOptions={diningMenuOptions}
@@ -2731,11 +2808,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
         openScheduleList={openScheduleList}
         selectedRecreationFacility={selectedRecreationFacility}
         recreationFacilityMap={recreationFacilityMap}
+        openFacilityCounts={openFacilityCounts}
         navigation={navigation}
         getPlaceExternalLink={getPlaceExternalLink}
         selectedStop={selectedStop}
         selectedBus={selectedBus}
         openNavigationToLocation={openNavigationToLocation}
+        isFetchingDetail={isFetchingDetail}
         trackerCounts={trackerCounts}
         onAddMeal={(item) => selectedLoc && addMealEntry(item, selectedLoc.location, getDiningMealPeriodForLocation(selectedLoc.location))}
         onRemoveMeal={(item) => selectedLoc && removeMealEntry(item, selectedLoc.location, getDiningMealPeriodForLocation(selectedLoc.location))}
