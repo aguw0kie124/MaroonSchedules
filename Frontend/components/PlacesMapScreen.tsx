@@ -588,7 +588,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
       const isIncorrectEvans = l.location.includes("Evans Library") && 
                               l.coord.lat < 30.615 && 
                               l.coord.lng < -96.340;
-      return !isIncorrectEvans;
+      const isCainGarage = l.location.toLowerCase().includes("cain") && 
+                           l.location.toLowerCase().includes("garage");
+      return !isIncorrectEvans && !isCainGarage;
     });
   }, [dynamicSearchLocations, locations, scheduleLocations]);
 

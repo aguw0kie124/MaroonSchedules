@@ -413,7 +413,7 @@ export function PlacesList({
       ? `${loc.classMeetings.length} class${loc.classMeetings.length === 1 ? "" : "es"}`
       : (isCapacityType && !isBushLibrary)
         ? isVisitorParkingGarage
-          ? `${displayPercent != null ? `${displayPercent}% full · ` : ""}${parkingAvailable != null ? `${parkingAvailable.toLocaleString()} spaces` : "Availability available"}${parkingUpdatedLabel ? ` · ${parkingUpdatedLabel}` : ""}`
+          ? `${displayPercent != null ? `${displayPercent}% full · ` : ""}${parkingAvailable != null ? `${parkingAvailable.toLocaleString()} spots available` : "Real-time data busy"}${parkingUpdatedLabel ? ` · ${parkingUpdatedLabel}` : ""}`
           : `${
               displayPercent != null
                 ? `${displayPercent}% full${recUpdatedLabel ? ` · ${recUpdatedLabel}` : ""}`

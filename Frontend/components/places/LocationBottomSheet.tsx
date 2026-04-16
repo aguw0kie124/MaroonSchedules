@@ -229,8 +229,7 @@ export function LocationBottomSheet({
     selectedLoc?.placeId === "garage-polo" || 
     selectedLoc?.placeId === "osm:way:450686873" || 
     selectedLoc?.placeId === "garage-university-center" || 
-    selectedLoc?.placeId === "garage-west-campus" ||
-    selectedLoc?.location?.includes("Garage")
+    selectedLoc?.placeId === "garage-west-campus"
   );
   const isCapacityPlace = (selectedLoc?.type === "Library" || selectedLoc?.type === "Rec") && 
                          !selectedLoc?.location?.includes("Bush");
@@ -263,7 +262,7 @@ export function LocationBottomSheet({
 
   const peekMetaText = useMemo(() => {
     if (!selectedLoc) return "";
-    if (isFetchingDetail && !hasAnyLiveData && (isCapacityPlace || isParking)) return "Loading..."; 
+    if (isFetchingDetail && !hasAnyLiveData && isVisitorGarage) return "Loading..."; 
     if (hasLiveParking) return `Visitor: ${selectedLoc.visitor_parking_available.toLocaleString()} spaces (live)`;
     if (isCapacityPlace && !shouldHideCapacityOnCard) return `${occupancyPercent}% full`;
     
@@ -406,7 +405,7 @@ export function LocationBottomSheet({
             )}
           </View>
 
-          {isFetchingDetail && !hasAnyLiveData && (isCapacityPlace || isVisitorGarage) ? (
+          {isFetchingDetail && !hasAnyLiveData && isVisitorGarage ? (
              <View style={{ paddingVertical: 80, alignItems: 'center', justifyContent: 'center' }}>
                <ActivityIndicator color={COLORS.primary} size="large" />
                <Text style={{ marginTop: 16, color: COLORS.textTertiary, fontSize: 13, fontWeight: '600' }}>Fetching live data...</Text>
