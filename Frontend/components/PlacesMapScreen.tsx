@@ -2937,6 +2937,23 @@ export function PlacesMapScreen({ route, navigation }: any) {
                             getCanonicalLocationName(loc.location) ===
                             getCanonicalLocationName("Student Recreation Center");
 
+                          const visitorGarageIds = [
+                            "osm:way:91100311", 
+                            "garage-polo", 
+                            "osm:way:450686873", 
+                            "garage-university-center", 
+                            "garage-west-campus"
+                          ];
+                          const isVisitorParkingGarage = loc.type === "Parking" && (
+                            visitorGarageIds.includes(loc.placeId) || 
+                            loc.location.includes("Central Campus Garage") ||
+                            loc.location.includes("Polo") ||
+                            loc.location.includes("Stallings") ||
+                            loc.location.includes("University Center Garage") ||
+                            loc.location.includes("West Campus Garage")
+                          );
+                          const parkingAvailable = (loc as any).visitor_parking_available;
+
                           const item = (
                             <TouchableOpacity
                               key={`${('placeId' in loc && loc.placeId) || loc.location}-${loc.coord.lat}-${loc.coord.lng}`}
@@ -2980,7 +2997,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
                                     loc.type === "Rec") &&
                                     displayPercent != null
                                     ? `${displayPercent}% full${recUpdatedLabel ? ` · ${recUpdatedLabel}` : ""} · `
-                                    : ""}
+                                    : isVisitorParkingGarage && parkingAvailable != null
+                                      ? `${parkingAvailable.toLocaleString()} spaces available · `
+                                      : ""}
                                   {loc.type !== "Dining" && loc.type !== "Hub"
                                     ? loc.type
                                     : ""}
