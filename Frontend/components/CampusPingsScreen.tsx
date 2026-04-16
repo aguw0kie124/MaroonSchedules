@@ -81,6 +81,7 @@ import {
 } from '../services/socialFeedService';
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
 import { useSessionStore } from '../store/sessionStore';
+import { resolveDisplayName } from '../utils/userUtils';
 
 type PingCategory =
   | 'Free Food'
@@ -262,13 +263,6 @@ function getInitials(name: string) {
  * Heuristic to check if a string looks like an AES-encrypted base64 payload
  * from our backend (typically length > 40 and not human-readable).
  */
-function isEncryptedString(s: string | null | undefined): boolean {
-  if (!s || s.length < 40) return false;
-  // If it contains spaces or lowercase letters without being a long base64 string, it's likely human
-  if (s.includes(' ')) return false;
-  // Common check for base64 with potential padding
-  return /^[a-zA-Z0-9+/]+={0,2}$/.test(s);
-}
 
 function isPingActiveNow(startAt: string, endAt?: string | null) {
   const start = new Date(startAt).getTime();
@@ -303,14 +297,7 @@ function mapActivityToPing(activity: any, currentUser: any, userMap: Map<string,
   const rawName = actor.name || actor.data?.name || custom.user_name || 'Aggie User';
 
   // Resolve name: Current User match > User Directory match > Raw Name (if not encrypted) > 'Aggie User'
-  let resolvedName = rawName;
-  if (userId === currentUser?.id) {
-    resolvedName = currentUser.username || currentUser.firstName || currentUser.fullName || 'Shreyaan';
-  } else if (userMap.has(userId)) {
-    resolvedName = userMap.get(userId)!;
-  } else if (isEncryptedString(rawName)) {
-    resolvedName = 'Aggie User';
-  }
+  const resolvedName = resolveDisplayName(userId, rawName, currentUser, userMap);
 
   const attachments = activity.attachments || [];
   const media = attachments[0] || {};
@@ -691,50 +678,87 @@ export function CampusPingsScreen() {
   ]);
 
   const handlePickPingImage = useCallback(async () => {
-    try {
-      const existingPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
-      const permission =
-        existingPermission.granted || !existingPermission.canAskAgain
-          ? existingPermission
-          : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (!permission.granted) {
-        if (permission.canAskAgain) {
-          Alert.alert('Photos unavailable', 'Allow photo access to attach an image to your ping.');
-        } else {
-          Alert.alert(
-            'Photos unavailable',
-            'Photo access is turned off for MaroonLife. Open Settings to allow image uploads.',
-            [
-              { text: 'Not now', style: 'cancel' },
-              {
-                text: 'Open Settings',
-                onPress: () => {
-                  Linking.openSettings().catch((settingsError) => {
-                    console.warn('[Pings] could not open settings', settingsError);
-                  });
-                },
-              },
-            ],
-          );
+    const launchCamera = async () => {
+      try {
+        const { granted } = await ImagePicker.requestCameraPermissionsAsync();
+        if (!granted) {
+          Alert.alert('Camera unavailable', 'Allow camera access to take a photo for your ping.');
+          return;
         }
-        return;
-      }
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        quality: 0.82,
-        aspect: [4, 3],
-      });
+        const result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          quality: 0.82,
+          aspect: [4, 3],
+        });
 
-      if (!result.canceled && result.assets[0]) {
-        setComposerImageUri(result.assets[0].uri);
+        if (!result.canceled && result.assets[0]) {
+          setComposerImageUri(result.assets[0].uri);
+        }
+      } catch (error) {
+        console.warn('[Pings] camera capture failed', error);
+        Alert.alert('Capture failed', 'Could not open your camera.');
       }
-    } catch (error) {
-      console.warn('[Pings] image pick failed', error);
-      Alert.alert('Selection failed', 'Could not open your photo library.');
-    }
+    };
+
+    const launchLibrary = async () => {
+      try {
+        const existingPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
+        const permission =
+          existingPermission.granted || !existingPermission.canAskAgain
+            ? existingPermission
+            : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+        if (!permission.granted) {
+          if (permission.canAskAgain) {
+            Alert.alert('Photos unavailable', 'Allow photo access to attach an image to your ping.');
+          } else {
+            Alert.alert(
+              'Photos unavailable',
+              'Photo access is turned off for MaroonLife. Open Settings to allow image uploads.',
+              [
+                { text: 'Not now', style: 'cancel' },
+                {
+                  text: 'Open Settings',
+                  onPress: () => {
+                    Linking.openSettings().catch((settingsError) => {
+                      console.warn('[Pings] could not open settings', settingsError);
+                    });
+                  },
+                },
+              ],
+            );
+          }
+          return;
+        }
+
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          allowsEditing: true,
+          quality: 0.82,
+          aspect: [4, 3],
+        });
+
+        if (!result.canceled && result.assets[0]) {
+          setComposerImageUri(result.assets[0].uri);
+        }
+      } catch (error) {
+        console.warn('[Pings] image library pick failed', error);
+        Alert.alert('Selection failed', 'Could not open your photo library.');
+      }
+    };
+
+    Alert.alert(
+      'Attach Image',
+      'Choose a source for your photo',
+      [
+        { text: 'Take Photo', onPress: launchCamera },
+        { text: 'Choose from Library', onPress: launchLibrary },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+      { cancelable: true },
+    );
   }, []);
 
   const handleCreatePing = useCallback(async () => {
@@ -1277,7 +1301,14 @@ export function CampusPingsScreen() {
               style={styles.pingIconAction}
               onPress={() => handleOpenComments(item)}
             >
-              <MessageCircle size={21} color={COLORS.textPrimary} />
+              <View style={styles.pingActionGroup}>
+                <MessageCircle size={21} color={COLORS.textPrimary} />
+                {(item.commentCount || 0) > 0 && (
+                  <Text style={styles.pingActionLabel}>
+                    {item.commentCount}
+                  </Text>
+                )}
+              </View>
             </ScalePressable>
 
             <ScalePressable
@@ -1304,8 +1335,6 @@ export function CampusPingsScreen() {
             </>
           ) : null}
           <Text style={styles.pingMetaSummary}>
-            {item.commentCount || 0} comments
-            {'  •  '}
             {item.locationTag}
           </Text>
         </View>
@@ -2174,6 +2203,16 @@ const getStyles = (theme: any) => {
       justifyContent: 'center',
       gap: 2,
       marginRight: 2,
+    },
+    pingActionGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    pingActionLabel: {
+      color: COLORS.textPrimary,
+      fontSize: 13,
+      fontWeight: '700',
     },
     pingIconAction: {
       minWidth: 24,

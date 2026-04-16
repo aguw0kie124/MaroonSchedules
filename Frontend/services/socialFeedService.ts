@@ -238,7 +238,7 @@ export async function addPost(params: {
   }
 }
 
-export async function toggleVote(activityId: string, kind: 'upvote' | 'downvote' | 'none' | 'like'): Promise<any> {
+export async function toggleVote(activityId: string, kind: 'upvote' | 'downvote' | 'none' | 'like', parentId?: string): Promise<any> {
     if (!connectedUserId) throw new Error('Must be logged in to vote.');
     const res = await feedFetch('/chat/feeds/proxy/reactions', {
         method: 'POST',
@@ -247,6 +247,7 @@ export async function toggleVote(activityId: string, kind: 'upvote' | 'downvote'
             kind: kind, 
             activity_id: activityId, 
             user_id: connectedUserId,
+            parent_id: parentId,
             data: {
               name: getPremiumName(currentFullUser),
               image: getPremiumImage(currentFullUser)
@@ -283,7 +284,7 @@ export async function toggleLike(activityId: string, userId: string): Promise<an
     return res.json();
 }
 
-export async function addComment(activityId: string, user: any, text: string): Promise<any> {
+export async function addComment(activityId: string, user: any, text: string, parentId?: string): Promise<any> {
     const res = await feedFetch('/chat/feeds/proxy/reactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -291,6 +292,7 @@ export async function addComment(activityId: string, user: any, text: string): P
             kind: 'comment', 
             activity_id: activityId, 
             user_id: user?.id || user?.userId || connectedUserId,
+            parent_id: parentId,
             data: { 
                 text: text, 
                 comment: text,

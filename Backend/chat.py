@@ -33,6 +33,7 @@ class ReactionPayload(SanitizedBaseModel):
     activity_id: str
     user_id: str
     data: Optional[Dict[str, Any]] = None
+    parent_id: Optional[str] = None
 
 class BlockRequest(SanitizedBaseModel):
     target_id: str
@@ -459,7 +460,8 @@ async def proxy_add_reaction(request: Request, body: ReactionPayload, auth_user_
             interaction_type=body.kind,
             comment_text=body.data.get("text") or body.data.get("comment") if body.data else None,
             user_name=final_name,
-            user_image=final_image
+            user_image=final_image,
+            parent_id=body.parent_id
         )
         
         if res.get("status") in ["unliked", "removed"]:
@@ -506,7 +508,8 @@ async def proxy_get_reactions(activity_id: str, kind: str, auth_user_id: Optiona
                     "image": i["user_image"]
                 },
                 "data": {"text": i["comment_text"]} if i["comment_text"] else {},
-                "created_at": i["created_at"]
+                "created_at": i["created_at"],
+                "parent_id": i.get("parent_id")
             })
         return {"results": results}
     except Exception as e:

@@ -346,9 +346,13 @@ def _ensure_social_tables(conn: Optional[psycopg.Connection] = None) -> None:
                         comment_text TEXT,
                         user_name TEXT,
                         user_image TEXT,
+                        parent_id UUID REFERENCES post_interactions(id) ON DELETE CASCADE,
                         created_at TIMESTAMPTZ DEFAULT NOW()
                     )
                     """
+                )
+                cur.execute(
+                    "ALTER TABLE post_interactions ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES post_interactions(id) ON DELETE CASCADE"
                 )
                 cur.execute(
                     """

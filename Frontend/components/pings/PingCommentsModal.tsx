@@ -15,16 +15,22 @@ import {
   View,
 } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
-import { MessageCircle, Send, X } from 'lucide-react-native';
-
-import { addComment, getComments } from '../../services/socialFeedService';
+import { MessageCircle, Send, X, ArrowUp, ArrowDown, CornerDownRight } from 'lucide-react-native';
+import { addComment, getComments, toggleVote } from '../../services/socialFeedService';
 import { useTheme } from '../SharedUI';
+import { useQuery } from '@tanstack/react-query';
+import { API_URL } from '../../config';
+import { resolveDisplayName } from '../../utils/userUtils';
 
 type PingComment = {
   id: string;
   text: string;
   createdAt: string;
   userName: string;
+  parentId?: string | null;
+  score: number;
+  ownVote?: 'upvote' | 'downvote' | null;
+  replies?: PingComment[];
 };
 
 export type PingCommentTarget = {
@@ -57,12 +63,27 @@ function formatCommentTime(isoValue: string) {
   });
 }
 
-function mapRawComment(comment: any): PingComment {
+function mapRawComment(comment: any, currentUser: any, userMap: Map<string, string>): PingComment {
+  const userId = String(comment?.user_id ?? comment?.user?.id ?? '').replace('SU:', '');
+  const rawName = String(comment?.user?.name ?? comment?.data?.name ?? 'Aggie User');
+
+  const ownReactions = comment?.own_reactions || {};
+  let ownVote: 'upvote' | 'downvote' | null = null;
+  if (ownReactions.upvote) ownVote = 'upvote';
+  else if (ownReactions.downvote) ownVote = 'downvote';
+
+  const counts = comment?.reaction_counts || {};
+  const score = (counts.upvote || 0) - (counts.downvote || 0);
+
   return {
     id: String(comment?.id ?? `${comment?.created_at ?? Date.now()}`),
     text: String(comment?.data?.text ?? comment?.text ?? ''),
     createdAt: String(comment?.created_at ?? new Date().toISOString()),
-    userName: String(comment?.user?.name ?? 'Aggie User'),
+    userName: resolveDisplayName(userId, rawName, currentUser, userMap),
+    parentId: comment?.parent_id,
+    score,
+    ownVote,
+    replies: [],
   };
 }
 
@@ -77,23 +98,59 @@ export function PingCommentsModal({
 
   const [comments, setComments] = React.useState<PingComment[]>([]);
   const [draft, setDraft] = React.useState('');
+  const [replyingTo, setReplyingTo] = React.useState<PingComment | null>(null);
+  const [expandedThreads, setExpandedThreads] = React.useState<Set<string>>(new Set());
   const [loading, setLoading] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const translateY = React.useRef(new Animated.Value(0)).current;
+  const inputRef = React.useRef<TextInput>(null);
+
+  const { data: userProfiles = [] } = useQuery({
+    queryKey: ['campus-chat-directory', API_URL],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`${API_URL}/chat/users`);
+        if (!res.ok) return [];
+        return await res.json();
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 1000 * 60 * 30, // 30 mins
+  });
+
+  const userMap = React.useMemo(() => {
+    const m = new Map<string, string>();
+    userProfiles.forEach((u: any) => {
+      if (u.id && u.name) m.set(u.id, u.name);
+    });
+    return m;
+  }, [userProfiles]);
 
   const loadComments = React.useCallback(async () => {
     if (!target?.activityId) return;
     setLoading(true);
     try {
-      const nextComments = await getComments(target.activityId);
-      setComments(nextComments.map(mapRawComment));
+      const resp = await getComments(target.activityId);
+      const all: PingComment[] = resp.map(c => mapRawComment(c, user, userMap));
+      
+      // Grouping: strictly one level deep for now (parent -> reply)
+      const roots = all.filter(c => !c.parentId);
+      const children = all.filter(c => !!c.parentId);
+      
+      const thread = roots.map(root => ({
+        ...root,
+        replies: children.filter(child => child.parentId === root.id).reverse() // Sort replies chronologically
+      }));
+
+      setComments(thread);
     } catch (error) {
       console.warn('[Comments] load failed', error);
       setComments([]);
     } finally {
       setLoading(false);
     }
-  }, [target?.activityId]);
+  }, [target?.activityId, user, userMap]);
 
   React.useEffect(() => {
     if (!visible || !target?.activityId) return;
@@ -103,6 +160,8 @@ export function PingCommentsModal({
   React.useEffect(() => {
     if (!visible) {
       setDraft('');
+      setReplyingTo(null);
+      setExpandedThreads(new Set());
       setComments([]);
       setLoading(false);
       setSubmitting(false);
@@ -168,8 +227,9 @@ export function PingCommentsModal({
 
     setSubmitting(true);
     try {
-      await addComment(target.activityId, user, draft.trim());
+      await addComment(target.activityId, user, draft.trim(), replyingTo?.id);
       setDraft('');
+      setReplyingTo(null);
       await loadComments();
       onCommentPosted?.();
     } catch (error) {
@@ -177,7 +237,101 @@ export function PingCommentsModal({
     } finally {
       setSubmitting(false);
     }
-  }, [draft, loadComments, onCommentPosted, target?.activityId, user]);
+  }, [draft, loadComments, onCommentPosted, replyingTo?.id, target?.activityId, user]);
+
+  const handleReply = React.useCallback((comment: PingComment) => {
+    // If replying to a reply, use the root parent ID to keep it in the same thread (one-level deep)
+    const target = {
+      ...comment,
+      id: comment.parentId || comment.id
+    };
+    setReplyingTo(target);
+    inputRef.current?.focus();
+  }, []);
+
+  const handleVoteAction = React.useCallback(async (commentId: string, type: 'upvote' | 'downvote') => {
+    if (!target?.activityId || !user) return;
+    try {
+      await toggleVote(target.activityId, type, commentId);
+      await loadComments();
+    } catch (error) {
+      console.warn('[Comments] vote failed', error);
+    }
+  }, [loadComments, target?.activityId, user]);
+
+  const toggleThread = React.useCallback((commentId: string) => {
+    setExpandedThreads(prev => {
+      const next = new Set(prev);
+      if (next.has(commentId)) next.delete(commentId);
+      else next.add(commentId);
+      return next;
+    });
+  }, []);
+
+  const renderComment = (comment: PingComment, isReply = false) => (
+    <View
+      key={comment.id}
+      style={[
+        styles.commentRow,
+        { 
+          borderBottomColor: COLORS.border,
+          marginLeft: isReply ? 46 : 0,
+        }
+      ]}
+    >
+      <View style={[styles.avatar, { backgroundColor: `${COLORS.primary}14` }]}>
+        <MessageCircle size={14} color={COLORS.primary} />
+      </View>
+      <View style={styles.commentCopy}>
+        <View style={styles.commentMetaRow}>
+          <Text style={[styles.commentAuthor, { color: COLORS.textPrimary }]}>
+            {comment.userName}
+          </Text>
+          <Text style={[styles.commentTime, { color: COLORS.textTertiary }]}>
+            {formatCommentTime(comment.createdAt)}
+          </Text>
+        </View>
+        <Text style={[styles.commentText, { color: COLORS.textSecondary }]}>
+          {comment.text || 'No text'}
+        </Text>
+        
+        <View style={styles.commentActions}>
+          <View style={[styles.voteGroup, { backgroundColor: `${COLORS.border}30` }]}>
+            <Pressable 
+              onPress={() => handleVoteAction(comment.id, 'upvote')}
+              style={styles.voteBtn}
+            >
+              <ArrowUp 
+                size={14} 
+                color={comment.ownVote === 'upvote' ? COLORS.primary : COLORS.textSecondary} 
+                strokeWidth={3}
+              />
+            </Pressable>
+            <Text style={[styles.scoreText, { color: COLORS.textPrimary }]}>
+              {comment.score}
+            </Text>
+            <Pressable 
+               onPress={() => handleVoteAction(comment.id, 'downvote')}
+               style={styles.voteBtn}
+            >
+              <ArrowDown 
+                size={14} 
+                color={comment.ownVote === 'downvote' ? COLORS.primary : COLORS.textSecondary} 
+                strokeWidth={3}
+              />
+            </Pressable>
+          </View>
+          
+          <Pressable 
+            onPress={() => handleReply(comment)}
+            style={styles.actionLink}
+          >
+            <Text style={[styles.actionLinkText, { color: COLORS.textTertiary }]}>Reply</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
 
   return (
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent>
@@ -225,29 +379,34 @@ export function PingCommentsModal({
                       keyboardShouldPersistTaps="handled"
                       showsVerticalScrollIndicator={false}
                     >
-                      {comments.map((comment) => (
-                        <View
-                          key={comment.id}
-                          style={[styles.commentRow, { borderBottomColor: COLORS.border }]}
-                        >
-                          <View style={[styles.avatar, { backgroundColor: `${COLORS.primary}14` }]}>
-                            <MessageCircle size={14} color={COLORS.primary} />
+                      {comments.map((root) => {
+                        const isExpanded = expandedThreads.has(root.id);
+                        const allReplies = root.replies || [];
+                        const visibleReplies = isExpanded ? allReplies : allReplies.slice(0, 3);
+                        const hasMore = allReplies.length > 3;
+
+                        return (
+                          <View key={root.id}>
+                            {renderComment(root)}
+                            {visibleReplies.map(child => renderComment(child, true))}
+                            
+                            {hasMore && (
+                              <Pressable 
+                                onPress={() => toggleThread(root.id)}
+                                style={styles.viewMoreReplies}
+                              >
+                                <CornerDownRight size={14} color={COLORS.primary} />
+                                <Text style={[styles.viewMoreText, { color: COLORS.primary }]}>
+                                  {isExpanded 
+                                    ? 'Show fewer replies' 
+                                    : `View ${allReplies.length - 3} more replies...`
+                                  }
+                                </Text>
+                              </Pressable>
+                            )}
                           </View>
-                          <View style={styles.commentCopy}>
-                            <View style={styles.commentMetaRow}>
-                              <Text style={[styles.commentAuthor, { color: COLORS.textPrimary }]}>
-                                {comment.userName}
-                              </Text>
-                              <Text style={[styles.commentTime, { color: COLORS.textTertiary }]}>
-                                {formatCommentTime(comment.createdAt)}
-                              </Text>
-                            </View>
-                            <Text style={[styles.commentText, { color: COLORS.textSecondary }]}>
-                              {comment.text || 'No text'}
-                            </Text>
-                          </View>
-                        </View>
-                      ))}
+                        );
+                      })}
                     </ScrollView>
                   ) : (
                     <View style={styles.emptyWrap}>
@@ -261,29 +420,43 @@ export function PingCommentsModal({
                   )}
                 </View>
 
-                <View style={[styles.composer, { borderColor: COLORS.border }]}>
-                  <TextInput
-                    value={draft}
-                    onChangeText={setDraft}
-                    placeholder="Add a comment..."
-                    placeholderTextColor={COLORS.textTertiary}
-                    style={[styles.input, { color: COLORS.textPrimary }]}
-                    multiline
-                  />
-                  <Pressable
-                    style={[
-                      styles.sendButton,
-                      { backgroundColor: draft.trim() ? COLORS.primary : COLORS.border },
-                    ]}
-                    disabled={!draft.trim() || submitting || !user}
-                    onPress={handleSubmit}
-                  >
-                    {submitting ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <Send size={15} color="#FFFFFF" />
-                    )}
-                  </Pressable>
+                <View style={[styles.composerWrap, { borderColor: COLORS.border }]}>
+                  {replyingTo && (
+                    <View style={[styles.replyHeader, { borderBottomColor: COLORS.border }]}>
+                      <CornerDownRight size={12} color={COLORS.textTertiary} />
+                      <Text style={[styles.replyToText, { color: COLORS.textTertiary }]}>
+                        Replying to <Text style={{ fontWeight: '700' }}>{replyingTo.userName}</Text>
+                      </Text>
+                      <Pressable onPress={() => setReplyingTo(null)} style={styles.replyCancel}>
+                        <X size={14} color={COLORS.textTertiary} />
+                      </Pressable>
+                    </View>
+                  )}
+                  <View style={styles.composer}>
+                    <TextInput
+                      ref={inputRef}
+                      value={draft}
+                      onChangeText={setDraft}
+                      placeholder={replyingTo ? "Add a reply..." : "Add a comment..."}
+                      placeholderTextColor={COLORS.textTertiary}
+                      style={[styles.input, { color: COLORS.textPrimary }]}
+                      multiline
+                    />
+                    <Pressable
+                      style={[
+                        styles.sendButton,
+                        { backgroundColor: draft.trim() ? COLORS.primary : COLORS.border },
+                      ]}
+                      disabled={!draft.trim() || submitting || !user}
+                      onPress={handleSubmit}
+                    >
+                      {submitting ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Send size={15} color="#FFFFFF" />
+                      )}
+                    </Pressable>
+                  </View>
                 </View>
               </Animated.View>
             </TouchableWithoutFeedback>
@@ -422,12 +595,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  composer: {
+  composerWrap: {
     marginTop: 12,
     borderWidth: 1,
     borderRadius: 24,
+    overflow: 'hidden',
+  },
+  replyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+  },
+  replyToText: {
+    flex: 1,
+    fontSize: 12,
+  },
+  replyCancel: {
+    padding: 2,
+  },
+  composer: {
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 8,
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 12,
@@ -445,5 +636,46 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 2,
+  },
+  commentActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 16,
+  },
+  voteGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    paddingHorizontal: 4,
+  },
+  voteBtn: {
+    padding: 6,
+  },
+  scoreText: {
+    fontSize: 13,
+    fontWeight: '700',
+    minWidth: 18,
+    textAlign: 'center',
+  },
+  actionLink: {
+    paddingVertical: 4,
+  },
+  actionLinkText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  viewMoreReplies: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginLeft: 46,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  viewMoreText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

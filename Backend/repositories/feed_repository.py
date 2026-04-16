@@ -64,7 +64,8 @@ def _row_to_interaction_dict(row) -> Dict[str, Any]:
         "comment_text": encryption_service.decrypt_string(row[5]) if row[5] else None,
         "created_at": str(row[6]),
         "user_name": row[7],
-        "user_image": row[8]
+        "user_image": row[8],
+        "parent_id": str(row[9]) if len(row) > 9 and row[9] else None
     }
 
 # --- Reviews ---
@@ -188,7 +189,8 @@ def add_post_interaction(
     interaction_type: str,
     comment_text: str = None,
     user_name: str = "Aggie",
-    user_image: str = ""
+    user_image: str = "",
+    parent_id: str = None
 ) -> Dict[str, Any]:
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         with conn.cursor() as cur:
@@ -197,16 +199,25 @@ def add_post_interaction(
                 opposite = 'downvote' if interaction_type == 'upvote' else 'upvote'
                 
                 # 1. Remove opposite reaction if it exists
-                cur.execute(
-                    "DELETE FROM post_interactions WHERE post_id = %s AND user_id = %s AND type = %s",
-                    (post_id, user_id, opposite)
-                )
+                # Note: if parent_id exists, we only remove if parent_id matches
+                opp_sql = "DELETE FROM post_interactions WHERE post_id = %s AND user_id = %s AND type = %s"
+                opp_params = [post_id, user_id, opposite]
+                if parent_id:
+                    opp_sql += " AND parent_id = %s"
+                    opp_params.append(parent_id)
+                else:
+                    opp_sql += " AND parent_id IS NULL"
+                cur.execute(opp_sql, tuple(opp_params))
                 
                 # 2. Toggle same reaction if it exists
-                cur.execute(
-                    "SELECT id FROM post_interactions WHERE post_id = %s AND user_id = %s AND type = %s",
-                    (post_id, user_id, interaction_type)
-                )
+                exist_sql = "SELECT id FROM post_interactions WHERE post_id = %s AND user_id = %s AND type = %s"
+                exist_params = [post_id, user_id, interaction_type]
+                if parent_id:
+                    exist_sql += " AND parent_id = %s"
+                    exist_params.append(parent_id)
+                else:
+                    exist_sql += " AND parent_id IS NULL"
+                cur.execute(exist_sql, tuple(exist_params))
                 existing = cur.fetchone()
                 if existing:
                     cur.execute("DELETE FROM post_interactions WHERE id = %s", (existing[0],))
@@ -227,11 +238,11 @@ def add_post_interaction(
 
             cur.execute(
                 """
-                INSERT INTO post_interactions (post_id, post_type, user_id, type, comment_text, user_name, user_image)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, post_id, post_type, user_id, type, comment_text, created_at, user_name, user_image
+                INSERT INTO post_interactions (post_id, post_type, user_id, type, comment_text, user_name, user_image, parent_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, post_id, post_type, user_id, type, comment_text, created_at, user_name, user_image, parent_id
                 """,
-                (post_id, post_type, user_id, interaction_type, encryption_service.encrypt_string(comment_text) if comment_text else None, user_name, user_image)
+                (post_id, post_type, user_id, interaction_type, encryption_service.encrypt_string(comment_text) if comment_text else None, user_name, user_image, parent_id)
             )
             row = cur.fetchone()
         conn.commit()
@@ -253,7 +264,8 @@ def get_post_interactions(
                 sql = """
                     SELECT i.id, i.post_id, i.post_type, i.user_id, i.type, i.comment_text, i.created_at, 
                            COALESCE(u.full_name, i.user_name, 'Aggie User') as user_name, 
-                           COALESCE(u.profile_image_url, i.user_image, '') as user_image
+                           COALESCE(u.profile_image_url, i.user_image, '') as user_image,
+                           i.parent_id
                     FROM post_interactions i
                     LEFT JOIN users u ON i.user_id = u.clerk_id
                     WHERE i.post_id = %s AND i.post_type = %s AND i.type = %s
@@ -264,7 +276,8 @@ def get_post_interactions(
                 sql = """
                     SELECT i.id, i.post_id, i.post_type, i.user_id, i.type, i.comment_text, i.created_at, 
                            COALESCE(u.full_name, i.user_name, 'Aggie User') as user_name, 
-                           COALESCE(u.profile_image_url, i.user_image, '') as user_image
+                           COALESCE(u.profile_image_url, i.user_image, '') as user_image,
+                           i.parent_id
                     FROM post_interactions i
                     LEFT JOIN users u ON i.user_id = u.clerk_id
                     WHERE i.post_id = %s AND i.post_type = %s
