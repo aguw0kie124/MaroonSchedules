@@ -108,6 +108,8 @@ export function PingCommentsModal({
   const [expandedThreads, setExpandedThreads] = React.useState<Set<string>>(new Set());
   const [loading, setLoading] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+  const [isMounted, setIsMounted] = React.useState(visible);
+  const isClosingRef = React.useRef(false);
   const sheetY = React.useRef(new Animated.Value(SHEET_HIDDEN_SNAP)).current;
   const sheetSnap = React.useRef<number>(SHEET_HIDDEN_SNAP);
   const panStartY = React.useRef<number>(SHEET_HIDDEN_SNAP);
@@ -169,6 +171,8 @@ export function PingCommentsModal({
 
   React.useEffect(() => {
     if (visible) {
+      setIsMounted(true);
+      isClosingRef.current = false;
       scrollOffsetY.current = 0;
       sheetSnap.current = SHEET_HIDDEN_SNAP;
       setSheetMode('hidden');
@@ -195,6 +199,8 @@ export function PingCommentsModal({
       setSheetMode('hidden');
       sheetSnap.current = SHEET_HIDDEN_SNAP;
       sheetY.setValue(SHEET_HIDDEN_SNAP);
+      setIsMounted(false);
+      isClosingRef.current = false;
     }
   }, [SHEET_HIDDEN_SNAP, SHEET_MID_SNAP, sheetY, visible]);
 
@@ -221,6 +227,8 @@ export function PingCommentsModal({
   }, [SHEET_HIDDEN_SNAP, SHEET_MID_SNAP, SHEET_TOP_SNAP, sheetY]);
 
   const closeSheet = React.useCallback(() => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
     animateSheet(SHEET_HIDDEN_SNAP, onClose);
   }, [SHEET_HIDDEN_SNAP, animateSheet, onClose]);
 
@@ -409,7 +417,7 @@ export function PingCommentsModal({
   );
 
   return (
-    <Modal visible={visible} animationType="none" transparent statusBarTranslucent>
+    <Modal visible={isMounted} animationType="none" transparent statusBarTranslucent>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={closeSheet}>
           <Animated.View pointerEvents="none" style={[styles.backdropScrim, { opacity: backdropOpacity }]} />
