@@ -526,12 +526,23 @@ export async function addFriend(targetId: string, actingUserId?: string): Promis
     if (!requesterId) {
         throw new Error('Must be signed in to add a friend.');
     }
+    
+    // Debug logging for troubleshooting social connectivity
+    if (__DEV__) {
+      console.log(`[SocialService] addFriend: requester=${requesterId}, target=${targetId}`);
+    }
+
     const res = await feedFetch(`/chat/users/${requesterId}/friends`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target_id: targetId }),
     });
-    if (!res.ok) throw new Error('Failed to add friend.');
+
+    if (!res.ok) {
+        const errorText = await res.text();
+        console.warn(`[SocialService] addFriend failed: status=${res.status}, body=${errorText}`);
+        throw new Error('Failed to add friend.');
+    }
 }
 
 export async function removeFriend(targetId: string, actingUserId?: string): Promise<void> {

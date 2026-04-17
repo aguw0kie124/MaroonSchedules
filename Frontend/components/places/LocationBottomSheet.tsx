@@ -1515,8 +1515,8 @@ export function LocationBottomSheet({
 
                         <Text
                           style={{
-                            fontSize: 16,
-                            fontWeight: "700",
+                            fontSize: 15,
+                            fontWeight: "600",
                             color: COLORS.textPrimary,
                             textTransform: 'none',
                           }}
@@ -1560,32 +1560,32 @@ export function LocationBottomSheet({
                       </View>
                     </View>
 
-
-
                   {isDiningSearchOpen ? (
                     <View
                       style={{
                         flexDirection: "row",
                         alignItems: "center",
-                        gap: 8,
+                        gap: 10,
                         borderRadius: 16,
                         paddingHorizontal: 14,
                         paddingVertical: 12,
                         backgroundColor: COLORS.card,
                         borderWidth: 1,
                         borderColor: COLORS.border,
+                        marginTop: 4,
+                        marginBottom: 4,
                       }}
                     >
                       <Search size={16} color={COLORS.textSecondary} />
                       <TextInput
                         value={diningSearchQuery}
                         onChangeText={setDiningSearchQuery}
-                        placeholder="Search this hall across upcoming menus"
+                        placeholder="Search menus..."
                         placeholderTextColor={COLORS.textTertiary}
                         style={{
                           flex: 1,
                           color: COLORS.textPrimary,
-                          fontSize: 14,
+                          fontSize: 15,
                           fontWeight: "600",
                           paddingVertical: 0,
                         }}
@@ -1622,7 +1622,7 @@ export function LocationBottomSheet({
                   ) : null}
                 </View>
 
-                <View style={{ marginBottom: 16, flexDirection: 'row' }}>
+                <View style={{ marginBottom: 20, flexDirection: 'row', gap: 16 }}>
                   {ALL_DINING_MEAL_PERIODS.map((period) => {
                     const isActive = activeDiningMealPeriod === period;
                     return (
@@ -1632,15 +1632,16 @@ export function LocationBottomSheet({
                         style={{
                           flex: 1,
                           alignItems: 'center',
-                          paddingBottom: 8,
+                          paddingVertical: 12,
                           borderBottomWidth: 2,
                           borderBottomColor: isActive ? COLORS.primary : 'transparent',
                         }}
                       >
                         <Text style={{
-                          fontSize: 15,
-                          fontWeight: isActive ? '700' : '600',
+                          fontSize: 14,
+                          fontWeight: isActive ? '700' : '500',
                           color: isActive ? COLORS.textPrimary : COLORS.textTertiary,
+                          letterSpacing: 0.2,
                         }}>
                           {period.charAt(0).toUpperCase() + period.slice(1)}
                         </Text>

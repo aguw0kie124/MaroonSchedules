@@ -615,7 +615,11 @@ async def add_friend_for_user(
         ensure_matching_user(auth_user_id, clerk_id, detail="You can only add friends from your own account")
         if feed_repository.has_block_relationship(clerk_id, body.target_id):
             raise HTTPException(status_code=403, detail="You cannot friend a blocked user")
+        # Allow establishing connections even if the target hasn't synced their profile yet
+        # The connection will be visible once they sync.
         result = user_repository.add_friend(clerk_id, body.target_id)
+        if result.get("status") == "error":
+             raise HTTPException(status_code=400, detail=result.get("message", "Could not add friend"))
         return {"status": "success", "friendship": result}
     except HTTPException:
         raise
