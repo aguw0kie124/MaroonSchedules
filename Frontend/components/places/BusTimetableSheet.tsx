@@ -8,8 +8,10 @@ import {
   Dimensions,
   Animated,
   PanResponder,
+  ActivityIndicator,
 } from "react-native";
 import { X, MapPin, Clock } from "lucide-react-native";
+import { formatExactLocalTime } from "../../services/dateUtils";
 import { SNAP_PEEK, SNAP_FULL, SCREEN_HEIGHT } from "./types";
 
 interface BusTimetableSheetProps {
@@ -28,6 +30,7 @@ interface BusTimetableSheetProps {
     departures?: any[];
   }>;
   onStopPress: (stop: any) => void;
+  loading?: boolean;
 }
 
 export function BusTimetableSheet({
@@ -40,6 +43,7 @@ export function BusTimetableSheet({
   liveBusCount,
   stopTimetable,
   onStopPress,
+  loading,
 }: BusTimetableSheetProps) {
   const panY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const [scrollEnabled, setScrollEnabled] = useState<boolean>(true);
@@ -113,12 +117,7 @@ export function BusTimetableSheet({
       .map((departure) => departure?.estimated_depart_time_utc || departure?.scheduled_depart_time_utc)
       .filter(Boolean)
       .slice(0, 3)
-      .map((value) =>
-        new Date(value).toLocaleTimeString("en-US", {
-          hour: "numeric",
-          minute: "2-digit",
-        }),
-      )
+      .map((value) => formatExactLocalTime(value))
       .join(" • ");
   };
 
@@ -221,148 +220,167 @@ export function BusTimetableSheet({
         }}
         scrollEventThrottle={16}
       >
-        {stopTimetable.map((item, index) => {
-          const isFirst = index === 0;
-          const isLast = index === stopTimetable.length - 1;
-
-          return (
-            <TouchableOpacity
-              key={item.stop.Id || index}
-              style={styles.stopRow}
-              onPress={() => {
-                snapTo(SNAP_PEEK);
-                onStopPress(item.stop);
-              }}
-              activeOpacity={0.7}
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator
+              size="large"
+              color={selectedRoute?.Color || (isDark ? "#FF8FA3" : "#500000")}
+            />
+            <Text
+              style={[
+                styles.loadingText,
+                { color: COLORS.textSecondary, marginTop: 16 },
+              ]}
             >
-              <View style={styles.timelineCol}>
-                <View
-                  style={[
-                    styles.timelineLine,
-                    {
-                      backgroundColor: isDark
-                        ? "rgba(255, 255, 255, 0.2)"
-                        : "rgba(80, 0, 0, 0.15)",
-                      opacity: isFirst ? 0 : 1,
-                      flex: 1,
-                    },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.timelineDot,
-                    {
-                      backgroundColor:
-                        item.etaLabel === "Now" || item.etaLabel === "Arriving"
-                          ? isDark
-                            ? "#FF8FA3"
-                            : "#500000"
-                          : isDark
-                            ? "#2A2A2A"
-                            : "#F0F0F0",
-                      borderColor: isDark ? "#FF8FA3" : "#500000",
-                      shadowColor: isDark ? "#FF8FA3" : "#500000",
-                    },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.timelineLine,
-                    {
-                      backgroundColor: isDark
-                        ? "rgba(255, 255, 255, 0.2)"
-                        : "rgba(80, 0, 0, 0.15)",
-                      opacity: isLast ? 0 : 1,
-                      flex: 1,
-                    },
-                  ]}
-                />
-              </View>
-              <View
-                style={[
-                  styles.stopContent,
-                  {
-                    borderBottomColor: isLast
-                      ? "transparent"
-                      : isDark
-                        ? "rgba(255, 255, 255, 0.05)"
-                        : "rgba(0,0,0,0.06)",
-                  },
-                ]}
-              >
-                <View style={{ flex: 1, paddingRight: 10 }}>
-                  <Text
-                    style={[styles.stopName, { color: COLORS.textPrimary }]}
-                  >
-                    {item.stop.Name}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.stopDetail,
-                      { color: COLORS.textSecondary, marginBottom: 6 },
-                    ]}
-                  >
-                    {item.detail}
-                  </Text>
-                  <View style={styles.detailRow}>
-                    <MapPin size={12} color={COLORS.textSecondary} />
-                    <Text
+              Retrieving live route schedule...
+            </Text>
+          </View>
+        ) : (
+          <>
+            {stopTimetable.map((item, index) => {
+              const isFirst = index === 0;
+              const isLast = index === stopTimetable.length - 1;
+
+              return (
+                <TouchableOpacity
+                  key={item.stop.Id || index}
+                  style={styles.stopRow}
+                  onPress={() => {
+                    snapTo(SNAP_PEEK);
+                    onStopPress(item.stop);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.timelineCol}>
+                    <View
                       style={[
-                        styles.stopDetail,
-                        { color: COLORS.textSecondary },
+                        styles.timelineLine,
+                        {
+                          backgroundColor: isDark
+                            ? "rgba(255, 255, 255, 0.2)"
+                            : "rgba(80, 0, 0, 0.15)",
+                          opacity: isFirst ? 0 : 1,
+                          flex: 1,
+                        },
                       ]}
-                    >
-                      Stop #{item.stop.StopCode || item.sequence}
-                    </Text>
+                    />
+                    <View
+                      style={[
+                        styles.timelineDot,
+                        {
+                          backgroundColor:
+                            item.etaLabel === "Now" || item.etaLabel === "Arriving"
+                              ? isDark
+                                ? "#FF8FA3"
+                                : "#500000"
+                              : isDark
+                                ? "#2A2A2A"
+                                : "#F0F0F0",
+                          borderColor: isDark ? "#FF8FA3" : "#500000",
+                          shadowColor: isDark ? "#FF8FA3" : "#500000",
+                        },
+                      ]}
+                    />
+                    <View
+                      style={[
+                        styles.timelineLine,
+                        {
+                          backgroundColor: isDark
+                            ? "rgba(255, 255, 255, 0.2)"
+                            : "rgba(80, 0, 0, 0.15)",
+                          opacity: isLast ? 0 : 1,
+                          flex: 1,
+                        },
+                      ]}
+                    />
                   </View>
-                  {formatDepartureList(item) ? (
-                    <View style={[styles.detailRow, { marginTop: 6 }]}>
-                      <Clock size={12} color={COLORS.textSecondary} />
-                      <Text
-                        style={[
-                          styles.stopDetail,
-                          { color: COLORS.textSecondary },
-                        ]}
-                      >
-                        {formatDepartureList(item)}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-                <View style={styles.etaContainer}>
-                  <Text
+                  <View
                     style={[
-                      styles.etaBox,
+                      styles.stopContent,
                       {
-                        backgroundColor: isDark
-                          ? "rgba(255, 143, 163, 0.15)"
-                          : "rgba(80, 0, 0, 0.1)",
-                        color: isDark ? "#FF8FA3" : "#500000",
+                        borderBottomColor: isLast
+                          ? "transparent"
+                          : isDark
+                            ? "rgba(255, 255, 255, 0.05)"
+                            : "rgba(0,0,0,0.06)",
                       },
                     ]}
                   >
-                    {item.etaLabel}
-                  </Text>
-                </View>
+                    <View style={{ flex: 1, paddingRight: 10 }}>
+                      <Text
+                        style={[styles.stopName, { color: COLORS.textPrimary }]}
+                      >
+                        {item.stop.Name}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.stopDetail,
+                          { color: COLORS.textSecondary, marginBottom: 6 },
+                        ]}
+                      >
+                        {item.detail}
+                      </Text>
+                      <View style={styles.detailRow}>
+                        <MapPin size={12} color={COLORS.textSecondary} />
+                        <Text
+                          style={[
+                            styles.stopDetail,
+                            { color: COLORS.textSecondary },
+                          ]}
+                        >
+                          Stop #{item.stop.StopCode || item.sequence}
+                        </Text>
+                      </View>
+                      {formatDepartureList(item) ? (
+                        <View style={[styles.detailRow, { marginTop: 6 }]}>
+                          <Clock size={12} color={COLORS.textSecondary} />
+                          <Text
+                            style={[
+                              styles.stopDetail,
+                              { color: COLORS.textSecondary },
+                            ]}
+                          >
+                            {formatDepartureList(item)}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <View style={styles.etaContainer}>
+                      <Text
+                        style={[
+                          styles.etaBox,
+                          {
+                            backgroundColor: isDark
+                              ? "rgba(255, 143, 163, 0.15)"
+                              : "rgba(80, 0, 0, 0.1)",
+                            color: isDark ? "#FF8FA3" : "#500000",
+                          },
+                        ]}
+                      >
+                        {item.etaLabel}
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+            {stopTimetable.length === 0 && (
+              <View style={styles.emptyState}>
+                <Clock
+                  size={40}
+                  color={isDark ? "#FF8FA3" : "#500000"}
+                  style={{ opacity: 0.8, marginBottom: 12 }}
+                />
+                <Text
+                  style={[styles.emptyStateText, { color: COLORS.textSecondary }]}
+                >
+                  {selectedRoute
+                    ? "No schedule available for this route."
+                    : "Select a route to view its timetable."}
+                </Text>
               </View>
-            </TouchableOpacity>
-          );
-        })}
-        {stopTimetable.length === 0 && (
-          <View style={styles.emptyState}>
-            <Clock
-              size={40}
-              color={isDark ? "#FF8FA3" : "#500000"}
-              style={{ opacity: 0.8, marginBottom: 12 }}
-            />
-            <Text
-              style={[styles.emptyStateText, { color: COLORS.textSecondary }]}
-            >
-              {selectedRoute
-                ? "No schedule available for this route."
-                : "Select a route to view its timetable."}
-            </Text>
-          </View>
+            )}
+          </>
         )}
       </ScrollView>
     </Animated.View>
@@ -502,5 +520,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginTop: 16,
     textAlign: "center",
+  },
+  loadingContainer: {
+    padding: 60,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: "700",
+    textAlign: "center",
+    letterSpacing: -0.2,
   },
 });

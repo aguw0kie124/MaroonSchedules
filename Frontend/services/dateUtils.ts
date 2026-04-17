@@ -24,3 +24,24 @@ export function formatLocalDate(dateStr: string): string {
     year: 'numeric'
   });
 }
+
+export function formatExactLocalTime(
+  value: Date | string | number | null | undefined,
+): string {
+  if (value == null) {
+    return '';
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return date
+    .toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+    })
+    .replace(/\s/g, '')
+    .toLowerCase();
+}

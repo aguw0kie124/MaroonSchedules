@@ -584,10 +584,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
     stopTimetable,
     allRouteBoards,
     filteredBusRoutes,
-    isFetchingBus,
-    setIsFetchingBus,
     getNearbyTransitInsight,
-    availableDirections
+    availableDirections,
+    routeTimetableState
   } = useBusTransit(activeLayer, mapRef);
 
   const memoizedBusMarkers = useMemo(() => {
@@ -2899,6 +2898,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
             setIsTimetableSheetOpen(false);
             handleStopPress(stop);
           }}
+          loading={routeTimetableState === "loading"}
         />
       )}
     </View>

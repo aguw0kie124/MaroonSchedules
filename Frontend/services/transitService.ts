@@ -13,6 +13,7 @@ const VEHICLE_TTL = 1000 * 5; // 5 seconds (internal buffer)
  */
 const TRANSIT_FETCH_TIMEOUT_MS = 30000;
 const TRANSIT_LIVE_TIMEOUT_MS = 15000;
+const TRANSIT_TRIP_PLAN_TIMEOUT_MS = 12000;
 
 export interface BusRoute {
     id: string;
@@ -51,6 +52,7 @@ export const transitService = {
     vehicleCache: new Map<string, CacheEntry<any[]>>(),
     ongoingVehicleRequests: new Map<string, Promise<any[]>>(),
     timetableCache: new Map<string, CacheEntry<any[]>>(),
+    prewarmPromise: null as Promise<void> | null,
 
     /**
      * Initializes authentication for MaroonRides/AggieSpirit
@@ -288,7 +290,7 @@ export const transitService = {
         return stops;
     },
 
-    async getRouteTimetable(routeId: string, maxStops = 12): Promise<any[]> {
+    async getRouteTimetable(routeId: string, maxStops = 200): Promise<any[]> {
         const now = Date.now();
         const cacheKey = `${routeId}:${maxStops}`;
         const cached = this.timetableCache.get(cacheKey);
@@ -311,6 +313,92 @@ export const transitService = {
             console.warn('[TransitService] Error fetching timetable:', error);
             return cached?.data || [];
         }
+    },
+
+    async getTransitTimetableDb(stopCode: string, routeNumber: string = '', startTime?: string): Promise<any[]> {
+        try {
+            const query = `route_number=${encodeURIComponent(routeNumber)}${startTime ? `&start_time=${encodeURIComponent(startTime)}` : ''}`;
+            const response = await apiFetch(
+                `/traffic/transit/timetable/db/${encodeURIComponent(stopCode)}?${query}`,
+                {},
+                TRANSIT_TRIP_PLAN_TIMEOUT_MS,
+            );
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const payload = await response.json();
+            return Array.isArray(payload?.scheduled_times) ? payload.scheduled_times : [];
+        } catch (error) {
+            console.warn('[TransitService] Error fetching DB timetable:', error);
+            return [];
+        }
+    },
+
+    async getTransitTripPlanDb(
+        originStopCode: string,
+        dest_stop_code: string,
+        routeNumber: string,
+        departureTime: string,
+        timingMode: string = 'leave_at',
+        minimum_travel_minutes: number = 0,
+    ): Promise<any> {
+        const [plan] = await this.getBulkTransitTripPlanDb([{
+            origin_stop_code: originStopCode,
+            dest_stop_code,
+            route_number: routeNumber,
+            departure_time: departureTime,
+            timing_mode: timingMode,
+            minimum_travel_minutes
+        }]);
+        return plan;
+    },
+
+    async getBulkTransitTripPlanDb(items: any[]): Promise<any[]> {
+        if (!items.length) return [];
+        try {
+            const response = await apiFetch(
+                '/traffic/transit/trip-plan/bulk',
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ items })
+                },
+                TRANSIT_TRIP_PLAN_TIMEOUT_MS,
+            );
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            return data.plans || [];
+        } catch (error) {
+            console.warn('[TransitService] Error fetching bulk DB trip plan:', error);
+            return items.map(() => null);
+        }
+    },
+
+    async prewarmRoutesAndPatterns(): Promise<void> {
+        if (this.prewarmPromise) {
+            return this.prewarmPromise;
+        }
+
+        this.prewarmPromise = (async () => {
+            try {
+                const { routes, activeIds } = await this.getTransitRoutes();
+                const preferredRoutes = routes.filter((route: any) =>
+                    activeIds.includes(route.ShortName) ||
+                    activeIds.includes(route.Key) ||
+                    activeIds.includes(route.Name),
+                );
+                const routesToWarm = (preferredRoutes.length > 0 ? preferredRoutes : routes)
+                    .slice(0, 24)
+                    .map((route: any) => route.Key)
+                    .filter(Boolean);
+
+                if (routesToWarm.length > 0) {
+                    await this.getBulkRoutePatterns(routesToWarm);
+                }
+            } catch (error) {
+                console.warn('[TransitService] Transit prewarm failed:', error);
+            }
+        })();
+
+        return this.prewarmPromise;
     },
 
     getRouteColor(routeId?: string): string {

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { transitService } from "../../services/transitService";
+import { formatExactLocalTime } from "../../services/dateUtils";
 import { ALL_BUS_ROUTES_KEY } from "./types";
 import {
   haversineDistanceMeters,
@@ -33,9 +34,18 @@ export function useBusTransit(
   const [selectedDirection, setSelectedDirection] = useState<'inbound' | 'outbound' | 'All'>('All');
   const [nearestBusInfo, setNearestBusInfo] = useState<string | null>(null);
   const [routeTimetableEntries, setRouteTimetableEntries] = useState<any[]>([]);
+  const [routeTimetableState, setRouteTimetableState] = useState<
+    'idle' | 'loading' | 'loaded' | 'error'
+  >('idle');
 
   const busPollInterval = useRef<any>(null);
   const isFetchingRef = useRef(false);
+
+  useEffect(() => {
+    transitService.prewarmRoutesAndPatterns().catch((error) => {
+      console.warn("[Transit] Background prewarm failed:", error);
+    });
+  }, []);
 
   const isAllBusRoutesSelected =
     !selectedBusRouteId || selectedBusRouteId === ALL_BUS_ROUTES_KEY;
@@ -116,31 +126,6 @@ export function useBusTransit(
     return matches;
   }, [busRouteOptions, routeSearchQuery]);
 
-  const loadAllBusRoutes = useCallback(async (routesToLoad: any[]) => {
-    if (!routesToLoad.length) {
-      setAllRoutePatternsById({});
-      setBusVehicles([]);
-      return;
-    }
-
-    // Initial vehicles fetch to show something quickly
-    transitService.getVehicles().then((v) => {
-      stabilizedSetBusVehicles(v);
-    });
-
-    // Load patterns in bulk for high performance
-    transitService.getBulkRoutePatterns(routesToLoad.map(r => r.Key)).then(results => {
-      setAllRoutePatternsById(results);
-    }).catch(err => {
-      console.warn("[Transit] Bulk pattern load failed:", err);
-    });
-
-
-    setBusStops([]);
-    setRoutePatterns([]);
-    setRoutePaths([]);
-  }, [mapRef, stabilizedSetBusVehicles]);
-
   // Handle flickering stabilization
   const emptyUpdateCountRef = useRef(0);
   const lastValidVehiclesRef = useRef<any[]>([]);
@@ -162,6 +147,30 @@ export function useBusTransit(
     }
   }, []);
 
+  const loadAllBusRoutes = useCallback(async (routesToLoad: any[]) => {
+    if (!routesToLoad.length) {
+      setAllRoutePatternsById({});
+      setBusVehicles([]);
+      return;
+    }
+
+    // Initial vehicles fetch to show something quickly.
+    transitService.getVehicles().then((v) => {
+      stabilizedSetBusVehicles(v);
+    });
+
+    // Load patterns in bulk for high performance.
+    transitService.getBulkRoutePatterns(routesToLoad.map((r) => r.Key)).then((results) => {
+      setAllRoutePatternsById(results);
+    }).catch((err) => {
+      console.warn("[Transit] Bulk pattern load failed:", err);
+    });
+
+    setBusStops([]);
+    setRoutePatterns([]);
+    setRoutePaths([]);
+  }, [stabilizedSetBusVehicles]);
+
   useEffect(() => {
     if (busVehicles.length > 0) {
       lastValidVehiclesRef.current = busVehicles;
@@ -176,6 +185,7 @@ export function useBusTransit(
       setSelectedStop(null);
       setSelectedBus(null);
       setRouteTimetableEntries([]);
+      setRouteTimetableState(routeId === ALL_BUS_ROUTES_KEY ? 'idle' : 'loading');
 
       if (routeId === ALL_BUS_ROUTES_KEY) {
         await loadAllBusRoutes(availableRoutes);
@@ -359,6 +369,7 @@ export function useBusTransit(
       setSelectedBus(null);
       setSelectedStop(null);
       setRouteTimetableEntries([]);
+      setRouteTimetableState('idle');
     }
   }, [activeLayer]);
 
@@ -367,19 +378,24 @@ export function useBusTransit(
 
     if (activeLayer !== "Bus" || !selectedRoute || isAllBusRoutesSelected) {
       setRouteTimetableEntries([]);
+      setRouteTimetableState('idle');
       return;
     }
 
-    transitService.getRouteTimetable(selectedRoute.Key, 12)
+    setRouteTimetableState('loading');
+
+    transitService.getRouteTimetable(selectedRoute.Key, 200)
       .then((entries) => {
         if (!cancelled) {
           setRouteTimetableEntries(entries);
+          setRouteTimetableState('loaded');
         }
       })
       .catch((error) => {
         console.warn("[Transit] Timetable fetch failed:", error);
         if (!cancelled) {
           setRouteTimetableEntries([]);
+          setRouteTimetableState('error');
         }
       });
 
@@ -441,6 +457,16 @@ export function useBusTransit(
       return [];
     }
 
+    if (routeTimetableState === 'loading' || routeTimetableState === 'idle') {
+      return busStops.map((stop, index) => ({
+        stop,
+        sequence: index + 1,
+        etaLabel: '...',
+        detail: 'Loading route schedule',
+        departures: [],
+      }));
+    }
+
     if (routeTimetableEntries.length > 0) {
       return routeTimetableEntries.map((entry, index) => {
         const departures = Array.isArray(entry.departures) ? entry.departures : [];
@@ -458,58 +484,29 @@ export function useBusTransit(
           stop,
           sequence: entry.sequence ?? index + 1,
           etaLabel: primaryTime
-            ? primaryTime.toLocaleTimeString('en-US', {
-                hour: 'numeric',
-                minute: '2-digit',
-              })
+            ? formatExactLocalTime(primaryTime)
             : 'No times',
-          detail: nextDeparture?.is_realtime
-            ? 'Live departure board'
-            : 'Scheduled departure board',
+          detail: primaryTime
+            ? nextDeparture?.is_realtime
+              ? 'Live departure board'
+              : 'Scheduled departure board'
+            : 'No scheduled departures',
           departures,
         };
       });
     }
 
-    return busStops.slice(0, 12).map((stop, index) => {
-      if (busVehicles.length === 0) {
-        return {
-          stop,
-          sequence: index + 1,
-          etaLabel: "Route loaded",
-          detail: "ETA pending",
-        };
-      }
-
-      const rankedBuses = busVehicles
-        .map((bus) => ({
-          bus,
-          etaMinutes: getApproximateEtaMinutes(routePatterns, stop, bus),
-        }))
-        .sort((left, right) => left.etaMinutes - right.etaMinutes);
-      const nextBus = rankedBuses[0];
-
-      if (!nextBus) {
-        return {
-          stop,
-          sequence: index + 1,
-          etaLabel: "No estimate",
-          detail: "Live feed unavailable",
-        };
-      }
-
-      return {
-        stop,
-        sequence: index + 1,
-        etaLabel:
-          nextBus.etaMinutes <= 1 ? "Now" : `${nextBus.etaMinutes} min`,
-        detail: nextBus.bus.RouteShortName
-          ? `Route ${nextBus.bus.RouteShortName}`
-          : nextBus.bus.Name || "Live bus",
-        departures: [],
-      };
-    });
-  }, [activeLayer, busStops, busVehicles, routePatterns, routeTimetableEntries, selectedRoute]);
+    return busStops.map((stop, index) => ({
+      stop,
+      sequence: index + 1,
+      etaLabel: 'No times',
+      detail:
+        routeTimetableState === 'error'
+          ? 'Schedule unavailable'
+          : 'No scheduled departures',
+      departures: [],
+    }));
+  }, [activeLayer, busStops, routeTimetableEntries, routeTimetableState, selectedRoute]);
 
   // All-routes board for overview mode
   const allRouteBoards = useMemo(() => {
@@ -645,6 +642,7 @@ export function useBusTransit(
     filteredBusRoutes,
     isFetchingBus,
     setIsFetchingBus,
-    availableDirections
+    availableDirections,
+    routeTimetableState
   };
 }
