@@ -10,7 +10,6 @@ import {
   Modal,
   PanResponder,
   Platform,
-  LayoutAnimation,
   Pressable,
   RefreshControl,
   Image,
@@ -20,21 +19,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { 
-  GestureHandlerRootView, 
-  PanGestureHandler, 
-  State,
-  Gesture,
-  GestureDetector
-} from 'react-native-gesture-handler';
-import AnimatedReanimated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withSpring, 
-  runOnJS,
-  interpolate,
-  Extrapolate
-} from 'react-native-reanimated';
 import { useNavigation } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import * as Haptics from 'expo-haptics';
@@ -52,7 +36,6 @@ import {
   Heart,
   HeartPulse,
   Inbox,
-  Layers,
   Map,
   MapPin,
   Megaphone,
@@ -878,7 +861,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const hasSelectedCategory = selectedCategories.size > 0;
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
   const [detailEvent, setDetailEvent] = useState<TAMUEvent | null>(null);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [swipeIndex, setSwipeIndex] = useState(0);
@@ -898,7 +880,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     saveEvent,
     unsaveEvent,
     dislikedEventIds: persistedDislikedEventIds,
-    dislikeEvent: storeDislikeEvent,
+    dislikeEvent,
     removeIdsFromDisliked,
     clearDisliked,
     receivedInvites: persistedReceivedInvites,
@@ -907,10 +889,10 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     deselectedCategories,
     toggleCategoryDeselection,
   } = useEventStore();
-  const scheduledEvents = persistedScheduledEvents || [];
-  const savedEventIds = persistedSavedEventIds || [];
-  const dislikedEventIds = persistedDislikedEventIds || [];
-  const receivedInvites = persistedReceivedInvites || [];
+  const scheduledEvents = persistedScheduledEvents;
+  const savedEventIds = persistedSavedEventIds;
+  const dislikedEventIds = persistedDislikedEventIds;
+  const receivedInvites = persistedReceivedInvites;
 
   const pan = useRef(new Animated.ValueXY()).current;
   const opacity = useRef(new Animated.Value(1)).current;
@@ -1201,7 +1183,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     }
 
     next = next.filter((event) => !dislikedEventIds.includes(String(event.id)));
-    next = next.filter((event) => !scheduledEvents.some((s) => String(s.id) === String(event.id)));
 
     if (isForYouSelected) {
       next = [...next].sort((a, b) => {
@@ -1256,10 +1237,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     selectedMajor,
     socialMode,
     standardSelectedCategories,
-    scheduledEvents,
   ]);
 
-  const discoverEvents = useMemo(() => filteredUpcomingEvents, [filteredUpcomingEvents]);
+  const discoverEvents = useMemo(() => filteredUpcomingEvents.slice(0, 8), [filteredUpcomingEvents]);
   const collapsedCategories = useMemo(() => ALL_CATEGORIES.slice(0, 5), []);
 
   const swipeDeck = useMemo(() => {
@@ -1319,7 +1299,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const handleSchedule = useCallback(
     async (event: TAMUEvent) => {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       if (!user) {
         promptGuestLogin(
           navigation,
@@ -1346,6 +1325,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             console.warn('[Events] RSVP remove error:', error);
           }
         }
+        triggerRewardToast('Removed from your plans', 'No problem. You can always add it back later.');
         return;
       }
       const scheduled: ScheduledEvent = {
@@ -1404,6 +1384,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           console.warn('[Events] RSVP error:', error);
         }
       }
+      triggerRewardToast('Added to your schedule', 'Nice. We will keep this one easy to come back to.');
+      Alert.alert('Successfully RSVPed', `${event.title} is now in your schedule.`);
     },
     [activeTargetName, advanceStep, navigation, removeScheduledEvent, scheduleEvent, scheduledEvents, triggerRewardToast, user],
   );
@@ -1457,9 +1439,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       if (savedEventIds.includes(id)) {
         unsaveEvent(id);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
+        triggerRewardToast('Saved event removed', 'Your shortlist just got a little cleaner.');
       } else {
         saveEvent(id);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => { });
+        triggerRewardToast('Saved for later', 'Good pick. This one is waiting for you.');
       }
     },
     [navigation, saveEvent, savedEventIds, triggerRewardToast, unsaveEvent, user],
@@ -1593,25 +1577,15 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     [clearDisliked, dislikedEventIds, personalizedEvents, removeIdsFromDisliked],
   );
 
-  const dislikeEvent = useCallback(
-    (eventId: string) => {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      storeDislikeEvent(eventId);
-    },
-    [storeDislikeEvent],
-  );
-
   const renderHeader = (title: string) => (
     <View style={s.headerBlock}>
       <View style={s.headerTopRow}>
         <View style={{ flex: 1 }}>
           <Text style={s.pageTitle}>{title}</Text>
         </View>
-        <View style={s.headerRightActions}>
-          <Pressable style={s.headerIconButton} onPress={() => setSettingsVisible(true)}>
-            <Filter size={24} color={COLORS.textPrimary} strokeWidth={2.2} />
-          </Pressable>
-        </View>
+        <Pressable style={s.headerIconButton} onPress={() => setSettingsVisible(true)}>
+          <Funnel size={24} color={COLORS.textPrimary} strokeWidth={2.2} />
+        </Pressable>
       </View>
 
       <View style={s.modeTabs}>
@@ -1619,7 +1593,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           { id: 'discover', label: 'Discover' },
           { id: 'list', label: 'List' },
         ] as const).map((tab) => {
-          const active = view === tab.id || (tab.id === 'discover' && view === 'swipe');
+          const active = view === tab.id;
           const tabItem = (
             <Pressable
               key={tab.id}
@@ -1656,193 +1630,144 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     </View>
   );
 
-  const renderHorizontalDiscover = () => (
-    <View style={s.discoverLayout}>
-      <ScrollView
-        style={s.discoverScroll}
-        contentContainerStyle={s.scrollContent}
-        showsVerticalScrollIndicator={false}
-        nestedScrollEnabled
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
-      >
-        <View style={s.categoryWrap}>
-          {categoriesExpanded ? (
-            <>
-              <View style={s.categoryHeaderRow}>
-                <Text style={s.categorySectionLabel}>Filters</Text>
-                <Pressable onPress={() => setCategoriesExpanded(false)}>
-                  <Text style={s.categoryToggleText}>Less</Text>
-                </Pressable>
-              </View>
-              <View style={s.categoryExpandedGrid}>
-                {ALL_CATEGORIES.map((category) => (
-                  <CategoryChip
-                    key={category}
-                    category={category}
-                    count={categoryCounts[category] || 0}
-                    active={selectedCategories.has(category)}
-                    dimmed={hasSelectedCategory && !selectedCategories.has(category)}
-                    onPress={() => toggleCategory(category)}
-                  />
-                ))}
-              </View>
-            </>
-          ) : (
-            <>
-              <View style={s.categoryHeaderRow}>
-                <Text style={s.categorySectionLabel}>Filters</Text>
-                <Pressable onPress={() => setCategoriesExpanded(true)}>
-                  <Text style={s.categoryToggleText}>More</Text>
-                </Pressable>
-              </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={s.categoryCollapsedRow}
-              >
-                {collapsedCategories.map((category) => (
-                  <CategoryChip
-                    key={category}
-                    category={category}
-                    count={categoryCounts[category] || 0}
-                    active={selectedCategories.has(category)}
-                    dimmed={hasSelectedCategory && !selectedCategories.has(category)}
-                    onPress={() => toggleCategory(category)}
-                  />
-                ))}
-              </ScrollView>
-            </>
-          )}
-        </View>
-
-        <View style={s.inlineControls}>
-          {selectedCategories.has('Social') ? (
-            <View style={s.socialModeWrap}>
-              {(['casual', 'professional'] as SocialMode[]).map((mode) => (
-                <Pressable
-                  key={mode}
-                  style={[s.socialModePill, socialMode === mode && s.socialModePillActive]}
-                  onPress={() => setSocialMode(mode)}
-                >
-                  <Text
-                    style={[
-                      s.socialModeText,
-                      socialMode === mode && s.socialModeTextActive,
-                    ]}
-                  >
-                    {mode === 'casual' ? 'Casual' : 'Professional'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-        </View>
-
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          nestedScrollEnabled
-          directionalLockEnabled
-          contentContainerStyle={s.heroRail}
-          snapToOffsets={discoverEvents.map((_, index) => index * HERO_CARD_SNAP_INTERVAL)}
-          snapToAlignment="start"
-          disableIntervalMomentum
-          decelerationRate="fast"
-        >
-          {discoverEvents.map((event, i) => (
-            <StaggeredReveal key={String(event.id)} index={i}>
-              <View
-                style={{ marginRight: i === discoverEvents.length - 1 ? 0 : HERO_CARD_GAP }}
-              >
-                <HeroEventCard
-                  event={event}
-                  scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
-                  onSchedule={() => handleSchedule(event)}
-                  onPress={() => setDetailEvent(event)}
-                  onMap={() => handleMapOpen(event)}
-                />
-              </View>
-            </StaggeredReveal>
-          ))}
-        </ScrollView>
-      </ScrollView>
-    </View>
-  );
-
-  const renderVerticalFeed = () => (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <View style={s.swipeWrap}>
-        {swipeDeck.length === 0 ? (
-          <View style={s.emptyState}>
-            <Text style={s.emptyTitle}>No discovery events</Text>
-            <Text style={s.emptySubtitle}>Try clearing your filters or hidden events</Text>
-          </View>
-        ) : (
-          <SwipeableHeroCard
-            key={activeSwipeEvent?.id}
-            event={activeSwipeEvent!}
-            onSwipeLeft={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              storeDislikeEvent(String(activeSwipeEvent!.id));
-              setSwipeIndex((prev) => (prev + 1) % swipeDeck.length);
-            }}
-            onSwipeRight={() => {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              handleSchedule(activeSwipeEvent!);
-              setSwipeIndex((prev) => (prev + 1) % swipeDeck.length);
-            }}
-            onPress={() => setDetailEvent(activeSwipeEvent)}
-          />
-        )}
-
-        <View style={s.swipeIndicators}>
-          <Text style={s.swipeHint}>Swipe left to skip · Right to RSVP</Text>
-          <View style={s.swipeDots}>
-            {swipeDeck.slice(0, 10).map((_, i) => (
-              <View
-                key={i}
-                style={[
-                  s.swipeDot,
-                  i === swipeIndex % 10 && { backgroundColor: COLORS.primary, width: 14 }
-                ]}
-              />
-            ))}
-          </View>
-        </View>
-      </View>
-    </GestureHandlerRootView>
-  );
-
   return (
     <View style={s.container}>
       <WallpaperWrapper>
+        <EventRewardToast
+          visible={!!rewardToast}
+          title={rewardToast?.title || ''}
+          body={rewardToast?.body || ''}
+        />
         {view === 'discover' && (
           <>
             {renderHeader('Events')}
-            {loading ? (
-              <View style={s.loadingWrap}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={s.loadingText}>Loading campus events...</Text>
-              </View>
-            ) : (
-              renderHorizontalDiscover()
-            )}
-          </>
-        )}
 
-        {view === 'swipe' && (
-          <>
-            {renderHeader('Events')}
-            {loading ? (
-              <View style={s.loadingWrap}>
-                <ActivityIndicator size="large" color={COLORS.primary} />
-                <Text style={s.loadingText}>Loading campus events...</Text>
-              </View>
-            ) : (
-              renderVerticalFeed()
-            )}
-          </>
-        )}
+
+          {loading ? (
+            <View style={s.loadingWrap}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+              <Text style={s.loadingText}>Loading campus events...</Text>
+            </View>
+          ) : (
+            <View style={s.discoverLayout}>
+              <ScrollView
+                style={s.discoverScroll}
+                contentContainerStyle={s.scrollContent}
+                showsVerticalScrollIndicator={false}
+                nestedScrollEnabled
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={COLORS.primary} />}
+              >
+
+
+                <View style={s.categoryWrap}>
+                    {categoriesExpanded ? (
+                    <>
+                      <View style={s.categoryHeaderRow}>
+                        <Text style={s.categorySectionLabel}>Filters</Text>
+                        <Pressable onPress={() => setCategoriesExpanded(false)}>
+                          <Text style={s.categoryToggleText}>Less</Text>
+                        </Pressable>
+                      </View>
+                      <View style={s.categoryExpandedGrid}>
+                        {ALL_CATEGORIES.map((category) => (
+                          <CategoryChip
+                            key={category}
+                            category={category}
+                            count={categoryCounts[category] || 0}
+                            active={selectedCategories.has(category)}
+                            dimmed={hasSelectedCategory && !selectedCategories.has(category)}
+                            onPress={() => toggleCategory(category)}
+                          />
+                        ))}
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <View style={s.categoryHeaderRow}>
+                        <Text style={s.categorySectionLabel}>Filters</Text>
+                        <Pressable onPress={() => setCategoriesExpanded(true)}>
+                          <Text style={s.categoryToggleText}>More</Text>
+                        </Pressable>
+                      </View>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={s.categoryCollapsedRow}
+                      >
+                        {collapsedCategories.map((category) => (
+                          <CategoryChip
+                            key={category}
+                            category={category}
+                            count={categoryCounts[category] || 0}
+                            active={selectedCategories.has(category)}
+                            dimmed={hasSelectedCategory && !selectedCategories.has(category)}
+                            onPress={() => toggleCategory(category)}
+                          />
+                        ))}
+                      </ScrollView>
+                    </>
+                  )}
+                </View>
+
+                <View style={s.inlineControls}>
+                  {selectedCategories.has('Social') ? (
+                    <View style={s.socialModeWrap}>
+                      {(['casual', 'professional'] as SocialMode[]).map((mode) => (
+                        <Pressable
+                          key={mode}
+                          style={[s.socialModePill, socialMode === mode && s.socialModePillActive]}
+                          onPress={() => setSocialMode(mode)}
+                        >
+                          <Text
+                            style={[
+                              s.socialModeText,
+                              socialMode === mode && s.socialModeTextActive,
+                            ]}
+                          >
+                            {mode === 'casual' ? 'Casual' : 'Professional'}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  nestedScrollEnabled
+                  directionalLockEnabled
+                  contentContainerStyle={s.heroRail}
+                  snapToOffsets={discoverEvents.map((_, index) => index * HERO_CARD_SNAP_INTERVAL)}
+                  snapToAlignment="start"
+                  disableIntervalMomentum
+                  decelerationRate="fast"
+                >
+                  {discoverEvents.map((event, i) => {
+                    const card = (
+                      <StaggeredReveal key={String(event.id)} index={i}>
+                        <View
+                          style={{ marginRight: i === discoverEvents.length - 1 ? 0 : HERO_CARD_GAP }}
+                        >
+                          <HeroEventCard
+                            event={event}
+
+                            scheduled={scheduledEvents.some((scheduled) => String(scheduled.id) === String(event.id))}
+                            onSchedule={() => handleSchedule(event)}
+                            onPress={() => setDetailEvent(event)}
+                            onMap={() => handleMapOpen(event)}
+                          />
+                        </View>
+                      </StaggeredReveal>
+                    );
+                    return card;
+                  })}
+                </ScrollView>
+              </ScrollView>
+            </View>
+          )}
+        </>
+      )}
 
       {view === 'list' && (
         <>
@@ -2045,9 +1970,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         dislikedEventIds={dislikedEventIds}
         events={personalizedEvents}
         onRestoreCategory={handleRestoreCategory}
-        scheduledEvents={scheduledEvents}
-        onPress={(ev) => setDetailEvent(ev)}
-        onSchedule={handleSchedule}
       />
 
       <DetailModal
@@ -2114,125 +2036,16 @@ function CategoryChip({
   );
 }
 
-function SwipeableHeroCard({
-  event,
-  scheduled,
-  onSchedule,
-  onPress,
-  onMap,
-  onDislike,
-}: {
-  event: TAMUEvent;
-  scheduled: boolean;
-  onSchedule: () => void;
-  onPress: () => void;
-  onMap: () => void;
-  onDislike: () => void;
-}) {
-  const translateX = useSharedValue(0);
-  const opacity = useSharedValue(1);
-  const isDark = useAppShellStore(s => s.theme === 'dark');
-
-  const panGesture = Gesture.Pan()
-    .onUpdate((e) => {
-      translateX.value = e.translationX;
-    })
-    .onEnd((e) => {
-      if (e.translationX > 100) {
-        runOnJS(LayoutAnimation.configureNext)(LayoutAnimation.Presets.easeInEaseOut);
-        translateX.value = withSpring(SCREEN_WIDTH);
-        opacity.value = withSpring(0);
-        runOnJS(onSchedule)();
-      } else if (e.translationX < -100) {
-        runOnJS(LayoutAnimation.configureNext)(LayoutAnimation.Presets.easeInEaseOut);
-        translateX.value = withSpring(-SCREEN_WIDTH);
-        opacity.value = withSpring(0);
-        runOnJS(onDislike)();
-      } else {
-        translateX.value = withSpring(0);
-      }
-    });
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-    opacity: opacity.value,
-  }));
-
-  const leftIndicatorStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(translateX.value, [20, 80], [0, 1], Extrapolate.CLAMP),
-    transform: [{ scale: interpolate(translateX.value, [20, 80], [0.6, 1], Extrapolate.CLAMP) }],
-  }));
-
-  const rightIndicatorStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(translateX.value, [-80, -20], [1, 0], Extrapolate.CLAMP),
-    transform: [{ scale: interpolate(translateX.value, [-80, -20], [1, 0.6], Extrapolate.CLAMP) }],
-  }));
-
-  return (
-    <GestureDetector gesture={panGesture}>
-      <AnimatedReanimated.View style={[animatedStyle, { position: 'relative', width: HERO_CARD_WIDTH, alignSelf: 'center' }]}>
-        <AnimatedReanimated.View 
-          style={[
-            {
-              position: 'absolute',
-              left: -60,
-              top: '50%',
-              marginTop: -30,
-              width: 60,
-              height: 60,
-              borderRadius: 30,
-              backgroundColor: '#3CCB6C',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 10,
-            },
-            leftIndicatorStyle
-          ]}
-        >
-          <Check size={32} color="#FFFFFF" strokeWidth={3} />
-        </AnimatedReanimated.View>
-
-        <AnimatedReanimated.View 
-          style={[
-            {
-              position: 'absolute',
-              right: -60,
-              top: '50%',
-              marginTop: -30,
-              width: 60,
-              height: 60,
-              borderRadius: 30,
-              backgroundColor: '#FF4D6D',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 10,
-            },
-            rightIndicatorStyle
-          ]}
-        >
-          <XIcon size={32} color="#FFFFFF" strokeWidth={3} />
-        </AnimatedReanimated.View>
-
-        <HeroEventCard
-          event={event}
-          scheduled={scheduled}
-          onSchedule={onSchedule}
-          onPress={onPress}
-          onMap={onMap}
-        />
-      </AnimatedReanimated.View>
-    </GestureDetector>
-  );
-}
-
 function HeroEventCard({
   event,
+
   scheduled,
   onSchedule,
   onPress,
   onMap,
 }: {
   event: TAMUEvent;
+
   scheduled: boolean;
   onSchedule: () => void;
   onPress: () => void;
@@ -2242,6 +2055,12 @@ function HeroEventCard({
   const meta = CATEGORY_META[category];
   const Icon = meta.icon;
   const eventImage = getEventImage(event as any);
+
+  // DEBUG: remove after fixing
+  if (!eventImage) {
+    const { classifyCategory: cc } = require('./events/EventUtils');
+    console.log('NO IMAGE:', event.title, '| category:', cc(event), '| has categories:', !!event.categories);
+  }
 
   return (
     <Pressable
@@ -2469,9 +2288,6 @@ function SettingsModal({
   dislikedEventIds,
   events,
   onRestoreCategory,
-  scheduledEvents,
-  onPress,
-  onSchedule,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -2485,12 +2301,8 @@ function SettingsModal({
   dislikedEventIds: string[];
   events: TAMUEvent[];
   onRestoreCategory: (category?: ExploreCategory) => void;
-  scheduledEvents: TAMUEvent[];
-  onPress: (event: TAMUEvent) => void;
-  onSchedule: (event: TAMUEvent) => void;
 }) {
-  const { COLORS, theme } = useTheme();
-  const isDark = theme === 'dark';
+  const { COLORS } = useTheme();
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -2502,62 +2314,8 @@ function SettingsModal({
           ]}
           onPress={() => { }}
         >
-          <Text style={[stylesStatic.modalTitle, { color: COLORS.textPrimary }]}>Filters</Text>
           <ScrollView showsVerticalScrollIndicator={false}>
-            {(scheduledEvents?.length || 0) > 0 && (
-              <>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
-                  <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 0 }]}>
-                    Saved Events ({scheduledEvents?.length || 0})
-                  </Text>
-                </View>
-                <ScrollView 
-                  horizontal 
-                  showsHorizontalScrollIndicator={false} 
-                  style={{ marginHorizontal: -20, paddingHorizontal: 20 }}
-                  contentContainerStyle={{ gap: 12, paddingBottom: 12 }}
-                >
-                  {(scheduledEvents || []).map((event) => (
-                    <Pressable
-                      key={String(event?.id)}
-                      onPress={() => {
-                        onClose();
-                        onPress(event);
-                      }}
-                      style={{
-                        width: 240,
-                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
-                        borderRadius: 18,
-                        padding: 14,
-                        gap: 8,
-                      }}
-                    >
-                      <Text style={{ color: COLORS.textPrimary, fontWeight: '800', fontSize: 13 }} numberOfLines={2}>
-                        {event?.title}
-                      </Text>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Text style={{ color: COLORS.textSecondary, fontSize: 11, fontWeight: '600' }}>
-                          {formatDate(event?.date_ts)}
-                        </Text>
-                        <Pressable 
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            onSchedule(event);
-                          }}
-                          style={{
-                            padding: 6,
-                            borderRadius: 10,
-                            backgroundColor: 'rgba(255,77,109,0.1)',
-                          }}
-                        >
-                          <Trash2 size={14} color="#FF4D6D" />
-                        </Pressable>
-                      </View>
-                    </Pressable>
-                  ))}
-                </ScrollView>
-              </>
-            )}
+            <Text style={[stylesStatic.modalTitle, { color: COLORS.textPrimary }]}>Filters</Text>
 
             {selectedCategories.has('Social') ? (
               <>
@@ -2639,9 +2397,9 @@ function SettingsModal({
                 Restore all hidden events
               </Text>
             </Pressable>
-            {(ALL_CATEGORIES || []).map((category) => {
-              const count = (dislikedEventIds || []).filter((id) => {
-                const event = (events || []).find((candidate) => String(candidate?.id) === id);
+            {ALL_CATEGORIES.map((category) => {
+              const count = dislikedEventIds.filter((id) => {
+                const event = events.find((candidate) => String(candidate.id) === id);
                 return event && classifyCategory(event) === category;
               }).length;
               if (!count) return null;
@@ -3095,8 +2853,6 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: 12,
-      paddingHorizontal: 20,
     },
     categorySectionLabel: {
       color: COLORS.textSecondary,
@@ -3111,20 +2867,17 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       fontWeight: '900',
     },
     categoryCollapsedRow: {
-      paddingHorizontal: 20,
-      paddingBottom: 8,
       gap: 10,
+      paddingRight: 10,
     },
     categoryExpandedGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: 10,
-      paddingHorizontal: 20,
     },
     inlineControls: {
       marginTop: 10,
       gap: 10,
-      paddingHorizontal: 20,
     },
     inlineControl: {
       borderRadius: 16,
