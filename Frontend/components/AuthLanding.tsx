@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,6 @@ import { useOAuth, useSignIn, useSignUp } from '@clerk/clerk-expo';
 import * as Linking from 'expo-linking';
 import {
   ArrowLeft,
-  ArrowRight,
   GraduationCap,
   Hash,
   KeyRound,
@@ -27,7 +26,7 @@ import {
   UserPlus,
 } from 'lucide-react-native';
 
-import { COLORS, SPACING, TYPOGRAPHY } from '../constants';
+import { COLORS, TYPOGRAPHY } from '../constants';
 import { GoogleIcon } from './common/CustomIcons';
 import { ScalePressable } from './common/Motion';
 import { useSessionStore } from '../store/sessionStore';
@@ -43,31 +42,6 @@ type AuthFlow =
   | 'reset_password';
 
 type AccountMode = 'user' | 'admin';
-
-type ModeConfig = {
-  mode: AccountMode;
-  title: string;
-  subtitle: string;
-  eyebrow: string;
-  icon: React.ComponentType<{ size?: number; color?: string }>;
-};
-
-const MODE_CONFIG: Record<AccountMode, ModeConfig> = {
-  user: {
-    mode: 'user',
-    title: 'Student Access',
-    subtitle: 'Events, schedules, places, and campus tools in one clean flow.',
-    eyebrow: 'Campus Life',
-    icon: GraduationCap,
-  },
-  admin: {
-    mode: 'admin',
-    title: 'Admin Access',
-    subtitle: 'Post and manage featured campus events with organizer tools.',
-    eyebrow: 'Organizer Portal',
-    icon: ShieldCheck,
-  },
-};
 
 export function AuthLanding() {
   const { startOAuthFlow: startGoogleOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
@@ -88,8 +62,6 @@ export function AuthLanding() {
   const [code, setCode] = useState('');
 
   const selectedMode: AccountMode = authMode === 'admin' ? 'admin' : 'user';
-  const modeConfig = MODE_CONFIG[selectedMode];
-
   const getAuthErrorMessage = (_flow: string, err: any) =>
     err?.errors?.[0]?.longMessage ||
     err?.errors?.[0]?.message ||
@@ -256,33 +228,9 @@ export function AuthLanding() {
 
   const googleFlow = selectedMode === 'admin' ? 'admin' : 'tamu';
   const appleFlow = selectedMode === 'admin' ? 'adminApple' : 'apple';
-  const primaryCtaLabel = selectedMode === 'admin' ? 'Continue as admin' : 'Sign up free';
-  const primaryCtaCaption =
-    selectedMode === 'admin'
-      ? 'Use your organizer credentials to manage campus events.'
-      : 'Create your MaroonLife account with email and password.';
-
-  const roleChips = useMemo(
-    () =>
-      (Object.keys(MODE_CONFIG) as AccountMode[]).map((mode) => {
-        const config = MODE_CONFIG[mode];
-        const active = mode === selectedMode;
-        const Icon = config.icon;
-        return (
-          <ScalePressable
-            key={mode}
-            onPress={() => selectMode(mode)}
-            style={[styles.modeChip, active && styles.modeChipActive]}
-          >
-            <Icon size={16} color={active ? '#FFFFFF' : '#B8B8B8'} />
-            <Text style={[styles.modeChipText, active && styles.modeChipTextActive]}>
-              {mode === 'admin' ? 'Admin' : 'Student'}
-            </Text>
-          </ScalePressable>
-        );
-      }),
-    [selectedMode],
-  );
+  const isAdminMode = selectedMode === 'admin';
+  const primaryCtaLabel = isAdminMode ? 'Admin sign in' : 'Sign up free';
+  const secondaryPromptLabel = isAdminMode ? 'Continue with Email' : 'Continue with Email';
 
   const renderProviderButton = ({
     label,
@@ -309,64 +257,56 @@ export function AuthLanding() {
   );
 
   const renderInitialFlow = () => {
-    const HeroIcon = modeConfig.icon;
+    const HeroIcon = isAdminMode ? ShieldCheck : GraduationCap;
     return (
       <>
-        <View style={styles.modeSwitch}>{roleChips}</View>
-
         <View style={styles.heroWrap}>
-          <View style={styles.brandBadge}>
-            <HeroIcon size={30} color="#B41A0C" />
+          <HeroIcon size={34} color="#B41A0C" />
+          <View style={styles.brandRow}>
+            <Text style={styles.brandTitle}>MaroonLife</Text>
+            {isAdminMode ? (
+              <View style={styles.adminBadge}>
+                <Text style={styles.adminBadgeText}>Admin</Text>
+              </View>
+            ) : null}
           </View>
-          <Text style={styles.brandTitle}>MaroonLife</Text>
-          <Text style={styles.brandSubtitle}>Your campus, curated.</Text>
-        </View>
-
-        <View style={styles.roleSummaryCard}>
-          <View style={styles.roleSummaryHeader}>
-            <Text style={styles.roleSummaryEyebrow}>{modeConfig.eyebrow}</Text>
-            <View style={styles.liveDot} />
-          </View>
-          <Text style={styles.roleSummaryTitle}>{modeConfig.title}</Text>
-          <Text style={styles.roleSummaryBody}>{modeConfig.subtitle}</Text>
+          <Text style={styles.brandSubtitle}>
+            {isAdminMode ? 'Manage your campus presence.' : 'Your campus life, curated.'}
+          </Text>
         </View>
 
         <ScalePressable
           style={styles.primaryCta}
-          onPress={() => openEmailFlow('email_signup')}
+          onPress={() => openEmailFlow(isAdminMode ? 'email_signin' : 'email_signup')}
           disabled={isLoading}
         >
           <LinearGradient
-            colors={['#5A0904', '#730C06', '#8B1208']}
+            colors={['#5A0904', '#6F0805', '#7E0A06']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.primaryCtaGradient}
           >
             <Text style={styles.primaryCtaText}>{primaryCtaLabel}</Text>
-            <ArrowRight size={20} color="#FFFFFF" />
           </LinearGradient>
         </ScalePressable>
 
-        <Text style={styles.primaryCtaCaption}>{primaryCtaCaption}</Text>
-
         <View style={styles.dividerRow}>
           <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>OR</Text>
+          <Text style={styles.dividerText}>or</Text>
           <View style={styles.dividerLine} />
         </View>
 
         <View style={styles.providersStack}>
           {renderProviderButton({
             label: 'Continue with Google',
-            sublabel: selectedMode === 'admin' ? 'Organizer Google sign-in' : 'Fast campus sign-in',
+            sublabel: isAdminMode ? undefined : undefined,
             onPress: () => onOAuthPress(googleFlow),
             loading: activeFlow === googleFlow,
             icon: <GoogleIcon size={20} />,
           })}
 
           {renderProviderButton({
-            label: 'Use email and password',
-            sublabel: selectedMode === 'admin' ? 'Manual admin login or signup' : 'Manual student login or signup',
+            label: secondaryPromptLabel,
             onPress: () => openEmailFlow('email_signin'),
             icon: <Mail size={20} color="#FFFFFF" />,
           })}
@@ -374,7 +314,7 @@ export function AuthLanding() {
           {Platform.OS === 'ios'
             ? renderProviderButton({
                 label: 'Continue with Apple',
-                sublabel: selectedMode === 'admin' ? 'Apple sign-in for admins' : 'Apple sign-in for students',
+                sublabel: undefined,
                 onPress: () => onOAuthPress(appleFlow),
                 loading: activeFlow === appleFlow,
                 icon: <Text style={styles.appleGlyph}>{APPLE_LABEL}</Text>,
@@ -383,9 +323,44 @@ export function AuthLanding() {
         </View>
 
         <View style={styles.bottomPrompt}>
-          <Text style={styles.bottomPromptText}>Already have an account?</Text>
-          <Pressable onPress={() => openEmailFlow('email_signin')} hitSlop={12}>
-            <Text style={styles.bottomPromptLink}>Log in</Text>
+          {isAdminMode ? (
+            <>
+              <Text style={styles.bottomPromptText}>Need the student experience instead?</Text>
+              <Pressable
+                onPress={() => {
+                  selectMode('user');
+                  setAuthFlow('initial');
+                }}
+                hitSlop={12}
+              >
+                <Text style={styles.bottomPromptLink}>Back to student sign up</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={styles.bottomPromptText}>Already have an account?</Text>
+              <Pressable onPress={() => openEmailFlow('email_signin')} hitSlop={12}>
+                <Text style={styles.bottomPromptLink}>Log in</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+
+        <View style={styles.adminLinkWrap}>
+          <Pressable
+            onPress={() => {
+              selectMode(isAdminMode ? 'user' : 'admin');
+              setAuthFlow('initial');
+            }}
+            hitSlop={16}
+            style={styles.adminLinkButton}
+          >
+            <Text style={styles.adminLinkLead}>
+              {isAdminMode ? 'Club leader view enabled' : 'Are you a club leader?'}
+            </Text>
+            <Text style={styles.adminLinkText}>
+              {isAdminMode ? 'Student Sign Up' : 'Admin Sign In'}
+            </Text>
           </Pressable>
         </View>
       </>
@@ -652,8 +627,6 @@ export function AuthLanding() {
   return (
     <SafeAreaView style={styles.container}>
       <LinearGradient colors={['#FFF8F6', '#FFFDFC', '#F6F1EE']} style={StyleSheet.absoluteFill} />
-      <View style={styles.glowTop} />
-      <View style={styles.glowBottom} />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -687,165 +660,75 @@ const styles = StyleSheet.create({
     maxWidth: 460,
     alignSelf: 'center',
     paddingHorizontal: 24,
-    paddingVertical: 32,
-  },
-  glowTop: {
-    position: 'absolute',
-    top: -110,
-    left: -20,
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    backgroundColor: 'rgba(128, 10, 4, 0.10)',
-  },
-  glowBottom: {
-    position: 'absolute',
-    right: -70,
-    bottom: -80,
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    backgroundColor: 'rgba(96, 6, 6, 0.08)',
-  },
-  modeSwitch: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    borderColor: 'rgba(80,0,0,0.08)',
-    borderWidth: 1,
-    borderRadius: 999,
-    padding: 6,
-    gap: 6,
-    alignSelf: 'center',
-    marginBottom: 30,
-  },
-  modeChip: {
-    minWidth: 126,
-    height: 42,
-    borderRadius: 999,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: 'transparent',
-    paddingHorizontal: 18,
-  },
-  modeChipActive: {
-    backgroundColor: COLORS.primary,
-  },
-  modeChipText: {
-    color: '#7A6A67',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  modeChipTextActive: {
-    color: '#FFFFFF',
+    paddingVertical: 28,
   },
   heroWrap: {
     alignItems: 'center',
-    marginBottom: 28,
+    marginTop: 84,
+    marginBottom: 54,
   },
-  brandBadge: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
+  brandRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(122, 12, 7, 0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(180, 26, 12, 0.16)',
-    marginBottom: 20,
+    gap: 10,
+    marginTop: 16,
   },
   brandTitle: {
     ...TYPOGRAPHY.title,
-    fontSize: 58,
-    lineHeight: 62,
+    fontSize: 44,
+    lineHeight: 48,
     fontWeight: '900',
     color: '#141111',
-    letterSpacing: -2.2,
+    letterSpacing: -1.8,
     textAlign: 'center',
+  },
+  adminBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(80,0,0,0.08)',
+  },
+  adminBadgeText: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   brandSubtitle: {
     ...TYPOGRAPHY.body,
-    marginTop: 10,
+    marginTop: 12,
     fontSize: 18,
     lineHeight: 24,
+    fontWeight: '600',
     color: '#7B7270',
     textAlign: 'center',
     letterSpacing: -0.2,
   },
-  roleSummaryCard: {
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.78)',
-    borderWidth: 1,
-    borderColor: 'rgba(80,0,0,0.08)',
-    paddingHorizontal: 22,
-    paddingVertical: 18,
-    marginBottom: 22,
-  },
-  roleSummaryHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
-  },
-  roleSummaryEyebrow: {
-    color: '#8A5B54',
-    fontSize: 12,
-    fontWeight: '800',
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-  },
-  liveDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: '#A51B10',
-  },
-  roleSummaryTitle: {
-    color: '#191414',
-    fontSize: 24,
-    lineHeight: 30,
-    fontWeight: '800',
-    letterSpacing: -0.6,
-    marginBottom: 6,
-  },
-  roleSummaryBody: {
-    color: '#726866',
-    fontSize: 15,
-    lineHeight: 22,
-  },
   primaryCta: {
     borderRadius: 999,
     overflow: 'hidden',
+    marginBottom: 18,
   },
   primaryCtaGradient: {
-    minHeight: 76,
+    minHeight: 68,
     borderRadius: 999,
     paddingHorizontal: 28,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
   },
   primaryCtaText: {
     color: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
     letterSpacing: -0.4,
-  },
-  primaryCtaCaption: {
-    marginTop: 12,
-    marginBottom: 26,
-    color: '#746968',
-    fontSize: 14,
-    lineHeight: 20,
-    textAlign: 'center',
   },
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginBottom: 22,
+    marginBottom: 18,
   },
   dividerLine: {
     flex: 1,
@@ -856,13 +739,13 @@ const styles = StyleSheet.create({
     color: '#8C7F7D',
     fontSize: 13,
     fontWeight: '700',
-    letterSpacing: 1,
+    letterSpacing: 0.2,
   },
   providersStack: {
-    gap: 14,
+    gap: 12,
   },
   outlineButton: {
-    minHeight: 82,
+    minHeight: 66,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: 'rgba(80,0,0,0.14)',
@@ -885,8 +768,8 @@ const styles = StyleSheet.create({
   },
   outlineButtonText: {
     color: '#181313',
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 17,
+    lineHeight: 22,
     fontWeight: '700',
     letterSpacing: -0.3,
   },
@@ -903,18 +786,40 @@ const styles = StyleSheet.create({
   },
   bottomPrompt: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 6,
-    marginTop: 28,
+    marginTop: 30,
   },
   bottomPromptText: {
     color: '#7A7270',
-    fontSize: 16,
+    fontSize: 15,
   },
   bottomPromptLink: {
     color: '#231919',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
+  },
+  adminLinkWrap: {
+    marginTop: 44,
+    alignItems: 'center',
+  },
+  adminLinkButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adminLinkLead: {
+    color: '#8E8482',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  adminLinkText: {
+    marginTop: 4,
+    color: '#8B1208',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
   formWrap: {
     paddingTop: 12,
