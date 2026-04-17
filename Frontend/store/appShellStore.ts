@@ -127,7 +127,6 @@ type AppShellState = {
   isBottomBarHidden: boolean;
   selectedScheduleId: string | null;
   isTOSAccepted: boolean;
-  isTourCompleted: boolean;
   isNotificationPrompted: boolean;
   isEventPreferencesCompleted: boolean;
   showEventPreferencesOnboarding: boolean;
@@ -153,7 +152,6 @@ type AppShellState = {
   setBottomBarHidden: (hidden: boolean) => void;
   setSelectedScheduleId: (id: string | null) => void;
   setTOSAccepted: (accepted: boolean) => void;
-  setTourCompleted: (completed: boolean) => void;
   setNotificationPrompted: (prompted: boolean) => void;
   setEventPreferencesCompleted: (completed: boolean) => void;
   setShowEventPreferencesOnboarding: (visible: boolean) => void;
@@ -180,7 +178,6 @@ export const useAppShellStore = create<AppShellState>()(
       isBottomBarHidden: false,
       selectedScheduleId: null,
       isTOSAccepted: false,
-      isTourCompleted: false,
       isNotificationPrompted: false,
       isEventPreferencesCompleted: false,
       showEventPreferencesOnboarding: false,
@@ -218,7 +215,6 @@ export const useAppShellStore = create<AppShellState>()(
       setBottomBarHidden: (isBottomBarHidden) => set({ isBottomBarHidden }),
       setSelectedScheduleId: (selectedScheduleId) => set({ selectedScheduleId }),
       setTOSAccepted: (isTOSAccepted) => set({ isTOSAccepted }),
-      setTourCompleted: (isTourCompleted) => set({ isTourCompleted }),
       setNotificationPrompted: (isNotificationPrompted) => set({ isNotificationPrompted }),
       setEventPreferencesCompleted: (isEventPreferencesCompleted) => set({ isEventPreferencesCompleted }),
       setShowEventPreferencesOnboarding: (showEventPreferencesOnboarding) => set({ showEventPreferencesOnboarding }),
@@ -238,7 +234,7 @@ export const useAppShellStore = create<AppShellState>()(
     }),
     {
       name: 'app-shell-store',
-      version: 6,
+      version: 7,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         parkingPermit: state.parkingPermit,
@@ -247,7 +243,6 @@ export const useAppShellStore = create<AppShellState>()(
         settingsTab: state.settingsTab,
         selectedScheduleId: state.selectedScheduleId,
         isTOSAccepted: state.isTOSAccepted,
-        isTourCompleted: state.isTourCompleted,
         isNotificationPrompted: state.isNotificationPrompted,
         isEventPreferencesCompleted: state.isEventPreferencesCompleted,
         preferredEventCategories: state.preferredEventCategories,
@@ -282,9 +277,6 @@ export const useAppShellStore = create<AppShellState>()(
           isTOSAccepted: typeof persisted.isTOSAccepted === 'boolean'
             ? persisted.isTOSAccepted
             : currentState.isTOSAccepted,
-          isTourCompleted: typeof persisted.isTourCompleted === 'boolean'
-            ? persisted.isTourCompleted
-            : currentState.isTourCompleted,
           isNotificationPrompted: typeof persisted.isNotificationPrompted === 'boolean'
             ? persisted.isNotificationPrompted
             : currentState.isNotificationPrompted,
@@ -364,6 +356,11 @@ export const useAppShellStore = create<AppShellState>()(
           
           newState.settingsTab = 'personal';
 
+          return newState;
+        }
+        if (version < 7) {
+          const state = persistedState as Partial<AppShellState> & { isTourCompleted?: boolean };
+          const { isTourCompleted: _removedTourCompleted, ...newState } = state;
           return newState;
         }
         return persistedState;

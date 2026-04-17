@@ -59,7 +59,6 @@ import {
   searchUsers,
   unblockUser,
 } from '../services/socialFeedService';
-import { useTour, TourTarget } from './onboarding/TourProvider';
 import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme, WallpaperWrapper } from './SharedUI';
 
@@ -170,7 +169,6 @@ export function Profile() {
   } = useTheme();
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark, accentColor);
-  const { startTour, advanceStep, activeTargetName } = useTour();
 
   const [academicStatus, setAcademicStatus] = useState<any | null>(null);
   const [loadingAcademicStatus, setLoadingAcademicStatus] = useState(true);
@@ -201,7 +199,6 @@ export function Profile() {
   const [friendSearchResults, setFriendSearchResults] = useState<any[]>([]);
   const [searchingFriends, setSearchingFriends] = useState(false);
   const scrollRef = React.useRef<ScrollView | null>(null);
-  const finishCardYRef = React.useRef(0);
 
   const accentRatio = useMemo(() => getRatioFromColor(accentColor), [accentColor]);
   const accentPreviewColor = useMemo(() => getSpectrumColorFromRatio(accentRatio), [accentRatio]);
@@ -221,14 +218,6 @@ export function Profile() {
       }),
     [updateAccentFromPosition],
   );
-
-  const scrollToFinishCard = React.useCallback((animated = true) => {
-    if (!scrollRef.current) return;
-    scrollRef.current.scrollTo({
-      y: Math.max(0, finishCardYRef.current - 140),
-      animated,
-    });
-  }, []);
 
   useEffect(() => {
     if (isFocused) {
@@ -310,22 +299,6 @@ export function Profile() {
       clearTimeout(timer);
     };
   }, [friendSearchQuery, showFriendSearchPanel, user?.id]);
-
-  useEffect(() => {
-    if ((activeTargetName === 'tour-finish' || activeTargetName === 'settings-tab') && activeTab !== 'personal') {
-      setActiveTab('personal');
-    }
-  }, [activeTab, activeTargetName, setActiveTab]);
-
-  useEffect(() => {
-    if (activeTargetName !== 'tour-finish' || activeTab !== 'personal') {
-      return;
-    }
-    const timer = setTimeout(() => {
-      scrollToFinishCard();
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [activeTab, activeTargetName, scrollToFinishCard]);
 
   const loadBlockedUsers = async () => {
     if (!user) return;
@@ -554,67 +527,6 @@ export function Profile() {
         <TagChips tags={profileTags} label="Your access tags" />
       </View>
 
-
-      {activeTargetName === 'tour-finish' && (
-        <LinearGradient
-          colors={[COLORS.primary, '#9B2C2C']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          onLayout={(event) => {
-            finishCardYRef.current = event.nativeEvent.layout.y;
-            if (activeTargetName === 'tour-finish') {
-              setTimeout(() => {
-                scrollToFinishCard();
-              }, 0);
-            }
-          }}
-          style={{ 
-            marginTop: 24, 
-            padding: 24, 
-            borderRadius: 32, 
-            elevation: 12,
-            shadowColor: COLORS.primary,
-            shadowOffset: { width: 0, height: 10 },
-            shadowOpacity: 0.3,
-            shadowRadius: 20,
-          }}
-        >
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 }}>
-            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>
-              <Sparkles size={28} color="#FFF" />
-            </View>
-            <View>
-              <Text style={{ color: '#FFF', fontSize: 24, fontWeight: '900', letterSpacing: -0.5 }}>You're all set!</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 13, fontWeight: '600' }}>Onboarding Complete</Text>
-            </View>
-          </View>
-          
-          <Text style={{ color: 'rgba(255,255,255,0.95)', fontSize: 15, lineHeight: 22, marginBottom: 28, fontWeight: '500' }}>
-            Welcome to MaroonLife. Your personalized campus experience is ready for you to explore.
-          </Text>
-
-          <TourTarget name="tour-finish" assistAction={() => advanceStep('tour-finish')}>
-            <Pressable 
-              style={({ pressed }) => ({ 
-                backgroundColor: '#FFF', 
-                padding: 18, 
-                borderRadius: 18, 
-                alignItems: 'center',
-                flexDirection: 'row',
-                justifyContent: 'center',
-                gap: 10,
-                opacity: pressed ? 0.9 : 1,
-                transform: [{ scale: pressed ? 0.98 : 1 }]
-              })}
-              onPress={() => advanceStep('tour-finish')}
-            >
-              <Text style={{ color: COLORS.primary, fontWeight: '900', fontSize: 17, letterSpacing: -0.2 }}>Launch MaroonLife</Text>
-              <ChevronRight size={20} color={COLORS.primary} strokeWidth={3} />
-            </Pressable>
-          </TourTarget>
-        </LinearGradient>
-      )}
-
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Academics</Text>
 
@@ -676,16 +588,6 @@ export function Profile() {
 
 
       <View style={styles.quickActionRow}>
-        <Pressable
-          style={[styles.quickActionCard, { borderColor: COLORS.primary }]}
-          onPress={() => startTour()}
-        >
-          <View style={[styles.quickActionIconWrap, { backgroundColor: COLORS.primary + '15' }]}>
-            <Compass size={18} color={COLORS.primary} />
-          </View>
-          <Text style={styles.quickActionTitle}>Restart Tour</Text>
-        </Pressable>
-
         <Pressable
           style={[styles.quickActionCard, { borderColor: '#2F80ED' }]}
           onPress={() => {
