@@ -1668,12 +1668,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         <View style={s.categoryWrap}>
           {categoriesExpanded ? (
             <>
-              <View style={s.categoryHeaderRow}>
-                <Text style={s.categorySectionLabel}>Filters</Text>
-                <Pressable onPress={() => setCategoriesExpanded(false)}>
-                  <Text style={s.categoryToggleText}>Less</Text>
-                </Pressable>
-              </View>
               <View style={s.categoryExpandedGrid}>
                 {ALL_CATEGORIES.map((category) => (
                   <CategoryChip
@@ -1686,15 +1680,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   />
                 ))}
               </View>
+              <View style={s.categoryHeaderRow}>
+                <Pressable onPress={() => setCategoriesExpanded(false)}>
+                  <Text style={s.categoryToggleText}>Less</Text>
+                </Pressable>
+              </View>
             </>
           ) : (
             <>
-              <View style={s.categoryHeaderRow}>
-                <Text style={s.categorySectionLabel}>Filters</Text>
-                <Pressable onPress={() => setCategoriesExpanded(true)}>
-                  <Text style={s.categoryToggleText}>More</Text>
-                </Pressable>
-              </View>
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -1711,6 +1704,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   />
                 ))}
               </ScrollView>
+              <View style={s.categoryHeaderRow}>
+                <Pressable onPress={() => setCategoriesExpanded(true)}>
+                  <Text style={s.categoryToggleText}>More</Text>
+                </Pressable>
+              </View>
             </>
           )}
         </View>
@@ -3094,16 +3092,9 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     categoryHeaderRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      marginBottom: 12,
-      paddingHorizontal: 20,
-    },
-    categorySectionLabel: {
-      color: COLORS.textSecondary,
-      fontSize: 10,
-      fontWeight: '900',
-      letterSpacing: 1.3,
-      textTransform: 'uppercase',
+      justifyContent: 'flex-end',
+      marginTop: 2,
+      paddingHorizontal: 0,
     },
     categoryToggleText: {
       color: COLORS.primary,
@@ -3111,7 +3102,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       fontWeight: '900',
     },
     categoryCollapsedRow: {
-      paddingHorizontal: 20,
+      paddingHorizontal: 0,
       paddingBottom: 8,
       gap: 10,
     },
@@ -3119,7 +3110,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: 10,
-      paddingHorizontal: 20,
+      paddingHorizontal: 0,
     },
     inlineControls: {
       marginTop: 10,
