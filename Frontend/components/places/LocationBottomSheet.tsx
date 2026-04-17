@@ -1479,95 +1479,88 @@ export function LocationBottomSheet({
                 scrollEventThrottle={16}
               >
                 <View style={{ marginBottom: 12, gap: 12 }}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 8,
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                      <TouchableOpacity
-                        onPress={() => setActiveDiningDate(shiftDiningMenuDate(activeDiningDate, -1))}
-                        disabled={!canStepBackward}
-                        style={{
-                          width: 34,
-                          height: 34,
-                          borderRadius: 17,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: COLORS.card,
-                          opacity: canStepBackward ? 1 : 0.35,
-                        }}
-                      >
-                        <ChevronLeft size={18} color={COLORS.textPrimary} />
-                      </TouchableOpacity>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 16, position: 'relative', minHeight: 40 }}>
+                      <View style={{ position: 'absolute', left: 0 }}>
+                        <TouchableOpacity
+                          onPress={() => setShowDatePicker((current) => !current)}
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 17,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: isDark ? "#1A1A1A" : "#EEF1F6",
+                          }}
+                        >
+                          <Calendar size={16} color={COLORS.textPrimary} />
+                        </TouchableOpacity>
+                      </View>
 
-                      <Text
-                        style={[
-                          styles.sectionTitle,
-                          { marginBottom: 0, fontSize: 20 },
-                        ]}
-                      >
-                        {activeDiningHeaderTitle}
-                      </Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                        <TouchableOpacity
+                          onPress={() => setActiveDiningDate(shiftDiningMenuDate(activeDiningDate, -1))}
+                          disabled={!canStepBackward}
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 17,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: COLORS.card,
+                            opacity: canStepBackward ? 1 : 0.35,
+                          }}
+                        >
+                          <ChevronLeft size={18} color={COLORS.textPrimary} />
+                        </TouchableOpacity>
+
+                        <Text
+                          style={{
+                            fontSize: 16,
+                            fontWeight: "700",
+                            color: COLORS.textPrimary,
+                            textTransform: 'none',
+                          }}
+                        >
+                          {activeDiningHeaderTitle}
+                        </Text>
+
+                        <TouchableOpacity
+                          onPress={() => setActiveDiningDate(shiftDiningMenuDate(activeDiningDate, 1))}
+                          disabled={!canStepForward}
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 17,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: COLORS.card,
+                            opacity: canStepForward ? 1 : 0.35,
+                          }}
+                        >
+                          <ChevronRight size={18} color={COLORS.textPrimary} />
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={{ position: 'absolute', right: 0 }}>
+                        <TouchableOpacity
+                          onPress={() => setIsDiningSearchOpen((current) => !current)}
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 17,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: isDiningSearchOpen
+                              ? (isDark ? "rgba(80,0,0,0.22)" : "rgba(80,0,0,0.1)")
+                              : COLORS.card,
+                          }}
+                        >
+                          <Search size={17} color={COLORS.textPrimary} />
+                        </TouchableOpacity>
+                      </View>
                     </View>
 
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <TouchableOpacity
-                        onPress={() => setActiveDiningDate(shiftDiningMenuDate(activeDiningDate, 1))}
-                        disabled={!canStepForward}
-                        style={{
-                          width: 34,
-                          height: 34,
-                          borderRadius: 17,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: COLORS.card,
-                          opacity: canStepForward ? 1 : 0.35,
-                        }}
-                      >
-                        <ChevronRight size={18} color={COLORS.textPrimary} />
-                      </TouchableOpacity>
 
-                      <TouchableOpacity
-                        onPress={() => setShowDatePicker((current) => !current)}
-                        style={{
-                          width: 30,
-                          height: 30,
-                          borderRadius: 15,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: isDark ? "#1A1A1A" : "#EEF1F6",
-                        }}
-                      >
-                        <Calendar size={15} color={COLORS.textPrimary} />
-                      </TouchableOpacity>
-
-                      <TouchableOpacity
-                        onPress={() => setIsDiningSearchOpen((current) => !current)}
-                        style={{
-                          width: 34,
-                          height: 34,
-                          borderRadius: 17,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: isDiningSearchOpen
-                            ? (isDark ? "rgba(80,0,0,0.22)" : "rgba(80,0,0,0.1)")
-                            : COLORS.card,
-                        }}
-                      >
-                        <Search size={17} color={COLORS.textPrimary} />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-
-                  <Text style={styles.menuIntroText}>
-                    {isCurrentDiningDate
-                      ? "Browse today's stations, search ahead, or save a reminder for later."
-                      : "Future menus stay read-only for calories, but you can save reminders."}
-                  </Text>
 
                   {isDiningSearchOpen ? (
                     <View
@@ -1629,7 +1622,7 @@ export function LocationBottomSheet({
                   ) : null}
                 </View>
 
-                <View style={{ marginBottom: 16, flexDirection: 'row', gap: 24 }}>
+                <View style={{ marginBottom: 16, flexDirection: 'row' }}>
                   {ALL_DINING_MEAL_PERIODS.map((period) => {
                     const isActive = activeDiningMealPeriod === period;
                     return (
@@ -1637,7 +1630,9 @@ export function LocationBottomSheet({
                         key={period}
                         onPress={() => setActiveDiningMealPeriod(period)}
                         style={{
-                          paddingBottom: 6,
+                          flex: 1,
+                          alignItems: 'center',
+                          paddingBottom: 8,
                           borderBottomWidth: 2,
                           borderBottomColor: isActive ? COLORS.primary : 'transparent',
                         }}
@@ -1661,9 +1656,7 @@ export function LocationBottomSheet({
                         <ActivityIndicator color={COLORS.primary} />
                       </View>
                     ) : diningSearchQuery.trim().length < 2 ? (
-                      <Text style={{ color: COLORS.textSecondary, fontSize: 13, fontWeight: "600" }}>
-                        Type at least two letters to search upcoming menus for this hall.
-                      </Text>
+                      null
                     ) : diningSearchResults.length === 0 ? (
                       <Text style={{ color: COLORS.textSecondary, fontSize: 13, fontWeight: "600" }}>
                         No upcoming matches found yet for "{diningSearchQuery.trim()}".
