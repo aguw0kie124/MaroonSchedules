@@ -256,7 +256,7 @@ const BusMarker = React.memo(({
     selectedDirection === "All" ||
     (busDir || "").toLowerCase().includes((selectedDirection || "All").toLowerCase());
   
-  const opacity = matchesDirection ? (isTrackedBus ? 1 : 0.9) : 0.3;
+  const opacity = matchesDirection ? 1 : 0.8;
   const displayName = routeShortName.length > 3 ? routeShortName.slice(0, 3) : routeShortName;
   const busCompositeKey = `bus-${bus.RouteKey}-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`;
 
@@ -2130,12 +2130,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   key={`path-${idx}`}
                   id={`path-${idx}`}
                   coordinates={validPoints}
-                  color={
-                    isSelected
-                      ? getNeonColor(selectedRoute?.Color || "#007AFF")
-                      : getNeonColor(selectedRoute?.Color || "#007AFF") + "40"
-                  }
-                  width={isSelected ? 4 : 2}
+                  color={getNeonColor(selectedRoute?.Color || "#007AFF")}
+                  width={isSelected ? 6 : 4}
                 />
               ) : null;
             })
@@ -2198,7 +2194,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 <View
                   style={[
                     styles.busStopMarker,
-                    { opacity: stopSelected ? 1 : 0.3 },
+                    { opacity: 1 },
                   ]}
                 >
                   <View style={styles.busStopMarkerInner} />

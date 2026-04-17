@@ -118,21 +118,61 @@ export function useBusTransit(
     return matches;
   }, [busRouteOptions, routeSearchQuery]);
 
-  const stabilizedSetBusVehicles = useCallback((updated: any[]) => {
-    if (updated.length > 0) {
-      emptyUpdateCountRef.current = 0;
-      setBusVehicles(updated);
-    } else if (lastValidVehiclesRef.current.length > 0) {
-      emptyUpdateCountRef.current += 1;
-      // If we see 3 consecutive empty updates, then we accept the buses are truly offline
-      if (emptyUpdateCountRef.current >= 3) {
-        setBusVehicles([]);
-      } else {
-        console.log(`[Transit] Suppressing flickering (empty update #${emptyUpdateCountRef.current})`);
-      }
-    } else {
-      setBusVehicles([]);
-    }
+  const stabilizedSetBusVehicles = useCallback((latest: any[]) => {
+    const now = Date.now();
+    
+    setBusVehicles(prev => {
+      // 1. Filter out buses that don't belong to the current selection if we're not in "All" mode
+      // This prevents "ghost" buses from staying on map after a route switch
+      const filteredPrev = isAllBusRoutesSelected 
+        ? prev 
+        : prev.filter(v => isVehicleOnRoute(v, selectedRoute));
+
+      const vehicleMap = new Map();
+      filteredPrev.forEach(v => {
+        const id = v.VehicleId || v.Key || v.Name || v.id || v.Id;
+        if (id) vehicleMap.set(id, v);
+      });
+
+      // 2. Update/Add new data (also filtering new data to be safe)
+      const filteredLatest = isAllBusRoutesSelected
+        ? latest
+        : latest.filter(v => isVehicleOnRoute(v, selectedRoute));
+
+      filteredLatest.forEach(v => {
+        const id = v.VehicleId || v.Key || v.Name || v.id || v.Id;
+        if (!id) return;
+        
+        vehicleMap.set(id, {
+          ...v,
+          _lastSeen: now,
+          _isStale: false
+        });
+      });
+
+      // 3. Prune old data and mark stale ones
+      const result: any[] = [];
+      vehicleMap.forEach((v, id) => {
+        const age = now - (v._lastSeen || 0);
+        
+        // Remove if not seen for 30 seconds
+        if (age > 30000) {
+          return;
+        }
+
+        // Mark as stale if not seen for 12 seconds
+        const isStale = age > 12000;
+        result.push({
+          ...v,
+          _isStale: isStale
+        });
+      });
+
+      // Maintain order or sorting if needed (optional)
+      return result;
+    });
+
+    emptyUpdateCountRef.current = latest.length === 0 ? emptyUpdateCountRef.current + 1 : 0;
   }, []);
 
   const loadAllBusRoutes = useCallback(async (routesToLoad: any[]) => {
@@ -171,6 +211,7 @@ export function useBusTransit(
     async (routeId: string, availableRoutes: any[] = busRoutes) => {
       console.log("[Transit] Selecting route:", routeId);
       setSelectedBusRouteId(routeId);
+      setBusVehicles([]); // Clear buses immediately on switch
       setSelectedStop(null);
       setSelectedBus(null);
       setRouteTimetableEntries([]);
@@ -399,11 +440,18 @@ export function useBusTransit(
           ? await transitService.getVehicles()
           : await transitService.getVehicles(selectedBusRouteId);
         
-        if (isActive && updated) {
-          stabilizedSetBusVehicles(updated);
+        if (isActive) {
+          if (updated) {
+            stabilizedSetBusVehicles(updated);
+          } else {
+            // Even if the poll failed/empty, run stabilization to prune stale buses
+            stabilizedSetBusVehicles([]);
+          }
         }
       } catch (e) {
         console.warn("[Transit] Polling error:", e);
+        // Ensure pruning runs even on error
+        if (isActive) stabilizedSetBusVehicles([]);
       } finally {
         if (isActive) {
           const interval = isAllBusRoutesSelected ? 8000 : 5000;
