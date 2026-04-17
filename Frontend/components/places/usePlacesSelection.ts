@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchCampusPlaceDetail } from "../../api/client";
 import {
   fetchDiningFullMenuCached,
-  getDiningMealOptionsForLocation,
   getDiningMealPeriodForLocation,
   getDiningMenuCandidates,
   isDiningHallMenuLocation,
+  warmDiningMenusInBackground,
   type DiningMealPeriod,
 } from "../../services/diningMenuCache";
+import { getLocalDateString, parseLocalDateString } from "../../services/dateUtils";
 import {
   findFoodCourtParentLocation,
   getFoodCourtVenueLabel,
@@ -98,6 +99,7 @@ export function usePlacesSelection({
   const [activeDiningMenu, setActiveDiningMenu] = useState<string | null>(null);
   const [activeDiningMealPeriod, setActiveDiningMealPeriod] =
     useState<DiningMealPeriod>("lunch");
+  const [activeDiningDate, setActiveDiningDate] = useState<string>(getLocalDateString());
   const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
   const [selectedPlaceDetail, setSelectedPlaceDetail] = useState<any | null>(null);
   const [isFetchingDetail, setIsFetchingDetail] = useState(false);
@@ -127,16 +129,18 @@ export function usePlacesSelection({
     setDiningMenuOptions([]);
     setActiveDiningMenu(null);
     setActiveDiningMealPeriod("lunch");
+    setActiveDiningDate(getLocalDateString());
     setDiningMenuPreview(null);
   }, []);
 
   const loadBestDiningPreview = useCallback(
-    async (locationName: string, preferredMeal: DiningMealPeriod) => {
+    async (locationName: string, preferredMeal: DiningMealPeriod, dateKey: string) => {
       const preview = await fetchDiningFullMenuCached({
         location: locationName,
         mealPeriod: preferredMeal,
+        date: dateKey,
       }).catch(() => null);
-      return { preview, meal: preferredMeal };
+      return { preview, meal: preferredMeal, dateKey };
     },
     [],
   );
@@ -177,11 +181,13 @@ export function usePlacesSelection({
           return;
         }
 
+        const todayKey = getLocalDateString();
         const menuCandidates = getDiningMenuCandidates(loc.location, []);
         setDiningMenuOptions(menuCandidates);
         setActiveDiningMenu(loc.location);
+        setActiveDiningDate(todayKey);
         setActiveDiningMealPeriod(
-          getDiningMealPeriodForLocation(loc.location) as DiningMealPeriod,
+          getDiningMealPeriodForLocation(loc.location, parseLocalDateString(todayKey)) as DiningMealPeriod,
         );
         setDiningMenuPreview(null);
       } catch (error) {
@@ -265,7 +271,7 @@ export function usePlacesSelection({
 
     let cancelled = false;
     setIsFetchingDining(true);
-    loadBestDiningPreview(activeDiningMenu, activeDiningMealPeriod)
+    loadBestDiningPreview(activeDiningMenu, activeDiningMealPeriod, activeDiningDate)
       .then(({ preview, meal }) => {
         if (!cancelled) {
           if (meal !== activeDiningMealPeriod) setActiveDiningMealPeriod(meal);
@@ -280,7 +286,18 @@ export function usePlacesSelection({
     return () => {
       cancelled = true;
     };
-  }, [activeDiningMealPeriod, activeDiningMenu, loadBestDiningPreview]);
+  }, [activeDiningDate, activeDiningMealPeriod, activeDiningMenu, loadBestDiningPreview]);
+
+  useEffect(() => {
+    if (!activeDiningMenu) return;
+    warmDiningMenusInBackground({
+      location: activeDiningMenu,
+      centerDate: activeDiningDate,
+      pastDays: 1,
+      futureDays: 7,
+      mealPeriods: [activeDiningMealPeriod],
+    });
+  }, [activeDiningDate, activeDiningMealPeriod, activeDiningMenu]);
 
   const isPrimaryDiningHallSelection = useMemo(() => {
     const reference = (activeDiningMenu || selectedLoc?.location || "").toLowerCase();
@@ -306,6 +323,8 @@ export function usePlacesSelection({
     setActiveDiningMenu,
     activeDiningMealPeriod,
     setActiveDiningMealPeriod,
+    activeDiningDate,
+    setActiveDiningDate,
     diningMenuPreview,
     isPrimaryDiningHallSelection,
     handleSelectLocation,

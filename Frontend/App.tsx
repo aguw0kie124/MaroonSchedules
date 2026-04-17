@@ -70,6 +70,7 @@ import { EventPreferenceOnboardingScreen } from './components/onboarding/EventPr
 import { AdminApplicationScreen } from './components/admin/AdminApplicationScreen';
 import { AdminPortal } from './components/admin/AdminPortal';
 import { PendingReviewInterceptor } from './components/events/PendingReviewInterceptor';
+import { FriendPingNotificationBridge } from './components/pings/FriendPingNotificationBridge';
 import { API_URL } from './config';
 import { ClubAccessScreen } from './components/ClubAccessScreen';
 import { FocusMotionView } from './components/common/Motion';
@@ -576,6 +577,7 @@ function RootNavigator() {
           </UserSync>
         ) : content}
         {isSignedIn && <PendingReviewInterceptor />}
+        {isSignedIn && <FriendPingNotificationBridge />}
       </View>
     );
   }

@@ -230,9 +230,10 @@ export function useScheduleMap(
         })
         .map((event) => {
           const building = event.location?.split(/\s+/)[0] || "";
+          const eventCode = event.category === "Dining" ? "Dining" : "Event";
           return {
             id: `event:${event.id}`,
-            code: "Event",
+            code: eventCode,
             name: event.title,
             building,
             room: "",

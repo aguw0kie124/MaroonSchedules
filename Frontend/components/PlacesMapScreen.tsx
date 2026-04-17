@@ -49,6 +49,7 @@ import {
   Minimize2,
   Bus,
   ChevronDown,
+  MessageCircle,
   Share2,
   X,
 } from "lucide-react-native";
@@ -592,41 +593,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
     availableDirections
   } = useBusTransit(activeLayer, mapRef);
 
-  const memoizedBusMarkers = useMemo(() => {
-    return busVehicles.map((bus) => {
-      const isTrackedBus =
-        selectedBus?.Key && bus.Key
-          ? selectedBus.Key === bus.Key
-          : selectedBus?.Name === bus.Name;
-
-      const routeShortName =
-        (bus.routeShortName ||
-        bus.RouteShortName ||
-        selectedRoute?.ShortName ||
-        "").toString();
-
-      const routeColor =
-        bus.routeColor ||
-        bus.RouteColor ||
-        selectedRoute?.Color ||
-        "#007AFF";
-
-      return (
-        <BusMarker
-          key={`bus-${bus.Key || bus.Id || bus.Name}`}
-          bus={bus}
-          isDark={isDark}
-          routeColor={routeColor}
-          routeShortName={routeShortName}
-          isAllBusRoutesSelected={isAllBusRoutesSelected}
-          selectedDirection={selectedDirection}
-          isTrackedBus={isTrackedBus}
-          onPress={() => handleBusMarkerPress(bus)}
-        />
-      );
-    });
-  }, [busVehicles, isDark, isAllBusRoutesSelected, selectedDirection, selectedBus, selectedRoute, handleBusMarkerPress]);
-
   const nearbyTransitInsight = useMemo(() => getNearbyTransitInsight(userCoord), [getNearbyTransitInsight, userCoord]);
 
   useEffect(() => {
@@ -893,6 +859,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setActiveDiningMenu,
     activeDiningMealPeriod,
     setActiveDiningMealPeriod,
+    activeDiningDate,
+    setActiveDiningDate,
     diningMenuPreview,
     isPrimaryDiningHallSelection,
     handleSelectLocation,
@@ -1750,6 +1718,41 @@ export function PlacesMapScreen({ route, navigation }: any) {
       temporaryBusFocusRouteId,
     ],
   );
+
+  const memoizedBusMarkers = useMemo(() => {
+    return busVehicles.map((bus) => {
+      const isTrackedBus =
+        selectedBus?.Key && bus.Key
+          ? selectedBus.Key === bus.Key
+          : selectedBus?.Name === bus.Name;
+
+      const routeShortName =
+        (bus.routeShortName ||
+        bus.RouteShortName ||
+        selectedRoute?.ShortName ||
+        "").toString();
+
+      const routeColor =
+        bus.routeColor ||
+        bus.RouteColor ||
+        selectedRoute?.Color ||
+        "#007AFF";
+
+      return (
+        <BusMarker
+          key={`bus-${bus.Key || bus.Id || bus.Name}`}
+          bus={bus}
+          isDark={isDark}
+          routeColor={routeColor}
+          routeShortName={routeShortName}
+          isAllBusRoutesSelected={isAllBusRoutesSelected}
+          selectedDirection={selectedDirection}
+          isTrackedBus={isTrackedBus}
+          onPress={() => handleBusMarkerPress(bus)}
+        />
+      );
+    });
+  }, [busVehicles, handleBusMarkerPress, isAllBusRoutesSelected, isDark, selectedBus, selectedDirection, selectedRoute]);
 
 
 
@@ -2849,6 +2852,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
         setActiveDiningMenu={setActiveDiningMenu}
         activeDiningMealPeriod={activeDiningMealPeriod}
         setActiveDiningMealPeriod={setActiveDiningMealPeriod}
+        activeDiningDate={activeDiningDate}
+        setActiveDiningDate={setActiveDiningDate}
         diningMenuPreview={diningMenuPreview}
         isFetchingDining={isFetchingDining}
         isPrimaryDiningHallSelection={isPrimaryDiningHallSelection}

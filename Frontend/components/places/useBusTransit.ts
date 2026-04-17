@@ -36,6 +36,8 @@ export function useBusTransit(
 
   const busPollInterval = useRef<any>(null);
   const isFetchingRef = useRef(false);
+  const emptyUpdateCountRef = useRef(0);
+  const lastValidVehiclesRef = useRef<any[]>([]);
 
   const isAllBusRoutesSelected =
     !selectedBusRouteId || selectedBusRouteId === ALL_BUS_ROUTES_KEY;
@@ -116,6 +118,23 @@ export function useBusTransit(
     return matches;
   }, [busRouteOptions, routeSearchQuery]);
 
+  const stabilizedSetBusVehicles = useCallback((updated: any[]) => {
+    if (updated.length > 0) {
+      emptyUpdateCountRef.current = 0;
+      setBusVehicles(updated);
+    } else if (lastValidVehiclesRef.current.length > 0) {
+      emptyUpdateCountRef.current += 1;
+      // If we see 3 consecutive empty updates, then we accept the buses are truly offline
+      if (emptyUpdateCountRef.current >= 3) {
+        setBusVehicles([]);
+      } else {
+        console.log(`[Transit] Suppressing flickering (empty update #${emptyUpdateCountRef.current})`);
+      }
+    } else {
+      setBusVehicles([]);
+    }
+  }, []);
+
   const loadAllBusRoutes = useCallback(async (routesToLoad: any[]) => {
     if (!routesToLoad.length) {
       setAllRoutePatternsById({});
@@ -140,27 +159,6 @@ export function useBusTransit(
     setRoutePatterns([]);
     setRoutePaths([]);
   }, [mapRef, stabilizedSetBusVehicles]);
-
-  // Handle flickering stabilization
-  const emptyUpdateCountRef = useRef(0);
-  const lastValidVehiclesRef = useRef<any[]>([]);
-
-  const stabilizedSetBusVehicles = useCallback((updated: any[]) => {
-    if (updated.length > 0) {
-      emptyUpdateCountRef.current = 0;
-      setBusVehicles(updated);
-    } else if (lastValidVehiclesRef.current.length > 0) {
-      emptyUpdateCountRef.current += 1;
-      // If we see 3 consecutive empty updates, then we accept the buses are truly offline
-      if (emptyUpdateCountRef.current >= 3) {
-        setBusVehicles([]);
-      } else {
-        console.log(`[Transit] Suppressing flickering (empty update #${emptyUpdateCountRef.current})`);
-      }
-    } else {
-      setBusVehicles([]);
-    }
-  }, []);
 
   useEffect(() => {
     if (busVehicles.length > 0) {

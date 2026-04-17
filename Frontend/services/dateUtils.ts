@@ -10,17 +10,34 @@ export function getLocalDateString(date: Date = new Date()): string {
   return `${year}-${month}-${day}`;
 }
 
+export function parseLocalDateString(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, (month || 1) - 1, day || 1);
+}
+
+export function shiftLocalDateString(dateStr: string, days: number): string {
+  const next = parseLocalDateString(dateStr);
+  next.setDate(next.getDate() + days);
+  return getLocalDateString(next);
+}
+
 /**
  * Formats a YYYY-MM-DD date string into a human readable format
  * without any UTC timezone shifting.
  */
 export function formatLocalDate(dateStr: string): string {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const date = new Date(year, month - 1, day);
+  const date = parseLocalDateString(dateStr);
   return date.toLocaleDateString('en-US', { 
     weekday: 'short', 
     month: 'short', 
     day: 'numeric',
     year: 'numeric'
+  });
+}
+
+export function formatLocalMonthDay(dateStr: string): string {
+  return parseLocalDateString(dateStr).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
   });
 }
