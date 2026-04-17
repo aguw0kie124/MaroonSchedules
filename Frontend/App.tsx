@@ -95,13 +95,11 @@ function isMajorOption(value: unknown): value is MajorOption {
 
 function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
-  const isTourCompleted = useAppShellStore((state) => state.isTourCompleted);
   const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
   const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
   const preferredTime = useAppShellStore((state) => state.preferredTime);
   const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
-  const setTourCompleted = useAppShellStore((state) => state.setTourCompleted);
   const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
   const setPreferredEventCategories = useAppShellStore((state) => state.setPreferredEventCategories);
   const setPreferredTime = useAppShellStore((state) => state.setPreferredTime);
@@ -123,9 +121,6 @@ function UserSync({ children }: { children: React.ReactNode }) {
         if (data) {
           if (typeof data.tos_accepted === 'boolean') {
             setTOSAccepted(data.tos_accepted);
-          }
-          if (typeof data.tour_completed === 'boolean') {
-            setTourCompleted(isTourCompleted || data.tour_completed);
           }
           const reopeningPrefs = useAppShellStore.getState().showEventPreferencesOnboarding;
           if (!reopeningPrefs) {
@@ -181,7 +176,7 @@ function UserSync({ children }: { children: React.ReactNode }) {
         }
       }).catch((err: any) => console.warn('UserSync failed:', err));
     }
-  }, [isEventPreferencesCompleted, isMajorSpecific, isTourCompleted, preferredEventCategories, preferredSocialMode, preferredTime, setEventPreferencesCompleted, setMajorSpecific, setPreferredEventCategories, setPreferredSocialMode, setPreferredTime, setSelectedMajor, setTOSAccepted, setTourCompleted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
+  }, [isEventPreferencesCompleted, isMajorSpecific, preferredEventCategories, preferredSocialMode, preferredTime, setEventPreferencesCompleted, setMajorSpecific, setPreferredEventCategories, setPreferredSocialMode, setPreferredTime, setSelectedMajor, setTOSAccepted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
 
   return <>{children}</>;
 }
