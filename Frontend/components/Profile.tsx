@@ -1002,16 +1002,18 @@ export function Profile() {
                 { paddingVertical: 12 }
             ]}
           >
-            <View style={styles.avatar}>
+            <View style={styles.listAvatar}>
               {item.profile_image_url ? (
-                <Image source={{ uri: item.profile_image_url }} style={styles.avatarImage} />
+                <Image source={{ uri: item.profile_image_url }} style={styles.listAvatarImage} />
               ) : (
-                <Text style={styles.avatarText}>{item.name?.[0] || 'U'}</Text>
+                <Text style={styles.listAvatarText}>{item.name?.[0] || 'U'}</Text>
               )}
             </View>
             <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={styles.toolTitle}>{item.name}</Text>
-                <Text style={styles.email} numberOfLines={1}>{item.id}</Text>
+                {item.major ? (
+                  <Text style={styles.email} numberOfLines={1}>{item.major}</Text>
+                ) : null}
             </View>
             <Pressable 
                 style={{ 
@@ -1104,18 +1106,20 @@ export function Profile() {
                             { paddingVertical: 12 },
                           ]}
                         >
-                          <View style={styles.avatar}>
+                          <View style={styles.listAvatar}>
                             {item.profile_image_url ? (
-                              <Image source={{ uri: item.profile_image_url }} style={styles.avatarImage} />
+                              <Image source={{ uri: item.profile_image_url }} style={styles.listAvatarImage} />
                             ) : (
-                              <Text style={styles.avatarText}>{item.name?.[0] || 'U'}</Text>
+                              <Text style={styles.listAvatarText}>{item.name?.[0] || 'U'}</Text>
                             )}
                           </View>
                           <View style={{ flex: 1, marginLeft: 12 }}>
                             <Text style={styles.toolTitle}>{item.name}</Text>
-                            <Text style={styles.email} numberOfLines={1}>
-                              {item.major || item.id}
-                            </Text>
+                            {item.major ? (
+                              <Text style={styles.email} numberOfLines={1}>
+                                {item.major}
+                              </Text>
+                            ) : null}
                           </View>
                           <Pressable
                             style={[
@@ -1157,18 +1161,20 @@ export function Profile() {
                       { paddingVertical: 12 },
                     ]}
                   >
-                    <View style={styles.avatar}>
+                    <View style={styles.listAvatar}>
                       {item.profile_image_url ? (
-                        <Image source={{ uri: item.profile_image_url }} style={styles.avatarImage} />
+                        <Image source={{ uri: item.profile_image_url }} style={styles.listAvatarImage} />
                       ) : (
-                        <Text style={styles.avatarText}>{item.name?.[0] || 'U'}</Text>
+                        <Text style={styles.listAvatarText}>{item.name?.[0] || 'U'}</Text>
                       )}
                     </View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={styles.toolTitle}>{item.name}</Text>
-                      <Text style={styles.email} numberOfLines={1}>
-                        {item.major || item.id}
-                      </Text>
+                      {item.major ? (
+                        <Text style={styles.email} numberOfLines={1}>
+                          {item.major}
+                        </Text>
+                      ) : null}
                     </View>
                     <Pressable style={styles.friendActionButton} onPress={() => handleRemoveFriend(item.id)}>
                       <Text style={styles.friendActionButtonText}>Unfriend</Text>
@@ -1475,9 +1481,9 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       marginBottom: 6,
     },
     heroBadge: {
-      width: 44,
-      height: 44,
-      borderRadius: 16,
+      width: 40,
+      height: 40,
+      borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: isDark ? 'rgba(12,12,14,0.9)' : 'rgba(80,0,0,0.06)',
@@ -1530,9 +1536,9 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       position: 'relative',
     },
     avatar: {
-      width: 74,
-      height: 74,
-      borderRadius: 37,
+      width: 62,
+      height: 62,
+      borderRadius: 31,
       backgroundColor: isDark ? 'rgba(12,12,14,0.9)' : 'rgba(80,0,0,0.06)',
       alignItems: 'center',
       justifyContent: 'center',
@@ -1542,8 +1548,26 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       width: '100%',
       height: '100%',
     },
+    listAvatar: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: isDark ? 'rgba(12,12,14,0.9)' : 'rgba(80,0,0,0.06)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+    },
+    listAvatarImage: {
+      width: '100%',
+      height: '100%',
+    },
+    listAvatarText: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+    },
     avatarText: {
-      fontSize: 26,
+      fontSize: 22,
       fontWeight: '800',
       color: COLORS.textPrimary,
     },
@@ -1636,7 +1660,7 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: 14,
-      paddingVertical: 12,
+      paddingVertical: 10,
       borderBottomWidth: 1,
       borderBottomColor: COLORS.border,
     },
@@ -1649,9 +1673,9 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       paddingBottom: 0,
     },
     toolIconBg: {
-      width: 42,
-      height: 42,
-      borderRadius: 14,
+      width: 38,
+      height: 38,
+      borderRadius: 12,
       alignItems: 'center',
       justifyContent: 'center',
     },

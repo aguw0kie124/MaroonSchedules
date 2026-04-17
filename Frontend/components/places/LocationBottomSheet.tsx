@@ -15,11 +15,16 @@ import {
   ActivityIndicator,
   TextInput,
 } from "react-native";
+import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import {
   X,
   ExternalLink,
   Calendar,
+  Search,
+  Bell,
+  BellRing,
   ChevronRight,
+  ChevronLeft,
   Utensils,
   Star,
   Navigation,
@@ -49,9 +54,15 @@ import { getStaticRestaurantMenu } from "../../data/restaurantMenus";
 import { getRestaurantHoursToday } from "../../data/restaurantHours";
 import {
   DiningMealPeriod,
+  DiningMenuSearchResult,
+  formatDiningMenuDateLabel,
   isDiningHallMenuLocation,
+  searchDiningMenusForLocation,
+  shiftDiningMenuDate,
 } from "../../services/diningMenuCache";
 import { Alert } from "react-native";
+import { getLocalDateString, parseLocalDateString } from "../../services/dateUtils";
+import { getDiningReminderId, getDiningReminderIds, toggleDiningReminder } from "../../services/diningReminders";
 
 import { ClassMeetingCard } from "./ClassMeetingCard";
 import { OccupancyChart } from "./OccupancyChart";
@@ -231,6 +242,8 @@ interface LocationBottomSheetProps {
   setActiveDiningMenu: (v: string | null) => void;
   activeDiningMealPeriod: DiningMealPeriod;
   setActiveDiningMealPeriod: (v: DiningMealPeriod) => void;
+  activeDiningDate: string;
+  setActiveDiningDate: (v: string) => void;
   diningMenuPreview: any | null;
   isFetchingDining: boolean;
   isPrimaryDiningHallSelection: boolean;
@@ -255,6 +268,7 @@ interface LocationBottomSheetProps {
   onAddMeal?: (item: any) => void;
   onRemoveMeal?: (item: any) => void;
   isSyncingTracker?: boolean;
+  isCompact?: boolean;
 }
 
 export function LocationBottomSheet({
@@ -270,6 +284,8 @@ export function LocationBottomSheet({
   setActiveDiningMenu,
   activeDiningMealPeriod,
   setActiveDiningMealPeriod,
+  activeDiningDate,
+  setActiveDiningDate,
   diningMenuPreview,
   isFetchingDining,
   isPrimaryDiningHallSelection,
@@ -288,6 +304,7 @@ export function LocationBottomSheet({
   onAddMeal,
   onRemoveMeal,
   isSyncingTracker = false,
+  isCompact = false,
 }: LocationBottomSheetProps) {
   const { user } = useUser();
   const { advanceStep, activeTargetName } = useTour();
@@ -304,6 +321,141 @@ export function LocationBottomSheet({
 
   const [activeCategoryKey, setActiveCategoryKey] = useState("all");
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [isDiningSearchOpen, setIsDiningSearchOpen] = useState(false);
+  const [diningSearchQuery, setDiningSearchQuery] = useState("");
+  const [diningSearchResults, setDiningSearchResults] = useState<DiningMenuSearchResult[]>([]);
+  const [isSearchingDiningMenus, setIsSearchingDiningMenus] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [activeReminderIds, setActiveReminderIds] = useState<Set<string>>(new Set());
+  const [syncingReminderId, setSyncingReminderId] = useState<string | null>(null);
+
+  const todayDateKey = getLocalDateString();
+  const isCurrentDiningDate = activeDiningDate === todayDateKey;
+  const canStepBackward = activeDiningDate !== shiftDiningMenuDate(todayDateKey, -30);
+  const canStepForward = activeDiningDate !== shiftDiningMenuDate(todayDateKey, 120);
+  const activeDiningDateObject = useMemo(
+    () => parseLocalDateString(activeDiningDate),
+    [activeDiningDate],
+  );
+  const activeDiningHeaderTitle = useMemo(
+    () => formatDiningMenuDateLabel(activeDiningDate),
+    [activeDiningDate],
+  );
+
+  const loadReminderIds = useCallback(async () => {
+    const reminderIds = await getDiningReminderIds();
+    setActiveReminderIds(reminderIds);
+  }, []);
+
+  useEffect(() => {
+    loadReminderIds().catch(() => null);
+  }, [loadReminderIds]);
+
+  useEffect(() => {
+    if (!isDiningSearchOpen) {
+      setDiningSearchQuery("");
+      setDiningSearchResults([]);
+      setIsSearchingDiningMenus(false);
+      return;
+    }
+
+    if (!activeDiningMenu || diningSearchQuery.trim().length < 2) {
+      setDiningSearchResults([]);
+      setIsSearchingDiningMenus(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = setTimeout(() => {
+      setIsSearchingDiningMenus(true);
+      searchDiningMenusForLocation({
+        location: activeDiningMenu,
+        query: diningSearchQuery,
+        startDate: activeDiningDate,
+      })
+        .then((results) => {
+          if (!cancelled) {
+            setDiningSearchResults(results);
+          }
+        })
+        .catch((error) => {
+          console.warn("Failed to search dining menus", error);
+          if (!cancelled) {
+            setDiningSearchResults([]);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setIsSearchingDiningMenus(false);
+          }
+        });
+    }, 220);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [activeDiningDate, activeDiningMenu, diningSearchQuery, isDiningSearchOpen]);
+
+  const handleDiningDateChange = useCallback(
+    (_event: DateTimePickerEvent, selectedValue?: Date) => {
+      if (Platform.OS === "android") {
+        setShowDatePicker(false);
+      }
+      if (!selectedValue) return;
+      setActiveDiningDate(getLocalDateString(selectedValue));
+    },
+    [setActiveDiningDate],
+  );
+
+  const toggleMenuReminder = useCallback(
+    async (item: any, categoryName: string, overrides?: { dateKey?: string; mealPeriod?: DiningMealPeriod }) => {
+      if (!selectedLoc) return;
+      const dateKey = overrides?.dateKey || activeDiningDate;
+      const mealPeriod = overrides?.mealPeriod || activeDiningMealPeriod;
+      const reminderId = getDiningReminderId({
+        location: activeDiningMenu || selectedLoc.location,
+        dateKey,
+        mealPeriod,
+        itemName: item.name,
+      });
+
+      setSyncingReminderId(reminderId);
+      try {
+        const result = await toggleDiningReminder({
+          itemName: item.name,
+          categoryName,
+          location: activeDiningMenu || selectedLoc.location,
+          dateKey,
+          mealPeriod,
+          locationLat: selectedLoc.coord.lat,
+          locationLng: selectedLoc.coord.lng,
+        });
+
+        if (result.status === "permission-denied") {
+          Alert.alert(
+            "Notifications Off",
+            "Please allow notifications if you want dining reminders.",
+          );
+          return;
+        }
+
+        await loadReminderIds();
+      } catch (error) {
+        console.warn("Failed to toggle dining reminder", error);
+        Alert.alert("Error", "Could not update this reminder right now.");
+      } finally {
+        setSyncingReminderId(null);
+      }
+    },
+    [
+      activeDiningDate,
+      activeDiningMealPeriod,
+      activeDiningMenu,
+      loadReminderIds,
+      selectedLoc,
+    ],
+  );
 
   const toggleCategory = useCallback((categoryName: string) => {
     setCollapsedCategories((current) => {
@@ -320,6 +472,13 @@ export function LocationBottomSheet({
       setCollapsedCategories(new Set(categoryNames));
     }
   }, [diningMenuPreview]);
+
+  useEffect(() => {
+    setIsDiningSearchOpen(false);
+    setDiningSearchQuery("");
+    setDiningSearchResults([]);
+    setShowDatePicker(false);
+  }, [selectedId]);
 
   const animateSheet = useCallback(
     (toValue: number, onDone?: () => void) => {
@@ -345,15 +504,16 @@ export function LocationBottomSheet({
       setDiningDetailTab("menus");
     }
     if (selectedId) {
-      animateSheet(
-        selectedLoc && isDiningHallMenuLocation(selectedLoc.location) && isPrimaryDiningHallSelection
-          ? SHEET_DINING_HALL_SNAP
-          : SHEET_MID_SNAP,
-      );
+      const snap = isCompact 
+        ? SHEET_PEEK_SNAP 
+        : (selectedLoc && isDiningHallMenuLocation(selectedLoc.location) && isPrimaryDiningHallSelection
+            ? SHEET_DINING_HALL_SNAP
+            : SHEET_MID_SNAP);
+      animateSheet(snap);
     } else {
       animateSheet(SHEET_HIDDEN_SNAP);
     }
-  }, [selectedId, animateSheet, activeTargetName, foodCourtVenues.length, selectedLoc?.location, selectedLoc?.type]);
+  }, [selectedId, animateSheet, activeTargetName, foodCourtVenues.length, selectedLoc?.location, selectedLoc?.type, isCompact]);
 
   const isDiningHallCard =
     !!selectedLoc &&
@@ -822,80 +982,59 @@ export function LocationBottomSheet({
                     </TouchableOpacity>
                   )}
                 </View>
-
-
-                {!isPeekSheet ? (
-                  <View style={styles.quickActionRow}>
+                
+                {(isCompact || !isPeekSheet) && (
+                  <View style={[styles.quickActionRow, isCompact && { marginTop: 12 }]}>
                     <TouchableOpacity
                       style={styles.quickActionPill}
                       onPress={handleNavigatePress}
                     >
-                      <Navigation size={14} color={COLORS.textPrimary} />
+                      <Navigation size={14} color={COLORS.textPrimary} strokeWidth={3} />
                       <Text style={styles.quickActionText}>Directions</Text>
                     </TouchableOpacity>
-
-                    {selectedLoc.type === "Rec" ? (
-                      <TouchableOpacity
-                        style={styles.quickActionPill}
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          openFacilityCounts(selectedLoc);
-                        }}
-                      >
-                        <Activity size={14} color={COLORS.textPrimary} />
-                        <Text style={styles.quickActionText}>Live Counts</Text>
-                      </TouchableOpacity>
-                    ) : null}
-
-                    {externalLink && externalLink.label !== "Open in Maps" ? (
-                      <TouchableOpacity
-                        style={styles.quickActionPill}
-                        onPress={handleExternalLinkPress}
-                      >
-                        <ExternalLink size={14} color={COLORS.textPrimary} />
-                        <Text style={styles.quickActionText}>
-                          {externalLink.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ) : null}
-
-                    {/* Menu button removed for dining halls per user request */}
-
-                    {selectedLoc.classMeetings?.length ? (
-                      <TouchableOpacity
-                        style={styles.quickActionPill}
-                        onPress={openScheduleList}
-                      >
-                        <Calendar size={14} color={COLORS.textPrimary} />
-                        <Text style={styles.quickActionText}>Today</Text>
-                      </TouchableOpacity>
-                    ) : null}
 
                     {contextLink ? (
                       <TouchableOpacity
                         style={styles.quickActionPill}
                         onPress={handleContextLinkPress}
                       >
-                        <ExternalLink size={14} color={COLORS.textPrimary} />
+                        <ExternalLink size={14} color={COLORS.textPrimary} strokeWidth={3} />
                         <Text style={styles.quickActionText}>
                           {contextLink.label}
                         </Text>
                       </TouchableOpacity>
                     ) : null}
 
-                    {officialFacilityUrl && officialFacilityUrl !== externalLink?.url ? (
-                      <TouchableOpacity
-                        style={styles.quickActionPill}
-                        onPress={() =>
-                          Linking.openURL(officialFacilityUrl).catch(() => {})
-                        }
-                      >
-                        <ExternalLink size={14} color={COLORS.textPrimary} />
-                        <Text style={styles.quickActionText}>Facility Page</Text>
-                      </TouchableOpacity>
-                    ) : null}
+                    {!isCompact && (
+                      <>
+                        {selectedLoc.type === "Rec" && (
+                          <TouchableOpacity
+                            style={styles.quickActionPill}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              openFacilityCounts(selectedLoc);
+                            }}
+                          >
+                            <Activity size={14} color={COLORS.textPrimary} />
+                            <Text style={styles.quickActionText}>Live Counts</Text>
+                          </TouchableOpacity>
+                        )}
+
+                        {externalLink && externalLink.label !== "Open in Maps" && (
+                          <TouchableOpacity
+                            style={styles.quickActionPill}
+                            onPress={handleExternalLinkPress}
+                          >
+                            <ExternalLink size={14} color={COLORS.textPrimary} />
+                            <Text style={styles.quickActionText}>
+                              {externalLink.label}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </>
+                    )}
                   </View>
-                ) : null}
+                )}
               </View>
             </View>
 
@@ -1339,11 +1478,151 @@ export function LocationBottomSheet({
                 contentContainerStyle={{ paddingBottom: 60, paddingTop: 12 }}
                 scrollEventThrottle={16}
               >
-                <View style={{ marginBottom: 12 }}>
-                  <Text style={styles.sectionTitle}>Menu</Text>
+                <View style={{ marginBottom: 12, gap: 12 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 16, position: 'relative', minHeight: 40 }}>
+                      <View style={{ position: 'absolute', left: 0 }}>
+                        <TouchableOpacity
+                          onPress={() => setShowDatePicker((current) => !current)}
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 17,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: isDark ? "#1A1A1A" : "#EEF1F6",
+                          }}
+                        >
+                          <Calendar size={16} color={COLORS.textPrimary} />
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                        <TouchableOpacity
+                          onPress={() => setActiveDiningDate(shiftDiningMenuDate(activeDiningDate, -1))}
+                          disabled={!canStepBackward}
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 17,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: COLORS.card,
+                            opacity: canStepBackward ? 1 : 0.35,
+                          }}
+                        >
+                          <ChevronLeft size={18} color={COLORS.textPrimary} />
+                        </TouchableOpacity>
+
+                        <Text
+                          style={{
+                            fontSize: 15,
+                            fontWeight: "600",
+                            color: COLORS.textPrimary,
+                            textTransform: 'none',
+                          }}
+                        >
+                          {activeDiningHeaderTitle}
+                        </Text>
+
+                        <TouchableOpacity
+                          onPress={() => setActiveDiningDate(shiftDiningMenuDate(activeDiningDate, 1))}
+                          disabled={!canStepForward}
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 17,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: COLORS.card,
+                            opacity: canStepForward ? 1 : 0.35,
+                          }}
+                        >
+                          <ChevronRight size={18} color={COLORS.textPrimary} />
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={{ position: 'absolute', right: 0 }}>
+                        <TouchableOpacity
+                          onPress={() => setIsDiningSearchOpen((current) => !current)}
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 17,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: isDiningSearchOpen
+                              ? (isDark ? "rgba(80,0,0,0.22)" : "rgba(80,0,0,0.1)")
+                              : COLORS.card,
+                          }}
+                        >
+                          <Search size={17} color={COLORS.textPrimary} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                  {isDiningSearchOpen ? (
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 10,
+                        borderRadius: 16,
+                        paddingHorizontal: 14,
+                        paddingVertical: 12,
+                        backgroundColor: COLORS.card,
+                        borderWidth: 1,
+                        borderColor: COLORS.border,
+                        marginTop: 4,
+                        marginBottom: 4,
+                      }}
+                    >
+                      <Search size={16} color={COLORS.textSecondary} />
+                      <TextInput
+                        value={diningSearchQuery}
+                        onChangeText={setDiningSearchQuery}
+                        placeholder="Search menus..."
+                        placeholderTextColor={COLORS.textTertiary}
+                        style={{
+                          flex: 1,
+                          color: COLORS.textPrimary,
+                          fontSize: 15,
+                          fontWeight: "600",
+                          paddingVertical: 0,
+                        }}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                      {diningSearchQuery.length > 0 ? (
+                        <TouchableOpacity onPress={() => setDiningSearchQuery("")}>
+                          <X size={16} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  ) : null}
+
+                  {showDatePicker ? (
+                    <View
+                      style={{
+                        borderRadius: 18,
+                        overflow: "hidden",
+                        borderWidth: 1,
+                        borderColor: COLORS.border,
+                        backgroundColor: COLORS.card,
+                      }}
+                    >
+                      <DateTimePicker
+                        value={activeDiningDateObject}
+                        mode="date"
+                        display={Platform.OS === "ios" ? "inline" : "default"}
+                        minimumDate={parseLocalDateString(shiftDiningMenuDate(todayDateKey, -30))}
+                        maximumDate={parseLocalDateString(shiftDiningMenuDate(todayDateKey, 120))}
+                        onChange={handleDiningDateChange}
+                      />
+                    </View>
+                  ) : null}
                 </View>
 
-                <View style={{ marginBottom: 16, flexDirection: 'row', gap: 24 }}>
+                <View style={{ marginBottom: 20, flexDirection: 'row', gap: 16 }}>
                   {ALL_DINING_MEAL_PERIODS.map((period) => {
                     const isActive = activeDiningMealPeriod === period;
                     return (
@@ -1351,15 +1630,18 @@ export function LocationBottomSheet({
                         key={period}
                         onPress={() => setActiveDiningMealPeriod(period)}
                         style={{
-                          paddingBottom: 6,
+                          flex: 1,
+                          alignItems: 'center',
+                          paddingVertical: 12,
                           borderBottomWidth: 2,
                           borderBottomColor: isActive ? COLORS.primary : 'transparent',
                         }}
                       >
                         <Text style={{
-                          fontSize: 15,
-                          fontWeight: isActive ? '700' : '600',
+                          fontSize: 14,
+                          fontWeight: isActive ? '700' : '500',
                           color: isActive ? COLORS.textPrimary : COLORS.textTertiary,
+                          letterSpacing: 0.2,
                         }}>
                           {period.charAt(0).toUpperCase() + period.slice(1)}
                         </Text>
@@ -1368,7 +1650,106 @@ export function LocationBottomSheet({
                   })}
                 </View>
 
-                {diningMenuPreview?.categories?.length > 0 ? (
+                {isDiningSearchOpen ? (
+                  <View style={{ marginBottom: 18, gap: 10 }}>
+                    {isSearchingDiningMenus ? (
+                      <View style={{ paddingVertical: 12, alignItems: "center" }}>
+                        <ActivityIndicator color={COLORS.primary} />
+                      </View>
+                    ) : diningSearchQuery.trim().length < 2 ? (
+                      null
+                    ) : diningSearchResults.length === 0 ? (
+                      <Text style={{ color: COLORS.textSecondary, fontSize: 13, fontWeight: "600" }}>
+                        No upcoming matches found yet for "{diningSearchQuery.trim()}".
+                      </Text>
+                    ) : (
+                      diningSearchResults.map((result) => {
+                        const reminderId = getDiningReminderId({
+                          location: result.resolvedLocation,
+                          dateKey: result.dateKey,
+                          mealPeriod: result.mealPeriod,
+                          itemName: result.item.name,
+                        });
+                        const hasReminder = activeReminderIds.has(reminderId);
+                        const isSyncingReminder = syncingReminderId === reminderId;
+
+                        return (
+                          <TouchableOpacity
+                            key={result.id}
+                            activeOpacity={0.86}
+                            onPress={() => {
+                              setActiveDiningDate(result.dateKey);
+                              setActiveDiningMealPeriod(result.mealPeriod);
+                              setActiveCategoryKey(result.categoryName);
+                              setIsDiningSearchOpen(false);
+                            }}
+                            style={{
+                              borderRadius: 18,
+                              padding: 14,
+                              backgroundColor: COLORS.card,
+                              borderWidth: 1,
+                              borderColor: COLORS.border,
+                              gap: 8,
+                            }}
+                          >
+                            <View
+                              style={{
+                                flexDirection: "row",
+                                justifyContent: "space-between",
+                                alignItems: "flex-start",
+                                gap: 12,
+                              }}
+                            >
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ color: COLORS.textPrimary, fontSize: 15, fontWeight: "800" }}>
+                                  {result.item.name}
+                                </Text>
+                                <Text style={{ color: COLORS.textSecondary, fontSize: 12, fontWeight: "700", marginTop: 4 }}>
+                                  {result.categoryName} · {result.mealPeriod.charAt(0).toUpperCase() + result.mealPeriod.slice(1)} · {formatDiningMenuDateLabel(result.dateKey).replace(/\sMenu$/, "")}
+                                </Text>
+                                {result.mealWindowLabel ? (
+                                  <Text style={{ color: COLORS.textTertiary, fontSize: 12, fontWeight: "600", marginTop: 2 }}>
+                                    {result.mealWindowLabel}
+                                  </Text>
+                                ) : null}
+                              </View>
+
+                              <TouchableOpacity
+                                onPress={() =>
+                                  toggleMenuReminder(result.item, result.categoryName, {
+                                    dateKey: result.dateKey,
+                                    mealPeriod: result.mealPeriod,
+                                  })
+                                }
+                                disabled={isSyncingReminder}
+                                style={{
+                                  width: 38,
+                                  height: 38,
+                                  borderRadius: 19,
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  backgroundColor: hasReminder
+                                    ? (isDark ? "rgba(80,0,0,0.22)" : "rgba(80,0,0,0.12)")
+                                    : (isDark ? "#17181B" : "#F5F6F8"),
+                                }}
+                              >
+                                {isSyncingReminder ? (
+                                  <ActivityIndicator size="small" color={COLORS.primary} />
+                                ) : hasReminder ? (
+                                  <BellRing size={16} color={COLORS.primary} />
+                                ) : (
+                                  <Bell size={16} color={COLORS.textSecondary} />
+                                )}
+                              </TouchableOpacity>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })
+                    )}
+                  </View>
+                ) : null}
+
+                {!isDiningSearchOpen && diningMenuPreview?.categories?.length > 0 ? (
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
@@ -1451,7 +1832,7 @@ export function LocationBottomSheet({
                   </ScrollView>
                 ) : null}
 
-                {isFetchingDining ? (
+                {isDiningSearchOpen ? null : isFetchingDining ? (
                   <View style={{ paddingTop: 40, alignItems: "center" }}>
                     <ActivityIndicator color={COLORS.primary} size="large" />
                   </View>
@@ -1519,111 +1900,145 @@ export function LocationBottomSheet({
                                     : {}
                                 }
                               >
-                                {category.items.map((item: any, idx: number) => (
-                                  <View
-                                    key={`${category.name}-${item.name}-${idx}`}
-                                    style={{
-                                      paddingVertical: 14,
-                                      borderBottomWidth: idx === category.items.length - 1 ? 0 : 1,
-                                      borderBottomColor: COLORS.border,
-                                    }}
-                                  >
-                                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                                      <View style={{ flex: 1, paddingRight: 12 }}>
-                                        <Text style={{ fontSize: 15, fontWeight: "700", color: COLORS.textPrimary, marginBottom: 8, lineHeight: 20 }}>
-                                          {item.name}
-                                        </Text>
-                                        <View style={{ flexDirection: "row", gap: 16 }}>
-                                          <View>
-                                            <Text style={{ fontSize: 9, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 2 }}>
-                                              Energy
-                                            </Text>
-                                            <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.textPrimary }}>
-                                              {Math.round(item.calories || 0)} kcal
-                                            </Text>
-                                          </View>
-                                          {item.protein ? (
+                                {category.items.map((item: any, idx: number) => {
+                                  const reminderId = getDiningReminderId({
+                                    location: activeDiningMenu || selectedLoc?.location || "",
+                                    dateKey: activeDiningDate,
+                                    mealPeriod: activeDiningMealPeriod,
+                                    itemName: item.name,
+                                  });
+                                  const hasReminder = activeReminderIds.has(reminderId);
+                                  const isReminderSyncing = syncingReminderId === reminderId;
+
+                                  return (
+                                    <View
+                                      key={`${category.name}-${item.name}-${idx}`}
+                                      style={{
+                                        paddingVertical: 14,
+                                        borderBottomWidth: idx === category.items.length - 1 ? 0 : 1,
+                                        borderBottomColor: COLORS.border,
+                                      }}
+                                    >
+                                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                        <View style={{ flex: 1, paddingRight: 12 }}>
+                                          <Text style={{ fontSize: 15, fontWeight: "700", color: COLORS.textPrimary, marginBottom: 8, lineHeight: 20 }}>
+                                            {item.name}
+                                          </Text>
+                                          <View style={{ flexDirection: "row", gap: 16 }}>
                                             <View>
                                               <Text style={{ fontSize: 9, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 2 }}>
-                                                Protein
+                                                Energy
                                               </Text>
                                               <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.textPrimary }}>
-                                                {Math.round(item.protein)}g
+                                                {Math.round(item.calories || 0)} kcal
                                               </Text>
+                                            </View>
+                                            {item.protein ? (
+                                              <View>
+                                                <Text style={{ fontSize: 9, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 2 }}>
+                                                  Protein
+                                                </Text>
+                                                <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.textPrimary }}>
+                                                  {Math.round(item.protein)}g
+                                                </Text>
+                                              </View>
+                                            ) : null}
+                                          </View>
+                                        </View>
+
+                                        <View style={{ alignItems: "flex-end", gap: 10, marginTop: 4 }}>
+                                          <TouchableOpacity
+                                            onPress={() => toggleMenuReminder(item, category.name)}
+                                            disabled={isReminderSyncing}
+                                            style={{
+                                              width: 34,
+                                              height: 34,
+                                              borderRadius: 17,
+                                              alignItems: "center",
+                                              justifyContent: "center",
+                                              backgroundColor: hasReminder
+                                                ? (isDark ? "rgba(80,0,0,0.22)" : "rgba(80,0,0,0.12)")
+                                                : (isDark ? "#17181B" : "#F5F6F8"),
+                                            }}
+                                          >
+                                            {isReminderSyncing ? (
+                                              <ActivityIndicator size="small" color={COLORS.primary} />
+                                            ) : hasReminder ? (
+                                              <BellRing size={16} color={COLORS.primary} />
+                                            ) : (
+                                              <Bell size={16} color={COLORS.textSecondary} />
+                                            )}
+                                          </TouchableOpacity>
+
+                                          {isDiningHallCard && isCurrentDiningDate && onAddMeal && onRemoveMeal ? (
+                                            <View style={{
+                                              flexDirection: 'row',
+                                              alignItems: 'center',
+                                              gap: 8,
+                                              marginLeft: 4,
+                                            }}>
+                                              <View style={{ minWidth: 26, alignItems: 'flex-end', justifyContent: 'center' }}>
+                                                {(trackerCounts[item.name]?.count || 0) > 0 && (
+                                                  <Text style={{ fontSize: 12, fontWeight: "800", color: COLORS.textSecondary }}>
+                                                    {trackerCounts[item.name].count}x
+                                                  </Text>
+                                                )}
+                                              </View>
+
+                                              {(trackerCounts[item.name]?.count || 0) > 0 && (
+                                                <TouchableOpacity
+                                                  onPress={() => onRemoveMeal(item)}
+                                                  disabled={isSyncingTracker}
+                                                  style={{
+                                                    width: 32,
+                                                    height: 32,
+                                                    borderRadius: 16,
+                                                    borderWidth: 1.5,
+                                                    borderColor: "#FF4D6D",
+                                                    backgroundColor: isDark ? "rgba(255,77,109,0.12)" : "rgba(255,77,109,0.08)",
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    opacity: isSyncingTracker ? 0.6 : 1
+                                                  }}
+                                                >
+                                                  <Text style={{ fontSize: 20, fontWeight: "900", color: "#FF4D6D", lineHeight: 22 }}>-</Text>
+                                                </TouchableOpacity>
+                                              )}
+
+                                              <TouchableOpacity
+                                                onPress={() => onAddMeal(item)}
+                                                disabled={isSyncingTracker}
+                                                style={{
+                                                  width: 32,
+                                                  height: 32,
+                                                  borderRadius: 16,
+                                                  borderWidth: 1.5,
+                                                  borderColor: "#5B9A68",
+                                                  backgroundColor: isDark ? "rgba(91,154,104,0.12)" : "rgba(91,154,104,0.08)",
+                                                  alignItems: 'center',
+                                                  justifyContent: 'center',
+                                                  opacity: isSyncingTracker ? 0.6 : 1
+                                                }}
+                                              >
+                                                {isSyncingTracker ? (
+                                                  <ActivityIndicator size="small" color="#5B9A68" />
+                                                ) : (
+                                                  <Text style={{ fontSize: 20, fontWeight: "900", color: "#5B9A68", lineHeight: 22 }}>+</Text>
+                                                )}
+                                              </TouchableOpacity>
                                             </View>
                                           ) : null}
                                         </View>
-                                      </View>
 
-                                      {/* Calorie Tracking Controls */}
-                                      {isDiningHallCard && onAddMeal && onRemoveMeal && (
-                                        <View style={{
-                                          flexDirection: 'row',
-                                          alignItems: 'center',
-                                          gap: 8,
-                                          marginLeft: 4,
-                                          marginTop: 4
-                                        }}>
-                                          <View style={{ minWidth: 26, alignItems: 'flex-end', justifyContent: 'center' }}>
-                                            {(trackerCounts[item.name]?.count || 0) > 0 && (
-                                              <Text style={{ fontSize: 12, fontWeight: "800", color: COLORS.textSecondary }}>
-                                                {trackerCounts[item.name].count}x
-                                              </Text>
-                                            )}
+                                        {!isDiningHallCard && (item.dietary?.includes("Vegetarian") || item.dietary?.includes("Vegan")) ? (
+                                          <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#E6EFDE", alignItems: "center", justifyContent: "center", marginTop: 2 }}>
+                                            <Leaf size={13} color="#5B9A68" />
                                           </View>
-
-                                          {(trackerCounts[item.name]?.count || 0) > 0 && (
-                                            <TouchableOpacity
-                                              onPress={() => onRemoveMeal(item)}
-                                              disabled={isSyncingTracker}
-                                              style={{
-                                                width: 32,
-                                                height: 32,
-                                                borderRadius: 16,
-                                                borderWidth: 1.5,
-                                                borderColor: "#FF4D6D",
-                                                backgroundColor: isDark ? "rgba(255,77,109,0.12)" : "rgba(255,77,109,0.08)",
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                opacity: isSyncingTracker ? 0.6 : 1
-                                              }}
-                                            >
-                                              <Text style={{ fontSize: 20, fontWeight: "900", color: "#FF4D6D", lineHeight: 22 }}>-</Text>
-                                            </TouchableOpacity>
-                                          )}
-
-                                          <TouchableOpacity
-                                            onPress={() => onAddMeal(item)}
-                                            disabled={isSyncingTracker}
-                                            style={{
-                                              width: 32,
-                                              height: 32,
-                                              borderRadius: 16,
-                                              borderWidth: 1.5,
-                                              borderColor: "#5B9A68",
-                                              backgroundColor: isDark ? "rgba(91,154,104,0.12)" : "rgba(91,154,104,0.08)",
-                                              alignItems: 'center',
-                                              justifyContent: 'center',
-                                              opacity: isSyncingTracker ? 0.6 : 1
-                                            }}
-                                          >
-                                            {isSyncingTracker ? (
-                                              <ActivityIndicator size="small" color="#5B9A68" />
-                                            ) : (
-                                              <Text style={{ fontSize: 20, fontWeight: "900", color: "#5B9A68", lineHeight: 22 }}>+</Text>
-                                            )}
-                                          </TouchableOpacity>
-                                        </View>
-                                      )}
-
-                                      {!isDiningHallCard && (item.dietary?.includes("Vegetarian") || item.dietary?.includes("Vegan")) ? (
-                                        <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#E6EFDE", alignItems: "center", justifyContent: "center", marginTop: 2 }}>
-                                          <Leaf size={13} color="#5B9A68" />
-                                        </View>
-                                      ) : null}
+                                        ) : null}
+                                      </View>
                                     </View>
-                                  </View>
-                                ))}
+                                  );
+                                })}
                               </View>
                             )}
                           </View>

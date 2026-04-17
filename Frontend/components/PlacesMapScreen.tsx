@@ -49,6 +49,7 @@ import {
   Minimize2,
   Bus,
   ChevronDown,
+  MessageCircle,
   Share2,
   X,
 } from "lucide-react-native";
@@ -122,6 +123,7 @@ import {
   getZoneDensity,
   mergeCampusLocations,
   shouldHideFoodCourtLocationInBrowse,
+  normalizeBuildingKey,
 } from "./places/campusData";
 import {
   getStatusColor,
@@ -254,7 +256,7 @@ const BusMarker = React.memo(({
     selectedDirection === "All" ||
     (busDir || "").toLowerCase().includes((selectedDirection || "All").toLowerCase());
   
-  const opacity = matchesDirection ? (isTrackedBus ? 1 : 0.9) : 0.3;
+  const opacity = matchesDirection ? 1 : 0.8;
   const displayName = routeShortName.length > 3 ? routeShortName.slice(0, 3) : routeShortName;
   const busCompositeKey = `bus-${bus.RouteKey}-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`;
 
@@ -418,6 +420,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     useState<WalkingRoute | null>(null);
   const [isTodayExpanded, setIsTodayExpanded] = useState(false);
   const [hasManualMapMovement, setHasManualMapMovement] = useState(false);
+  const [isCompactDetail, setIsCompactDetail] = useState(false);
   const timelineHeight = useSharedValue(0);
 
   // ── Meal Tracking state ───────────────────────────────────
@@ -588,41 +591,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
     availableDirections,
     routeTimetableState
   } = useBusTransit(activeLayer, mapRef);
-
-  const memoizedBusMarkers = useMemo(() => {
-    return busVehicles.map((bus) => {
-      const isTrackedBus =
-        selectedBus?.Key && bus.Key
-          ? selectedBus.Key === bus.Key
-          : selectedBus?.Name === bus.Name;
-
-      const routeShortName =
-        (bus.routeShortName ||
-        bus.RouteShortName ||
-        selectedRoute?.ShortName ||
-        "").toString();
-
-      const routeColor =
-        bus.routeColor ||
-        bus.RouteColor ||
-        selectedRoute?.Color ||
-        "#007AFF";
-
-      return (
-        <BusMarker
-          key={`bus-${bus.Key || bus.Id || bus.Name}`}
-          bus={bus}
-          isDark={isDark}
-          routeColor={routeColor}
-          routeShortName={routeShortName}
-          isAllBusRoutesSelected={isAllBusRoutesSelected}
-          selectedDirection={selectedDirection}
-          isTrackedBus={isTrackedBus}
-          onPress={() => handleBusMarkerPress(bus)}
-        />
-      );
-    });
-  }, [busVehicles, isDark, isAllBusRoutesSelected, selectedDirection, selectedBus, selectedRoute, handleBusMarkerPress]);
 
   const nearbyTransitInsight = useMemo(() => getNearbyTransitInsight(userCoord), [getNearbyTransitInsight, userCoord]);
 
@@ -890,6 +858,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setActiveDiningMenu,
     activeDiningMealPeriod,
     setActiveDiningMealPeriod,
+    activeDiningDate,
+    setActiveDiningDate,
     diningMenuPreview,
     isPrimaryDiningHallSelection,
     handleSelectLocation,
@@ -913,6 +883,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setIsSearchExpanded(false);
       setSearchQuery("");
       setShowSearchResults(false);
+      setIsCompactDetail(false);
 
       if (
         activeTargetName === "rec-center-item" &&
@@ -974,7 +945,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
   }, [selectedId]);
 
   const markerLocations = useMemo(() => {
-    if (activeLayer === "Pulse") return [];
+    if (activeLayer === "Pulse") return selectedLoc ? [selectedLoc] : [];
     if (activeLayer === "Heatmap" || activeLayer === "Bus")
       return selectedLoc ? [selectedLoc] : [];
 
@@ -1437,9 +1408,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (activeLayer !== "Pulse") return;
     if (!hasSeenPulseLayer.current) {
       hasSeenPulseLayer.current = true;
-      return;
+    } else {
+      fetchPulseHotspots({ force: true });
     }
-    fetchPulseHotspots({ force: true });
+    setIsCompactDetail(false);
   }, [activeLayer, fetchPulseHotspots]);
 
   useFocusEffect(
@@ -1746,6 +1718,41 @@ export function PlacesMapScreen({ route, navigation }: any) {
     ],
   );
 
+  const memoizedBusMarkers = useMemo(() => {
+    return busVehicles.map((bus) => {
+      const isTrackedBus =
+        selectedBus?.Key && bus.Key
+          ? selectedBus.Key === bus.Key
+          : selectedBus?.Name === bus.Name;
+
+      const routeShortName =
+        (bus.routeShortName ||
+        bus.RouteShortName ||
+        selectedRoute?.ShortName ||
+        "").toString();
+
+      const routeColor =
+        bus.routeColor ||
+        bus.RouteColor ||
+        selectedRoute?.Color ||
+        "#007AFF";
+
+      return (
+        <BusMarker
+          key={`bus-${bus.Key || bus.Id || bus.Name}`}
+          bus={bus}
+          isDark={isDark}
+          routeColor={routeColor}
+          routeShortName={routeShortName}
+          isAllBusRoutesSelected={isAllBusRoutesSelected}
+          selectedDirection={selectedDirection}
+          isTrackedBus={isTrackedBus}
+          onPress={() => handleBusMarkerPress(bus)}
+        />
+      );
+    });
+  }, [busVehicles, handleBusMarkerPress, isAllBusRoutesSelected, isDark, selectedBus, selectedDirection, selectedRoute]);
+
 
 
   const handleStopPress = useCallback(
@@ -1825,21 +1832,33 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setPendingInitialLocation(
       typeof nextLocation === "string" ? nextLocation : null,
     );
+    if (nextLocation) {
+        setIsCompactDetail(true);
+    }
   }, [
     route.params?.focusToken,
     route.params?.initialLayer,
     route.params?.initialLocation,
+    route.params?.isCompact,
   ]);
 
   useEffect(() => {
     if (!pendingInitialLocation) return;
     const targetName = getCanonicalLocationName(pendingInitialLocation);
-    const match = allMapLocations.find(
-      (loc) => getCanonicalLocationName(loc.location) === targetName,
-    );
+    const targetKey = normalizeBuildingKey(pendingInitialLocation);
+    
+    const match = allMapLocations.find((loc) => {
+      const locName = getCanonicalLocationName(loc.location);
+      if (locName === targetName) return true;
+      if (normalizeBuildingKey(loc.location) === targetKey) return true;
+      if (loc.shortName && normalizeBuildingKey(loc.shortName) === targetKey) return true;
+      if (Array.isArray(loc.aliases) && loc.aliases.some(a => normalizeBuildingKey(a) === targetKey)) return true;
+      return false;
+    });
     if (!match) return;
     setSelectedId(getLocationSelectionId(match));
     setPendingInitialLocation(null);
+    suppressNextOverviewFitRef.current = true;
   }, [allMapLocations, pendingInitialLocation]);
 
   useEffect(() => {
@@ -1852,6 +1871,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
     setSelectedHotspotId(hotspotMatch.id);
     setPendingInitialLocation(null);
+    suppressNextOverviewFitRef.current = true;
 
     if (!mapRef.current) return;
     mapRef.current.animateToRegion(
@@ -2109,12 +2129,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   key={`path-${idx}`}
                   id={`path-${idx}`}
                   coordinates={validPoints}
-                  color={
-                    isSelected
-                      ? getNeonColor(selectedRoute?.Color || "#007AFF")
-                      : getNeonColor(selectedRoute?.Color || "#007AFF") + "40"
-                  }
-                  width={isSelected ? 4 : 2}
+                  color={getNeonColor(selectedRoute?.Color || "#007AFF")}
+                  width={isSelected ? 6 : 4}
                 />
               ) : null;
             })
@@ -2177,7 +2193,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 <View
                   style={[
                     styles.busStopMarker,
-                    { opacity: stopSelected ? 1 : 0.3 },
+                    { opacity: 1 },
                   ]}
                 >
                   <View style={styles.busStopMarkerInner} />
@@ -2257,6 +2273,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
                       />
                       <View style={styles.pulseMarkerHighlight} />
                     </View>
+                    {hotspot.commentCount > 0 && (
+                      <View style={[styles.pulseCommentBadge, { backgroundColor: hotspot.pulseColor }]}>
+                        <MessageCircle size={10} color="#FFFFFF" strokeWidth={3} />
+                        <Text style={styles.pulseCommentBadgeText}>{hotspot.commentCount}</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
               </MapMarker>
@@ -2825,6 +2847,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
         setActiveDiningMenu={setActiveDiningMenu}
         activeDiningMealPeriod={activeDiningMealPeriod}
         setActiveDiningMealPeriod={setActiveDiningMealPeriod}
+        activeDiningDate={activeDiningDate}
+        setActiveDiningDate={setActiveDiningDate}
         diningMenuPreview={diningMenuPreview}
         isFetchingDining={isFetchingDining}
         isPrimaryDiningHallSelection={isPrimaryDiningHallSelection}
@@ -2843,6 +2867,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         onAddMeal={(item) => selectedLoc && addMealEntry(item, selectedLoc.location, getDiningMealPeriodForLocation(selectedLoc.location))}
         onRemoveMeal={(item) => selectedLoc && removeMealEntry(item, selectedLoc.location, getDiningMealPeriodForLocation(selectedLoc.location))}
         isSyncingTracker={isSyncingTracker}
+        isCompact={isCompactDetail}
       />
 
       {/* Module editor modal */}

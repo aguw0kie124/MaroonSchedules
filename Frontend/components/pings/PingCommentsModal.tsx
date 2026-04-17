@@ -97,7 +97,7 @@ export function PingCommentsModal({
   const SCREEN_HEIGHT = Dimensions.get('window').height;
   const SHEET_HEIGHT = Math.round(SCREEN_HEIGHT * 0.86);
   const SHEET_TOP_SNAP = 0;
-  const SHEET_MID_SNAP = Math.round(SHEET_HEIGHT * 0.22);
+  const SHEET_MID_SNAP = SHEET_TOP_SNAP; // No mid snap, show full height to see composer
   const SHEET_HIDDEN_SNAP = SHEET_HEIGHT + 32;
   const { COLORS } = useTheme();
   const { user } = useUser();
@@ -178,14 +178,14 @@ export function PingCommentsModal({
       setSheetMode('hidden');
       sheetY.setValue(SHEET_HIDDEN_SNAP);
       Animated.spring(sheetY, {
-        toValue: SHEET_MID_SNAP,
+        toValue: SHEET_TOP_SNAP,
         useNativeDriver: true,
         damping: 30,
         stiffness: 260,
         mass: 0.92,
       }).start(() => {
-        sheetSnap.current = SHEET_MID_SNAP;
-        setSheetMode('mid');
+        sheetSnap.current = SHEET_TOP_SNAP;
+        setSheetMode('top');
       });
       return;
     }
@@ -448,7 +448,7 @@ export function PingCommentsModal({
                         {target?.title || 'Comments'}
                       </Text>
                       <Text style={[styles.subtitle, { color: COLORS.textSecondary }]} numberOfLines={2}>
-                        {target?.subtitle || `${target?.commentCount || 0} comments`}
+                        {target?.commentCount === 1 ? '1 comment' : `${target?.commentCount || 0} comments`} • {target?.subtitle}
                       </Text>
                     </View>
                     <Pressable onPress={closeSheet} style={styles.closeButton}>

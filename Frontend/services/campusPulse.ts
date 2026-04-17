@@ -33,6 +33,7 @@ export interface CampusHotspot {
   radius: number;
   pingCount: number;
   eventCount: number;
+  commentCount: number;
   percentFull: number | null;
   dominantCategory: string;
   previewLabel: string;
@@ -263,6 +264,7 @@ export async function fetchCampusPulseMap(
       radius: typeof hotspot.radius === 'number' ? hotspot.radius : 100,
       pingCount: Number(hotspot.pingCount) || 0,
       eventCount: Number(hotspot.eventCount) || 0,
+      commentCount: items.reduce((acc, i) => acc + (i.commentCount || 0), 0),
       percentFull: hotspot.percentFull ?? null,
       dominantCategory: hotspot.dominantCategory ?? "Campus",
       previewLabel: hotspot.previewLabel ?? "Live now",

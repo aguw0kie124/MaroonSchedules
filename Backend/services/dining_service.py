@@ -524,8 +524,18 @@ def _menu_success_ttl_seconds(date_str: Optional[str] = None) -> int:
     return max(60, ttl_seconds)
 
 
+def _normalize_menu_date_key(date_str: Optional[str] = None) -> str:
+    if date_str:
+        try:
+            return datetime.strptime(date_str, '%Y-%m-%d').strftime('%Y-%m-%d')
+        except ValueError:
+            pass
+    return datetime.now(tz=CENTRAL_TZ).strftime('%Y-%m-%d')
+
+
 def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str = None) -> Dict[str, Any]:
-    cache_key = f"dining:full-menu:v1:{location_name.lower()}:{(meal_period or 'lunch').lower()}:{date_str or datetime.now().strftime('%Y-%m-%d')}"
+    normalized_date = _normalize_menu_date_key(date_str)
+    cache_key = f"dining:full-menu:v2:{location_name.lower()}:{(meal_period or 'lunch').lower()}:{normalized_date}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
         return cached
@@ -538,7 +548,7 @@ def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str 
     resolved_locations = [resolved_name]
 
     if is_dining_hall:
-        live_result = fetch_dine_on_campus_menu(resolved_name, date_str=date_str, meal_period=period)
+        live_result = fetch_dine_on_campus_menu(resolved_name, date_str=normalized_date, meal_period=period)
         if live_result.get('success') and live_result.get('items'):
             items = live_result['items']
             source = 'live'
@@ -553,12 +563,13 @@ def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str 
                             WHERE (location = %s OR location ILIKE %s)
                             AND location_type = 'dining_hall'
                             AND meal_period IN ({placeholders})
+                            AND date = %s
                             AND active = TRUE
-                        """, [resolved_name, f"%{resolved_name}%"] + aliases)
+                        """, [resolved_name, f"%{resolved_name}%"] + aliases + [normalized_date])
                         items = [dict(row) for row in cur.fetchall()]
             except Exception:
                 items = []
-            source = 'database'
+            source = 'database' if items else 'unavailable'
     else:
         aliases = PERIOD_ALIASES.get(period, [period, 'every-day', 'everyday', 'all-day'])
         resolved_locations = RESTAURANT_GROUPS.get(location_name, [resolved_name])
@@ -586,9 +597,10 @@ def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str 
         "mealPeriod": period,
         "source": source,
         "count": len(items),
+        "date": normalized_date,
         "categories": grouped_items,
     }
-    ttl_seconds = _menu_success_ttl_seconds(date_str) if payload["success"] else DINING_MENU_ERROR_TTL_SECONDS
+    ttl_seconds = _menu_success_ttl_seconds(normalized_date) if payload["success"] else DINING_MENU_ERROR_TTL_SECONDS
     cache_service.set_json(cache_key, payload, ttl_seconds)
     return payload
 

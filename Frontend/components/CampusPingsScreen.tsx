@@ -1308,14 +1308,12 @@ export function CampusPingsScreen() {
               style={styles.pingIconAction}
               onPress={() => handleOpenComments(item)}
             >
-              <View style={styles.pingActionGroup}>
-                <MessageCircle size={21} color={COLORS.textPrimary} />
-                {(item.commentCount || 0) > 0 && (
+                <View style={styles.pingActionGroup}>
+                  <MessageCircle size={21} color={COLORS.textPrimary} />
                   <Text style={styles.pingActionLabel}>
-                    {item.commentCount}
+                    {item.commentCount || 0}
                   </Text>
-                )}
-              </View>
+                </View>
             </ScalePressable>
 
             <ScalePressable
