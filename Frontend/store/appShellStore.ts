@@ -341,6 +341,14 @@ export const useAppShellStore = create<AppShellState>()(
           tabBarMode: persisted.tabBarMode === 'floating' || persisted.tabBarMode === 'solid'
             ? persisted.tabBarMode
             : currentState.tabBarMode,
+          viewedStoryIds: Array.isArray(persisted.viewedStoryIds)
+            ? persisted.viewedStoryIds.filter((id): id is string => typeof id === 'string')
+            : currentState.viewedStoryIds,
+          userBio: typeof persisted.userBio === 'string' ? persisted.userBio : currentState.userBio,
+          userWebsite: typeof persisted.userWebsite === 'string' ? persisted.userWebsite : currentState.userWebsite,
+          userGender: typeof persisted.userGender === 'string' ? persisted.userGender : currentState.userGender,
+          userDisplayName: typeof persisted.userDisplayName === 'string' ? persisted.userDisplayName : currentState.userDisplayName,
+          showPingsOnProfile: typeof persisted.showPingsOnProfile === 'boolean' ? persisted.showPingsOnProfile : currentState.showPingsOnProfile,
         };
       },
       migrate: (persistedState: any, version: number) => {
