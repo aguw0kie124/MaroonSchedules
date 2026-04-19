@@ -223,7 +223,6 @@ export function AuthLanding({ initialView = 'welcome', onBack }: AuthLandingProp
       );
       return;
     }
-
     try {
       triggerHaptic('light');
       exitGuestMode();
