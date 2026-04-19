@@ -49,6 +49,7 @@ import {
 import { updateUserProfile } from '../../api/client';
 import { useAppShellStore } from '../../store/appShellStore';
 import { useEventStore, type MajorOption } from '../../store/eventStore';
+import { NotificationPromptScreen } from './NotificationPromptScreen';
 
 type Props = {
   clerkId: string;
@@ -218,6 +219,7 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
   const setPreferredSocialMode = useAppShellStore((state) => state.setPreferredSocialMode);
   const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
   const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
+  const setNotificationPrompted = useAppShellStore((state) => state.setNotificationPrompted);
 
   const selectedMajor = useEventStore((state) => state.selectedMajor);
   const isMajorSpecific = useEventStore((state) => state.isMajorSpecific);
@@ -353,6 +355,15 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
           />
         );
       case 4:
+        return (
+          <NotificationPromptScreen
+            onDone={() => {
+              setNotificationPrompted(true);
+              transitionTo(5);
+            }}
+          />
+        );
+      case 5:
         return <SuccessScreen onEdit={() => transitionTo(1)} onFinish={handleFinish} />;
       default:
         return null;
