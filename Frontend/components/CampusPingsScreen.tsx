@@ -64,7 +64,7 @@ import { useTheme, WallpaperWrapper } from './SharedUI';
 import { useAppShellStore } from '../store/appShellStore';
 import { useEventStore } from '../store/eventStore';
 import { TourTarget, useTour } from './onboarding/TourProvider';
-import { PingCommentsModal } from './pings/PingCommentsModal';
+import { resolveDisplayName } from '../utils/userUtils';
 import {
   addFriend,
   addComment,
@@ -81,21 +81,14 @@ import {
   uploadMediaImage,
 } from '../services/socialFeedService';
 import { buildCampusDirectory, getCanonicalLocationName } from './places/campusData';
-import { useSessionStore } from '../store/sessionStore';
-import { resolveDisplayName } from '../utils/userUtils';
+import { StoriesBar } from './pings/StoriesBar';
+import { StoryViewer } from './pings/StoryViewer';
+import { PingComposerModal, PING_CATEGORIES } from './pings/PingComposerModal';
+import { PingCommentsModal } from './pings/PingCommentsModal';
 
-type PingCategory =
-  | 'Free Food'
-  | 'Hangout'
-  | 'Study'
-  | 'Show'
-  | 'Sports'
-  | 'Popup'
-  | 'Heads Up';
+import type { PingCategory, TimePreset, ComposerGeoLocation } from './pings/PingComposerModal';
 
 type FeedFilter = 'All' | 'Friends' | PingCategory;
-
-type TimePreset = 'now' | 'soon' | 'tonight' | 'tomorrow';
 
 interface FeaturedEvent {
   id: string;
@@ -113,9 +106,9 @@ interface FeaturedEvent {
   rsvpStatus?: string;
 }
 
-type PingAnchorType = 'place' | 'geo';
+export type PingAnchorType = 'place' | 'geo';
 
-interface PingCard {
+export interface PingCard {
   id: string;
   source: 'user' | 'official';
   anchorType: PingAnchorType;
@@ -140,22 +133,6 @@ interface PingCard {
   locationLng?: number | null;
   imageUrl?: string | null;
 }
-
-interface ComposerGeoLocation {
-  latitude: number;
-  longitude: number;
-  label: string;
-}
-
-const PING_CATEGORIES: Array<{ id: PingCategory; accent: string; Icon: any }> = [
-  { id: 'Free Food', accent: '#E48B3D', Icon: Pizza },
-  { id: 'Hangout', accent: '#D85F8D', Icon: Users },
-  { id: 'Study', accent: '#6888E8', Icon: Sparkles },
-  { id: 'Show', accent: '#855FF0', Icon: Flame },
-  { id: 'Sports', accent: '#3CA86E', Icon: Flame },
-  { id: 'Popup', accent: '#4B8AC9', Icon: Megaphone },
-  { id: 'Heads Up', accent: '#CC5454', Icon: Megaphone },
-];
 
 const TIME_PRESETS: Array<{ id: TimePreset; label: string }> = [
   { id: 'now', label: 'Now' },
@@ -291,7 +268,7 @@ function mapOfficialEventCategory(event: FeaturedEvent): PingCategory {
   return 'Popup';
 }
 
-function mapActivityToPing(activity: any, currentUser: any, userMap: Map<string, string>): PingCard {
+export function mapActivityToPing(activity: any, currentUser: any, userMap: Map<string, string>): PingCard {
   const custom = activity.custom || {};
   const actor = activity.actor || {};
   const userId = (actor.id || activity.actor || '').replace('SU:', '');
@@ -360,28 +337,6 @@ export function CampusPingsScreen() {
     [directory],
   );
 
-  const resetComposer = useCallback(() => {
-    setComposerTitle('');
-    setComposerBody('');
-    setComposerCategory('Popup');
-    setComposerTimePreset('now');
-    setComposerDurationHours(3);
-    setLocationQuery('');
-    setSelectedLocation(null);
-    setComposerGeoLocation(null);
-    setComposerImageUri(null);
-    setComposerAnonymous(false);
-    setUseCurrentLocation(true);
-  }, []);
-
-  const openComposer = useCallback(() => {
-    setUseCurrentLocation(true);
-    setComposerVisible(true);
-  }, []);
-  const closeComposer = useCallback(() => {
-    setComposerVisible(false);
-    resetComposer();
-  }, [resetComposer]);
 
   const {
     data: featuredEvents = [],
@@ -457,22 +412,26 @@ export function CampusPingsScreen() {
   const pingsListRef = useRef<FlatList<PingCard> | null>(null);
 
   const [composerVisible, setComposerVisible] = useState(false);
-  const [composerTitle, setComposerTitle] = useState('');
-  const [composerBody, setComposerBody] = useState('');
-  const [composerCategory, setComposerCategory] = useState<PingCategory>('Popup');
-  const [composerTimePreset, setComposerTimePreset] = useState<TimePreset>('now');
-  const [composerDurationHours, setComposerDurationHours] = useState<number>(3);
-  const [locationQuery, setLocationQuery] = useState('');
-  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
-  const [composerGeoLocation, setComposerGeoLocation] = useState<ComposerGeoLocation | null>(null);
-  const [composerImageUri, setComposerImageUri] = useState<string | null>(null);
-  const [composerAnonymous, setComposerAnonymous] = useState(false);
-  const [useCurrentLocation, setUseCurrentLocation] = useState(true);
-  const [isPosting, setIsPosting] = useState(false);
-  const [isResolvingCurrentLocation, setIsResolvingCurrentLocation] = useState(false);
-
   const [activeFeaturedEvent, setActiveFeaturedEvent] = useState<FeaturedEvent | null>(null);
   const [activeCommentsPing, setActiveCommentsPing] = useState<PingCard | null>(null);
+  const [activeOptionsMenuPing, setActiveOptionsMenuPing] = useState<PingCard | null>(null);
+  const [activeMiniProfileUser, setActiveMiniProfileUser] = useState<any | null>(null);
+
+  const viewedStoryIds = useAppShellStore((state) => state.viewedStoryIds);
+  const addViewedStory = useAppShellStore((state) => state.addViewedStory);
+
+  const [viewerVisible, setViewerVisible] = useState(false);
+  const [activeStoryUser, setActiveStoryUser] = useState<any | null>(null);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['campus-pings'] }),
+      queryClient.invalidateQueries({ queryKey: ['user-pings'] }),
+      queryClient.invalidateQueries({ queryKey: ['campus-ping-friends'] }),
+    ]);
+    setRefreshing(false);
+  }, [queryClient]);
 
   const { data: friends = [] } = useQuery({
     queryKey: ['campus-ping-friends', API_URL, user?.id],
@@ -492,17 +451,6 @@ export function CampusPingsScreen() {
     );
   }, [friends]);
 
-  const locationSuggestions = useMemo(() => {
-    const query = locationQuery.trim().toLowerCase();
-    if (!query) return directory.slice(0, 8);
-    return directory
-      .filter((item) => {
-        const name = item.location.toLowerCase();
-        const short = item.shortName?.toLowerCase() || '';
-        return name.includes(query) || short.includes(query);
-      })
-      .slice(0, 8);
-  }, [directory, locationQuery]);
 
   const featuredCards = useMemo(() => {
     if (categoryFilter === 'Friends') {
@@ -592,299 +540,96 @@ export function CampusPingsScreen() {
     loadAll();
   }, [loadAll]);
 
-  const handleRefresh = useCallback(() => {
-    loadAll();
-  }, [loadAll]);
-
-  const handleSelectLocation = useCallback((locationName: string) => {
-    setUseCurrentLocation(false);
-    setSelectedLocation(locationName);
-    setComposerGeoLocation(null);
-    setLocationQuery(locationName);
-  }, []);
-
-  const handleUseCurrentLocation = useCallback(async () => {
-    setUseCurrentLocation(true);
-    setIsResolvingCurrentLocation(true);
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('Location unavailable', 'Allow location access to pin your current spot.');
-        return null;
+  const stories = useMemo(() => {
+    const userGroups = new Map<string, any[]>();
+    userPings.forEach((ping) => {
+      if (ping.userId) {
+        const list = userGroups.get(ping.userId) || [];
+        list.push(ping);
+        userGroups.set(ping.userId, list);
       }
+    });
 
-      let current;
-      try {
-        current = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-      } catch (_error) {
-        current = await Location.getLastKnownPositionAsync();
-      }
-      if (!current) {
-        throw new Error('Could not determine your location.');
-      }
-      const latitude = current.coords.latitude;
-      const longitude = current.coords.longitude;
+    return Array.from(userGroups.entries())
+      .map(([userId, pings]) => {
+        const first = pings[0];
+        const allSeen = pings.every(p => viewedStoryIds.includes(p.id));
+        return {
+          id: userId,
+          name: first.userName,
+          image: first.userImage,
+          pings: pings.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+          hasMedia: pings.some(p => p.imageUrl),
+          allSeen,
+        };
+      })
+      .filter(u => u.id !== user?.id);
+  }, [userPings, user?.id, viewedStoryIds]);
 
-      const nearest = directory.reduce(
-        (best, item) => {
-          const distanceMeters = haversineDistanceMeters(
-            latitude,
-            longitude,
-            item.coord.lat,
-            item.coord.lng,
-          );
-          if (!best || distanceMeters < best.distanceMeters) {
-            return { item, distanceMeters };
-          }
-          return best;
-        },
-        null as { item: (typeof directory)[number]; distanceMeters: number } | null,
-      );
-
-      const label =
-        nearest && nearest.distanceMeters <= 220
-          ? `Near ${nearest.item.location}`
-          : 'Pinned location';
-
-      const nextLocation = {
-        latitude,
-        longitude,
-        label,
-      };
-      setComposerGeoLocation(nextLocation);
-      setSelectedLocation(null);
-      setLocationQuery('');
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      return nextLocation;
-    } catch (error) {
-      console.warn('[Pings] current location failed', error);
-      Alert.alert('Could not pin location', 'Try again in a moment.');
-      return null;
-    } finally {
-      setIsResolvingCurrentLocation(false);
-    }
-  }, [directory]);
-
-  useEffect(() => {
-    if (!composerVisible || !useCurrentLocation || composerGeoLocation || isResolvingCurrentLocation) return;
-    if (selectedLocation || locationQuery.trim().length > 0) return;
-    handleUseCurrentLocation();
-  }, [
-    composerVisible,
-    useCurrentLocation,
-    composerGeoLocation,
-    isResolvingCurrentLocation,
-    selectedLocation,
-    locationQuery,
-    handleUseCurrentLocation,
-  ]);
-
-  const handlePickPingImage = useCallback(async () => {
-    const launchCamera = async () => {
-      try {
-        const { granted } = await ImagePicker.requestCameraPermissionsAsync();
-        if (!granted) {
-          Alert.alert('Camera unavailable', 'Allow camera access to take a photo for your ping.');
-          return;
-        }
-
-        const result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          quality: 0.82,
-          aspect: [4, 3],
-        });
-
-        if (!result.canceled && result.assets[0]) {
-          setComposerImageUri(result.assets[0].uri);
-        }
-      } catch (error) {
-        console.warn('[Pings] camera capture failed', error);
-        Alert.alert('Capture failed', 'Could not open your camera.');
-      }
+  const myStory = useMemo(() => {
+    const myPings = userPings.filter(p => p.userId === user?.id);
+    if (!myPings.length) return { hasActiveStory: false, allSeen: true, pings: [] };
+    const allSeen = myPings.every(p => viewedStoryIds.includes(p.id));
+    return {
+      hasActiveStory: true,
+      allSeen,
+      pings: myPings.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
     };
+  }, [userPings, user?.id, viewedStoryIds]);
 
-    const launchLibrary = async () => {
-      try {
-        const existingPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
-        const permission =
-          existingPermission.granted || !existingPermission.canAskAgain
-            ? existingPermission
-            : await ImagePicker.requestMediaLibraryPermissionsAsync();
+  const handleStoryPress = (storyUser: any) => {
+    setActiveStoryUser(storyUser);
+    setViewerVisible(true);
+  };
 
-        if (!permission.granted) {
-          if (permission.canAskAgain) {
-            Alert.alert('Photos unavailable', 'Allow photo access to attach an image to your ping.');
-          } else {
-            Alert.alert(
-              'Photos unavailable',
-              'Photo access is turned off for MaroonLife. Open Settings to allow image uploads.',
-              [
-                { text: 'Not now', style: 'cancel' },
-                {
-                  text: 'Open Settings',
-                  onPress: () => {
-                    Linking.openSettings().catch((settingsError) => {
-                      console.warn('[Pings] could not open settings', settingsError);
-                    });
-                  },
-                },
-              ],
-            );
-          }
-          return;
-        }
-
-        const result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
-          allowsEditing: true,
-          quality: 0.82,
-          aspect: [4, 3],
-        });
-
-        if (!result.canceled && result.assets[0]) {
-          setComposerImageUri(result.assets[0].uri);
-        }
-      } catch (error) {
-        console.warn('[Pings] image library pick failed', error);
-        Alert.alert('Selection failed', 'Could not open your photo library.');
-      }
-    };
-
-    Alert.alert(
-      'Attach Image',
-      'Choose a source for your photo',
-      [
-        { text: 'Take Photo', onPress: launchCamera },
-        { text: 'Choose from Library', onPress: launchLibrary },
-        { text: 'Cancel', style: 'cancel' },
-      ],
-      { cancelable: true },
-    );
-  }, []);
-
-  const handleCreatePing = useCallback(async () => {
-    if (!user || !feedConnected) {
-      Alert.alert('Live pings unavailable', 'Feed connection is required before posting a ping.');
-      return;
+  const handleCloseViewer = useCallback(() => {
+    if (activeStoryUser) {
+      activeStoryUser.pings.forEach((p: any) => addViewedStory(p.id));
     }
-    if (!composerTitle.trim()) {
-      Alert.alert('Missing details', 'Add a title so people know what is happening.');
-      return;
-    }
+    setViewerVisible(false);
+    setActiveStoryUser(null);
+  }, [activeStoryUser, addViewedStory]);
 
-    let finalLocation = selectedLocation;
-    let finalLat: number | undefined;
-    let finalLng: number | undefined;
-    let anchorType: PingAnchorType = 'place';
-
-    if (useCurrentLocation) {
-      if (composerGeoLocation) {
-        finalLocation = composerGeoLocation.label;
-        finalLat = composerGeoLocation.latitude;
-        finalLng = composerGeoLocation.longitude;
-        anchorType = 'geo';
+  const handleNextStoryUser = useCallback(() => {
+    if (!activeStoryUser) return;
+    
+    // Handle transition from My Story to first friend
+    if (activeStoryUser.id === user?.id) {
+      if (stories.length > 0) {
+        setActiveStoryUser(stories[0]);
       } else {
-        const resolvedLocation = await handleUseCurrentLocation();
-        if (!resolvedLocation) {
-          Alert.alert('Location unavailable', 'We could not lock onto your current location yet.');
-          return;
-        }
-        finalLocation = resolvedLocation.label;
-        finalLat = resolvedLocation.latitude;
-        finalLng = resolvedLocation.longitude;
-        anchorType = 'geo';
+        handleCloseViewer();
       }
-    } else {
-      const lookup = locationLookup.get(getCanonicalLocationName(finalLocation));
-      if (lookup && lookup.coord) {
-        finalLat = lookup.coord.lat;
-        finalLng = lookup.coord.lng;
-      }
-    }
-
-    if (!finalLocation) {
-      Alert.alert('Pick a location', 'Tag a campus location so this ping can connect back into the map.');
       return;
     }
 
-    const displayName =
-      user.firstName && user.lastName
-        ? `${user.firstName} ${user.lastName}`.trim()
-        : user.firstName || user.fullName || user.username || 'Aggie';
-    const selectedPlace = selectedLocation
-      ? locationLookup.get(getCanonicalLocationName(selectedLocation))
-      : null;
-    const locationTag = finalLocation || 'Pinned location';
-    const latitude = finalLat;
-    const longitude = finalLng;
-
-    const { startAt, endAt } = buildPresetWindow(composerTimePreset, composerDurationHours);
-    setIsPosting(true);
-    try {
-      let uploadedImageUrl: string | undefined;
-      if (composerImageUri) {
-        uploadedImageUrl = await uploadMediaImage(composerImageUri);
-      }
-
-      const createdPing = await addPing({
-        userId: user.id,
-        userName: displayName,
-        userImage: user.imageUrl,
-        title: composerTitle.trim(),
-        body: composerBody.trim(),
-        category: composerCategory,
-        locationTag,
-        placeId: selectedPlace?.placeId || undefined,
-        latitude,
-        longitude,
-        anchorType,
-        startAt,
-        endAt,
-        isAnonymous: composerAnonymous,
-        mediaUrl: uploadedImageUrl,
-      });
-
-      const createdActivity = createdPing?.activity;
-      if (createdActivity) {
-        const optimisticPing = mapActivityToPing(createdActivity, user, userMap);
-        queryClient.setQueryData(['campus-pings', API_URL], (current: PingCard[] | undefined) => {
-          const existing = current || [];
-          return [optimisticPing, ...existing.filter((entry) => entry.id !== optimisticPing.id)];
-        });
-      }
-
-      setComposerVisible(false);
-      resetComposer();
-      queryClient.invalidateQueries({ queryKey: ['campus-pings', API_URL] });
-      queryClient.invalidateQueries({ queryKey: ['campus-pulse', user?.id, API_URL] });
-    } catch (error: any) {
-      console.warn('[Pings] create failed', error);
-      Alert.alert('Could not post ping', error?.message || 'Something went wrong.');
-    } finally {
-      setIsPosting(false);
+    const currentIndex = stories.findIndex(s => s.id === activeStoryUser.id);
+    if (currentIndex !== -1 && currentIndex < stories.length - 1) {
+      setActiveStoryUser(stories[currentIndex + 1]);
+    } else {
+      handleCloseViewer();
     }
-  }, [
-    composerBody,
-    composerCategory,
-    composerTitle,
-    composerDurationHours,
-    composerTimePreset,
-    composerImageUri,
-    composerAnonymous,
-    composerGeoLocation,
-    selectedLocation,
-    feedConnected,
-    queryClient,
-    handleUseCurrentLocation,
-    resetComposer,
-    user,
-    userMap,
-    locationLookup,
-    useCurrentLocation,
-  ]);
+  }, [activeStoryUser, stories, user, handleCloseViewer]);
+
+  const handlePrevStoryUser = useCallback(() => {
+    if (!activeStoryUser) return;
+
+    if (activeStoryUser.id === user?.id) {
+      return; // No previous user for My Story
+    }
+
+    const currentIndex = stories.findIndex(s => s.id === activeStoryUser.id);
+    if (currentIndex === 0) {
+      // Transition back to My Story if it exists
+      if (myStory.hasActiveStory) {
+        setActiveStoryUser({ ...myStory, id: user?.id, name: user?.firstName || 'Me', image: user?.imageUrl });
+      }
+    } else if (currentIndex > 0) {
+      setActiveStoryUser(stories[currentIndex - 1]);
+    }
+  }, [activeStoryUser, stories, user, myStory]);
+
+
 
   const handleVotePing = useCallback(
     async (ping: PingCard, direction: number) => {
@@ -1372,35 +1117,15 @@ export function CampusPingsScreen() {
 
   const header = (
     <View style={[styles.headerWrap, { paddingTop: Math.max(insets.top + 8, 18) }]}>
-      <View style={styles.heroTopRow}>
-        <View style={styles.heroTitleRow}>
-          <View style={styles.heroBrandBadge}>
-            <Megaphone size={14} color={COLORS.textPrimary} />
-          </View>
-          <Text style={styles.heroTitle}>Campus Pulse</Text>
-        </View>
-        <TourTarget
-          name="crowdping-cta"
-          assistAction={() => {
-            advanceStep('crowdping-cta');
-          }}
-        >
-          <Pressable
-            style={styles.composeFab}
-            onPress={() => {
-              if (activeTargetName === 'crowdping-cta') {
-                advanceStep('crowdping-cta');
-                return;
-              }
-              openComposer();
-            }}
-          >
-            <Plus size={18} color={COLORS.textPrimary} />
-          </Pressable>
-        </TourTarget>
-      </View>
+      <StoriesBar 
+        stories={stories} 
+        myStory={myStory}
+        onPressStory={handleStoryPress}
+        onPressAdd={() => setComposerVisible(true)}
+        userImage={user?.imageUrl}
+      />
 
-      {isManuallyRefreshing ? (
+      {refreshing ? (
         <View style={styles.refreshWheelWrap}>
           <ActivityIndicator size="small" color={COLORS.textPrimary} />
         </View>
@@ -1469,9 +1194,6 @@ export function CampusPingsScreen() {
     </View>
   );
 
-  const composerHasLocation = Boolean(selectedLocation || composerGeoLocation || useCurrentLocation);
-  const canSubmitComposer =
-    Boolean(composerTitle.trim()) && composerHasLocation && !isResolvingCurrentLocation;
 
   if (isInitialPingsLoading) {
     return (
@@ -1529,313 +1251,19 @@ export function CampusPingsScreen() {
         </ScalePressable>
       ) : null}
 
-      <Modal visible={composerVisible} animationType="fade" transparent statusBarTranslucent>
-        <Animated.View entering={FadeIn.duration(160)} exiting={FadeOut.duration(120)} style={styles.composerOverlay}>
-          <Animated.View entering={SlideInDown.duration(220)} exiting={SlideOutDown.duration(180)} style={styles.composerSheet}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={styles.composerKeyboardWrap}
-            >
-              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                <View style={[styles.composerScreen, { paddingTop: Math.max(insets.top + 8, 20) }]}>
-                  <View style={styles.composerTopBar}>
-                    <TourTarget
-                      name="crowdping-close"
-                      assistAction={() => {
-                        closeComposer();
-                        setTimeout(() => advanceStep('crowdping-close'), 250);
-                      }}
-                    >
-                      <Pressable
-                        onPress={() => {
-                          closeComposer();
-                          if (activeTargetName === 'crowdping-close') {
-                            setTimeout(() => advanceStep('crowdping-close'), 150);
-                          }
-                        }}
-                        style={styles.composerTopIconButton}
-                      >
-                        <X size={20} color={COLORS.textPrimary} />
-                      </Pressable>
-                    </TourTarget>
-
-                    <Text style={styles.composerTopTitle}>Create</Text>
-
-                    <Pressable
-                      onPress={handleCreatePing}
-                      disabled={!canSubmitComposer || isPosting}
-                      style={styles.composerTopPostButton}
-                    >
-                      {isPosting ? (
-                        <ActivityIndicator size="small" color={COLORS.primary} />
-                      ) : (
-                        <Text
-                          style={[
-                            styles.composerTopPostLabel,
-                            (!canSubmitComposer || isPosting) && styles.composerTopPostLabelDisabled,
-                          ]}
-                        >
-                          Post
-                        </Text>
-                      )}
-                    </Pressable>
-                  </View>
-
-                  <ScrollView
-                    style={styles.composerScroll}
-                    contentContainerStyle={[
-                      styles.composerScrollContent,
-                      { paddingBottom: Math.max(insets.bottom + 44, 44) },
-                    ]}
-                    showsVerticalScrollIndicator={false}
-                    keyboardShouldPersistTaps="handled"
-                    keyboardDismissMode="on-drag"
-                  >
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.composerCategoryRow}
-                    >
-                      {PING_CATEGORIES.map((cat) => {
-                        const active = composerCategory === cat.id;
-                        const Icon = cat.Icon;
-                        return (
-                          <Pressable
-                            key={cat.id}
-                            style={[styles.composerCategoryPill, active && styles.composerCategoryPillActive]}
-                            onPress={() => setComposerCategory(cat.id)}
-                          >
-                            <Icon size={14} color={active ? '#FFFFFF' : cat.accent} />
-                            <Text
-                              style={[
-                                styles.composerCategoryLabel,
-                                active && styles.composerCategoryLabelActive,
-                              ]}
-                              numberOfLines={1}
-                            >
-                              {cat.id}
-                            </Text>
-                          </Pressable>
-                        );
-                      })}
-                    </ScrollView>
-
-                    <View style={styles.composerTextStack}>
-                      <TextInput
-                        value={composerTitle}
-                        onChangeText={setComposerTitle}
-                        placeholder="Title your ping..."
-                        placeholderTextColor={COLORS.textTertiary}
-                        style={styles.composerTitleInput}
-                      />
-                      <TextInput
-                        value={composerBody}
-                        onChangeText={setComposerBody}
-                        placeholder="What's happening?"
-                        placeholderTextColor={COLORS.textTertiary}
-                        style={styles.composerPromptInput}
-                        multiline
-                      />
-                    </View>
-
-                    <View style={styles.composerMediaCard}>
-                      {composerImageUri ? (
-                        <View style={styles.composerMediaStage}>
-                          <Image source={{ uri: composerImageUri }} style={styles.composerMediaStagePreview} />
-                          <Pressable style={styles.composerMediaStageOverlay} onPress={handlePickPingImage}>
-                            <Text style={styles.composerMediaStageOverlayText}>Tap to replace</Text>
-                          </Pressable>
-                          <Pressable style={styles.composerMediaRemoveButton} onPress={() => setComposerImageUri(null)}>
-                            <X size={14} color="#FFFFFF" />
-                          </Pressable>
-                        </View>
-                      ) : (
-                        <Pressable
-                          style={[styles.composerMediaStage, styles.composerMediaStageEmpty]}
-                          onPress={handlePickPingImage}
-                        >
-                          <View style={styles.composerMediaStageIconWrap}>
-                            <ImageIcon size={24} color={COLORS.primary} />
-                          </View>
-                          <Text style={styles.composerMediaStageTitle}>Add Photo (Optional)</Text>
-                          <Text style={styles.composerMediaStageSubtitle}>
-                            Share a flyer, food spread, or what people should look for.
-                          </Text>
-                        </Pressable>
-                      )}
-                    </View>
-
-                    <View style={styles.composerSectionBlock}>
-                      <Text style={styles.composerSectionLabel}>Location</Text>
-                      <View style={styles.composerSearchWrap}>
-                        <Search size={16} color={COLORS.textSecondary} />
-                        <TextInput
-                          value={locationQuery}
-                          onChangeText={(text) => {
-                            setUseCurrentLocation(false);
-                            setLocationQuery(text);
-                            setSelectedLocation(null);
-                            setComposerGeoLocation(null);
-                          }}
-                          placeholder="Search for a building or spot..."
-                          placeholderTextColor={COLORS.textTertiary}
-                          style={styles.searchInput}
-                        />
-                        <Pressable
-                          style={[
-                            styles.composerSearchAction,
-                            (composerGeoLocation || isResolvingCurrentLocation) &&
-                              styles.composerSearchActionActive,
-                          ]}
-                          onPress={handleUseCurrentLocation}
-                          disabled={isResolvingCurrentLocation}
-                        >
-                          {isResolvingCurrentLocation ? (
-                            <ActivityIndicator size="small" color="#FFFFFF" />
-                          ) : (
-                            <LocateFixed
-                              size={16}
-                              color={composerGeoLocation ? '#FFFFFF' : COLORS.primary}
-                            />
-                          )}
-                        </Pressable>
-                      </View>
-
-                      {locationQuery.trim().length > 0 && !selectedLocation && !composerGeoLocation && (
-                        <ScrollView
-                          style={styles.suggestionsWrap}
-                          nestedScrollEnabled
-                          keyboardShouldPersistTaps="handled"
-                          showsVerticalScrollIndicator={false}
-                        >
-                          {locationSuggestions.map((loc) => (
-                            <Pressable
-                              key={`${loc.placeId || loc.location}-${loc.coord.lat}-${loc.coord.lng}`}
-                              style={styles.suggestionItem}
-                              onPress={() => handleSelectLocation(loc.location)}
-                            >
-                              <MapPin size={14} color={COLORS.textSecondary} />
-                              <Text style={styles.suggestionText}>{loc.location}</Text>
-                            </Pressable>
-                          ))}
-                        </ScrollView>
-                      )}
-
-                      {selectedLocation && (
-                        <View style={styles.selectedLocationBadge}>
-                          <MapPin size={14} color={COLORS.primary} />
-                          <View style={styles.selectedLocationCopy}>
-                            <Text style={styles.selectedLocationText}>{selectedLocation}</Text>
-                            <Text style={styles.selectedLocationSubtext}>Campus Landmark</Text>
-                          </View>
-                          <Pressable
-                            onPress={() => {
-                              setUseCurrentLocation(false);
-                              setSelectedLocation(null);
-                              setLocationQuery('');
-                            }}
-                          >
-                            <X size={14} color={COLORS.textSecondary} />
-                          </Pressable>
-                        </View>
-                      )}
-
-                      {composerGeoLocation && (
-                        <View style={styles.selectedLocationBadge}>
-                          <LocateFixed size={14} color={COLORS.primary} />
-                          <View style={styles.selectedLocationCopy}>
-                            <Text style={styles.selectedLocationText}>{composerGeoLocation.label}</Text>
-                            <Text style={styles.selectedLocationSubtext}>Auto-selected from your current location</Text>
-                          </View>
-                          <Pressable
-                            onPress={() => {
-                              setUseCurrentLocation(false);
-                              setComposerGeoLocation(null);
-                            }}
-                          >
-                            <X size={14} color={COLORS.textSecondary} />
-                          </Pressable>
-                        </View>
-                      )}
-
-                    </View>
-
-                    <View style={styles.composerSectionBlock}>
-                      <Text style={styles.composerSectionLabel}>Details</Text>
-                      <Pressable
-                        style={[
-                          styles.anonymousCard,
-                          composerAnonymous && styles.anonymousCardActive,
-                        ]}
-                        onPress={() => setComposerAnonymous((current) => !current)}
-                      >
-                        <View
-                          style={[
-                            styles.anonymousIconWrap,
-                            composerAnonymous && styles.anonymousIconWrapActive,
-                          ]}
-                        >
-                          <EyeOff
-                            size={18}
-                            color={composerAnonymous ? COLORS.success : COLORS.primary}
-                          />
-                        </View>
-                        <View style={styles.anonymousCopy}>
-                          <Text style={styles.anonymousTitle}>Post anonymously</Text>
-                          <Text style={styles.anonymousSubtitle}>
-                            Your ping will show as Anonymous in the feed while still staying tied to your account for moderation.
-                          </Text>
-                        </View>
-                      </Pressable>
-                      <View style={styles.composerPreferenceCard}>
-                        <View style={styles.compactPreferenceRow}>
-                          <Clock size={18} color={COLORS.textSecondary} />
-                          <Text style={styles.compactPreferenceLabel}>Active for</Text>
-                          <View style={styles.durationStepper}>
-                            <ScalePressable
-                              onPress={() => setComposerDurationHours(Math.max(0.5, composerDurationHours - 0.5))}
-                              style={styles.stepperButton}
-                            >
-                              <Text style={styles.stepperButtonText}>-</Text>
-                            </ScalePressable>
-                            <View style={styles.stepperValueContainer}>
-                              <Text style={styles.stepperValueText}>
-                                {composerDurationHours === 0.5 ? '30m' : `${composerDurationHours}h`}
-                              </Text>
-                            </View>
-                            <ScalePressable
-                              onPress={() => setComposerDurationHours(Math.min(24, composerDurationHours + 0.5))}
-                              style={styles.stepperButton}
-                            >
-                              <Text style={styles.stepperButtonText}>+</Text>
-                            </ScalePressable>
-                          </View>
-                        </View>
-                      </View>
-                    </View>
-
-                    <Pressable
-                      style={[
-                        styles.sharePingButton,
-                        (!canSubmitComposer || isPosting) && styles.sharePingButtonDisabled,
-                      ]}
-                      onPress={handleCreatePing}
-                      disabled={!canSubmitComposer || isPosting}
-                    >
-                      {isPosting ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                      ) : (
-                        <Text style={styles.sharePingButtonText}>Share Ping</Text>
-                      )}
-                    </Pressable>
-
-                  </ScrollView>
-                </View>
-              </TouchableWithoutFeedback>
-            </KeyboardAvoidingView>
-          </Animated.View>
-        </Animated.View>
-      </Modal>
+      <PingComposerModal
+        visible={composerVisible}
+        onClose={() => setComposerVisible(false)}
+      />
+      <StoryViewer
+        visible={viewerVisible}
+        pings={activeStoryUser?.pings || []}
+        userName={activeStoryUser?.name || ''}
+        userImage={activeStoryUser?.image}
+        onClose={handleCloseViewer}
+        onNextUser={handleNextStoryUser}
+        onPrevUser={handlePrevStoryUser}
+      />
 
       <Modal visible={!!activeFeaturedEvent} animationType="fade" transparent>
         <TouchableWithoutFeedback onPress={() => setActiveFeaturedEvent(null)}>
