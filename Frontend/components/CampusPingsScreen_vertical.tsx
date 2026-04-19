@@ -646,7 +646,7 @@ export function CampusPingsScreen() {
       const label =
         nearest && nearest.distanceMeters <= 220
           ? `Near ${nearest.item.location}`
-          : 'Pinned location';
+          : 'Campus';
 
       const nextLocation = {
         latitude,
@@ -817,7 +817,7 @@ export function CampusPingsScreen() {
     const selectedPlace = selectedLocation
       ? locationLookup.get(getCanonicalLocationName(selectedLocation))
       : null;
-    const locationTag = finalLocation || 'Pinned location';
+    const locationTag = finalLocation || 'Campus';
     const latitude = finalLat;
     const longitude = finalLng;
 
@@ -1231,7 +1231,9 @@ export function CampusPingsScreen() {
           <View style={styles.pingAuthorBlock}>
             <Text style={styles.pingAuthorName}>{item.userName}</Text>
             <Text style={styles.pingAuthorMeta} numberOfLines={1}>
-              {item.isAnonymous ? `Anonymous · ${item.locationTag}` : item.locationTag}
+              {item.isAnonymous 
+                ? (item.locationTag === 'Pinned location' || item.locationTag === 'Campus' ? 'Anonymous' : `Anonymous · ${item.locationTag}`) 
+                : (item.locationTag === 'Pinned location' || item.locationTag === 'Campus' ? '' : item.locationTag)}
             </Text>
           </View>
           <View style={styles.pingHeaderActions}>
@@ -1339,25 +1341,6 @@ export function CampusPingsScreen() {
               {item.body ? <Text style={styles.pingBody}>{item.body}</Text> : null}
             </>
           ) : null}
-          <Pressable
-            style={[
-              styles.pingLocationChip,
-              isActive && styles.pingLocationChipActive,
-            ]}
-            onPress={() => openPingOnMap(item)}
-            hitSlop={6}
-          >
-            <MapPin size={13} color={isActive ? COLORS.primary : COLORS.textSecondary} />
-            <Text
-              style={[
-                styles.pingMetaSummary,
-                isActive && styles.pingMetaSummaryActive,
-              ]}
-              numberOfLines={1}
-            >
-              {item.locationTag}
-            </Text>
-          </Pressable>
         </View>
 
         {canDelete ? (

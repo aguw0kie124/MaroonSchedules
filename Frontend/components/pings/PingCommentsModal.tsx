@@ -78,7 +78,7 @@ function mapRawComment(comment: any, currentUser: any, userMap: Map<string, stri
 
   return {
     id: String(comment?.id ?? `${comment?.created_at ?? Date.now()}`),
-    text: String(comment?.data?.text ?? comment?.text ?? ''),
+    text: String(comment?.data?.text ?? comment?.data?.comment ?? comment?.text ?? comment?.data?.body ?? ''),
     createdAt: String(comment?.created_at ?? new Date().toISOString()),
     userName: resolveDisplayName(userId, rawName, currentUser, userMap),
     parentId: comment?.parent_id,

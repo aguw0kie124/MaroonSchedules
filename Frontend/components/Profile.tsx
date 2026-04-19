@@ -69,6 +69,7 @@ import { fetchCampusOverview, fetchUserProfile } from '../api/client';
 import { SUPPORT_CONTACT_URL } from '../config';
 import { PARKING_PERMIT_OPTIONS, useAppShellStore } from '../store/appShellStore';
 import { useSessionStore } from '../store/sessionStore';
+import { useEventStore } from '../store/eventStore';
 import {
   addFriend,
   deleteAccount,
@@ -185,6 +186,7 @@ export function Profile() {
   const navigation = useNavigation<any>();
   const isFocused = useIsFocused();
   const { user } = useUser();
+  const { scheduleEvent, saveEvent } = useEventStore();
   const queryClient = useQueryClient();
   const { data: userPings = [] } = useQuery({
     queryKey: ['user-pings', API_URL, user?.id],
@@ -353,28 +355,40 @@ export function Profile() {
   const scrollRef = React.useRef<ScrollView | null>(null);
 
   const [activeCommentsPing, setActiveCommentsPing] = useState<any | null>(null);
+  const [profileTags, setProfileTags] = useState<string[]>([]);
+  const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+  const [loadingBlocked, setLoadingBlocked] = useState(false);
 
   const handleVotePing = async (ping: any, direction: number) => {
     if (!ping) return;
     const { toggleVote } = await import('../services/socialFeedService');
     
-    // Optimistic UI Update
-    const newVote = ping.userVote === direction ? 0 : direction;
-    const scoreDiff = newVote - (ping.userVote || 0);
+    // Optimistic UI Update matches CampusPingsScreen logic
+    const currentVote = ping.userVote || 0;
+    const nextUserVote = currentVote === direction ? 0 : direction;
+    
+    let scoreAdjustment = 0;
+    if (nextUserVote === 0) {
+      scoreAdjustment = -currentVote;
+    } else if (currentVote === 0) {
+      scoreAdjustment = direction;
+    } else {
+      scoreAdjustment = direction * 2;
+    }
     
     setSelectedPing(prev => prev ? {
       ...prev,
-      userVote: newVote,
-      score: (prev.score || 0) + scoreDiff
+      userVote: nextUserVote,
+      score: (prev.score || 0) + scoreAdjustment
     } : null);
 
     try {
+      await import('expo-haptics').then(H => H.impactAsync());
       await toggleVote(ping.id || ping.activityId, direction === 1 ? 'upvote' : 'downvote');
       queryClient.invalidateQueries({ queryKey: ['user-pings'] });
       queryClient.invalidateQueries({ queryKey: ['campus-pings'] });
     } catch (e) {
       console.warn('Vote failed', e);
-      // Rollback on failure
       setSelectedPing(ping);
     }
   };
@@ -383,6 +397,50 @@ export function Profile() {
     setActiveCommentsPing(ping);
   };
 
+  const openPingOnMap = useCallback(
+    (ping: any) => {
+      navigation.navigate('Main', {
+        screen: 'Places',
+        params: {
+          initialLayer: 'Pulse',
+          initialLocation: ping.locationTag,
+          focusToken: `ping:${ping.id}:${ping.startAt}`,
+        },
+      });
+      setSelectedPing(null);
+    },
+    [navigation],
+  );
+
+  const savePingToPlans = useCallback(
+    (ping: any) => {
+      const { 
+        getCanonicalLocationName, 
+        buildCampusDirectory 
+      } = require('./places/campusData');
+      const directory = buildCampusDirectory();
+      const canonicalLocation = getCanonicalLocationName(ping.locationTag);
+      const directoryItem = directory.find((item: any) => 
+        getCanonicalLocationName(item.location) === canonicalLocation
+      );
+
+      scheduleEvent({
+        id: `${ping.source || 'user'}-${ping.id}`,
+        title: ping.title,
+        location: canonicalLocation,
+        description: ping.body,
+        date_ts: Math.floor(new Date(ping.startAt).getTime() / 1000),
+        date_iso: ping.startAt,
+        endDate_ts: ping.endAt ? Math.floor(new Date(ping.endAt).getTime() / 1000) : undefined,
+        location_lat: ping.locationLat ?? directoryItem?.coord.lat ?? null,
+        location_lng: ping.locationLng ?? directoryItem?.coord.lng ?? null,
+        category: ping.category,
+      });
+      saveEvent(`${ping.source || 'user'}-${ping.id}`);
+      Alert.alert('Saved to plans', `${ping.title} is now in your plans.`);
+    },
+    [scheduleEvent, saveEvent],
+  );
 
   const recentPosts = useMemo(() => {
     return userPings.slice(0, 3);
@@ -1042,75 +1100,60 @@ export function Profile() {
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <ScalePressable 
                         onPress={() => handleVotePing(selectedPing, 1)}
-                        style={{ 
-                          width: 36, 
-                          height: 36, 
-                          borderRadius: 18, 
-                          backgroundColor: selectedPing.userVote === 1 ? COLORS.primary : COLORS.surfaceElevated,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderWidth: 1,
-                          borderColor: selectedPing.userVote === 1 ? COLORS.primary : COLORS.border
-                        }}
+                        style={{ padding: 6 }}
                       >
-                        <ArrowBigUp size={20} color={selectedPing.userVote === 1 ? '#FFF' : COLORS.textPrimary} />
+                        <ArrowBigUp 
+                          size={28} 
+                          color={selectedPing.userVote === 1 ? '#3FA86A' : COLORS.textPrimary} 
+                          fill={selectedPing.userVote === 1 ? '#3FA86A' : 'transparent'}
+                        />
                       </ScalePressable>
-                      <Text style={{ fontSize: 14, fontWeight: '800', color: COLORS.textPrimary }}>
+                      
+                      <Text style={{ 
+                        fontSize: 16, 
+                        fontWeight: '800', 
+                        color: selectedPing.userVote === 1 ? '#3FA86A' : (selectedPing.userVote === -1 ? '#D8616E' : COLORS.textPrimary) 
+                      }}>
                         {selectedPing.score || 0}
                       </Text>
+                      
                       <ScalePressable 
                         onPress={() => handleVotePing(selectedPing, -1)}
-                        style={{ 
-                          width: 36, 
-                          height: 36, 
-                          borderRadius: 18, 
-                          backgroundColor: selectedPing.userVote === -1 ? '#E53E3E' : COLORS.surfaceElevated,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          borderWidth: 1,
-                          borderColor: selectedPing.userVote === -1 ? '#E53E3E' : COLORS.border
-                        }}
+                        style={{ padding: 6 }}
                       >
-                        <ArrowBigDown size={20} color={selectedPing.userVote === -1 ? '#FFF' : COLORS.textPrimary} />
+                        <ArrowBigDown 
+                          size={28} 
+                          color={selectedPing.userVote === -1 ? '#D8616E' : COLORS.textPrimary} 
+                          fill={selectedPing.userVote === -1 ? '#D8616E' : 'transparent'}
+                        />
                       </ScalePressable>
                     </View>
 
                     <ScalePressable 
                       onPress={() => handleOpenComments(selectedPing)}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, padding: 6 }}
                     >
-                      <View style={{ 
-                        width: 36, 
-                        height: 36, 
-                        borderRadius: 18, 
-                        backgroundColor: COLORS.surfaceElevated,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        borderWidth: 1,
-                        borderColor: COLORS.border
-                      }}>
-                        <MessageCircle size={18} color={COLORS.textPrimary} />
-                      </View>
-                      <Text style={{ fontSize: 14, fontWeight: '800', color: COLORS.textPrimary }}>
+                      <MessageCircle size={24} color={COLORS.textPrimary} />
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.textPrimary }}>
                         {selectedPing.commentCount || 0}
                       </Text>
                     </ScalePressable>
                  </View>
 
-                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                   <View style={{ 
-                     width: 36, 
-                     height: 36, 
-                     borderRadius: 18, 
-                     backgroundColor: COLORS.surfaceElevated,
-                     alignItems: 'center',
-                     justifyContent: 'center',
-                     borderWidth: 1,
-                     borderColor: COLORS.border
-                   }}>
-                     <MapPinIcon size={16} color={COLORS.textPrimary} />
-                   </View>
-                   <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.textPrimary }}>{selectedPing.locationTag}</Text>
+                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <ScalePressable 
+                      onPress={() => openPingOnMap(selectedPing)}
+                      style={{ padding: 6 }}
+                    >
+                      <MapPinIcon size={24} color={COLORS.textPrimary} />
+                    </ScalePressable>
+
+                    <ScalePressable 
+                      onPress={() => savePingToPlans(selectedPing)}
+                      style={{ padding: 6 }}
+                    >
+                      <BookmarkIcon size={24} color={COLORS.textPrimary} />
+                    </ScalePressable>
                  </View>
                </View>
             </Pressable>
@@ -2066,7 +2109,7 @@ export function Profile() {
       <PingCommentsModal 
         visible={!!activeCommentsPing}
         target={activeCommentsPing ? {
-          activityId: activeCommentsPing.id,
+          activityId: activeCommentsPing.activityId || activeCommentsPing.id,
           title: activeCommentsPing.title,
           subtitle: activeCommentsPing.category
         } : null}
