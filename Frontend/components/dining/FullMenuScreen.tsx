@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  ImageBackground,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -63,10 +62,9 @@ function buildFoodPayload(item: any, location: string, mealPeriod: DiningMealPer
 
 export default function FullMenuScreen({ navigation, route }: any) {
   const { user } = useUser();
-  const { theme, wallpaperUri } = useTheme();
+  const { theme } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
-  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const { location, mealPeriod, title, locations, sourceHint } = route.params || {};
   const availableMealPeriods = useMemo(() => getDiningMealOptionsForLocation(location), [location]);
@@ -243,13 +241,7 @@ export default function FullMenuScreen({ navigation, route }: any) {
   return (
     <SafeAreaView style={[s.container, { backgroundColor: T.bg }]}>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
-      {wallpaperSource ? (
-        <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-          <View style={[StyleSheet.absoluteFill, darkMode ? { backgroundColor: 'rgba(0,0,0,0.58)' } : { backgroundColor: 'rgba(255,255,255,0.72)' }]} />
-        </ImageBackground>
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: T.bg }]} />
-      )}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: T.bg }]} />
 
       <ScrollView 
         showsVerticalScrollIndicator={false}

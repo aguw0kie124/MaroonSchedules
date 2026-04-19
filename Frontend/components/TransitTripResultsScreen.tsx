@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  ImageBackground,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -95,11 +94,9 @@ function buildArrivalSummary(plan: CampusTransitPlan, depart: Date) {
 export function TransitTripResultsScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { COLORS, theme, useWallpaper, wallpaperUri, accentColor } = useTheme();
+  const { COLORS, theme, accentColor } = useTheme();
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark);
-
-  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const origin = route.params?.origin as PlannerLocation | undefined;
   const destination = route.params?.destination as PlannerLocation | undefined;
@@ -179,17 +176,6 @@ export function TransitTripResultsScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-      {useWallpaper ? (
-        <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              { backgroundColor: isDark ? 'rgba(0,0,0,0.52)' : 'rgba(255,255,255,0.24)' },
-            ]}
-          />
-        </ImageBackground>
-      ) : null}
-
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* Header: back arrow + title inline */}
         <View style={styles.headerRow}>

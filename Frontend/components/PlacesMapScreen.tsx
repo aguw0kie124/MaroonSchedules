@@ -49,7 +49,6 @@ import {
   Minimize2,
   Bus,
   ChevronDown,
-  MessageCircle,
   Share2,
   X,
 } from "lucide-react-native";
@@ -2273,12 +2272,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
                       />
                       <View style={styles.pulseMarkerHighlight} />
                     </View>
-                    {hotspot.commentCount > 0 && (
-                      <View style={[styles.pulseCommentBadge, { backgroundColor: hotspot.pulseColor }]}>
-                        <MessageCircle size={10} color="#FFFFFF" strokeWidth={3} />
-                        <Text style={styles.pulseCommentBadgeText}>{hotspot.commentCount}</Text>
-                      </View>
-                    )}
                   </View>
                 </View>
               </MapMarker>

@@ -277,12 +277,6 @@ export const acceptToS = async (clerkId: string) => {
     });
 };
 
-export const completeTour = async (clerkId: string) => {
-    return requestJson(`/users/${clerkId}/tour/complete/`, {
-        method: 'POST',
-    });
-};
-
 // ============================================================
 // Course endpoints
 // ============================================================

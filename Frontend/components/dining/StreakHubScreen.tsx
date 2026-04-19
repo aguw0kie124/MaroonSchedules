@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Dimensions, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Dimensions } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import { Calendar } from 'react-native-calendars';
@@ -13,7 +13,7 @@ const { width } = Dimensions.get('window');
 
 export default function StreakHubScreen({ navigation, embedded = false }: any) {
   const { user } = useUser();
-  const { theme, wallpaperUri } = useTheme();
+  const { theme } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
 
@@ -46,8 +46,6 @@ export default function StreakHubScreen({ navigation, embedded = false }: any) {
     }
     return acc;
   }, {} as Record<string, any>);
-
-  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const content = (
       <ScrollView contentContainerStyle={{ padding: embedded ? 0 : 24 }}>
@@ -115,9 +113,6 @@ export default function StreakHubScreen({ navigation, embedded = false }: any) {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
-      <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.6)' }]} />
-      </ImageBackground>
       {content}
     </SafeAreaView>
   );

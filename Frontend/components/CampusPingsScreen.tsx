@@ -1260,7 +1260,9 @@ export function CampusPingsScreen() {
         </View>
 
         {hasImage ? (
-          <Image source={{ uri: item.imageUrl! }} style={styles.pingMedia} resizeMode="cover" />
+          <View style={styles.pingMediaWrap}>
+            <Image source={{ uri: item.imageUrl! }} style={styles.pingMedia} resizeMode="cover" />
+          </View>
         ) : (
           <View style={styles.pingTextPostBlock}>
             <Text style={styles.pingTitle}>{item.title}</Text>
@@ -2225,9 +2227,14 @@ const getStyles = (theme: any) => {
       fontSize: 14,
       lineHeight: 21,
     },
+    pingMediaWrap: {
+      paddingHorizontal: 14,
+      paddingTop: 2,
+    },
     pingMedia: {
       width: '100%',
       height: 320,
+      borderRadius: 14,
       backgroundColor: COLORS.surfaceElevated,
     },
     pingFooterRow: {

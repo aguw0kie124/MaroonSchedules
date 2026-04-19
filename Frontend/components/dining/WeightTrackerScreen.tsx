@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Dimensions, ActivityIndicator, ScrollView, SafeAreaView, StatusBar, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, Dimensions, ActivityIndicator, ScrollView, SafeAreaView, StatusBar } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { useUser } from '@clerk/clerk-expo';
 import { requestJson } from '../../api/client';
@@ -107,19 +107,13 @@ export default function WeightTrackerScreen({ navigation }: any) {
   const change = stats?.totalChange;
   const changeColor = change < 0 ? '#52d98a' : change > 0 ? '#ff4d4d' : '#999';
 
-  const { theme, wallpaperUri } = useTheme();
+  const { theme } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
-
-  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
       <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
-      <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)' }]} />
-      </ImageBackground>
-
       <ScrollView style={s.container} contentContainerStyle={{ padding: 20 }}>
         <View style={s.header}>
           <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()}>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, ImageBackground } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { MapPin, Bookmark } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
@@ -77,16 +77,14 @@ export const useThemeStore = create<any>((set, get) => ({
     set({ applyAccentToText });
     AsyncStorage.setItem('accent_text_enabled', JSON.stringify(applyAccentToText)).catch(() => {});
   },
-  loadWallpaperPref: async () => {
-    const [storedTheme, accentColor, accentTextEnabled, useWallpaper, backgroundMode, wallpaperUri, tabBarMode] = await Promise.all([
+  loadThemePrefs: async () => {
+    const [storedTheme, accentColor, accentTextEnabled, tabBarMode] = await Promise.all([
       AsyncStorage.getItem('theme_mode'),
       AsyncStorage.getItem('accent_color'),
       AsyncStorage.getItem('accent_text_enabled'),
-      AsyncStorage.getItem('use_wallpaper'),
-      AsyncStorage.getItem('background_mode'),
-      AsyncStorage.getItem('custom_wallpaper_uri'),
       AsyncStorage.getItem('tab_bar_mode'),
     ]);
+    AsyncStorage.multiRemove(['use_wallpaper', 'background_mode', 'custom_wallpaper_uri']).catch(() => {});
 
     const nextState: Record<string, unknown> = {};
 
@@ -103,16 +101,6 @@ export const useThemeStore = create<any>((set, get) => ({
     if (accentTextEnabled !== null) {
       nextState.applyAccentToText = accentTextEnabled === 'true';
     }
-
-    if (useWallpaper !== null) {
-      nextState.useWallpaper = useWallpaper === 'true';
-    }
-    if (backgroundMode !== null) {
-      nextState.backgroundMode = backgroundMode;
-    }
-    if (wallpaperUri !== null) {
-      nextState.wallpaperUri = wallpaperUri;
-    }
     if (tabBarMode !== null) {
       nextState.tabBarMode = tabBarMode;
     }
@@ -120,19 +108,6 @@ export const useThemeStore = create<any>((set, get) => ({
     if (Object.keys(nextState).length) {
       set(nextState);
     }
-  },
-  setUseWallpaper: (val: boolean) => {
-    set({ useWallpaper: val });
-    AsyncStorage.setItem('use_wallpaper', String(val)).catch(() => {});
-  },
-  setWallpaperUri: (uri: string | null) => {
-    set({ wallpaperUri: uri });
-    if (uri) AsyncStorage.setItem('custom_wallpaper_uri', uri).catch(() => {});
-    else AsyncStorage.removeItem('custom_wallpaper_uri').catch(() => {});
-  },
-  setBackgroundMode: (mode: string) => {
-    set({ backgroundMode: mode });
-    AsyncStorage.setItem('background_mode', mode).catch(() => {});
   },
   setTabBarMode: (mode: 'floating' | 'solid') => {
     set({ tabBarMode: mode });
@@ -144,9 +119,6 @@ export const useTheme = () => {
   const theme = useThemeStore((s: any) => s.theme);
   const accentColor = useThemeStore((s: any) => s.accentColor);
   const applyAccentToText = useThemeStore((s: any) => s.applyAccentToText);
-  const useWallpaper = useThemeStore((s: any) => s.useWallpaper);
-  const backgroundMode = useThemeStore((s: any) => s.backgroundMode);
-  const wallpaperUri = useThemeStore((s: any) => s.wallpaperUri);
   const tabBarMode = useThemeStore((s: any) => s.tabBarMode);
   
   const palette = theme === 'dark' ? DARK_COLORS : LIGHT_COLORS;
@@ -159,18 +131,12 @@ export const useTheme = () => {
   return {
     COLORS, 
     theme, 
-    useWallpaper,
-    backgroundMode,
-    wallpaperUri,
     accentColor, 
     applyAccentToText,
     tabBarMode,
     setTheme: useThemeStore.getState().setTheme,
     setAccentColor: useThemeStore.getState().setAccentColor,
     setApplyAccentToText: useThemeStore.getState().setApplyAccentToText,
-    setUseWallpaper: useThemeStore.getState().setUseWallpaper,
-    setWallpaperUri: useThemeStore.getState().setWallpaperUri,
-    setBackgroundMode: useThemeStore.getState().setBackgroundMode,
     setTabBarMode: useThemeStore.getState().setTabBarMode,
   };
 };
@@ -193,26 +159,8 @@ export const useSavedStore = create<any>((set, get) => ({
 }));
 
 export const WallpaperWrapper = ({ children }: { children: React.ReactNode }) => {
-  const { COLORS, useWallpaper, wallpaperUri, theme } = useTheme();
-  
-  if (!useWallpaper || !wallpaperUri) {
-    return <View style={{ flex: 1, backgroundColor: COLORS.background }}>{children}</View>;
-  }
-
-  return (
-    <ImageBackground
-      source={{ uri: wallpaperUri }}
-      style={{ flex: 1, backgroundColor: COLORS.background }}
-      resizeMode="cover"
-    >
-      <View style={{ 
-        flex: 1, 
-        backgroundColor: theme === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.7)' 
-      }}>
-        {children}
-      </View>
-    </ImageBackground>
-  );
+  const { COLORS } = useTheme();
+  return <View style={{ flex: 1, backgroundColor: COLORS.background }}>{children}</View>;
 };
 
 export const Card = ({ children, style }: any) => {
