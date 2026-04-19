@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable, Image } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
@@ -51,7 +51,7 @@ import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 import RestaurantMenuScreen from './components/dining/RestaurantMenuScreen';
 
-import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio } from 'lucide-react-native';
+import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio, UserRound } from 'lucide-react-native';
 import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
@@ -65,6 +65,7 @@ import {
 } from './api/client';
 import { TOSScreen } from './components/TOSScreen';
 import { EventPreferenceOnboardingScreen } from './components/onboarding/EventPreferenceOnboardingScreen';
+import { NameOnboardingScreen } from './components/onboarding/NameOnboardingScreen';
 
 import { AdminApplicationScreen } from './components/admin/AdminApplicationScreen';
 import { AdminPortal } from './components/admin/AdminPortal';
@@ -277,6 +278,7 @@ import { GlassPillTabBar } from './components/GlassPillTabBar';
 
 function MainTabs(props: any) {
   const { COLORS } = useTheme();
+  const { user } = useUser();
   const navItems = useAppShellStore((state) => state.navItems);
   const isGuest = useSessionStore((state) => state.isGuest);
   const { tabBarMode } = useTheme();
@@ -337,10 +339,10 @@ function MainTabs(props: any) {
       };
     }),
     {
-      name: 'Settings',
+      name: 'Profile',
       component: AnimatedSettingsScreen,
-      title: 'Settings',
-      icon: Settings,
+      title: 'Profile',
+      icon: UserRound,
       initialParams: undefined,
     },
   ];
@@ -389,6 +391,39 @@ function MainTabs(props: any) {
               return <TabButtonWrapper screenName={screen.name} props={p} />;
             },
             tabBarIcon: ({ color, focused }) => {
+              if (screen.name === 'Settings') {
+                return (
+                  <View 
+                    style={{ 
+                      width: 28, 
+                      height: 28, 
+                      borderRadius: 14, 
+                      overflow: 'hidden',
+                      borderWidth: focused ? 2 : 0,
+                      borderColor: COLORS.textPrimary,
+                    }}
+                  >
+                    {user?.imageUrl ? (
+                      <Image 
+                        source={{ uri: user.imageUrl }} 
+                        style={{ width: '100%', height: '100%' }} 
+                      />
+                    ) : (
+                      <View 
+                        style={{ 
+                          width: '100%', 
+                          height: '100%', 
+                          backgroundColor: COLORS.surfaceElevated,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <UserRound size={16} color={color} />
+                      </View>
+                    )}
+                  </View>
+                );
+              }
               return (
                 <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                   <screen.icon
@@ -416,6 +451,8 @@ function RootNavigator() {
   const isTOSAccepted = useAppShellStore((state) => state.isTOSAccepted);
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
+  const isNameOnboardingCompleted = useAppShellStore((state) => state.isNameOnboardingCompleted);
+  const setNameOnboardingCompleted = useAppShellStore((state) => state.setNameOnboardingCompleted);
   const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
   const showEventPreferencesOnboarding = useAppShellStore((state) => state.showEventPreferencesOnboarding);
   const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
@@ -448,6 +485,12 @@ function RootNavigator() {
       <TOSScreen 
         clerkId={user.id} 
         onAccepted={() => setTOSAccepted(true)} 
+      />
+    );
+  } else if (isSignedIn && isTOSAccepted && !isNameOnboardingCompleted) {
+    content = (
+      <NameOnboardingScreen 
+        onDone={() => setNameOnboardingCompleted(true)} 
       />
     );
   } else if (isRegularUserFlow && isTOSAccepted && isAdmin === null) {

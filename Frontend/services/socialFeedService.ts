@@ -133,19 +133,24 @@ export async function addPing(params: {
   startAt: string;
   endAt?: string;
   mediaUrl?: string;
+  mediaUrls?: string[];
+  isPinned?: boolean;
   latitude?: number;
   longitude?: number;
   anchorType?: 'place' | 'geo';
   isAnonymous?: boolean;
 }): Promise<any> {
   const attachments: any[] = [];
-  if (params.mediaUrl) {
+  const urls = params.mediaUrls || (params.mediaUrl ? [params.mediaUrl] : []);
+  
+  urls.forEach(url => {
+    const isVideo = url.toLowerCase().match(/\.(mp4|mov|m4v)$/) || url.includes('video');
     attachments.push({
-      type: 'image',
-      image_url: params.mediaUrl,
+      type: isVideo ? 'video' : 'image',
+      [isVideo ? 'asset_url' : 'image_url']: url,
       custom: {},
     });
-  }
+  });
 
   const activity = {
     actor: `SU:${params.userId}`,
@@ -201,17 +206,20 @@ export async function addPost(params: {
   userImage?: string;
   caption?: string;
   mediaUrl?: string;
+  mediaUrls?: string[];
   mediaType?: 'image' | 'video';
   locationTag?: string;
 }): Promise<any> {
   const attachments: any[] = [];
-  if (params.mediaUrl) {
+  const urls = params.mediaUrls || (params.mediaUrl ? [params.mediaUrl] : []);
+
+  urls.forEach(url => {
     attachments.push({
       type: params.mediaType || 'image',
-      [params.mediaType === 'image' ? 'image_url' : 'asset_url']: params.mediaUrl,
+      [params.mediaType === 'image' ? 'image_url' : 'asset_url']: url,
       custom: {}
     });
-  }
+  });
 
   const activity = {
     actor: `SU:${params.userId}`,
@@ -237,6 +245,20 @@ export async function addPost(params: {
     console.warn(`[NativeFeeds] addPost error: ${err}`);
     throw new Error(`Proxy Post Error: ${err}`);
   }
+}
+
+export async function togglePinPing(activityId: string, isPinned: boolean): Promise<any> {
+  const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings/${activityId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      activity: { 
+        custom: { is_pinned: isPinned } 
+      } 
+    }),
+  });
+  if (!res.ok) throw new Error('Pin toggle failed');
+  return res.json();
 }
 
 export async function toggleVote(activityId: string, kind: 'upvote' | 'downvote' | 'none' | 'like', parentId?: string): Promise<any> {
@@ -606,6 +628,15 @@ export async function reportContent(params: {
         })
     });
     if (!res.ok) throw new Error('Failed to submit report.');
+}
+
+export async function updateUserProfile(clerkId: string, profile: any): Promise<void> {
+    const res = await feedFetch(`/chat/users/${clerkId}/profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile),
+    });
+    if (!res.ok) throw new Error('Failed to update user profile.');
 }
 
 export async function deleteAccount(userId: string): Promise<void> {

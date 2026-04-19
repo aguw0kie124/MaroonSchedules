@@ -675,11 +675,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
     // Remove the fake/duplicate Evans Library sitting at the Memorial Student Center (MSC) location
     // The real one is near the Annex (~30.616, -96.339). The ghost one is ~30.612, -96.341.
     return merged.filter(l => {
-      const isIncorrectEvans = l.location.includes("Evans Library") &&
+      const isIncorrectEvans = (l.location || "").includes("Evans Library") &&
                               l.coord.lat < 30.615 &&
                               l.coord.lng < -96.340;
-      const isCainGarage = l.location.toLowerCase().includes("cain") &&
-                           l.location.toLowerCase().includes("garage");
+      const isCainGarage = (l.location || "").toLowerCase().includes("cain") &&
+                           (l.location || "").toLowerCase().includes("garage");
       return !isIncorrectEvans && !isCainGarage;
     });
   }, [dynamicSearchLocations, locations, scheduleLocations]);
@@ -703,7 +703,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (activeLayer === "Today") return scheduleLocations;
     if (activeLayer === "Dining") {
       const isMarket = (l: CampusLocation) =>
-        l.location.includes("Market") || l.location.includes("Aggie Express");
+        (l.location || "").includes("Market") || (l.location || "").includes("Aggie Express");
 
       return allMapLocations.filter(
         (l) =>
@@ -719,7 +719,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (activeLayer === "Rec")
       return browsableLocations.filter(
         (l) =>
-          l.type === "Rec" || (l.type === "Hub" && l.location.includes("Rec")),
+          l.type === "Rec" || (l.type === "Hub" && (l.location || "").includes("Rec")),
       );
     return browsableLocations.filter((l) => l.type === activeLayer);
   }, [activeLayer, allMapLocations, scheduleLocations, pulseHotspots]);
@@ -728,8 +728,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
     return [...filteredLocations].sort((a, b) => {
       // Prioritize primary dining over markets/convenience
       if (activeLayer === "Dining") {
-        const isAMarket = a.location.includes("Market") || a.location.includes("Aggie Express");
-        const isBMarket = b.location.includes("Market") || b.location.includes("Aggie Express");
+        const isAMarket = (a.location || "").includes("Market") || (a.location || "").includes("Aggie Express");
+        const isBMarket = (b.location || "").includes("Market") || (b.location || "").includes("Aggie Express");
         if (isAMarket && !isBMarket) return 1;
         if (!isAMarket && isBMarket) return -1;
       }
@@ -781,14 +781,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
            if (aSpots !== bSpots) return bSpots - aSpots;
         }
 
-        const aP = getParkingRecommendation(a.location, parkingPermit);
-        const bP = getParkingRecommendation(b.location, parkingPermit);
+        const aP = getParkingRecommendation(a.location || "", parkingPermit);
+        const bP = getParkingRecommendation(b.location || "", parkingPermit);
         if (aP.score !== bP.score) return aP.score - bP.score;
       }
       if (aD != null && bD != null) {
         if (Math.abs(aD - bD) > 20) return aD - bD;
       }
-      return a.location.localeCompare(b.location);
+      return (a.location || "").localeCompare(b.location || "");
     });
   }, [activeLayer, filteredLocations, parkingPermit, userCoord]);
 
@@ -953,7 +953,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
     // Canonicalize keys to prevent overlaps for major garages
     const getGarageStableKey = (l: CampusLocation) => {
-      const name = l.location.toLowerCase();
+      const name = (l.location || "").toLowerCase();
       if (name.includes("central campus") || (name.includes("central") && name.includes("garage"))) return "garage-central-canonical";
       if (name.includes("cain") && name.includes("garage")) return "garage-cain-canonical";
       if (name.includes("polo") && name.includes("garage")) return "garage-polo-canonical";
@@ -2399,7 +2399,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       {/* Top UI Floating Elements */}
       <View
         pointerEvents="box-none"
-        style={[styles.topContainer, { top: 54, alignItems: "center" }]}
+        style={[styles.topContainer, { top: 59, alignItems: "center" }]}
       >
         <FloatingSearchBar
           styles={styles}

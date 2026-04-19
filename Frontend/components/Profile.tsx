@@ -1,9 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Modal,
   PanResponder,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -41,15 +44,33 @@ import {
   Bell,
   LifeBuoy,
   CalendarDays,
+  X,
+  LayoutGrid,
+  Bookmark as BookmarkIcon,
+  RotateCw,
+  UserCheck,
+  Repeat,
+  MapPin as MapPinIcon,
+  Link,
+  Info,
+  ArrowBigUp,
+  ArrowBigDown,
+  MessageCircle,
+  Settings,
+  MoreVertical,
 } from 'lucide-react-native';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
+import { Plus } from 'lucide-react-native';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import { Dimensions } from 'react-native';
 
 import { fetchCampusOverview, fetchUserProfile } from '../api/client';
 import { SUPPORT_CONTACT_URL } from '../config';
 import { PARKING_PERMIT_OPTIONS, useAppShellStore } from '../store/appShellStore';
 import { useSessionStore } from '../store/sessionStore';
+import { useEventStore } from '../store/eventStore';
 import {
   addFriend,
   deleteAccount,
@@ -63,15 +84,22 @@ import { PillTabs } from './PillTabs';
 import { getDefaultAccentColor, useTheme, WallpaperWrapper } from './SharedUI';
 
 import { TagChips } from './common/TagChips';
+import { ScalePressable } from './common/Motion';
+import { PING_CATEGORIES, PingComposerModal } from './pings/PingComposerModal';
+import { PingCommentsModal } from './pings/PingCommentsModal';
+import { API_URL } from '../config';
+import { PingCard, mapActivityToPing } from './CampusPingsScreen';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { StoryViewer } from './pings/StoryViewer';
 
 
-const SETTINGS_TABS = [
-  { key: 'personal', label: 'Personal', icon: UserRound },
-  { key: 'layout', label: 'Layout', icon: Settings2 },
-  { key: 'resources', label: 'Resources', icon: LibraryBig },
+const PROFILE_TABS = [
+  { key: 'feed', icon: LayoutGrid },
+  { key: 'resources', icon: RotateCw },
+  { key: 'edit', icon: Settings },
 ] as const;
 
-type SettingsTabKey = typeof SETTINGS_TABS[number]['key'];
+type ProfileTabKey = typeof PROFILE_TABS[number]['key'];
 
 function channelToHex(channel: number) {
   return channel.toString(16).padStart(2, '0');
@@ -143,10 +171,140 @@ function getRatioFromColor(color: string) {
   return closestRatio;
 }
 
+function formatRelativeAge(isoValue: string) {
+  const value = new Date(isoValue);
+  if (!Number.isFinite(value.getTime())) return 'Just now';
+  const diffMs = Date.now() - value.getTime();
+  const diffMin = Math.max(1, Math.round(diffMs / (1000 * 60)));
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHours = Math.round(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.round(diffHours / 24);
+  return `${diffDays}d ago`;
+}
+
 export function Profile() {
   const navigation = useNavigation<any>();
   const isFocused = useIsFocused();
   const { user } = useUser();
+  const { scheduleEvent, saveEvent } = useEventStore();
+  const queryClient = useQueryClient();
+  const { data: userPings = [] } = useQuery({
+    queryKey: ['user-pings', API_URL, user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { getPingFeed } = await import('../services/socialFeedService');
+      const feed = await getPingFeed(100);
+      const userActivities = feed.filter((p: any) => p.user_id === user.id || p.actor?.id === `SU:${user.id}`);
+      return userActivities.map((act: any) => mapActivityToPing(act, user, new Map()));
+    },
+    enabled: !!user?.id,
+    staleTime: 0,
+    gcTime: 1000 * 60 * 5,
+  });
+  const refetchUserPings = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['user-pings', API_URL, user?.id] });
+  }, [queryClient, user?.id]);
+
+  useEffect(() => {
+    if (isFocused && user?.id) {
+      refetchUserPings();
+    }
+  }, [isFocused, user?.id, refetchUserPings]);
+
+  const { data: friends = [], refetch: refetchFriends, isLoading: loadingFriends } = useQuery({
+    queryKey: ['campus-ping-friends', API_URL, user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const { getFriends } = await import('../services/socialFeedService');
+      return await getFriends(user.id);
+    },
+    enabled: !!user?.id,
+  });
+
+  const { viewedStoryIds, addViewedStory } = useAppShellStore();
+  const [selectedStoryUserIndex, setSelectedStoryUserIndex] = useState(0);
+  const [storyViewerVisible, setStoryViewerVisible] = useState(false);
+
+  const { data: allFeedPings = [] } = useQuery({
+    queryKey: ['campus-pings', API_URL],
+    queryFn: async () => {
+      const { getPingFeed } = await import('../services/socialFeedService');
+      const feed = await getPingFeed(100);
+      return feed.map((act: any) => mapActivityToPing(act, user, new Map()));
+    },
+  });
+
+  const groupedStories = useMemo(() => {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentPings = allFeedPings.filter((p: any) => new Date(p.createdAt) > twentyFourHoursAgo);
+    
+    const storyGroupsMap = new global.Map<string, any[]>();
+    recentPings.forEach(p => {
+      const g = storyGroupsMap.get(p.userId) || [];
+      g.push(p);
+      storyGroupsMap.set(p.userId, g);
+    });
+
+    const storyUsers = Array.from(storyGroupsMap.entries()).map(([uid, pings]) => {
+      const first = pings[0];
+      const allSeen = pings.every(p => viewedStoryIds.includes(p.id));
+      return {
+        id: uid,
+        name: uid === user?.id ? (userDisplayName || fullName || user?.username || user?.firstName || 'Me') : first.userName,
+        image: uid === user?.id ? user?.imageUrl : first.userImage,
+        pings: pings.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
+        hasMedia: pings.some(p => p.imageUrl),
+        allSeen,
+      };
+    });
+
+    // Move "Me" to the front
+    const meIndex = storyUsers.findIndex(u => u.id === user?.id);
+    if (meIndex > -1) {
+      const [me] = storyUsers.splice(meIndex, 1);
+      storyUsers.unshift(me);
+    }
+
+    return storyUsers;
+  }, [allFeedPings, user, viewedStoryIds, userDisplayName, fullName]);
+
+  const activeStoryUser = groupedStories[selectedStoryUserIndex];
+
+  const handleStoryPress = () => {
+    const meIndex = groupedStories.findIndex(u => u.id === user?.id);
+    if (meIndex > -1) {
+      setSelectedStoryUserIndex(meIndex);
+      setStoryViewerVisible(true);
+    }
+  };
+
+  const handleCloseStoryViewer = () => {
+    if (activeStoryUser) {
+      activeStoryUser.pings.forEach((p: any) => addViewedStory(p.id));
+    }
+    setStoryViewerVisible(false);
+  };
+
+  const handleNextStoryUser = useCallback(() => {
+    if (activeStoryUser) {
+      activeStoryUser.pings.forEach((p: any) => addViewedStory(p.id));
+    }
+    if (selectedStoryUserIndex < groupedStories.length - 1) {
+      setSelectedStoryUserIndex(selectedStoryUserIndex + 1);
+    } else {
+      setStoryViewerVisible(false);
+    }
+  }, [activeStoryUser, selectedStoryUserIndex, groupedStories.length, addViewedStory]);
+
+  const handlePrevStoryUser = useCallback(() => {
+    if (selectedStoryUserIndex > 0) {
+      setSelectedStoryUserIndex(selectedStoryUserIndex - 1);
+    }
+  }, [selectedStoryUserIndex]);
+
+  const [composerVisible, setComposerVisible] = useState(false);
+  const [selectedPing, setSelectedPing] = useState<any | null>(null);
   const { signOut } = useClerk();
   const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
   const isGuest = useSessionStore((state) => state.isGuest);
@@ -168,29 +326,155 @@ export function Profile() {
   const [loadingAcademicStatus, setLoadingAcademicStatus] = useState(true);
   const [accentSliderWidth, setAccentSliderWidth] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const activeTab = useAppShellStore((state) => state.settingsTab) as SettingsTabKey;
+  const activeTab = useAppShellStore((state) => state.settingsTab) as ProfileTabKey;
   const setActiveTab = useAppShellStore((state) => state.setSettingsTab);
-  const eventNotifications = useAppShellStore((state) => state.eventNotifications);
-  const placeNotifications = useAppShellStore((state) => state.placeNotifications);
-  const pingNotifications = useAppShellStore((state) => state.pingNotifications);
-  const notificationLeadTime = useAppShellStore((state) => state.notificationLeadTime);
-  const setNotificationPreference = useAppShellStore((state) => state.setNotificationPreference);
-  const setNotificationLeadTime = useAppShellStore((state) => state.setNotificationLeadTime);
-  const notificationsEnabled = useAppShellStore((state) => state.notificationsEnabled);
-  const setNotificationsEnabled = useAppShellStore((state) => state.setNotificationsEnabled);
-  const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
-  const [friends, setFriends] = useState<any[]>([]);
-  const [loadingBlocked, setLoadingBlocked] = useState(false);
-  const [loadingFriends, setLoadingFriends] = useState(false);
-  const [profileTags, setProfileTags] = useState<string[]>([]);
-  const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
-  const [showFriendsPanel, setShowFriendsPanel] = useState(false);
+  
   const [showBlockedPanel, setShowBlockedPanel] = useState(false);
+  const [showLayoutPanel, setShowLayoutPanel] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(true);
+  const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
+  const [showFriendsModal, setShowFriendsModal] = useState(false);
+  const [showSavedPingsModal, setShowSavedPingsModal] = useState(false);
+  
+  const userDisplayName = useAppShellStore((state) => state.userDisplayName);
+  const userBio = useAppShellStore((state) => state.userBio);
+  const userWebsite = useAppShellStore((state) => state.userWebsite);
+  const userGender = useAppShellStore((state) => state.userGender);
+  const showPingsOnProfile = useAppShellStore((state) => state.showPingsOnProfile);
+  const setUserProfile = useAppShellStore((state) => state.setUserProfile);
+
+  const [fullName, setFullName] = useState(userDisplayName || user?.fullName || '');
+  const [bio, setBio] = useState(userBio);
+  const [website, setWebsite] = useState(userWebsite);
+  const [gender, setGender] = useState(userGender);
+
   const [showFriendSearchPanel, setShowFriendSearchPanel] = useState(false);
   const [friendSearchQuery, setFriendSearchQuery] = useState('');
   const [friendSearchResults, setFriendSearchResults] = useState<any[]>([]);
   const [searchingFriends, setSearchingFriends] = useState(false);
   const scrollRef = React.useRef<ScrollView | null>(null);
+
+  const [activeCommentsPing, setActiveCommentsPing] = useState<any | null>(null);
+  const [profileTags, setProfileTags] = useState<string[]>([]);
+  const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+  const [loadingBlocked, setLoadingBlocked] = useState(false);
+
+  const handleVotePing = async (ping: any, direction: number) => {
+    if (!ping) return;
+    const { toggleVote } = await import('../services/socialFeedService');
+    
+    // Optimistic UI Update matches CampusPingsScreen logic
+    const currentVote = ping.userVote || 0;
+    const nextUserVote = currentVote === direction ? 0 : direction;
+    
+    let scoreAdjustment = 0;
+    if (nextUserVote === 0) {
+      scoreAdjustment = -currentVote;
+    } else if (currentVote === 0) {
+      scoreAdjustment = direction;
+    } else {
+      scoreAdjustment = direction * 2;
+    }
+    
+    setSelectedPing(prev => prev ? {
+      ...prev,
+      userVote: nextUserVote,
+      score: (prev.score || 0) + scoreAdjustment
+    } : null);
+
+    try {
+      await import('expo-haptics').then(H => H.impactAsync());
+      await toggleVote(ping.id || ping.activityId, direction === 1 ? 'upvote' : 'downvote');
+      queryClient.invalidateQueries({ queryKey: ['user-pings'] });
+      queryClient.invalidateQueries({ queryKey: ['campus-pings'] });
+    } catch (e) {
+      console.warn('Vote failed', e);
+      setSelectedPing(ping);
+    }
+  };
+
+  const handleOpenComments = (ping: any) => {
+    setActiveCommentsPing(ping);
+  };
+
+  const openPingOnMap = useCallback(
+    (ping: any) => {
+      navigation.navigate('Main', {
+        screen: 'Places',
+        params: {
+          initialLayer: 'Pulse',
+          initialLocation: ping.locationTag,
+          focusToken: `ping:${ping.id}:${ping.startAt}`,
+        },
+      });
+      setSelectedPing(null);
+    },
+    [navigation],
+  );
+
+  const savePingToPlans = useCallback(
+    (ping: any) => {
+      const { 
+        getCanonicalLocationName, 
+        buildCampusDirectory 
+      } = require('./places/campusData');
+      const directory = buildCampusDirectory();
+      const canonicalLocation = getCanonicalLocationName(ping.locationTag);
+      const directoryItem = directory.find((item: any) => 
+        getCanonicalLocationName(item.location) === canonicalLocation
+      );
+
+      scheduleEvent({
+        id: `${ping.source || 'user'}-${ping.id}`,
+        title: ping.title,
+        location: canonicalLocation,
+        description: ping.body,
+        date_ts: Math.floor(new Date(ping.startAt).getTime() / 1000),
+        date_iso: ping.startAt,
+        endDate_ts: ping.endAt ? Math.floor(new Date(ping.endAt).getTime() / 1000) : undefined,
+        location_lat: ping.locationLat ?? directoryItem?.coord.lat ?? null,
+        location_lng: ping.locationLng ?? directoryItem?.coord.lng ?? null,
+        category: ping.category,
+      });
+      saveEvent(`${ping.source || 'user'}-${ping.id}`);
+      Alert.alert('Saved to plans', `${ping.title} is now in your plans.`);
+    },
+    [scheduleEvent, saveEvent],
+  );
+
+  const recentPosts = useMemo(() => {
+    return userPings.slice(0, 3);
+  }, [userPings]);
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    try {
+      const { updateUserProfile } = await import('../services/socialFeedService');
+      await updateUserProfile(user.id, {
+        full_name: fullName,
+        bio: bio,
+        website: website,
+        graduation_year: '', // placeholder if needed
+        major: '' // placeholder if needed
+      });
+
+      setUserProfile({ bio, website, gender, displayName: fullName });
+      setShowEditProfile(false);
+      
+      // Refresh user data
+      queryClient.invalidateQueries({ queryKey: ['user-pings'] });
+      queryClient.invalidateQueries({ queryKey: ['campus-pings'] });
+      
+      Alert.alert('Profile Saved', 'Your changes have been updated and synced.');
+    } catch (err) {
+      console.warn('Failed to save profile:', err);
+      Alert.alert('Sync Error', 'Your changes were saved locally but could not sync with the server.');
+      // Still update locally for responsiveness
+      setUserProfile({ bio, website, gender, displayName: fullName });
+      setShowEditProfile(false);
+    }
+  };
 
   const accentRatio = useMemo(() => getRatioFromColor(accentColor), [accentColor]);
   const accentPreviewColor = useMemo(() => getSpectrumColorFromRatio(accentRatio), [accentRatio]);
@@ -213,7 +497,7 @@ export function Profile() {
 
   useEffect(() => {
     if (isFocused) {
-      setActiveTab('personal');
+      setActiveTab('feed');
     }
   }, [isFocused, setActiveTab]);
 
@@ -308,18 +592,7 @@ export function Profile() {
   };
 
   const loadFriends = async () => {
-    if (!user) return;
-    setLoadingFriends(true);
-    try {
-      const data = await getFriends(user.id);
-      setFriends(data);
-    } catch (err) {
-      if (__DEV__) {
-        console.warn('Failed to load friends', err);
-      }
-    } finally {
-      setLoadingFriends(false);
-    }
+    refetchFriends();
   };
 
   const handleUnblock = async (targetId: string) => {
@@ -363,7 +636,6 @@ export function Profile() {
     }
     try {
       await removeFriend(targetId, user.id);
-      setFriends((current) => current.filter((item) => item.id !== targetId));
       await loadFriends();
       Alert.alert('Friend removed', 'User removed from your friends.');
     } catch (err) {
@@ -440,13 +712,6 @@ export function Profile() {
     await signOut();
   };
 
-  const handleLogin = async () => {
-    resetSessionMode();
-    await signOut();
-  };
-
-
-
   const openGuestRecCapacity = () => {
     const rootNav =
       navigation.getParent?.('RootStack') || navigation.getParent?.() || navigation;
@@ -484,138 +749,407 @@ export function Profile() {
     );
   };
 
-  const renderPersonalTab = () => (
-    <>
-      <View style={styles.heroCard}>
-        <View style={styles.heroHeader}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>Personal</Text>
-          </View>
-          <View style={styles.heroBadge}>
-            <UserRound size={18} color={COLORS.textPrimary} />
-          </View>
-        </View>
+  const categoryMeta = (categoryId: string) => {
+    return PING_CATEGORIES.find(c => c.id === categoryId) || PING_CATEGORIES[PING_CATEGORIES.length - 1];
+  };
 
-        <View style={styles.profileCard}>
-          <Pressable onPress={handleAvatarPress} style={styles.avatarWrapper}>
-            <View style={styles.avatar}>
-              {user?.imageUrl ? (
-                <Image source={{ uri: user.imageUrl }} style={styles.avatarImage} />
-              ) : (
-                <Text style={styles.avatarText}>{user?.firstName?.[0] || 'U'}</Text>
-              )}
-            </View>
-            <View style={styles.cameraBadge}>
-              <Camera size={14} color={COLORS.textPrimary} />
-            </View>
+  const renderEditProfileModal = () => (
+    <Modal
+      visible={showEditProfile}
+      animationType="slide"
+      transparent={false}
+      onRequestClose={() => setShowEditProfile(false)}
+    >
+      <View style={[styles.container, { backgroundColor: COLORS.background }]}>
+        <View style={styles.modalHeader}>
+          <Pressable onPress={() => setShowEditProfile(false)} style={styles.modalCloseButton}>
+            <Text style={{ color: COLORS.textPrimary, fontSize: 16 }}>Cancel</Text>
           </Pressable>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.name}>{user?.fullName || 'Aggie User'}</Text>
-            <Text style={styles.email}>
-              {user?.primaryEmailAddress?.emailAddress || 'user@tamu.edu'}
-            </Text>
-          </View>
+          <Text style={styles.modalTitle}>Edit profile</Text>
+          <Pressable 
+            onPress={handleSaveProfile} 
+            style={[styles.modalSubmitButton, { backgroundColor: COLORS.primary }]}
+          >
+            <Text style={{ color: '#FFF', fontWeight: '700' }}>Save</Text>
+          </Pressable>
         </View>
-        <TagChips tags={profileTags} label="Your access tags" />
-      </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Academics</Text>
-
-        <Pressable style={styles.toolRow} onPress={() => navigation.navigate('GradesScreen')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(16,185,129,0.15)' }]}>
-            <GraduationCap size={20} color="#10B981" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Grades & Distributions</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
-
-        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('ScheduleList')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(139,92,246,0.15)' }]}>
-            <Settings2 size={20} color="#8B5CF6" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Manage Academic Schedules</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
-
-        
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Life & Safety</Text>
-        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('ClubAccess')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 211, 153, 0.12)' }]}>
-            <CalendarDays size={20} color="#10B981" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Club Access</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Nutrition</Text>
-        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => navigation.navigate('DiningDashboard')}>
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(0, 207, 199, 0.14)' }]}>
-            <Flame size={20} color="#00CFC7" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Nutrition Dashboard</Text>
-          </View>
-          <ChevronRight size={20} color={COLORS.textTertiary} />
-        </Pressable>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Privacy & Notifications</Text>
-        {renderNotificationsTab(true, false)}
-        {renderFriendsTab(true, false)}
-        {renderBlockedTab(true, true)}
-      </View>
-
-
-      <View style={styles.quickActionRow}>
-        <Pressable
-          style={[styles.quickActionCard, { borderColor: '#2F80ED' }]}
-          onPress={() => {
-            useAppShellStore.setState({
-              isEventPreferencesCompleted: false,
-              showEventPreferencesOnboarding: true,
-            });
-          }}
+        <ScrollView 
+          style={{ flex: 1 }} 
+          contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: 100 }}
+          showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.quickActionIconWrap, { backgroundColor: 'rgba(47, 128, 237, 0.12)' }]}>
-            <Sparkles size={18} color="#2F80ED" />
+          {/* Profile Photo Card */}
+          <View style={[styles.editProfileCard, { flexDirection: 'row', backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1 }}>
+              <Image 
+                source={{ uri: user?.imageUrl }} 
+                style={{ width: 70, height: 70, borderRadius: 35, borderWidth: 2, borderColor: COLORS.border }} 
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 17, fontWeight: '700', color: COLORS.textPrimary }} numberOfLines={1}>
+                  {userDisplayName || fullName || user?.username || user?.firstName}
+                </Text>
+                <Text style={{ color: COLORS.textTertiary, fontSize: 13 }}>{user?.primaryEmailAddress?.emailAddress}</Text>
+              </View>
+            </View>
+              <Pressable 
+                onPress={handleAvatarPress}
+                style={[
+                  styles.changePhotoButton, 
+                  { 
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    borderColor: COLORS.border,
+                  }
+                ]}
+              >
+                <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 13 }}>Edit</Text>
+              </Pressable>
           </View>
-          <Text style={styles.quickActionTitle}>Redo Questions</Text>
-        </Pressable>
+
+          {/* Personality Card */}
+          <View style={[styles.editProfileCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }]}>
+            <View style={{ gap: 16, width: '100%' }}>
+              <View>
+                <Text style={styles.inputLabel}>DISPLAY NAME</Text>
+                <TextInput
+                  value={fullName}
+                  onChangeText={setFullName}
+                  placeholder="Your Name"
+                  placeholderTextColor={COLORS.textTertiary}
+                  style={[
+                    styles.modalInput, 
+                    { 
+                      backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7', 
+                      borderRadius: 14, 
+                      height: 48, 
+                      paddingHorizontal: 16,
+                      color: COLORS.textPrimary,
+                      fontWeight: '600',
+                    }
+                  ]}
+                />
+              </View>
+              <View>
+                <Text style={styles.inputLabel}>BIO</Text>
+                <TextInput
+                  value={bio}
+                  onChangeText={setBio}
+                  placeholder="Tell people about yourself..."
+                  placeholderTextColor={COLORS.textTertiary}
+                  multiline
+                  maxLength={150}
+                  style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 100, paddingHorizontal: 16, paddingTop: 12 }]}
+                />
+                <Text style={{ alignSelf: 'flex-end', fontSize: 11, color: COLORS.textTertiary, marginTop: 4 }}>{bio.length}/150</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={[styles.editProfileCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }]}>
+            <View style={{ width: '100%' }}>
+              <Text style={styles.inputLabel}>WEBSITE</Text>
+              <TextInput
+                value={website}
+                onChangeText={setWebsite}
+                placeholder="https://yourlink.com"
+                placeholderTextColor={COLORS.textTertiary}
+                autoCapitalize="none"
+                style={[
+                  styles.modalInput, 
+                  { 
+                    backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7', 
+                    borderRadius: 14, 
+                    height: 48, 
+                    paddingHorizontal: 16,
+                    color: COLORS.textPrimary,
+                    fontWeight: '600'
+                  }
+                ]}
+              />
+            </View>
+          </View>
+
+          <View style={{ gap: 12 }}>
+            <Text style={[styles.inputLabel, { marginLeft: 4 }]}>Preferences</Text>
+            
+            <View style={[styles.toggleCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', borderRadius: 16, padding: 16 }]}>
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>Show Pings on Profile</Text>
+                <Text style={{ fontSize: 12, color: COLORS.textTertiary }}>Display text comments in your grid</Text>
+              </View>
+              <Switch 
+                value={showPingsOnProfile} 
+                onValueChange={(val) => setUserProfile({ showPings: val })}
+                trackColor={{ true: COLORS.primary }}
+              />
+            </View>
+
+            <Pressable 
+              onPress={handleLogout}
+              style={{ marginTop: 20, padding: 16, alignItems: 'center' }}
+            >
+              <Text style={{ color: COLORS.textTertiary, fontWeight: '700' }}>Log Out</Text>
+            </Pressable>
+
+            <Pressable 
+              onPress={handleDeleteAccount}
+              style={{ padding: 16, alignItems: 'center' }}
+            >
+              <Text style={{ color: COLORS.danger, fontWeight: '700' }}>Delete Account</Text>
+            </Pressable>
+          </View>
+          <View style={{ height: 40 }} />
+        </ScrollView>
       </View>
-
-      <Pressable style={styles.logoutButton} onPress={handleLogout}>
-        <LogOut size={18} color={COLORS.textPrimary} />
-        <Text style={styles.logoutText}>Log Out</Text>
-      </Pressable>
-
-      <Pressable 
-        style={[styles.logoutButton, { backgroundColor: isDark ? '#441111' : '#FFF0F0', marginTop: 8, borderColor: isDark ? '#772222' : '#FFCCCC', borderWidth: 1 }]} 
-        onPress={handleDeleteAccount}
-      >
-        <Trash2 size={18} color={isDark ? '#E56B6B' : '#CC0000'} />
-        <Text style={[styles.logoutText, { color: isDark ? '#E56B6B' : '#CC0000' }]}>Delete Account</Text>
-      </Pressable>
-    </>
+    </Modal>
   );
 
-  const renderLayoutTab = () => {
+  const myStoryData = useMemo(() => {
+    return groupedStories.find(u => u.id === user?.id) || { hasActiveStory: false, allSeen: true };
+  }, [groupedStories, user?.id]);
+
+   const renderProfileHeader = () => (
+     <View style={styles.modernProfileHeader}>
+       <View style={{ alignItems: 'center', marginBottom: 24, marginTop: 10 }}>
+         <ScalePressable 
+           onPress={handleStoryPress}
+           disabled={!myStoryData.pings?.length}
+           style={[
+             styles.modernAvatarWrapper,
+             { width: 110, height: 110, borderRadius: 55, borderWidth: 3, borderColor: COLORS.primary, padding: 5 }
+           ]}
+         >
+           <View style={{ 
+             backgroundColor: COLORS.background, 
+             borderRadius: 50, 
+             padding: 2,
+             width: '100%',
+             height: '100%',
+             overflow: 'hidden'
+           }}>
+             {user?.imageUrl ? (
+               <Image source={{ uri: user.imageUrl }} style={{ width: '100%', height: '100%', borderRadius: 50 }} />
+             ) : (
+               <View style={[styles.modernAvatarPlaceholder, { backgroundColor: COLORS.surfaceElevated }]}>
+                 <Text style={[styles.modernAvatarText, { fontSize: 40 }]}>{user?.firstName?.[0] || 'U'}</Text>
+               </View>
+             )}
+           </View>
+         </ScalePressable>
+         
+         <View style={{ alignItems: 'center', marginTop: 18 }}>
+           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+             <Text style={[styles.modernName, { fontSize: 24, fontWeight: '900' }]}>{userDisplayName || fullName || user?.fullName || 'Aggie User'}</Text>
+           </View>
+         </View>
+       </View>
+
+       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24, paddingHorizontal: 16 }}>
+          <ScalePressable 
+            containerStyle={{ flex: 1 }}
+            style={styles.modernStatCard}
+            onPress={() => setShowFriendsModal(true)}
+          >
+             <Text style={styles.modernStatValue}>{friends.length || 0}</Text>
+             <Text style={styles.modernStatLabel}>Friends</Text>
+          </ScalePressable>
+          <ScalePressable 
+            containerStyle={{ flex: 1 }}
+            style={styles.modernStatCard}
+            onPress={() => setActiveTab('feed')}
+          >
+             <Text style={styles.modernStatValue}>{userPings.length || 0}</Text>
+             <Text style={styles.modernStatLabel}>Pings</Text>
+          </ScalePressable>
+       </View>
+
+       <View style={[styles.bioSection, { paddingHorizontal: 4 }]}>
+         <Text style={[styles.modernBio, { fontSize: 15, textAlign: 'center', fontWeight: '500' }]}>{bio || 'Building the future of campus life 🚀'}</Text>
+       </View>
+     </View>
+   );
+
+  const renderContentGrid = (pings: any[]) => {
+    // Filter by visibility toggle: if off, hide pings that move (reels/images usually stay, "comments" i.e. text-only pings go)
+    const filteredByToggle = showPingsOnProfile 
+      ? pings 
+      : pings.filter(p => p.imageUrl || p.mediaUrls?.length > 0);
+
+    // Sort logic for pinning
+    const sortedPings = [...filteredByToggle].sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
     return (
+      <View style={[styles.postsGrid, { gap: 10, paddingHorizontal: 4 }]}>
+        {sortedPings.map((post, idx) => {
+          return (
+            <ScalePressable 
+              key={post.id || idx} 
+              style={[styles.postSquare, { 
+                width: (Dimensions.get('window').width - 42) / 3,
+                borderRadius: 24,
+                height: ((Dimensions.get('window').width - 42) / 3) * 1.33 
+              }]}
+              onPress={() => setSelectedPing(post)}
+            >
+              {post.imageUrl ? (
+                <Image source={{ uri: post.imageUrl }} style={[styles.postImage, { borderRadius: 24 }]} />
+              ) : (
+                <View style={[styles.postFallback, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', padding: 12, borderRadius: 24 }]}>
+                  <Text style={{ color: COLORS.textPrimary, fontSize: 12, fontWeight: '700', lineHeight: 16 }} numberOfLines={5}>
+                    {post.title}
+                  </Text>
+                </View>
+              )}
+            </ScalePressable>
+          );
+        })}
+      </View>
+    );
+  };
+
+  const renderEnlargedPostModal = () => {
+    if (!selectedPing) return null;
+    const cat = categoryMeta(selectedPing.category);
+
+    return (
+      <Modal
+        visible={!!selectedPing}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedPing(null)}
+      >
+        <Pressable 
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' }}
+          onPress={() => setSelectedPing(null)}
+        >
+          <Animated.View 
+            entering={FadeIn.duration(200)}
+            exiting={FadeOut.duration(150)}
+            style={{ 
+              width: Dimensions.get('window').width * 0.88,
+              backgroundColor: COLORS.background,
+              borderRadius: 32,
+              overflow: 'hidden',
+              borderWidth: 1,
+              borderColor: COLORS.border,
+            }}
+          >
+            <Pressable style={{ padding: 24 }}>
+               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: cat.accent + '15', alignItems: 'center', justifyContent: 'center' }}>
+                    <cat.Icon size={20} color={cat.accent} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.textPrimary }}>{selectedPing.title}</Text>
+                    <Text style={{ fontSize: 13, color: COLORS.textTertiary, fontWeight: '600' }}>{selectedPing.category} • {formatRelativeAge(selectedPing.createdAt)}</Text>
+                  </View>
+                  <ScalePressable onPress={() => setSelectedPing(null)} style={{ padding: 4 }}>
+                    <X size={20} color={COLORS.textTertiary} />
+                  </ScalePressable>
+               </View>
+
+               {selectedPing.imageUrl && (
+                 <Image source={{ uri: selectedPing.imageUrl }} style={{ width: '100%', height: 280, borderRadius: 24, marginBottom: 20 }} resizeMode="cover" />
+               )}
+
+               {selectedPing.body ? (
+                 <ScrollView style={{ maxHeight: 200, marginBottom: 20 }} showsVerticalScrollIndicator={false}>
+                   <Text style={{ fontSize: 16, color: COLORS.textPrimary, lineHeight: 24, fontWeight: '500' }}>
+                     {selectedPing.body}
+                   </Text>
+                 </ScrollView>
+               ) : null}
+
+               <View style={{ 
+                 flexDirection: 'row', 
+                 alignItems: 'center', 
+                 justifyContent: 'space-between',
+                 paddingTop: 16,
+                 borderTopWidth: 1,
+                 borderTopColor: COLORS.border,
+                 marginTop: 4
+               }}>
+                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <ScalePressable 
+                        onPress={() => handleVotePing(selectedPing, 1)}
+                        style={{ padding: 6 }}
+                      >
+                        <ArrowBigUp 
+                          size={28} 
+                          color={selectedPing.userVote === 1 ? '#3FA86A' : COLORS.textPrimary} 
+                          fill={selectedPing.userVote === 1 ? '#3FA86A' : 'transparent'}
+                        />
+                      </ScalePressable>
+                      
+                      <Text style={{ 
+                        fontSize: 16, 
+                        fontWeight: '800', 
+                        color: selectedPing.userVote === 1 ? '#3FA86A' : (selectedPing.userVote === -1 ? '#D8616E' : COLORS.textPrimary) 
+                      }}>
+                        {selectedPing.score || 0}
+                      </Text>
+                      
+                      <ScalePressable 
+                        onPress={() => handleVotePing(selectedPing, -1)}
+                        style={{ padding: 6 }}
+                      >
+                        <ArrowBigDown 
+                          size={28} 
+                          color={selectedPing.userVote === -1 ? '#D8616E' : COLORS.textPrimary} 
+                          fill={selectedPing.userVote === -1 ? '#D8616E' : 'transparent'}
+                        />
+                      </ScalePressable>
+                    </View>
+
+                    <ScalePressable 
+                      onPress={() => handleOpenComments(selectedPing)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, padding: 6 }}
+                    >
+                      <MessageCircle size={24} color={COLORS.textPrimary} />
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.textPrimary }}>
+                        {selectedPing.commentCount || 0}
+                      </Text>
+                    </ScalePressable>
+                 </View>
+
+                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <ScalePressable 
+                      onPress={() => openPingOnMap(selectedPing)}
+                      style={{ padding: 6 }}
+                    >
+                      <MapPinIcon size={24} color={COLORS.textPrimary} />
+                    </ScalePressable>
+
+                    <ScalePressable 
+                      onPress={() => savePingToPlans(selectedPing)}
+                      style={{ padding: 6 }}
+                    >
+                      <BookmarkIcon size={24} color={COLORS.textPrimary} />
+                    </ScalePressable>
+                 </View>
+               </View>
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
+    );
+  };
+
+
+  const renderLayoutTab = (embedded = false, isLast = false) => {
+    const content = (
       <>
-        <View style={styles.section}>
-          <View style={styles.preferenceBlock}>
+        <View style={styles.preferenceBlock}>
             <Text style={styles.preferenceLabel}>Theme Mode</Text>
             <View style={styles.segmentedRow}>
               {['light', 'dark'].map((mode) => {
@@ -710,9 +1244,11 @@ export function Profile() {
               })}
             </View>
           </View>
-        </View>
       </>
     );
+
+    if (embedded) return content;
+    return <View style={styles.section}>{content}</View>;
   };
 
   const renderNotificationsTab = (embedded = false, isLast = false) => {
@@ -889,166 +1425,215 @@ export function Profile() {
 
     if (embedded) return content;
     return <View style={styles.section}>{content}</View>;
-  };
-
-  const renderFriendsTab = (embedded = false, isLast = false) => {
-    const content = (
-      <>
-        <Pressable
-          style={[styles.toolRow, (showFriendsPanel || isLast) && styles.toolRowLast]}
-          onPress={() => setShowFriendsPanel((current) => !current)}
+  }
+  
+  const renderFriendsModal = () => (
+    <Modal
+      visible={showFriendsModal}
+      animationType="fade"
+      transparent={true}
+      onRequestClose={() => setShowFriendsModal(false)}
+    >
+      <Pressable 
+        style={styles.modalOverlay} 
+        onPress={() => setShowFriendsModal(false)}
+      >
+        <KeyboardAvoidingView 
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalCardWrapper}
         >
-          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
-            <UserRound size={20} color={COLORS.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Friends</Text>
-          </View>
-          <ChevronRight
-            size={20}
-            color={COLORS.textTertiary}
-            style={{ transform: [{ rotate: showFriendsPanel ? '90deg' : '0deg' }] }}
-          />
-        </Pressable>
-
-        {showFriendsPanel ? (
-          <>
-            <View style={styles.inlinePanel}>
-              <Pressable
-                style={styles.friendSearchToggle}
-                onPress={() => setShowFriendSearchPanel((current) => !current)}
-              >
-                <Search size={16} color={COLORS.primary} />
-                <Text style={styles.friendSearchToggleText}>Search user</Text>
+          <Pressable 
+            style={[
+              styles.modalCard, 
+              { 
+                backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+                marginHorizontal: 20,
+                marginBottom: 40,
+                borderRadius: 28,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: 0.3,
+                shadowRadius: 20,
+                elevation: 10,
+              }
+            ]} 
+            onPress={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <View style={styles.modalCardHeader}>
+              <View style={{ width: 40 }} />
+              <Text style={[styles.modalCardTitle, { color: COLORS.textPrimary }]}>Friends</Text>
+              <Pressable onPress={() => setShowFriendsModal(false)} style={styles.modalCardClose}>
+                <X size={22} color={COLORS.textPrimary} />
               </Pressable>
-
-              {showFriendSearchPanel ? (
-                <View style={styles.friendSearchCard}>
-                  <View style={styles.friendSearchInputWrap}>
-                    <Search size={16} color={COLORS.textTertiary} />
-                    <TextInput
-                      value={friendSearchQuery}
-                      onChangeText={setFriendSearchQuery}
-                      placeholder="Search by name, email, or major"
-                      placeholderTextColor={COLORS.textTertiary}
-                      style={styles.friendSearchInput}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                    />
-                  </View>
-
-                  {searchingFriends ? (
-                    <ActivityIndicator color={COLORS.primary} style={{ marginTop: 12 }} />
-                  ) : friendSearchResults.length > 0 ? (
-                    <View style={{ marginTop: 12 }}>
-                      {friendSearchResults.map((item, index) => (
-                        <View
-                          key={item.id}
-                          style={[
-                            styles.toolRow,
-                            index === friendSearchResults.length - 1 && styles.toolRowLast,
-                            { paddingVertical: 12 },
-                          ]}
-                        >
-                          <View style={styles.listAvatar}>
-                            {item.profile_image_url ? (
-                              <Image source={{ uri: item.profile_image_url }} style={styles.listAvatarImage} />
-                            ) : (
-                              <Text style={styles.listAvatarText}>{item.name?.[0] || 'U'}</Text>
-                            )}
-                          </View>
-                          <View style={{ flex: 1, marginLeft: 12 }}>
-                            <Text style={styles.toolTitle}>{item.name}</Text>
-                            {item.major ? (
-                              <Text style={styles.email} numberOfLines={1}>
-                                {item.major}
-                              </Text>
-                            ) : null}
-                          </View>
-                          <Pressable
-                            style={[
-                              styles.friendActionButton,
-                              item.is_friend && styles.friendActionButtonDisabled,
-                            ]}
-                            disabled={item.is_friend}
-                            onPress={() => handleAddFriend(item.id, item.name)}
-                          >
-                            <Text
-                              style={[
-                                styles.friendActionButtonText,
-                                item.is_friend && styles.friendActionButtonTextDisabled,
-                              ]}
-                            >
-                              {item.is_friend ? 'Friends' : 'Add'}
-                            </Text>
-                          </Pressable>
-                        </View>
-                      ))}
-                    </View>
-                  ) : friendSearchQuery.trim() ? (
-                    <Text style={styles.friendSearchEmpty}>No users found.</Text>
-                  ) : null}
-                </View>
-              ) : null}
             </View>
 
-            {loadingFriends ? (
-              <ActivityIndicator color={COLORS.primary} style={{ marginTop: 24 }} />
-            ) : friends.length > 0 ? (
-              <View style={styles.inlinePanel}>
-                {friends.map((item, index) => (
-                  <View
-                    key={item.id}
-                    style={[
-                      styles.toolRow,
-                      index === friends.length - 1 && styles.toolRowLast,
-                      { paddingVertical: 12 },
-                    ]}
-                  >
-                    <View style={styles.listAvatar}>
-                      {item.profile_image_url ? (
-                        <Image source={{ uri: item.profile_image_url }} style={styles.listAvatarImage} />
-                      ) : (
-                        <Text style={styles.listAvatarText}>{item.name?.[0] || 'U'}</Text>
-                      )}
-                    </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                      <Text style={styles.toolTitle}>{item.name}</Text>
-                      {item.major ? (
-                        <Text style={styles.email} numberOfLines={1}>
-                          {item.major}
-                        </Text>
-                      ) : null}
-                    </View>
-                    <Pressable style={styles.friendActionButton} onPress={() => handleRemoveFriend(item.id)}>
-                      <Text style={styles.friendActionButtonText}>Unfriend</Text>
-                    </Pressable>
-                  </View>
-                ))}
+            {/* Search Bar */}
+            <View style={styles.cardSearchContainer}>
+              <View style={[styles.cardSearchInputWrap, { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}>
+                <Search size={16} color={COLORS.textTertiary} style={{ marginRight: 8 }} />
+                <TextInput
+                  value={friendSearchQuery}
+                  onChangeText={setFriendSearchQuery}
+                  placeholder="Search"
+                  placeholderTextColor={COLORS.textTertiary}
+                  style={[styles.cardSearchInput, { color: COLORS.textPrimary }]}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
               </View>
-            ) : (
-              <View style={[styles.inlinePanel, { alignItems: 'center', padding: 40, opacity: 0.5 }]}>
-                <UserRound size={48} color={COLORS.textTertiary} strokeWidth={1} />
-                <Text style={{ color: COLORS.textTertiary, marginTop: 12, fontSize: 15 }}>No friends yet</Text>
-              </View>
-            )}
-          </>
-        ) : null}
-        {showFriendsPanel && !isLast && (
-          <View style={{ borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 8 }} />
-        )}
-      </>
-    );
+            </View>
 
-    if (embedded) return content;
-    return <View style={styles.section}>{content}</View>;
-  };
+            {/* Scrollable Content */}
+            <ScrollView 
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {friendSearchQuery.trim().length > 0 ? (
+                <View>
+                  {searchingFriends ? (
+                    <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
+                  ) : friendSearchResults.length > 0 ? (
+                    friendSearchResults.map((item) => (
+                      <View key={item.id} style={styles.modalFriendRow}>
+                        <View style={styles.listAvatar}>
+                          {item.profile_image_url ? (
+                            <Image source={{ uri: item.profile_image_url }} style={styles.listAvatarImage} />
+                          ) : (
+                            <View style={[styles.listAvatarImage, { backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' }]}>
+                              <Text style={{ color: COLORS.textPrimary, fontWeight: '700' }}>{item.name?.[0] || 'U'}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 15 }}>{item.username || item.name}</Text>
+                          <Text style={{ color: COLORS.textTertiary, fontSize: 13 }} numberOfLines={1}>{item.name}</Text>
+                        </View>
+                        <Pressable
+                          style={[
+                            styles.friendCardActionButton,
+                            { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }
+                          ]}
+                          onPress={() => item.is_friend ? handleRemoveFriend(item.id) : handleAddFriend(item.id, item.name)}
+                        >
+                          <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 13 }}>
+                            {item.is_friend ? 'Remove' : 'Add'}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ))
+                  ) : (
+                    <View style={styles.modalEmptyState}>
+                      <Text style={{ color: COLORS.textTertiary }}>No users found.</Text>
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View>
+                  {loadingFriends ? (
+                    <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
+                  ) : friends.length > 0 ? (
+                    friends.map((item) => (
+                      <View key={item.id} style={styles.modalFriendRow}>
+                        <View style={styles.listAvatar}>
+                          {item.profile_image_url ? (
+                            <Image source={{ uri: item.profile_image_url }} style={styles.listAvatarImage} />
+                          ) : (
+                            <View style={[styles.listAvatarImage, { backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' }]}>
+                              <Text style={{ color: COLORS.textPrimary, fontWeight: '700' }}>{item.name?.[0] || 'U'}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 15 }}>{item.username || item.name}</Text>
+                          <Text style={{ color: COLORS.textTertiary, fontSize: 13 }} numberOfLines={1}>{item.name}</Text>
+                        </View>
+                        <Pressable 
+                          style={[
+                            styles.friendCardActionButton, 
+                            { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }
+                          ]} 
+                          onPress={() => handleRemoveFriend(item.id)}
+                        >
+                          <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 13 }}>Remove</Text>
+                        </Pressable>
+                      </View>
+                    ))
+                  ) : (
+                    <View style={styles.modalEmptyState}>
+                      <UserRound size={48} color={COLORS.textTertiary} strokeWidth={1} />
+                      <Text style={{ color: COLORS.textTertiary, marginTop: 12 }}>No friends yet</Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </ScrollView>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Pressable>
+    </Modal>
+  );
+
+  const renderSavedPingsModal = () => (
+    <Modal
+      visible={showSavedPingsModal}
+      animationType="fade"
+      transparent={true}
+      onRequestClose={() => setShowSavedPingsModal(false)}
+    >
+      <Pressable 
+        style={styles.modalOverlay} 
+        onPress={() => setShowSavedPingsModal(false)}
+      >
+        <View style={styles.modalCardWrapper}>
+          <Pressable style={[styles.modalCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalCardHeader}>
+              <View style={{ width: 40 }} />
+              <Text style={[styles.modalCardTitle, { color: COLORS.textPrimary }]}>Saved Pings</Text>
+              <Pressable onPress={() => setShowSavedPingsModal(false)} style={styles.modalCardClose}>
+                <X size={22} color={COLORS.textPrimary} />
+              </Pressable>
+            </View>
+
+            <ScrollView 
+              style={{ flex: 1 }}
+              contentContainerStyle={{ padding: 40, alignItems: 'center' }}
+            >
+              <BookmarkIcon size={48} color={COLORS.textTertiary} strokeWidth={1} style={{ opacity: 0.5 }} />
+              <Text style={{ color: COLORS.textTertiary, marginTop: 12, textAlign: 'center' }}>No saved pings yet</Text>
+            </ScrollView>
+          </Pressable>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+
 
   const renderResourcesTab = () => (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>Campus Resources</Text>
 
       {[
+        {
+          key: 'schedules',
+          title: 'Manage Schedules',
+          icon: Settings2,
+          iconColor: COLORS.primary,
+          iconBg: 'rgba(59, 130, 246, 0.12)',
+          action: () => navigation.navigate('ScheduleList'),
+          internal: true,
+        },
+        {
+          key: 'grades',
+          title: 'Grades & Distributions',
+          icon: GraduationCap,
+          iconColor: '#10B981',
+          iconBg: 'rgba(16,185,129,0.15)',
+          action: () => navigation.navigate('GradesScreen'),
+          internal: true,
+        },
         {
           key: 'annex',
           title: 'Library Services',
@@ -1260,26 +1845,272 @@ export function Profile() {
           renderGuestView()
         ) : (
           <>
-            <View style={styles.tabShell}>
-              <PillTabs
-                items={SETTINGS_TABS.map((tab) => ({ key: tab.key, label: tab.label, icon: tab.icon }))}
-                activeKey={activeTab}
-                onChange={(key) => setActiveTab(key as SettingsTabKey)}
-                floating={false}
-                compact={false}
-                activeTextMode="always"
-                layout="stacked"
-              />
+            <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
+              {renderProfileHeader()}
+              
+              <View style={styles.profileTabsWrapper}>
+                {PROFILE_TABS.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.key;
+                  return (
+                    <Pressable
+                      key={tab.key}
+                      onPress={() => setActiveTab(tab.key)}
+                      style={[styles.profileTabButton, isActive && styles.profileTabButtonActive]}
+                    >
+                      <Icon size={24} color={isActive ? COLORS.textPrimary : COLORS.textTertiary} />
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
 
-            {activeTab === 'personal' ? renderPersonalTab() : null}
-            {activeTab === 'layout' ? renderLayoutTab() : null}
-            {activeTab === 'resources' ? renderResourcesTab() : null}
+            <View style={{ flex: 1 }}>
+              {activeTab === 'feed' && renderContentGrid(userPings)}
+              {activeTab === 'resources' && (
+                <View style={{ padding: 16 }}>
+                  {renderResourcesTab()}
+                </View>
+              )}
+              {activeTab === 'edit' && (
+                <View style={{ padding: 16, gap: 20 }}>
+                  <View style={[styles.editProfileCard, { flexDirection: 'row', backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1 }}>
+                      <Image 
+                        source={{ uri: user?.imageUrl }} 
+                        style={{ width: 70, height: 70, borderRadius: 35, borderWidth: 2, borderColor: COLORS.border }} 
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 17, fontWeight: '700', color: COLORS.textPrimary }}>
+                          {userDisplayName || fullName || user?.username || user?.firstName}
+                        </Text>
+                        <Text style={{ color: COLORS.textTertiary, fontSize: 13 }}>{user?.primaryEmailAddress?.emailAddress}</Text>
+                      </View>
+                    </View>
+                    <Pressable onPress={handleAvatarPress} style={[styles.changePhotoButton, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
+                      <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>Edit</Text>
+                    </Pressable>
+                  </View>
+
+                  <View style={{ gap: 16 }}>
+                    <View>
+                      <Text style={styles.inputLabel}>DISPLAY NAME</Text>
+                      <TextInput
+                        value={fullName}
+                        onChangeText={setFullName}
+                        placeholder="Your Name"
+                        placeholderTextColor={COLORS.textTertiary}
+                        selectionColor={COLORS.primary}
+                        style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 48, paddingHorizontal: 16, color: COLORS.textPrimary }]}
+                      />
+                    </View>
+                    <View>
+                      <Text style={styles.inputLabel}>BIO</Text>
+                      <TextInput
+                        value={bio}
+                        onChangeText={setBio}
+                        placeholder="Tell people about yourself..."
+                        placeholderTextColor={COLORS.textTertiary}
+                        selectionColor={COLORS.primary}
+                        multiline
+                        maxLength={150}
+                        style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 100, paddingHorizontal: 16, paddingTop: 12, color: COLORS.textPrimary }]}
+                      />
+                    </View>
+                    <View>
+                      <Text style={styles.inputLabel}>WEBSITE</Text>
+                      <TextInput
+                        value={website}
+                        onChangeText={setWebsite}
+                        placeholder="https://..."
+                        placeholderTextColor={COLORS.textTertiary}
+                        selectionColor={COLORS.primary}
+                        style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 48, paddingHorizontal: 16, color: COLORS.textPrimary }]}
+                      />
+                    </View>
+                  </View>
+
+                  <Pressable 
+                    onPress={handleSaveProfile}
+                    style={{ backgroundColor: COLORS.primary, height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 10 }}
+                  >
+                    <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Save Changes</Text>
+                  </Pressable>
+
+                  <View style={{ gap: 12, marginTop: 10 }}>
+                    <View style={[styles.toggleCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', borderRadius: 16, padding: 16 }]}>
+                      <View style={{ flex: 1, gap: 4 }}>
+                        <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>Show Pings on Profile</Text>
+                        <Text style={{ fontSize: 12, color: COLORS.textTertiary }}>Display text comments in your grid</Text>
+                      </View>
+                      <Switch 
+                        value={showPingsOnProfile} 
+                        onValueChange={(val) => setUserProfile({ showPings: val })}
+                        trackColor={{ true: COLORS.primary }}
+                      />
+                    </View>
+
+                    <Pressable onPress={handleLogout} style={{ padding: 16, alignItems: 'center' }}>
+                      <Text style={{ color: COLORS.textTertiary, fontWeight: '700' }}>Log Out</Text>
+                    </Pressable>
+                  </View>
+
+                  {/* App Settings Section */}
+                  <View style={{ marginTop: 10, paddingBottom: 40 }}>
+                    <Text style={[styles.sectionHeading, { marginLeft: 4, marginBottom: 12 }]}>App Settings</Text>
+                    
+                    {renderNotificationsTab && renderNotificationsTab(true, false)}
+                    {renderBlockedTab && renderBlockedTab(true, false)}
+                    
+                    <Pressable style={styles.toolRow} onPress={() => setShowSavedPingsModal(true)}>
+                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
+                        <BookmarkIcon size={20} color="#3B82F6" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.toolTitle}>Saved Pings</Text>
+                      </View>
+                      <ChevronRight size={20} color={COLORS.textTertiary} />
+                    </Pressable>
+                    
+                    <Pressable style={styles.toolRow} onPress={() => navigation.navigate('ClubAccess')}>
+                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 211, 153, 0.12)' }]}>
+                        <CalendarDays size={20} color="#10B981" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.toolTitle}>Club Access</Text>
+                      </View>
+                      <ChevronRight size={20} color={COLORS.textTertiary} />
+                    </Pressable>
+
+                    <Pressable style={styles.toolRow} onPress={() => navigation.navigate('DiningDashboard')}>
+                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(0, 207, 199, 0.14)' }]}>
+                        <Flame size={20} color="#00CFC7" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.toolTitle}>Nutrition Dashboard</Text>
+                      </View>
+                      <ChevronRight size={20} color={COLORS.textTertiary} />
+                    </Pressable>
+
+                    <Pressable
+                      style={styles.toolRow}
+                      onPress={() => {
+                        useAppShellStore.setState({
+                          isEventPreferencesCompleted: false,
+                          showEventPreferencesOnboarding: true,
+                        });
+                      }}
+                    >
+                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(47, 128, 237, 0.12)' }]}>
+                        <Sparkles size={20} color="#2F80ED" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.toolTitle}>Redo Questions</Text>
+                      </View>
+                      <ChevronRight size={20} color={COLORS.textTertiary} />
+                    </Pressable>
+
+                    <Pressable 
+                      style={[styles.toolRow, showLayoutPanel && styles.toolRowLast]} 
+                      onPress={() => setShowLayoutPanel(prev => !prev)}
+                    >
+                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(239, 68, 68, 0.12)' }]}>
+                        <Settings2 size={20} color="#EF4444" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.toolTitle}>Layout Settings</Text>
+                      </View>
+                      <ChevronRight 
+                        size={20} 
+                        color={COLORS.textTertiary}
+                        style={{ transform: [{ rotate: showLayoutPanel ? '90deg' : '0deg' }] }}
+                      />
+                    </Pressable>
+
+                    {showLayoutPanel && (
+                      <View style={styles.inlinePanel}>
+                        {renderLayoutTab && renderLayoutTab(true, true)}
+                      </View>
+                    )}
+
+                    <Pressable 
+                      onPress={handleDeleteAccount}
+                      style={{ marginTop: 20, padding: 16, alignItems: 'center' }}
+                    >
+                      <Text style={{ color: COLORS.danger, fontWeight: '700' }}>Delete Account</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+            </View>
           </>
         )}
 
         <View style={{ height: 120 }} />
       </ScrollView>
+
+      {/* FAB for Creating Ping */}
+      <ScalePressable 
+        style={{
+          position: 'absolute',
+          bottom: 20, // Lowered to be closer to the bottom right corner
+          right: 20,
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          backgroundColor: COLORS.primary,
+          alignItems: 'center',
+          justifyContent: 'center',
+          elevation: 5,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 4,
+          zIndex: 999
+        }} 
+        onPress={() => setComposerVisible(true)}
+      >
+        <Plus size={30} color="#FFF" />
+      </ScalePressable>
+      {storyViewerVisible && activeStoryUser && (
+        <StoryViewer 
+          visible={storyViewerVisible}
+          onClose={handleCloseStoryViewer}
+          pings={activeStoryUser.pings}
+          userName={activeStoryUser.name}
+          userImage={activeStoryUser.image}
+          onNextUser={handleNextStoryUser}
+          onPrevUser={handlePrevStoryUser}
+        />
+      )}
+
+      {renderFriendsModal()}
+      {renderSavedPingsModal()}
+      {renderEnlargedPostModal()}
+
+      <PingCommentsModal 
+        visible={!!activeCommentsPing}
+        target={activeCommentsPing ? {
+          activityId: activeCommentsPing.activityId || activeCommentsPing.id,
+          title: activeCommentsPing.title,
+          subtitle: activeCommentsPing.category
+        } : null}
+        onClose={() => setActiveCommentsPing(null)}
+        onCommentPosted={() => {
+          queryClient.invalidateQueries({ queryKey: ['user-pings'] });
+          queryClient.invalidateQueries({ queryKey: ['campus-pings'] });
+        }}
+      />
+
+      <PingComposerModal
+        visible={composerVisible}
+        onClose={() => setComposerVisible(false)}
+        user={user}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['campus-pings', API_URL] });
+          queryClient.invalidateQueries({ queryKey: ['user-pings', API_URL, user?.id] });
+        }}
+      />
     </WallpaperWrapper>
   </View>
 );
@@ -1295,6 +2126,185 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       padding: 16,
       paddingTop: 54,
       gap: 16,
+    },
+    // Modern Profile Header Styles
+    modernProfileHeader: {
+      marginBottom: 20,
+    },
+    headerTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 16,
+    },
+    modernAvatarWrapper: {
+      width: 86,
+      height: 86,
+      borderRadius: 43,
+      borderWidth: 1.5,
+      borderColor: COLORS.textPrimary,
+      padding: 2,
+    },
+    modernAvatarImage: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 40,
+    },
+    modernAvatarPlaceholder: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    modernAvatarText: {
+      fontSize: 32,
+      fontWeight: '700',
+      color: COLORS.textSecondary,
+    },
+    headerStatsRow: {
+      flexDirection: 'row',
+      flex: 1,
+      justifyContent: 'space-around',
+      marginLeft: 20,
+    },
+    modernStatCard: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+      borderRadius: 20,
+      paddingVertical: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    modernStatValue: {
+      fontSize: 17,
+      fontWeight: '900',
+      color: COLORS.textPrimary,
+    },
+    modernStatLabel: {
+      fontSize: 10,
+      fontWeight: '800',
+      color: COLORS.textTertiary,
+      marginTop: 2,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    bioSection: {
+      marginBottom: 16,
+    },
+    modernName: {
+      fontSize: 16,
+      fontWeight: '900',
+      color: COLORS.textPrimary,
+    },
+    modernBio: {
+      fontSize: 14,
+      color: COLORS.textPrimary,
+      marginTop: 2,
+      lineHeight: 20,
+    },
+    headerActionsRow: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    editProfileButton: {
+      flex: 1,
+      height: 50,
+      borderRadius: 25,
+      backgroundColor: COLORS.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    editProfileText: {
+      fontSize: 16,
+      fontWeight: '900',
+      color: '#FFF',
+    },
+    shareProfileButton: {
+      flex: 1,
+      height: 36,
+      borderRadius: 8,
+      backgroundColor: COLORS.surfaceElevated,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    shareProfileText: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
+    },
+    // Recent Posts Grid Styles
+    recentPostsSection: {
+      marginBottom: 24,
+    },
+    sectionHeading: {
+      fontSize: 14,
+      fontWeight: '900',
+      color: COLORS.textPrimary,
+      marginBottom: 12,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    postsGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 1,
+      paddingHorizontal: 0,
+    },
+    postSquare: {
+      width: '33.33%',
+      aspectRatio: 3 / 4,
+      backgroundColor: COLORS.surfaceElevated,
+      overflow: 'hidden',
+      position: 'relative',
+    },
+    pinOverlay: {
+      position: 'absolute',
+      top: 8,
+      left: 8,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      borderRadius: 4,
+      padding: 4,
+    },
+    multiMediaIcon: {
+      position: 'absolute',
+      top: 8,
+      right: 8,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      borderRadius: 4,
+      padding: 4,
+    },
+    postImage: {
+      width: '100%',
+      height: '100%',
+    },
+    postFallback: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 4,
+    },
+    // Modern Settings Row
+    settingsSection: {
+      backgroundColor: isDark ? 'rgba(18,18,20,0.82)' : 'rgba(255,255,255,0.86)',
+      borderRadius: 28,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      padding: 16,
+      marginBottom: 16,
+    },
+    modernSettingRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 12,
+      gap: 12,
+    },
+    modernSettingLabel: {
+      flex: 1,
+      fontSize: 15,
+      fontWeight: '600',
+      color: COLORS.textPrimary,
     },
     heroCard: {
       backgroundColor: isDark ? 'rgba(18,18,20,0.82)' : 'rgba(255,255,255,0.86)',
@@ -1709,5 +2719,181 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       color: COLORS.textPrimary,
       fontSize: 15,
       fontWeight: '800',
+    },
+    // Redesign Styles
+    profileTabsWrapper: {
+      flexDirection: 'row',
+      borderTopWidth: 1,
+      borderTopColor: COLORS.border,
+      marginTop: 20,
+    },
+    profileTabButton: {
+      flex: 1,
+      alignItems: 'center',
+      paddingVertical: 12,
+      borderBottomWidth: 2,
+      borderBottomColor: 'transparent',
+    },
+    profileTabButtonActive: {
+      borderBottomColor: COLORS.textPrimary,
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingTop: Platform.OS === 'ios' ? 60 : 20,
+      paddingBottom: 15,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.border,
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+    },
+    modalCloseButton: {
+      padding: 4,
+    },
+    modalSubmitButton: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 8,
+    },
+    modalInput: {
+      fontSize: 15,
+      color: COLORS.textPrimary,
+    },
+    editProfileCard: {
+      padding: 16,
+      borderRadius: 16,
+      flexDirection: 'column',
+      alignItems: 'stretch',
+    },
+    changePhotoButton: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 99,
+      alignSelf: 'center',
+      minWidth: 60,
+      alignItems: 'center',
+    },
+    inputLabel: {
+      fontSize: 14,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
+      marginBottom: 8,
+    },
+    inputWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      height: 48,
+    },
+    textInput: {
+      flex: 1,
+      paddingHorizontal: 12,
+      color: COLORS.textPrimary,
+      fontSize: 15,
+    },
+    inputHint: {
+      fontSize: 12,
+      color: COLORS.textSecondary,
+      marginTop: 8,
+      lineHeight: 18,
+    },
+    charCount: {
+      position: 'absolute',
+      bottom: 8,
+      right: 12,
+      fontSize: 12,
+      color: COLORS.textTertiary,
+    },
+    toggleCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 16,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)',
+    },
+    secondaryLogoutButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 12,
+      paddingVertical: 16,
+      borderRadius: 16,
+      backgroundColor: isDark ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.05)',
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.75)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalCardWrapper: {
+      width: '100%',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    modalCard: {
+      width: '90%',
+      height: '75%',
+      borderRadius: 28,
+      overflow: 'hidden',
+      elevation: 20,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.4,
+      shadowRadius: 20,
+    },
+    modalCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingTop: 20,
+      paddingBottom: 16,
+    },
+    modalCardTitle: {
+      fontSize: 17,
+      fontWeight: '800',
+    },
+    modalCardClose: {
+      width: 40,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    cardSearchContainer: {
+      paddingHorizontal: 20,
+      marginBottom: 16,
+    },
+    cardSearchInputWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      height: 44,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+    },
+    cardSearchInput: {
+      flex: 1,
+      fontSize: 16,
+      height: '100%',
+    },
+    modalFriendRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 12,
+    },
+    friendCardActionButton: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 10,
     },
   });

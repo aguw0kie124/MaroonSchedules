@@ -584,6 +584,21 @@ async def get_blocked_users(clerk_id: str, auth_user_id: str = Depends(require_a
         print(f"Get Blocked Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/users/{clerk_id}/profile")
+async def update_user_profile(clerk_id: str, body: Dict[str, Any] = Body(...), auth_user_id: str = Depends(require_auth)):
+    """Update profile metadata for the current user."""
+    try:
+        ensure_matching_user(auth_user_id, clerk_id)
+        updated = user_repository.update_profile(clerk_id, body)
+        if not updated:
+            raise HTTPException(status_code=404, detail="User not found")
+        # Invalidate related caches
+        cache_service.delete(f"auth:access_scope:{clerk_id}")
+        return {"status": "success", "profile": updated}
+    except Exception as e:
+        print(f"Update Profile Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.delete("/users/{clerk_id}/block/{target_id}")
 async def proxy_unblock_user(clerk_id: str, target_id: str, auth_user_id: str = Depends(require_auth)):
     """Unblock another user."""

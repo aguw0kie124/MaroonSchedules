@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Dimensions, Image } from 'react-native';
-import { BadgeCheck, Calendar as CalendarIcon, MapPin, Map, Share2 } from 'lucide-react-native';
+import { BadgeCheck, Calendar as CalendarIcon, MapPin, Map as MapIcon, Share2 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { TAMUEvent, CATEGORY_META, classifyCategory, formatDate, formatTime } from './EventUtils';
 import { getEventImage } from './EventImages';
@@ -223,7 +223,7 @@ export function HeroEventCard({
         <View style={styles.heroActionRow}>
           {event.location_lat != null && event.location_lng != null ? (
             <Pressable style={styles.heroMapButton} onPress={onMap}>
-              <Map size={15} color={COLORS.textPrimary} />
+              <MapIcon size={15} color={COLORS.textPrimary} />
               <Text style={[styles.heroMapButtonText, { color: COLORS.textPrimary }]}>
                 Map
               </Text>

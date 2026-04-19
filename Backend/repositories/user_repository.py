@@ -97,6 +97,8 @@ def _user_select_clause() -> str:
         "tos_accepted",
         "tour_completed",
         "is_admin",
+        "bio",
+        "website",
     ]
     existing = _user_columns()
     return ", ".join(column for column in desired_columns if column in existing)
@@ -127,7 +129,9 @@ def _ensure_user_schema(conn: psycopg.Connection) -> None:
             canvas_expires_at TIMESTAMPTZ,
             canvas_instance_url TEXT DEFAULT 'https://canvas.tamu.edu',
             tos_accepted BOOLEAN DEFAULT FALSE,
-            tour_completed BOOLEAN DEFAULT FALSE
+            tour_completed BOOLEAN DEFAULT FALSE,
+            bio TEXT,
+            website TEXT
         )
         """,
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT",
@@ -152,6 +156,8 @@ def _ensure_user_schema(conn: psycopg.Connection) -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS tos_accepted BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS tour_completed BOOLEAN DEFAULT FALSE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS website TEXT",
         """
         CREATE TABLE IF NOT EXISTS admin_applications (
             id BIGSERIAL PRIMARY KEY,
@@ -285,7 +291,8 @@ def update_profile(clerk_id: str, fields: dict) -> Optional[dict]:
         "major", "graduation_year", "preferred_time",
         "preferred_event_categories", "preferred_social_mode", "event_preferences_completed",
         "max_credits", "avoid_friday", "show_online_first",
-        "profile_image_url",
+        "profile_image_url", "full_name",
+        "bio", "website",
     }
     existing = _user_columns()
     updates = {}
@@ -559,6 +566,8 @@ def _row_to_dict(row) -> dict:
             "tos_accepted": row.get("tos_accepted", False),
             "tour_completed": row.get("tour_completed", False),
             "is_admin": row.get("is_admin", False),
+            "bio": row.get("bio"),
+            "website": row.get("website"),
             "tags": [],
         }
 
@@ -590,6 +599,8 @@ def _row_to_dict(row) -> dict:
         "tos_accepted": row[21],
         "tour_completed": row[22],
         "is_admin": row[23] if len(row) > 23 else False,
+        "bio": row[24] if len(row) > 24 else None,
+        "website": row[25] if len(row) > 25 else None,
         "tags": [],
     }
 

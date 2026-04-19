@@ -128,6 +128,7 @@ type AppShellState = {
   selectedScheduleId: string | null;
   isTOSAccepted: boolean;
   isNotificationPrompted: boolean;
+  isNameOnboardingCompleted: boolean;
   isEventPreferencesCompleted: boolean;
   showEventPreferencesOnboarding: boolean;
   preferredEventCategories: string[];
@@ -141,6 +142,12 @@ type AppShellState = {
   pingNotifications: boolean;
   notificationLeadTime: number;
   tabBarMode: 'floating' | 'solid';
+  userBio: string;
+  userWebsite: string;
+  userGender: string;
+  userDisplayName: string;
+  showPingsOnProfile: boolean;
+  viewedStoryIds: string[];
   setParkingPermit: (permit: ParkingPermit) => void;
   togglePlacesPill: (id: PlacesPillId) => void;
   movePlacesPill: (id: PlacesPillId, direction: -1 | 1) => void;
@@ -151,6 +158,7 @@ type AppShellState = {
   setSelectedScheduleId: (id: string | null) => void;
   setTOSAccepted: (accepted: boolean) => void;
   setNotificationPrompted: (prompted: boolean) => void;
+  setNameOnboardingCompleted: (completed: boolean) => void;
   setEventPreferencesCompleted: (completed: boolean) => void;
   setShowEventPreferencesOnboarding: (visible: boolean) => void;
   setPreferredEventCategories: (categories: string[]) => void;
@@ -162,6 +170,8 @@ type AppShellState = {
   setNotificationPreference: (key: 'event' | 'place' | 'ping', value: boolean) => void;
   setNotificationLeadTime: (time: number) => void;
   setTabBarMode: (mode: 'floating' | 'solid') => void;
+  setUserProfile: (data: { bio?: string; website?: string; gender?: string; showPings?: boolean; displayName?: string }) => void;
+  addViewedStory: (id: string) => void;
 };
 
 export const useAppShellStore = create<AppShellState>()(
@@ -175,6 +185,7 @@ export const useAppShellStore = create<AppShellState>()(
       selectedScheduleId: null,
       isTOSAccepted: false,
       isNotificationPrompted: false,
+      isNameOnboardingCompleted: false,
       isEventPreferencesCompleted: false,
       showEventPreferencesOnboarding: false,
       preferredEventCategories: [],
@@ -210,6 +221,7 @@ export const useAppShellStore = create<AppShellState>()(
       setSelectedScheduleId: (selectedScheduleId) => set({ selectedScheduleId }),
       setTOSAccepted: (isTOSAccepted) => set({ isTOSAccepted }),
       setNotificationPrompted: (isNotificationPrompted) => set({ isNotificationPrompted }),
+      setNameOnboardingCompleted: (isNameOnboardingCompleted) => set({ isNameOnboardingCompleted }),
       setEventPreferencesCompleted: (isEventPreferencesCompleted) => set({ isEventPreferencesCompleted }),
       setShowEventPreferencesOnboarding: (showEventPreferencesOnboarding) => set({ showEventPreferencesOnboarding }),
       setPreferredEventCategories: (preferredEventCategories) => set({ preferredEventCategories }),
@@ -223,10 +235,27 @@ export const useAppShellStore = create<AppShellState>()(
       })),
       setNotificationLeadTime: (notificationLeadTime) => set({ notificationLeadTime }),
       setTabBarMode: (tabBarMode) => set({ tabBarMode }),
+      userBio: '',
+      userWebsite: '',
+      userGender: '',
+      userDisplayName: '',
+      showPingsOnProfile: true,
+      viewedStoryIds: [],
+      setUserProfile: (data) =>
+        set((state) => ({
+          userBio: data.bio !== undefined ? data.bio : state.userBio,
+          userWebsite: data.website !== undefined ? data.website : state.userWebsite,
+          userGender: data.gender !== undefined ? data.gender : state.userGender,
+          userDisplayName: data.displayName !== undefined ? data.displayName : state.userDisplayName,
+          showPingsOnProfile: data.showPings !== undefined ? data.showPings : state.showPingsOnProfile,
+        })),
+      addViewedStory: (id) => set((state) => ({
+        viewedStoryIds: state.viewedStoryIds.includes(id) ? state.viewedStoryIds : [...state.viewedStoryIds, id],
+      })),
     }),
     {
       name: 'app-shell-store',
-      version: 9,
+      version: 10,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         parkingPermit: state.parkingPermit,
@@ -236,6 +265,7 @@ export const useAppShellStore = create<AppShellState>()(
         selectedScheduleId: state.selectedScheduleId,
         isTOSAccepted: state.isTOSAccepted,
         isNotificationPrompted: state.isNotificationPrompted,
+        isNameOnboardingCompleted: state.isNameOnboardingCompleted,
         isEventPreferencesCompleted: state.isEventPreferencesCompleted,
         preferredEventCategories: state.preferredEventCategories,
         preferredEventInterests: state.preferredEventInterests,
@@ -247,6 +277,11 @@ export const useAppShellStore = create<AppShellState>()(
         pingNotifications: state.pingNotifications,
         notificationLeadTime: state.notificationLeadTime,
         tabBarMode: state.tabBarMode,
+        userBio: state.userBio,
+        userWebsite: state.userWebsite,
+        userGender: state.userGender,
+        showPingsOnProfile: state.showPingsOnProfile,
+        viewedStoryIds: state.viewedStoryIds,
       }),
       merge: (persistedState, currentState) => {
         const persisted = (persistedState as Partial<AppShellState>) || {};
@@ -270,6 +305,9 @@ export const useAppShellStore = create<AppShellState>()(
           isNotificationPrompted: typeof persisted.isNotificationPrompted === 'boolean'
             ? persisted.isNotificationPrompted
             : currentState.isNotificationPrompted,
+          isNameOnboardingCompleted: typeof persisted.isNameOnboardingCompleted === 'boolean'
+            ? persisted.isNameOnboardingCompleted
+            : currentState.isNameOnboardingCompleted,
           isEventPreferencesCompleted: typeof persisted.isEventPreferencesCompleted === 'boolean'
             ? persisted.isEventPreferencesCompleted
             : currentState.isEventPreferencesCompleted,
@@ -303,6 +341,14 @@ export const useAppShellStore = create<AppShellState>()(
           tabBarMode: persisted.tabBarMode === 'floating' || persisted.tabBarMode === 'solid'
             ? persisted.tabBarMode
             : currentState.tabBarMode,
+          viewedStoryIds: Array.isArray(persisted.viewedStoryIds)
+            ? persisted.viewedStoryIds.filter((id): id is string => typeof id === 'string')
+            : currentState.viewedStoryIds,
+          userBio: typeof persisted.userBio === 'string' ? persisted.userBio : currentState.userBio,
+          userWebsite: typeof persisted.userWebsite === 'string' ? persisted.userWebsite : currentState.userWebsite,
+          userGender: typeof persisted.userGender === 'string' ? persisted.userGender : currentState.userGender,
+          userDisplayName: typeof persisted.userDisplayName === 'string' ? persisted.userDisplayName : currentState.userDisplayName,
+          showPingsOnProfile: typeof persisted.showPingsOnProfile === 'boolean' ? persisted.showPingsOnProfile : currentState.showPingsOnProfile,
         };
       },
       migrate: (persistedState: any, version: number) => {
