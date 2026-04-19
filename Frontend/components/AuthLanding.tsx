@@ -12,8 +12,9 @@ import {
   View,
 } from 'react-native';
 import { useOAuth, useSignIn, useSignUp } from '@clerk/clerk-expo';
+import * as AuthSession from 'expo-auth-session';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Haptics from 'expo-haptics';
-import * as Linking from 'expo-linking';
 import {
   ChevronLeft,
   GraduationCap,
@@ -87,6 +88,15 @@ export function AuthLanding({ initialView = 'welcome', onBack }: AuthLandingProp
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const liveGlow = useSharedValue(0);
+  const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+  const oauthRedirectUrl = useMemo(
+    () =>
+      AuthSession.makeRedirectUri({
+        scheme: 'maroonlife',
+        path: 'sso-callback',
+      }),
+    [],
+  );
 
   useEffect(() => {
     setView(initialView);
@@ -205,6 +215,15 @@ export function AuthLanding({ initialView = 'welcome', onBack }: AuthLandingProp
   };
 
   const onOAuthPress = async (flow: Exclude<OAuthFlow, 'email'>) => {
+    if (isExpoGo) {
+      triggerHaptic('warning');
+      Alert.alert(
+        'Development build required',
+        'Google and Apple sign-in with Clerk require a development build. Expo Go falls back to exp:// callback URLs, which Clerk rejects for mobile OAuth. Run `npm run ios` or `npm run android`, then try again there.',
+      );
+      return;
+    }
+
     try {
       triggerHaptic('light');
       exitGuestMode();
@@ -214,10 +233,10 @@ export function AuthLanding({ initialView = 'welcome', onBack }: AuthLandingProp
       const authResult =
         flow === 'apple' || flow === 'adminApple'
           ? await startAppleOAuthFlow({
-              redirectUrl: Linking.createURL('/'),
+              redirectUrl: oauthRedirectUrl,
             })
           : await startGoogleOAuthFlow({
-              redirectUrl: Linking.createURL('/'),
+              redirectUrl: oauthRedirectUrl,
             });
       const { createdSessionId, setActive } = authResult;
       if (createdSessionId && setActive) {

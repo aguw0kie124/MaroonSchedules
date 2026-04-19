@@ -64,7 +64,6 @@ import {
   syncUser,
 } from './api/client';
 import { TOSScreen } from './components/TOSScreen';
-import { NotificationPromptScreen } from './components/onboarding/NotificationPromptScreen';
 import { EventPreferenceOnboardingScreen } from './components/onboarding/EventPreferenceOnboardingScreen';
 
 import { AdminApplicationScreen } from './components/admin/AdminApplicationScreen';
@@ -95,23 +94,38 @@ function isMajorOption(value: unknown): value is MajorOption {
 
 function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
-  const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
-  const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
-  const preferredTime = useAppShellStore((state) => state.preferredTime);
-  const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
   const setPreferredEventCategories = useAppShellStore((state) => state.setPreferredEventCategories);
+  const setPreferredEventInterests = useAppShellStore((state) => state.setPreferredEventInterests);
   const setPreferredTime = useAppShellStore((state) => state.setPreferredTime);
   const setPreferredSocialMode = useAppShellStore((state) => state.setPreferredSocialMode);
   const setSelectedMajor = useEventStore((state) => state.setSelectedMajor);
-  const isMajorSpecific = useEventStore((state) => state.isMajorSpecific);
   const setMajorSpecific = useEventStore((state) => state.setMajorSpecific);
   const lastSyncedUserId = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (user?.id && lastSyncedUserId.current !== user.id) {
+      const previousUserId = lastSyncedUserId.current;
       lastSyncedUserId.current = user.id;
+      const reopeningPrefs = useAppShellStore.getState().showEventPreferencesOnboarding;
+
+      // Prevent a prior Clerk account's locally persisted onboarding state
+      // from leaking into a newly signed-in user on the same device.
+      if (previousUserId && previousUserId !== user.id && !reopeningPrefs) {
+        useAppShellStore.setState({
+          isTOSAccepted: false,
+          isNotificationPrompted: false,
+          isEventPreferencesCompleted: false,
+          preferredEventCategories: [],
+          preferredEventInterests: [],
+          preferredTime: null,
+          preferredSocialMode: null,
+        });
+        setMajorSpecific(false);
+        setSelectedMajor('Engineering');
+      }
+
       syncUser(
         user.id,
         user.primaryEmailAddress?.emailAddress,
@@ -122,7 +136,6 @@ function UserSync({ children }: { children: React.ReactNode }) {
           if (typeof data.tos_accepted === 'boolean') {
             setTOSAccepted(data.tos_accepted);
           }
-          const reopeningPrefs = useAppShellStore.getState().showEventPreferencesOnboarding;
           if (!reopeningPrefs) {
             const hasLegacyPreferenceShape =
               !('event_preferences_completed' in data) ||
@@ -134,20 +147,15 @@ function UserSync({ children }: { children: React.ReactNode }) {
               typeof data.event_preferences_completed === 'boolean'
                 ? data.event_preferences_completed
                 : hasLegacyPreferenceShape;
-            setEventPreferencesCompleted(
-              isEventPreferencesCompleted || nextEventPreferencesCompleted,
-            );
+            setEventPreferencesCompleted(nextEventPreferencesCompleted);
             if (Array.isArray(data.preferred_event_categories)) {
               setPreferredEventCategories(
                 data.preferred_event_categories.filter((entry: unknown): entry is string => typeof entry === 'string'),
               );
-            } else if (!isEventPreferencesCompleted) {
-              setPreferredEventCategories([]);
-            } else if (preferredEventCategories.length > 0) {
-              setPreferredEventCategories(preferredEventCategories);
             } else {
               setPreferredEventCategories([]);
             }
+            setPreferredEventInterests([]);
             if (
               data.preferred_time === 'Morning' ||
               data.preferred_time === 'Afternoon' ||
@@ -155,28 +163,25 @@ function UserSync({ children }: { children: React.ReactNode }) {
               data.preferred_time === 'Anytime'
             ) {
               setPreferredTime(data.preferred_time);
-            } else if (isEventPreferencesCompleted && preferredTime) {
-              setPreferredTime(preferredTime);
             } else {
               setPreferredTime(null);
             }
             if (data.preferred_social_mode === 'casual' || data.preferred_social_mode === 'professional') {
               setPreferredSocialMode(data.preferred_social_mode);
-            } else if (isEventPreferencesCompleted && preferredSocialMode) {
-              setPreferredSocialMode(preferredSocialMode);
             } else {
               setPreferredSocialMode(null);
             }
             if (isMajorOption(data.major)) {
               setSelectedMajor(data.major);
-            } else if (!isEventPreferencesCompleted) {
+            } else {
               setMajorSpecific(false);
+              setSelectedMajor('Engineering');
             }
           }
         }
       }).catch((err: any) => console.warn('UserSync failed:', err));
     }
-  }, [isEventPreferencesCompleted, isMajorSpecific, preferredEventCategories, preferredSocialMode, preferredTime, setEventPreferencesCompleted, setMajorSpecific, setPreferredEventCategories, setPreferredSocialMode, setPreferredTime, setSelectedMajor, setTOSAccepted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
+  }, [setEventPreferencesCompleted, setMajorSpecific, setPreferredEventCategories, setPreferredEventInterests, setPreferredSocialMode, setPreferredTime, setSelectedMajor, setTOSAccepted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
 
   return <>{children}</>;
 }
@@ -410,8 +415,6 @@ function RootNavigator() {
   const exitGuestMode = useSessionStore((state) => state.exitGuestMode);
   const isTOSAccepted = useAppShellStore((state) => state.isTOSAccepted);
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
-  const isNotificationPrompted = useAppShellStore((state) => state.isNotificationPrompted);
-  const setNotificationPrompted = useAppShellStore((state) => state.setNotificationPrompted);
   const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
   const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
   const showEventPreferencesOnboarding = useAppShellStore((state) => state.showEventPreferencesOnboarding);
@@ -447,18 +450,11 @@ function RootNavigator() {
         onAccepted={() => setTOSAccepted(true)} 
       />
     );
-  } else if (isSignedIn && isTOSAccepted && !isNotificationPrompted) {
-    content = (
-      <NotificationPromptScreen 
-        onDone={() => setNotificationPrompted(true)} 
-      />
-    );
-  } else if (isRegularUserFlow && isTOSAccepted && isNotificationPrompted && isAdmin === null) {
+  } else if (isRegularUserFlow && isTOSAccepted && isAdmin === null) {
     content = <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
   } else if (
     isRegularUserFlow &&
     isTOSAccepted &&
-    isNotificationPrompted &&
     (showEventPreferencesOnboarding || isAdmin === false) &&
     (!isEventPreferencesCompleted || showEventPreferencesOnboarding) &&
     user?.id
