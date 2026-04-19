@@ -16,13 +16,11 @@ import * as Haptics from 'expo-haptics';
 import * as Linking from 'expo-linking';
 import {
   ChevronLeft,
-  Globe,
   GraduationCap,
   Hash,
   KeyRound,
   Mail,
   ShieldCheck,
-  Smartphone,
 } from 'lucide-react-native';
 import Animated, {
   FadeInDown,
@@ -38,6 +36,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { useSessionStore } from '../store/sessionStore';
+import { AppleIcon, GoogleIcon } from './common/CustomIcons';
 
 const COLORS = {
   maroon: '#500000',
@@ -119,6 +118,13 @@ export function AuthLanding({ initialView = 'welcome', onBack }: AuthLandingProp
     opacity: 0.92 + liveGlow.value * 0.08,
     textShadowRadius: 4 + liveGlow.value * 6,
     transform: [{ scale: 1 + liveGlow.value * 0.012 }],
+  }));
+
+  const iconGlowStyle = useAnimatedStyle(() => ({
+    opacity: 0.16 + liveGlow.value * 0.16,
+    shadowOpacity: 0.18 + liveGlow.value * 0.14,
+    shadowRadius: 18 + liveGlow.value * 16,
+    transform: [{ scale: 1.02 + liveGlow.value * 0.14 }],
   }));
 
   const triggerHaptic = (kind: HapticKind = 'selection') => {
@@ -415,12 +421,16 @@ export function AuthLanding({ initialView = 'welcome', onBack }: AuthLandingProp
   const renderWelcome = () => (
     <Animated.View entering={PAGE_ENTERING} exiting={PAGE_EXITING} style={styles.container}>
       <Animated.View entering={FadeInDown.duration(280)} style={styles.centerContent}>
-        <Animated.View entering={ZoomIn.duration(340)} style={styles.logoCircleLarge}>
-          <GraduationCap size={48} color="#FFFFFF" />
+        <View style={styles.logoHeroWrap}>
+          <Animated.View style={[styles.logoGlowHalo, iconGlowStyle]} />
+          <Animated.View entering={ZoomIn.duration(340)} style={styles.logoCircleLarge}>
+            <GraduationCap size={48} color="#FFFFFF" />
+          </Animated.View>
+        </View>
+        <Animated.View entering={FadeInDown.delay(50).duration(260)} style={styles.brandNameRow}>
+          <Text style={[styles.brandName, styles.brandMaroonText]}>Maroon</Text>
+          <Text style={[styles.brandName, styles.brandLifeText]}>Life</Text>
         </Animated.View>
-        <Animated.Text entering={FadeInDown.delay(50).duration(260)} style={styles.brandName}>
-          MaroonLife
-        </Animated.Text>
         <Animated.View entering={FadeInUp.delay(120).duration(280)} style={styles.taglineRow}>
           <Text style={styles.tagline}>Your Campus. </Text>
           <Animated.Text style={[styles.tagline, styles.liveText, liveGlowStyle]}>Live</Animated.Text>
@@ -526,7 +536,7 @@ export function AuthLanding({ initialView = 'welcome', onBack }: AuthLandingProp
               {isLoading && activeFlow === googleFlow ? (
                 <ActivityIndicator color={COLORS.maroon} />
               ) : (
-                <Globe size={20} color={COLORS.maroon} />
+                <GoogleIcon size={20} />
               )}
               <Text style={styles.socialButtonText}>Continue with Google</Text>
             </TouchableOpacity>
@@ -542,7 +552,7 @@ export function AuthLanding({ initialView = 'welcome', onBack }: AuthLandingProp
               {isLoading && activeFlow === appleFlow ? (
                 <ActivityIndicator color={COLORS.maroon} />
               ) : (
-                <Smartphone size={20} color={COLORS.maroon} />
+                <AppleIcon size={20} color={COLORS.maroon} />
               )}
               <Text style={styles.socialButtonText}>Continue with Apple</Text>
             </TouchableOpacity>
@@ -924,6 +934,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginTop: -20,
   },
+  logoHeroWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  logoGlowHalo: {
+    position: 'absolute',
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    backgroundColor: 'rgba(128, 12, 12, 0.18)',
+    shadowColor: COLORS.maroon,
+    shadowOffset: { width: 0, height: 0 },
+  },
   logoCircleLarge: {
     width: 96,
     height: 96,
@@ -931,18 +955,26 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.maroon,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
     elevation: 8,
     shadowColor: COLORS.maroon,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 10,
   },
+  brandNameRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
   brandName: {
     fontSize: 48,
     fontWeight: '800',
-    color: COLORS.maroon,
     letterSpacing: -1.5,
+  },
+  brandMaroonText: {
+    color: COLORS.maroon,
+  },
+  brandLifeText: {
+    color: '#121212',
   },
   taglineRow: {
     flexDirection: 'row',
