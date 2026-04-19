@@ -2,7 +2,6 @@ import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  ImageBackground,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -27,10 +26,9 @@ function formatRetailMenuTitle(location?: string, title?: string) {
 }
 
 export default function RestaurantMenuScreen({ navigation, route }: any) {
-  const { theme, wallpaperUri } = useTheme();
+  const { theme } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
-  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const { location, title } = route.params || {};
   const staticMenu = useMemo(() => getStaticRestaurantMenu(location), [location]);
@@ -196,14 +194,7 @@ export default function RestaurantMenuScreen({ navigation, route }: any) {
   return (
     <SafeAreaView style={[s.container, { backgroundColor: T.bg }]}>
       <StatusBar barStyle={darkMode ? 'light-content' : 'dark-content'} />
-      
-      {wallpaperSource ? (
-        <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-          <View style={[StyleSheet.absoluteFill, darkMode ? { backgroundColor: 'rgba(0,0,0,0.58)' } : { backgroundColor: 'rgba(255,255,255,0.72)' }]} />
-        </ImageBackground>
-      ) : (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: T.bg }]} />
-      )}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: T.bg }]} />
 
       <ScrollView 
         showsVerticalScrollIndicator={false}

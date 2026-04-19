@@ -158,12 +158,6 @@ export function Profile() {
     setAccentColor,
     applyAccentToText,
     setApplyAccentToText,
-    useWallpaper,
-    setUseWallpaper,
-    wallpaperUri,
-    setWallpaperUri,
-    backgroundMode,
-    setBackgroundMode,
     tabBarMode,
     setTabBarMode,
   } = useTheme();
@@ -184,8 +178,6 @@ export function Profile() {
   const setNotificationLeadTime = useAppShellStore((state) => state.setNotificationLeadTime);
   const notificationsEnabled = useAppShellStore((state) => state.notificationsEnabled);
   const setNotificationsEnabled = useAppShellStore((state) => state.setNotificationsEnabled);
-  const showWelcomeGreeting = useAppShellStore((state) => state.showWelcomeGreeting);
-  const setShowWelcomeGreeting = useAppShellStore((state) => state.setShowWelcomeGreeting);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [friends, setFriends] = useState<any[]>([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
@@ -619,26 +611,6 @@ export function Profile() {
     </>
   );
 
-  const pickWallpaper = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Denied', 'Camera roll permission is required to select a wallpaper.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      const asset = result.assets[0];
-      setWallpaperUri(asset.uri);
-      setUseWallpaper(true);
-    }
-  };
-
   const renderLayoutTab = () => {
     return (
       <>
@@ -737,36 +709,6 @@ export function Profile() {
                 );
               })}
             </View>
-          </View>
-
-          <View style={styles.preferenceBlock}>
-            <Text style={styles.preferenceLabel}>Custom Wallpaper</Text>
-            <View style={styles.inlineSwitchRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inlineSwitchTitle}>Enable Wallpaper</Text>
-              </View>
-              <Switch
-                value={useWallpaper}
-                onValueChange={setUseWallpaper}
-                trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-            
-            {useWallpaper && (
-              <Pressable 
-                style={[styles.toolRow, { marginTop: 8, borderTopWidth: 1, borderTopColor: COLORS.border, borderBottomWidth: 0 }]} 
-                onPress={pickWallpaper}
-              >
-                <View style={[styles.toolIconBg, { backgroundColor: COLORS.primary + '15' }]}>
-                  <Camera size={20} color={COLORS.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.toolTitle}>{wallpaperUri ? 'Change Wallpaper' : 'Choose Wallpaper'}</Text>
-                </View>
-                <ChevronRight size={20} color={COLORS.textTertiary} />
-              </Pressable>
-            )}
           </View>
         </View>
       </>
