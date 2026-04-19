@@ -53,6 +53,7 @@ import {
   Trash2,
   Users,
   X,
+  Heart,
   Image as ImageIcon,
 } from 'lucide-react-native';
 
@@ -1013,25 +1014,25 @@ export function CampusPingsScreen() {
           {item.userImage ? (
             <Image source={{ uri: item.userImage }} style={styles.pingAvatarImage} />
           ) : (
-            <View style={[styles.pingAvatar, { backgroundColor: `${accent}15` }]}>
+            <View style={[styles.pingAvatar, { backgroundColor: `${accent}20` }]}>
               <Text style={[styles.pingAvatarInitials, { color: accent }]}>{getInitials(item.userName)}</Text>
             </View>
           )}
           <View style={styles.pingAuthorBlock}>
-            <Text style={styles.pingAuthorName}>{item.userName}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.pingAuthorName}>{item.userName}</Text>
+              <View style={[styles.pingCategoryBadge, { backgroundColor: `${accent}12`, borderColor: `${accent}30`, height: 20, paddingHorizontal: 8, borderRadius: 10 }]}>
+                <Text style={[styles.pingCategoryBadgeText, { color: accent, fontSize: 10, fontWeight: '800' }]}>{item.category}</Text>
+              </View>
+            </View>
             <Text style={styles.pingAuthorMeta} numberOfLines={1}>
               {item.isAnonymous 
                 ? (item.locationTag === 'Pinned location' ? 'Anonymous' : `Anonymous · ${item.locationTag}`) 
-                : (item.locationTag === 'Pinned location' ? '' : item.locationTag)}
+                : (item.locationTag === 'Pinned location' ? formatRelativeAge(item.createdAt) : `${item.locationTag} · ${formatRelativeAge(item.createdAt)}`)}
             </Text>
           </View>
           <View style={styles.pingHeaderActions}>
-            {item.anchorType === 'geo' && (
-              <View style={styles.geoIndicator}>
-                <LocateFixed size={12} color={COLORS.textTertiary} />
-              </View>
-            )}
-            {canModerateAuthor ? (
+             {canModerateAuthor ? (
               <ScalePressable
                 style={styles.pingMenuButton}
                 onPress={() => handleOpenPingMenu(item)}
@@ -1041,101 +1042,110 @@ export function CampusPingsScreen() {
             ) : null}
           </View>
         </View>
-
-        <View style={styles.pingMetaRow}>
-          <View style={[styles.pingCategoryBadge, { backgroundColor: `${accent}12`, borderColor: `${accent}25` }]}>
-            <Icon size={12} color={accent} />
-            <Text style={[styles.pingCategoryBadgeText, { color: accent }]}>{item.category}</Text>
-          </View>
-          <Text style={styles.pingTimestamp}>{formatRelativeAge(item.createdAt)}</Text>
+        <View style={{ paddingHorizontal: 18, paddingTop: 12, paddingBottom: 8 }}>
+          <Text style={styles.pingTitle}>{item.title}</Text>
         </View>
 
-        {hasImage ? (
-          <Image source={{ uri: item.imageUrl! }} style={styles.pingMedia} resizeMode="cover" />
-        ) : (
-          <View style={styles.pingTextPostBlock}>
-            <Text style={styles.pingTitle}>{item.title}</Text>
-            {item.body ? <Text style={styles.pingBody}>{item.body}</Text> : null}
-          </View>
-        )}
+        <View style={styles.pingMediaContainer}>
+          {hasImage ? (
+            <View style={styles.pingImageBlock}>
+              <Image source={{ uri: item.imageUrl! }} style={styles.pingMedia} resizeMode="cover" />
+                <View style={styles.pingVerticalActionsStrip}>
+                  <View style={styles.pingActionStackItem}>
+                    <ScalePressable
+                      onPress={() => item.activityId && handleVotePing(item, item.userVote === 1 ? 0 : 1)}
+                      style={[styles.pingGlassCircle, item.userVote === 1 && { backgroundColor: '#FF475733' }]}
+                    >
+                      <Heart
+                        size={24}
+                        color={item.userVote === 1 ? '#FF4757' : '#FFFFFF'}
+                        fill={item.userVote === 1 ? '#FF4757' : 'transparent'}
+                      />
+                    </ScalePressable>
+                    <Text style={styles.pingActionStackValue}>{item.score || 0}</Text>
+                  </View>
 
-        <View style={styles.pingFooterRow}>
-          <View style={styles.pingActionCluster}>
-            <View style={styles.pingVoteRow}>
-              <ScalePressable
-                onPress={() => item.activityId && handleVotePing(item, 1)}
-                style={styles.pingIconAction}
-              >
-                <ArrowBigUp
-                  size={24}
-                  color={item.userVote === 1 ? '#3FA86A' : COLORS.textPrimary}
-                  fill={item.userVote === 1 ? '#3FA86A' : 'transparent'}
-                />
-              </ScalePressable>
+                  <View style={styles.pingActionStackItem}>
+                    <ScalePressable
+                      onPress={() => handleOpenComments(item)}
+                      style={styles.pingGlassCircle}
+                    >
+                      <MessageCircle size={22} color="#FFFFFF" />
+                    </ScalePressable>
+                    <Text style={styles.pingActionStackValue}>{item.commentCount || 0}</Text>
+                  </View>
 
-              <Text
-                style={[
-                  styles.pingVoteRowCount,
-                  item.userVote === 1 && styles.pingStatLinePositive,
-                  item.userVote === -1 && styles.pingStatLineNegative,
-                ]}
-              >
-                {item.score || 0}
-              </Text>
+                  <ScalePressable
+                    onPress={() => openPingOnMap(item)}
+                    style={styles.pingGlassCircle}
+                  >
+                    <MapPin size={22} color="#FFFFFF" />
+                  </ScalePressable>
 
-              <ScalePressable
-                onPress={() => item.activityId && handleVotePing(item, -1)}
-                style={styles.pingIconAction}
-              >
-                <ArrowBigDown
-                  size={24}
-                  color={item.userVote === -1 ? '#D8616E' : COLORS.textPrimary}
-                  fill={item.userVote === -1 ? '#D8616E' : 'transparent'}
-                />
-              </ScalePressable>
+                  <ScalePressable
+                    onPress={() => savePingToPlans(item)}
+                    style={styles.pingGlassCircle}
+                  >
+                    <Bookmark size={22} color="#FFFFFF" />
+                  </ScalePressable>
+                </View>
             </View>
+          ) : (
+            <View style={styles.pingTextPostBlock}>
+              {item.body ? <Text style={styles.pingBody}>{item.body}</Text> : null}
+            </View>
+          )}
+        </View>
 
-            <ScalePressable
-              style={styles.pingIconAction}
-              onPress={() => handleOpenComments(item)}
-            >
+        {!hasImage ? (
+          <View style={styles.pingFooterRow}>
+            <View style={styles.pingActionCluster}>
+              <View style={styles.pingVoteRow}>
+                <ScalePressable
+                  onPress={() => item.activityId && handleVotePing(item, 1)}
+                  style={styles.pingIconAction}
+                >
+                  <ArrowBigUp
+                    size={24}
+                    color={item.userVote === 1 ? '#3FA86A' : COLORS.textPrimary}
+                    fill={item.userVote === 1 ? '#3FA86A' : 'transparent'}
+                  />
+                </ScalePressable>
+                <Text style={[styles.pingVoteRowCount, item.userVote === 1 && styles.pingStatLinePositive, item.userVote === -1 && styles.pingStatLineNegative]}>
+                  {item.score || 0}
+                </Text>
+                <ScalePressable
+                  onPress={() => item.activityId && handleVotePing(item, -1)}
+                  style={styles.pingIconAction}
+                >
+                  <ArrowBigDown
+                    size={24}
+                    color={item.userVote === -1 ? '#D8616E' : COLORS.textPrimary}
+                    fill={item.userVote === -1 ? '#D8616E' : 'transparent'}
+                  />
+                </ScalePressable>
+              </View>
+              <ScalePressable style={styles.pingIconAction} onPress={() => handleOpenComments(item)}>
                 <View style={styles.pingActionGroup}>
                   <MessageCircle size={21} color={COLORS.textPrimary} />
-                  <Text style={styles.pingActionLabel}>
-                    {item.commentCount || 0}
-                  </Text>
+                  <Text style={styles.pingActionLabel}>{item.commentCount || 0}</Text>
                 </View>
-            </ScalePressable>
-
-            <ScalePressable
-              style={styles.pingIconAction}
-              onPress={() => openPingOnMap(item)}
-            >
-              <MapPin size={21} color={COLORS.textPrimary} />
-            </ScalePressable>
+              </ScalePressable>
+            </View>
+            <View style={{flexDirection: 'row', gap: 12}}>
+              <ScalePressable style={styles.pingIconAction} onPress={() => openPingOnMap(item)}>
+                <MapPin size={21} color={COLORS.textPrimary} />
+              </ScalePressable>
+              <ScalePressable style={styles.pingIconAction} onPress={() => savePingToPlans(item)}>
+                <Bookmark size={20} color={COLORS.textPrimary} />
+              </ScalePressable>
+            </View>
           </View>
-
-          <ScalePressable
-            style={styles.pingIconAction}
-            onPress={() => savePingToPlans(item)}
-          >
-            <Bookmark size={20} color={COLORS.textPrimary} />
-          </ScalePressable>
-        </View>
-
-        <View style={styles.pingContent}>
-          {hasImage ? (
-            <>
-              <Text style={styles.pingTitle}>{item.title}</Text>
-              {item.body ? <Text style={styles.pingBody}>{item.body}</Text> : null}
-            </>
-          ) : null}
-        </View>
+        ) : null}
 
         {canDelete ? (
           <ScalePressable style={styles.pingDeleteAction} onPress={() => handleDeletePing(item)}>
-            <Trash2 size={15} color={COLORS.danger} />
-            <Text style={styles.pingDeleteActionText}>Delete</Text>
+            <Trash2 size={14} color={COLORS.danger} />
           </ScalePressable>
         ) : null}
       </View>
@@ -1362,9 +1372,9 @@ export function CampusPingsScreen() {
       <PingCommentsModal
         visible={!!activeCommentsPing}
         target={
-          activeCommentsPing?.activityId
+          activeCommentsPing
             ? {
-                activityId: activeCommentsPing.activityId,
+                activityId: activeCommentsPing.activityId || activeCommentsPing.id,
                 title: activeCommentsPing.title,
                 subtitle: activeCommentsPing.locationTag,
                 commentCount: activeCommentsPing.commentCount,
@@ -1510,7 +1520,7 @@ const getStyles = (theme: any) => {
     },
     featuredCard: {
       width: 86,
-      borderRadius: 22,
+      borderRadius: 32,
       backgroundColor: 'transparent',
       borderWidth: 0,
       overflow: 'visible',
@@ -1569,37 +1579,41 @@ const getStyles = (theme: any) => {
       textAlign: 'center',
     },
     pingCard: {
-      marginHorizontal: 0,
-      marginBottom: 18,
+      marginHorizontal: 16,
+      marginBottom: 20,
       padding: 0,
-      backgroundColor: COLORS.background,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: COLORS.border,
-      overflow: 'visible',
+      backgroundColor: COLORS.surface,
+      borderRadius: 32,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.1,
+      shadowRadius: 12,
+      elevation: 6,
+      overflow: 'hidden',
     },
     pingCardHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 14,
-      paddingTop: 14,
+      paddingHorizontal: 16,
+      paddingTop: 16,
+      paddingBottom: 12,
     },
     pingAvatar: {
       width: 44,
       height: 44,
-      borderRadius: 12,
+      borderRadius: 22,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: `${COLORS.primary}12`,
     },
     pingAvatarImage: {
       width: 44,
       height: 44,
-      borderRadius: 12,
+      borderRadius: 22,
       backgroundColor: COLORS.surfaceElevated,
     },
     pingAvatarInitials: {
       fontSize: 14,
-      fontWeight: '800',
+      fontWeight: '900',
     },
     pingAuthorBlock: {
       flex: 1,
@@ -1609,43 +1623,45 @@ const getStyles = (theme: any) => {
       color: COLORS.textSecondary,
       fontSize: 12,
       fontWeight: '500',
-      marginTop: 2,
+      marginTop: 1,
     },
     pingHeaderActions: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
+      gap: 10,
     },
     pingAuthorName: {
       color: COLORS.textPrimary,
-      fontSize: 14,
-      fontWeight: '700',
+      fontSize: 15,
+      fontWeight: '800',
+      letterSpacing: -0.3,
     },
     pingMetaRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 14,
-      paddingTop: 10,
-      paddingBottom: 10,
+      paddingHorizontal: 16,
+      marginBottom: 10,
     },
     pingTimestamp: {
       color: COLORS.textSecondary,
       fontSize: 12,
-      fontWeight: '500',
+      fontWeight: '600',
     },
     pingCategoryBadge: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 5,
       borderRadius: 999,
-      paddingHorizontal: 10,
-      paddingVertical: 5,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
       borderWidth: 1,
     },
     pingCategoryBadgeText: {
       fontSize: 11,
-      fontWeight: '700',
+      fontWeight: '800',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
     },
     geoIndicator: {
       width: 24,
@@ -1658,62 +1674,91 @@ const getStyles = (theme: any) => {
     pingMenuButton: {
       width: 32,
       height: 32,
-      borderRadius: 12,
+      borderRadius: 16,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: COLORS.surfaceElevated,
-      borderWidth: 1,
-      borderColor: COLORS.border,
     },
-    pingContent: {
-      paddingHorizontal: 14,
-      paddingTop: 0,
-      paddingBottom: 16,
+    pingMediaContainer: {
+      width: '100%',
+      position: 'relative',
     },
-    pingTextPostBlock: {
-      paddingHorizontal: 14,
-      paddingTop: 18,
-      paddingBottom: 12,
-    },
-    pingTitle: {
-      color: COLORS.textPrimary,
-      fontSize: 16,
-      fontWeight: '700',
-      lineHeight: 22,
-      letterSpacing: -0.2,
-    },
-    pingBody: {
-      marginTop: 6,
-      color: COLORS.textSecondary,
-      fontSize: 14,
-      lineHeight: 21,
+    pingImageBlock: {
+       paddingHorizontal: 0,
     },
     pingMedia: {
       width: '100%',
-      height: 320,
+      height: 440,
       backgroundColor: COLORS.surfaceElevated,
+      borderRadius: 0, // Let card overflow hidden handle rounding if needed, but we want it edge-to-edge in the card area
+    },
+    pingVerticalActionsStrip: {
+       position: 'absolute',
+       right: 12,
+       bottom: 20,
+       alignItems: 'center',
+       gap: 16,
+    },
+    pingActionStackItem: {
+       alignItems: 'center',
+       gap: 4,
+    },
+    pingGlassCircle: {
+       width: 44,
+       height: 44,
+       borderRadius: 22,
+       alignItems: 'center',
+       justifyContent: 'center',
+       backgroundColor: 'rgba(0,0,0,0.3)',
+       borderWidth: 1,
+       borderColor: 'rgba(255,255,255,0.15)',
+    },
+    pingActionStackValue: {
+       color: '#FFFFFF',
+       fontSize: 12,
+       fontWeight: '900',
+       textShadowColor: 'rgba(0,0,0,0.5)',
+       textShadowOffset: { width: 0, height: 1 },
+       textShadowRadius: 3,
+    },
+    pingCardContentOverContent: {
+       padding: 18,
+    },
+    pingTextPostBlock: {
+      paddingHorizontal: 20,
+      paddingTop: 10,
+      paddingBottom: 20,
+    },
+    pingTitle: {
+      color: COLORS.textPrimary,
+      fontSize: 18,
+      fontWeight: '900',
+      lineHeight: 24,
+      letterSpacing: -0.5,
+    },
+    pingBody: {
+      marginTop: 8,
+      color: COLORS.textSecondary,
+      fontSize: 15,
+      lineHeight: 22,
+      fontWeight: '500',
     },
     pingFooterRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 14,
-      paddingTop: 10,
-      paddingBottom: 10,
-      gap: 10,
+      paddingHorizontal: 20,
+      paddingBottom: 20,
     },
     pingActionCluster: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 14,
-      flex: 1,
+      gap: 16,
     },
     pingVoteRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-      gap: 2,
-      marginRight: 2,
+      gap: 6,
     },
     pingActionGroup: {
       flexDirection: 'row',
@@ -1722,20 +1767,20 @@ const getStyles = (theme: any) => {
     },
     pingActionLabel: {
       color: COLORS.textPrimary,
-      fontSize: 13,
-      fontWeight: '700',
+      fontSize: 14,
+      fontWeight: '800',
     },
     pingIconAction: {
-      minWidth: 24,
-      minHeight: 24,
+      minWidth: 32,
+      minHeight: 32,
       alignItems: 'center',
       justifyContent: 'center',
     },
     pingVoteRowCount: {
       color: COLORS.textPrimary,
-      fontSize: 13,
-      fontWeight: '700',
-      minWidth: 24,
+      fontSize: 14,
+      fontWeight: '900',
+      minWidth: 20,
       textAlign: 'center',
     },
     pingStatLinePositive: {
@@ -1744,39 +1789,13 @@ const getStyles = (theme: any) => {
     pingStatLineNegative: {
       color: '#D8616E',
     },
-    pingMetaSummary: {
-      color: COLORS.textSecondary,
-      fontSize: 12,
-      fontWeight: '500',
-    },
-    pingMetaSummaryActive: {
-      color: COLORS.primary,
-      fontWeight: '700',
-    },
-    pingLocationChip: {
-      marginTop: 10,
-      alignSelf: 'flex-start',
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 10,
-      paddingVertical: 7,
-      borderRadius: 999,
-      backgroundColor: COLORS.surfaceElevated,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      maxWidth: '100%',
-    },
-    pingLocationChipActive: {
-      backgroundColor: `${COLORS.primary}10`,
-      borderColor: `${COLORS.primary}26`,
-    },
     pingDeleteAction: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      paddingHorizontal: 14,
-      paddingBottom: 16,
+      position: 'absolute',
+      right: 12,
+      bottom: 12,
+      backgroundColor: COLORS.surfaceElevated,
+      padding: 8,
+      borderRadius: 12,
     },
     pingDeleteActionText: {
       color: COLORS.danger,

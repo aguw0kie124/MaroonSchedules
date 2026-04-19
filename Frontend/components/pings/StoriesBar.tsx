@@ -91,7 +91,7 @@ export const StoriesBar: React.FC<StoriesBarProps> = ({
                   </View>
                 </LinearGradient>
               ) : (
-                <View style={[styles.emptyCreateCircle, { borderColor: COLORS.border }]}>
+                <View style={[styles.emptyCreateCircle, { backgroundColor: COLORS.surfaceElevated, borderColor: 'transparent' }]}>
                   <Plus size={24} color={COLORS.primary} />
                 </View>
               )}
@@ -196,8 +196,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    borderWidth: 2,
-    borderStyle: 'dashed',
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },

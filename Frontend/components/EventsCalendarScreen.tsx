@@ -1574,18 +1574,16 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               <Pressable 
                 onPress={() => setIsSearching(true)}
                 style={{ 
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  paddingHorizontal: 15,
+                  width: 40,
                   height: 40,
-                  marginRight: 6,
-                  borderRadius: 14,
+                  borderRadius: 20,
                   backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
-                  gap: 6,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 10,
                 }}
               >
                 <Search size={18} color={COLORS.textSecondary} />
-                <Text style={{ color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' }}>Search</Text>
               </Pressable>
             ) : (
               <View style={{ 
@@ -1593,8 +1591,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                 flexDirection: 'row', 
                 alignItems: 'center', 
                 backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
-                borderRadius: 12,
-                paddingHorizontal: 12,
+                borderRadius: 20,
+                paddingHorizontal: 16,
                 marginRight: 20,
                 height: 40
               }}>
@@ -1773,7 +1771,12 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             onRestoreCategory={handleRestoreCategory}
             displayMode={displayMode}
             setDisplayMode={setDisplayMode}
-            scheduledEvents={scheduledEvents}
+            scheduledEvents={(scheduledEvents || []).map(se => (personalizedEvents || []).find(e => String(e.id) === String(se.id))!).filter(Boolean)}
+            onSchedule={handleSchedule}
+            onPressEvent={(e) => {
+               setSettingsVisible(false);
+               setDetailEvent(e);
+            }}
           />
 
           <DetailModal
@@ -2179,6 +2182,67 @@ function ActionButton({
   );
 }
 
+function RSVPEventChip({ 
+  event, 
+  onRemove, 
+  onPress 
+}: { 
+  event: TAMUEvent; 
+  onRemove: () => void; 
+  onPress: () => void;
+}) {
+  const { COLORS } = useTheme();
+  const category = classifyCategory(event);
+  const meta = CATEGORY_META[category];
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        backgroundColor: meta.cardTint + '20',
+        borderRadius: 22,
+        paddingLeft: 12,
+        paddingRight: 8,
+        paddingVertical: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: meta.cardTint + '40',
+        marginRight: 10,
+        height: 44,
+      }}
+    >
+      <meta.icon size={14} color={meta.cardTint} />
+      <Text 
+        style={{ 
+          color: COLORS.textPrimary, 
+          fontSize: 13, 
+          fontWeight: '700', 
+          marginLeft: 8,
+          marginRight: 4,
+          maxWidth: 140 
+        }} 
+        numberOfLines={1}
+      >
+        {event.title}
+      </Text>
+      <Pressable 
+        onPress={(e) => {
+          e.stopPropagation();
+          onRemove();
+        }}
+        style={{
+          padding: 4,
+          borderRadius: 999,
+          backgroundColor: 'rgba(0,0,0,0.05)',
+        }}
+      >
+        <XIcon size={14} color={COLORS.textTertiary} />
+      </Pressable>
+    </Pressable>
+  );
+}
+
 function SettingsModal({
   visible,
   onClose,
@@ -2193,6 +2257,8 @@ function SettingsModal({
   displayMode,
   setDisplayMode,
   scheduledEvents,
+  onSchedule,
+  onPressEvent,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -2207,6 +2273,8 @@ function SettingsModal({
   displayMode: 'expanded' | 'compact';
   setDisplayMode: (mode: 'expanded' | 'compact') => void;
   scheduledEvents: TAMUEvent[];
+  onSchedule: (event: TAMUEvent) => void;
+  onPressEvent: (event: TAMUEvent) => void;
 }) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
@@ -2222,16 +2290,38 @@ function SettingsModal({
           onPress={() => { }}
         >
           <View style={stylesStatic.modalHeader}>
-             <Text style={[stylesStatic.modalTitle, { color: COLORS.textPrimary }]}>Discovery Settings</Text>
+             <Text style={[stylesStatic.modalTitle, { color: COLORS.textPrimary }]}>Filters</Text>
              <Pressable onPress={onClose} style={stylesStatic.modalClose}>
                 <XIcon size={22} color={COLORS.textPrimary} />
              </Pressable>
           </View>
           
           <ScrollView showsVerticalScrollIndicator={false}>
-            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 4 }]}>
-              Display Layout
-            </Text>
+             {scheduledEvents && scheduledEvents.length > 0 && (
+               <View style={{ marginBottom: 24 }}>
+                 <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 4, marginBottom: 12 }]}>
+                   RSVP'd Events
+                 </Text>
+                 <ScrollView 
+                   horizontal 
+                   showsHorizontalScrollIndicator={false}
+                   contentContainerStyle={{ paddingRight: 20 }}
+                 >
+                   {scheduledEvents.map((event) => (
+                     <RSVPEventChip 
+                       key={event.id} 
+                       event={event} 
+                       onRemove={() => onSchedule(event)}
+                       onPress={() => onPressEvent(event)}
+                     />
+                   ))}
+                 </ScrollView>
+               </View>
+             )}
+
+             <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: scheduledEvents.length > 0 ? 0 : 4 }]}>
+               Display Layout
+             </Text>
             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
               {(['expanded', 'compact'] as const).map((mode) => (
                 <Pressable
@@ -2380,96 +2470,151 @@ function DetailModal({
 }) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
+  const translateY = useSharedValue(0);
+
+  useEffect(() => {
+    if (event) {
+      translateY.value = 0;
+    }
+  }, [event]);
+
+  const panGesture = Gesture.Pan()
+    .onUpdate((e) => {
+      translateY.value = Math.max(0, e.translationY);
+    })
+    .onEnd((e) => {
+      if (e.translationY > 150 || e.velocityY > 1000) {
+        translateY.value = withSpring(800, { damping: 50, stiffness: 300 });
+        runOnJS(onClose)();
+      } else {
+        translateY.value = withSpring(0);
+      }
+    });
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const overlayStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(translateY.value, [0, 400], [1, 0], Extrapolate.CLAMP),
+  }));
 
   if (!event) return null;
 
   return (
     <Modal visible={!!event} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={stylesStatic.modalOverlay} onPress={onClose}>
-        <Pressable
-          style={[
-            stylesStatic.detailSheet,
-            { backgroundColor: COLORS.surface, borderColor: COLORS.border, maxHeight: '90%' },
-          ]}
-          onPress={(e) => e.stopPropagation()}
-        >
-          <View style={stylesStatic.handleBar} />
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-            {event.imageUrl ? (
-              <View style={stylesStatic.detailImageWrap}>
-                <Image source={{ uri: event.imageUrl }} style={stylesStatic.detailImage} resizeMode="cover" />
-              </View>
-            ) : null}
+      <AnimatedReanimated.View style={[{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }, overlayStyle]}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        
+        <GestureDetector gesture={panGesture}>
+          <AnimatedReanimated.View
+            style={[
+              stylesStatic.detailSheet,
+              { backgroundColor: COLORS.surface, borderColor: COLORS.border, maxHeight: '92%' },
+              animatedStyle
+            ]}
+          >
+            <View style={stylesStatic.handleBar} />
             
-            <View style={{ gap: 8, marginBottom: 20 }}>
-               <Text style={[stylesStatic.detailTitle, { color: COLORS.textPrimary }]}>{event.title}</Text>
-               {event.group_title ? (
-                 <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 16 }}>{event.group_title}</Text>
-               ) : null}
-            </View>
+            <Pressable 
+              onPress={onClose}
+              style={{
+                position: 'absolute',
+                right: 20,
+                top: 20,
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10,
+              }}
+            >
+              <XIcon size={20} color={COLORS.textPrimary} />
+            </Pressable>
 
-            <View style={stylesStatic.detailMetaBlock}>
-              <View style={stylesStatic.detailMetaRow}>
-                <CalendarIcon size={18} color={COLORS.textSecondary} />
-                <Text style={[stylesStatic.detailMetaText, { color: COLORS.textSecondary }]}>
-                  {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
-                </Text>
-              </View>
-              {event.location ? (
-                <View style={stylesStatic.detailMetaRow}>
-                  <MapPin size={18} color={COLORS.textSecondary} />
-                  <Text style={[stylesStatic.detailMetaText, { color: COLORS.textSecondary }]}>{event.location}</Text>
+            <ScrollView 
+              showsVerticalScrollIndicator={false} 
+              contentContainerStyle={{ paddingBottom: 60 }}
+              bounces={false}
+            >
+              {event.imageUrl ? (
+                <View style={[stylesStatic.detailImageWrap, { marginTop: 10 }]}>
+                  <Image source={{ uri: event.imageUrl }} style={stylesStatic.detailImage} resizeMode="cover" />
                 </View>
               ) : null}
-            </View>
-
-            <View style={stylesStatic.modalDivider} />
-
-            <Text style={[stylesStatic.detailDescription, { color: COLORS.textPrimary }]}>
-              {stripHtml(event.description || 'No description provided.')}
-            </Text>
-
-            <View style={stylesStatic.detailActionGrid}>
-               <Pressable
-                style={[stylesStatic.primaryDetailButton, { backgroundColor: scheduled ? '#FFE3E8' : COLORS.primary, flex: 1.5 }]}
-                onPress={() => onSchedule(event)}
-              >
-                <Text style={[stylesStatic.primaryDetailButtonText, { color: scheduled ? '#FF4D6D' : '#FFFFFF' }]}>
-                  {scheduled ? 'Remove from Plan' : 'Add to Plan'}
-                </Text>
-              </Pressable>
               
-              <Pressable 
-                onPress={() => onShare(event)}
-                style={[stylesStatic.detailSubAction, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9' }]}
-              >
-                <Share2 size={22} color={COLORS.textPrimary} />
-              </Pressable>
-            </View>
+              <View style={{ gap: 8, marginBottom: 20, paddingRight: 40 }}>
+                 <Text style={[stylesStatic.detailTitle, { color: COLORS.textPrimary }]}>{event.title}</Text>
+                 {event.group_title ? (
+                   <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 16 }}>{event.group_title}</Text>
+                 ) : null}
+              </View>
 
-            {event.location_lat != null && (
-               <Pressable 
-                onPress={() => onMap(event)}
-                style={stylesStatic.detailMapPreview}
-               >
-                  <MapIcon size={20} color={COLORS.primary} />
-                  <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 15 }}>View on Campus Map</Text>
-               </Pressable>
-            )}
+              <View style={stylesStatic.detailMetaBlock}>
+                <View style={stylesStatic.detailMetaRow}>
+                  <CalendarIcon size={18} color={COLORS.textSecondary} />
+                  <Text style={[stylesStatic.detailMetaText, { color: COLORS.textSecondary }]}>
+                    {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
+                  </Text>
+                </View>
+                {event.location ? (
+                  <View style={stylesStatic.detailMetaRow}>
+                    <MapPin size={18} color={COLORS.textSecondary} />
+                    <Text style={[stylesStatic.detailMetaText, { color: COLORS.textSecondary }]}>{event.location}</Text>
+                  </View>
+                ) : null}
+              </View>
 
-            <View style={stylesStatic.detailFooterActions}>
-               <Pressable onPress={() => onBlockOrganizer(event)} style={stylesStatic.footerActionItem}>
-                  <UserX size={16} color={COLORS.textTertiary} />
-                  <Text style={{ color: COLORS.textTertiary, fontSize: 13, fontWeight: '600' }}>Block Organizer</Text>
-               </Pressable>
-               <Pressable onPress={() => onReportOrganizer(event)} style={stylesStatic.footerActionItem}>
-                  <CircleAlert size={16} color={COLORS.textTertiary} />
-                  <Text style={{ color: COLORS.textTertiary, fontSize: 13, fontWeight: '600' }}>Report Event</Text>
-               </Pressable>
-            </View>
-          </ScrollView>
-        </Pressable>
-      </Pressable>
+              <View style={stylesStatic.modalDivider} />
+
+              <Text style={[stylesStatic.detailDescription, { color: COLORS.textPrimary }]}>
+                {stripHtml(event.description || 'No description provided.')}
+              </Text>
+
+              <View style={stylesStatic.detailActionGrid}>
+                 <Pressable
+                  style={[stylesStatic.primaryDetailButton, { backgroundColor: scheduled ? (isDark ? '#4A1D24' : '#FFE3E8') : COLORS.primary, flex: 1.5 }]}
+                  onPress={() => onSchedule(event)}
+                >
+                  <Text style={[stylesStatic.primaryDetailButtonText, { color: scheduled ? '#FF4D6D' : '#FFFFFF' }]}>
+                    {scheduled ? 'Remove from Plan' : 'Add to Plan'}
+                  </Text>
+                </Pressable>
+                
+                <Pressable 
+                  onPress={() => onShare(event)}
+                  style={[stylesStatic.detailSubAction, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9' }]}
+                >
+                  <Share2 size={22} color={COLORS.textPrimary} />
+                </Pressable>
+              </View>
+
+              {event.location_lat != null && (
+                 <Pressable 
+                  onPress={() => onMap(event)}
+                  style={stylesStatic.detailMapPreview}
+                 >
+                    <MapIcon size={20} color={COLORS.primary} />
+                    <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 15 }}>View on Campus Map</Text>
+                 </Pressable>
+              )}
+
+              <View style={stylesStatic.detailFooterActions}>
+                 <Pressable onPress={() => onBlockOrganizer(event)} style={stylesStatic.footerActionItem}>
+                    <UserX size={16} color={COLORS.textTertiary} />
+                    <Text style={{ color: COLORS.textTertiary, fontSize: 13, fontWeight: '600' }}>Block Organizer</Text>
+                 </Pressable>
+                 <Pressable onPress={() => onReportOrganizer(event)} style={stylesStatic.footerActionItem}>
+                    <CircleAlert size={16} color={COLORS.textTertiary} />
+                    <Text style={{ color: COLORS.textTertiary, fontSize: 13, fontWeight: '600' }}>Report Event</Text>
+                 </Pressable>
+              </View>
+            </ScrollView>
+          </AnimatedReanimated.View>
+        </GestureDetector>
+      </AnimatedReanimated.View>
     </Modal>
   );
 }
@@ -3008,7 +3153,7 @@ const stylesStatic = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 16,
     height: 40,
-    borderRadius: 14,
+    borderRadius: 999,
   },
   categoryChipText: {
     fontSize: 13,
@@ -3078,7 +3223,7 @@ const stylesStatic = StyleSheet.create({
   layoutTabPill: {
       flex: 1,
       paddingVertical: 14,
-      borderRadius: 18,
+      borderRadius: 999,
       borderWidth: 2,
       alignItems: 'center',
       justifyContent: 'center',

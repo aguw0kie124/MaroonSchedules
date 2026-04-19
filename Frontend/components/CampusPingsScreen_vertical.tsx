@@ -1882,9 +1882,9 @@ export function CampusPingsScreen() {
       <PingCommentsModal
         visible={!!activeCommentsPing}
         target={
-          activeCommentsPing?.activityId
+          activeCommentsPing
             ? {
-                activityId: activeCommentsPing.activityId,
+                activityId: activeCommentsPing.activityId || activeCommentsPing.id,
                 title: activeCommentsPing.title,
                 subtitle: activeCommentsPing.locationTag,
                 commentCount: activeCommentsPing.commentCount,

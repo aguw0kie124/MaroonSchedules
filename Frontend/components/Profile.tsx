@@ -57,6 +57,7 @@ import {
   ArrowBigDown,
   MessageCircle,
   Settings,
+  MoreVertical,
 } from 'lucide-react-native';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
@@ -912,76 +913,67 @@ export function Profile() {
     return groupedStories.find(u => u.id === user?.id) || { hasActiveStory: false, allSeen: true };
   }, [groupedStories, user?.id]);
 
-  const renderProfileHeader = () => (
-    <View style={styles.modernProfileHeader}>
-      <View style={styles.headerTopRow}>
-        <ScalePressable 
-          onPress={handleStoryPress}
-          disabled={!myStoryData.pings?.length}
-          style={[
-            styles.modernAvatarWrapper,
-            myStoryData.pings?.length && {
-              borderWidth: 2,
-              borderColor: myStoryData.allSeen ? COLORS.textTertiary : COLORS.primary,
-              padding: 3
-            }
-          ]}
-        >
-          {myStoryData.pings?.length && !myStoryData.allSeen && (
-            <LinearGradient
-              colors={['#E442A1', '#F7533E', '#F99E4A']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={[StyleSheet.absoluteFill, { borderRadius: 100 }]}
-            />
-          )}
-          <View style={{ 
-            backgroundColor: COLORS.background, 
-            borderRadius: 100, 
-            padding: myStoryData.pings?.length ? 2 : 0 
-          }}>
-            {user?.imageUrl ? (
-              <Image source={{ uri: user.imageUrl }} style={styles.modernAvatarImage} />
-            ) : (
-              <View style={[styles.modernAvatarPlaceholder, { backgroundColor: COLORS.surfaceElevated }]}>
-                <Text style={styles.modernAvatarText}>{user?.firstName?.[0] || 'U'}</Text>
-              </View>
-            )}
-          </View>
-        </ScalePressable>
-        <View style={styles.headerStatsRow}>
-          <Pressable 
-              style={styles.statItem} 
-              onPress={() => setShowFriendsModal(true)}
-          >
-            <Text style={styles.statValue}>{friends.length}</Text>
-            <Text style={styles.statLabel}>Friends</Text>
-          </Pressable>
-          <Pressable 
-              style={styles.statItem}
-              onPress={() => setActiveTab('feed')}
-          >
-            <Text style={styles.statValue}>{userPings.length}</Text>
-            <Text style={styles.statLabel}>Pings</Text>
-          </Pressable>
-        </View>
-      </View>
+   const renderProfileHeader = () => (
+     <View style={styles.modernProfileHeader}>
+       <View style={{ alignItems: 'center', marginBottom: 24, marginTop: 10 }}>
+         <ScalePressable 
+           onPress={handleStoryPress}
+           disabled={!myStoryData.pings?.length}
+           style={[
+             styles.modernAvatarWrapper,
+             { width: 110, height: 110, borderRadius: 55, borderWidth: 3, borderColor: COLORS.primary, padding: 5 }
+           ]}
+         >
+           <View style={{ 
+             backgroundColor: COLORS.background, 
+             borderRadius: 50, 
+             padding: 2,
+             width: '100%',
+             height: '100%',
+             overflow: 'hidden'
+           }}>
+             {user?.imageUrl ? (
+               <Image source={{ uri: user.imageUrl }} style={{ width: '100%', height: '100%', borderRadius: 50 }} />
+             ) : (
+               <View style={[styles.modernAvatarPlaceholder, { backgroundColor: COLORS.surfaceElevated }]}>
+                 <Text style={[styles.modernAvatarText, { fontSize: 40 }]}>{user?.firstName?.[0] || 'U'}</Text>
+               </View>
+             )}
+           </View>
+         </ScalePressable>
+         
+         <View style={{ alignItems: 'center', marginTop: 18 }}>
+           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+             <Text style={[styles.modernName, { fontSize: 24, fontWeight: '900' }]}>{userDisplayName || fullName || user?.fullName || 'Aggie User'}</Text>
+           </View>
+         </View>
+       </View>
 
-      <View style={styles.bioSection}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Text style={styles.modernName}>{userDisplayName || fullName || user?.fullName || 'Aggie User'}</Text>
-        </View>
-        <Text style={styles.modernBio}>{bio || 'Building the future of campus life 🚀'}</Text>
-        {website ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
-            <Link size={12} color={COLORS.primary} />
-            <Text style={{ fontSize: 13, color: COLORS.primary, fontWeight: '600' }}>{website}</Text>
-          </View>
-        ) : null}
-      </View>
+       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24, paddingHorizontal: 16 }}>
+          <ScalePressable 
+            containerStyle={{ flex: 1 }}
+            style={styles.modernStatCard}
+            onPress={() => setShowFriendsModal(true)}
+          >
+             <Text style={styles.modernStatValue}>{friends.length || 0}</Text>
+             <Text style={styles.modernStatLabel}>Friends</Text>
+          </ScalePressable>
+          <ScalePressable 
+            containerStyle={{ flex: 1 }}
+            style={styles.modernStatCard}
+            onPress={() => setActiveTab('feed')}
+          >
+             <Text style={styles.modernStatValue}>{userPings.length || 0}</Text>
+             <Text style={styles.modernStatLabel}>Pings</Text>
+          </ScalePressable>
+       </View>
 
-    </View>
-  );
+       <View style={[styles.bioSection, { paddingHorizontal: 4 }]}>
+         <Text style={[styles.modernBio, { fontSize: 15, textAlign: 'center', fontWeight: '500' }]}>{bio || 'Building the future of campus life 🚀'}</Text>
+       </View>
+     </View>
+   );
+
   const renderContentGrid = (pings: any[]) => {
     // Filter by visibility toggle: if off, hide pings that move (reels/images usually stay, "comments" i.e. text-only pings go)
     const filteredByToggle = showPingsOnProfile 
@@ -996,35 +988,25 @@ export function Profile() {
     });
 
     return (
-      <View style={styles.postsGrid}>
+      <View style={[styles.postsGrid, { gap: 10, paddingHorizontal: 4 }]}>
         {sortedPings.map((post, idx) => {
-          const cat = categoryMeta(post.category);
-          const CatIcon = cat.Icon;
-          
           return (
             <ScalePressable 
               key={post.id || idx} 
-              style={[styles.postSquare, { height: ((Dimensions.get('window').width - 32) / 3) * 1.33 }]}
+              style={[styles.postSquare, { 
+                width: (Dimensions.get('window').width - 42) / 3,
+                borderRadius: 24,
+                height: ((Dimensions.get('window').width - 42) / 3) * 1.33 
+              }]}
               onPress={() => setSelectedPing(post)}
             >
               {post.imageUrl ? (
-                <Image source={{ uri: post.imageUrl }} style={styles.postImage} />
+                <Image source={{ uri: post.imageUrl }} style={[styles.postImage, { borderRadius: 24 }]} />
               ) : (
-                <View style={[styles.postFallback, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', padding: 8, justifyContent: 'flex-start' }]}>
-                  {/* Removed Category Tag */}
-                  <Text style={{ color: COLORS.textPrimary, fontSize: 12, fontWeight: '600', lineHeight: 16 }} numberOfLines={6}>
+                <View style={[styles.postFallback, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', padding: 12, borderRadius: 24 }]}>
+                  <Text style={{ color: COLORS.textPrimary, fontSize: 12, fontWeight: '700', lineHeight: 16 }} numberOfLines={5}>
                     {post.title}
                   </Text>
-                </View>
-              )}
-              {post.isPinned && (
-                <View style={styles.pinOverlay}>
-                  <Repeat size={14} color="#FFF" />
-                </View>
-              )}
-              {(post.mediaUrls?.length ?? 0) > 1 && (
-                <View style={styles.multiMediaIcon}>
-                  <LayoutGrid size={14} color="#FFF" />
                 </View>
               )}
             </ScalePressable>
@@ -2186,18 +2168,25 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       justifyContent: 'space-around',
       marginLeft: 20,
     },
-    statItem: {
+    modernStatCard: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+      borderRadius: 20,
+      paddingVertical: 10,
       alignItems: 'center',
+      justifyContent: 'center',
     },
-    statValue: {
-      fontSize: 18,
+    modernStatValue: {
+      fontSize: 17,
       fontWeight: '900',
       color: COLORS.textPrimary,
     },
-    statLabel: {
-      fontSize: 12,
-      color: COLORS.textSecondary,
+    modernStatLabel: {
+      fontSize: 10,
+      fontWeight: '800',
+      color: COLORS.textTertiary,
       marginTop: 2,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
     },
     bioSection: {
       marginBottom: 16,
@@ -2219,18 +2208,16 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
     },
     editProfileButton: {
       flex: 1,
-      height: 36,
-      borderRadius: 8,
-      backgroundColor: COLORS.surfaceElevated,
+      height: 50,
+      borderRadius: 25,
+      backgroundColor: COLORS.primary,
       alignItems: 'center',
       justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: COLORS.border,
     },
     editProfileText: {
-      fontSize: 14,
-      fontWeight: '700',
-      color: COLORS.textPrimary,
+      fontSize: 16,
+      fontWeight: '900',
+      color: '#FFF',
     },
     shareProfileButton: {
       flex: 1,
@@ -2301,7 +2288,7 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
     // Modern Settings Row
     settingsSection: {
       backgroundColor: isDark ? 'rgba(18,18,20,0.82)' : 'rgba(255,255,255,0.86)',
-      borderRadius: 20,
+      borderRadius: 28,
       borderWidth: 1,
       borderColor: COLORS.border,
       padding: 16,
