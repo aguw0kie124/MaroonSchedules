@@ -2787,9 +2787,9 @@ function ListEventRow({
         { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border, paddingVertical: 12 },
       ]}
     >
-      <View style={[stylesStatic.listThumb, { backgroundColor: meta.cardTint, width: 52, height: 52, borderRadius: 12 }]}>
+      <View style={[stylesStatic.listThumb, { backgroundColor: meta.cardTint, width: 52, height: 52, borderRadius: 20 }]}>
         {event.imageUrl ? (
-          <Image source={{ uri: event.imageUrl }} style={[stylesStatic.listThumbImage, { borderRadius: 12 }]} resizeMode="cover" />
+          <Image source={{ uri: event.imageUrl }} style={[stylesStatic.listThumbImage, { borderRadius: 20 }]} resizeMode="cover" />
         ) : (
           <View style={stylesStatic.listThumbFallback}>
             <Icon size={22} color="#FFFFFF" />
@@ -2868,6 +2868,8 @@ function SettingsModal({
   dislikedEventIds,
   events,
   onRestoreCategory,
+  scheduledEvents,
+  onPress,
   onSchedule,
   viewMode,
   setViewMode,
@@ -2927,7 +2929,7 @@ function SettingsModal({
                       style={{
                         width: 240,
                         backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
-                        borderRadius: 18,
+                        borderRadius: 36,
                         padding: 14,
                         gap: 8,
                       }}
@@ -2975,7 +2977,7 @@ function SettingsModal({
                     {
                       paddingVertical: 12,
                       paddingHorizontal: 20,
-                      borderRadius: 18,
+                      borderRadius: 36,
                       flex: 1,
                       alignItems: 'center',
                       backgroundColor: viewMode === mode ? COLORS.primary : isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
@@ -2995,31 +2997,6 @@ function SettingsModal({
                 </Pressable>
               ))}
             </View>
-
-            {selectedCategories.has('Social') ? (
-              <>
-                <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 12 }]}>
-                  Social mode
-                </Text>
-                {(['casual', 'professional'] as SocialMode[]).map((mode) => (
-                  <Pressable
-                    key={mode}
-                    style={stylesStatic.modalOption}
-                    onPress={() => setSocialMode(mode)}
-                  >
-                    <Text
-                      style={[
-                        stylesStatic.modalOptionText,
-                        { color: socialMode === mode ? COLORS.primary : COLORS.textPrimary },
-                      ]}
-                    >
-                      {mode === 'casual' ? 'Casual' : 'Professional'}
-                    </Text>
-                    {socialMode === mode ? <Check size={16} color={COLORS.primary} /> : null}
-                  </Pressable>
-                ))}
-              </>
-            ) : null}
 
             <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 12 }]}>
               Major filter
@@ -3397,7 +3374,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     headerIconButton: {
       width: 44,
       height: 44,
-      borderRadius: 22,
+      borderRadius: 36,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: 'transparent',
@@ -3581,7 +3558,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       bottom: -10,
     },
     forYouHero: {
-      borderRadius: 28,
+      borderRadius: 36,
       paddingHorizontal: 18,
       paddingVertical: 14,
       marginTop: 6,
@@ -3683,7 +3660,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       paddingHorizontal: 20,
     },
     inlineControl: {
-      borderRadius: 16,
+      borderRadius: 36,
       paddingHorizontal: 0,
       paddingVertical: 4,
       borderBottomWidth: 1,
@@ -3772,7 +3749,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     filterButton: {
       width: 46,
       height: 46,
-      borderRadius: 14,
+      borderRadius: 20,
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1,
@@ -3816,7 +3793,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       marginTop: 20,
       paddingHorizontal: 24,
       paddingVertical: 12,
-      borderRadius: 18,
+      borderRadius: 36,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 6 },
       shadowOpacity: 0.12,
@@ -3908,7 +3885,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     finishedButton: {
       marginTop: 12,
-      borderRadius: 18,
+      borderRadius: 36,
       backgroundColor: COLORS.primary,
       paddingHorizontal: 22,
       paddingVertical: 14,
@@ -3925,7 +3902,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     inviteCard: {
       marginTop: 8,
-      borderRadius: 24,
+      borderRadius: 36,
       padding: 18,
       borderWidth: 1,
       borderColor: COLORS.border,
@@ -3981,7 +3958,7 @@ const stylesStatic = StyleSheet.create({
   rewardToastCard: {
     minWidth: 220,
     maxWidth: 310,
-    borderRadius: 22,
+    borderRadius: 36,
     backgroundColor: 'rgba(20,20,24,0.94)',
     paddingHorizontal: 18,
     paddingVertical: 14,
@@ -4100,7 +4077,7 @@ const stylesStatic = StyleSheet.create({
   },
   discoverRailImageWrap: {
     height: 174,
-    borderRadius: 14,
+    borderRadius: 20,
     overflow: 'hidden',
   },
   discoverRailImage: {
@@ -4158,7 +4135,7 @@ const stylesStatic = StyleSheet.create({
   heroCard: {
     width: HERO_CARD_WIDTH,
     height: HERO_CARD_HEIGHT,
-    borderRadius: 14,
+    borderRadius: 20,
     overflow: 'hidden',
     paddingHorizontal: 22,
     paddingVertical: 20,
@@ -4327,7 +4304,7 @@ const stylesStatic = StyleSheet.create({
   listThumb: {
     width: 76,
     height: 76,
-    borderRadius: 12,
+    borderRadius: 20,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -4481,7 +4458,7 @@ const stylesStatic = StyleSheet.create({
     paddingHorizontal: 24,
   },
   modalSheet: {
-    borderRadius: 28,
+    borderRadius: 36,
     borderWidth: 1,
     padding: 20,
     maxHeight: '78%',
@@ -4504,7 +4481,7 @@ const stylesStatic = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: 18,
+    borderRadius: 36,
     paddingHorizontal: 15,
     paddingVertical: 14,
     marginBottom: 8,
@@ -4533,7 +4510,7 @@ const stylesStatic = StyleSheet.create({
   },
   detailImageWrap: {
     height: 194,
-    borderRadius: 22,
+    borderRadius: 36,
     overflow: 'hidden',
     marginBottom: 16,
   },
@@ -4594,7 +4571,7 @@ const stylesStatic = StyleSheet.create({
   },
   primaryDetailButton: {
     height: 54,
-    borderRadius: 18,
+    borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -4613,7 +4590,7 @@ const stylesStatic = StyleSheet.create({
   secondaryDetailButton: {
     flex: 1,
     height: 50,
-    borderRadius: 16,
+    borderRadius: 36,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -4644,7 +4621,7 @@ const stylesStatic = StyleSheet.create({
   },
   organizerSafetyButton: {
     minHeight: 48,
-    borderRadius: 14,
+    borderRadius: 20,
     borderWidth: 1,
     paddingHorizontal: 14,
     flexDirection: 'row',

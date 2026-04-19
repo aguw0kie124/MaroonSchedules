@@ -53,6 +53,8 @@ import {
   Trash2,
   Users,
   X,
+  ChevronDown,
+  ChevronUp,
   Heart,
   Image as ImageIcon,
 } from 'lucide-react-native';
@@ -1054,15 +1056,17 @@ export function CampusPingsScreen() {
                   <View style={styles.pingActionStackItem}>
                     <ScalePressable
                       onPress={() => item.activityId && handleVotePing(item, item.userVote === 1 ? 0 : 1)}
-                      style={[styles.pingGlassCircle, item.userVote === 1 && { backgroundColor: '#FF475733' }]}
+                      style={{ padding: 4 }}
                     >
-                      <Heart
-                        size={24}
-                        color={item.userVote === 1 ? '#FF4757' : '#FFFFFF'}
-                        fill={item.userVote === 1 ? '#FF4757' : 'transparent'}
-                      />
+                      <ChevronUp size={30} color={item.userVote === 1 ? '#3CCB6C' : '#FFFFFF'} strokeWidth={3} />
                     </ScalePressable>
-                    <Text style={styles.pingActionStackValue}>{item.score || 0}</Text>
+                    <Text style={[styles.pingActionStackValue, { marginVertical: 2, fontSize: 16, fontWeight: '800' }]}>{item.score || 0}</Text>
+                    <ScalePressable
+                      onPress={() => item.activityId && handleVotePing(item, item.userVote === -1 ? 0 : -1)}
+                      style={{ padding: 4 }}
+                    >
+                      <ChevronDown size={30} color={item.userVote === -1 ? '#FF4757' : '#FFFFFF'} strokeWidth={3} />
+                    </ScalePressable>
                   </View>
 
                   <View style={styles.pingActionStackItem}>
