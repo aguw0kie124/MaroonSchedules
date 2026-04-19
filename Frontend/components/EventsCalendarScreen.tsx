@@ -92,6 +92,9 @@ const HERO_CARD_WIDTH = SCREEN_WIDTH - 40;
 const HERO_CARD_HEIGHT = 324;
 const HERO_CARD_GAP = 14;
 const HERO_CARD_SNAP_INTERVAL = HERO_CARD_WIDTH + HERO_CARD_GAP;
+const HERO_DOT_SIZE = 6;
+const HERO_DOT_GAP = 8;
+const HERO_DOT_STEP = HERO_DOT_SIZE + HERO_DOT_GAP;
 const DISCOVER_RAIL_CARD_WIDTH = Math.min(SCREEN_WIDTH - 112, 264);
 const DISCOVER_HERO_LIMIT = 5;
 const DISCOVER_SECTION_LIMIT = 6;
@@ -1132,6 +1135,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const pan = useRef(new Animated.ValueXY()).current;
   const opacity = useRef(new Animated.Value(1)).current;
+  const discoverHeroScrollX = useRef(new Animated.Value(0)).current;
   const hydratedProfileMajorForUser = useRef<string | null>(null);
   const nowTs = Math.floor(Date.now() / 1000);
 
@@ -1999,7 +2003,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       >
         {discoverHeroEvents.length > 0 ? (
           <View style={s.discoverHeroBlock}>
-            <ScrollView
+            <Animated.ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               nestedScrollEnabled
@@ -2009,6 +2013,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               snapToAlignment="start"
               disableIntervalMomentum
               decelerationRate="fast"
+              scrollEventThrottle={16}
+              onScroll={Animated.event(
+                [{ nativeEvent: { contentOffset: { x: discoverHeroScrollX } } }],
+                { useNativeDriver: false },
+              )}
               onMomentumScrollEnd={(event) => {
                 const offsetX = event.nativeEvent.contentOffset.x;
                 const nextIndex = Math.round(offsetX / HERO_CARD_SNAP_INTERVAL);
@@ -2030,19 +2039,36 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   </View>
                 </StaggeredReveal>
               ))}
-            </ScrollView>
+            </Animated.ScrollView>
 
             {discoverHeroEvents.length > 1 ? (
               <View style={s.heroDots}>
-                {discoverHeroEvents.map((event, index) => (
-                  <View
-                    key={String(event.id)}
+                <View style={s.heroDotsTrack}>
+                  {discoverHeroEvents.map((event) => (
+                    <View
+                      key={String(event.id)}
+                      style={s.heroDot}
+                    />
+                  ))}
+                  <Animated.View
+                    pointerEvents="none"
                     style={[
-                      s.heroDot,
-                      index === discoverHeroIndex && s.heroDotActive,
+                      s.heroDotIndicator,
+                      {
+                        backgroundColor: COLORS.primary,
+                        transform: [
+                          {
+                            translateX: discoverHeroScrollX.interpolate({
+                              inputRange: discoverHeroEvents.map((_, index) => index * HERO_CARD_SNAP_INTERVAL),
+                              outputRange: discoverHeroEvents.map((_, index) => index * HERO_DOT_STEP),
+                              extrapolate: 'clamp',
+                            }),
+                          },
+                        ],
+                      },
                     ]}
                   />
-                ))}
+                </View>
               </View>
             ) : null}
           </View>
@@ -3467,21 +3493,29 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       paddingBottom: 4,
     },
     heroDots: {
-      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 8,
       marginTop: 10,
     },
+    heroDotsTrack: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: HERO_DOT_GAP,
+      position: 'relative',
+    },
     heroDot: {
-      width: 6,
-      height: 6,
-      borderRadius: 3,
+      width: HERO_DOT_SIZE,
+      height: HERO_DOT_SIZE,
+      borderRadius: HERO_DOT_SIZE / 2,
       backgroundColor: isDark ? 'rgba(255,255,255,0.18)' : '#D7DCE6',
     },
-    heroDotActive: {
-      width: 28,
-      backgroundColor: COLORS.primary,
+    heroDotIndicator: {
+      position: 'absolute',
+      left: 0,
+      top: 0,
+      width: HERO_DOT_SIZE,
+      height: HERO_DOT_SIZE,
+      borderRadius: HERO_DOT_SIZE / 2,
     },
     discoverSectionsStack: {
       gap: 22,
