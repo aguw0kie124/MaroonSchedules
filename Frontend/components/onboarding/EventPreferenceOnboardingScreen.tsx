@@ -211,7 +211,9 @@ function getPrimaryMajor(academics: string[]) {
 
 export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
   const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
+  const preferredEventInterests = useAppShellStore((state) => state.preferredEventInterests);
   const setPreferredEventCategories = useAppShellStore((state) => state.setPreferredEventCategories);
+  const setPreferredEventInterests = useAppShellStore((state) => state.setPreferredEventInterests);
   const setPreferredTime = useAppShellStore((state) => state.setPreferredTime);
   const setPreferredSocialMode = useAppShellStore((state) => state.setPreferredSocialMode);
   const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
@@ -224,7 +226,7 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
 
   const [step, setStep] = useState(0);
   const [selections, setSelections] = useState({
-    interests: [] as string[],
+    interests: preferredEventInterests,
     academics: getInitialAcademicSelections(isMajorSpecific, selectedMajor),
     events: getInitialEventSelections(preferredEventCategories),
   });
@@ -282,15 +284,14 @@ export function EventPreferenceOnboardingScreen({ clerkId, onDone }: Props) {
     const major = getPrimaryMajor(selections.academics);
 
     setPreferredEventCategories(storedCategories);
+    setPreferredEventInterests(selections.interests);
     setPreferredTime(null);
     setPreferredSocialMode(null);
 
     if (major) {
       setSelectedMajor(major);
-      setMajorSpecific(true);
-    } else {
-      setMajorSpecific(false);
     }
+    setMajorSpecific(false);
 
     setEventPreferencesCompleted(true);
     setShowEventPreferencesOnboarding(false);
@@ -464,7 +465,7 @@ function TagSelectionView({
 }) {
   return (
     <View style={styles.flex1}>
-      <Header onBack={onBack} onSkip={onSkip} title="Event Preferences" />
+      <Header onBack={onBack} onSkip={onSkip} />
       <ScrollView
         contentContainerStyle={[styles.scrollContent, styles.center]}
         showsVerticalScrollIndicator={false}
@@ -608,11 +609,9 @@ function SuccessScreen({
 function Header({
   onBack,
   onSkip,
-  title,
 }: {
   onBack?: () => void;
   onSkip?: () => void;
-  title?: string;
 }) {
   return (
     <View style={styles.header}>
@@ -623,7 +622,7 @@ function Header({
       ) : (
         <View style={styles.headerBtn} />
       )}
-      <Text style={styles.headerTitle}>{title || 'MaroonLife'}</Text>
+      <View style={styles.headerSpacer} />
       {onSkip ? (
         <TouchableOpacity onPress={onSkip}>
           <Text style={styles.skipBtn}>Skip</Text>
@@ -675,12 +674,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(80,0,0,0.05)',
+    paddingTop: 12,
+    paddingBottom: 4,
   },
   headerBtn: { width: 40 },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: COLORS.maroon800 },
+  headerSpacer: { flex: 1 },
   skipBtn: { color: COLORS.textMuted, fontWeight: '600' },
 
   scrollContent: { padding: 24, paddingBottom: 120 },

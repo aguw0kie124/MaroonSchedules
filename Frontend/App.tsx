@@ -651,7 +651,7 @@ function App() {
   const { theme, COLORS } = useTheme();
 
   React.useEffect(() => {
-    useThemeStore.getState().loadWallpaperPref().catch((error: unknown) => {
+    useThemeStore.getState().loadThemePrefs().catch((error: unknown) => {
       console.warn('Failed to load theme preferences', error);
     });
   }, []);

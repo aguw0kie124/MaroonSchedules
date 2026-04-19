@@ -172,12 +172,14 @@ type StandardExploreCategory = Exclude<ExploreCategory, 'For U' | 'Featured'>;
 
 type SocialMode = 'casual' | 'professional';
 type EventsView = 'discover' | 'list' | 'swipe' | 'inbox';
-type PreferredTimeOption = 'Morning' | 'Afternoon' | 'Evening' | 'No Preference' | null;
+type PreferredTimeOption = 'Morning' | 'Afternoon' | 'Evening' | 'Anytime' | null;
 
 interface UserEventPreferences {
   major: MajorOption | null;
   preferredTime: PreferredTimeOption;
   avoidFriday: boolean;
+  preferredCategories: ExploreCategory[];
+  preferredInterests: string[];
 }
 
 const ALL_CATEGORIES: ExploreCategory[] = [
@@ -193,8 +195,70 @@ const ALL_CATEGORIES: ExploreCategory[] = [
   'Miscellaneous',
 ];
 
-const PERSONALIZATION_CATEGORY_LIMIT = 3;
+const ALL_STANDARD_CATEGORIES = ALL_CATEGORIES.filter(
+  (category): category is StandardExploreCategory => category !== 'Featured' && category !== 'For U',
+);
 const DEFAULT_SELECTED_CATEGORIES: ExploreCategory[] = ['Featured', 'For U'];
+const FALLBACK_BROWSE_CATEGORIES: ExploreCategory[] = ['Featured', ...ALL_STANDARD_CATEGORIES];
+
+const INTEREST_SIGNAL_CONFIG: Record<string, { categories: StandardExploreCategory[]; keywords: string[] }> = {
+  fitness: {
+    categories: ['Sports', 'Health & Wellness'],
+    keywords: ['fitness', 'gym', 'workout', 'training', 'run', 'running', 'yoga', 'pilates'],
+  },
+  sports: {
+    categories: ['Sports'],
+    keywords: ['sports', 'game', 'match', 'tournament', 'athletic', 'intramural'],
+  },
+  music: {
+    categories: ['Entertainment'],
+    keywords: ['music', 'concert', 'band', 'dj', 'karaoke', 'choir'],
+  },
+  gaming: {
+    categories: ['Entertainment', 'Social'],
+    keywords: ['gaming', 'esports', 'game night', 'smash', 'nintendo', 'valorant'],
+  },
+  tech: {
+    categories: ['Academic'],
+    keywords: ['tech', 'coding', 'developer', 'software', 'hackathon', 'robotics', 'ai'],
+  },
+  art: {
+    categories: ['Entertainment'],
+    keywords: ['art', 'gallery', 'paint', 'design', 'creative', 'craft'],
+  },
+  volunteering: {
+    categories: ['Advocacy', 'Social'],
+    keywords: ['volunteer', 'service', 'charity', 'donation', 'community service'],
+  },
+  startups: {
+    categories: ['Academic', 'Social'],
+    keywords: ['startup', 'entrepreneur', 'founder', 'pitch', 'venture', 'innovation'],
+  },
+  food: {
+    categories: ['Food'],
+    keywords: ['food', 'free food', 'pizza', 'snacks', 'refreshments', 'lunch', 'dinner'],
+  },
+  outdoors: {
+    categories: ['Sports', 'Social'],
+    keywords: ['outdoor', 'hike', 'camp', 'nature', 'trail', 'park'],
+  },
+  culture: {
+    categories: ['Entertainment', 'Social'],
+    keywords: ['culture', 'cultural', 'international', 'heritage', 'language', 'multicultural'],
+  },
+  faith: {
+    categories: ['Miscellaneous', 'Social'],
+    keywords: ['faith', 'church', 'worship', 'prayer', 'religious', 'bible'],
+  },
+  social: {
+    categories: ['Social'],
+    keywords: ['social', 'mixer', 'meetup', 'hangout', 'party', 'friends'],
+  },
+  wellness: {
+    categories: ['Health & Wellness'],
+    keywords: ['wellness', 'mental health', 'mindfulness', 'meditation', 'self care', 'therapy'],
+  },
+};
 
 const MAJOR_OPTIONS: MajorOption[] = [
   'Engineering',
@@ -224,10 +288,68 @@ function selectedCategoriesFromDeselects(deselected: string[]): Set<ExploreCateg
 }
 
 function normalizePreferredCategories(categories: string[] | undefined) {
-  return (categories || []).filter(isExploreCategory).slice(0, PERSONALIZATION_CATEGORY_LIMIT);
+  return Array.from(new Set((categories || []).filter(isExploreCategory)));
 }
 
-function getTimePreferenceScore(event: TAMUEvent, preference: string | null) {
+function buildRecommendedSelectedCategories(
+  preferredCategories: ExploreCategory[],
+  hasForYouPrefs: boolean,
+  deselectedCategories: string[],
+) {
+  const deselected = new Set(deselectedCategories.filter(isExploreCategory));
+  const next = new Set<ExploreCategory>();
+
+  if (!deselected.has('Featured')) {
+    next.add('Featured');
+  }
+  if (hasForYouPrefs && !deselected.has('For U')) {
+    next.add('For U');
+  }
+
+  preferredCategories.forEach((category) => {
+    if (category !== 'For U' && !deselected.has(category)) {
+      next.add(category);
+    }
+  });
+
+  const hasBrowsableCategory = Array.from(next).some(
+    (category) => category !== 'Featured' && category !== 'For U',
+  );
+
+  if (!hasBrowsableCategory) {
+    ALL_STANDARD_CATEGORIES.forEach((category) => {
+      if (!deselected.has(category)) {
+        next.add(category);
+      }
+    });
+  }
+
+  return next.size ? next : new Set(FALLBACK_BROWSE_CATEGORIES);
+}
+
+function getMatchedInterestIds(event: TAMUEvent, preferredInterests: string[]) {
+  if (!preferredInterests.length) {
+    return [] as string[];
+  }
+
+  const category = event._category || classifyCategory(event);
+  const blob = normalizeMajorBlob(event._searchBlob || getSearchBlob(event));
+
+  return preferredInterests.filter((interestId) => {
+    const config = INTEREST_SIGNAL_CONFIG[interestId];
+    if (!config) {
+      return false;
+    }
+
+    if (config.categories.includes(category as StandardExploreCategory)) {
+      return true;
+    }
+
+    return config.keywords.some((keyword) => blob.includes(` ${keyword.toLowerCase().trim()} `));
+  });
+}
+
+function getTimePreferenceScore(event: TAMUEvent, preference: PreferredTimeOption) {
   if (!preference || preference === 'Anytime') return 0;
   const hour = new Date(event.date_ts * 1000).getHours();
   if (preference === 'Morning') {
@@ -245,10 +367,10 @@ function getTimePreferenceScore(event: TAMUEvent, preference: string | null) {
 function getPersonalizationScore(
   event: TAMUEvent,
   preferredCategories: ExploreCategory[],
+  preferredInterests: string[],
   preferredSocialMode: SocialMode | null,
-  preferredTime: string | null,
-  selectedMajor: MajorOption,
-  useMajorSignal: boolean,
+  preferredTime: PreferredTimeOption,
+  preferredMajor: MajorOption | null,
 ) {
   let score = 0;
   const category = event._category || classifyCategory(event);
@@ -256,12 +378,16 @@ function getPersonalizationScore(
   if (categoryIndex >= 0) {
     score += 34 - categoryIndex * 6;
   }
+  const interestMatches = getMatchedInterestIds(event, preferredInterests);
+  if (interestMatches.length > 0) {
+    score += 12 + Math.min(10, (interestMatches.length - 1) * 3);
+  }
   if (category === 'Social' && preferredSocialMode) {
     if ((event._socialMode || getSocialMode(event)) === preferredSocialMode) {
       score += 16;
     }
   }
-  if (useMajorSignal && matchesMajor(event, selectedMajor)) {
+  if (preferredMajor && matchesMajor(event, preferredMajor)) {
     score += 10;
   }
   score += getTimePreferenceScore(event, preferredTime);
@@ -370,11 +496,16 @@ const DEFAULT_USER_EVENT_PREFERENCES: UserEventPreferences = {
   major: null,
   preferredTime: null,
   avoidFriday: false,
+  preferredCategories: [],
+  preferredInterests: [],
 };
 
 function normalizePreferredTime(value?: string | null): PreferredTimeOption {
   if (!value) return null;
-  if (value === 'Morning' || value === 'Afternoon' || value === 'Evening' || value === 'No Preference') {
+  if (value === 'No Preference') {
+    return 'Anytime';
+  }
+  if (value === 'Morning' || value === 'Afternoon' || value === 'Evening' || value === 'Anytime') {
     return value;
   }
   return null;
@@ -579,7 +710,7 @@ function matchesMajor(event: TAMUEvent, major: MajorOption) {
 }
 
 function matchesPreferredTime(event: TAMUEvent, preferredTime: PreferredTimeOption) {
-  if (!preferredTime || preferredTime === 'No Preference') return true;
+  if (!preferredTime || preferredTime === 'Anytime') return true;
   const hour = new Date(event.date_ts * 1000).getHours();
   if (preferredTime === 'Morning') return hour >= 5 && hour < 11;
   if (preferredTime === 'Afternoon') return hour >= 11 && hour < 17;
@@ -593,8 +724,10 @@ function isFridayEvent(event: TAMUEvent) {
 function hasUserEventPreferences(preferences: UserEventPreferences) {
   return Boolean(
     preferences.major ||
-    (preferences.preferredTime && preferences.preferredTime !== 'No Preference') ||
-    preferences.avoidFriday,
+    (preferences.preferredTime && preferences.preferredTime !== 'Anytime') ||
+    preferences.avoidFriday ||
+    preferences.preferredCategories.length > 0 ||
+    preferences.preferredInterests.length > 0,
   );
 }
 
@@ -604,46 +737,58 @@ function getForYouMeta(event: TAMUEvent, preferences: UserEventPreferences) {
   }
 
   const reasons: string[] = [];
-  let score = event.campus_interest_score ?? 40;
+  let score = event.campus_interest_score ?? 42;
+  const category = event._category || classifyCategory(event);
+  const categoryMatch = preferences.preferredCategories.includes(category);
+  const interestMatches = getMatchedInterestIds(event, preferences.preferredInterests);
+  const majorMatch = preferences.major ? matchesMajor(event, preferences.major) : false;
 
-  if (preferences.major) {
-    if (matchesMajor(event, preferences.major)) {
-      score += 30;
-      reasons.push('major_match');
-    } else {
-      score -= 8;
-    }
+  if (categoryMatch) {
+    score += 26;
+    reasons.push('category_match');
   }
 
-  if (preferences.preferredTime && preferences.preferredTime !== 'No Preference') {
+  if (interestMatches.length > 0) {
+    score += 18 + Math.min(12, (interestMatches.length - 1) * 4);
+    reasons.push('interest_match');
+  }
+
+  if (majorMatch) {
+    score += 20;
+    reasons.push('major_match');
+  }
+
+  if (preferences.preferredTime && preferences.preferredTime !== 'Anytime') {
     if (matchesPreferredTime(event, preferences.preferredTime)) {
-      score += 18;
+      score += 14;
       reasons.push('time_match');
     } else {
-      score -= 12;
+      score -= 6;
     }
   }
 
   if (preferences.avoidFriday) {
     if (isFridayEvent(event)) {
-      score -= 22;
+      score -= 18;
       reasons.push('friday_filtered');
     } else {
-      score += 6;
+      score += 4;
       reasons.push('weekday_match');
     }
   }
 
   if (event.campus_interest_label === 'high') {
+    score += 6;
     reasons.push('high_interest');
   } else if (event.campus_interest_label === 'medium') {
+    score += 2;
     reasons.push('medium_interest');
   }
 
   const normalizedScore = Math.max(0, Math.min(100, score));
   const matched =
-    normalizedScore >= 55 &&
-    (!preferences.avoidFriday || !isFridayEvent(event));
+    (!preferences.avoidFriday || !isFridayEvent(event)) &&
+    (categoryMatch || interestMatches.length > 0 || majorMatch || normalizedScore >= 54);
 
   return {
     matched,
@@ -990,6 +1135,12 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const [rewardToast, setRewardToast] = useState<{ title: string; body: string } | null>(null);
   const rewardToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasAppliedInitialCategorySync = useRef(false);
+  const appliedPreferenceLandingSignature = useRef<string | null>(null);
+  const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
+  const preferredEventInterests = useAppShellStore((state) => state.preferredEventInterests);
+  const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
+  const storedPreferredTime = useAppShellStore((state) => state.preferredTime);
+  const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
 
   useEffect(() => {
     let cancelled = false;
@@ -1008,6 +1159,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           major: nextMajor,
           preferredTime: normalizePreferredTime(profile?.preferred_time),
           avoidFriday: Boolean(profile?.avoid_friday),
+          preferredCategories: [],
+          preferredInterests: [],
         });
         if (nextMajor && hydratedProfileMajorForUser.current !== user.id) {
           setSelectedMajor(nextMajor);
@@ -1026,10 +1179,25 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     };
   }, [setSelectedMajor, user?.id]);
 
+  const normalizedPreferenceCategories = useMemo(
+    () => normalizePreferredCategories(preferredEventCategories),
+    [preferredEventCategories],
+  );
+
+  const effectiveProfilePreferences = useMemo(
+    () => ({
+      ...profilePreferences,
+      preferredTime: normalizePreferredTime(storedPreferredTime ?? profilePreferences.preferredTime),
+      preferredCategories: normalizedPreferenceCategories,
+      preferredInterests: preferredEventInterests.filter((entry): entry is string => typeof entry === 'string'),
+    }),
+    [normalizedPreferenceCategories, preferredEventInterests, profilePreferences, storedPreferredTime],
+  );
+
   const personalizedEvents = useMemo(
     () =>
       events.map((event) => {
-        const meta = getForYouMeta(event, profilePreferences);
+        const meta = getForYouMeta(event, effectiveProfilePreferences);
         return {
           ...event,
           _forYouMatched: meta.matched,
@@ -1037,51 +1205,30 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           _forYouReasons: meta.reasons,
         };
       }),
-    [events, profilePreferences],
+    [effectiveProfilePreferences, events],
   );
 
-  const hasForYouPrefs = useMemo(() => hasUserEventPreferences(profilePreferences), [profilePreferences]);
-  const profileMajor = profilePreferences.major;
-
-  const {
-    data: preferredEventCategories,
-  } = useQuery({
-    queryKey: ['user-event-categories', user?.id],
-    enabled: !!user?.id,
-    queryFn: async () => {
-      const profile = await fetchUserProfile(user!.id);
-      return profile?.preferred_event_categories || [];
-    },
-  });
-
-  const {
-    data: preferredSocialMode,
-  } = useQuery({
-    queryKey: ['user-social-mode', user?.id],
-    enabled: !!user?.id,
-    queryFn: async () => {
-      const profile = await fetchUserProfile(user!.id);
-      return profile?.social_mode as SocialMode || null;
-    },
-  });
-
-  const {
-    data: preferredTime,
-  } = useQuery({
-    queryKey: ['user-preferred-time', user?.id],
-    enabled: !!user?.id,
-    queryFn: async () => {
-      const profile = await fetchUserProfile(user!.id);
-      return profile?.preferred_time || null;
-    },
-  });
-
-  const normalizedPreferenceCategories = useMemo(
-    () => normalizePreferredCategories(preferredEventCategories),
-    [preferredEventCategories],
+  const hasForYouPrefs = useMemo(
+    () => hasUserEventPreferences(effectiveProfilePreferences),
+    [effectiveProfilePreferences],
   );
-
-  const isEventPreferencesCompleted = !!preferredEventCategories && preferredEventCategories.length > 0;
+  const profileMajor = effectiveProfilePreferences.major;
+  const personalizationMajor = isMajorSpecific ? selectedMajor : profileMajor;
+  const preferenceLandingSignature = useMemo(
+    () =>
+      JSON.stringify({
+        completed: isEventPreferencesCompleted,
+        categories: normalizedPreferenceCategories,
+        interests: effectiveProfilePreferences.preferredInterests,
+        hasForYouPrefs,
+      }),
+    [
+      effectiveProfilePreferences.preferredInterests,
+      hasForYouPrefs,
+      isEventPreferencesCompleted,
+      normalizedPreferenceCategories,
+    ],
+  );
 
   useEffect(() => {
     if (hasAppliedInitialCategorySync.current) {
@@ -1220,18 +1367,18 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         const leftScore = getPersonalizationScore(
           left,
           normalizedPreferenceCategories,
+          effectiveProfilePreferences.preferredInterests,
           preferredSocialMode,
-          preferredTime,
-          selectedMajor,
-          isMajorSpecific,
+          effectiveProfilePreferences.preferredTime,
+          personalizationMajor,
         );
         const rightScore = getPersonalizationScore(
           right,
           normalizedPreferenceCategories,
+          effectiveProfilePreferences.preferredInterests,
           preferredSocialMode,
-          preferredTime,
-          selectedMajor,
-          isMajorSpecific,
+          effectiveProfilePreferences.preferredTime,
+          personalizationMajor,
         );
         if (rightScore !== leftScore) {
           return rightScore - leftScore;
@@ -1249,14 +1396,15 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     isForYouSelected,
     nowTs,
     normalizedPreferenceCategories,
+    effectiveProfilePreferences.preferredInterests,
+    effectiveProfilePreferences.preferredTime,
     deferredSearchQuery,
     preferredSocialMode,
-    preferredTime,
     selectedCategories,
-    selectedMajor,
     socialMode,
     standardSelectedCategories,
     scheduledEvents,
+    personalizationMajor,
   ]);
 
   const discoverEvents = useMemo(() => filteredUpcomingEvents, [filteredUpcomingEvents]);
@@ -1274,20 +1422,49 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   useEffect(() => {
     setSwipeIndex(0);
-  }, [selectedCategories, socialMode, deferredSearchQuery, isMajorSpecific, selectedMajor, profileMajor, profilePreferences.avoidFriday, profilePreferences.preferredTime]);
+  }, [
+    selectedCategories,
+    socialMode,
+    deferredSearchQuery,
+    isMajorSpecific,
+    selectedMajor,
+    profileMajor,
+    effectiveProfilePreferences.avoidFriday,
+    effectiveProfilePreferences.preferredTime,
+    effectiveProfilePreferences.preferredCategories,
+    effectiveProfilePreferences.preferredInterests,
+  ]);
 
   useEffect(() => {
     if (!isEventPreferencesCompleted) {
       return;
     }
-    setSelectedCategories(new Set(DEFAULT_SELECTED_CATEGORIES));
+    if (appliedPreferenceLandingSignature.current === preferenceLandingSignature) {
+      return;
+    }
+    appliedPreferenceLandingSignature.current = preferenceLandingSignature;
+    setSelectedCategories(
+      buildRecommendedSelectedCategories(
+        normalizedPreferenceCategories,
+        hasForYouPrefs,
+        deselectedCategories,
+      ),
+    );
     if (preferredSocialMode) {
       setSocialMode(preferredSocialMode);
     }
     if (!embedded) {
       setView('discover');
     }
-  }, [embedded, isEventPreferencesCompleted, preferredSocialMode]);
+  }, [
+    deselectedCategories,
+    embedded,
+    hasForYouPrefs,
+    isEventPreferencesCompleted,
+    normalizedPreferenceCategories,
+    preferenceLandingSignature,
+    preferredSocialMode,
+  ]);
 
 
 

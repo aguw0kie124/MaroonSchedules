@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, SafeAreaView, StatusBar, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, SafeAreaView, StatusBar } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { requestJson } from '../../api/client';
 import { Card, SectionLabel, Divider, StatPill, ActionButton, Badge } from './DiningUI';
@@ -20,7 +20,7 @@ const M_ICON: any = { breakfast: Sunrise, lunch: SunMedium, dinner: MoonStar };
 
 export default function MealOptimizerScreen({ navigation, embedded = false }: any) {
   const { user } = useUser();
-  const { COLORS, theme, wallpaperUri } = useTheme();
+  const { COLORS, theme } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
 
@@ -82,8 +82,6 @@ export default function MealOptimizerScreen({ navigation, embedded = false }: an
       setMsg({ ok: true, text: `Added "${variant.label}" to tracker!` });
     } catch { setMsg({ ok: false, text: 'Could not log meal.' }); }
   };
-
-  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const mealPlan = plan?.plan || {};
   const openFullMenu = (mealPeriod: string) => {
@@ -265,9 +263,6 @@ export default function MealOptimizerScreen({ navigation, embedded = false }: an
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
       <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
-      <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.34)' : 'rgba(255,255,255,0.18)' }]} />
-      </ImageBackground>
       {content}
     </SafeAreaView>
   );

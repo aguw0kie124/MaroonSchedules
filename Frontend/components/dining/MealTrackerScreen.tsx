@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, ScrollView, SafeAreaView, StatusBar, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, ScrollView, SafeAreaView, StatusBar } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { useFocusEffect } from '@react-navigation/native';
 import { requestJson } from '../../api/client';
@@ -12,7 +12,7 @@ const MICROS: any = { vitamin_c: 90, calcium: 1000, iron: 8, potassium: 3400, ma
 
 export default function MealTrackerScreen({ navigation, embedded = false }: any) {
   const { user } = useUser();
-  const { theme, wallpaperUri } = useTheme();
+  const { theme } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
 
@@ -69,8 +69,6 @@ export default function MealTrackerScreen({ navigation, embedded = false }: any)
   const macros = profile?.macros || { protein: 150, carbs: 200, fat: 60 };
   const calPct = Math.min(1, (totals.calories || 0) / target);
   const isToday = date === getLocalDateString();
-
-  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const contentBody = (
       <>
@@ -156,9 +154,6 @@ export default function MealTrackerScreen({ navigation, embedded = false }: any)
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
       <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
-      <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.34)' : 'rgba(255,255,255,0.18)' }]} />
-      </ImageBackground>
       {content}
     </SafeAreaView>
   );

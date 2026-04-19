@@ -318,14 +318,6 @@ function PreviewPage({
                       size={14}
                       color={hasImage ? '#FFFFFF' : hotspot.pulseColor}
                     />
-                    <Text
-                      style={[
-                        styles.iconActionLabel,
-                        { color: hasImage ? '#FFFFFF' : hotspot.pulseColor },
-                      ]}
-                    >
-                      {item.commentCount || 0}
-                    </Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -722,10 +714,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
     borderWidth: 1,
-  },
-  iconActionLabel: {
-    fontSize: 11,
-    fontWeight: '800',
   },
   eventPill: {
     paddingHorizontal: 10,

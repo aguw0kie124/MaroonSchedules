@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  ImageBackground,
   KeyboardAvoidingView,
   Platform,
   StatusBar,
@@ -64,7 +63,7 @@ function getEntryKey(entry: any) {
 
 export default function FoodDatabaseScreen({ navigation, embedded = false }: any) {
   const { user } = useUser();
-  const { theme, wallpaperUri } = useTheme();
+  const { theme } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
 
@@ -165,7 +164,6 @@ export default function FoodDatabaseScreen({ navigation, embedded = false }: any
     }
   }, [portionCounts, refreshTrackerCounts, user]);
 
-  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
   const renderFoodCard = (item: any, index?: number) => {
     const itemKey = buildFoodItemKey(item);
     const count = portionCounts[itemKey]?.count || 0;
@@ -275,9 +273,6 @@ export default function FoodDatabaseScreen({ navigation, embedded = false }: any
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
       <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
-      <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)' }]} />
-      </ImageBackground>
       {content}
     </SafeAreaView>
   );
