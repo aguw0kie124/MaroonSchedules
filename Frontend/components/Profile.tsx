@@ -93,7 +93,6 @@ import { StoryViewer } from './pings/StoryViewer';
 
 const PROFILE_TABS = [
   { key: 'feed', icon: LayoutGrid },
-  { key: 'saved', icon: BookmarkIcon },
   { key: 'resources', icon: RotateCw },
   { key: 'edit', icon: Settings },
 ] as const;
@@ -197,7 +196,18 @@ export function Profile() {
       return userActivities.map((act: any) => mapActivityToPing(act, user, new Map()));
     },
     enabled: !!user?.id,
+    staleTime: 0,
+    gcTime: 1000 * 60 * 5,
   });
+  const refetchUserPings = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['user-pings', API_URL, user?.id] });
+  }, [queryClient, user?.id]);
+
+  useEffect(() => {
+    if (isFocused && user?.id) {
+      refetchUserPings();
+    }
+  }, [isFocused, user?.id, refetchUserPings]);
 
   const { data: friends = [], refetch: refetchFriends, isLoading: loadingFriends } = useQuery({
     queryKey: ['campus-ping-friends', API_URL, user?.id],
@@ -211,6 +221,7 @@ export function Profile() {
 
   const { viewedStoryIds, addViewedStory } = useAppShellStore();
   const [selectedStoryUserIndex, setSelectedStoryUserIndex] = useState(0);
+  const [storyViewerVisible, setStoryViewerVisible] = useState(false);
 
   const { data: allFeedPings = [] } = useQuery({
     queryKey: ['campus-pings', API_URL],
@@ -225,14 +236,14 @@ export function Profile() {
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const recentPings = allFeedPings.filter((p: any) => new Date(p.createdAt) > twentyFourHoursAgo);
     
-    const groups = new Map<string, any[]>();
+    const storyGroupsMap = new global.Map<string, any[]>();
     recentPings.forEach(p => {
-      const g = groups.get(p.userId) || [];
+      const g = storyGroupsMap.get(p.userId) || [];
       g.push(p);
-      groups.set(p.userId, g);
+      storyGroupsMap.set(p.userId, g);
     });
 
-    const storyUsers = Array.from(groups.entries()).map(([uid, pings]) => {
+    const storyUsers = Array.from(storyGroupsMap.entries()).map(([uid, pings]) => {
       const first = pings[0];
       const allSeen = pings.every(p => viewedStoryIds.includes(p.id));
       return {
@@ -321,6 +332,7 @@ export function Profile() {
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
   const [showFriendsModal, setShowFriendsModal] = useState(false);
+  const [showSavedPingsModal, setShowSavedPingsModal] = useState(false);
   
   const userDisplayName = useAppShellStore((state) => state.userDisplayName);
   const userBio = useAppShellStore((state) => state.userBio);
@@ -722,12 +734,22 @@ export function Profile() {
                 <Text style={{ color: COLORS.textTertiary, fontSize: 13 }}>{user?.primaryEmailAddress?.emailAddress}</Text>
               </View>
             </View>
-            <Pressable 
-              onPress={handleAvatarPress}
-              style={[styles.changePhotoButton, { backgroundColor: 'rgba(255,255,255,0.1)' }]}
-            >
-              <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>Edit</Text>
-            </Pressable>
+              <Pressable 
+                onPress={handleAvatarPress}
+                style={[
+                  styles.changePhotoButton, 
+                  { 
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    borderColor: COLORS.border,
+                  }
+                ]}
+              >
+                <Text style={{ color: COLORS.primary, fontWeight: '800', fontSize: 13 }}>Edit</Text>
+              </Pressable>
           </View>
 
           {/* Personality Card */}
@@ -740,7 +762,17 @@ export function Profile() {
                   onChangeText={setFullName}
                   placeholder="Your Name"
                   placeholderTextColor={COLORS.textTertiary}
-                  style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 48, paddingHorizontal: 16 }]}
+                  style={[
+                    styles.modalInput, 
+                    { 
+                      backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7', 
+                      borderRadius: 14, 
+                      height: 48, 
+                      paddingHorizontal: 16,
+                      color: COLORS.textPrimary,
+                      fontWeight: '600',
+                    }
+                  ]}
                 />
               </View>
               <View>
@@ -768,7 +800,17 @@ export function Profile() {
                 placeholder="https://yourlink.com"
                 placeholderTextColor={COLORS.textTertiary}
                 autoCapitalize="none"
-                style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 48, paddingHorizontal: 16 }]}
+                style={[
+                  styles.modalInput, 
+                  { 
+                    backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7', 
+                    borderRadius: 14, 
+                    height: 48, 
+                    paddingHorizontal: 16,
+                    color: COLORS.textPrimary,
+                    fontWeight: '600'
+                  }
+                ]}
               />
             </View>
           </View>
@@ -1358,134 +1400,191 @@ export function Profile() {
 
     if (embedded) return content;
     return <View style={styles.section}>{content}</View>;
-  };
-
-
-
+  }
+  
   const renderFriendsModal = () => (
     <Modal
       visible={showFriendsModal}
-      animationType="slide"
-      transparent={false}
+      animationType="fade"
+      transparent={true}
       onRequestClose={() => setShowFriendsModal(false)}
     >
-      <View style={[styles.modalContainer, { backgroundColor: COLORS.surface }]}>
-        <View style={styles.modalHeader}>
-          <Text style={[styles.modalTitle, { color: COLORS.textPrimary }]}>Friends</Text>
-          <Pressable onPress={() => setShowFriendsModal(false)} style={styles.modalCloseButton}>
-            <X size={24} color={COLORS.textPrimary} />
-          </Pressable>
-        </View>
-
-        <View style={styles.modalSearchContainer}>
-          <View style={styles.modalSearchInputWrap}>
-            <Search size={18} color={COLORS.textTertiary} />
-            <TextInput
-              value={friendSearchQuery}
-              onChangeText={setFriendSearchQuery}
-              placeholder="Search people..."
-              placeholderTextColor={COLORS.textTertiary}
-              style={[styles.modalSearchInput, { color: COLORS.textPrimary }]}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-        </View>
-
+      <Pressable 
+        style={styles.modalOverlay} 
+        onPress={() => setShowFriendsModal(false)}
+      >
         <KeyboardAvoidingView 
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1 }}
+          style={styles.modalCardWrapper}
         >
-          <ScrollView 
-            contentContainerStyle={styles.modalScrollContent}
-            keyboardShouldPersistTaps="handled"
+          <Pressable 
+            style={[
+              styles.modalCard, 
+              { 
+                backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+                marginHorizontal: 20,
+                marginBottom: 40,
+                borderRadius: 28,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: 0.3,
+                shadowRadius: 20,
+                elevation: 10,
+              }
+            ]} 
+            onPress={(e) => e.stopPropagation()}
           >
-            {friendSearchQuery.trim().length > 0 ? (
-              <View>
-                <Text style={styles.modalSectionLabel}>Search Results</Text>
-                {searchingFriends ? (
-                  <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
-                ) : friendSearchResults.length > 0 ? (
-                  friendSearchResults.map((item) => (
-                    <View key={item.id} style={styles.modalFriendRow}>
-                       <View style={styles.listAvatar}>
+            {/* Header */}
+            <View style={styles.modalCardHeader}>
+              <View style={{ width: 40 }} />
+              <Text style={[styles.modalCardTitle, { color: COLORS.textPrimary }]}>Friends</Text>
+              <Pressable onPress={() => setShowFriendsModal(false)} style={styles.modalCardClose}>
+                <X size={22} color={COLORS.textPrimary} />
+              </Pressable>
+            </View>
+
+            {/* Search Bar */}
+            <View style={styles.cardSearchContainer}>
+              <View style={[styles.cardSearchInputWrap, { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}>
+                <Search size={16} color={COLORS.textTertiary} style={{ marginRight: 8 }} />
+                <TextInput
+                  value={friendSearchQuery}
+                  onChangeText={setFriendSearchQuery}
+                  placeholder="Search"
+                  placeholderTextColor={COLORS.textTertiary}
+                  style={[styles.cardSearchInput, { color: COLORS.textPrimary }]}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+            </View>
+
+            {/* Scrollable Content */}
+            <ScrollView 
+              style={{ flex: 1 }}
+              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {friendSearchQuery.trim().length > 0 ? (
+                <View>
+                  {searchingFriends ? (
+                    <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
+                  ) : friendSearchResults.length > 0 ? (
+                    friendSearchResults.map((item) => (
+                      <View key={item.id} style={styles.modalFriendRow}>
+                        <View style={styles.listAvatar}>
                           {item.profile_image_url ? (
                             <Image source={{ uri: item.profile_image_url }} style={styles.listAvatarImage} />
                           ) : (
-                            <Text style={styles.listAvatarText}>{item.name?.[0] || 'U'}</Text>
+                            <View style={[styles.listAvatarImage, { backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' }]}>
+                              <Text style={{ color: COLORS.textPrimary, fontWeight: '700' }}>{item.name?.[0] || 'U'}</Text>
+                            </View>
                           )}
                         </View>
-                      <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={styles.toolTitle}>{item.name}</Text>
-                        {item.major ? (
-                          <Text style={styles.email} numberOfLines={1}>{item.major}</Text>
-                        ) : null}
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 15 }}>{item.username || item.name}</Text>
+                          <Text style={{ color: COLORS.textTertiary, fontSize: 13 }} numberOfLines={1}>{item.name}</Text>
+                        </View>
+                        <Pressable
+                          style={[
+                            styles.friendCardActionButton,
+                            { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }
+                          ]}
+                          onPress={() => item.is_friend ? handleRemoveFriend(item.id) : handleAddFriend(item.id, item.name)}
+                        >
+                          <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 13 }}>
+                            {item.is_friend ? 'Remove' : 'Add'}
+                          </Text>
+                        </Pressable>
                       </View>
-                      <Pressable
-                        style={[
-                          styles.friendActionButton,
-                          item.is_friend && styles.friendActionButtonDisabled,
-                        ]}
-                        disabled={item.is_friend}
-                        onPress={() => handleAddFriend(item.id, item.name)}
-                      >
-                        <Text style={[
-                            styles.friendActionButtonText,
-                            item.is_friend && styles.friendActionButtonTextDisabled,
-                          ]}>
-                          {item.is_friend ? 'Friends' : 'Add'}
-                        </Text>
-                      </Pressable>
+                    ))
+                  ) : (
+                    <View style={styles.modalEmptyState}>
+                      <Text style={{ color: COLORS.textTertiary }}>No users found.</Text>
                     </View>
-                  ))
-                ) : (
-                  <View style={styles.modalEmptyState}>
-                    <Text style={{ color: COLORS.textTertiary }}>No users found.</Text>
-                  </View>
-                )}
-              </View>
-            ) : (
-              <View>
-                <Text style={styles.modalSectionLabel}>Connected Friends</Text>
-                {loadingFriends ? (
-                  <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
-                ) : friends.length > 0 ? (
-                  friends.map((item) => (
-                    <View key={item.id} style={styles.modalFriendRow}>
-                       <View style={styles.listAvatar}>
+                  )}
+                </View>
+              ) : (
+                <View>
+                  {loadingFriends ? (
+                    <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
+                  ) : friends.length > 0 ? (
+                    friends.map((item) => (
+                      <View key={item.id} style={styles.modalFriendRow}>
+                        <View style={styles.listAvatar}>
                           {item.profile_image_url ? (
                             <Image source={{ uri: item.profile_image_url }} style={styles.listAvatarImage} />
                           ) : (
-                            <Text style={styles.listAvatarText}>{item.name?.[0] || 'U'}</Text>
+                            <View style={[styles.listAvatarImage, { backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' }]}>
+                              <Text style={{ color: COLORS.textPrimary, fontWeight: '700' }}>{item.name?.[0] || 'U'}</Text>
+                            </View>
                           )}
                         </View>
-                      <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={styles.toolTitle}>{item.name}</Text>
-                        {item.major ? (
-                          <Text style={styles.email} numberOfLines={1}>{item.major}</Text>
-                        ) : null}
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                          <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 15 }}>{item.username || item.name}</Text>
+                          <Text style={{ color: COLORS.textTertiary, fontSize: 13 }} numberOfLines={1}>{item.name}</Text>
+                        </View>
+                        <Pressable 
+                          style={[
+                            styles.friendCardActionButton, 
+                            { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }
+                          ]} 
+                          onPress={() => handleRemoveFriend(item.id)}
+                        >
+                          <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 13 }}>Remove</Text>
+                        </Pressable>
                       </View>
-                      <Pressable 
-                        style={styles.friendActionButton} 
-                        onPress={() => handleRemoveFriend(item.id)}
-                      >
-                        <Text style={styles.friendActionButtonText}>Remove</Text>
-                      </Pressable>
+                    ))
+                  ) : (
+                    <View style={styles.modalEmptyState}>
+                      <UserRound size={48} color={COLORS.textTertiary} strokeWidth={1} />
+                      <Text style={{ color: COLORS.textTertiary, marginTop: 12 }}>No friends yet</Text>
                     </View>
-                  ))
-                ) : (
-                  <View style={styles.modalEmptyState}>
-                    <UserRound size={48} color={COLORS.textTertiary} strokeWidth={1} />
-                    <Text style={{ color: COLORS.textTertiary, marginTop: 12 }}>No friends yet</Text>
-                  </View>
-                )}
-              </View>
-            )}
-          </ScrollView>
+                  )}
+                </View>
+              )}
+            </ScrollView>
+          </Pressable>
         </KeyboardAvoidingView>
-      </View>
+      </Pressable>
     </Modal>
   );
+
+  const renderSavedPingsModal = () => (
+    <Modal
+      visible={showSavedPingsModal}
+      animationType="fade"
+      transparent={true}
+      onRequestClose={() => setShowSavedPingsModal(false)}
+    >
+      <Pressable 
+        style={styles.modalOverlay} 
+        onPress={() => setShowSavedPingsModal(false)}
+      >
+        <View style={styles.modalCardWrapper}>
+          <Pressable style={[styles.modalCard, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalCardHeader}>
+              <View style={{ width: 40 }} />
+              <Text style={[styles.modalCardTitle, { color: COLORS.textPrimary }]}>Saved Pings</Text>
+              <Pressable onPress={() => setShowSavedPingsModal(false)} style={styles.modalCardClose}>
+                <X size={22} color={COLORS.textPrimary} />
+              </Pressable>
+            </View>
+
+            <ScrollView 
+              style={{ flex: 1 }}
+              contentContainerStyle={{ padding: 40, alignItems: 'center' }}
+            >
+              <BookmarkIcon size={48} color={COLORS.textTertiary} strokeWidth={1} style={{ opacity: 0.5 }} />
+              <Text style={{ color: COLORS.textTertiary, marginTop: 12, textAlign: 'center' }}>No saved pings yet</Text>
+            </ScrollView>
+          </Pressable>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+
 
   const renderResourcesTab = () => (
     <View style={styles.section}>
@@ -1743,12 +1842,6 @@ export function Profile() {
 
             <View style={{ flex: 1 }}>
               {activeTab === 'feed' && renderContentGrid(userPings)}
-              {activeTab === 'saved' && (
-                <View style={{ padding: 40, alignItems: 'center' }}>
-                  <BookmarkIcon size={48} color={COLORS.textTertiary} strokeWidth={1} style={{ opacity: 0.5 }} />
-                  <Text style={{ color: COLORS.textTertiary, marginTop: 12 }}>No saved pings yet</Text>
-                </View>
-              )}
               {activeTab === 'resources' && (
                 <View style={{ padding: 16 }}>
                   {renderResourcesTab()}
@@ -1782,7 +1875,8 @@ export function Profile() {
                         onChangeText={setFullName}
                         placeholder="Your Name"
                         placeholderTextColor={COLORS.textTertiary}
-                        style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 48, paddingHorizontal: 16 }]}
+                        selectionColor={COLORS.primary}
+                        style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 48, paddingHorizontal: 16, color: COLORS.textPrimary }]}
                       />
                     </View>
                     <View>
@@ -1792,9 +1886,10 @@ export function Profile() {
                         onChangeText={setBio}
                         placeholder="Tell people about yourself..."
                         placeholderTextColor={COLORS.textTertiary}
+                        selectionColor={COLORS.primary}
                         multiline
                         maxLength={150}
-                        style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 100, paddingHorizontal: 16, paddingTop: 12 }]}
+                        style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 100, paddingHorizontal: 16, paddingTop: 12, color: COLORS.textPrimary }]}
                       />
                     </View>
                     <View>
@@ -1804,7 +1899,8 @@ export function Profile() {
                         onChangeText={setWebsite}
                         placeholder="https://..."
                         placeholderTextColor={COLORS.textTertiary}
-                        style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 48, paddingHorizontal: 16 }]}
+                        selectionColor={COLORS.primary}
+                        style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 48, paddingHorizontal: 16, color: COLORS.textPrimary }]}
                       />
                     </View>
                   </View>
@@ -1840,6 +1936,16 @@ export function Profile() {
                     
                     {renderNotificationsTab && renderNotificationsTab(true, false)}
                     {renderBlockedTab && renderBlockedTab(true, false)}
+                    
+                    <Pressable style={styles.toolRow} onPress={() => setShowSavedPingsModal(true)}>
+                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
+                        <BookmarkIcon size={20} color="#3B82F6" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.toolTitle}>Saved Pings</Text>
+                      </View>
+                      <ChevronRight size={20} color={COLORS.textTertiary} />
+                    </Pressable>
                     
                     <Pressable style={styles.toolRow} onPress={() => navigation.navigate('ClubAccess')}>
                       <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 211, 153, 0.12)' }]}>
@@ -1954,6 +2060,7 @@ export function Profile() {
       )}
 
       {renderFriendsModal()}
+      {renderSavedPingsModal()}
       {renderEnlargedPostModal()}
 
       <PingCommentsModal 
@@ -2623,6 +2730,10 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       paddingVertical: 8,
       borderRadius: 8,
     },
+    modalInput: {
+      fontSize: 15,
+      color: COLORS.textPrimary,
+    },
     editProfileCard: {
       padding: 16,
       borderRadius: 16,
@@ -2630,9 +2741,12 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       alignItems: 'stretch',
     },
     changePhotoButton: {
-      paddingHorizontal: 12,
+      paddingHorizontal: 16,
       paddingVertical: 8,
-      borderRadius: 8,
+      borderRadius: 99,
+      alignSelf: 'center',
+      minWidth: 60,
+      alignItems: 'center',
     },
     inputLabel: {
       fontSize: 14,
@@ -2685,5 +2799,71 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       paddingVertical: 16,
       borderRadius: 16,
       backgroundColor: isDark ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.05)',
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.75)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    modalCardWrapper: {
+      width: '100%',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    modalCard: {
+      width: '90%',
+      height: '75%',
+      borderRadius: 28,
+      overflow: 'hidden',
+      elevation: 20,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.4,
+      shadowRadius: 20,
+    },
+    modalCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 16,
+      paddingTop: 20,
+      paddingBottom: 16,
+    },
+    modalCardTitle: {
+      fontSize: 17,
+      fontWeight: '800',
+    },
+    modalCardClose: {
+      width: 40,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    cardSearchContainer: {
+      paddingHorizontal: 20,
+      marginBottom: 16,
+    },
+    cardSearchInputWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      height: 44,
+      borderRadius: 12,
+      paddingHorizontal: 12,
+    },
+    cardSearchInput: {
+      flex: 1,
+      fontSize: 16,
+      height: '100%',
+    },
+    modalFriendRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 12,
+    },
+    friendCardActionButton: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 10,
     },
   });

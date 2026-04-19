@@ -33,6 +33,7 @@ interface StoriesBarProps {
   onPressStory: (user: StoryUser) => void;
   onPressAdd?: () => void;
   userImage?: string | null;
+  userId?: string | null;
 }
 
 export const StoriesBar: React.FC<StoriesBarProps> = ({ 
@@ -40,7 +41,8 @@ export const StoriesBar: React.FC<StoriesBarProps> = ({
   myStory,
   onPressStory, 
   onPressAdd,
-  userImage 
+  userImage,
+  userId
 }) => {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
@@ -54,53 +56,60 @@ export const StoriesBar: React.FC<StoriesBarProps> = ({
       >
         {/* Your Story / Create */}
         <View style={styles.storyItem}>
-          <ScalePressable 
-            style={styles.avatarWrapper} 
-            onPress={() => {
-              if (myStory?.hasActiveStory) {
-                onPressStory({
-                  id: 'me',
-                  name: 'You',
-                  image: userImage || null,
-                  pings: myStory.pings,
-                  hasMedia: myStory.pings.some(p => p.imageUrl),
-                  allSeen: myStory.allSeen
-                });
-              } else {
-                onPressAdd?.();
-              }
-            }}
-          >
-            {myStory?.hasActiveStory ? (
-              <LinearGradient
-                colors={myStory.allSeen ? [COLORS.border, COLORS.border] : ['#833ab4', '#fd1d1d', '#fcb045']}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 1, y: 0.5 }}
-                style={styles.gradientBorder}
-              >
-                <View style={[styles.avatarInner, { backgroundColor: COLORS.background }]}>
-                  {userImage ? (
-                    <Image source={{ uri: userImage }} style={styles.avatar} />
-                  ) : (
-                    <View style={[styles.avatarPlaceholder, { backgroundColor: COLORS.surfaceElevated }]}>
-                      <Text style={[styles.placeholderText, { color: COLORS.textSecondary }]}>+</Text>
-                    </View>
-                  )}
+          <View style={styles.avatarWrapper}>
+            <ScalePressable 
+              onPress={() => {
+                if (myStory?.hasActiveStory) {
+                  onPressStory({
+                    id: userId || 'me',
+                    name: 'You',
+                    image: userImage || null,
+                    pings: myStory.pings,
+                    hasMedia: myStory.pings.some(p => p.imageUrl),
+                    allSeen: myStory.allSeen
+                  });
+                } else {
+                  onPressAdd?.();
+                }
+              }}
+            >
+              {myStory?.hasActiveStory ? (
+                <LinearGradient
+                  colors={myStory.allSeen ? ['#dbdbdb', '#dbdbdb'] : ['#833ab4', '#fd1d1d', '#fcb045']}
+                  start={{ x: 0, y: 0.5 }}
+                  end={{ x: 1, y: 0.5 }}
+                  style={styles.gradientBorder}
+                >
+                  <View style={[styles.avatarInner, { backgroundColor: COLORS.background }]}>
+                    {userImage ? (
+                      <Image source={{ uri: userImage }} style={styles.avatar} />
+                    ) : (
+                      <View style={[styles.avatarPlaceholder, { backgroundColor: COLORS.surfaceElevated }]}>
+                        <Text style={[styles.placeholderText, { color: COLORS.textSecondary }]}>+</Text>
+                      </View>
+                    )}
+                  </View>
+                </LinearGradient>
+              ) : (
+                <View style={[styles.emptyCreateCircle, { borderColor: COLORS.border }]}>
+                  <Plus size={24} color={COLORS.primary} />
                 </View>
-              </LinearGradient>
-            ) : (
-              <View style={[styles.emptyCreateCircle, { borderColor: COLORS.border }]}>
-                <Plus size={24} color={COLORS.primary} />
-              </View>
-            )}
+              )}
+            </ScalePressable>
             
-            {!myStory?.hasActiveStory && (
-              <View style={[styles.addBadge, { backgroundColor: COLORS.primary, borderColor: COLORS.background }]}>
+            {myStory?.hasActiveStory && (
+              <ScalePressable 
+                containerStyle={styles.addBadge}
+                style={{ backgroundColor: COLORS.primary, borderColor: COLORS.background, borderRadius: 10, width: 22, height: 22, borderWidth: 2, alignItems: 'center', justifyContent: 'center' }}
+                onPress={onPressAdd}
+              >
                 <Text style={styles.addIcon}>+</Text>
-              </View>
+              </ScalePressable>
             )}
-          </ScalePressable>
-          <Text style={[styles.userName, { color: COLORS.textSecondary }]} numberOfLines={1}>Create</Text>
+          </View>
+          <Text style={[styles.userName, { color: COLORS.textSecondary }]} numberOfLines={1}>
+            {myStory?.hasActiveStory ? 'Your Story' : 'Create'}
+          </Text>
         </View>
 
         {/* Friends Stories */}
@@ -111,7 +120,7 @@ export const StoriesBar: React.FC<StoriesBarProps> = ({
               style={styles.avatarWrapper}
             >
               <LinearGradient
-                colors={user.allSeen ? [COLORS.border, COLORS.border] : ['#833ab4', '#fd1d1d', '#fcb045']}
+                colors={user.allSeen ? ['#dbdbdb', '#dbdbdb'] : ['#833ab4', '#fd1d1d', '#fcb045']}
                 start={{ x: 0, y: 0.5 }}
                 end={{ x: 1, y: 0.5 }}
                 style={styles.gradientBorder}
@@ -159,6 +168,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6,
+    position: 'relative',
   },
   gradientBorder: {
     width: 68,
@@ -214,14 +224,16 @@ const styles = StyleSheet.create({
   },
   addBadge: {
     position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    bottom: -2,
+    right: -2,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 200,
+    elevation: 8,
   },
   addIcon: {
     color: '#fff',

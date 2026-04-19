@@ -2399,7 +2399,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       {/* Top UI Floating Elements */}
       <View
         pointerEvents="box-none"
-        style={[styles.topContainer, { top: 54, alignItems: "center" }]}
+        style={[styles.topContainer, { top: 59, alignItems: "center" }]}
       >
         <FloatingSearchBar
           styles={styles}
