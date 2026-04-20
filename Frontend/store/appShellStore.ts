@@ -129,6 +129,7 @@ type AppShellState = {
   isTOSAccepted: boolean;
   isNotificationPrompted: boolean;
   isNameOnboardingCompleted: boolean;
+  showNameOnboarding: boolean;
   isEventPreferencesCompleted: boolean;
   showEventPreferencesOnboarding: boolean;
   preferredEventCategories: string[];
@@ -158,6 +159,7 @@ type AppShellState = {
   setTOSAccepted: (accepted: boolean) => void;
   setNotificationPrompted: (prompted: boolean) => void;
   setNameOnboardingCompleted: (completed: boolean) => void;
+  setShowNameOnboarding: (visible: boolean) => void;
   setEventPreferencesCompleted: (completed: boolean) => void;
   setShowEventPreferencesOnboarding: (visible: boolean) => void;
   setPreferredEventCategories: (categories: string[]) => void;
@@ -185,6 +187,7 @@ export const useAppShellStore = create<AppShellState>()(
       isTOSAccepted: false,
       isNotificationPrompted: false,
       isNameOnboardingCompleted: false,
+      showNameOnboarding: false,
       isEventPreferencesCompleted: false,
       showEventPreferencesOnboarding: false,
       preferredEventCategories: [],
@@ -221,6 +224,7 @@ export const useAppShellStore = create<AppShellState>()(
       setTOSAccepted: (isTOSAccepted) => set({ isTOSAccepted }),
       setNotificationPrompted: (isNotificationPrompted) => set({ isNotificationPrompted }),
       setNameOnboardingCompleted: (isNameOnboardingCompleted) => set({ isNameOnboardingCompleted }),
+      setShowNameOnboarding: (showNameOnboarding) => set({ showNameOnboarding }),
       setEventPreferencesCompleted: (isEventPreferencesCompleted) => set({ isEventPreferencesCompleted }),
       setShowEventPreferencesOnboarding: (showEventPreferencesOnboarding) => set({ showEventPreferencesOnboarding }),
       setPreferredEventCategories: (preferredEventCategories) => set({ preferredEventCategories }),
@@ -252,7 +256,7 @@ export const useAppShellStore = create<AppShellState>()(
     }),
     {
       name: 'app-shell-store',
-      version: 10,
+      version: 11,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         parkingPermit: state.parkingPermit,
@@ -263,6 +267,7 @@ export const useAppShellStore = create<AppShellState>()(
         isTOSAccepted: state.isTOSAccepted,
         isNotificationPrompted: state.isNotificationPrompted,
         isNameOnboardingCompleted: state.isNameOnboardingCompleted,
+        showNameOnboarding: state.showNameOnboarding,
         isEventPreferencesCompleted: state.isEventPreferencesCompleted,
         preferredEventCategories: state.preferredEventCategories,
         preferredEventInterests: state.preferredEventInterests,
@@ -276,6 +281,7 @@ export const useAppShellStore = create<AppShellState>()(
         tabBarMode: state.tabBarMode,
         userBio: state.userBio,
         userGender: state.userGender,
+        userDisplayName: state.userDisplayName,
         showPingsOnProfile: state.showPingsOnProfile,
         viewedStoryIds: state.viewedStoryIds,
       }),
@@ -304,6 +310,9 @@ export const useAppShellStore = create<AppShellState>()(
           isNameOnboardingCompleted: typeof persisted.isNameOnboardingCompleted === 'boolean'
             ? persisted.isNameOnboardingCompleted
             : currentState.isNameOnboardingCompleted,
+          showNameOnboarding: typeof persisted.showNameOnboarding === 'boolean'
+            ? persisted.showNameOnboarding
+            : currentState.showNameOnboarding,
           isEventPreferencesCompleted: typeof persisted.isEventPreferencesCompleted === 'boolean'
             ? persisted.isEventPreferencesCompleted
             : currentState.isEventPreferencesCompleted,

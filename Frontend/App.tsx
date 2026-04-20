@@ -437,6 +437,8 @@ function RootNavigator() {
   const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
   const showEventPreferencesOnboarding = useAppShellStore((state) => state.showEventPreferencesOnboarding);
   const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
+  const showNameOnboarding = useAppShellStore((state) => state.showNameOnboarding);
+  const setShowNameOnboarding = useAppShellStore((state) => state.setShowNameOnboarding);
   const isAdmin = useAppShellStore((state) => state.adminAccessStatus);
   const setIsAdmin = useAppShellStore((state) => state.setAdminAccessStatus);
   const isRegularUserFlow = isSignedIn && authMode !== 'admin';
@@ -468,10 +470,13 @@ function RootNavigator() {
         onAccepted={() => setTOSAccepted(true)} 
       />
     );
-  } else if (isSignedIn && isTOSAccepted && !isNameOnboardingCompleted) {
+  } else if (isSignedIn && isTOSAccepted && (!isNameOnboardingCompleted || showNameOnboarding)) {
     content = (
       <NameOnboardingScreen 
-        onDone={() => setNameOnboardingCompleted(true)} 
+        onDone={() => {
+          setNameOnboardingCompleted(true);
+          setShowNameOnboarding(false);
+        }} 
       />
     );
   } else if (isRegularUserFlow && isTOSAccepted && isAdmin === null) {

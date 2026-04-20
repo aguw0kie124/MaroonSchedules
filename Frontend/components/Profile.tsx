@@ -1892,6 +1892,8 @@ export function Profile() {
                       style={styles.toolRow}
                       onPress={() => {
                         useAppShellStore.setState({
+                          isNameOnboardingCompleted: false,
+                          showNameOnboarding: true,
                           isEventPreferencesCompleted: false,
                           showEventPreferencesOnboarding: true,
                         });
