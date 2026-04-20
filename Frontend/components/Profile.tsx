@@ -906,8 +906,21 @@ export function Profile() {
      <View style={styles.modernProfileHeader}>
        <View style={{ alignItems: 'center', marginBottom: 24, marginTop: 10 }}>
          <ScalePressable 
-           onPress={handleStoryPress}
-           disabled={!myStoryData.pings?.length}
+           onPress={() => {
+             if (myStoryData.pings?.length) {
+               Alert.alert(
+                 'Profile Photo',
+                 'Would you like to view your story or update your profile photo?',
+                 [
+                   { text: 'View Story', onPress: handleStoryPress },
+                   { text: 'Update Photo', onPress: handleAvatarPress },
+                   { text: 'Cancel', style: 'cancel' }
+                 ]
+               );
+             } else {
+               handleAvatarPress();
+             }
+           }}
            style={[
              styles.modernAvatarWrapper,
              { width: 110, height: 110, borderRadius: 55, borderWidth: 3, borderColor: COLORS.primary, padding: 5 }
@@ -956,9 +969,7 @@ export function Profile() {
           </ScalePressable>
        </View>
 
-       <View style={[styles.bioSection, { paddingHorizontal: 4 }]}>
-         <Text style={[styles.modernBio, { fontSize: 15, textAlign: 'center', fontWeight: '500' }]}>{bio || 'Building the future of campus life 🚀'}</Text>
-       </View>
+
      </View>
    );
 
@@ -1834,78 +1845,9 @@ export function Profile() {
               )}
               {activeTab === 'personal' && (
                 <View style={{ padding: 16, gap: 20 }}>
-                  <View style={[styles.editProfileCard, { flexDirection: 'row', backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }]}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1 }}>
-                      <Image 
-                        source={{ uri: user?.imageUrl }} 
-                        style={{ width: 70, height: 70, borderRadius: 35, borderWidth: 2, borderColor: COLORS.border }} 
-                      />
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 17, fontWeight: '700', color: COLORS.textPrimary }}>
-                          {userDisplayName || fullName || user?.username || user?.firstName}
-                        </Text>
-                        <Text style={{ color: COLORS.textTertiary, fontSize: 13 }}>{user?.primaryEmailAddress?.emailAddress}</Text>
-                      </View>
-                    </View>
-                    <Pressable onPress={handleAvatarPress} style={[styles.changePhotoButton, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
-                      <Text style={{ color: COLORS.primary, fontWeight: '700', fontSize: 13 }}>Edit</Text>
-                    </Pressable>
-                  </View>
 
-                  <View style={{ gap: 16 }}>
-                    <View>
-                      <Text style={styles.inputLabel}>DISPLAY NAME</Text>
-                      <TextInput
-                        value={fullName}
-                        onChangeText={setFullName}
-                        placeholder="Your Name"
-                        placeholderTextColor={COLORS.textTertiary}
-                        selectionColor={COLORS.primary}
-                        style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 48, paddingHorizontal: 16, color: COLORS.textPrimary }]}
-                      />
-                    </View>
-                    <View>
-                      <Text style={styles.inputLabel}>BIO</Text>
-                      <TextInput
-                        value={bio}
-                        onChangeText={setBio}
-                        placeholder="Tell people about yourself..."
-                        placeholderTextColor={COLORS.textTertiary}
-                        selectionColor={COLORS.primary}
-                        multiline
-                        maxLength={150}
-                        style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 100, paddingHorizontal: 16, paddingTop: 12, color: COLORS.textPrimary }]}
-                      />
-                    </View>
-                    </View>
-                  
 
-                  <Pressable 
-                    onPress={handleSaveProfile}
-                    style={{ backgroundColor: COLORS.primary, height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginTop: 10 }}
-                  >
-                    <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Save Changes</Text>
-                  </Pressable>
-
-                  <View style={{ gap: 12, marginTop: 10 }}>
-                    <View style={[styles.toggleCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)', borderRadius: 16, padding: 16 }]}>
-                      <View style={{ flex: 1, gap: 4 }}>
-                        <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>Show Pings on Profile</Text>
-                        <Text style={{ fontSize: 12, color: COLORS.textTertiary }}>Display text comments in your grid</Text>
-                      </View>
-                      <Switch 
-                        value={showPingsOnProfile} 
-                        onValueChange={(val) => setUserProfile({ showPings: val })}
-                        trackColor={{ true: COLORS.primary }}
-                      />
-                    </View>
-
-                    <Pressable onPress={handleLogout} style={{ padding: 16, alignItems: 'center' }}>
-                      <Text style={{ color: COLORS.textTertiary, fontWeight: '700' }}>Log Out</Text>
-                    </Pressable>
-                  </View>
-
-                    {/* App Settings Section */}
+                  {/* App Settings Section */}
                   <View style={{ marginTop: 10, paddingBottom: 40 }}>
                     <Text style={[styles.sectionHeading, { marginLeft: 4, marginBottom: 12 }]}>App Settings</Text>
 
@@ -2015,9 +1957,13 @@ export function Profile() {
                       </View>
                     )}
 
+                    <Pressable onPress={handleLogout} style={{ marginTop: 20, padding: 16, alignItems: 'center' }}>
+                      <Text style={{ color: COLORS.textTertiary, fontWeight: '700' }}>Log Out</Text>
+                    </Pressable>
+
                     <Pressable 
                       onPress={handleDeleteAccount}
-                      style={{ marginTop: 20, padding: 16, alignItems: 'center' }}
+                      style={{ marginTop: 4, padding: 16, alignItems: 'center' }}
                     >
                       <Text style={{ color: COLORS.danger, fontWeight: '700' }}>Delete Account</Text>
                     </Pressable>
