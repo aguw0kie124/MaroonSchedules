@@ -220,12 +220,14 @@ export function MapPolylineOverlay({
   color,
   width = 4,
   lineDasharray,
+  lineCap,
 }: {
   id: string;
   coordinates: MapCoordinate[];
   color: string;
   width?: number;
   lineDasharray?: number[];
+  lineCap?: 'butt' | 'round' | 'square';
 }) {
   const sanitizedCoordinates = useMemo(
     () =>
@@ -244,6 +246,7 @@ export function MapPolylineOverlay({
       strokeColor={color}
       strokeWidth={width}
       lineDashPattern={lineDasharray}
+      lineCap={lineCap}
       zIndex={2}
     />
   );

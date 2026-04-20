@@ -82,6 +82,62 @@ type NavigationDestination = {
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const CAMPUS_DISCOVERY_RADIUS_METERS = 20000;
 const AUTO_DRIVE_DISTANCE_METERS = 5000;
+const TRANSIT_WALK_DOT_SPACING_METERS = 52;
+const TRANSIT_BUS_HANDOFF_TRIM_METERS = 55;
+const TRANSIT_WALK_DOT_COLOR = '#5AA9FF';
+
+function buildDottedPathPoints(
+  points: Coordinate[],
+  spacingMeters = TRANSIT_WALK_DOT_SPACING_METERS,
+): Coordinate[] {
+  const validPoints = points.filter(
+    (point) =>
+      point &&
+      Number.isFinite(point.latitude) &&
+      Number.isFinite(point.longitude),
+  );
+  if (validPoints.length < 2) {
+    return validPoints;
+  }
+
+  const dotted: Coordinate[] = [validPoints[0]];
+  let carryMeters = 0;
+
+  for (let index = 1; index < validPoints.length; index += 1) {
+    const start = validPoints[index - 1];
+    const end = validPoints[index];
+    const segmentMeters = computeDistanceMeters(start, end);
+    if (!Number.isFinite(segmentMeters) || segmentMeters <= 0) {
+      continue;
+    }
+
+    let distanceAlongSegment = spacingMeters - carryMeters;
+    while (distanceAlongSegment <= segmentMeters) {
+      const ratio = distanceAlongSegment / segmentMeters;
+      dotted.push({
+        latitude: start.latitude + (end.latitude - start.latitude) * ratio,
+        longitude: start.longitude + (end.longitude - start.longitude) * ratio,
+      });
+      distanceAlongSegment += spacingMeters;
+    }
+
+    carryMeters = Math.max(0, segmentMeters - (distanceAlongSegment - spacingMeters));
+    if (carryMeters >= spacingMeters) {
+      carryMeters = 0;
+    }
+  }
+
+  const lastPoint = validPoints[validPoints.length - 1];
+  const previousPoint = dotted[dotted.length - 1];
+  if (
+    !previousPoint ||
+    computeDistanceMeters(previousPoint, lastPoint) > spacingMeters * 0.4
+  ) {
+    dotted.push(lastPoint);
+  }
+
+  return dotted;
+}
 
 function coerceSeededLocationType(type?: string): CampusLocation['type'] {
   switch ((type || '').toLowerCase()) {
@@ -686,6 +742,7 @@ export function CampusNavigationScreen() {
           if (cancelled || generationId !== routeGenerationRef.current) return;
 
           if (plan) {
+            setActiveRoute(null);
             setTransitPlan(plan);
             setSteps(plan.steps);
             setRouteNotice(
@@ -892,15 +949,73 @@ export function CampusNavigationScreen() {
         >
           {/* Route polyline */}
           {(activeTransitPlan || activeRoute) && (() => {
-            const polyCoords = activeTransitPlan?.polyline || activeRoute?.polyline || [];
+            if (activeTransitPlan) {
+              const busPolyline = (activeTransitPlan.busPolyline || []).filter(
+                (pt: any) => pt && Number.isFinite(pt.latitude) && Number.isFinite(pt.longitude),
+              );
+              const walkingToStopDots = buildDottedPathPoints(
+                activeTransitPlan.walkingToStopPolyline || [],
+              );
+              const walkingFromStopDots = buildDottedPathPoints(
+                activeTransitPlan.walkingFromStopPolyline || [],
+              );
+
+              return (
+                <>
+                  {busPolyline.length >= 2 ? (
+                    <MapPolylineOverlay
+                      id="campus-navigation-route-bus"
+                      coordinates={busPolyline}
+                      color={activeTransitPlan.routeColor || COLORS.primary}
+                      width={4}
+                    />
+                  ) : null}
+                  {walkingToStopDots.map((point, index) => (
+                    <MapMarker
+                      key={`campus-navigation-route-walk-start-dot-${index}`}
+                      id={`campus-navigation-route-walk-start-dot-${index}`}
+                      coordinate={point}
+                      anchor={{ x: 0.5, y: 0.5 }}
+                      tracksViewChanges={false}
+                    >
+                      <View
+                        style={[
+                          styles.transitWalkDot,
+                          { backgroundColor: TRANSIT_WALK_DOT_COLOR },
+                        ]}
+                      />
+                    </MapMarker>
+                  ))}
+                  {walkingFromStopDots.map((point, index) => (
+                    <MapMarker
+                      key={`campus-navigation-route-walk-end-dot-${index}`}
+                      id={`campus-navigation-route-walk-end-dot-${index}`}
+                      coordinate={point}
+                      anchor={{ x: 0.5, y: 0.5 }}
+                      tracksViewChanges={false}
+                    >
+                      <View
+                        style={[
+                          styles.transitWalkDot,
+                          { backgroundColor: TRANSIT_WALK_DOT_COLOR },
+                        ]}
+                      />
+                    </MapMarker>
+                  ))}
+                </>
+              );
+            }
+
+            const polyCoords = activeRoute?.polyline || [];
             const validPoly = polyCoords.filter((pt: any) => pt && Number.isFinite(pt.latitude) && Number.isFinite(pt.longitude));
             return validPoly.length >= 2 ? (
               <MapPolylineOverlay
                 id="campus-navigation-route"
                 coordinates={validPoly}
-                color={activeTransitPlan?.routeColor || COLORS.primary}
+                color={COLORS.primary}
                 width={4}
-                lineDasharray={activeTransitPlan ? undefined : [2, 2]}
+                lineDasharray={[2, 2]}
+                lineCap="round"
               />
             ) : null;
           })()}
@@ -1447,6 +1562,12 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   },
   transitStopPinExit: {
     backgroundColor: COLORS.danger,
+  },
+  transitWalkDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    opacity: 0.95,
   },
   destinationMarker: {
     minWidth: 32,

@@ -1,4 +1,5 @@
 import { computeDistanceMeters, Coordinate, DirectionStep } from './campusDirections';
+import { buildGlobalRoute } from './globalMap';
 import { transitService } from './transitService';
 
 export interface CampusTransitPlan {
@@ -6,6 +7,9 @@ export interface CampusTransitPlan {
   distanceMeters: number;
   estimatedTimeMinutes: number;
   polyline: Coordinate[];
+  walkingToStopPolyline?: Coordinate[];
+  busPolyline?: Coordinate[];
+  walkingFromStopPolyline?: Coordinate[];
   routeKey: string;
   routeName: string;
   routeShortName: string;
@@ -484,6 +488,118 @@ function applyTripPlanToCandidate(
   };
 }
 
+function mergePolylineSegments(...segments: Coordinate[][]) {
+  const merged: Coordinate[] = [];
+  segments.forEach((segment) => {
+    segment.forEach((point, index) => {
+      const previous = merged[merged.length - 1];
+      if (
+        previous &&
+        index === 0 &&
+        previous.latitude === point.latitude &&
+        previous.longitude === point.longitude
+      ) {
+        return;
+      }
+      merged.push(point);
+    });
+  });
+  return merged;
+}
+
+async function materializeTransitPlan(
+  candidate: PlanCandidate,
+  start: Coordinate,
+  destination: Coordinate,
+  startName: string,
+  destinationName: string,
+  nearestVehicleLabel?: string,
+): Promise<CampusTransitPlan> {
+  const boardStopCoord = {
+    latitude: candidate.nearestOrigin.stop.Latitude,
+    longitude: candidate.nearestOrigin.stop.Longitude,
+  };
+  const exitStopCoord = {
+    latitude: candidate.nearestDestination.stop.Latitude,
+    longitude: candidate.nearestDestination.stop.Longitude,
+  };
+
+  const [walkToStop, walkFromStop] = await Promise.all([
+    buildGlobalRoute({
+      origin: start,
+      destination: boardStopCoord,
+      mode: 'walk',
+      originName: startName,
+      destinationName: candidate.nearestOrigin.stop.Name,
+    }).catch(() => null),
+    buildGlobalRoute({
+      origin: exitStopCoord,
+      destination,
+      mode: 'walk',
+      originName: candidate.nearestDestination.stop.Name,
+      destinationName,
+    }).catch(() => null),
+  ]);
+
+  const adjustedCandidate: PlanCandidate = {
+    ...candidate,
+    walkingToStopMeters: walkToStop?.route.distanceMeters ?? candidate.walkingToStopMeters,
+    walkingFromStopMeters: walkFromStop?.route.distanceMeters ?? candidate.walkingFromStopMeters,
+    walkingToStopMinutes: walkToStop?.route.estimatedTimeMinutes ?? candidate.walkingToStopMinutes,
+    walkingFromStopMinutes: walkFromStop?.route.estimatedTimeMinutes ?? candidate.walkingFromStopMinutes,
+  };
+
+  if (adjustedCandidate.leaveOriginTimeUtc && adjustedCandidate.arriveDestinationTimeUtc) {
+    adjustedCandidate.totalMinutes = Math.max(
+      3,
+      Math.round(
+        (new Date(adjustedCandidate.arriveDestinationTimeUtc).getTime() -
+          new Date(adjustedCandidate.leaveOriginTimeUtc).getTime()) /
+          60000,
+      ),
+    );
+  } else {
+    adjustedCandidate.totalMinutes = Math.max(
+      3,
+      adjustedCandidate.walkingToStopMinutes +
+        adjustedCandidate.estimatedWaitMinutes +
+        adjustedCandidate.busMinutes +
+        adjustedCandidate.walkingFromStopMinutes,
+    );
+  }
+
+  const plan = toTransitPlan(
+    adjustedCandidate,
+    start,
+    destination,
+    startName,
+    destinationName,
+    nearestVehicleLabel,
+  );
+
+  plan.polyline = mergePolylineSegments(
+    walkToStop?.route.polyline || [start, boardStopCoord],
+    candidate.segment,
+    walkFromStop?.route.polyline || [exitStopCoord, destination],
+  );
+  plan.walkingToStopPolyline = walkToStop?.route.polyline || [start, boardStopCoord];
+  plan.busPolyline = mergePolylineSegments(
+    [boardStopCoord],
+    candidate.segment,
+    [exitStopCoord],
+  );
+  plan.walkingFromStopPolyline = walkFromStop?.route.polyline || [exitStopCoord, destination];
+  plan.distanceMeters =
+    (walkToStop?.route.distanceMeters ?? adjustedCandidate.walkingToStopMeters) +
+    adjustedCandidate.busDistanceMeters +
+    (walkFromStop?.route.distanceMeters ?? adjustedCandidate.walkingFromStopMeters);
+  plan.walkingToStopMeters = walkToStop?.route.distanceMeters ?? adjustedCandidate.walkingToStopMeters;
+  plan.walkingFromStopMeters = walkFromStop?.route.distanceMeters ?? adjustedCandidate.walkingFromStopMeters;
+  plan.estimatedTimeMinutes = adjustedCandidate.totalMinutes;
+
+  return plan;
+}
+
 function overlayLiveVehicleTiming(
   candidate: PlanCandidate,
   plannedTimestamp: number,
@@ -707,23 +823,27 @@ export async function buildTransitPlanOptions(
     return [];
   }
 
-  return rankedCandidates.map((rankedCandidate) => {
-    const { candidate, nearestVehicleLabel } = overlayLiveVehicleTiming(
-      rankedCandidate,
-      plannedTimestamp,
-      timingMode,
-      liveVehicles,
-    );
+  const plans = await Promise.all(
+    rankedCandidates.map(async (rankedCandidate) => {
+      const { candidate, nearestVehicleLabel } = overlayLiveVehicleTiming(
+        rankedCandidate,
+        plannedTimestamp,
+        timingMode,
+        liveVehicles,
+      );
 
-    return toTransitPlan(
-      candidate,
-      start,
-      destination,
-      startName,
-      destinationName,
-      nearestVehicleLabel,
-    );
-  }).filter((plan) => plan.estimatedTimeMinutes <= MAX_TRANSIT_OPTION_MINUTES);
+      return materializeTransitPlan(
+        candidate,
+        start,
+        destination,
+        startName,
+        destinationName,
+        nearestVehicleLabel,
+      );
+    }),
+  );
+
+  return plans.filter((plan) => plan.estimatedTimeMinutes <= MAX_TRANSIT_OPTION_MINUTES);
 }
 
 export async function buildTransitPlan(
