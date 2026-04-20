@@ -1342,25 +1342,6 @@ export function CampusPingsScreen() {
               {item.body ? <Text style={styles.pingBody}>{item.body}</Text> : null}
             </>
           ) : null}
-          <Pressable
-            style={[
-              styles.pingLocationChip,
-              isActive && styles.pingLocationChipActive,
-            ]}
-            onPress={() => openPingOnMap(item)}
-            hitSlop={6}
-          >
-            <MapPin size={13} color={isActive ? COLORS.primary : COLORS.textSecondary} />
-            <Text
-              style={[
-                styles.pingMetaSummary,
-                isActive && styles.pingMetaSummaryActive,
-              ]}
-              numberOfLines={1}
-            >
-              {item.locationTag}
-            </Text>
-          </Pressable>
         </View>
 
         {canDelete ? (

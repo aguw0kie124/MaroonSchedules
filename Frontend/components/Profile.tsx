@@ -980,7 +980,7 @@ export function Profile() {
          </View>
        </View>
 
-       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24, paddingHorizontal: 16 }}>
+       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12, paddingHorizontal: 16 }}>
           <ScalePressable 
             containerStyle={{ flex: 1 }}
             style={styles.modernStatCard}
@@ -2138,7 +2138,7 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
     },
     // Modern Profile Header Styles
     modernProfileHeader: {
-      marginBottom: 20,
+      marginBottom: 0,
     },
     headerTopRow: {
       flexDirection: 'row',
@@ -2734,7 +2734,7 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       flexDirection: 'row',
       borderTopWidth: 1,
       borderTopColor: COLORS.border,
-      marginTop: 20,
+      marginTop: 4,
     },
     profileTabButton: {
       flex: 1,
