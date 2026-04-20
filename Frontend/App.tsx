@@ -51,7 +51,7 @@ import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 import RestaurantMenuScreen from './components/dining/RestaurantMenuScreen';
 
-import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio, UserRound } from 'lucide-react-native';
+import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio, UserRound, LayoutGrid, RotateCw, LibraryBig } from 'lucide-react-native';
 import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
@@ -73,6 +73,7 @@ import { PendingReviewInterceptor } from './components/events/PendingReviewInter
 import { FriendPingNotificationBridge } from './components/pings/FriendPingNotificationBridge';
 import { API_URL } from './config';
 import { ClubAccessScreen } from './components/ClubAccessScreen';
+import { ResourcesScreen } from './components/ResourcesScreen';
 import { FocusMotionView } from './components/common/Motion';
 import { useEventStore, type MajorOption } from './store/eventStore';
 
@@ -262,45 +263,64 @@ function withTabMotion(Component: React.ComponentType<any>, delay = 0) {
 
 const AnimatedDashboardScreen = withTabMotion(Dashboard, 0);
 const AnimatedPlacesScreen = withTabMotion(PlacesMapScreen, 40);
-const AnimatedSocialScreen = withTabMotion(SocialHubScreen, 60);
-const AnimatedDiningScreen = withTabMotion(
-  () => (
-    <ErrorBoundary name="Dining Dashboard">
-      <DiningDashboard />
-    </ErrorBoundary>
-  ),
-  50,
-);
-const AnimatedTimerScreen = withTabMotion(TimerScreen, 80);
-const AnimatedSettingsScreen = withTabMotion(Profile, 80);
+const AnimatedSocialScreen = withTabMotion(SocialHubScreen, 10);
+const AnimatedDiningScreen = withTabMotion(DiningDashboard, 30);
+const AnimatedClubsScreen = withTabMotion(ClubAccessScreen, 50);
+const AnimatedResourcesScreen = withTabMotion(ResourcesScreen, 70);
+const AnimatedSettingsScreen = withTabMotion(Profile, 90);
 
 import { GlassPillTabBar } from './components/GlassPillTabBar';
 
 function MainTabs(props: any) {
-  const { COLORS } = useTheme();
+  const { COLORS, tabBarMode } = useTheme();
   const { user } = useUser();
   const navItems = useAppShellStore((state) => state.navItems);
   const isGuest = useSessionStore((state) => state.isGuest);
-  const { tabBarMode } = useTheme();
 
   const visibleNavItems = React.useMemo(() => {
-    if (!isGuest) {
-      return getOrderedVisibleItems(navItems).filter((item: any) => item.id !== 'Dining');
-    }
-    return getOrderedItems(navItems)
-      .filter((item: any) => (item.id === 'Dashboard' || item.id === 'Places') && item.id !== 'Dining')
-      .map((item: any) => ({ ...item, visible: true }));
-  }, [isGuest, navItems]);
+    return getOrderedVisibleItems(navItems);
+  }, [navItems]);
 
   const tabScreens = [
     ...visibleNavItems.map((item) => {
+      if (item.id === 'Social') {
+        return {
+          name: 'Social',
+          component: AnimatedSocialScreen,
+          title: 'Pings',
+          icon: LayoutGrid,
+        };
+      }
+      if (item.id === 'Dining') {
+        return {
+          name: 'Dining',
+          component: AnimatedDiningScreen,
+          title: 'Dining',
+          icon: RotateCw,
+        };
+      }
+      if (item.id === 'Clubs') {
+        return {
+          name: 'Clubs',
+          component: AnimatedClubsScreen,
+          title: 'Clubs',
+          icon: Users,
+        };
+      }
+      if (item.id === 'Resources') {
+        return {
+          name: 'Resources',
+          component: AnimatedResourcesScreen,
+          title: 'Resources',
+          icon: LibraryBig,
+        };
+      }
       if (item.id === 'Dashboard') {
         return {
           name: 'Dashboard',
           component: AnimatedDashboardScreen,
           title: 'Events',
           icon: Home,
-          initialParams: undefined,
         };
       }
       if (item.id === 'Places') {
@@ -309,47 +329,21 @@ function MainTabs(props: any) {
           component: AnimatedPlacesScreen,
           title: 'Places',
           icon: Map,
-          initialParams: undefined,
         };
       }
-      if (item.id === 'Social') {
-        return {
-          name: 'Social',
-          component: AnimatedSocialScreen,
-          title: 'Social',
-          icon: Radio,
-          initialParams: undefined,
-        };
-      }
-      if (item.id === 'Dining') {
-        return {
-          name: 'Dining',
-          component: AnimatedDiningScreen,
-          title: 'Dining',
-          icon: UtensilsCrossed,
-          initialParams: undefined,
-        };
-      }
-      return {
-        name: 'Timer',
-        component: AnimatedTimerScreen,
-        title: 'Timer',
-        icon: Clock3,
-        initialParams: undefined,
-      };
-    }),
+      return null;
+    }).filter(s => s !== null),
     {
-      name: 'Profile',
+      name: 'Settings',
       component: AnimatedSettingsScreen,
-      title: 'Profile',
-      icon: UserRound,
-      initialParams: undefined,
+      title: 'Settings',
+      icon: Settings,
     },
   ];
 
   const availableRouteNames = tabScreens.map((screen) => screen.name);
-  const initialRouteName = availableRouteNames.includes('Places')
-    ? 'Places'
+  const initialRouteName = availableRouteNames.includes('Social')
+    ? 'Social'
     : availableRouteNames[0];
   const shellKey = availableRouteNames.join('|');
 

@@ -2089,19 +2089,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           </View>
         )}
 
-        <Pressable style={s.clubCtaCard} onPress={handleClubAccessPress}>
-          <View style={s.clubCtaContent}>
-            <Text style={s.clubCtaEyebrow}>Student organizations</Text>
-            <Text style={s.clubCtaTitle}>Connect with Clubs</Text>
-            <Text style={s.clubCtaBody}>
-              Find org access groups and keep up with the communities behind campus events.
-            </Text>
-            <View style={s.clubCtaButton}>
-              <Text style={s.clubCtaButtonText}>Explore Clubs</Text>
-            </View>
-          </View>
-          <Users size={84} color="rgba(255,255,255,0.08)" style={s.clubCtaIcon} />
-        </Pressable>
       </ScrollView>
     </View>
   );

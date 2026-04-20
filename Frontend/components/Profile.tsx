@@ -339,14 +339,12 @@ export function Profile() {
   
   const userDisplayName = useAppShellStore((state) => state.userDisplayName);
   const userBio = useAppShellStore((state) => state.userBio);
-  const userWebsite = useAppShellStore((state) => state.userWebsite);
   const userGender = useAppShellStore((state) => state.userGender);
   const showPingsOnProfile = useAppShellStore((state) => state.showPingsOnProfile);
   const setUserProfile = useAppShellStore((state) => state.setUserProfile);
 
   const [fullName, setFullName] = useState(userDisplayName || user?.fullName || '');
   const [bio, setBio] = useState(userBio);
-  const [website, setWebsite] = useState(userWebsite);
   const [gender, setGender] = useState(userGender);
 
   const [showFriendSearchPanel, setShowFriendSearchPanel] = useState(false);
@@ -850,29 +848,7 @@ export function Profile() {
             </View>
           </View>
 
-          <View style={[styles.editProfileCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }]}>
-            <View style={{ width: '100%' }}>
-              <Text style={styles.inputLabel}>WEBSITE</Text>
-              <TextInput
-                value={website}
-                onChangeText={setWebsite}
-                placeholder="https://yourlink.com"
-                placeholderTextColor={COLORS.textTertiary}
-                autoCapitalize="none"
-                style={[
-                  styles.modalInput, 
-                  { 
-                    backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7', 
-                    borderRadius: 14, 
-                    height: 48, 
-                    paddingHorizontal: 16,
-                    color: COLORS.textPrimary,
-                    fontWeight: '600'
-                  }
-                ]}
-              />
-            </View>
-          </View>
+
 
           <View style={{ gap: 12 }}>
             <Text style={[styles.inputLabel, { marginLeft: 4 }]}>Preferences</Text>
@@ -1917,18 +1893,8 @@ export function Profile() {
                         style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 100, paddingHorizontal: 16, paddingTop: 12, color: COLORS.textPrimary }]}
                       />
                     </View>
-                    <View>
-                      <Text style={styles.inputLabel}>WEBSITE</Text>
-                      <TextInput
-                        value={website}
-                        onChangeText={setWebsite}
-                        placeholder="https://..."
-                        placeholderTextColor={COLORS.textTertiary}
-                        selectionColor={COLORS.primary}
-                        style={[styles.modalInput, { backgroundColor: COLORS.surfaceElevated, borderRadius: 12, height: 48, paddingHorizontal: 16, color: COLORS.textPrimary }]}
-                      />
                     </View>
-                  </View>
+                  
 
                   <Pressable 
                     onPress={handleSaveProfile}

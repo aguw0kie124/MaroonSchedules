@@ -1158,14 +1158,58 @@ export function CampusPingsScreen() {
 
   const header = (
     <View style={[styles.headerWrap, { paddingTop: Math.max(insets.top + 8, 18) }]}>
-      <StoriesBar 
-        stories={stories} 
-        myStory={myStory}
-        onPressStory={handleStoryPress}
-        onPressAdd={() => setComposerVisible(true)}
-        userImage={user?.imageUrl}
-        userId={user?.id}
-      />
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[styles.categoryRow, { paddingBottom: 12 }]}
+      >
+        <ScalePressable
+          style={[styles.categoryChip, { backgroundColor: COLORS.surfaceElevated, borderColor: COLORS.primary + '30', borderWidth: 1.5, width: 44, justifyContent: 'center' }]}
+          onPress={() => setComposerVisible(true)}
+        >
+          <Plus size={20} color={COLORS.primary} strokeWidth={3} />
+        </ScalePressable>
+
+        {(['All', 'Friends', ...PING_CATEGORIES.map((entry) => entry.id)] as FeedFilter[]).map((option) => {
+          const active = categoryFilter === option;
+          const meta =
+            option === 'All'
+              ? {
+                  id: 'All',
+                  accent: COLORS.primary,
+                }
+              : option === 'Friends'
+                ? {
+                    id: 'Friends',
+                    accent: '#D85F8D',
+                    Icon: Users,
+                }
+              : categoryMeta(option);
+          const Icon = 'Icon' in meta ? meta.Icon : (meta as any).Icon || null;
+          return (
+            <Pressable
+              key={option}
+              style={[
+                styles.categoryChip,
+                { borderColor: active ? `${meta.accent}40` : COLORS.border, borderWidth: active ? 1.5 : 1 },
+                active && { backgroundColor: COLORS.surface },
+              ]}
+              onPress={() => setCategoryFilter(option)}
+            >
+              {Icon ? <Icon size={14} color={active ? meta.accent : COLORS.textTertiary} /> : null}
+              <Text
+                style={[
+                  styles.categoryChipText,
+                  active && { color: COLORS.textPrimary, fontWeight: '700' },
+                  !active && styles.categoryChipTextMuted,
+                ]}
+              >
+                {option}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
 
       {refreshing ? (
         <View style={styles.refreshWheelWrap}>
@@ -1187,51 +1231,7 @@ export function CampusPingsScreen() {
         </View>
       ) : null}
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.categoryRow}
-      >
-        {(['All', 'Friends', ...PING_CATEGORIES.map((entry) => entry.id)] as FeedFilter[]).map((option) => {
-          const active = categoryFilter === option;
-          const meta =
-            option === 'All'
-              ? {
-                  id: 'All',
-                  accent: COLORS.primary,
-                }
-              : option === 'Friends'
-                ? {
-                    id: 'Friends',
-                    accent: '#D85F8D',
-                    Icon: Users,
-                }
-              : categoryMeta(option);
-          const Icon = 'Icon' in meta ? meta.Icon : null;
-          return (
-            <Pressable
-              key={option}
-              style={[
-                styles.categoryChip,
-                { borderColor: active ? `${meta.accent}24` : COLORS.border },
-                active && { backgroundColor: COLORS.surface },
-              ]}
-              onPress={() => setCategoryFilter(option)}
-            >
-              {Icon ? <Icon size={14} color={active ? meta.accent : COLORS.textTertiary} /> : null}
-              <Text
-                style={[
-                  styles.categoryChipText,
-                  active && { color: COLORS.textPrimary },
-                  !active && styles.categoryChipTextMuted,
-                ]}
-              >
-                {option}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+
 
     </View>
   );

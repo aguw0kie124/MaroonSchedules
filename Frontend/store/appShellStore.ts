@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-export type NavItemId = 'Dashboard' | 'Places' | 'Social' | 'Dining';
+export type NavItemId = 'Dashboard' | 'Places' | 'Social' | 'Dining' | 'Clubs' | 'Resources';
 export type PlacesPillId =
   | 'Pulse'
   | 'Today'
@@ -35,10 +35,12 @@ export const PARKING_PERMIT_OPTIONS: Array<{ id: ParkingPermit; label: string; d
 ];
 
 export const DEFAULT_NAV_ITEMS: ToggleLayoutItem<NavItemId>[] = [
-  { id: 'Dashboard', label: 'Events', visible: true, order: 0 },
-  { id: 'Places', label: 'Places', visible: true, order: 1 },
-  { id: 'Social', label: 'Social', visible: true, order: 2 },
-  { id: 'Dining', label: 'Dining', visible: false, order: 3 },
+  { id: 'Social', label: 'Pings', visible: true, order: 0 },
+  { id: 'Dining', label: 'Dining', visible: true, order: 1 },
+  { id: 'Clubs', label: 'Clubs', visible: true, order: 2 },
+  { id: 'Resources', label: 'Resources', visible: true, order: 3 },
+  { id: 'Dashboard', label: 'Events', visible: false, order: 4 },
+  { id: 'Places', label: 'Places', visible: false, order: 5 },
 ];
 
 export const DEFAULT_PLACES_PILLS: ToggleLayoutItem<PlacesPillId>[] = [
@@ -143,7 +145,6 @@ type AppShellState = {
   notificationLeadTime: number;
   tabBarMode: 'floating' | 'solid';
   userBio: string;
-  userWebsite: string;
   userGender: string;
   userDisplayName: string;
   showPingsOnProfile: boolean;
@@ -170,7 +171,7 @@ type AppShellState = {
   setNotificationPreference: (key: 'event' | 'place' | 'ping', value: boolean) => void;
   setNotificationLeadTime: (time: number) => void;
   setTabBarMode: (mode: 'floating' | 'solid') => void;
-  setUserProfile: (data: { bio?: string; website?: string; gender?: string; showPings?: boolean; displayName?: string }) => void;
+  setUserProfile: (data: { bio?: string; gender?: string; showPings?: boolean; displayName?: string }) => void;
   addViewedStory: (id: string) => void;
 };
 
@@ -236,7 +237,6 @@ export const useAppShellStore = create<AppShellState>()(
       setNotificationLeadTime: (notificationLeadTime) => set({ notificationLeadTime }),
       setTabBarMode: (tabBarMode) => set({ tabBarMode }),
       userBio: '',
-      userWebsite: '',
       userGender: '',
       userDisplayName: '',
       showPingsOnProfile: true,
@@ -244,7 +244,6 @@ export const useAppShellStore = create<AppShellState>()(
       setUserProfile: (data) =>
         set((state) => ({
           userBio: data.bio !== undefined ? data.bio : state.userBio,
-          userWebsite: data.website !== undefined ? data.website : state.userWebsite,
           userGender: data.gender !== undefined ? data.gender : state.userGender,
           userDisplayName: data.displayName !== undefined ? data.displayName : state.userDisplayName,
           showPingsOnProfile: data.showPings !== undefined ? data.showPings : state.showPingsOnProfile,
@@ -278,7 +277,6 @@ export const useAppShellStore = create<AppShellState>()(
         notificationLeadTime: state.notificationLeadTime,
         tabBarMode: state.tabBarMode,
         userBio: state.userBio,
-        userWebsite: state.userWebsite,
         userGender: state.userGender,
         showPingsOnProfile: state.showPingsOnProfile,
         viewedStoryIds: state.viewedStoryIds,
@@ -345,7 +343,6 @@ export const useAppShellStore = create<AppShellState>()(
             ? persisted.viewedStoryIds.filter((id): id is string => typeof id === 'string')
             : currentState.viewedStoryIds,
           userBio: typeof persisted.userBio === 'string' ? persisted.userBio : currentState.userBio,
-          userWebsite: typeof persisted.userWebsite === 'string' ? persisted.userWebsite : currentState.userWebsite,
           userGender: typeof persisted.userGender === 'string' ? persisted.userGender : currentState.userGender,
           userDisplayName: typeof persisted.userDisplayName === 'string' ? persisted.userDisplayName : currentState.userDisplayName,
           showPingsOnProfile: typeof persisted.showPingsOnProfile === 'boolean' ? persisted.showPingsOnProfile : currentState.showPingsOnProfile,
