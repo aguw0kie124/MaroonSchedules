@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { X, MapPin, Clock } from "lucide-react-native";
 import { formatExactLocalTime } from "../../services/dateUtils";
+import type { TransitFreshness } from "../../services/transitService";
 import { SNAP_PEEK, SNAP_FULL, SCREEN_HEIGHT } from "./types";
 
 interface BusTimetableSheetProps {
@@ -22,6 +23,9 @@ interface BusTimetableSheetProps {
   isDark: boolean;
   selectedRoute: any | null;
   liveBusCount: number;
+  vehicleFreshness?: TransitFreshness | null;
+  timetableFreshness?: TransitFreshness | null;
+  vehicleStatusLabel?: string;
   stopTimetable: Array<{
     stop: any;
     sequence: number;
@@ -41,6 +45,9 @@ export function BusTimetableSheet({
   isDark,
   selectedRoute,
   liveBusCount,
+  vehicleFreshness,
+  timetableFreshness,
+  vehicleStatusLabel,
   stopTimetable,
   onStopPress,
   loading,
@@ -110,6 +117,38 @@ export function BusTimetableSheet({
   ).current;
 
   if (!visible) return null;
+
+  const timetableStamp = timetableFreshness?.fetched_at
+    ? formatExactLocalTime(timetableFreshness.fetched_at)
+    : null;
+  const timetableSummary =
+    timetableFreshness?.source === "live"
+      ? timetableStamp
+        ? `Live departures updated ${timetableStamp}`
+        : "Live departures available"
+      : timetableFreshness?.source === "schedule_fallback"
+        ? timetableStamp
+          ? `Scheduled fallback refreshed ${timetableStamp}`
+          : "Showing scheduled fallback"
+        : timetableFreshness?.source === "unavailable"
+          ? "Departure board unavailable right now"
+          : null;
+  const sourceBadgeLabel =
+    timetableFreshness?.source === "live"
+      ? "Live"
+      : timetableFreshness?.source === "schedule_fallback"
+        ? "Scheduled"
+        : timetableFreshness?.source === "stale_cache"
+          ? "Cached"
+          : timetableFreshness?.source === "unavailable"
+            ? "Offline"
+            : null;
+  const sourceBadgeColor =
+    timetableFreshness?.source === "live"
+      ? "#0B6E4F"
+      : timetableFreshness?.source === "schedule_fallback"
+        ? "#B36B00"
+        : "#7A7A7A";
 
   const formatDepartureList = (item: { departures?: any[] }) => {
     const departures = Array.isArray(item.departures) ? item.departures : [];
@@ -196,6 +235,45 @@ export function BusTimetableSheet({
               {liveBusCount === 1 ? "" : "es"}
             </Text>
           )}
+          {vehicleStatusLabel || vehicleFreshness?.source === "stale_cache" ? (
+            <Text
+              style={[
+                styles.subtitle,
+                {
+                  color: COLORS.textSecondary,
+                  marginTop: 4,
+                  fontSize: 12,
+                  fontWeight: "500",
+                },
+              ]}
+            >
+              {vehicleStatusLabel || "Showing cached vehicle positions"}
+            </Text>
+          ) : null}
+          {selectedRoute && (sourceBadgeLabel || timetableSummary) ? (
+            <View style={styles.metaRow}>
+              {sourceBadgeLabel ? (
+                <View
+                  style={[
+                    styles.metaBadge,
+                    { backgroundColor: sourceBadgeColor },
+                  ]}
+                >
+                  <Text style={styles.metaBadgeText}>{sourceBadgeLabel}</Text>
+                </View>
+              ) : null}
+              {timetableSummary ? (
+                <Text
+                  style={[
+                    styles.metaText,
+                    { color: COLORS.textSecondary },
+                  ]}
+                >
+                  {timetableSummary}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
         </View>
         <TouchableOpacity
           onPress={handleClose}
@@ -430,6 +508,27 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 14,
+    fontWeight: "500",
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+    flexWrap: "wrap",
+  },
+  metaBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  metaBadgeText: {
+    color: "#FFF",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  metaText: {
+    fontSize: 12,
     fontWeight: "500",
   },
   closeBtn: {

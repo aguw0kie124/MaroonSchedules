@@ -824,6 +824,7 @@ class AggieSpiritProxy:
 
     def get_vehicles(self, route_id: str = "") -> Dict[str, Any]:
         normalized_route_id = (route_id or "").strip().lower()
+        fetched_at = datetime.now(ZoneInfo("UTC")).isoformat()
         
         # Determine which routes to fetch
         if normalized_route_id and normalized_route_id != "__all__":
@@ -938,11 +939,25 @@ class AggieSpiritProxy:
                     self._vehicle_cache["v2:__all__"] = vehicles
             
             cached = self._vehicle_cache.get(cache_key, [])
-            return {"vehicles": vehicles if vehicles else cached, "live": bool(vehicles), "used_cache": not bool(vehicles) and bool(cached)}
+            using_cache = not bool(vehicles) and bool(cached)
+            source = "live" if vehicles else ("stale_cache" if cached else "unavailable")
+            return {
+                "vehicles": vehicles if vehicles else cached,
+                "live": bool(vehicles),
+                "used_cache": using_cache,
+                "fetched_at": fetched_at,
+                "source": source,
+            }
         except Exception:
             cache_key = normalized_route_id or "__all__"
             cached = self._vehicle_cache.get(cache_key, [])
-            return {"vehicles": cached, "live": False, "used_cache": bool(cached)}
+            return {
+                "vehicles": cached,
+                "live": False,
+                "used_cache": bool(cached),
+                "fetched_at": fetched_at,
+                "source": "stale_cache" if cached else "unavailable",
+            }
 
     def get_stop_schedule(
         self,
@@ -987,7 +1002,7 @@ class AggieSpiritProxy:
             return []
 
     def get_route_timetable(self, route_key: str, max_stops: int = 200) -> Dict[str, Any]:
-        cache_key = f"traffic:transit:timetable:v2:{route_key}"
+        cache_key = f"traffic:transit:timetable:v3:{route_key}:{max_stops}"
         cached = cache_service.get_json(cache_key)
         if cached is not None:
             return cached
@@ -998,7 +1013,11 @@ class AggieSpiritProxy:
             }
             route = route_lookup.get(route_key)
             if not route:
-                return {"route": None, "entries": []}
+                return {
+                    "route": None,
+                    "entries": [],
+                    "freshness": _build_transit_freshness(source="unavailable"),
+                }
 
             pattern = self.get_pattern(route_key)
             raw_stops = pattern.get("stops") or []
@@ -1018,7 +1037,11 @@ class AggieSpiritProxy:
                     break
 
             if not unique_stops:
-                return {"route": route, "entries": []}
+                return {
+                    "route": route,
+                    "entries": [],
+                    "freshness": _build_transit_freshness(source="unavailable"),
+                }
 
             payload = {
                 "routes": [
@@ -1048,15 +1071,15 @@ class AggieSpiritProxy:
             }
             now_utc = datetime.now(ZoneInfo("UTC"))
             service_date = _local_service_date(now_utc)
-            entries: List[Dict[str, Any]] = [None] * len(unique_stops) # type: ignore
-            
-            def fetch_departure_info(idx: int, pattern_stop: Dict[str, Any]):
+            entries: List[Optional[Dict[str, Any]]] = [None] * len(unique_stops)
+
+            def fetch_departure_info(idx: int, pattern_stop: Dict[str, Any]) -> None:
                 stop_code = pattern_stop.get("StopCode")
                 direction_key = pattern_stop.get("DirectionKey")
                 direction_name = pattern_stop.get("DirectionName") or ""
                 stop_payload = nearby_stop_by_pair.get((stop_code, direction_key)) or {}
-                
-                departures = []
+
+                departures: List[Dict[str, Any]] = []
                 for departure in stop_payload.get("nextStopTimes") or []:
                     scheduled = departure.get("scheduledDepartTimeUtc")
                     estimated = departure.get("estimatedDepartTimeUtc")
@@ -1115,11 +1138,58 @@ class AggieSpiritProxy:
                         or ""
                     )
                 )
-                )
 
-            return {"route": route, "entries": entries}
-        except Exception:
-            return {"route": None, "entries": []}
+                entries[idx] = {
+                    "stop": pattern_stop,
+                    "sequence": idx + 1,
+                    "departures": deduped_departures[:5],
+                    "has_live_departures": any(
+                        bool(item.get("is_realtime")) for item in deduped_departures
+                    ),
+                    "used_schedule_fallback": bool(deduped_departures)
+                    and not any(bool(item.get("is_realtime")) for item in deduped_departures),
+                }
+
+            with ThreadPoolExecutor(max_workers=min(len(unique_stops), 12) or 1) as executor:
+                futures = [
+                    executor.submit(fetch_departure_info, idx, stop)
+                    for idx, stop in enumerate(unique_stops)
+                ]
+                for future in as_completed(futures):
+                    future.result()
+
+            resolved_entries = [entry for entry in entries if entry is not None]
+            live_count = sum(
+                1 for entry in resolved_entries if entry.get("has_live_departures")
+            )
+            fallback_count = sum(
+                1 for entry in resolved_entries if entry.get("used_schedule_fallback")
+            )
+            if live_count > 0:
+                source = "live"
+            elif fallback_count > 0:
+                source = "schedule_fallback"
+            else:
+                source = "unavailable"
+
+            return {
+                "route": route,
+                "entries": resolved_entries,
+                "freshness": _build_transit_freshness(
+                    source=source,
+                    live=live_count > 0,
+                    used_schedule_fallback=fallback_count > 0,
+                    realtime_stop_count=live_count,
+                    scheduled_stop_count=fallback_count,
+                ),
+            }
+        except Exception as exc:
+            print(f"[TransitProxy] Timetable error for route {route_key}: {exc}")
+            return {
+                "route": None,
+                "entries": [],
+                "freshness": _build_transit_freshness(source="unavailable"),
+            }
 
 
 transit_proxy = AggieSpiritProxy()
@@ -1138,6 +1208,26 @@ def _parse_stop_schedule_time(value: Any) -> datetime | None:
         return datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def _build_transit_freshness(
+    *,
+    source: str,
+    live: bool = False,
+    used_schedule_fallback: bool = False,
+    realtime_stop_count: int = 0,
+    scheduled_stop_count: int = 0,
+) -> Dict[str, Any]:
+    fetched_at = datetime.now(ZoneInfo("UTC")).isoformat()
+    return {
+        "source": source,
+        "live": live,
+        "used_schedule_fallback": used_schedule_fallback,
+        "realtime_stop_count": realtime_stop_count,
+        "scheduled_stop_count": scheduled_stop_count,
+        "fetched_at": fetched_at,
+        "age_seconds": 0,
+    }
 
 
 def _find_live_trip(
@@ -1426,7 +1516,8 @@ def get_transit_vehicles(request: Request, route_id: str = Query("")):
         if not payload.get("vehicles") and not payload.get("live"):
             cache_service.set_json(cache_key, payload, 2)
         else:
-            cache_service.set_json(cache_key, payload, 15)
+            ttl_seconds = 2 if route_id else 8
+            cache_service.set_json(cache_key, payload, ttl_seconds)
             
         return payload
 
@@ -1445,11 +1536,16 @@ def get_transit_timetable(request: Request, route_key: str, max_stops: int = Que
             return cached
 
         payload = transit_proxy.get_route_timetable(route_key, max_stops=max_stops)
-        
-        if not payload.get("entries"):
-            cache_service.set_json(cache_key, payload, 2)
+
+        freshness = payload.get("freshness") or {}
+        source = freshness.get("source")
+        if not payload.get("entries") or source == "unavailable":
+            ttl_seconds = 8
+        elif source == "schedule_fallback":
+            ttl_seconds = 45
         else:
-            cache_service.set_json(cache_key, payload, 600)
+            ttl_seconds = 20
+        cache_service.set_json(cache_key, payload, ttl_seconds)
             
         return payload
 

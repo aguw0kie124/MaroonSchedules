@@ -40,6 +40,28 @@ export interface BusStop {
     lng: number;
 }
 
+export interface TransitFreshness {
+    source: 'live' | 'schedule_fallback' | 'stale_cache' | 'unavailable';
+    live?: boolean;
+    used_cache?: boolean;
+    used_schedule_fallback?: boolean;
+    fetched_at?: string;
+    age_seconds?: number;
+    realtime_stop_count?: number;
+    scheduled_stop_count?: number;
+}
+
+export interface VehicleSnapshot {
+    vehicles: any[];
+    freshness: TransitFreshness;
+}
+
+export interface TimetableSnapshot {
+    route?: any;
+    entries: any[];
+    freshness: TransitFreshness;
+}
+
 interface CacheEntry<T> {
     data: T;
     timestamp: number;
@@ -49,9 +71,9 @@ export const transitService = {
     auth: null as any,
     routesCache: null as CacheEntry<{ routes: any[], activeIds: string[] }> | null,
     patternCache: new Map<string, CacheEntry<{ points: any[]; stops: any[] }>>(),
-    vehicleCache: new Map<string, CacheEntry<any[]>>(),
-    ongoingVehicleRequests: new Map<string, Promise<any[]>>(),
-    timetableCache: new Map<string, CacheEntry<any[]>>(),
+    vehicleCache: new Map<string, CacheEntry<VehicleSnapshot>>(),
+    ongoingVehicleRequests: new Map<string, Promise<VehicleSnapshot>>(),
+    timetableCache: new Map<string, CacheEntry<TimetableSnapshot>>(),
     prewarmPromise: null as Promise<void> | null,
 
     /**
@@ -249,7 +271,7 @@ export const transitService = {
     /**
      * Fetches real-time vehicle locations. Internal buffer prevents slamming the API.
      */
-    async getVehicles(routeId?: string): Promise<any[]> {
+    async getVehiclesSnapshot(routeId?: string): Promise<VehicleSnapshot> {
         const now = Date.now();
         const cacheKey = routeId || '__all__';
         
@@ -259,7 +281,7 @@ export const transitService = {
 
         // 2. Check for fresh cache (1s deduplication)
         const cached = this.vehicleCache.get(cacheKey);
-        if (cached && (now - cached.timestamp < 1000)) {
+        if (cached && (now - cached.timestamp < 500)) {
             return cached.data;
         }
 
@@ -269,13 +291,25 @@ export const transitService = {
                 const response = await apiFetch(`/traffic/transit/vehicles${query}`, {}, TRANSIT_LIVE_TIMEOUT_MS);
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const payload = await response.json();
-                const vehicles = payload.vehicles || [];
+                const snapshot: VehicleSnapshot = {
+                    vehicles: Array.isArray(payload?.vehicles) ? payload.vehicles : [],
+                    freshness: {
+                        source: payload?.source || 'unavailable',
+                        live: Boolean(payload?.live),
+                        used_cache: Boolean(payload?.used_cache),
+                        fetched_at: payload?.fetched_at,
+                        age_seconds: typeof payload?.age_seconds === 'number' ? payload.age_seconds : undefined,
+                    },
+                };
 
-                this.vehicleCache.set(cacheKey, { data: vehicles, timestamp: now });
-                return vehicles;
+                this.vehicleCache.set(cacheKey, { data: snapshot, timestamp: now });
+                return snapshot;
             } catch (error) {
                 console.warn('[TransitService] Error fetching vehicles:', error);
-                return cached?.data || [];
+                return cached?.data || {
+                    vehicles: [],
+                    freshness: { source: 'unavailable' },
+                };
             } finally {
                 this.ongoingVehicleRequests.delete(cacheKey);
             }
@@ -285,12 +319,17 @@ export const transitService = {
         return requestPromise;
     },
 
+    async getVehicles(routeId?: string): Promise<any[]> {
+        const snapshot = await this.getVehiclesSnapshot(routeId);
+        return snapshot.vehicles;
+    },
+
     async getRouteStops(routeId: string): Promise<any[]> {
         const { stops } = await this.getRoutePattern(routeId);
         return stops;
     },
 
-    async getRouteTimetable(routeId: string, maxStops = 200): Promise<any[]> {
+    async getRouteTimetableSnapshot(routeId: string, maxStops = 200): Promise<TimetableSnapshot> {
         const now = Date.now();
         const cacheKey = `${routeId}:${maxStops}`;
         const cached = this.timetableCache.get(cacheKey);
@@ -306,13 +345,35 @@ export const transitService = {
             );
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const payload = await response.json();
-            const entries = Array.isArray(payload?.entries) ? payload.entries : [];
-            this.timetableCache.set(cacheKey, { data: entries, timestamp: now });
-            return entries;
+            const snapshot: TimetableSnapshot = {
+                route: payload?.route,
+                entries: Array.isArray(payload?.entries) ? payload.entries : [],
+                freshness: {
+                    source: payload?.freshness?.source || 'unavailable',
+                    live: Boolean(payload?.freshness?.live),
+                    used_schedule_fallback: Boolean(payload?.freshness?.used_schedule_fallback),
+                    fetched_at: payload?.freshness?.fetched_at,
+                    age_seconds: typeof payload?.freshness?.age_seconds === 'number'
+                        ? payload.freshness.age_seconds
+                        : undefined,
+                    realtime_stop_count: payload?.freshness?.realtime_stop_count,
+                    scheduled_stop_count: payload?.freshness?.scheduled_stop_count,
+                },
+            };
+            this.timetableCache.set(cacheKey, { data: snapshot, timestamp: now });
+            return snapshot;
         } catch (error) {
             console.warn('[TransitService] Error fetching timetable:', error);
-            return cached?.data || [];
+            return cached?.data || {
+                entries: [],
+                freshness: { source: 'unavailable' },
+            };
         }
+    },
+
+    async getRouteTimetable(routeId: string, maxStops = 200): Promise<any[]> {
+        const snapshot = await this.getRouteTimetableSnapshot(routeId, maxStops);
+        return snapshot.entries;
     },
 
     async getTransitTimetableDb(stopCode: string, routeNumber: string = '', startTime?: string): Promise<any[]> {

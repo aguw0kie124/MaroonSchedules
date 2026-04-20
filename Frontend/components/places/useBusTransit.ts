@@ -1,14 +1,53 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { transitService } from "../../services/transitService";
+import { transitService, type TransitFreshness } from "../../services/transitService";
 import { formatExactLocalTime } from "../../services/dateUtils";
 import { ALL_BUS_ROUTES_KEY } from "./types";
 import {
   haversineDistanceMeters,
   getClosestProgressMeters,
   formatBusDistance,
-  getApproximateEtaMinutes,
   isVehicleOnRoute,
 } from "./utils";
+
+function getFreshnessTimestampLabel(freshness: TransitFreshness | null) {
+  if (!freshness?.fetched_at) return null;
+  const parsed = new Date(freshness.fetched_at);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return formatExactLocalTime(parsed);
+}
+
+function getVehicleFreshnessLabel(freshness: TransitFreshness | null) {
+  if (!freshness) return "Waiting for vehicle positions";
+  if (freshness.source === "live") {
+    const stamp = getFreshnessTimestampLabel(freshness);
+    return stamp ? `Live positions updated ${stamp}` : "Live vehicle positions";
+  }
+  if (freshness.source === "stale_cache") {
+    return "Showing cached vehicle positions";
+  }
+  if (freshness.source === "unavailable") {
+    return "Live vehicle feed unavailable";
+  }
+  return "Vehicle positions updating";
+}
+
+function getDepartureBoardDetail(
+  freshness: TransitFreshness | null,
+  nextDeparture: any,
+) {
+  if (!nextDeparture) {
+    if (freshness?.source === "unavailable") return "Live departures unavailable";
+    if (freshness?.source === "schedule_fallback") return "Scheduled departures only";
+    return "No scheduled departures";
+  }
+  if (nextDeparture?.is_realtime || freshness?.source === "live") {
+    return "Live departure board";
+  }
+  if (freshness?.source === "schedule_fallback") {
+    return "Scheduled departure board";
+  }
+  return "Departure board";
+}
 
 export function useBusTransit(
   activeLayer: string,
@@ -37,6 +76,8 @@ export function useBusTransit(
   const [routeTimetableState, setRouteTimetableState] = useState<
     'idle' | 'loading' | 'loaded' | 'error'
   >('idle');
+  const [vehicleFreshness, setVehicleFreshness] = useState<TransitFreshness | null>(null);
+  const [routeTimetableFreshness, setRouteTimetableFreshness] = useState<TransitFreshness | null>(null);
 
   const busPollInterval = useRef<any>(null);
   const isFetchingRef = useRef(false);
@@ -187,12 +228,12 @@ export function useBusTransit(
     if (!routesToLoad.length) {
       setAllRoutePatternsById({});
       setBusVehicles([]);
+      setVehicleFreshness({
+        source: "unavailable",
+        live: false,
+      });
       return;
     }
-
-    transitService.getVehicles().then((v) => {
-      stabilizedSetBusVehicles(v);
-    });
 
     transitService.getBulkRoutePatterns(routesToLoad.map((r) => r.Key)).then((results) => {
       setAllRoutePatternsById(results);
@@ -200,10 +241,15 @@ export function useBusTransit(
       console.warn("[Transit] Bulk pattern load failed:", err);
     });
 
+    setBusVehicles([]);
+    setVehicleFreshness({
+      source: "unavailable",
+      live: false,
+    });
     setBusStops([]);
     setRoutePatterns([]);
     setRoutePaths([]);
-  }, [stabilizedSetBusVehicles]);
+  }, []);
 
   useEffect(() => {
     if (busVehicles.length > 0) {
@@ -220,6 +266,7 @@ export function useBusTransit(
       setSelectedStop(null);
       setSelectedBus(null);
       setRouteTimetableEntries([]);
+      setRouteTimetableFreshness(null);
       setRouteTimetableState(routeId === ALL_BUS_ROUTES_KEY ? 'idle' : 'loading');
 
       if (routeId === ALL_BUS_ROUTES_KEY) {
@@ -404,6 +451,8 @@ export function useBusTransit(
       setSelectedBus(null);
       setSelectedStop(null);
       setRouteTimetableEntries([]);
+      setVehicleFreshness(null);
+      setRouteTimetableFreshness(null);
       setRouteTimetableState('idle');
     }
   }, [activeLayer]);
@@ -419,10 +468,11 @@ export function useBusTransit(
 
     setRouteTimetableState('loading');
 
-    transitService.getRouteTimetable(selectedRoute.Key, 200)
-      .then((entries) => {
+    transitService.getRouteTimetableSnapshot(selectedRoute.Key, 200)
+      .then((snapshot) => {
         if (!cancelled) {
-          setRouteTimetableEntries(entries);
+          setRouteTimetableEntries(snapshot.entries);
+          setRouteTimetableFreshness(snapshot.freshness);
           setRouteTimetableState('loaded');
         }
       })
@@ -430,6 +480,7 @@ export function useBusTransit(
         console.warn("[Transit] Timetable fetch failed:", error);
         if (!cancelled) {
           setRouteTimetableEntries([]);
+          setRouteTimetableFreshness({ source: 'unavailable' });
           setRouteTimetableState('error');
         }
       });
@@ -448,13 +499,23 @@ export function useBusTransit(
       if (!isActive || activeLayer !== "Bus" || !selectedBusRouteId) return;
       
       try {
-        const updated = isAllBusRoutesSelected
-          ? await transitService.getVehicles()
-          : await transitService.getVehicles(selectedBusRouteId);
+        if (isAllBusRoutesSelected) {
+          if (isActive) {
+            setBusVehicles([]);
+            setVehicleFreshness({
+              source: 'unavailable',
+              live: false,
+            });
+          }
+          return;
+        }
+
+        const snapshot = await transitService.getVehiclesSnapshot(selectedBusRouteId);
         
         if (isActive) {
-          if (updated) {
-            stabilizedSetBusVehicles(updated);
+          setVehicleFreshness(snapshot.freshness);
+          if (snapshot.vehicles) {
+            stabilizedSetBusVehicles(snapshot.vehicles);
           } else {
             // Even if the poll failed/empty, run stabilization to prune stale buses
             stabilizedSetBusVehicles([]);
@@ -462,11 +523,14 @@ export function useBusTransit(
         }
       } catch (e) {
         console.warn("[Transit] Polling error:", e);
+        if (isActive) {
+          setVehicleFreshness({ source: 'unavailable' });
+        }
         // Ensure pruning runs even on error
         if (isActive) stabilizedSetBusVehicles([]);
       } finally {
         if (isActive) {
-          const interval = isAllBusRoutesSelected ? 8000 : 5000;
+          const interval = isAllBusRoutesSelected ? 15000 : 2500;
           timeoutId = setTimeout(poll, interval);
         }
       }
@@ -528,11 +592,7 @@ export function useBusTransit(
           etaLabel: primaryTime
             ? formatExactLocalTime(primaryTime)
             : 'No times',
-          detail: primaryTime
-            ? nextDeparture?.is_realtime
-              ? 'Live departure board'
-              : 'Scheduled departure board'
-            : 'No scheduled departures',
+          detail: getDepartureBoardDetail(routeTimetableFreshness, nextDeparture),
           departures,
         };
       });
@@ -545,10 +605,19 @@ export function useBusTransit(
       detail:
         routeTimetableState === 'error'
           ? 'Schedule unavailable'
-          : 'No scheduled departures',
+          : routeTimetableFreshness?.source === 'schedule_fallback'
+            ? 'Scheduled departures only'
+            : 'No scheduled departures',
       departures: [],
     }));
-  }, [activeLayer, busStops, routeTimetableEntries, routeTimetableState, selectedRoute]);
+  }, [activeLayer, busStops, routeTimetableEntries, routeTimetableFreshness, routeTimetableState, selectedRoute]);
+
+  const vehicleStatusLabel = useMemo(() => {
+    if (isAllBusRoutesSelected) {
+      return "Route overview mode hides live bus markers";
+    }
+    return getVehicleFreshnessLabel(vehicleFreshness);
+  }, [isAllBusRoutesSelected, vehicleFreshness]);
 
   // All-routes board for overview mode
   const allRouteBoards = useMemo(() => {
@@ -559,42 +628,24 @@ export function useBusTransit(
     return busRoutes
       .map((route) => {
         const pattern = allRoutePatternsById[route.Key];
-        const routePoints = pattern?.points || [];
         const routeStops = pattern?.stops || [];
-        const routeVehicles = busVehicles.filter((bus) =>
-          isVehicleOnRoute(bus, route),
-        );
         const entries = routeStops.slice(0, 4).map((stop, index) => {
-          const rankedBuses = routeVehicles
-            .map((bus) => ({
-              bus,
-              etaMinutes: getApproximateEtaMinutes(routePoints, stop, bus),
-            }))
-            .sort((left, right) => left.etaMinutes - right.etaMinutes);
-          const nextBus = rankedBuses[0];
-
           return {
             stop,
             sequence: index + 1,
-            etaLabel: nextBus
-              ? nextBus.etaMinutes <= 1
-                ? "Now"
-                : `${nextBus.etaMinutes} min`
-              : "Route loaded",
-            detail: nextBus?.bus?.RouteShortName
-              ? `Route ${nextBus.bus.RouteShortName}`
-              : route.Name || "Transit route",
+            etaLabel: "Route",
+            detail: route.Name || "Transit route",
           };
         });
 
         return {
           route,
-          liveCount: routeVehicles.length,
+          liveCount: 0,
           entries,
         };
       })
       .filter((board) => board.entries.length > 0 || board.liveCount > 0);
-  }, [allRoutePatternsById, busRoutes, busVehicles, isAllBusRoutesSelected]);
+  }, [allRoutePatternsById, busRoutes, isAllBusRoutesSelected]);
 
   // Nearby transit insight for user location
   const getNearbyTransitInsight = useCallback(
@@ -685,6 +736,9 @@ export function useBusTransit(
     isFetchingBus,
     setIsFetchingBus,
     availableDirections,
-    routeTimetableState
+    routeTimetableState,
+    vehicleFreshness,
+    routeTimetableFreshness,
+    vehicleStatusLabel,
   };
 }

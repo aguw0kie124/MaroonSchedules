@@ -588,7 +588,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
     filteredBusRoutes,
     getNearbyTransitInsight,
     availableDirections,
-    routeTimetableState
+    routeTimetableState,
+    vehicleFreshness,
+    routeTimetableFreshness,
+    vehicleStatusLabel,
   } = useBusTransit(activeLayer, mapRef);
 
   const nearbyTransitInsight = useMemo(() => getNearbyTransitInsight(userCoord), [getNearbyTransitInsight, userCoord]);
@@ -1504,16 +1507,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
             }))
             : [],
         );
-        const vehicleCoords = busVehicles
-          .map((bus: any) => ({
-            latitude: bus.Latitude,
-            longitude: bus.Longitude,
-          }))
-          .filter(
-            (coord: { latitude?: number; longitude?: number }) =>
-              coord && Number.isFinite(coord.latitude) && Number.isFinite(coord.longitude),
-          ) as { latitude: number; longitude: number }[];
-        fitToCoords([...routeCoords, ...vehicleCoords]);
+        fitToCoords(routeCoords);
         return;
       }
 
@@ -2162,7 +2156,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           })}
 
         {/* Bus Layer: Vehicles and Stops */}
-        {activeLayer === "Bus" && memoizedBusMarkers}
+        {activeLayer === "Bus" && !isAllBusRoutesSelected && memoizedBusMarkers}
 
         {activeLayer === "Bus" &&
           busStops.map((stop) => {
@@ -2911,6 +2905,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
           isDark={isDark}
           selectedRoute={selectedRoute}
           liveBusCount={busVehicles.length}
+          vehicleFreshness={vehicleFreshness}
+          timetableFreshness={routeTimetableFreshness}
+          vehicleStatusLabel={vehicleStatusLabel}
           stopTimetable={stopTimetable}
           onStopPress={(stop) => {
             setIsTimetableSheetOpen(false);
