@@ -180,7 +180,22 @@ def get_crowdping_feed(post_types: List[str] = None, limit: int = 40, exclude_us
             
     return [_row_to_post_dict(r) for r in rows]
 
-# --- Interactions ---
+def get_user_feed(user_id: str, limit: int = 40) -> List[Dict[str, Any]]:
+    with psycopg.connect(CONNECTION_PARAMS) as conn:
+        with conn.cursor() as cur:
+            sql = """
+                SELECT p.id, p.user_id, 
+                       COALESCE(u.full_name, p.user_name, 'Aggie User') as user_name, 
+                       COALESCE(u.profile_image_url, p.user_image, '') as user_image, 
+                       p.content, p.lat, p.lng, p.location_tag, p.event_id, p.images, p.is_anonymous, p.visibility, p.post_type, p.custom_data, p.created_at
+                FROM crowdping_posts p
+                LEFT JOIN users u ON p.user_id = u.clerk_id
+                WHERE p.user_id = %s AND p.is_anonymous = false
+                ORDER BY p.created_at DESC LIMIT %s
+            """
+            cur.execute(sql, (user_id, limit))
+            rows = cur.fetchall()
+    return [_row_to_post_dict(r) for r in rows]
 
 def add_post_interaction(
     post_id: str,

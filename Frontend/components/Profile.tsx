@@ -1180,13 +1180,6 @@ export function Profile() {
                     >
                       <MapPinIcon size={24} color={COLORS.textPrimary} />
                     </ScalePressable>
-
-                    <ScalePressable 
-                      onPress={() => savePingToPlans(selectedPing)}
-                      style={{ padding: 6 }}
-                    >
-                      <BookmarkIcon size={24} color={COLORS.textPrimary} />
-                    </ScalePressable>
                  </View>
                </View>
             </Pressable>

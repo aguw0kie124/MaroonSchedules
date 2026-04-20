@@ -165,7 +165,7 @@ const TIME_PRESETS: Array<{ id: TimePreset; label: string }> = [
   { id: 'tomorrow', label: 'Tomorrow' },
 ];
 
-function categoryMeta(category: string) {
+export function categoryMeta(category: string) {
   return (
     PING_CATEGORIES.find((entry) => entry.id === category) || {
       id: category,
@@ -219,7 +219,7 @@ function formatStartLabel(startAt: string) {
   return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · ${time}`;
 }
 
-function formatRelativeAge(isoValue: string) {
+export function formatRelativeAge(isoValue: string) {
   const value = new Date(isoValue);
   if (!Number.isFinite(value.getTime())) return 'Just now';
   const diffMs = Date.now() - value.getTime();
@@ -1219,22 +1219,45 @@ export function CampusPingsScreen() {
     const hasImage = !!item.imageUrl;
     const isActive = isPingActiveNow(item.startAt, item.endAt);
 
+    const openPublicProfile = (userId: string, userName: string, userImage?: string, isAnonymous?: boolean) => {
+      navigation.navigate('PublicProfile', {
+        targetUserId: userId,
+        targetUserName: userName,
+        targetUserImage: userImage,
+        isAnonymous: isAnonymous
+      });
+    };
+
     return (
       <View style={styles.pingCard}>
         <View style={styles.pingCardHeader}>
-          {item.userImage ? (
-            <Image source={{ uri: item.userImage }} style={styles.pingAvatarImage} />
-          ) : (
-            <View style={[styles.pingAvatar, { backgroundColor: `${accent}15` }]}>
-              <Text style={[styles.pingAvatarInitials, { color: accent }]}>{getInitials(item.userName)}</Text>
+          <Pressable 
+            style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
+            onPress={() => {
+              if (item.userId) {
+                openPublicProfile(
+                  item.userId, 
+                  item.isAnonymous ? 'Anonymous' : item.userName, 
+                  item.isAnonymous ? undefined : item.userImage,
+                  item.isAnonymous
+                );
+              }
+            }}
+          >
+            {item.userImage ? (
+              <Image source={{ uri: item.userImage }} style={styles.pingAvatarImage} />
+            ) : (
+              <View style={[styles.pingAvatar, { backgroundColor: `${accent}15` }]}>
+                <Text style={[styles.pingAvatarInitials, { color: accent }]}>{getInitials(item.userName)}</Text>
+              </View>
+            )}
+            <View style={styles.pingAuthorBlock}>
+              <Text style={styles.pingAuthorName}>{item.userName}</Text>
+              <Text style={styles.pingAuthorMeta} numberOfLines={1}>
+                {item.isAnonymous ? `Anonymous · ${item.locationTag}` : item.locationTag}
+              </Text>
             </View>
-          )}
-          <View style={styles.pingAuthorBlock}>
-            <Text style={styles.pingAuthorName}>{item.userName}</Text>
-            <Text style={styles.pingAuthorMeta} numberOfLines={1}>
-              {item.isAnonymous ? `Anonymous · ${item.locationTag}` : item.locationTag}
-            </Text>
-          </View>
+          </Pressable>
           <View style={styles.pingHeaderActions}>
             {item.anchorType === 'geo' && (
               <View style={styles.geoIndicator}>
@@ -1326,13 +1349,6 @@ export function CampusPingsScreen() {
               <MapPin size={21} color={COLORS.textPrimary} />
             </ScalePressable>
           </View>
-
-          <ScalePressable
-            style={styles.pingIconAction}
-            onPress={() => savePingToPlans(item)}
-          >
-            <Bookmark size={20} color={COLORS.textPrimary} />
-          </ScalePressable>
         </View>
 
         <View style={styles.pingContent}>
@@ -2099,7 +2115,7 @@ const getStyles = (theme: any) => {
     pingAvatar: {
       width: 44,
       height: 44,
-      borderRadius: 12,
+      borderRadius: 22,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: `${COLORS.primary}12`,
@@ -2107,7 +2123,7 @@ const getStyles = (theme: any) => {
     pingAvatarImage: {
       width: 44,
       height: 44,
-      borderRadius: 12,
+      borderRadius: 22,
       backgroundColor: COLORS.surfaceElevated,
     },
     pingAvatarInitials: {

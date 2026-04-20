@@ -73,6 +73,7 @@ import { PendingReviewInterceptor } from './components/events/PendingReviewInter
 import { FriendPingNotificationBridge } from './components/pings/FriendPingNotificationBridge';
 import { API_URL } from './config';
 import { ClubAccessScreen } from './components/ClubAccessScreen';
+import PublicProfileScreen from './components/social/PublicProfileScreen';
 import { FocusMotionView } from './components/common/Motion';
 import { useEventStore, type MajorOption } from './store/eventStore';
 
@@ -544,6 +545,7 @@ function RootNavigator() {
             <Stack.Screen name="AnnexLibraryDetail" component={AnnexLibraryDetailScreen} options={{ headerShown: false }} />
             <Stack.Screen name="AnnexRentalDetail" component={AnnexRentalDetailScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ClubAccess" component={ClubAccessScreen} options={{ headerShown: true, title: 'Club Access' }} />
+            <Stack.Screen name="PublicProfile" component={PublicProfileScreen} options={{ headerShown: false }} />
             <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
             <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
             <Stack.Screen name="FacilityCounts" component={FacilityCountsScreen} options={{ headerShown: false }} />

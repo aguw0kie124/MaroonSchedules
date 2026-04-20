@@ -207,6 +207,9 @@ async def proxy_get_feed(
                     if feed_id == "campus_pings": post_types = ['ping', 'post']
                     elif feed_id == "reels_global": post_types = ['reel']
                     raw_items = feed_repository.get_crowdping_feed(post_types=post_types, limit=limit*2)
+                elif feed_id.startswith("user_"):
+                    target_user_id = feed_id.replace("user_", "")
+                    raw_items = feed_repository.get_user_feed(target_user_id, limit=limit*2)
             
             # Keep the feed warm, but refresh often enough that recent pings don't disappear.
             if raw_items:
