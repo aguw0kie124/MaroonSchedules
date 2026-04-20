@@ -38,6 +38,7 @@ export interface TransitPlanBuildOptions {
 
 type PlanCandidate = {
   route: any;
+  routePoints: Coordinate[];
   segment: Coordinate[];
   nearestOrigin: { stop: any; distanceMeters: number; index: number };
   nearestDestination: { stop: any; distanceMeters: number; index: number };
@@ -58,6 +59,7 @@ type PlanCandidate = {
 
 const WALKING_METERS_PER_MINUTE = 84;
 const BUS_METERS_PER_MINUTE = 300;
+const LIVE_TRIP_RELEVANCE_WINDOW_MS = 20 * 60 * 1000;
 
 function polylineDistance(points: Coordinate[]): number {
   let total = 0;
@@ -135,6 +137,51 @@ function estimateNearestVehicleLabel(vehicles: any[], stop: any) {
   const label = best.RouteShortName || best.RouteName || 'Bus';
   const minutes = Math.max(1, Math.round(bestDistance / 220));
   return `${label} nearby · ~${minutes} min`;
+}
+
+function isVehicleOnCandidateRoute(vehicle: any, route: any) {
+  const identifiers = [vehicle?.RouteKey, vehicle?.RouteShortName, vehicle?.RouteName]
+    .map((value) => (value || '').toString().trim().toLowerCase())
+    .filter(Boolean);
+  const routeIdentifiers = [route?.Key, route?.ShortName, route?.Name]
+    .map((value) => (value || '').toString().trim().toLowerCase())
+    .filter(Boolean);
+  return identifiers.some((value) => routeIdentifiers.includes(value));
+}
+
+function getLiveEtaMinutes(
+  routePoints: Coordinate[],
+  stop: any,
+  vehicle: any,
+) {
+  if (!routePoints.length || !stop || !vehicle) return Infinity;
+
+  const stopIndex = getNearestPointIndex(routePoints, {
+    latitude: stop.Latitude,
+    longitude: stop.Longitude,
+  });
+  const vehicleIndex = getNearestPointIndex(routePoints, {
+    latitude: vehicle.Latitude,
+    longitude: vehicle.Longitude,
+  });
+
+  let pointDelta = stopIndex - vehicleIndex;
+  if (pointDelta < 0) {
+    pointDelta += routePoints.length;
+  }
+
+  const fallbackDistance = computeDistanceMeters(
+    { latitude: vehicle.Latitude, longitude: vehicle.Longitude },
+    { latitude: stop.Latitude, longitude: stop.Longitude },
+  );
+  const averageMetersPerPoint = routePoints.length > 1
+    ? Math.max(12, polylineDistance(routePoints) / routePoints.length)
+    : 25;
+  const estimatedDistance = Math.max(
+    fallbackDistance,
+    pointDelta * averageMetersPerPoint,
+  );
+  return Math.max(1, Math.round(estimatedDistance / 220));
 }
 
 function sortCandidates(candidates: PlanCandidate[], preference: TransitTripPreference) {
@@ -326,6 +373,7 @@ async function buildEstimatedCandidate(
 
   return {
     route,
+    routePoints: pattern.points,
     segment,
     nearestOrigin,
     nearestDestination,
@@ -435,6 +483,113 @@ function applyTripPlanToCandidate(
   };
 }
 
+function overlayLiveVehicleTiming(
+  candidate: PlanCandidate,
+  plannedTimestamp: number,
+  timingMode: 'leave_at' | 'arrive_by',
+  liveVehicles: any[],
+): { candidate: PlanCandidate; nearestVehicleLabel?: string } {
+  const routeVehicles = liveVehicles.filter((vehicle) => {
+    if (!isVehicleOnCandidateRoute(vehicle, candidate.route)) {
+      return false;
+    }
+
+    if (!candidate.directionName) {
+      return true;
+    }
+
+    const vehicleDirection = (vehicle?.DirectionName || '').toString().trim().toLowerCase();
+    const candidateDirection = candidate.directionName.toString().trim().toLowerCase();
+    return !vehicleDirection || vehicleDirection === candidateDirection;
+  });
+
+  const nearestVehicleLabel = estimateNearestVehicleLabel(
+    routeVehicles,
+    candidate.nearestOrigin.stop,
+  );
+
+  if (
+    timingMode !== 'leave_at' ||
+    Math.abs(plannedTimestamp - Date.now()) > LIVE_TRIP_RELEVANCE_WINDOW_MS ||
+    !routeVehicles.length ||
+    !candidate.routePoints.length
+  ) {
+    return { candidate, nearestVehicleLabel };
+  }
+
+  const liveMatches = routeVehicles
+    .map((vehicle) => {
+      const etaToOriginMinutes = getLiveEtaMinutes(
+        candidate.routePoints,
+        candidate.nearestOrigin.stop,
+        vehicle,
+      );
+      const etaToDestinationMinutes = getLiveEtaMinutes(
+        candidate.routePoints,
+        candidate.nearestDestination.stop,
+        vehicle,
+      );
+      if (!Number.isFinite(etaToOriginMinutes) || !Number.isFinite(etaToDestinationMinutes)) {
+        return null;
+      }
+      if (etaToDestinationMinutes <= etaToOriginMinutes) {
+        return null;
+      }
+      return {
+        etaToOriginMinutes,
+        etaToDestinationMinutes,
+      };
+    })
+    .filter((item): item is { etaToOriginMinutes: number; etaToDestinationMinutes: number } => Boolean(item))
+    .sort((left, right) => left.etaToOriginMinutes - right.etaToOriginMinutes);
+
+  const bestLiveMatch = liveMatches[0];
+  if (!bestLiveMatch) {
+    return { candidate, nearestVehicleLabel };
+  }
+
+  const leaveOriginTime = candidate.leaveOriginTimeUtc
+    ? new Date(candidate.leaveOriginTimeUtc)
+    : new Date(plannedTimestamp);
+  const arrivalAtStopTime = new Date(
+    leaveOriginTime.getTime() + candidate.walkingToStopMinutes * 60_000,
+  );
+  const liveBoardTime = new Date(
+    Date.now() + bestLiveMatch.etaToOriginMinutes * 60_000,
+  );
+  const boardTime = new Date(
+    Math.max(arrivalAtStopTime.getTime(), liveBoardTime.getTime()),
+  );
+  const liveBusMinutes = Math.max(
+    1,
+    bestLiveMatch.etaToDestinationMinutes - bestLiveMatch.etaToOriginMinutes,
+  );
+  const alightTime = new Date(boardTime.getTime() + liveBusMinutes * 60_000);
+  const arriveDestinationTime = new Date(
+    alightTime.getTime() + candidate.walkingFromStopMinutes * 60_000,
+  );
+
+  return {
+    nearestVehicleLabel,
+    candidate: {
+      ...candidate,
+      estimatedWaitMinutes: Math.max(
+        0,
+        Math.round((boardTime.getTime() - arrivalAtStopTime.getTime()) / 60_000),
+      ),
+      busMinutes: liveBusMinutes,
+      totalMinutes: Math.max(
+        3,
+        Math.round((arriveDestinationTime.getTime() - leaveOriginTime.getTime()) / 60_000),
+      ),
+      leaveOriginTimeUtc: leaveOriginTime.toISOString(),
+      scheduledBoardTimeUtc: boardTime.toISOString(),
+      scheduledAlightTimeUtc: alightTime.toISOString(),
+      arriveDestinationTimeUtc: arriveDestinationTime.toISOString(),
+    },
+  };
+}
+
 async function enrichCandidateWithSchedule(
   candidate: PlanCandidate,
   plannedTimestamp: number,
@@ -484,6 +639,13 @@ export async function buildTransitPlanOptions(
       ]
     : baseCandidates;
 
+  await transitService.getBulkRoutePatterns(
+    orderedRoutes
+      .slice(0, Math.min(Math.max(limit * 4, 12), orderedRoutes.length))
+      .map((route) => route.Key)
+      .filter(Boolean),
+  );
+
   const estimatedCandidates = (
     await Promise.all(
       orderedRoutes.map((route) => buildEstimatedCandidate(route, start, destination)),
@@ -527,23 +689,17 @@ export async function buildTransitPlanOptions(
     preferredRouteKey,
   ).slice(0, limit);
 
-  const liveVehicles = await transitService.getVehicles();
+  const liveVehicleSnapshot = await transitService.getVehiclesSnapshot();
+  const liveVehicles = liveVehicleSnapshot.freshness?.source === 'live'
+    ? liveVehicleSnapshot.vehicles
+    : [];
 
-  return rankedCandidates.map((candidate) => {
-    const routeVehicles = liveVehicles.filter((vehicle) =>
-      [vehicle.RouteKey, vehicle.RouteShortName, vehicle.RouteName]
-        .map((value: string) => (value || '').toString().toLowerCase())
-        .includes((candidate.route.Key || '').toString().toLowerCase()) ||
-      [vehicle.RouteKey, vehicle.RouteShortName, vehicle.RouteName]
-        .map((value: string) => (value || '').toString().toLowerCase())
-        .includes((candidate.route.ShortName || '').toString().toLowerCase()) ||
-      [vehicle.RouteKey, vehicle.RouteShortName, vehicle.RouteName]
-        .map((value: string) => (value || '').toString().toLowerCase())
-        .includes((candidate.route.Name || '').toString().toLowerCase()),
-    );
-    const nearestVehicleLabel = estimateNearestVehicleLabel(
-      routeVehicles,
-      candidate.nearestOrigin.stop,
+  return rankedCandidates.map((rankedCandidate) => {
+    const { candidate, nearestVehicleLabel } = overlayLiveVehicleTiming(
+      rankedCandidate,
+      plannedTimestamp,
+      timingMode,
+      liveVehicles,
     );
 
     return toTransitPlan(

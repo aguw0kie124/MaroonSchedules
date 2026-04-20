@@ -232,13 +232,29 @@ export const transitService = {
     async getBulkRoutePatterns(routeIds: string[]): Promise<Record<string, { points: any[], stops: any[], paths?: any[] }>> {
         if (routeIds.length === 0) return {};
         const now = Date.now();
+        const resultsFromCache: Record<string, { points: any[], stops: any[], paths?: any[] }> = {};
+        const missingRouteIds: string[] = [];
+
+        routeIds.forEach((routeId) => {
+            const cached = this.patternCache.get(routeId);
+            if (cached && (now - cached.timestamp < PATTERN_TTL)) {
+                resultsFromCache[routeId] = cached.data;
+                return;
+            }
+            missingRouteIds.push(routeId);
+        });
+
+        if (missingRouteIds.length === 0) {
+            return resultsFromCache;
+        }
         
         try {
-            const query = `ids=${encodeURIComponent(routeIds.join(','))}`;
+            const query = `ids=${encodeURIComponent(missingRouteIds.join(','))}`;
             const response = await apiFetch(`/traffic/transit/patterns?${query}`, {}, TRANSIT_FETCH_TIMEOUT_MS);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const results = await response.json();
+            const normalizedResults: Record<string, { points: any[], stops: any[], paths?: any[] }> = { ...resultsFromCache };
             
             // Cache each result individually so subsequent single-route requests are zero-cost
             Object.entries(results).forEach(([rk, data]: [string, any]) => {
@@ -259,12 +275,13 @@ export const transitService = {
                     data: { points, stops, paths }, 
                     timestamp: now 
                 });
+                normalizedResults[rk] = { points, stops, paths };
             });
             
-            return results;
+            return normalizedResults;
         } catch (error) {
             console.warn('[TransitService] Error fetching bulk patterns:', error);
-            return {};
+            return resultsFromCache;
         }
     },
 
