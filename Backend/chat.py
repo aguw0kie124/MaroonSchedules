@@ -131,6 +131,23 @@ async def list_users(request: Request, exclude_id: str = "", _auth_user_id: str 
         print(f"Clerk API Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/users/{clerk_id}/public")
+async def get_public_profile(clerk_id: str, _auth_user_id: Optional[str] = Depends(optional_auth)):
+    """Return sanitized profile for public viewing (no sensitive data)."""
+    profile = user_repository.get_user(clerk_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return {
+        "clerk_id": profile["clerk_id"],
+        "full_name": profile.get("full_name") or "Aggie User",
+        "profile_image_url": profile.get("profile_image_url"),
+        "major": profile.get("major"),
+        "graduation_year": profile.get("graduation_year"),
+        "bio": profile.get("bio"),
+        "website": profile.get("website"),
+    }
+
 # --- Feed Proxy (Now 100% Native) ---
 
 def _resolve_access_scope_cached(clerk_id: Optional[str]) -> tuple[List[str], bool]:

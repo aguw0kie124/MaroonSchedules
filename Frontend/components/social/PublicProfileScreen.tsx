@@ -68,17 +68,9 @@ export default function PublicProfileScreen() {
   const { data: profile, isLoading: isLoadingProfile } = useQuery({
     queryKey: ['public-profile', targetUserId, isAnonymous],
     queryFn: async () => {
-      if (isAnonymous) {
-        return {
-          clerk_id: targetUserId,
-          full_name: 'Anonymous',
-          profile_image_url: '',
-          bio: 'This user has shared this ping anonymously.'
-        };
-      }
+      if (isAnonymous) return { full_name: 'Anonymous', clerk_id: 'anonymous' };
       try {
-        const res = await requestJson(`/users/${targetUserId}`);
-        return res;
+        return await requestJson(`/chat/users/${targetUserId}/public`);
       } catch (e) {
         console.warn('Failed to fetch public profile', e);
         return {
