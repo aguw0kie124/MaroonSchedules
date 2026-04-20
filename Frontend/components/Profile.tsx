@@ -1905,42 +1905,9 @@ export function Profile() {
                     </Pressable>
                   </View>
 
-                  {/* App Settings Section */}
+                    {/* App Settings Section */}
                   <View style={{ marginTop: 10, paddingBottom: 40 }}>
                     <Text style={[styles.sectionHeading, { marginLeft: 4, marginBottom: 12 }]}>App Settings</Text>
-                    
-                    {renderNotificationsTab && renderNotificationsTab(true, false)}
-                    {renderBlockedTab && renderBlockedTab(true, false)}
-                    
-                    <Pressable style={styles.toolRow} onPress={() => setShowSavedPingsModal(true)}>
-                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
-                        <BookmarkIcon size={20} color="#3B82F6" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.toolTitle}>Saved Pings</Text>
-                      </View>
-                      <ChevronRight size={20} color={COLORS.textTertiary} />
-                    </Pressable>
-                    
-
-
-                    <Pressable
-                      style={styles.toolRow}
-                      onPress={() => {
-                        useAppShellStore.setState({
-                          isEventPreferencesCompleted: false,
-                          showEventPreferencesOnboarding: true,
-                        });
-                      }}
-                    >
-                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(47, 128, 237, 0.12)' }]}>
-                        <Sparkles size={20} color="#2F80ED" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.toolTitle}>Redo Questions</Text>
-                      </View>
-                      <ChevronRight size={20} color={COLORS.textTertiary} />
-                    </Pressable>
 
                     <Pressable 
                       style={[styles.toolRow, showLayoutPanel && styles.toolRowLast]} 
@@ -1964,6 +1931,38 @@ export function Profile() {
                         {renderLayoutTab && renderLayoutTab(true, true)}
                       </View>
                     )}
+
+                    {renderNotificationsTab && renderNotificationsTab(true, false)}
+
+                    <Pressable style={styles.toolRow} onPress={() => setShowSavedPingsModal(true)}>
+                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
+                        <BookmarkIcon size={20} color="#3B82F6" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.toolTitle}>Saved Pings</Text>
+                      </View>
+                      <ChevronRight size={20} color={COLORS.textTertiary} />
+                    </Pressable>
+
+                    {renderBlockedTab && renderBlockedTab(true, false)}
+
+                    <Pressable
+                      style={styles.toolRow}
+                      onPress={() => {
+                        useAppShellStore.setState({
+                          isEventPreferencesCompleted: false,
+                          showEventPreferencesOnboarding: true,
+                        });
+                      }}
+                    >
+                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(47, 128, 237, 0.12)' }]}>
+                        <Sparkles size={20} color="#2F80ED" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.toolTitle}>Redo Questions</Text>
+                      </View>
+                      <ChevronRight size={20} color={COLORS.textTertiary} />
+                    </Pressable>
 
                     <Pressable 
                       style={[styles.toolRow, showMoreInfo && styles.toolRowLast, { marginTop: 12 }]} 
