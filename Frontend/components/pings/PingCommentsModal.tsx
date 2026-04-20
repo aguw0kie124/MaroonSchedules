@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  Keyboard,
   KeyboardAvoidingView,
+  KeyboardEvent,
   Modal,
   PanResponder,
   Platform,
@@ -12,7 +14,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
@@ -22,6 +23,7 @@ import { useTheme } from '../SharedUI';
 import { useQuery } from '@tanstack/react-query';
 import { API_URL } from '../../config';
 import { resolveDisplayName } from '../../utils/userUtils';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type PingComment = {
   id: string;
@@ -101,6 +103,7 @@ export function PingCommentsModal({
   const SHEET_HIDDEN_SNAP = SHEET_HEIGHT + 32;
   const { COLORS } = useTheme();
   const { user } = useUser();
+  const insets = useSafeAreaInsets();
 
   const [comments, setComments] = React.useState<PingComment[]>([]);
   const [draft, setDraft] = React.useState('');
@@ -109,6 +112,7 @@ export function PingCommentsModal({
   const [loading, setLoading] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [isMounted, setIsMounted] = React.useState(visible);
+  const [keyboardInset, setKeyboardInset] = React.useState(0);
   const isClosingRef = React.useRef(false);
   const sheetY = React.useRef(new Animated.Value(SHEET_HIDDEN_SNAP)).current;
   const sheetSnap = React.useRef<number>(SHEET_HIDDEN_SNAP);
@@ -190,6 +194,7 @@ export function PingCommentsModal({
       return;
     }
     if (!visible) {
+      setKeyboardInset(0);
       setDraft('');
       setReplyingTo(null);
       setExpandedThreads(new Set());
@@ -203,6 +208,34 @@ export function PingCommentsModal({
       isClosingRef.current = false;
     }
   }, [SHEET_HIDDEN_SNAP, SHEET_MID_SNAP, sheetY, visible]);
+
+  React.useEffect(() => {
+    if (!visible) return;
+
+    const getKeyboardInset = (event?: KeyboardEvent) => {
+      const keyboardHeight = event?.endCoordinates?.height ?? 0;
+      return Math.max(0, keyboardHeight - insets.bottom);
+    };
+
+    const handleKeyboardFrame = (event: KeyboardEvent) => {
+      setKeyboardInset(getKeyboardInset(event));
+    };
+
+    const handleKeyboardHide = () => {
+      setKeyboardInset(0);
+    };
+
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, handleKeyboardFrame);
+    const hideSub = Keyboard.addListener(hideEvent, handleKeyboardHide);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [insets.bottom, visible]);
 
   const backdropOpacity = sheetY.interpolate({
     inputRange: [SHEET_TOP_SNAP, SHEET_MID_SNAP, SHEET_HIDDEN_SNAP],
@@ -434,6 +467,7 @@ export function PingCommentsModal({
               {
                 backgroundColor: COLORS.surface,
                 height: SHEET_HEIGHT,
+                paddingBottom: Math.max(insets.bottom, 18),
                 transform: [{ translateY: sheetY }],
               },
             ]}
@@ -465,7 +499,15 @@ export function PingCommentsModal({
               ) : comments.length ? (
                 <ScrollView
                   style={styles.threadScroll}
-                  contentContainerStyle={styles.threadContent}
+                  contentContainerStyle={[
+                    styles.threadContent,
+                    {
+                      paddingBottom: Math.max(
+                        20,
+                        insets.bottom + keyboardInset + (replyingTo ? 120 : 92),
+                      ),
+                    },
+                  ]}
                   scrollEnabled={sheetMode === 'top'}
                   keyboardShouldPersistTaps="handled"
                   showsVerticalScrollIndicator={false}
@@ -515,7 +557,15 @@ export function PingCommentsModal({
               )}
             </View>
 
-            <View style={[styles.composerWrap, { borderColor: COLORS.border }]}>
+            <View
+              style={[
+                styles.composerWrap,
+                {
+                  borderColor: COLORS.border,
+                  marginBottom: keyboardInset,
+                },
+              ]}
+            >
               {replyingTo && (
                 <View style={[styles.replyHeader, { borderBottomColor: COLORS.border }]}>
                   <CornerDownRight size={12} color={COLORS.textTertiary} />

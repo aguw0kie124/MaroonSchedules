@@ -1501,7 +1501,7 @@ export function CampusPingsScreen() {
               <Flame size={20} color="#A462F4" />
               <Megaphone size={20} color="#FF8B52" />
             </View>
-            <Text style={styles.emptyTitle}>No crowd pings yet</Text>
+            <Text style={styles.emptyTitle}>No posts yet</Text>
             <Text style={styles.emptyQuote}>Be the first to post what is happening.</Text>
           </View>
         }
