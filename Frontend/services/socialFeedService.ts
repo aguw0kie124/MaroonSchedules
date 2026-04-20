@@ -109,6 +109,31 @@ export async function getCampusFeed(limit = 25): Promise<any[]> {
   }
 }
 
+/**
+ * Fetches a specific user's ping feed by their ID.
+ * Falls back to the global ping feed if the user-specific one is empty or fails.
+ */
+export async function getUserPingFeed(feedId: string, limit = 50): Promise<any[]> {
+  const cleanId = feedId.startsWith('user_') ? feedId.replace('user_', '') : feedId;
+  const targetId = `user_${cleanId}`;
+  
+  try {
+    const res = await feedFetch(`/chat/feeds/proxy/flat/${targetId}?limit=${limit}`, {}, 8000);
+    if (!res.ok) {
+      return getPingFeed(limit);
+    }
+    const data = await res.json();
+    const results = data.results || [];
+    // If user feed is empty, fallback to global feed for manual filtering
+    if (results.length === 0) {
+      return getPingFeed(limit);
+    }
+    return results;
+  } catch (e) {
+    return getPingFeed(limit);
+  }
+}
+
 export async function getPingFeed(limit = 40): Promise<any[]> {
   try {
     const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?limit=${limit}`, {}, 12000);

@@ -195,16 +195,35 @@ export function Profile() {
   const { user } = useUser();
   const { scheduleEvent, saveEvent } = useEventStore();
   const queryClient = useQueryClient();
-  const { data: userPings = [] } = useQuery({
+  const { data: userPings = [], isLoading: isLoadingPings } = useQuery({
     queryKey: ['user-pings', API_URL, user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-      const { getPingFeed } = await import('../services/socialFeedService');
-      const feed = await getPingFeed(100);
-      const userActivities = feed.filter((p: any) => p.user_id === user.id || p.actor?.id === `SU:${user.id}`);
+      const { getUserPingFeed, getPingFeed } = await import('../services/socialFeedService');
+      
+      // Combine both for maximum discovery reliability
+      const [uFeed, gFeed] = await Promise.all([
+        getUserPingFeed(user.id, 50).catch(() => []),
+        getPingFeed(150).catch(() => [])
+      ]);
+      
+      const combined = [...uFeed, ...gFeed];
+      const seenIds = new Set();
+      const unique = combined.filter(p => {
+        const id = p.id || p.activityId;
+        if (seenIds.has(id)) return false;
+        seenIds.add(id);
+        return true;
+      });
+
+      const userActivities = unique.filter((p: any) => {
+        const pId = p.user_id || p.actor?.id?.replace('SU:', '') || p.actor?.replace('SU:', '');
+        return pId === user.id;
+      });
       return userActivities.map((act: any) => mapActivityToPing(act, user, new Map()));
     },
     enabled: !!user?.id,
+    refetchInterval: 15000,
     staleTime: 0,
     gcTime: 1000 * 60 * 5,
   });
@@ -474,8 +493,8 @@ export function Profile() {
       setShowEditProfile(false);
       
       // Refresh user data
-      queryClient.invalidateQueries({ queryKey: ['user-pings'] });
-      queryClient.invalidateQueries({ queryKey: ['campus-pings'] });
+      queryClient.invalidateQueries({ queryKey: ['user-pings', API_URL, user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['campus-pings', API_URL] });
       
       Alert.alert('Profile Saved', 'Your changes have been updated and synced.');
     } catch (err) {
@@ -974,10 +993,33 @@ export function Profile() {
    );
 
   const renderContentGrid = (pings: any[]) => {
+    if (isLoadingPings) {
+      return (
+        <View style={{ padding: 40, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={{ marginTop: 12, color: COLORS.textTertiary, fontWeight: '600' }}>Refreshing Feed...</Text>
+        </View>
+      );
+    }
+
     // Filter by visibility toggle: if off, hide pings that move (reels/images usually stay, "comments" i.e. text-only pings go)
     const filteredByToggle = showPingsOnProfile 
       ? pings 
       : pings.filter(p => p.imageUrl || p.mediaUrls?.length > 0);
+
+    if (filteredByToggle.length === 0) {
+      return (
+        <View style={{ padding: 60, alignItems: 'center', justifyContent: 'center' }}>
+          <LayoutGrid size={48} color={COLORS.textTertiary} style={{ opacity: 0.3, marginBottom: 16 }} />
+          <Text style={{ color: COLORS.textTertiary, fontSize: 16, fontWeight: '600', textAlign: 'center' }}>
+            No pings yet.
+          </Text>
+          <Text style={{ color: COLORS.textTertiary, fontSize: 13, textAlign: 'center', marginTop: 4 }}>
+            Your shared moments will appear here.
+          </Text>
+        </View>
+      );
+    }
 
     // Sort logic for pinning
     const sortedPings = [...filteredByToggle].sort((a, b) => {
@@ -2041,6 +2083,9 @@ export function Profile() {
         onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['campus-pings', API_URL] });
           queryClient.invalidateQueries({ queryKey: ['user-pings', API_URL, user?.id] });
+          setTimeout(() => {
+            queryClient.refetchQueries({ queryKey: ['user-pings', API_URL, user?.id] });
+          }, 1500);
         }}
       />
     </WallpaperWrapper>

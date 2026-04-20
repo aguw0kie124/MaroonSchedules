@@ -63,10 +63,17 @@ export function resolveDisplayName(
     return getPremiumName(currentUser);
   }
   if (userId && userMap?.has(userId)) {
-    return userMap.get(userId)!;
+    const name = userMap.get(userId)!;
+    if (name.includes("@")) {
+      return name.split("@")[0] || "Aggie User";
+    }
+    return name;
   }
   if (isEncryptedString(rawName)) {
     return 'Aggie User';
+  }
+  if (rawName && rawName.includes("@")) {
+    return rawName.split("@")[0] || "Aggie User";
   }
   return rawName || 'Aggie User';
 }

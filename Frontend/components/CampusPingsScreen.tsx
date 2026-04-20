@@ -292,7 +292,7 @@ function mapOfficialEventCategory(event: FeaturedEvent): PingCategory {
   return 'Popup';
 }
 
-function mapActivityToPing(activity: any, currentUser: any, userMap: Map<string, string>): PingCard {
+export function mapActivityToPing(activity: any, currentUser: any, userMap: Map<string, string>): PingCard {
   const custom = activity.custom || {};
   const actor = activity.actor || {};
   const userId = (actor.id || activity.actor || '').replace('SU:', '');
