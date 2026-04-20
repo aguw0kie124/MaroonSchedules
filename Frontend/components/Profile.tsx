@@ -896,9 +896,9 @@ export function Profile() {
             <ScalePressable 
               key={post.id || idx} 
               style={[styles.postSquare, { 
-                width: (Dimensions.get('window').width - 42) / 3,
+                width: (Dimensions.get('window').width - 60) / 3,
                 borderRadius: 24,
-                height: ((Dimensions.get('window').width - 42) / 3) * 1.33 
+                height: ((Dimensions.get('window').width - 60) / 3) * 1.33 
               }]}
               onPress={() => setSelectedPing(post)}
             >
