@@ -54,7 +54,7 @@ export const useThemeStore = create<any>((set, get) => ({
   theme: 'light', // 'dark' | 'light'
   accentColor: DEFAULT_DARK_ACCENT,
   applyAccentToText: true,
-  tabBarMode: 'solid', // 'solid' | 'floating'
+  tabBarMode: 'solid',
   setTheme: (newTheme: string) => {
     const currentTheme = get().theme as 'light' | 'dark';
     const currentAccent = get().accentColor;
@@ -69,22 +69,28 @@ export const useThemeStore = create<any>((set, get) => ({
     set(nextState);
     AsyncStorage.setItem('theme_mode', newTheme).catch(() => {});
   },
-  setAccentColor: (accentColor: string) => {
-    set({ accentColor });
-    AsyncStorage.setItem('accent_color', accentColor).catch(() => {});
+  setAccentColor: (_accentColor: string) => {
+    const theme = get().theme as 'light' | 'dark';
+    const nextAccent = getDefaultAccentColor(theme);
+    set({ accentColor: nextAccent });
+    AsyncStorage.setItem('accent_color', nextAccent).catch(() => {});
   },
-  setApplyAccentToText: (applyAccentToText: boolean) => {
-    set({ applyAccentToText });
-    AsyncStorage.setItem('accent_text_enabled', JSON.stringify(applyAccentToText)).catch(() => {});
+  setApplyAccentToText: (_applyAccentToText: boolean) => {
+    set({ applyAccentToText: true });
+    AsyncStorage.setItem('accent_text_enabled', JSON.stringify(true)).catch(() => {});
   },
   loadThemePrefs: async () => {
-    const [storedTheme, accentColor, accentTextEnabled, tabBarMode] = await Promise.all([
+    const [storedTheme] = await Promise.all([
       AsyncStorage.getItem('theme_mode'),
-      AsyncStorage.getItem('accent_color'),
-      AsyncStorage.getItem('accent_text_enabled'),
-      AsyncStorage.getItem('tab_bar_mode'),
     ]);
-    AsyncStorage.multiRemove(['use_wallpaper', 'background_mode', 'custom_wallpaper_uri']).catch(() => {});
+    AsyncStorage.multiRemove([
+      'use_wallpaper',
+      'background_mode',
+      'custom_wallpaper_uri',
+      'accent_color',
+      'accent_text_enabled',
+      'tab_bar_mode',
+    ]).catch(() => {});
 
     const nextState: Record<string, unknown> = {};
 
@@ -93,25 +99,17 @@ export const useThemeStore = create<any>((set, get) => ({
       nextState.theme = storedTheme;
     }
 
-    nextState.accentColor =
-      !accentColor || isLegacyDefaultAccent(accentColor)
-        ? getDefaultAccentColor(nextTheme)
-        : accentColor;
-
-    if (accentTextEnabled !== null) {
-      nextState.applyAccentToText = accentTextEnabled === 'true';
-    }
-    if (tabBarMode !== null) {
-      nextState.tabBarMode = tabBarMode;
-    }
+    nextState.accentColor = getDefaultAccentColor(nextTheme);
+    nextState.applyAccentToText = true;
+    nextState.tabBarMode = 'solid';
 
     if (Object.keys(nextState).length) {
       set(nextState);
     }
   },
-  setTabBarMode: (mode: 'floating' | 'solid') => {
-    set({ tabBarMode: mode });
-    AsyncStorage.setItem('tab_bar_mode', mode).catch(() => {});
+  setTabBarMode: (_mode: 'floating' | 'solid') => {
+    set({ tabBarMode: 'solid' });
+    AsyncStorage.setItem('tab_bar_mode', 'solid').catch(() => {});
   }
 }));
 

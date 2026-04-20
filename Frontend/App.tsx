@@ -267,10 +267,8 @@ const AnimatedDiningScreen = withTabMotion(DiningDashboard, 30);
 const AnimatedClubsScreen = withTabMotion(ClubAccessScreen, 50);
 const AnimatedSettingsScreen = withTabMotion(Profile, 90);
 
-import { GlassPillTabBar } from './components/GlassPillTabBar';
-
 function MainTabs(props: any) {
-  const { COLORS, tabBarMode } = useTheme();
+  const { COLORS } = useTheme();
   const { user } = useUser();
   const navItems = useAppShellStore((state) => state.navItems);
   const isGuest = useSessionStore((state) => state.isGuest);
@@ -339,12 +337,11 @@ function MainTabs(props: any) {
       key={shellKey}
       id="MainTabs"
       initialRouteName={initialRouteName}
-      tabBar={tabBarMode === 'floating' ? (tabProps) => <GlassPillTabBar {...tabProps} /> : undefined}
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: true,
         tabBarHideOnKeyboard: true,
-        tabBarStyle: tabBarMode === 'floating' ? { display: 'none' } : {
+        tabBarStyle: {
           height: 70,
           borderTopWidth: 1,
           borderTopColor: COLORS.border,
@@ -367,10 +364,7 @@ function MainTabs(props: any) {
           initialParams={screen.initialParams}
           options={{
             title: screen.title,
-            tabBarButton: (p) => {
-              if (tabBarMode === 'floating') return null; // Let GlassPill handle it
-              return <TabButtonWrapper screenName={screen.name} props={p} />;
-            },
+            tabBarButton: (p) => <TabButtonWrapper screenName={screen.name} props={p} />,
             tabBarIcon: ({ color, focused }) => {
               if (screen.name === 'Settings') {
                 return (

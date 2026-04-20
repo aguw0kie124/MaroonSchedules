@@ -47,13 +47,11 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Funnel,
   Filter,
   GraduationCap,
   Heart,
   HeartPulse,
   Inbox,
-  Layers,
   Map,
   MapPin,
   Megaphone,
@@ -1949,6 +1947,46 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           </Pressable>
         </View>
       </View>
+
+      <View style={s.modeTabs}>
+        {([
+          { id: 'discover', label: 'Discover' },
+          { id: 'list', label: 'List' },
+        ] as const).map((tab) => {
+          const active = view === tab.id || (tab.id === 'discover' && view === 'swipe');
+          const tabItem = (
+            <Pressable
+              key={tab.id}
+              style={[s.modeTab, active && s.modeTabActive]}
+              onPress={() => {
+                changeView(tab.id);
+                if (tab.id === 'list' && activeTargetName === 'switch-to-list') {
+                  advanceStep('switch-to-list');
+                }
+              }}
+            >
+              <Text style={[s.modeTabText, active && s.modeTabTextActive]}>{tab.label}</Text>
+              {active ? <View style={s.modeTabUnderline} /> : null}
+            </Pressable>
+          );
+
+          if (tab.id === 'list') {
+            return (
+              <TourTarget
+                key={tab.id}
+                name="switch-to-list"
+                assistAction={() => {
+                  changeView('list');
+                  setTimeout(() => advanceStep('switch-to-list'), 250);
+                }}
+              >
+                {tabItem}
+              </TourTarget>
+            );
+          }
+          return tabItem;
+        })}
+      </View>
     </View>
   );
 
@@ -2374,8 +2412,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         scheduledEvents={scheduledEvents}
         onPress={(ev) => setDetailEvent(ev)}
         onSchedule={handleSchedule}
-        viewMode={view}
-        setViewMode={(val) => changeView(val)}
       />
 
       <DetailModal
@@ -2858,8 +2894,6 @@ function SettingsModal({
   scheduledEvents,
   onPress,
   onSchedule,
-  viewMode,
-  setViewMode,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -2875,8 +2909,6 @@ function SettingsModal({
   scheduledEvents: TAMUEvent[];
   onPress: (event: TAMUEvent) => void;
   onSchedule: (event: TAMUEvent) => void;
-  viewMode: 'discover' | 'swipe' | 'list' | 'inbox';
-  setViewMode: (val: 'discover' | 'swipe' | 'list' | 'inbox') => void;
 }) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
@@ -2947,43 +2979,6 @@ function SettingsModal({
                 </ScrollView>
               </>
             )}
-
-            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: scheduledEvents?.length ? 0 : 4 }]}>
-              Display Layout
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
-              {(['discover', 'list'] as const).map((mode) => (
-                <Pressable
-                  key={mode}
-                  onPress={() => {
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    setViewMode(mode);
-                  }}
-                  style={[
-                    stylesStatic.layoutTabPill,
-                    {
-                      paddingVertical: 12,
-                      paddingHorizontal: 20,
-                      borderRadius: 36,
-                      flex: 1,
-                      alignItems: 'center',
-                      backgroundColor: viewMode === mode ? COLORS.primary : isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
-                      borderColor: viewMode === mode ? COLORS.primary : COLORS.border,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      fontSize: 14,
-                      fontWeight: '800',
-                      color: viewMode === mode ? '#FFFFFF' : COLORS.textSecondary,
-                    }}
-                  >
-                    {mode === 'discover' ? 'Discover' : 'List'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
 
             <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 12 }]}>
               Major filter

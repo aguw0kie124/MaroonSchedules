@@ -5,7 +5,6 @@ import {
   Image,
   KeyboardAvoidingView,
   Modal,
-  PanResponder,
   Platform,
   Pressable,
   RefreshControl,
@@ -82,7 +81,7 @@ import {
   unblockUser,
 } from '../services/socialFeedService';
 import { PillTabs } from './PillTabs';
-import { getDefaultAccentColor, useTheme, WallpaperWrapper } from './SharedUI';
+import { useTheme, WallpaperWrapper } from './SharedUI';
 
 import { TagChips } from './common/TagChips';
 import { ScalePressable } from './common/Motion';
@@ -106,76 +105,6 @@ const PROFILE_TABS = [
 ] as const;
 
 type ProfileTabKey = typeof PROFILE_TABS[number]['key'];
-
-function channelToHex(channel: number) {
-  return channel.toString(16).padStart(2, '0');
-}
-
-function hexToRgb(color: string) {
-  const normalized = color.replace('#', '');
-  return {
-    r: parseInt(normalized.slice(0, 2), 16),
-    g: parseInt(normalized.slice(2, 4), 16),
-    b: parseInt(normalized.slice(4, 6), 16),
-  };
-}
-
-function rgbToHex(r: number, g: number, b: number) {
-  return `#${channelToHex(r)}${channelToHex(g)}${channelToHex(b)}`;
-}
-
-const ACCENT_SPECTRUM_STOPS = [
-  { ratio: 0, color: '#FFFFFF' },
-  { ratio: 0.12, color: '#FF5A5F' },
-  { ratio: 0.28, color: '#FFB300' },
-  { ratio: 0.44, color: '#34C759' },
-  { ratio: 0.6, color: '#00C7BE' },
-  { ratio: 0.74, color: '#0A84FF' },
-  { ratio: 0.88, color: '#BF5AF2' },
-  { ratio: 1, color: '#000000' },
-] as const;
-
-function getSpectrumColorFromRatio(ratio: number) {
-  const clamped = Math.min(Math.max(ratio, 0), 1);
-  const upperIndex = ACCENT_SPECTRUM_STOPS.findIndex((stop) => clamped <= stop.ratio);
-  if (upperIndex <= 0) {
-    return ACCENT_SPECTRUM_STOPS[0].color;
-  }
-  if (upperIndex === -1) {
-    return ACCENT_SPECTRUM_STOPS[ACCENT_SPECTRUM_STOPS.length - 1].color;
-  }
-  const left = ACCENT_SPECTRUM_STOPS[upperIndex - 1];
-  const right = ACCENT_SPECTRUM_STOPS[upperIndex];
-  const span = right.ratio - left.ratio || 1;
-  const progress = (clamped - left.ratio) / span;
-  const leftRgb = hexToRgb(left.color);
-  const rightRgb = hexToRgb(right.color);
-  return rgbToHex(
-    Math.round(leftRgb.r + (rightRgb.r - leftRgb.r) * progress),
-    Math.round(leftRgb.g + (rightRgb.g - leftRgb.g) * progress),
-    Math.round(leftRgb.b + (rightRgb.b - leftRgb.b) * progress),
-  );
-}
-
-function getRatioFromColor(color: string) {
-  const normalized = color.startsWith('#') ? color.toUpperCase() : `#${color.toUpperCase()}`;
-  let closestRatio = 0;
-  let closestDistance = Number.POSITIVE_INFINITY;
-  for (let index = 0; index <= 100; index += 1) {
-    const ratio = index / 100;
-    const candidate = hexToRgb(getSpectrumColorFromRatio(ratio));
-    const target = hexToRgb(normalized);
-    const distance =
-      Math.abs(candidate.r - target.r) +
-      Math.abs(candidate.g - target.g) +
-      Math.abs(candidate.b - target.b);
-    if (distance < closestDistance) {
-      closestDistance = distance;
-      closestRatio = ratio;
-    }
-  }
-  return closestRatio;
-}
 
 function formatRelativeAge(isoValue: string) {
   const value = new Date(isoValue);
@@ -318,19 +247,12 @@ export function Profile() {
     COLORS,
     theme,
     setTheme,
-    accentColor,
-    setAccentColor,
-    applyAccentToText,
-    setApplyAccentToText,
-    tabBarMode,
-    setTabBarMode,
   } = useTheme();
   const isDark = theme === 'dark';
-  const styles = getStyles(COLORS, isDark, accentColor);
+  const styles = getStyles(COLORS, isDark, COLORS.primary);
 
   const [academicStatus, setAcademicStatus] = useState<any | null>(null);
   const [loadingAcademicStatus, setLoadingAcademicStatus] = useState(true);
-  const [accentSliderWidth, setAccentSliderWidth] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const activeTab = useAppShellStore((state) => state.settingsTab) as ProfileTabKey;
   const setActiveTab = useAppShellStore((state) => state.setSettingsTab);
@@ -486,25 +408,6 @@ export function Profile() {
       setShowEditProfile(false);
     }
   };
-
-  const accentRatio = useMemo(() => getRatioFromColor(accentColor), [accentColor]);
-  const accentPreviewColor = useMemo(() => getSpectrumColorFromRatio(accentRatio), [accentRatio]);
-  const updateAccentFromPosition = React.useCallback((locationX: number) => {
-    if (!accentSliderWidth) return;
-    const clamped = Math.min(Math.max(locationX, 0), accentSliderWidth);
-    setAccentColor(getSpectrumColorFromRatio(clamped / accentSliderWidth));
-  }, [accentSliderWidth, setAccentColor]);
-
-  const accentPanResponder = React.useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
-        onPanResponderGrant: (event) => updateAccentFromPosition(event.nativeEvent.locationX),
-        onPanResponderMove: (event) => updateAccentFromPosition(event.nativeEvent.locationX),
-      }),
-    [updateAccentFromPosition],
-  );
 
   useEffect(() => {
     if (isFocused) {
@@ -1148,7 +1051,7 @@ export function Profile() {
   const renderLayoutTab = (embedded = false, isLast = false) => {
     const content = (
       <>
-        <View style={styles.preferenceBlock}>
+          <View style={styles.preferenceBlock}>
             <Text style={styles.preferenceLabel}>Theme Mode</Text>
             <View style={styles.segmentedRow}>
               {['light', 'dark'].map((mode) => {
@@ -1161,82 +1064,6 @@ export function Profile() {
                   >
                     <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
                       {mode === 'light' ? 'Light' : 'Dark'}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
-          <View style={styles.preferenceBlock}>
-            <Text style={styles.preferenceLabel}>Accent Color</Text>
-            <View style={styles.accentSliderCard}>
-              <View style={styles.accentSliderHeader}>
-                <View style={[styles.accentPreview, { backgroundColor: accentPreviewColor }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inlineSwitchTitle}>Custom Accent</Text>
-                </View>
-              </View>
-
-              <View
-                style={styles.accentSliderTrack}
-                onLayout={(event) => setAccentSliderWidth(event.nativeEvent.layout.width)}
-                {...accentPanResponder.panHandlers}
-              >
-                <View style={styles.accentSliderGradient}>
-                  {Array.from({ length: 24 }).map((_, index) => {
-                    const ratio = index / 23;
-                    return (
-                      <View
-                        key={index}
-                        style={[
-                          styles.accentSliderSegment,
-                          { backgroundColor: getSpectrumColorFromRatio(ratio) },
-                        ]}
-                      />
-                    );
-                  })}
-                </View>
-                {accentSliderWidth ? (
-                  <View
-                    pointerEvents="none"
-                    style={[
-                      styles.accentSliderThumb,
-                      { left: Math.max(0, Math.min(accentSliderWidth - 26, accentRatio * accentSliderWidth - 13)) },
-                    ]}
-                  />
-                ) : null}
-              </View>
-
-              <View style={styles.accentScaleRow}>
-                <Text style={styles.accentScaleLabel}>Light</Text>
-                <Pressable
-                  style={styles.accentResetButton}
-                  onPress={() => setAccentColor(getDefaultAccentColor(theme))}
-                >
-                  <Text style={styles.accentResetText}>Use Theme Default</Text>
-                </Pressable>
-                <Text style={styles.accentScaleLabel}>Dark</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.preferenceBlock}>
-            <Text style={styles.preferenceLabel}>Navigation Style</Text>
-            <View style={styles.segmentedRow}>
-              {[
-                { key: 'solid', label: 'Solid' },
-                { key: 'floating', label: 'Floating' },
-              ].map((item) => {
-                const selected = tabBarMode === item.key;
-                return (
-                  <Pressable
-                    key={item.key}
-                    style={[styles.segmentButton, selected && styles.segmentButtonActive]}
-                    onPress={() => setTabBarMode(item.key as 'solid' | 'floating')}
-                  >
-                    <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
-                      {item.label}
                     </Text>
                   </Pressable>
                 );
@@ -2543,82 +2370,6 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
     },
     friendActionButtonTextDisabled: {
       color: COLORS.textSecondary,
-    },
-    accentSliderCard: {
-      borderRadius: 22,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-      backgroundColor: COLORS.surfaceElevated,
-      padding: 14,
-      gap: 14,
-    },
-    accentSliderHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 12,
-    },
-    accentPreview: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-    },
-    accentSliderTrack: {
-      height: 34,
-      borderRadius: 17,
-      overflow: 'hidden',
-      justifyContent: 'center',
-    },
-    accentSliderGradient: {
-      flexDirection: 'row',
-      width: '100%',
-      height: 18,
-      borderRadius: 999,
-      overflow: 'hidden',
-    },
-    accentSliderSegment: {
-      flex: 1,
-      height: '100%',
-    },
-    accentSliderThumb: {
-      position: 'absolute',
-      top: 4,
-      width: 26,
-      height: 26,
-      borderRadius: 13,
-      backgroundColor: '#FFFFFF',
-      borderWidth: 2,
-      borderColor: 'rgba(12,12,14,0.74)',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 3 },
-      shadowOpacity: 0.18,
-      shadowRadius: 6,
-      elevation: 4,
-    },
-    accentScaleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 10,
-    },
-    accentScaleLabel: {
-      fontSize: 12,
-      fontWeight: '700',
-      color: COLORS.textSecondary,
-    },
-    accentResetButton: {
-      borderRadius: 999,
-      paddingHorizontal: 12,
-      paddingVertical: 7,
-      backgroundColor: COLORS.surface,
-      borderWidth: 1,
-      borderColor: COLORS.border,
-    },
-    accentResetText: {
-      fontSize: 12,
-      fontWeight: '700',
-      color: COLORS.textPrimary,
     },
     inlineSwitchRow: {
       flexDirection: 'row',

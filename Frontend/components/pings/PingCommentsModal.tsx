@@ -78,7 +78,7 @@ function mapRawComment(comment: any, currentUser: any, userMap: Map<string, stri
 
   return {
     id: String(comment?.id ?? `${comment?.created_at ?? Date.now()}`),
-    text: String(comment?.data?.text ?? comment?.data?.comment ?? comment?.text ?? comment?.data?.body ?? ''),
+    text: String(comment?.data?.text ?? comment?.text ?? ''),
     createdAt: String(comment?.created_at ?? new Date().toISOString()),
     userName: resolveDisplayName(userId, rawName, currentUser, userMap),
     parentId: comment?.parent_id,
@@ -140,17 +140,10 @@ export function PingCommentsModal({
   }, [userProfiles]);
 
   const loadComments = React.useCallback(async () => {
-    const activityId = target?.activityId;
-    if (!activityId) return;
-
+    if (!target?.activityId) return;
     setLoading(true);
     try {
-      const resp = await getComments(activityId);
-      if (!Array.isArray(resp)) {
-        setComments([]);
-        return;
-      }
-
+      const resp = await getComments(target.activityId);
       const all: PingComment[] = resp.map(c => mapRawComment(c, user, userMap));
       
       // Grouping: strictly one level deep for now (parent -> reply)
@@ -198,20 +191,16 @@ export function PingCommentsModal({
     }
     if (!visible) {
       setDraft('');
-      // Delayed unmounting to allow closing animation to complete
-      const timer = setTimeout(() => {
-        setIsMounted(false);
-        setReplyingTo(null);
-        setExpandedThreads(new Set());
-        setComments([]);
-        setLoading(false);
-        setSubmitting(false);
-        setSheetMode('hidden');
-        sheetSnap.current = SHEET_HIDDEN_SNAP;
-        sheetY.setValue(SHEET_HIDDEN_SNAP);
-      }, 300); // Matches animation duration
-      
-      return () => clearTimeout(timer);
+      setReplyingTo(null);
+      setExpandedThreads(new Set());
+      setComments([]);
+      setLoading(false);
+      setSubmitting(false);
+      setSheetMode('hidden');
+      sheetSnap.current = SHEET_HIDDEN_SNAP;
+      sheetY.setValue(SHEET_HIDDEN_SNAP);
+      setIsMounted(false);
+      isClosingRef.current = false;
     }
   }, [SHEET_HIDDEN_SNAP, SHEET_MID_SNAP, sheetY, visible]);
 
@@ -360,47 +349,72 @@ export function PingCommentsModal({
     });
   }, []);
 
-  const renderComment = (comment: PingComment, isReply = false) => {
-    const isMe = comment.userName === resolveDisplayName(user?.id || '', '', user, userMap); // Rough check
-    
-    return (
-      <View
-        key={comment.id}
-        style={[
-          styles.commentRow,
-          { 
-            flexDirection: isMe ? 'row-reverse' : 'row',
-            marginLeft: isReply && !isMe ? 42 : (isReply && isMe ? 0 : 0),
-            marginRight: isReply && isMe ? 42 : 0,
-          }
-        ]}
-      >
-        <View style={[styles.avatar, { backgroundColor: isMe ? '#F7533E20' : '#34C75915' }]}>
-          <Text style={{ fontSize: 10, fontWeight: '900', color: isMe ? '#F7533E' : '#34C759' }}>
-            {comment.userName.charAt(0)}
+  const renderComment = (comment: PingComment, isReply = false) => (
+    <View
+      key={comment.id}
+      style={[
+        styles.commentRow,
+        { 
+          borderBottomColor: COLORS.border,
+          marginLeft: isReply ? 46 : 0,
+        }
+      ]}
+    >
+      <View style={[styles.avatar, { backgroundColor: `${COLORS.primary}14` }]}>
+        <MessageCircle size={14} color={COLORS.primary} />
+      </View>
+      <View style={styles.commentCopy}>
+        <View style={styles.commentMetaRow}>
+          <Text style={[styles.commentAuthor, { color: COLORS.textPrimary }]}>
+            {comment.userName}
+          </Text>
+          <Text style={[styles.commentTime, { color: COLORS.textTertiary }]}>
+            {formatCommentTime(comment.createdAt)}
           </Text>
         </View>
-        <View style={[styles.commentBubble, isMe ? styles.userBubble : styles.othersBubble]}>
-          {!isMe && (
-            <Text style={[styles.commentAuthor, { color: COLORS.textPrimary, marginBottom: 2 }]}>
-              {comment.userName}
+        <Text style={[styles.commentText, { color: COLORS.textSecondary }]}>
+          {comment.text || 'No text'}
+        </Text>
+        
+        <View style={styles.commentActions}>
+          <View style={[styles.voteGroup, { backgroundColor: `${COLORS.border}30` }]}>
+            <Pressable 
+              onPress={() => handleVoteAction(comment.id, 'upvote')}
+              style={styles.voteBtn}
+            >
+              <ArrowUp 
+                size={14} 
+                color={comment.ownVote === 'upvote' ? COLORS.primary : COLORS.textSecondary} 
+                strokeWidth={3}
+              />
+            </Pressable>
+            <Text style={[styles.scoreText, { color: COLORS.textPrimary }]}>
+              {comment.score}
             </Text>
-          )}
-          <Text style={[styles.commentText, { color: isMe ? COLORS.textPrimary : COLORS.textPrimary }]}>
-            {comment.text || 'No text'}
-          </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4, gap: 10 }}>
-             <Text style={[styles.commentTime, { color: COLORS.textTertiary, fontSize: 10 }]}>
-               {formatCommentTime(comment.createdAt)}
-             </Text>
-             <Pressable onPress={() => handleReply(comment)}>
-                <Text style={{ fontSize: 10, fontWeight: '900', color: COLORS.primary }}>Reply</Text>
-             </Pressable>
+            <Pressable 
+               onPress={() => handleVoteAction(comment.id, 'downvote')}
+               style={styles.voteBtn}
+            >
+              <ArrowDown 
+                size={14} 
+                color={comment.ownVote === 'downvote' ? COLORS.primary : COLORS.textSecondary} 
+                strokeWidth={3}
+              />
+            </Pressable>
           </View>
+          
+          <Pressable 
+            onPress={() => handleReply(comment)}
+            style={styles.actionLink}
+          >
+            <Text style={[styles.actionLinkText, { color: COLORS.textTertiary }]}>
+              Reply {!isReply && comment.replies && comment.replies.length > 0 ? `(${comment.replies.length})` : ''}
+            </Text>
+          </Pressable>
         </View>
       </View>
-    );
-  };
+    </View>
+  );
 
   return (
     <Modal visible={isMounted} animationType="none" transparent statusBarTranslucent>
@@ -630,28 +644,10 @@ const styles = StyleSheet.create({
   },
   commentRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 16,
-    paddingHorizontal: 4,
-  },
-  commentBubble: {
-    maxWidth: '82%',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 24,
-  },
-  othersBubble: {
-    backgroundColor: '#E0F2F1', // Light teal/mint
-    borderTopLeftRadius: 4,
-  },
-  userBubble: {
-    backgroundColor: '#FFFFFF', // Pure white bubble
-    borderTopRightRadius: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
+    gap: 12,
+    paddingBottom: 12,
+    marginBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   avatar: {
     width: 34,
@@ -700,16 +696,9 @@ const styles = StyleSheet.create({
   },
   composerWrap: {
     marginTop: 12,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 30,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderRadius: 24,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
   },
   replyHeader: {
     flexDirection: 'row',
