@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,7 +15,9 @@ import {
   Text,
   TextInput,
   View,
+  Dimensions,
 } from 'react-native';
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Path, Circle as SvgCircle, G } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import {
@@ -65,7 +67,6 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
 import { Plus } from 'lucide-react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import { Dimensions } from 'react-native';
 
 import { fetchCampusOverview, fetchUserProfile } from '../api/client';
 import { SUPPORT_CONTACT_URL } from '../config';
@@ -82,7 +83,7 @@ import {
   unblockUser,
 } from '../services/socialFeedService';
 import { PillTabs } from './PillTabs';
-import { getDefaultAccentColor, useTheme, WallpaperWrapper } from './SharedUI';
+import { getDefaultAccentColor, useTheme, useThemeStore, WallpaperWrapper } from './SharedUI';
 
 import { TagChips } from './common/TagChips';
 import { ScalePressable } from './common/Motion';
@@ -351,11 +352,22 @@ export function Profile() {
   const [loadingAcademicStatus, setLoadingAcademicStatus] = useState(true);
   const [accentSliderWidth, setAccentSliderWidth] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const activeTab = useAppShellStore((state) => state.settingsTab) as ProfileTabKey;
-  const setActiveTab = useAppShellStore((state) => state.setSettingsTab);
+  const [activeTab, setActiveTab] = useState<ProfileTabKey>('pings');
+  const {
+    eventNotifications,
+    placeNotifications,
+    pingNotifications,
+    setNotificationPreference
+  } = useAppShellStore();
+  
+  const pickerPos = useThemeStore((state: any) => state.pickerPos);
+  const huePos = useThemeStore((state: any) => state.huePos);
+  const setPickerPos = useThemeStore((state: any) => state.setPickerPos);
+  const setHuePos = useThemeStore((state: any) => state.setHuePos);
   
   const [showBlockedPanel, setShowBlockedPanel] = useState(false);
   const [showLayoutPanel, setShowLayoutPanel] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
   const [showMoreInfo, setShowMoreInfo] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
@@ -368,11 +380,6 @@ export function Profile() {
   const userGender = useAppShellStore((state) => state.userGender);
   const showPingsOnProfile = useAppShellStore((state) => state.showPingsOnProfile);
   
-  useFocusEffect(
-    useCallback(() => {
-      setActiveTab('pings');
-    }, [setActiveTab])
-  );
   const setUserProfile = useAppShellStore((state) => state.setUserProfile);
 
   const [fullName, setFullName] = useState(userDisplayName || user?.fullName || '');
@@ -527,7 +534,7 @@ export function Profile() {
 
   useEffect(() => {
     if (isFocused) {
-      setActiveTab('feed');
+      setActiveTab('pings');
     }
   }, [isFocused, setActiveTab]);
 
@@ -1212,77 +1219,22 @@ export function Profile() {
 
           <View style={styles.preferenceBlock}>
             <Text style={styles.preferenceLabel}>Accent Color</Text>
-            <View style={styles.accentSliderCard}>
-              <View style={styles.accentSliderHeader}>
-                <View style={[styles.accentPreview, { backgroundColor: accentPreviewColor }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inlineSwitchTitle}>Custom Accent</Text>
-                </View>
+            <View style={[styles.inlineSwitchRow, { paddingVertical: 12 }]}>
+              <View style={[styles.accentPreview, { backgroundColor: accentColor, marginRight: 12 }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inlineSwitchTitle}>Custom Accent</Text>
+                <Text style={{ fontSize: 12, color: COLORS.textTertiary }}>{accentColor?.toUpperCase() || '#000000'}</Text>
               </View>
-
-              <View
-                style={styles.accentSliderTrack}
-                onLayout={(event) => setAccentSliderWidth(event.nativeEvent.layout.width)}
-                {...accentPanResponder.panHandlers}
+              <Pressable 
+                onPress={() => setShowColorPicker(true)}
+                style={({ pressed }) => [
+                  styles.accentResetButton,
+                  { backgroundColor: accentColor, borderColor: accentColor, paddingHorizontal: 16 },
+                  pressed && { opacity: 0.8 }
+                ]}
               >
-                <View style={styles.accentSliderGradient}>
-                  {Array.from({ length: 24 }).map((_, index) => {
-                    const ratio = index / 23;
-                    return (
-                      <View
-                        key={index}
-                        style={[
-                          styles.accentSliderSegment,
-                          { backgroundColor: getSpectrumColorFromRatio(ratio) },
-                        ]}
-                      />
-                    );
-                  })}
-                </View>
-                {accentSliderWidth ? (
-                  <View
-                    pointerEvents="none"
-                    style={[
-                      styles.accentSliderThumb,
-                      { left: Math.max(0, Math.min(accentSliderWidth - 26, accentRatio * accentSliderWidth - 13)) },
-                    ]}
-                  />
-                ) : null}
-              </View>
-
-              <View style={styles.accentScaleRow}>
-                <Text style={styles.accentScaleLabel}>Light</Text>
-                <Pressable
-                  style={styles.accentResetButton}
-                  onPress={() => setAccentColor(getDefaultAccentColor(theme))}
-                >
-                  <Text style={styles.accentResetText}>Use Theme Default</Text>
-                </Pressable>
-                <Text style={styles.accentScaleLabel}>Dark</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.preferenceBlock}>
-            <Text style={styles.preferenceLabel}>Navigation Style</Text>
-            <View style={styles.segmentedRow}>
-              {[
-                { key: 'solid', label: 'Solid' },
-                { key: 'floating', label: 'Floating' },
-              ].map((item) => {
-                const selected = tabBarMode === item.key;
-                return (
-                  <Pressable
-                    key={item.key}
-                    style={[styles.segmentButton, selected && styles.segmentButtonActive]}
-                    onPress={() => setTabBarMode(item.key as 'solid' | 'floating')}
-                  >
-                    <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+                <Text style={[styles.accentResetText, { color: '#FFF' }]}>Choose</Text>
+              </Pressable>
             </View>
           </View>
       </>
@@ -2075,6 +2027,144 @@ export function Profile() {
           queryClient.invalidateQueries({ queryKey: ['campus-pings'] });
         }}
       />
+      <Modal
+        visible={showColorPicker}
+        transparent
+        animationType="slide"
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' }}>
+          <View style={{ 
+            backgroundColor: COLORS.surface, 
+            borderTopLeftRadius: 32, 
+            borderTopRightRadius: 32, 
+            padding: 24,
+            paddingBottom: 40,
+            minHeight: 520,
+            alignItems: 'center'
+          }}>
+            <View style={{ width: 40, height: 4, backgroundColor: COLORS.border, borderRadius: 2, marginBottom: 20 }} />
+            <Text style={{ fontSize: 22, fontWeight: '900', color: COLORS.textPrimary, marginBottom: 30 }}>Personalize Accent</Text>
+            
+            <View style={{ flexDirection: 'row', width: '100%', height: 280, gap: 16 }}>
+              {/* SV Square */}
+              <View 
+                style={{ flex: 1, borderRadius: 16, overflow: 'hidden', backgroundColor: `hsl(${accentColor.match(/hsl\((\d+)/)?.[1] || 0}, 100%, 50%)` }}
+                onStartShouldSetResponderCapture={() => true}
+                onMoveShouldSetResponderCapture={() => true}
+                onResponderGrant={(e) => {
+                  const { locationX, locationY } = e.nativeEvent;
+                  const h = parseInt(accentColor.match(/hsl\((\d+)/)?.[1] || '0', 10);
+                  const s = Math.max(0, Math.min(100, (locationX / 180) * 100));
+                  const v = Math.max(0, Math.min(100, 100 - (locationY / 280) * 100));
+                  
+                  // Correct HSV to HSL conversion 
+                  const l = (v / 100) * (1 - (s / 100) / 2) * 100;
+                  const sl = (l === 0 || l === 100) ? 0 : ((v / 100 - l / 100) / Math.min(l / 100, 1 - l / 100)) * 100;
+                  
+                  setAccentColor(`hsl(${h}, ${Math.round(sl)}%, ${Math.round(l)}%)`);
+                  setPickerPos({ x: locationX, y: locationY });
+                }}
+                onResponderMove={(e) => {
+                  const { locationX, locationY } = e.nativeEvent;
+                  const h = parseInt(accentColor.match(/hsl\((\d+)/)?.[1] || '0', 10);
+                  const s = Math.max(0, Math.min(100, (locationX / 180) * 100));
+                  const v = Math.max(0, Math.min(100, 100 - (locationY / 280) * 100));
+                  
+                  const l = (v / 100) * (1 - (s / 100) / 2) * 100;
+                  const sl = (l === 0 || l === 100) ? 0 : ((v / 100 - l / 100) / Math.min(l / 100, 1 - l / 100)) * 100;
+                  
+                  setAccentColor(`hsl(${h}, ${Math.round(sl)}%, ${Math.round(l)}%)`);
+                  setPickerPos({ x: locationX, y: locationY });
+                }}
+              >
+                <LinearGradient 
+                  colors={['#FFF', 'transparent']} 
+                  start={{ x: 0, y: 0.5 }} 
+                  end={{ x: 1, y: 0.5 }} 
+                  style={StyleSheet.absoluteFill} 
+                />
+                <LinearGradient 
+                  colors={['transparent', '#000']} 
+                  style={StyleSheet.absoluteFill} 
+                />
+                {/* Visual Selector Circle */}
+                <View style={{ 
+                  position: 'absolute', 
+                  width: 24, 
+                  height: 24, 
+                  borderRadius: 12, 
+                  borderWidth: 3, 
+                  borderColor: '#FFF', 
+                  left: pickerPos.x - 12,
+                  top: pickerPos.y - 12,
+                  shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3, elevation: 4
+                }} />
+              </View>
+
+              {/* Hue Slider */}
+              <View 
+                style={{ width: 40, borderRadius: 20, overflow: 'hidden' }}
+                onStartShouldSetResponderCapture={() => true}
+                onMoveShouldSetResponderCapture={() => true}
+                onResponderGrant={(e) => {
+                  const { locationY } = e.nativeEvent;
+                  const h = Math.round((Math.max(0, Math.min(280, locationY)) / 280) * 360);
+                  const matches = accentColor.match(/hsl\(\d+,\s*(\d+)%,\s*(\d+)%\)/);
+                  const s = matches ? matches[1] : 100;
+                  const l = matches ? matches[2] : 50;
+                  setAccentColor(`hsl(${h}, ${s}%, ${l}%)`);
+                  setHuePos(locationY);
+                }}
+                onResponderMove={(e) => {
+                  const { locationY } = e.nativeEvent;
+                  const h = Math.round((Math.max(0, Math.min(280, locationY)) / 280) * 360);
+                  const matches = accentColor.match(/hsl\(\d+,\s*(\d+)%,\s*(\d+)%\)/);
+                  const s = matches ? matches[1] : 100;
+                  const l = matches ? matches[2] : 50;
+                  setAccentColor(`hsl(${h}, ${s}%, ${l}%)`);
+                  setHuePos(locationY);
+                }}
+              >
+                <LinearGradient
+                  colors={['#FF0000', '#FFFF00', '#00FF00', '#00FFFF', '#0000FF', '#FF00FF', '#FF0000']}
+                  style={StyleSheet.absoluteFill}
+                />
+                {/* Visual Selector Bar */}
+                <View style={{ 
+                  position: 'absolute', 
+                  width: '100%', 
+                  height: 8, 
+                  backgroundColor: '#FFF', 
+                  top: huePos - 4,
+                  borderRadius: 4,
+                  borderWidth: 1,
+                  borderColor: 'rgba(0,0,0,0.2)',
+                  shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.3, shadowRadius: 2, elevation: 4
+                }} />
+              </View>
+            </View>
+
+            <View style={{ width: '100%', flexDirection: 'row', gap: 12, marginTop: 40 }}>
+              <Pressable 
+                onPress={() => {
+                  setAccentColor(getDefaultAccentColor(theme));
+                  setShowColorPicker(false);
+                }}
+                style={{ flex: 1, height: 56, borderRadius: 16, backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border }}
+              >
+                <Text style={{ fontWeight: '700', color: COLORS.textTertiary }}>Reset</Text>
+              </Pressable>
+              
+              <Pressable 
+                onPress={() => setShowColorPicker(false)}
+                style={{ flex: 2, height: 56, borderRadius: 16, backgroundColor: accentColor, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ fontWeight: '700', color: '#FFF' }}>Confirm Choice</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <PingComposerModal
         visible={composerVisible}
