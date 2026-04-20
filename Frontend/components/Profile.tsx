@@ -91,12 +91,17 @@ import { API_URL } from '../config';
 import { PingCard, mapActivityToPing } from './CampusPingsScreen';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { StoryViewer } from './pings/StoryViewer';
+import DiningDashboard from './dining/DiningDashboard';
+import { ClubAccessScreen } from './ClubAccessScreen';
+import { Users } from 'lucide-react-native';
 
 
 const PROFILE_TABS = [
-  { key: 'feed', icon: LayoutGrid },
-  { key: 'resources', icon: RotateCw },
-  { key: 'edit', icon: Settings },
+  { key: 'pings', icon: LayoutGrid },
+  { key: 'nutrition', icon: RotateCw },
+  { key: 'clubs', icon: Users },
+  { key: 'resources', icon: LibraryBig },
+  { key: 'personal', icon: Settings },
 ] as const;
 
 type ProfileTabKey = typeof PROFILE_TABS[number]['key'];
@@ -1842,13 +1847,23 @@ export function Profile() {
             </View>
 
             <View style={{ flex: 1 }}>
-              {activeTab === 'feed' && renderContentGrid(userPings)}
+              {activeTab === 'pings' && renderContentGrid(userPings)}
+              {activeTab === 'nutrition' && (
+                <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+                   <DiningDashboard navigation={navigation} />
+                </View>
+              )}
+              {activeTab === 'clubs' && (
+                <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+                  <ClubAccessScreen navigation={navigation} />
+                </View>
+              )}
               {activeTab === 'resources' && (
                 <View style={{ padding: 16 }}>
                   {renderResourcesTab()}
                 </View>
               )}
-              {activeTab === 'edit' && (
+              {activeTab === 'personal' && (
                 <View style={{ padding: 16, gap: 20 }}>
                   <View style={[styles.editProfileCard, { flexDirection: 'row', backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }]}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1 }}>

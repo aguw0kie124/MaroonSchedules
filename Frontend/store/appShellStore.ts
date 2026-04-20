@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
-export type NavItemId = 'Dashboard' | 'Places' | 'Social' | 'Dining' | 'Clubs' | 'Resources';
+export type NavItemId = 'Dashboard' | 'Places' | 'Social' | 'Dining';
 export type PlacesPillId =
   | 'Pulse'
   | 'Today'
@@ -15,7 +15,7 @@ export type PlacesPillId =
   | 'Academic'
   | 'Heatmap';
 export type ParkingPermit = 'visitor' | 'garage' | 'any_valid' | 'west_campus' | 'resident';
-export type SettingsTabId = 'personal' | 'layout' | 'resources';
+export type SettingsTabId = 'pings' | 'nutrition' | 'clubs' | 'resources' | 'personal';
 export type EventTimePreference = 'Morning' | 'Afternoon' | 'Evening' | 'Anytime';
 export type EventSocialPreference = 'casual' | 'professional';
 
@@ -35,12 +35,10 @@ export const PARKING_PERMIT_OPTIONS: Array<{ id: ParkingPermit; label: string; d
 ];
 
 export const DEFAULT_NAV_ITEMS: ToggleLayoutItem<NavItemId>[] = [
-  { id: 'Social', label: 'Pings', visible: true, order: 0 },
-  { id: 'Dining', label: 'Dining', visible: true, order: 1 },
-  { id: 'Clubs', label: 'Clubs', visible: true, order: 2 },
-  { id: 'Resources', label: 'Resources', visible: true, order: 3 },
-  { id: 'Dashboard', label: 'Events', visible: false, order: 4 },
-  { id: 'Places', label: 'Places', visible: false, order: 5 },
+  { id: 'Dashboard', label: 'Events', visible: true, order: 0 },
+  { id: 'Places', label: 'Places', visible: true, order: 1 },
+  { id: 'Social', label: 'Social', visible: true, order: 2 },
+  { id: 'Dining', label: 'Dining', visible: false, order: 3 },
 ];
 
 export const DEFAULT_PLACES_PILLS: ToggleLayoutItem<PlacesPillId>[] = [
@@ -118,7 +116,7 @@ function isPermit(value: unknown): value is ParkingPermit {
 }
 
 function isSettingsTabId(value: unknown): value is SettingsTabId {
-  return value === 'personal' || value === 'layout' || value === 'resources';
+  return value === 'personal' || value === 'pings' || value === 'resources' || value === 'nutrition' || value === 'clubs';
 }
 
 type AppShellState = {
@@ -181,7 +179,7 @@ export const useAppShellStore = create<AppShellState>()(
       parkingPermit: 'any_valid',
       placesPills: DEFAULT_PLACES_PILLS,
       navItems: DEFAULT_NAV_ITEMS,
-      settingsTab: 'personal',
+      settingsTab: 'pings',
       isBottomBarHidden: false,
       selectedScheduleId: null,
       isTOSAccepted: false,

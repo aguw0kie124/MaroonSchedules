@@ -73,7 +73,6 @@ import { PendingReviewInterceptor } from './components/events/PendingReviewInter
 import { FriendPingNotificationBridge } from './components/pings/FriendPingNotificationBridge';
 import { API_URL } from './config';
 import { ClubAccessScreen } from './components/ClubAccessScreen';
-import { ResourcesScreen } from './components/ResourcesScreen';
 import { FocusMotionView } from './components/common/Motion';
 import { useEventStore, type MajorOption } from './store/eventStore';
 
@@ -266,7 +265,6 @@ const AnimatedPlacesScreen = withTabMotion(PlacesMapScreen, 40);
 const AnimatedSocialScreen = withTabMotion(SocialHubScreen, 10);
 const AnimatedDiningScreen = withTabMotion(DiningDashboard, 30);
 const AnimatedClubsScreen = withTabMotion(ClubAccessScreen, 50);
-const AnimatedResourcesScreen = withTabMotion(ResourcesScreen, 70);
 const AnimatedSettingsScreen = withTabMotion(Profile, 90);
 
 import { GlassPillTabBar } from './components/GlassPillTabBar';
@@ -278,43 +276,16 @@ function MainTabs(props: any) {
   const isGuest = useSessionStore((state) => state.isGuest);
 
   const visibleNavItems = React.useMemo(() => {
-    return getOrderedVisibleItems(navItems);
-  }, [navItems]);
+    if (!isGuest) {
+      return getOrderedVisibleItems(navItems).filter((item: any) => item.id !== 'Dining');
+    }
+    return getOrderedItems(navItems)
+      .filter((item: any) => (item.id === 'Dashboard' || item.id === 'Places') && item.id !== 'Dining')
+      .map((item: any) => ({ ...item, visible: true }));
+  }, [isGuest, navItems]);
 
   const tabScreens = [
     ...visibleNavItems.map((item) => {
-      if (item.id === 'Social') {
-        return {
-          name: 'Social',
-          component: AnimatedSocialScreen,
-          title: 'Pings',
-          icon: LayoutGrid,
-        };
-      }
-      if (item.id === 'Dining') {
-        return {
-          name: 'Dining',
-          component: AnimatedDiningScreen,
-          title: 'Dining',
-          icon: RotateCw,
-        };
-      }
-      if (item.id === 'Clubs') {
-        return {
-          name: 'Clubs',
-          component: AnimatedClubsScreen,
-          title: 'Clubs',
-          icon: Users,
-        };
-      }
-      if (item.id === 'Resources') {
-        return {
-          name: 'Resources',
-          component: AnimatedResourcesScreen,
-          title: 'Resources',
-          icon: LibraryBig,
-        };
-      }
       if (item.id === 'Dashboard') {
         return {
           name: 'Dashboard',
@@ -331,19 +302,35 @@ function MainTabs(props: any) {
           icon: Map,
         };
       }
+      if (item.id === 'Social') {
+        return {
+          name: 'Social',
+          component: AnimatedSocialScreen,
+          title: 'Social',
+          icon: Radio,
+        };
+      }
+      if (item.id === 'Dining') {
+        return {
+          name: 'Dining',
+          component: AnimatedDiningScreen,
+          title: 'Dining',
+          icon: UtensilsCrossed,
+        };
+      }
       return null;
     }).filter(s => s !== null),
     {
-      name: 'Settings',
+      name: 'Profile',
       component: AnimatedSettingsScreen,
-      title: 'Settings',
-      icon: Settings,
+      title: 'Profile',
+      icon: UserRound,
     },
   ];
 
   const availableRouteNames = tabScreens.map((screen) => screen.name);
-  const initialRouteName = availableRouteNames.includes('Social')
-    ? 'Social'
+  const initialRouteName = availableRouteNames.includes('Places')
+    ? 'Places'
     : availableRouteNames[0];
   const shellKey = availableRouteNames.join('|');
 
