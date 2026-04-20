@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
 import React from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable, Image } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
@@ -51,7 +51,7 @@ import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 import RestaurantMenuScreen from './components/dining/RestaurantMenuScreen';
 
-import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio } from 'lucide-react-native';
+import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio, UserRound, LayoutGrid, RotateCw, LibraryBig } from 'lucide-react-native';
 import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
@@ -65,6 +65,7 @@ import {
 } from './api/client';
 import { TOSScreen } from './components/TOSScreen';
 import { EventPreferenceOnboardingScreen } from './components/onboarding/EventPreferenceOnboardingScreen';
+import { NameOnboardingScreen } from './components/onboarding/NameOnboardingScreen';
 
 import { AdminApplicationScreen } from './components/admin/AdminApplicationScreen';
 import { AdminPortal } from './components/admin/AdminPortal';
@@ -261,25 +262,18 @@ function withTabMotion(Component: React.ComponentType<any>, delay = 0) {
 
 const AnimatedDashboardScreen = withTabMotion(Dashboard, 0);
 const AnimatedPlacesScreen = withTabMotion(PlacesMapScreen, 40);
-const AnimatedSocialScreen = withTabMotion(SocialHubScreen, 60);
-const AnimatedDiningScreen = withTabMotion(
-  () => (
-    <ErrorBoundary name="Dining Dashboard">
-      <DiningDashboard />
-    </ErrorBoundary>
-  ),
-  50,
-);
-const AnimatedTimerScreen = withTabMotion(TimerScreen, 80);
-const AnimatedSettingsScreen = withTabMotion(Profile, 80);
+const AnimatedSocialScreen = withTabMotion(SocialHubScreen, 10);
+const AnimatedDiningScreen = withTabMotion(DiningDashboard, 30);
+const AnimatedClubsScreen = withTabMotion(ClubAccessScreen, 50);
+const AnimatedSettingsScreen = withTabMotion(Profile, 90);
 
 import { GlassPillTabBar } from './components/GlassPillTabBar';
 
 function MainTabs(props: any) {
-  const { COLORS } = useTheme();
+  const { COLORS, tabBarMode } = useTheme();
+  const { user } = useUser();
   const navItems = useAppShellStore((state) => state.navItems);
   const isGuest = useSessionStore((state) => state.isGuest);
-  const { tabBarMode } = useTheme();
 
   const visibleNavItems = React.useMemo(() => {
     if (!isGuest) {
@@ -298,7 +292,6 @@ function MainTabs(props: any) {
           component: AnimatedDashboardScreen,
           title: 'Events',
           icon: Home,
-          initialParams: undefined,
         };
       }
       if (item.id === 'Places') {
@@ -307,7 +300,6 @@ function MainTabs(props: any) {
           component: AnimatedPlacesScreen,
           title: 'Places',
           icon: Map,
-          initialParams: undefined,
         };
       }
       if (item.id === 'Social') {
@@ -316,7 +308,6 @@ function MainTabs(props: any) {
           component: AnimatedSocialScreen,
           title: 'Social',
           icon: Radio,
-          initialParams: undefined,
         };
       }
       if (item.id === 'Dining') {
@@ -325,23 +316,15 @@ function MainTabs(props: any) {
           component: AnimatedDiningScreen,
           title: 'Dining',
           icon: UtensilsCrossed,
-          initialParams: undefined,
         };
       }
-      return {
-        name: 'Timer',
-        component: AnimatedTimerScreen,
-        title: 'Timer',
-        icon: Clock3,
-        initialParams: undefined,
-      };
-    }),
+      return null;
+    }).filter(s => s !== null),
     {
-      name: 'Settings',
+      name: 'Profile',
       component: AnimatedSettingsScreen,
-      title: 'Settings',
-      icon: Settings,
-      initialParams: undefined,
+      title: 'Profile',
+      icon: UserRound,
     },
   ];
 
@@ -389,6 +372,39 @@ function MainTabs(props: any) {
               return <TabButtonWrapper screenName={screen.name} props={p} />;
             },
             tabBarIcon: ({ color, focused }) => {
+              if (screen.name === 'Settings') {
+                return (
+                  <View 
+                    style={{ 
+                      width: 28, 
+                      height: 28, 
+                      borderRadius: 14, 
+                      overflow: 'hidden',
+                      borderWidth: focused ? 2 : 0,
+                      borderColor: COLORS.textPrimary,
+                    }}
+                  >
+                    {user?.imageUrl ? (
+                      <Image 
+                        source={{ uri: user.imageUrl }} 
+                        style={{ width: '100%', height: '100%' }} 
+                      />
+                    ) : (
+                      <View 
+                        style={{ 
+                          width: '100%', 
+                          height: '100%', 
+                          backgroundColor: COLORS.surfaceElevated,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <UserRound size={16} color={color} />
+                      </View>
+                    )}
+                  </View>
+                );
+              }
               return (
                 <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                   <screen.icon
@@ -416,9 +432,13 @@ function RootNavigator() {
   const isTOSAccepted = useAppShellStore((state) => state.isTOSAccepted);
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
   const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
+  const isNameOnboardingCompleted = useAppShellStore((state) => state.isNameOnboardingCompleted);
+  const setNameOnboardingCompleted = useAppShellStore((state) => state.setNameOnboardingCompleted);
   const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
   const showEventPreferencesOnboarding = useAppShellStore((state) => state.showEventPreferencesOnboarding);
   const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
+  const showNameOnboarding = useAppShellStore((state) => state.showNameOnboarding);
+  const setShowNameOnboarding = useAppShellStore((state) => state.setShowNameOnboarding);
   const isAdmin = useAppShellStore((state) => state.adminAccessStatus);
   const setIsAdmin = useAppShellStore((state) => state.setAdminAccessStatus);
   const isRegularUserFlow = isSignedIn && authMode !== 'admin';
@@ -448,6 +468,15 @@ function RootNavigator() {
       <TOSScreen 
         clerkId={user.id} 
         onAccepted={() => setTOSAccepted(true)} 
+      />
+    );
+  } else if (isSignedIn && isTOSAccepted && (!isNameOnboardingCompleted || showNameOnboarding)) {
+    content = (
+      <NameOnboardingScreen 
+        onDone={() => {
+          setNameOnboardingCompleted(true);
+          setShowNameOnboarding(false);
+        }} 
       />
     );
   } else if (isRegularUserFlow && isTOSAccepted && isAdmin === null) {

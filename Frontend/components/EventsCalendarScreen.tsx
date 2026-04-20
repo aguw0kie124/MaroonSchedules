@@ -1949,46 +1949,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           </Pressable>
         </View>
       </View>
-
-      <View style={s.modeTabs}>
-        {([
-          { id: 'discover', label: 'Discover' },
-          { id: 'list', label: 'List' },
-        ] as const).map((tab) => {
-          const active = view === tab.id || (tab.id === 'discover' && view === 'swipe');
-          const tabItem = (
-            <Pressable
-              key={tab.id}
-              style={[s.modeTab, active && s.modeTabActive]}
-              onPress={() => {
-                changeView(tab.id);
-                if (tab.id === 'list' && activeTargetName === 'switch-to-list') {
-                  advanceStep('switch-to-list');
-                }
-              }}
-            >
-              <Text style={[s.modeTabText, active && s.modeTabTextActive]}>{tab.label}</Text>
-              {active ? <View style={s.modeTabUnderline} /> : null}
-            </Pressable>
-          );
-
-          if (tab.id === 'list') {
-            return (
-              <TourTarget
-                key={tab.id}
-                name="switch-to-list"
-                assistAction={() => {
-                  changeView('list');
-                  setTimeout(() => advanceStep('switch-to-list'), 250);
-                }}
-              >
-                {tabItem}
-              </TourTarget>
-            );
-          }
-          return tabItem;
-        })}
-      </View>
     </View>
   );
 
@@ -2129,19 +2089,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
           </View>
         )}
 
-        <Pressable style={s.clubCtaCard} onPress={handleClubAccessPress}>
-          <View style={s.clubCtaContent}>
-            <Text style={s.clubCtaEyebrow}>Student organizations</Text>
-            <Text style={s.clubCtaTitle}>Connect with Clubs</Text>
-            <Text style={s.clubCtaBody}>
-              Find org access groups and keep up with the communities behind campus events.
-            </Text>
-            <View style={s.clubCtaButton}>
-              <Text style={s.clubCtaButtonText}>Explore Clubs</Text>
-            </View>
-          </View>
-          <Users size={84} color="rgba(255,255,255,0.08)" style={s.clubCtaIcon} />
-        </Pressable>
       </ScrollView>
     </View>
   );
@@ -2427,6 +2374,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
         scheduledEvents={scheduledEvents}
         onPress={(ev) => setDetailEvent(ev)}
         onSchedule={handleSchedule}
+        viewMode={view}
+        setViewMode={(val) => changeView(val)}
       />
 
       <DetailModal
@@ -2795,7 +2744,6 @@ function DiscoverRailCard({
 function ListEventRow({
   event,
   isGuest,
-
   saved,
   scheduled,
   onPress,
@@ -2803,17 +2751,14 @@ function ListEventRow({
   onShare,
   onSchedule,
 }: {
-
   event: TAMUEvent;
   isGuest: boolean;
-
   saved: boolean;
   scheduled: boolean;
   onPress: () => void;
   onDelete: () => void;
   onShare: () => void;
   onSchedule: () => void;
-
 }) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
@@ -2826,64 +2771,47 @@ function ListEventRow({
       onPress={onPress}
       style={[
         stylesStatic.listRow,
-        { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border },
+        { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border, paddingVertical: 12 },
       ]}
     >
-      <View style={[stylesStatic.listThumb, { backgroundColor: meta.cardTint }]}>
+      <View style={[stylesStatic.listThumb, { backgroundColor: meta.cardTint, width: 52, height: 52, borderRadius: 20 }]}>
         {event.imageUrl ? (
-          <Image source={{ uri: event.imageUrl }} style={stylesStatic.listThumbImage} resizeMode="cover" />
+          <Image source={{ uri: event.imageUrl }} style={[stylesStatic.listThumbImage, { borderRadius: 20 }]} resizeMode="cover" />
         ) : (
           <View style={stylesStatic.listThumbFallback}>
-            <Icon size={28} color="#FFFFFF" />
+            <Icon size={22} color="#FFFFFF" />
           </View>
         )}
       </View>
       <View style={stylesStatic.listContent}>
         <View style={stylesStatic.listTitleRow}>
-          <Text style={[stylesStatic.listTitle, { color: COLORS.textPrimary }]} numberOfLines={2}>
+          <Text style={[stylesStatic.listTitle, { color: COLORS.textPrimary, fontSize: 15 }]} numberOfLines={1}>
             {event.title}
           </Text>
-          {event.group_title ? <BadgeCheck size={16} color="#2F80ED" /> : null}
+          {event.group_title ? <BadgeCheck size={14} color="#2F80ED" /> : null}
         </View>
-        <Text style={[stylesStatic.listMeta, { color: COLORS.textSecondary }]}>
-          {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
-        </Text>
         {event.group_title ? (
-          <Text style={[stylesStatic.listMeta, stylesStatic.listOrganizer, { color: COLORS.primary }]} numberOfLines={1}>
+          <Text style={[stylesStatic.listMeta, { color: COLORS.primary, fontSize: 13 }]} numberOfLines={1}>
             {event.group_title}
           </Text>
         ) : null}
-
-        <Text style={[stylesStatic.listMeta, { color: COLORS.textTertiary }]} numberOfLines={1}>
-          {event.location || 'Campus'}
+        <Text style={[stylesStatic.listMeta, { color: COLORS.textSecondary, fontSize: 13 }]} numberOfLines={1}>
+          {formatDate(event.date_ts)} · {formatTime(event.date_ts)}
         </Text>
       </View>
-      <View style={stylesStatic.listActions}>
+      <View style={{ justifyContent: 'center', alignItems: 'center' }}>
         <Pressable
           onPress={onSchedule}
           style={[
             stylesStatic.listActionButton,
             {
-              backgroundColor: scheduled
-                ? '#FFEEE5'
-                : isDark
-                  ? 'rgba(255,255,255,0.06)'
-                  : 'rgba(15,23,42,0.06)',
+              width: 36, height: 36,
+              backgroundColor: scheduled ? '#FFE3E8' : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)',
             },
           ]}
         >
-          {scheduled ? <XIcon size={18} color="#E06A3E" /> : <Check size={18} color="#3CCB6C" />}
+          {scheduled ? <XIcon size={16} color="#FF4D6D" /> : <Check size={16} color="#3CCB6C" />}
         </Pressable>
-
-        <Pressable onPress={onShare} style={stylesStatic.listActionButton}>
-          <Share2 size={18} color={COLORS.textSecondary} />
-        </Pressable>
-
-        {!isGuest ? (
-          <Pressable onPress={onDelete} style={stylesStatic.listActionButton}>
-            <Trash2 size={18} color={COLORS.textSecondary} />
-          </Pressable>
-        ) : null}
       </View>
     </Pressable>
   );
@@ -2930,6 +2858,8 @@ function SettingsModal({
   scheduledEvents,
   onPress,
   onSchedule,
+  viewMode,
+  setViewMode,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -2942,10 +2872,11 @@ function SettingsModal({
   selectedCategories: Set<ExploreCategory>;
   dislikedEventIds: string[];
   events: TAMUEvent[];
-  onRestoreCategory: (category?: ExploreCategory) => void;
   scheduledEvents: TAMUEvent[];
   onPress: (event: TAMUEvent) => void;
   onSchedule: (event: TAMUEvent) => void;
+  viewMode: 'discover' | 'swipe' | 'list' | 'inbox';
+  setViewMode: (val: 'discover' | 'swipe' | 'list' | 'inbox') => void;
 }) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
@@ -2985,7 +2916,7 @@ function SettingsModal({
                       style={{
                         width: 240,
                         backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
-                        borderRadius: 18,
+                        borderRadius: 36,
                         padding: 14,
                         gap: 8,
                       }}
@@ -3017,30 +2948,42 @@ function SettingsModal({
               </>
             )}
 
-            {selectedCategories.has('Social') ? (
-              <>
-                <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 12 }]}>
-                  Social mode
-                </Text>
-                {(['casual', 'professional'] as SocialMode[]).map((mode) => (
-                  <Pressable
-                    key={mode}
-                    style={stylesStatic.modalOption}
-                    onPress={() => setSocialMode(mode)}
+            <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: scheduledEvents?.length ? 0 : 4 }]}>
+              Display Layout
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+              {(['discover', 'list'] as const).map((mode) => (
+                <Pressable
+                  key={mode}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setViewMode(mode);
+                  }}
+                  style={[
+                    stylesStatic.layoutTabPill,
+                    {
+                      paddingVertical: 12,
+                      paddingHorizontal: 20,
+                      borderRadius: 36,
+                      flex: 1,
+                      alignItems: 'center',
+                      backgroundColor: viewMode === mode ? COLORS.primary : isDark ? 'rgba(255,255,255,0.05)' : '#F1F5F9',
+                      borderColor: viewMode === mode ? COLORS.primary : COLORS.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      fontWeight: '800',
+                      color: viewMode === mode ? '#FFFFFF' : COLORS.textSecondary,
+                    }}
                   >
-                    <Text
-                      style={[
-                        stylesStatic.modalOptionText,
-                        { color: socialMode === mode ? COLORS.primary : COLORS.textPrimary },
-                      ]}
-                    >
-                      {mode === 'casual' ? 'Casual' : 'Professional'}
-                    </Text>
-                    {socialMode === mode ? <Check size={16} color={COLORS.primary} /> : null}
-                  </Pressable>
-                ))}
-              </>
-            ) : null}
+                    {mode === 'discover' ? 'Discover' : 'List'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
 
             <Text style={[stylesStatic.modalSectionLabel, { color: COLORS.textTertiary, marginTop: 12 }]}>
               Major filter
@@ -3418,7 +3361,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     headerIconButton: {
       width: 44,
       height: 44,
-      borderRadius: 22,
+      borderRadius: 36,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: 'transparent',
@@ -3602,7 +3545,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       bottom: -10,
     },
     forYouHero: {
-      borderRadius: 28,
+      borderRadius: 36,
       paddingHorizontal: 18,
       paddingVertical: 14,
       marginTop: 6,
@@ -3704,7 +3647,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       paddingHorizontal: 20,
     },
     inlineControl: {
-      borderRadius: 16,
+      borderRadius: 36,
       paddingHorizontal: 0,
       paddingVertical: 4,
       borderBottomWidth: 1,
@@ -3793,7 +3736,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     filterButton: {
       width: 46,
       height: 46,
-      borderRadius: 14,
+      borderRadius: 20,
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1,
@@ -3837,7 +3780,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       marginTop: 20,
       paddingHorizontal: 24,
       paddingVertical: 12,
-      borderRadius: 18,
+      borderRadius: 36,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 6 },
       shadowOpacity: 0.12,
@@ -3929,7 +3872,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     finishedButton: {
       marginTop: 12,
-      borderRadius: 18,
+      borderRadius: 36,
       backgroundColor: COLORS.primary,
       paddingHorizontal: 22,
       paddingVertical: 14,
@@ -3946,7 +3889,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     },
     inviteCard: {
       marginTop: 8,
-      borderRadius: 24,
+      borderRadius: 36,
       padding: 18,
       borderWidth: 1,
       borderColor: COLORS.border,
@@ -4002,7 +3945,7 @@ const stylesStatic = StyleSheet.create({
   rewardToastCard: {
     minWidth: 220,
     maxWidth: 310,
-    borderRadius: 22,
+    borderRadius: 36,
     backgroundColor: 'rgba(20,20,24,0.94)',
     paddingHorizontal: 18,
     paddingVertical: 14,
@@ -4121,7 +4064,7 @@ const stylesStatic = StyleSheet.create({
   },
   discoverRailImageWrap: {
     height: 174,
-    borderRadius: 14,
+    borderRadius: 20,
     overflow: 'hidden',
   },
   discoverRailImage: {
@@ -4179,7 +4122,7 @@ const stylesStatic = StyleSheet.create({
   heroCard: {
     width: HERO_CARD_WIDTH,
     height: HERO_CARD_HEIGHT,
-    borderRadius: 14,
+    borderRadius: 20,
     overflow: 'hidden',
     paddingHorizontal: 22,
     paddingVertical: 20,
@@ -4348,7 +4291,7 @@ const stylesStatic = StyleSheet.create({
   listThumb: {
     width: 76,
     height: 76,
-    borderRadius: 12,
+    borderRadius: 20,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
@@ -4502,7 +4445,7 @@ const stylesStatic = StyleSheet.create({
     paddingHorizontal: 24,
   },
   modalSheet: {
-    borderRadius: 28,
+    borderRadius: 36,
     borderWidth: 1,
     padding: 20,
     maxHeight: '78%',
@@ -4525,7 +4468,7 @@ const stylesStatic = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: 18,
+    borderRadius: 36,
     paddingHorizontal: 15,
     paddingVertical: 14,
     marginBottom: 8,
@@ -4554,7 +4497,7 @@ const stylesStatic = StyleSheet.create({
   },
   detailImageWrap: {
     height: 194,
-    borderRadius: 22,
+    borderRadius: 36,
     overflow: 'hidden',
     marginBottom: 16,
   },
@@ -4615,7 +4558,7 @@ const stylesStatic = StyleSheet.create({
   },
   primaryDetailButton: {
     height: 54,
-    borderRadius: 18,
+    borderRadius: 36,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -4634,7 +4577,7 @@ const stylesStatic = StyleSheet.create({
   secondaryDetailButton: {
     flex: 1,
     height: 50,
-    borderRadius: 16,
+    borderRadius: 36,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -4665,7 +4608,7 @@ const stylesStatic = StyleSheet.create({
   },
   organizerSafetyButton: {
     minHeight: 48,
-    borderRadius: 14,
+    borderRadius: 20,
     borderWidth: 1,
     paddingHorizontal: 14,
     flexDirection: 'row',
