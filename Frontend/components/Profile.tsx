@@ -58,6 +58,7 @@ import {
   MessageCircle,
   Settings,
   MoreVertical,
+  Utensils,
 } from 'lucide-react-native';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
@@ -98,7 +99,7 @@ import { Users } from 'lucide-react-native';
 
 const PROFILE_TABS = [
   { key: 'pings', icon: LayoutGrid },
-  { key: 'nutrition', icon: RotateCw },
+  { key: 'nutrition', icon: Utensils },
   { key: 'clubs', icon: Users },
   { key: 'resources', icon: LibraryBig },
   { key: 'personal', icon: Settings },

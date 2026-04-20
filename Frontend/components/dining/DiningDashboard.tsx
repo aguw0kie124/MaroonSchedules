@@ -96,20 +96,13 @@ export default function DiningDashboard({ navigation }: any) {
   ];
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={{ flex: 1 }}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.header}>
-          <Pressable style={styles.backButton} onPress={() => navigation.goBack()}>
-            <ArrowLeft size={20} color={COLORS.textPrimary} />
-          </Pressable>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>Nutrition Dashboard</Text>
-          </View>
-        </View>
+
 
         <Card style={s.menuCard}>
           <View style={s.chipRow}>
@@ -239,7 +232,7 @@ export default function DiningDashboard({ navigation }: any) {
           )}
         </Card>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -441,20 +434,16 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     safeArea: {
       flex: 1,
       backgroundColor: COLORS.background,
-    },
     container: {
       flex: 1,
       backgroundColor: COLORS.background,
     },
-    contentContainer: {
+    contentContainerStyle: {
       paddingHorizontal: 18,
-      paddingTop: 14,
+      paddingTop: 0,
       paddingBottom: 40,
       gap: 14,
     },
-    header: {
-      flexDirection: 'row',
-      gap: 14,
       alignItems: 'center',
       marginBottom: 4,
     },
