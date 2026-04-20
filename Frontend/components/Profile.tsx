@@ -17,7 +17,7 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import {
   BriefcaseBusiness,
   Building2,
@@ -348,6 +348,12 @@ export function Profile() {
   const userBio = useAppShellStore((state) => state.userBio);
   const userGender = useAppShellStore((state) => state.userGender);
   const showPingsOnProfile = useAppShellStore((state) => state.showPingsOnProfile);
+  
+  useFocusEffect(
+    useCallback(() => {
+      setActiveTab('pings');
+    }, [setActiveTab])
+  );
   const setUserProfile = useAppShellStore((state) => state.setUserProfile);
 
   const [fullName, setFullName] = useState(userDisplayName || user?.fullName || '');
