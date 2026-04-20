@@ -60,6 +60,7 @@ type PlanCandidate = {
 const WALKING_METERS_PER_MINUTE = 84;
 const BUS_METERS_PER_MINUTE = 300;
 const LIVE_TRIP_RELEVANCE_WINDOW_MS = 20 * 60 * 1000;
+const MAX_TRANSIT_OPTION_MINUTES = 60;
 
 function polylineDistance(points: Coordinate[]): number {
   let total = 0;
@@ -661,27 +662,40 @@ export async function buildTransitPlanOptions(
     preferredRouteKey,
   );
 
+  const liveVehicleSnapshot = await transitService.getVehiclesSnapshot();
+  const liveVehicles = Array.isArray(liveVehicleSnapshot.vehicles)
+    ? liveVehicleSnapshot.vehicles
+    : [];
+  const candidatesWithLiveBuses = rankedCandidates.filter((candidate) =>
+    liveVehicles.some((vehicle) => isVehicleOnCandidateRoute(vehicle, candidate.route)),
+  );
+
+  if (candidatesWithLiveBuses.length === 0) {
+    return [];
+  }
+
   const enrichCount = Math.min(
-    rankedCandidates.length,
+    candidatesWithLiveBuses.length,
     Math.max(limit * 3, preferredRouteKey ? limit * 3 + 1 : 8),
   );
-  const candidatesToEnrich = rankedCandidates.slice(0, enrichCount);
+  const candidatesToEnrich = candidatesWithLiveBuses.slice(0, enrichCount);
 
   // High Performance Enrichment: Use Bulk trip planning to calculate everything in one request
   const bulkItems = candidatesToEnrich.map(c => getTripPlanParams(c, plannedTimestamp, timingMode)).filter(Boolean);
   const bulkPlans = await transitService.getBulkTransitTripPlanDb(bulkItems);
   
-  const enrichedCandidates = candidatesToEnrich.map((candidate, idx) => {
-    // If the bulk processor returned a plan for this index, apply it
-    return applyTripPlanToCandidate(candidate, plannedTimestamp, timingMode, bulkPlans[idx]);
-  });
+  const enrichedCandidates = candidatesToEnrich
+    .map((candidate, idx) =>
+      applyTripPlanToCandidate(candidate, plannedTimestamp, timingMode, bulkPlans[idx]),
+    );
+
   const enrichedByRouteKey = new Map(
     enrichedCandidates.map((candidate) => [candidate.route.Key, candidate]),
   );
 
   rankedCandidates = pinPreferredRoute(
     sortCandidates(
-      rankedCandidates.map(
+      candidatesWithLiveBuses.map(
         (candidate) => enrichedByRouteKey.get(candidate.route.Key) || candidate,
       ),
       preference,
@@ -689,10 +703,9 @@ export async function buildTransitPlanOptions(
     preferredRouteKey,
   ).slice(0, limit);
 
-  const liveVehicleSnapshot = await transitService.getVehiclesSnapshot();
-  const liveVehicles = liveVehicleSnapshot.freshness?.source === 'live'
-    ? liveVehicleSnapshot.vehicles
-    : [];
+  if (rankedCandidates.length === 0) {
+    return [];
+  }
 
   return rankedCandidates.map((rankedCandidate) => {
     const { candidate, nearestVehicleLabel } = overlayLiveVehicleTiming(
@@ -710,7 +723,7 @@ export async function buildTransitPlanOptions(
       destinationName,
       nearestVehicleLabel,
     );
-  });
+  }).filter((plan) => plan.estimatedTimeMinutes <= MAX_TRANSIT_OPTION_MINUTES);
 }
 
 export async function buildTransitPlan(
