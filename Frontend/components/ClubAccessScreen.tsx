@@ -171,11 +171,7 @@ export function ClubAccessScreen() {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
-        <View style={styles.heroCard}>
-          <Text style={styles.eyebrow}>Club Access</Text>
-          <Text style={styles.title}>Request Event Access</Text>
-          <Text style={styles.subtitle}>Join organization access groups and review your active tags.</Text>
-        </View>
+
 
         {clubs.length ? (
           clubs.map((club) => {

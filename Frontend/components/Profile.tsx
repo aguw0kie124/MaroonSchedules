@@ -337,6 +337,7 @@ export function Profile() {
   
   const [showBlockedPanel, setShowBlockedPanel] = useState(false);
   const [showLayoutPanel, setShowLayoutPanel] = useState(false);
+  const [showMoreInfo, setShowMoreInfo] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
@@ -943,7 +944,6 @@ export function Profile() {
           <ScalePressable 
             containerStyle={{ flex: 1 }}
             style={styles.modernStatCard}
-            onPress={() => setActiveTab('feed')}
           >
              <Text style={styles.modernStatValue}>{userPings.length || 0}</Text>
              <Text style={styles.modernStatLabel}>Pings</Text>
@@ -1680,44 +1680,6 @@ export function Profile() {
         );
       })}
 
-      <Pressable
-        style={[styles.toolRow, { marginTop: 12 }]}
-        onPress={() => openExternal('https://www.termsfeed.com/live/2fc33440-a5a9-4943-a1da-d3c5d5abc1e5')}
-      >
-        <View style={[styles.toolIconBg, { backgroundColor: 'rgba(0, 122, 255, 0.15)' }]}>
-          <Scale size={20} color="#007AFF" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.toolTitle}>Terms of Service</Text>
-        </View>
-        <ExternalLink size={18} color={COLORS.textTertiary} />
-      </Pressable>
-
-      <Pressable
-        style={[styles.toolRow, styles.toolRowLast, { marginTop: 4 }]}
-        onPress={() => openExternal('https://www.termsfeed.com/live/4889a318-ae78-48e2-975d-2eddfe043866')}
-      >
-        <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 199, 89, 0.15)' }]}>
-          <Shield size={20} color="#34C759" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.toolTitle}>Privacy Policy</Text>
-        </View>
-        <ExternalLink size={18} color={COLORS.textTertiary} />
-      </Pressable>
-
-      <Pressable
-        style={[styles.toolRow, styles.toolRowLast, { marginTop: 12 }]}
-        onPress={() => openExternal(SUPPORT_CONTACT_URL)}
-      >
-        <View style={[styles.toolIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
-          <LifeBuoy size={20} color="#F59E0B" />
-        </View>
-        <View style={{ flex: 1 }}>
-            <Text style={styles.toolTitle}>Support</Text>
-        </View>
-        <ExternalLink size={18} color={COLORS.textTertiary} />
-      </Pressable>
     </View>
   );
 
@@ -1954,25 +1916,7 @@ export function Profile() {
                       <ChevronRight size={20} color={COLORS.textTertiary} />
                     </Pressable>
                     
-                    <Pressable style={styles.toolRow} onPress={() => navigation.navigate('ClubAccess')}>
-                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 211, 153, 0.12)' }]}>
-                        <CalendarDays size={20} color="#10B981" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.toolTitle}>Club Access</Text>
-                      </View>
-                      <ChevronRight size={20} color={COLORS.textTertiary} />
-                    </Pressable>
 
-                    <Pressable style={styles.toolRow} onPress={() => navigation.navigate('DiningDashboard')}>
-                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(0, 207, 199, 0.14)' }]}>
-                        <Flame size={20} color="#00CFC7" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.toolTitle}>Nutrition Dashboard</Text>
-                      </View>
-                      <ChevronRight size={20} color={COLORS.textTertiary} />
-                    </Pressable>
 
                     <Pressable
                       style={styles.toolRow}
@@ -2016,6 +1960,57 @@ export function Profile() {
                     )}
 
                     <Pressable 
+                      style={[styles.toolRow, showMoreInfo && styles.toolRowLast, { marginTop: 12 }]} 
+                      onPress={() => setShowMoreInfo(prev => !prev)}
+                    >
+                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
+                        <Info size={20} color="#3B82F6" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.toolTitle}>More Information</Text>
+                      </View>
+                      <ChevronRight 
+                        size={20} 
+                        color={COLORS.textTertiary}
+                        style={{ transform: [{ rotate: showMoreInfo ? '90deg' : '0deg' }] }}
+                      />
+                    </Pressable>
+
+                    {showMoreInfo && (
+                      <View style={[styles.inlinePanel, { gap: 12 }]}>
+                        <Pressable style={styles.toolRow} onPress={() => openExternal('https://www.termsfeed.com/live/2fc33440-a5a9-4943-a1da-d3c5d5abc1e5')}>
+                          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(16, 185, 129, 0.12)' }]}>
+                            <Scale size={20} color="#10B981" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.toolTitle}>Terms of Service</Text>
+                          </View>
+                          <ExternalLink size={18} color={COLORS.textTertiary} />
+                        </Pressable>
+
+                        <Pressable style={styles.toolRow} onPress={() => openExternal('https://www.termsfeed.com/live/4889a318-ae78-48e2-975d-2eddfe043866')}>
+                          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 199, 89, 0.15)' }]}>
+                            <Shield size={20} color="#34C759" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.toolTitle}>Privacy Policy</Text>
+                          </View>
+                          <ExternalLink size={18} color={COLORS.textTertiary} />
+                        </Pressable>
+
+                        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => openExternal(SUPPORT_CONTACT_URL)}>
+                          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+                            <LifeBuoy size={20} color="#F59E0B" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.toolTitle}>Support</Text>
+                          </View>
+                          <ExternalLink size={18} color={COLORS.textTertiary} />
+                        </Pressable>
+                      </View>
+                    )}
+
+                    <Pressable 
                       onPress={handleDeleteAccount}
                       style={{ marginTop: 20, padding: 16, alignItems: 'center' }}
                     >
@@ -2032,28 +2027,30 @@ export function Profile() {
       </ScrollView>
 
       {/* FAB for Creating Ping */}
-      <ScalePressable 
-        style={{
-          position: 'absolute',
-          bottom: 20, // Lowered to be closer to the bottom right corner
-          right: 20,
-          width: 56,
-          height: 56,
-          borderRadius: 28,
-          backgroundColor: COLORS.primary,
-          alignItems: 'center',
-          justifyContent: 'center',
-          elevation: 5,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.3,
-          shadowRadius: 4,
-          zIndex: 999
-        }} 
-        onPress={() => setComposerVisible(true)}
-      >
-        <Plus size={30} color="#FFF" />
-      </ScalePressable>
+      {activeTab === 'pings' && (
+        <ScalePressable 
+          style={{
+            position: 'absolute',
+            bottom: 20, 
+            right: 20,
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            backgroundColor: COLORS.primary,
+            alignItems: 'center',
+            justifyContent: 'center',
+            elevation: 5,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 4,
+            zIndex: 999
+          }} 
+          onPress={() => setComposerVisible(true)}
+        >
+          <Plus size={30} color="#FFF" />
+        </ScalePressable>
+      )}
       {storyViewerVisible && activeStoryUser && (
         <StoryViewer 
           visible={storyViewerVisible}
