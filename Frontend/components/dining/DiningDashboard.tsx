@@ -96,115 +96,121 @@ export default function DiningDashboard({ navigation }: any) {
   ];
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: COLORS.background }}>
       <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, gap: 24, paddingBottom: 60 }}
         showsVerticalScrollIndicator={false}
       >
-
-
-        <Card style={s.menuCard}>
-          <View style={s.chipRow}>
-            {HALLS.map(h => (
-              <TouchableOpacity
-                key={h.key}
-                style={[
-                  s.chip,
-                  s.glassChip,
-                  { borderColor: T.btnBorder, backgroundColor: T.btnBg },
-                  hall === h.key && {
-                    borderColor: darkMode ? T.tamuGold : 'rgba(12,12,14,0.88)',
-                    backgroundColor: selectedGlassFill,
-                  },
-                ]}
-                onPress={() => setHall(h.key)}
-              >
-                <Text
-                  style={[s.chipText, { color: T.text2 }, hall === h.key && { color: selectedGlassText }]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.82}
+        {/* HALL SWITCHER */}
+        <View style={{ gap: 12 }}>
+          <Text style={{ color: COLORS.textPrimary, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1.2, fontWeight: '800' }}>Dining Locations</Text>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {HALLS.map((h) => {
+              const selected = hall === h.key;
+              return (
+                <Pressable
+                  key={h.key}
+                  onPress={() => setHall(h.key)}
+                  style={{
+                    flex: 1,
+                    backgroundColor: selected ? (darkMode ? T.tamuGold : COLORS.primary) : (darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.02)'),
+                    borderRadius: 18,
+                    paddingVertical: 14,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: selected ? 0 : 1,
+                    borderColor: COLORS.border,
+                    gap: 4
+                  }}
                 >
-                  {h.label}
-                </Text>
-                <Text style={[s.chipSub, { color: T.text3 }, hall === h.key && { color: selectedGlassSub }]}>
-                  {h.sub}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text style={{ fontSize: 14, fontWeight: '800', color: selected ? (darkMode ? '#000' : '#FFF') : COLORS.textPrimary }}>{h.label}</Text>
+                  <Text style={{ fontSize: 9, fontWeight: '600', color: selected ? (darkMode ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.8)') : COLORS.textTertiary, textTransform: 'uppercase' }}>{h.sub.split(' ')[0]}</Text>
+                </Pressable>
+              );
+            })}
           </View>
-          <View style={s.menuActionRow}>
-            <ActionButton 
-              label={`${hall} menu`}
-              onPress={openFullMenu}
-              style={[s.menuActionButton, { backgroundColor: T.tamuMaroon }]}
-              textStyle={s.menuActionButtonText}
-              textColor="#FFFFFF"
-            />
-            <View style={s.inlineSearchWrap}>
-              <FoodDatabaseScreen navigation={navigation} embedded />
-            </View>
-          </View>
-        </Card>
+          
+          <Pressable 
+            onPress={openFullMenu}
+            style={({ pressed }) => ({
+              backgroundColor: COLORS.primary,
+              paddingVertical: 16,
+              borderRadius: 18,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginTop: 4,
+              opacity: pressed ? 0.9 : 1,
+              flexDirection: 'row',
+              gap: 8,
+              shadowColor: COLORS.primary,
+              shadowOffset: { width: 0, height: 6 },
+              shadowOpacity: 0.2,
+              shadowRadius: 12,
+              elevation: 5
+            })}
+          >
+            <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 15 }}>Explore Full Menu</Text>
+            <ChevronRight size={18} color="#FFF" />
+          </Pressable>
+        </View>
 
-        <Card style={s.trackerCard}>
-          <View style={[s.daySwitcherRow, { borderBottomColor: T.border }]}>
-            <TouchableOpacity onPress={() => shiftDate(-1)} style={s.dateAction}>
-              <ChevronLeft size={24} color={T.text2} />
-            </TouchableOpacity>
-            <Text style={[s.dayText, { color: T.text }]}>{trackerDate === getLocalDateString() ? 'Today' : trackerDate}</Text>
-            <TouchableOpacity onPress={() => shiftDate(1)} style={s.dateAction} disabled={trackerDate === getLocalDateString()}>
-              <ChevronRight size={24} color={trackerDate === getLocalDateString() ? T.border : T.text2} />
-            </TouchableOpacity>
+        <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: 4 }} />
+
+        {/* TRACKER */}
+        <View style={{ gap: 20 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+             <View>
+               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: T.amber + '15', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 16 }}>🔥</Text>
+                  </View>
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: T.amber, textTransform: 'uppercase', letterSpacing: 0.8 }}>{currentStreak} Day Streak</Text>
+               </View>
+               <Text style={{ fontSize: 24, fontWeight: '900', color: COLORS.textPrimary }}>{trackerDate === getLocalDateString() ? 'Today' : trackerDate}</Text>
+             </View>
+             <View style={{ flexDirection: 'row', gap: 8 }}>
+                <Pressable onPress={() => shiftDate(-1)} style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : '#FFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border }}>
+                  <ChevronLeft size={20} color={COLORS.textPrimary} />
+                </Pressable>
+                <Pressable onPress={() => shiftDate(1)} disabled={trackerDate === getLocalDateString()} style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : '#FFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border, opacity: trackerDate === getLocalDateString() ? 0.3 : 1 }}>
+                  <ChevronRight size={20} color={COLORS.textPrimary} />
+                </Pressable>
+             </View>
           </View>
 
-          <View style={s.trackerHeaderRow}>
-            <View style={s.headerActions}>
-              <TouchableOpacity
-                style={[s.streakChip, { backgroundColor: `${T.amber}14`, borderColor: `${T.amber}30` }]}
-                onPress={() => navigation.navigate('StreakHub')}
-                activeOpacity={0.8}
-              >
-                <Text style={s.streakEmoji}>🔥</Text>
-                <Text style={[s.streakChipText, { color: T.amber }]}>{currentStreak}d</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[s.settingsChip, { backgroundColor: T.bg3, borderColor: T.border }]}
-                onPress={() => navigation.navigate('DiningSettings')}
-                activeOpacity={0.8}
-              >
-                <Settings2 size={14} color={T.text2} />
-                <Text style={[s.settingsChipText, { color: T.text2 }]}>Goal</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
           {trackerLoading ? (
-            <ActivityIndicator color={T.amber} style={{ marginVertical: 10 }} />
+            <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
           ) : (
-            <View style={s.trackerGrid}>
-              {trackerStats.map((stat) => (
-                <View key={stat.label} style={[s.trackerStat, { backgroundColor: T.bg3, borderColor: T.border }]}>
-                  <Text style={[s.trackerStatLabel, { color: T.text3 }]}>{stat.label}</Text>
-                  <Text style={[s.trackerStatValue, { color: stat.color }]} numberOfLines={1}>
-                    {stat.value}
-                  </Text>
-                  <Text style={[s.trackerStatSuffix, { color: T.text3 }]} numberOfLines={1}>
-                    {stat.suffix}
-                  </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              {[
+                { label: 'Calories', val: totals.calories || 0, goal: target, suffix: 'kcal', color: COLORS.primary },
+                { label: 'Protein', val: totals.protein || 0, goal: macros.protein || 150, suffix: 'g', color: '#10B981' },
+                { label: 'Carbs', val: totals.carbs || 0, goal: macros.carbs || 250, suffix: 'g', color: '#3B82F6' },
+                { label: 'Fat', val: totals.fat || 0, goal: macros.fat || 80, suffix: 'g', color: '#F59E0B' },
+              ].map((stat) => (
+                <View key={stat.label} style={{ width: '48%', backgroundColor: darkMode ? 'rgba(255,255,255,0.04)' : '#FFF', borderRadius: 24, padding: 16, borderWidth: 1, borderColor: COLORS.border }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.textTertiary, textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 8 }}>{stat.label}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2 }}>
+                    <Text style={{ fontSize: 24, fontWeight: '900', color: COLORS.textPrimary }}>{Math.round(stat.val)}</Text>
+                    <Text style={{ fontSize: 11, color: COLORS.textTertiary, marginBottom: 4, fontWeight: '700' }}>{stat.suffix}</Text>
+                  </View>
+                  <View style={{ marginTop: 12, height: 6, backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)', borderRadius: 3, overflow: 'hidden' }}>
+                    <View style={{ width: `${Math.min(100, (stat.val / stat.goal) * 100)}%`, height: '100%', backgroundColor: stat.color }} />
+                  </View>
                 </View>
               ))}
             </View>
           )}
 
           {tracker?.entries?.length > 0 && !trackerLoading && (
-            <View style={[s.historySection, { borderColor: T.border, backgroundColor: T.bg3 }]}>
-              <TouchableOpacity style={s.historyHeader} onPress={() => setHistoryExpanded(!historyExpanded)} activeOpacity={0.7}>
-                <Text style={[s.historyTitle, { color: T.text }]}>What you ate</Text>
-                {historyExpanded ? <ChevronUp size={20} color={T.text2} /> : <ChevronDown size={20} color={T.text2} />}
+            <View style={{ backgroundColor: darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)', borderRadius: 24, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' }}>
+              <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20 }} onPress={() => setHistoryExpanded(!historyExpanded)} activeOpacity={0.7}>
+                <Text style={{ fontSize: 15, fontWeight: '800', color: COLORS.textPrimary }}>Summary of meals</Text>
+                {historyExpanded ? <ChevronUp size={20} color={COLORS.textTertiary} /> : <ChevronDown size={20} color={COLORS.textTertiary} />}
               </TouchableOpacity>
               {historyExpanded && (
-                <View style={s.historyContent}>
+                <View style={{ padding: 20, paddingTop: 0 }}>
                   {(() => {
                     const grouped = (tracker.entries || []).reduce((acc: any, entry: any) => {
                        const p = entry.meal_period === 'every-day' ? 'Restaurants' : (entry.meal_period || 'Other');
@@ -212,13 +218,13 @@ export default function DiningDashboard({ navigation }: any) {
                        acc[p].push(entry);
                        return acc;
                     }, {});
-                    return Object.entries(grouped).map(([period, items]: any) => (
-                      <View key={period} style={s.historyGroup}>
-                           <Text style={[s.historyGroupLabel, { color: T.text3 }]}>{period.toUpperCase()}</Text>
-                           {items.map((it: any) => (
-                             <View key={it.id} style={s.historyItem}>
-                               <Text style={[s.historyItemName, { color: T.text }]}>{it.label}</Text>
-                               <Text style={[s.historyItemMacros, { color: T.text3 }]}>
+                    return Object.entries(grouped).map(([period, items]: any, pIdx, pArr) => (
+                      <View key={period} style={{ marginTop: pIdx === 0 ? 0 : 16 }}>
+                           <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.textTertiary, letterSpacing: 1, marginBottom: 8 }}>{period.toUpperCase()}</Text>
+                           {items.map((it: any, iIdx: number, iArr: any[]) => (
+                             <View key={it.id} style={{ paddingVertical: 10, borderBottomWidth: iIdx === iArr.length - 1 ? 0 : 1, borderBottomColor: COLORS.border }}>
+                               <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.textPrimary }}>{it.label}</Text>
+                               <Text style={{ fontSize: 12, color: COLORS.textTertiary, marginTop: 2 }}>
                                  {Math.round(it.calories)} kcal • {Math.round(it.protein)}g P • {Math.round(it.carbs)}g C • {Math.round(it.fat)}g F
                                </Text>
                              </View>
@@ -230,7 +236,7 @@ export default function DiningDashboard({ navigation }: any) {
               )}
             </View>
           )}
-        </Card>
+        </View>
       </ScrollView>
     </View>
   );

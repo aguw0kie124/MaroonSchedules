@@ -61,6 +61,10 @@ import {
   Settings,
   MoreVertical,
   Utensils,
+  Palette,
+  Sun,
+  Moon,
+  Ban,
 } from 'lucide-react-native';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
@@ -357,7 +361,9 @@ export function Profile() {
     eventNotifications,
     placeNotifications,
     pingNotifications,
-    setNotificationPreference
+    setNotificationPreference,
+    notificationLeadTime,
+    setNotificationLeadTime
   } = useAppShellStore();
   
   const pickerPos = useThemeStore((state: any) => state.pickerPos);
@@ -366,12 +372,9 @@ export function Profile() {
   const setHuePos = useThemeStore((state: any) => state.setHuePos);
   
   const [showBlockedPanel, setShowBlockedPanel] = useState(false);
-  const [showLayoutPanel, setShowLayoutPanel] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [showMoreInfo, setShowMoreInfo] = useState(false);
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
-  const [showNotificationsPanel, setShowNotificationsPanel] = useState(false);
   const [showFriendsModal, setShowFriendsModal] = useState(false);
   const [showSavedPingsModal, setShowSavedPingsModal] = useState(false);
   
@@ -1194,153 +1197,6 @@ export function Profile() {
   };
 
 
-  const renderLayoutTab = (embedded = false, isLast = false) => {
-    const content = (
-      <>
-        <View style={styles.preferenceBlock}>
-            <Text style={styles.preferenceLabel}>Theme Mode</Text>
-            <View style={styles.segmentedRow}>
-              {['light', 'dark'].map((mode) => {
-                const selected = theme === mode;
-                return (
-                  <Pressable
-                    key={mode}
-                    style={[styles.segmentButton, selected && styles.segmentButtonActive]}
-                    onPress={() => setTheme(mode)}
-                  >
-                    <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
-                      {mode === 'light' ? 'Light' : 'Dark'}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-
-          <View style={styles.preferenceBlock}>
-            <Text style={styles.preferenceLabel}>Accent Color</Text>
-            <View style={[styles.inlineSwitchRow, { paddingVertical: 12 }]}>
-              <View style={[styles.accentPreview, { backgroundColor: accentColor, marginRight: 12 }]} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inlineSwitchTitle}>Custom Accent</Text>
-                <Text style={{ fontSize: 12, color: COLORS.textTertiary }}>{accentColor?.toUpperCase() || '#000000'}</Text>
-              </View>
-              <Pressable 
-                onPress={() => setShowColorPicker(true)}
-                style={({ pressed }) => [
-                  styles.accentResetButton,
-                  { backgroundColor: accentColor, borderColor: accentColor, paddingHorizontal: 16 },
-                  pressed && { opacity: 0.8 }
-                ]}
-              >
-                <Text style={[styles.accentResetText, { color: '#FFF' }]}>Choose</Text>
-              </Pressable>
-            </View>
-          </View>
-      </>
-    );
-
-    if (embedded) return content;
-    return <View style={styles.section}>{content}</View>;
-  };
-
-  const renderNotificationsTab = (embedded = false, isLast = false) => {
-    const content = (
-      <>
-      <Pressable
-        style={[styles.toolRow, (showNotificationsPanel || isLast) && styles.toolRowLast]}
-        onPress={() => setShowNotificationsPanel((current) => !current)}
-      >
-        <View style={[styles.toolIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
-          <Bell size={20} color="#F59E0B" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.toolTitle}>Notifications</Text>
-        </View>
-        <ChevronRight
-          size={20}
-          color={COLORS.textTertiary}
-          style={{ transform: [{ rotate: showNotificationsPanel ? '90deg' : '0deg' }] }}
-        />
-      </Pressable>
-
-      {showNotificationsPanel ? (
-        <>
-          <View style={styles.inlinePanel}>
-            <View style={styles.inlineSwitchRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inlineSwitchTitle}>Event Reminders</Text>
-              </View>
-              <Switch
-                value={eventNotifications}
-                onValueChange={(v) => setNotificationPreference('event', v)}
-                trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-
-            <View style={[styles.inlineSwitchRow, { marginTop: 12 }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inlineSwitchTitle}>Transit Alerts</Text>
-              </View>
-              <Switch
-                value={placeNotifications}
-                onValueChange={(v) => setNotificationPreference('place', v)}
-                trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-
-            <View style={[styles.inlineSwitchRow, { marginTop: 12 }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inlineSwitchTitle}>Social Pings</Text>
-              </View>
-              <Switch
-                value={pingNotifications}
-                onValueChange={(v) => setNotificationPreference('ping', v)}
-                trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-          </View>
-
-          <Text style={[styles.preferenceLabel, { marginTop: 24, marginBottom: 12, fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 }]}>
-            Alert Lead Time
-          </Text>
-          <View style={styles.segmentedRow}>
-            {[
-              { id: 5, label: '5m' },
-              { id: 10, label: '10m' },
-              { id: 15, label: '15m' },
-              { id: 30, label: '30m' },
-              { id: 60, label: '1h' },
-            ].map((option) => {
-              const selected = notificationLeadTime === option.id;
-              return (
-                <Pressable
-                  key={option.id}
-                  style={[styles.segmentButton, selected && styles.segmentButtonActive]}
-                  onPress={() => setNotificationLeadTime(option.id)}
-                >
-                  <Text style={[styles.segmentText, selected && styles.segmentTextActive]}>
-                    {option.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </>
-      ) : null}
-      {showNotificationsPanel && !isLast && (
-        <View style={{ borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 8 }} />
-      )}
-      </>
-    );
-
-    if (embedded) return content;
-    return <View style={styles.section}>{content}</View>;
-  };
-
   const renderBlockedTab = (embedded = false, isLast = false) => {
     const content = (
       <>
@@ -1603,94 +1459,70 @@ export function Profile() {
     </Modal>
   );
 
-
   const renderResourcesTab = () => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>Campus Resources</Text>
+    <View style={{ gap: 16 }}>
+      <Text style={[styles.sectionHeading, { marginLeft: 4 }]}>Academic & Campus</Text>
 
-      {[
-        {
-          key: 'schedules',
-          title: 'Manage Schedules',
-          icon: Settings2,
-          iconColor: COLORS.primary,
-          iconBg: 'rgba(59, 130, 246, 0.12)',
-          action: () => navigation.navigate('ScheduleList'),
-          internal: true,
-        },
-        {
-          key: 'grades',
-          title: 'Grades & Distributions',
-          icon: GraduationCap,
-          iconColor: '#10B981',
-          iconBg: 'rgba(16,185,129,0.15)',
-          action: () => navigation.navigate('GradesScreen'),
-          internal: true,
-        },
-        {
-          key: 'annex',
-          title: 'Library Services',
-          icon: LibraryBig,
-          iconColor: '#00CFC7',
-          iconBg: 'rgba(0, 207, 199, 0.14)',
-          action: () => navigation.navigate('AnnexHub'),
-          internal: true,
-        },
-        {
-          key: 'howdy',
-          title: 'Howdy Portal',
-          icon: GraduationCap,
-          iconColor: COLORS.primary,
-          iconBg: 'rgba(80,0,0,0.12)',
-          action: () => openExternal('https://howdy.tamu.edu/main/home/card-view'),
-        },
-        {
-          key: 'hire',
-          title: 'Hire Aggies',
-          icon: BriefcaseBusiness,
-          iconColor: '#3B82F6',
-          iconBg: 'rgba(59,130,246,0.12)',
-          action: () => openExternal('https://tamu-csm.symplicity.com/students/index.php?signin_tab=0'),
-        },
-        {
-          key: 'transact',
-          title: 'Transact eAccounts',
-          icon: Wallet,
-          iconColor: '#F59E0B',
-          iconBg: 'rgba(245, 158, 11, 0.15)',
-          action: () => openExternal('https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx'),
-        },
-        {
-          key: 'rec',
-          title: 'Rec Center Hours',
-          icon: Dumbbell,
-          iconColor: '#10B981',
-          iconBg: 'rgba(16,185,129,0.15)',
-          action: () => navigation.navigate('RecreationFacilities'),
-        },
-      ].map((resource, index, array) => {
-        const Icon = resource.icon;
-        return (
-          <Pressable
-            key={resource.key}
-            style={[styles.toolRow, index === array.length - 1 && styles.toolRowLast]}
-            onPress={resource.action}
-          >
-            <View style={[styles.toolIconBg, { backgroundColor: resource.iconBg || 'rgba(243,241,237,0.12)' }]}>
-              <Icon size={20} color={resource.iconColor || COLORS.textPrimary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.toolTitle}>{resource.title}</Text>
-            </View>
-            {resource.internal ? (
+      <View style={styles.heroCard}>
+        {[
+          {
+            key: 'schedules',
+            title: 'Manage Schedules',
+            icon: CalendarDays,
+            iconColor: COLORS.primary,
+            iconBg: COLORS.primary + '15',
+            action: () => navigation.navigate('ScheduleList'),
+          },
+          {
+            key: 'grades',
+            title: 'Grades & Distributions',
+            icon: GraduationCap,
+            iconColor: '#10B981',
+            iconBg: '#10B981' + '15',
+            action: () => navigation.navigate('GradesScreen'),
+          },
+          {
+            key: 'annex',
+            title: 'Library Services',
+            icon: LibraryBig,
+            iconColor: '#00CFC7',
+            iconBg: '#00CFC7' + '15',
+            action: () => navigation.navigate('AnnexHub'),
+          },
+          {
+            key: 'howdy',
+            title: 'Howdy Portal',
+            icon: GraduationCap,
+            iconColor: COLORS.primary,
+            iconBg: 'rgba(80,0,0,0.12)',
+            action: () => openExternal('https://howdy.tamu.edu/main/home/card-view'),
+          },
+          {
+            key: 'transact',
+            title: 'Transact eAccounts',
+            icon: Wallet,
+            iconColor: '#F59E0B',
+            iconBg: 'rgba(245, 158, 11, 0.15)',
+            action: () => openExternal('https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx'),
+          }
+        ].map((item, idx, arr) => (
+          <React.Fragment key={item.key}>
+            <Pressable 
+              onPress={() => item.action()}
+              style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14, gap: 16 }}
+            >
+              <View style={[styles.toolIconBg, { backgroundColor: item.iconBg, width: 44, height: 44 }]}>
+                <item.icon size={22} color={item.iconColor} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.textPrimary }}>{item.title}</Text>
+              </View>
               <ChevronRight size={18} color={COLORS.textTertiary} />
-            ) : (
-              <ExternalLink size={18} color={COLORS.textTertiary} />
-            )}
-          </Pressable>
-        );
-      })}
-
+            </Pressable>
+            {idx < arr.length - 1 && <View style={{ height: 1, backgroundColor: COLORS.border, marginLeft: 60 }} />}
+          </React.Fragment>
+        ))}
+      </View>
     </View>
   );
 
@@ -1838,134 +1670,244 @@ export function Profile() {
                 </View>
               )}
               {activeTab === 'personal' && (
-                <View style={{ padding: 16, gap: 20 }}>
-
-
-                  {/* App Settings Section */}
-                  <View style={{ marginTop: 10, paddingBottom: 40 }}>
-                    <Text style={[styles.sectionHeading, { marginLeft: 4, marginBottom: 12 }]}>App Settings</Text>
-
-                    <Pressable 
-                      style={[styles.toolRow, showLayoutPanel && styles.toolRowLast]} 
-                      onPress={() => setShowLayoutPanel(prev => !prev)}
-                    >
-                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(239, 68, 68, 0.12)' }]}>
-                        <Settings2 size={20} color="#EF4444" />
+                <View style={{ padding: 16, gap: 24, paddingBottom: 60 }}>
+                  
+                  {/* Visuals Group */}
+                  <View style={styles.heroCard}>
+                    <View style={styles.heroHeader}>
+                      <View style={[styles.toolIconBg, { backgroundColor: COLORS.primary + '15' }]}>
+                        <Palette size={20} color={COLORS.primary} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.toolTitle}>Layout Settings</Text>
+                        <Text style={styles.eyebrow}>Visuals</Text>
+                        <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.textPrimary }}>Appearance</Text>
                       </View>
-                      <ChevronRight 
-                        size={20} 
-                        color={COLORS.textTertiary}
-                        style={{ transform: [{ rotate: showLayoutPanel ? '90deg' : '0deg' }] }}
-                      />
-                    </Pressable>
+                    </View>
 
-                    {showLayoutPanel && (
-                      <View style={styles.inlinePanel}>
-                        {renderLayoutTab && renderLayoutTab(true, true)}
+                    <View style={{ gap: 16 }}>
+                      {/* Theme Selector */}
+                      <View>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textTertiary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>Theme Mode</Text>
+                        <View style={{ flexDirection: 'row', backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.05)', borderRadius: 14, padding: 4 }}>
+                          {['light', 'dark'].map((mode) => {
+                            const selected = theme === mode;
+                            return (
+                              <Pressable
+                                key={mode}
+                                onPress={() => setTheme(mode)}
+                                style={{
+                                  flex: 1,
+                                  height: 36,
+                                  borderRadius: 10,
+                                  backgroundColor: selected ? (isDark ? 'rgba(255,255,255,0.1)' : '#FFF') : 'transparent',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  flexDirection: 'row',
+                                  gap: 6,
+                                  ...(selected && { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 1, elevation: 1 })
+                                }}
+                              >
+                                {mode === 'light' ? <Sun size={14} color={selected ? COLORS.primary : COLORS.textTertiary} /> : <Moon size={14} color={selected ? COLORS.primary : COLORS.textTertiary} />}
+                                <Text style={{ fontSize: 13, fontWeight: '700', color: selected ? COLORS.textPrimary : COLORS.textTertiary }}>
+                                  {mode === 'light' ? 'Light' : 'Dark'}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
                       </View>
-                    )}
 
-                    {renderNotificationsTab && renderNotificationsTab(true, false)}
-
-                    <Pressable style={styles.toolRow} onPress={() => setShowSavedPingsModal(true)}>
-                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
-                        <BookmarkIcon size={20} color="#3B82F6" />
+                      {/* Accent Picker */}
+                      <View>
+                         <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textTertiary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>Accent Color</Text>
+                         <Pressable 
+                           onPress={() => setShowColorPicker(true)}
+                           style={{ 
+                             flexDirection: 'row', 
+                             alignItems: 'center', 
+                             backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+                             borderRadius: 16,
+                             padding: 12,
+                             borderWidth: 1,
+                             borderColor: COLORS.border
+                           }}
+                         >
+                           <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: accentColor, marginRight: 12, borderWidth: 2, borderColor: '#FFF' }} />
+                           <View style={{ flex: 1 }}>
+                             <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.textPrimary }}>Custom Tint</Text>
+                             <Text style={{ fontSize: 12, color: COLORS.textTertiary }}>{accentColor?.toUpperCase()}</Text>
+                           </View>
+                           <View style={{ backgroundColor: COLORS.primary + '15', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}>
+                             <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.primary }}>Change</Text>
+                           </View>
+                         </Pressable>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.toolTitle}>Saved Pings</Text>
-                      </View>
-                      <ChevronRight size={20} color={COLORS.textTertiary} />
-                    </Pressable>
-
-                    {renderBlockedTab && renderBlockedTab(true, false)}
-
-                    <Pressable
-                      style={styles.toolRow}
-                      onPress={() => {
-                        useAppShellStore.setState({
-                          isNameOnboardingCompleted: false,
-                          showNameOnboarding: true,
-                          isEventPreferencesCompleted: false,
-                          showEventPreferencesOnboarding: true,
-                        });
-                      }}
-                    >
-                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(47, 128, 237, 0.12)' }]}>
-                        <Sparkles size={20} color="#2F80ED" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.toolTitle}>Redo Questions</Text>
-                      </View>
-                      <ChevronRight size={20} color={COLORS.textTertiary} />
-                    </Pressable>
-
-                    <Pressable 
-                      style={[styles.toolRow, showMoreInfo && styles.toolRowLast, { marginTop: 12 }]} 
-                      onPress={() => setShowMoreInfo(prev => !prev)}
-                    >
-                      <View style={[styles.toolIconBg, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
-                        <Info size={20} color="#3B82F6" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.toolTitle}>More Information</Text>
-                      </View>
-                      <ChevronRight 
-                        size={20} 
-                        color={COLORS.textTertiary}
-                        style={{ transform: [{ rotate: showMoreInfo ? '90deg' : '0deg' }] }}
-                      />
-                    </Pressable>
-
-                    {showMoreInfo && (
-                      <View style={[styles.inlinePanel, { gap: 12 }]}>
-                        <Pressable style={styles.toolRow} onPress={() => openExternal('https://www.termsfeed.com/live/2fc33440-a5a9-4943-a1da-d3c5d5abc1e5')}>
-                          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(16, 185, 129, 0.12)' }]}>
-                            <Scale size={20} color="#10B981" />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.toolTitle}>Terms of Service</Text>
-                          </View>
-                          <ExternalLink size={18} color={COLORS.textTertiary} />
-                        </Pressable>
-
-                        <Pressable style={styles.toolRow} onPress={() => openExternal('https://www.termsfeed.com/live/4889a318-ae78-48e2-975d-2eddfe043866')}>
-                          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(52, 199, 89, 0.15)' }]}>
-                            <Shield size={20} color="#34C759" />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.toolTitle}>Privacy Policy</Text>
-                          </View>
-                          <ExternalLink size={18} color={COLORS.textTertiary} />
-                        </Pressable>
-
-                        <Pressable style={[styles.toolRow, styles.toolRowLast]} onPress={() => openExternal(SUPPORT_CONTACT_URL)}>
-                          <View style={[styles.toolIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
-                            <LifeBuoy size={20} color="#F59E0B" />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.toolTitle}>Support</Text>
-                          </View>
-                          <ExternalLink size={18} color={COLORS.textTertiary} />
-                        </Pressable>
-                      </View>
-                    )}
-
-                    <Pressable onPress={handleLogout} style={{ marginTop: 20, padding: 16, alignItems: 'center' }}>
-                      <Text style={{ color: COLORS.textTertiary, fontWeight: '700' }}>Log Out</Text>
-                    </Pressable>
-
-                    <Pressable 
-                      onPress={handleDeleteAccount}
-                      style={{ marginTop: 4, padding: 16, alignItems: 'center' }}
-                    >
-                      <Text style={{ color: COLORS.danger, fontWeight: '700' }}>Delete Account</Text>
-                    </Pressable>
+                    </View>
                   </View>
-                </View>
-              )}
+
+                  {/* Notifications Group */}
+                  <View style={styles.heroCard}>
+                    <View style={styles.heroHeader}>
+                      <View style={[styles.toolIconBg, { backgroundColor: '#F59E0B' + '15' }]}>
+                        <Bell size={20} color="#F59E0B" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.eyebrow}>Experience</Text>
+                        <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.textPrimary }}>Notifications</Text>
+                      </View>
+                      <Switch 
+                        value={eventNotifications && placeNotifications && pingNotifications}
+                        onValueChange={(v) => {
+                          setNotificationPreference('event', v);
+                          setNotificationPreference('place', v);
+                          setNotificationPreference('ping', v);
+                        }}
+                        trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                        thumbColor="#FFF"
+                      />
+                    </View>
+
+                    <View style={{ gap: 4 }}>
+                      {[
+                        { label: 'Event Reminders', val: eventNotifications, key: 'event' as const },
+                        { label: 'Transit Alerts', val: placeNotifications, key: 'place' as const },
+                        { label: 'Social Pings', val: pingNotifications, key: 'ping' as const },
+                      ].map((item, idx) => (
+                        <View key={item.key} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
+                           <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: COLORS.textSecondary }}>{item.label}</Text>
+                           <Switch 
+                             value={item.val}
+                             onValueChange={(v) => setNotificationPreference(item.key, v)}
+                             scaleX={0.8} scaleY={0.8}
+                             trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                             thumbColor="#FFF"
+                           />
+                        </View>
+                      ))}
+
+                      <View style={{ marginTop: 12, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.border }}>
+                         <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textTertiary, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Lead Time</Text>
+                         <View style={{ flexDirection: 'row', backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4 }}>
+                            {[
+                              { id: 5, label: '5m' },
+                              { id: 10, label: '10m' },
+                              { id: 15, label: '15m' },
+                              { id: 30, label: '30m' },
+                              { id: 60, label: '1h' },
+                            ].map((opt) => {
+                              const selected = notificationLeadTime === opt.id;
+                              return (
+                                <Pressable
+                                  key={opt.id}
+                                  onPress={() => setNotificationLeadTime(opt.id)}
+                                  style={{
+                                    flex: 1,
+                                    height: 32,
+                                    borderRadius: 8,
+                                    backgroundColor: selected ? (isDark ? 'rgba(255,255,255,0.1)' : '#FFF') : 'transparent',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    ...(selected && { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 1, elevation: 1 })
+                                  }}
+                                >
+                                  <Text style={{ fontSize: 12, fontWeight: '700', color: selected ? COLORS.textPrimary : COLORS.textTertiary }}>{opt.label}</Text>
+                                </Pressable>
+                              );
+                            })}
+                         </View>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Settings Utility Section */}
+                  <View style={{ gap: 12 }}>
+                    <Text style={[styles.sectionHeading, { marginLeft: 4 }]}>Account & Activity</Text>
+                    
+                    <View style={styles.heroCard}>
+                      <Pressable onPress={() => setShowSavedPingsModal(true)}>
+                        <View style={styles.modernSettingRow}>
+                          <View style={[styles.toolIconBg, { backgroundColor: '#3B82F6' + '15' }]}>
+                            <BookmarkIcon size={20} color="#3B82F6" />
+                          </View>
+                          <Text style={styles.modernSettingLabel}>Saved Pings</Text>
+                          <ChevronRight size={20} color={COLORS.textTertiary} />
+                        </View>
+                      </Pressable>
+
+                      <View style={{ height: 1, backgroundColor: COLORS.border }} />
+
+                      <Pressable onPress={() => setShowBlockedPanel(prev => !prev)}>
+                        <View style={styles.modernSettingRow}>
+                          <View style={[styles.toolIconBg, { backgroundColor: '#EF4444' + '15' }]}>
+                            <Ban size={20} color="#EF4444" />
+                          </View>
+                          <Text style={styles.modernSettingLabel}>Blocked Users</Text>
+                          <ChevronRight 
+                            size={20} 
+                            color={COLORS.textTertiary} 
+                            style={{ transform: [{ rotate: showBlockedPanel ? '90deg' : '0deg' }] }}
+                          />
+                        </View>
+                      </Pressable>
+
+                      {showBlockedPanel && (
+                        <View style={{ paddingBottom: 12 }}>
+                          {renderBlockedTab && renderBlockedTab(true, true)}
+                        </View>
+                      )}
+
+                      <View style={{ height: 1, backgroundColor: COLORS.border }} />
+
+                      <Pressable
+                        onPress={() => {
+                          useAppShellStore.setState({
+                            isNameOnboardingCompleted: false,
+                            showNameOnboarding: true,
+                            isEventPreferencesCompleted: false,
+                            showEventPreferencesOnboarding: true,
+                          });
+                        }}
+                      >
+                        <View style={styles.modernSettingRow}>
+                          <View style={[styles.toolIconBg, { backgroundColor: '#2F80ED' + '15' }]}>
+                            <Sparkles size={20} color="#2F80ED" />
+                          </View>
+                          <Text style={styles.modernSettingLabel}>Retake Onboarding</Text>
+                          <ChevronRight size={20} color={COLORS.textTertiary} />
+                        </View>
+                      </Pressable>
+                    </View>
+
+                    <View style={styles.heroCard}>
+                       <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }} onPress={() => openExternal('https://www.termsfeed.com/live/2fc33440-a5a9-4943-a1da-d3c5d5abc1e5')}>
+                          <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: COLORS.textSecondary }}>Terms of Service</Text>
+                          <ExternalLink size={16} color={COLORS.textTertiary} />
+                       </Pressable>
+                       <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: 8 }} />
+                       <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }} onPress={() => openExternal('https://www.termsfeed.com/live/4889a318-ae78-48e2-975d-2eddfe043866')}>
+                          <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: COLORS.textSecondary }}>Privacy Policy</Text>
+                          <ExternalLink size={16} color={COLORS.textTertiary} />
+                       </Pressable>
+                       <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: 8 }} />
+                       <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }} onPress={() => openExternal(SUPPORT_CONTACT_URL)}>
+                          <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: COLORS.textSecondary }}>Support Help Center</Text>
+                          <LifeBuoy size={16} color={COLORS.textTertiary} />
+                       </Pressable>
+                    </View>
+                  </View>
+                
+                <Pressable onPress={handleLogout} style={{ marginTop: 20, padding: 16, alignItems: 'center' }}>
+                  <Text style={{ color: COLORS.textTertiary, fontWeight: '700' }}>Log Out</Text>
+                </Pressable>
+
+                <Pressable 
+                  onPress={handleDeleteAccount}
+                  style={{ marginTop: 4, padding: 16, alignItems: 'center' }}
+                >
+                  <Text style={{ color: COLORS.danger, fontWeight: '700' }}>Delete Account</Text>
+                </Pressable>
+              </View>
+            )}
             </View>
           </>
         )}
