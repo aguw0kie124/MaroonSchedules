@@ -1001,17 +1001,26 @@ class AggieSpiritProxy:
             print(f"[TransitProxy] Stop schedule error for route {route_number} stop {stop_code}: {exc}")
             return []
 
-    def get_route_timetable(self, route_key: str, max_stops: int = 200) -> Dict[str, Any]:
+    def get_route_timetable(self, route_key: str, max_stops: int = 12) -> Dict[str, Any]:
         cache_key = f"traffic:transit:timetable:v3:{route_key}:{max_stops}"
         cached = cache_service.get_json(cache_key)
         if cached is not None:
             return cached
 
         try:
-            route_lookup = {
-                route["Key"]: route for route in self.get_routes() if route.get("Key")
-            }
-            route = route_lookup.get(route_key)
+            max_stops = max(1, min(int(max_stops or 12), 20))
+            normalized_route_key = str(route_key or "").strip().lower()
+            route = None
+            for candidate in self.get_routes():
+                identifiers = {
+                    str(candidate.get("Key") or "").strip().lower(),
+                    str(candidate.get("ShortName") or "").strip().lower(),
+                    str(candidate.get("Name") or "").strip().lower(),
+                }
+                identifiers.discard("")
+                if normalized_route_key and normalized_route_key in identifiers:
+                    route = candidate
+                    break
             if not route:
                 return {
                     "route": None,
@@ -1019,7 +1028,8 @@ class AggieSpiritProxy:
                     "freshness": _build_transit_freshness(source="unavailable"),
                 }
 
-            pattern = self.get_pattern(route_key)
+            resolved_route_key = str(route.get("Key") or route_key)
+            pattern = self.get_pattern(resolved_route_key)
             raw_stops = pattern.get("stops") or []
             unique_stops: List[Dict[str, Any]] = []
             seen_pairs = set()
@@ -1046,7 +1056,7 @@ class AggieSpiritProxy:
             payload = {
                 "routes": [
                     {
-                        "routeKey": route_key,
+                        "routeKey": resolved_route_key,
                         "nearbyStops": [
                             {
                                 "stopCode": stop["StopCode"],
@@ -1524,7 +1534,7 @@ def get_transit_vehicles(request: Request, route_id: str = Query("")):
 
 @router.get("/transit/timetable/{route_key}")
 @limiter.limit("120/minute")
-def get_transit_timetable(request: Request, route_key: str, max_stops: int = Query(200, ge=1, le=250)):
+def get_transit_timetable(request: Request, route_key: str, max_stops: int = Query(12, ge=1, le=20)):
     cache_key = f"traffic:transit:timetable:v3:{route_key}:{max_stops}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
@@ -1540,7 +1550,7 @@ def get_transit_timetable(request: Request, route_key: str, max_stops: int = Que
         freshness = payload.get("freshness") or {}
         source = freshness.get("source")
         if not payload.get("entries") or source == "unavailable":
-            ttl_seconds = 8
+            ttl_seconds = 2
         elif source == "schedule_fallback":
             ttl_seconds = 45
         else:

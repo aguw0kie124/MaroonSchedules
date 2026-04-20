@@ -346,7 +346,7 @@ export const transitService = {
         return stops;
     },
 
-    async getRouteTimetableSnapshot(routeId: string, maxStops = 200): Promise<TimetableSnapshot> {
+    async getRouteTimetableSnapshot(routeId: string, maxStops = 12): Promise<TimetableSnapshot> {
         const now = Date.now();
         const cacheKey = `${routeId}:${maxStops}`;
         const cached = this.timetableCache.get(cacheKey);
@@ -377,7 +377,13 @@ export const transitService = {
                     scheduled_stop_count: payload?.freshness?.scheduled_stop_count,
                 },
             };
-            this.timetableCache.set(cacheKey, { data: snapshot, timestamp: now });
+            const shouldCache =
+                snapshot.freshness.source !== 'unavailable' || snapshot.entries.length > 0;
+            if (shouldCache) {
+                this.timetableCache.set(cacheKey, { data: snapshot, timestamp: now });
+            } else {
+                this.timetableCache.delete(cacheKey);
+            }
             return snapshot;
         } catch (error) {
             console.warn('[TransitService] Error fetching timetable:', error);
@@ -388,7 +394,7 @@ export const transitService = {
         }
     },
 
-    async getRouteTimetable(routeId: string, maxStops = 200): Promise<any[]> {
+    async getRouteTimetable(routeId: string, maxStops = 12): Promise<any[]> {
         const snapshot = await this.getRouteTimetableSnapshot(routeId, maxStops);
         return snapshot.entries;
     },

@@ -37,6 +37,69 @@ interface BusTimetableSheetProps {
   loading?: boolean;
 }
 
+function getTimetableSummary(
+  timetableFreshness: TransitFreshness | null | undefined,
+  stopTimetable: BusTimetableSheetProps["stopTimetable"],
+) {
+  const timetableStamp = timetableFreshness?.fetched_at
+    ? formatExactLocalTime(timetableFreshness.fetched_at)
+    : null;
+  const hasDepartureTimes = stopTimetable.some(
+    (item) => Array.isArray(item.departures) && item.departures.length > 0,
+  );
+
+  if (timetableFreshness?.source === "live") {
+    return timetableStamp
+      ? `Live departures updated ${timetableStamp}`
+      : "Live departures available";
+  }
+  if (timetableFreshness?.source === "schedule_fallback") {
+    return timetableStamp
+      ? `Scheduled fallback refreshed ${timetableStamp}`
+      : "Showing scheduled fallback";
+  }
+  if (timetableFreshness?.source === "unavailable") {
+    return hasDepartureTimes ? "Departure times available" : "Showing route stops";
+  }
+  return null;
+}
+
+function getSourceBadgeLabel(
+  timetableFreshness: TransitFreshness | null | undefined,
+  stopTimetable: BusTimetableSheetProps["stopTimetable"],
+) {
+  const hasDepartureTimes = stopTimetable.some(
+    (item) => Array.isArray(item.departures) && item.departures.length > 0,
+  );
+  if (timetableFreshness?.source === "live") return "Live";
+  if (timetableFreshness?.source === "schedule_fallback") return "Scheduled";
+  if (timetableFreshness?.source === "stale_cache") return "Cached";
+  if (timetableFreshness?.source === "unavailable" && hasDepartureTimes) {
+    return "Timetable";
+  }
+  return null;
+}
+
+function getVehicleStatusText(
+  vehicleFreshness: TransitFreshness | null | undefined,
+  liveBusCount: number,
+  vehicleStatusLabel: string | undefined,
+) {
+  if (liveBusCount > 0) {
+    if (vehicleFreshness?.source === "live" && vehicleFreshness?.fetched_at) {
+      return `Live buses active`;
+    }
+    return `${liveBusCount} live bus${liveBusCount === 1 ? "" : "es"} on route`;
+  }
+  if (vehicleFreshness?.source === "stale_cache") {
+    return vehicleStatusLabel || "Showing cached vehicle positions";
+  }
+  if (vehicleFreshness?.source === "unavailable") {
+    return null;
+  }
+  return vehicleStatusLabel || null;
+}
+
 export function BusTimetableSheet({
   visible,
   mode,
@@ -118,37 +181,19 @@ export function BusTimetableSheet({
 
   if (!visible) return null;
 
-  const timetableStamp = timetableFreshness?.fetched_at
-    ? formatExactLocalTime(timetableFreshness.fetched_at)
-    : null;
-  const timetableSummary =
-    timetableFreshness?.source === "live"
-      ? timetableStamp
-        ? `Live departures updated ${timetableStamp}`
-        : "Live departures available"
-      : timetableFreshness?.source === "schedule_fallback"
-        ? timetableStamp
-          ? `Scheduled fallback refreshed ${timetableStamp}`
-          : "Showing scheduled fallback"
-        : timetableFreshness?.source === "unavailable"
-          ? "Departure board unavailable right now"
-          : null;
-  const sourceBadgeLabel =
-    timetableFreshness?.source === "live"
-      ? "Live"
-      : timetableFreshness?.source === "schedule_fallback"
-        ? "Scheduled"
-        : timetableFreshness?.source === "stale_cache"
-          ? "Cached"
-          : timetableFreshness?.source === "unavailable"
-            ? "Offline"
-            : null;
+  const timetableSummary = getTimetableSummary(timetableFreshness, stopTimetable);
+  const sourceBadgeLabel = getSourceBadgeLabel(timetableFreshness, stopTimetable);
   const sourceBadgeColor =
     timetableFreshness?.source === "live"
       ? "#0B6E4F"
       : timetableFreshness?.source === "schedule_fallback"
         ? "#B36B00"
         : "#7A7A7A";
+  const effectiveVehicleStatus = getVehicleStatusText(
+    vehicleFreshness,
+    liveBusCount,
+    vehicleStatusLabel,
+  );
 
   const formatDepartureList = (item: { departures?: any[] }) => {
     const departures = Array.isArray(item.departures) ? item.departures : [];
@@ -235,7 +280,7 @@ export function BusTimetableSheet({
               {liveBusCount === 1 ? "" : "es"}
             </Text>
           )}
-          {vehicleStatusLabel || vehicleFreshness?.source === "stale_cache" ? (
+          {effectiveVehicleStatus ? (
             <Text
               style={[
                 styles.subtitle,
@@ -247,7 +292,7 @@ export function BusTimetableSheet({
                 },
               ]}
             >
-              {vehicleStatusLabel || "Showing cached vehicle positions"}
+              {effectiveVehicleStatus}
             </Text>
           ) : null}
           {selectedRoute && (sourceBadgeLabel || timetableSummary) ? (
