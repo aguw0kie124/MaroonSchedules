@@ -1044,7 +1044,7 @@ export function CampusPingsScreen() {
             ) : null}
           </View>
         </View>
-        <View style={{ paddingHorizontal: 18, paddingTop: 12, paddingBottom: 8 }}>
+        <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 6 }}>
           <Text style={styles.pingTitle}>{item.title}</Text>
         </View>
 
@@ -1599,8 +1599,8 @@ const getStyles = (theme: any) => {
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: 16,
-      paddingTop: 16,
-      paddingBottom: 12,
+      paddingTop: 14,
+      paddingBottom: 10,
     },
     pingAvatar: {
       width: 44,
@@ -1696,7 +1696,7 @@ const getStyles = (theme: any) => {
     },
     pingMedia: {
       width: '100%',
-      height: 440,
+      height: 360,
       backgroundColor: COLORS.surfaceElevated,
       borderRadius: 0,
     },
