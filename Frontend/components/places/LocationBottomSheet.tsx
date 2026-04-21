@@ -14,6 +14,8 @@ import {
   Platform,
   ActivityIndicator,
   TextInput,
+  LayoutAnimation,
+  UIManager,
 } from "react-native";
 import {
   X,
@@ -325,6 +327,9 @@ export function LocationBottomSheet({
   const [isSearchingDiningMenus, setIsSearchingDiningMenus] = useState(false);
   const [activeReminderIds, setActiveReminderIds] = useState<Set<string>>(new Set());
   const [syncingReminderId, setSyncingReminderId] = useState<string | null>(null);
+  const diningChevronAnimsRef = useRef<Map<string, Animated.Value>>(new Map());
+  const diningCollapseTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const [closingDiningCategories, setClosingDiningCategories] = useState<Set<string>>(new Set());
 
   const todayDateKey = getLocalDateString();
   const isCurrentDiningDate = activeDiningDate === todayDateKey;
@@ -334,6 +339,43 @@ export function LocationBottomSheet({
     () => formatDiningMenuDateLabel(activeDiningDate),
     [activeDiningDate],
   );
+
+  useEffect(() => {
+    if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
+
+  const getDiningChevronAnim = useCallback(
+    (categoryName: string, expanded: boolean) => {
+      const existing = diningChevronAnimsRef.current.get(categoryName);
+      if (existing) return existing;
+      const next = new Animated.Value(expanded ? 1 : 0);
+      diningChevronAnimsRef.current.set(categoryName, next);
+      return next;
+    },
+    [],
+  );
+
+  const animateDiningChevron = useCallback(
+    (categoryName: string, expanded: boolean) => {
+      const value = getDiningChevronAnim(categoryName, expanded);
+      Animated.timing(value, {
+        toValue: expanded ? 1 : 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
+    },
+    [getDiningChevronAnim],
+  );
+
+  const clearDiningCollapseTimer = useCallback((categoryName: string) => {
+    const existing = diningCollapseTimersRef.current.get(categoryName);
+    if (existing) {
+      clearTimeout(existing);
+      diningCollapseTimersRef.current.delete(categoryName);
+    }
+  }, []);
 
   const loadReminderIds = useCallback(async () => {
     const reminderIds = await getDiningReminderIds();
@@ -440,20 +482,70 @@ export function LocationBottomSheet({
   );
 
   const toggleCategory = useCallback((categoryName: string) => {
-    setCollapsedCategories((current) => {
+    clearDiningCollapseTimer(categoryName);
+    const isCurrentlyCollapsed = collapsedCategories.has(categoryName);
+
+    if (isCurrentlyCollapsed) {
+      setClosingDiningCategories((current) => {
+        const next = new Set(current);
+        next.delete(categoryName);
+        return next;
+      });
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setCollapsedCategories((current) => {
+        const next = new Set(current);
+        next.delete(categoryName);
+        return next;
+      });
+      animateDiningChevron(categoryName, true);
+      return;
+    }
+
+    animateDiningChevron(categoryName, false);
+    setClosingDiningCategories((current) => {
       const next = new Set(current);
-      if (next.has(categoryName)) next.delete(categoryName);
-      else next.add(categoryName);
+      next.add(categoryName);
       return next;
     });
-  }, []);
+
+    const timer = setTimeout(() => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setCollapsedCategories((current) => {
+        const next = new Set(current);
+        next.add(categoryName);
+        return next;
+      });
+      setClosingDiningCategories((current) => {
+        const next = new Set(current);
+        next.delete(categoryName);
+        return next;
+      });
+      diningCollapseTimersRef.current.delete(categoryName);
+    }, 220);
+
+    diningCollapseTimersRef.current.set(categoryName, timer);
+  }, [animateDiningChevron, clearDiningCollapseTimer, collapsedCategories]);
 
   useEffect(() => {
     if (diningMenuPreview?.categories) {
       const categoryNames = diningMenuPreview.categories.map((c: any) => c.name);
       setCollapsedCategories(new Set(categoryNames));
+      setClosingDiningCategories(new Set());
+      diningCollapseTimersRef.current.forEach((timer) => clearTimeout(timer));
+      diningCollapseTimersRef.current.clear();
+      categoryNames.forEach((name: string) => {
+        const value = getDiningChevronAnim(name, false);
+        value.setValue(0);
+      });
     }
-  }, [diningMenuPreview]);
+  }, [diningMenuPreview, getDiningChevronAnim]);
+
+  useEffect(() => {
+    return () => {
+      diningCollapseTimersRef.current.forEach((timer) => clearTimeout(timer));
+      diningCollapseTimersRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     setIsDiningSearchOpen(false);
@@ -1721,8 +1813,13 @@ export function LocationBottomSheet({
                         },
                       ]}
                       onPress={() => {
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                         setActiveCategoryKey("all");
                         const categoryNames = diningMenuPreview.categories.map((c: any) => c.name);
+                        categoryNames.forEach((name: string) => {
+                          const value = getDiningChevronAnim(name, false);
+                          value.setValue(0);
+                        });
                         setCollapsedCategories(new Set(categoryNames));
                       }}
                       activeOpacity={0.8}
@@ -1757,13 +1854,15 @@ export function LocationBottomSheet({
                             borderColor: "transparent",
                             backgroundColor: "#E8EEF9",
                           },
-                        ]}
-                        onPress={() => {
-                          setActiveCategoryKey(category.name);
-                          setCollapsedCategories(new Set());
-                        }}
-                        activeOpacity={0.8}
-                      >
+                      ]}
+                      onPress={() => {
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                        setActiveCategoryKey(category.name);
+                        setCollapsedCategories(new Set());
+                        animateDiningChevron(category.name, true);
+                      }}
+                      activeOpacity={0.8}
+                    >
                         <Text
                           style={[
                             { fontSize: 13, fontWeight: "600", color: COLORS.textSecondary },
@@ -1798,6 +1897,19 @@ export function LocationBottomSheet({
                       .map((category: any) => {
                         const isAllSelected = activeCategoryKey === "all";
                         const isCollapsed = isAllSelected && collapsedCategories.has(category.name);
+                        const isClosing = isAllSelected && closingDiningCategories.has(category.name);
+                        const shouldRenderContent = !isCollapsed || isClosing;
+                        const chevronAnim = getDiningChevronAnim(category.name, !isCollapsed);
+                        const chevronAnimatedStyle = {
+                          transform: [
+                            {
+                              rotate: chevronAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: ["0deg", "180deg"],
+                              }),
+                            },
+                          ],
+                        };
 
                         return (
                           <View
@@ -1829,20 +1941,40 @@ export function LocationBottomSheet({
                                 <Text style={{ fontSize: 18, fontWeight: "800", color: COLORS.textPrimary }}>
                                   {category.name}
                                 </Text>
-                                {!isCollapsed ? (
-                                  <ChevronUp size={20} color={COLORS.primary} />
-                                ) : (
+                                <Animated.View style={chevronAnimatedStyle}>
                                   <ChevronDown size={20} color={COLORS.primary} />
-                                )}
+                                </Animated.View>
                               </TouchableOpacity>
                             )}
 
-                            {!isCollapsed && (
-                              <View
+                            {shouldRenderContent && (
+                              <Animated.View
                                 style={
                                   isAllSelected
-                                    ? { paddingHorizontal: 12, paddingBottom: 16 }
-                                    : {}
+                                    ? {
+                                        paddingHorizontal: 10,
+                                        paddingBottom: 14,
+                                        opacity: chevronAnim,
+                                        transform: [
+                                          {
+                                            translateY: chevronAnim.interpolate({
+                                              inputRange: [0, 1],
+                                              outputRange: [-10, 0],
+                                            }),
+                                          },
+                                        ],
+                                      }
+                                    : {
+                                        opacity: chevronAnim,
+                                        transform: [
+                                          {
+                                            translateY: chevronAnim.interpolate({
+                                              inputRange: [0, 1],
+                                              outputRange: [-8, 0],
+                                            }),
+                                          },
+                                        ],
+                                      }
                                 }
                               >
                                 {category.items.map((item: any, idx: number) => {
@@ -1854,22 +1986,39 @@ export function LocationBottomSheet({
                                   });
                                   const hasReminder = activeReminderIds.has(reminderId);
                                   const isReminderSyncing = syncingReminderId === reminderId;
+                                  const itemAnimatedStyle = {
+                                    opacity: chevronAnim.interpolate({
+                                      inputRange: [0, Math.min(1, 0.28 + idx * 0.08), 1],
+                                      outputRange: [0, 0, 1],
+                                    }),
+                                    transform: [
+                                      {
+                                        translateY: chevronAnim.interpolate({
+                                          inputRange: [0, Math.min(1, 0.32 + idx * 0.08), 1],
+                                          outputRange: [-10 - idx * 2, -6, 0],
+                                        }),
+                                      },
+                                    ],
+                                  };
 
                                   return (
-                                    <View
+                                    <Animated.View
                                       key={`${category.name}-${item.name}-${idx}`}
-                                      style={{
-                                        paddingVertical: 14,
-                                        borderBottomWidth: idx === category.items.length - 1 ? 0 : 1,
-                                        borderBottomColor: COLORS.border,
-                                      }}
+                                      style={[
+                                        {
+                                          paddingVertical: 12,
+                                          borderBottomWidth: idx === category.items.length - 1 ? 0 : 1,
+                                          borderBottomColor: COLORS.border,
+                                        },
+                                        itemAnimatedStyle,
+                                      ]}
                                     >
                                       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                                        <View style={{ flex: 1, paddingRight: 12 }}>
-                                          <Text style={{ fontSize: 15, fontWeight: "700", color: COLORS.textPrimary, marginBottom: 8, lineHeight: 20 }}>
+                                        <View style={{ flex: 1, paddingRight: 10 }}>
+                                          <Text style={{ fontSize: 15, fontWeight: "700", color: COLORS.textPrimary, marginBottom: 7, lineHeight: 20 }}>
                                             {item.name}
                                           </Text>
-                                          <View style={{ flexDirection: "row", gap: 16 }}>
+                                          <View style={{ flexDirection: "row", gap: 12 }}>
                                             <View>
                                               <Text style={{ fontSize: 9, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 2 }}>
                                                 Energy
@@ -1891,37 +2040,37 @@ export function LocationBottomSheet({
                                           </View>
                                         </View>
 
-                                        <View style={{ alignItems: "flex-end", gap: 10, marginTop: 4 }}>
-                                          <TouchableOpacity
-                                            onPress={() => toggleMenuReminder(item, category.name)}
-                                            disabled={isReminderSyncing}
-                                            style={{
-                                              width: 34,
-                                              height: 34,
-                                              borderRadius: 17,
-                                              alignItems: "center",
-                                              justifyContent: "center",
-                                              backgroundColor: hasReminder
-                                                ? (isDark ? "rgba(80,0,0,0.22)" : "rgba(80,0,0,0.12)")
-                                                : (isDark ? "#17181B" : "#F5F6F8"),
-                                            }}
-                                          >
-                                            {isReminderSyncing ? (
-                                              <ActivityIndicator size="small" color={COLORS.primary} />
-                                            ) : hasReminder ? (
-                                              <BellRing size={16} color={COLORS.primary} />
-                                            ) : (
-                                              <Bell size={16} color={COLORS.textSecondary} />
-                                            )}
-                                          </TouchableOpacity>
-
+                                        <View style={{ alignItems: "flex-end", marginTop: 4 }}>
                                           {isDiningHallCard && isCurrentDiningDate && onAddMeal && onRemoveMeal ? (
                                             <View style={{
                                               flexDirection: 'row',
                                               alignItems: 'center',
-                                              gap: 8,
-                                              marginLeft: 4,
+                                              gap: 6,
+                                              marginLeft: 2,
                                             }}>
+                                              <TouchableOpacity
+                                                onPress={() => toggleMenuReminder(item, category.name)}
+                                                disabled={isReminderSyncing}
+                                                style={{
+                                                  width: 34,
+                                                  height: 34,
+                                                  borderRadius: 17,
+                                                  alignItems: "center",
+                                                  justifyContent: "center",
+                                                  backgroundColor: hasReminder
+                                                    ? (isDark ? "rgba(80,0,0,0.22)" : "rgba(80,0,0,0.12)")
+                                                    : (isDark ? "#17181B" : "#F5F6F8"),
+                                                }}
+                                              >
+                                                {isReminderSyncing ? (
+                                                  <ActivityIndicator size="small" color={COLORS.primary} />
+                                                ) : hasReminder ? (
+                                                  <BellRing size={16} color={COLORS.primary} />
+                                                ) : (
+                                                  <Bell size={16} color={COLORS.textSecondary} />
+                                                )}
+                                              </TouchableOpacity>
+
                                               <View style={{ minWidth: 26, alignItems: 'flex-end', justifyContent: 'center' }}>
                                                 {(trackerCounts[item.name]?.count || 0) > 0 && (
                                                   <Text style={{ fontSize: 12, fontWeight: "800", color: COLORS.textSecondary }}>
@@ -1972,7 +2121,30 @@ export function LocationBottomSheet({
                                                 )}
                                               </TouchableOpacity>
                                             </View>
-                                          ) : null}
+                                          ) : (
+                                            <TouchableOpacity
+                                              onPress={() => toggleMenuReminder(item, category.name)}
+                                              disabled={isReminderSyncing}
+                                              style={{
+                                                width: 34,
+                                                height: 34,
+                                                borderRadius: 17,
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                backgroundColor: hasReminder
+                                                  ? (isDark ? "rgba(80,0,0,0.22)" : "rgba(80,0,0,0.12)")
+                                                  : (isDark ? "#17181B" : "#F5F6F8"),
+                                              }}
+                                            >
+                                              {isReminderSyncing ? (
+                                                <ActivityIndicator size="small" color={COLORS.primary} />
+                                              ) : hasReminder ? (
+                                                <BellRing size={16} color={COLORS.primary} />
+                                              ) : (
+                                                <Bell size={16} color={COLORS.textSecondary} />
+                                              )}
+                                            </TouchableOpacity>
+                                          )}
                                         </View>
 
                                         {!isDiningHallCard && (item.dietary?.includes("Vegetarian") || item.dietary?.includes("Vegan")) ? (
@@ -1981,10 +2153,10 @@ export function LocationBottomSheet({
                                           </View>
                                         ) : null}
                                       </View>
-                                    </View>
+                                    </Animated.View>
                                   );
                                 })}
-                              </View>
+                              </Animated.View>
                             )}
                           </View>
                         );

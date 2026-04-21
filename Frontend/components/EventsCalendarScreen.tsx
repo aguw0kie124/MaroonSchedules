@@ -1203,6 +1203,8 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const rewardToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasAppliedInitialCategorySync = useRef(false);
   const appliedPreferenceLandingSignature = useRef<string | null>(null);
+  const modeTabUnderlineLeft = useSharedValue(0);
+  const modeTabUnderlineWidth = useSharedValue(0);
   const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
   const preferredEventInterests = useAppShellStore((state) => state.preferredEventInterests);
   const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
@@ -1570,6 +1572,31 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   }, [filteredUpcomingEvents, standardSelectedCategories]);
 
   const activeSwipeEvent = swipeDeck[swipeIndex] ?? null;
+  const [modeTabLayouts, setModeTabLayouts] = useState<Record<'discover' | 'list', { x: number; width: number } | undefined>>({
+    discover: undefined,
+    list: undefined,
+  });
+  const activeModeTabId = view === 'list' ? 'list' : 'discover';
+  const modeTabUnderlineAnimatedStyle = useAnimatedStyle(() => ({
+    left: modeTabUnderlineLeft.value,
+    width: modeTabUnderlineWidth.value,
+  }));
+
+  useEffect(() => {
+    const targetLayout = modeTabLayouts[activeModeTabId];
+    if (!targetLayout) return;
+
+    modeTabUnderlineLeft.value = withSpring(targetLayout.x, {
+      damping: 26,
+      stiffness: 240,
+      mass: 0.9,
+    });
+    modeTabUnderlineWidth.value = withSpring(targetLayout.width, {
+      damping: 26,
+      stiffness: 240,
+      mass: 0.9,
+    });
+  }, [activeModeTabId, modeTabLayouts, modeTabUnderlineLeft, modeTabUnderlineWidth]);
 
   useEffect(() => {
     setDiscoverHeroIndex(0);
@@ -1970,6 +1997,15 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       </View>
 
       <View style={s.modeTabs}>
+        {modeTabLayouts[activeModeTabId] ? (
+          <AnimatedReanimated.View
+            pointerEvents="none"
+            style={[
+              s.modeTabUnderline,
+              modeTabUnderlineAnimatedStyle,
+            ]}
+          />
+        ) : null}
         {([
           { id: 'discover', label: 'Discover' },
           { id: 'list', label: 'List' },
@@ -1979,6 +2015,19 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
             <Pressable
               key={tab.id}
               style={[s.modeTab, active && s.modeTabActive]}
+              onLayout={(event) => {
+                const { x, width } = event.nativeEvent.layout;
+                setModeTabLayouts((current) => {
+                  const previous = current[tab.id];
+                  if (previous && previous.x === x && previous.width === width) {
+                    return current;
+                  }
+                  return {
+                    ...current,
+                    [tab.id]: { x, width },
+                  };
+                });
+              }}
               onPress={() => {
                 changeView(tab.id);
                 if (tab.id === 'list' && activeTargetName === 'switch-to-list') {
@@ -1987,7 +2036,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
               }}
             >
               <Text style={[s.modeTabText, active && s.modeTabTextActive]}>{tab.label}</Text>
-              {active ? <View style={s.modeTabUnderline} /> : null}
             </Pressable>
           );
 
@@ -3372,7 +3420,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     pageTitle: {
       color: COLORS.textPrimary,
       fontSize: 34,
-      fontWeight: '900',
+      fontWeight: '800',
       letterSpacing: -1.2,
     },
     pageSubtitle: {
@@ -3410,6 +3458,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
       flexDirection: 'row',
       gap: 16,
       paddingTop: 0,
+      position: 'relative',
     },
     modeTab: {
       paddingVertical: 1,
@@ -3421,17 +3470,15 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     modeTabText: {
       color: COLORS.textSecondary,
       fontSize: 16,
-      fontWeight: '800',
+      fontWeight: '700',
     },
     modeTabTextActive: {
       color: COLORS.textPrimary,
-      fontWeight: '900',
+      fontWeight: '800',
     },
     modeTabUnderline: {
       position: 'absolute',
       bottom: -5,
-      left: 0,
-      right: 0,
       height: 3,
       borderRadius: 999,
       backgroundColor: COLORS.primary,
@@ -3499,7 +3546,7 @@ const getStyles = (COLORS: any, isDark: boolean, embedded: boolean) =>
     discoverSectionTitle: {
       color: COLORS.textPrimary,
       fontSize: 20,
-      fontWeight: '900',
+      fontWeight: '800',
       letterSpacing: -0.45,
       flex: 1,
     },
