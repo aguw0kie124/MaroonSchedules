@@ -37,6 +37,17 @@ export function initializeFeedUser(
   return { id: clerkUserId };
 }
 
+export interface FeedCursor {
+  createdAt: string;
+  id: string;
+}
+
+export interface PaginatedFeedResponse<T> {
+  results: T[];
+  hasMore: boolean;
+  nextCursor: FeedCursor | null;
+}
+
 export async function uploadMediaImage(uri: string): Promise<string> {
   try {
     const filename = uri.split('/').pop() || 'upload.jpg';
@@ -136,13 +147,46 @@ export async function getUserPingFeed(feedId: string, limit = 50): Promise<any[]
 
 export async function getPingFeed(limit = 40): Promise<any[]> {
   try {
-    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?limit=${limit}`, {}, 12000);
-    if (!res.ok) throw new Error('Proxy Fetch Error');
-    const data = await res.json();
+    const data = await getPingFeedPage({ limit });
     return data.results || [];
   } catch (e) {
     warnFeedRead('[NativeFeeds] getPingFeed', e);
     return [];
+  }
+}
+
+export async function getPingFeedPage(params: {
+  limit?: number;
+  cursor?: FeedCursor | null;
+  refresh?: boolean;
+} = {}): Promise<PaginatedFeedResponse<any>> {
+  const { limit = 40, cursor = null, refresh = false } = params;
+
+  try {
+    const searchParams = new URLSearchParams({ limit: String(limit) });
+    if (cursor?.createdAt && cursor?.id) {
+      searchParams.set('cursor_created_at', cursor.createdAt);
+      searchParams.set('cursor_id', cursor.id);
+    }
+    if (refresh) {
+      searchParams.set('refresh', 'true');
+    }
+
+    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?${searchParams.toString()}`, {}, 12000);
+    if (!res.ok) throw new Error('Proxy Fetch Error');
+    const data = await res.json();
+    return {
+      results: data.results || [],
+      hasMore: Boolean(data.hasMore),
+      nextCursor: data.nextCursor || null,
+    };
+  } catch (e) {
+    warnFeedRead('[NativeFeeds] getPingFeedPage', e);
+    return {
+      results: [],
+      hasMore: false,
+      nextCursor: null,
+    };
   }
 }
 

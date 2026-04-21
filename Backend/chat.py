@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Query, Body
 from pydantic import BaseModel
 import os
 import psycopg
+from datetime import datetime
 from dotenv import load_dotenv
 import requests as http_requests
 from typing import Dict, Any, List, Optional
@@ -96,6 +97,27 @@ def _passes_access_filter(item: Dict[str, Any], user_tags: List[str], bypass_res
         bypass_restrictions=bypass_restrictions,
     )
 
+
+def _parse_feed_cursor_created_at(value: Optional[str]) -> Optional[str]:
+    if not value or not isinstance(value, str):
+        return None
+
+    try:
+        return datetime.fromisoformat(value).isoformat()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid feed cursor") from exc
+
+
+def _cursor_from_feed_item(item: Dict[str, Any]) -> Optional[Dict[str, str]]:
+    created_at = item.get("created_at")
+    item_id = item.get("id")
+    if not created_at or not item_id:
+        return None
+    return {
+        "createdAt": str(created_at),
+        "id": str(item_id),
+    }
+
 # --- User Management (Clerk) ---
 
 @router.get("/users")
@@ -182,6 +204,8 @@ async def proxy_get_feed(
     feed_group: str,
     feed_id: str,
     limit: int = Query(25, ge=1, le=100),
+    cursor_created_at: Optional[str] = Query(None),
+    cursor_id: Optional[str] = Query(None),
     clerk_id: Optional[str] = Query(None),
     refresh: bool = Query(False),
     auth_user_id: Optional[str] = Depends(optional_auth),
@@ -193,55 +217,126 @@ async def proxy_get_feed(
             ensure_matching_user(auth_user_id, clerk_id, detail="Feed identity header does not match the signed-in user")
         resolved_user_id = auth_user_id or clerk_id
         user_access_tags, bypass_access_restrictions = _resolve_access_scope_cached(resolved_user_id)
+        blocked_ids = _get_block_relationship_ids_cached(resolved_user_id) if resolved_user_id else []
 
         # 1. Check Backbone Cache
         cache_key = f"feed:backbone:{feed_group}:{feed_id}"
         if feed_id == "for_u" and resolved_user_id:
             cache_key = f"feed:backbone:{feed_group}:for_u:{resolved_user_id}"
-            
-        if refresh:
+
+        raw_cursor_created_at = _parse_feed_cursor_created_at(cursor_created_at)
+        raw_cursor_id = cursor_id if isinstance(cursor_id, str) and cursor_id else None
+        if bool(raw_cursor_created_at) != bool(raw_cursor_id):
+            raise HTTPException(status_code=400, detail="Invalid feed cursor")
+
+        use_backbone_cache = not raw_cursor_created_at and not raw_cursor_id
+        supports_cursor_feed = (
+            feed_group == "flat"
+            and (
+                feed_id in ["campus_global", "campus_pings", "reels_global"]
+                or (feed_id == "for_u" and not resolved_user_id)
+            )
+        )
+
+        if refresh and use_backbone_cache:
             cache_service.delete(cache_key)
             backbone = None
-        else:
+        elif use_backbone_cache:
             backbone = cache_service.get_json(cache_key)
-        
-        raw_items = []
-        if backbone:
-            raw_items = backbone[:limit]
         else:
-            # Backbone Miss - Fetch from DB (unfiltered by user)
-            if feed_group == "flat":
-                if feed_id == "for_u":
-                    if resolved_user_id:
-                        raw_items = feed_repository.get_tailored_feed_for_user(resolved_user_id, limit=limit*2)
-                    else:
-                        raw_items = feed_repository.get_crowdping_feed(post_types=['ping', 'post'], limit=limit*2)
-                elif feed_id.startswith("place_review_"):
-                    place_id = feed_id.replace("place_review_", "")
-                    raw_items = feed_repository.get_place_reviews(place_id, limit=limit*2)
-                elif feed_id in ["campus_global", "campus_pings", "reels_global"]:
-                    post_types = ['post', 'reel', 'ping']
-                    if feed_id == "campus_pings": post_types = ['ping', 'post']
-                    elif feed_id == "reels_global": post_types = ['reel']
-                    raw_items = feed_repository.get_crowdping_feed(post_types=post_types, limit=limit*2)
-                elif feed_id.startswith("user_"):
-                    target_user_id = feed_id.replace("user_", "")
-                    raw_items = feed_repository.get_user_feed(target_user_id, limit=limit*2)
-            
-            # Keep the feed warm, but refresh often enough that recent pings don't disappear.
-            if raw_items:
-                cache_service.set_json(cache_key, raw_items, ttl_seconds=60)
+            backbone = None
+        
+        batch_limit = min(max(limit * 2, 20), 100)
+        visible_items: List[Dict[str, Any]] = []
+        source_exhausted = False
+        pending_cursor_created_at = raw_cursor_created_at
+        pending_cursor_id = raw_cursor_id
+        cached_first_batch = False
+
+        while len(visible_items) < limit + 1 and not source_exhausted:
+            raw_items = []
+            batch_supports_cursor = supports_cursor_feed
+            if backbone is not None:
+                raw_items = list(backbone)
+                backbone = None
+                cached_first_batch = True
+            else:
+                # Backbone Miss - Fetch from DB (unfiltered by user)
+                if feed_group == "flat":
+                    if feed_id == "for_u":
+                        if resolved_user_id:
+                            raw_items = feed_repository.get_tailored_feed_for_user(resolved_user_id, limit=batch_limit)
+                        else:
+                            if pending_cursor_created_at and pending_cursor_id:
+                                raw_items = feed_repository.get_crowdping_feed(
+                                    post_types=['ping', 'post'],
+                                    limit=batch_limit,
+                                    cursor_created_at=pending_cursor_created_at,
+                                    cursor_id=pending_cursor_id,
+                                )
+                            else:
+                                raw_items = feed_repository.get_crowdping_feed(
+                                    post_types=['ping', 'post'],
+                                    limit=batch_limit,
+                                )
+                    elif feed_id.startswith("place_review_"):
+                        place_id = feed_id.replace("place_review_", "")
+                        raw_items = feed_repository.get_place_reviews(place_id, limit=batch_limit)
+                    elif feed_id in ["campus_global", "campus_pings", "reels_global"]:
+                        post_types = ['post', 'reel', 'ping']
+                        if feed_id == "campus_pings":
+                            post_types = ['ping', 'post']
+                        elif feed_id == "reels_global":
+                            post_types = ['reel']
+
+                        if pending_cursor_created_at and pending_cursor_id:
+                            raw_items = feed_repository.get_crowdping_feed(
+                                post_types=post_types,
+                                limit=batch_limit,
+                                cursor_created_at=pending_cursor_created_at,
+                                cursor_id=pending_cursor_id,
+                            )
+                        else:
+                            raw_items = feed_repository.get_crowdping_feed(
+                                post_types=post_types,
+                                limit=batch_limit,
+                            )
+                    elif feed_id.startswith("user_"):
+                        target_user_id = feed_id.replace("user_", "")
+                        raw_items = feed_repository.get_user_feed(target_user_id, limit=batch_limit)
+
+                # Keep the first uncached page warm, but refresh often enough that recent pings don't disappear.
+                if use_backbone_cache and raw_items and not cached_first_batch:
+                    cache_service.set_json(cache_key, raw_items, ttl_seconds=60)
+                    cached_first_batch = True
+
+            if not raw_items:
+                source_exhausted = True
+                break
+
+            filtered_items = [
+                item
+                for item in raw_items
+                if item.get("user_id") not in blocked_ids
+                and _passes_access_filter(item, user_access_tags, bypass_access_restrictions)
+            ]
+            visible_items.extend(filtered_items)
+
+            if len(raw_items) < batch_limit or not batch_supports_cursor:
+                source_exhausted = True
+                break
+
+            last_raw_item = raw_items[-1]
+            pending_cursor_created_at = str(last_raw_item.get("created_at") or "")
+            pending_cursor_id = str(last_raw_item.get("id") or "")
+            if not pending_cursor_created_at or not pending_cursor_id:
+                source_exhausted = True
+                break
 
         # 2. In-Memory Personalization (Filtering & Hydration)
-        blocked_ids = _get_block_relationship_ids_cached(resolved_user_id) if resolved_user_id else []
-        
-        filtered_items = [
-            item
-            for item in raw_items
-            if item.get("user_id") not in blocked_ids
-            and _passes_access_filter(item, user_access_tags, bypass_access_restrictions)
-        ]
-        final_list = filtered_items[:limit]
+        final_list = visible_items[:limit]
+        has_more = len(visible_items) > limit or not source_exhausted
+        next_cursor = _cursor_from_feed_item(final_list[-1]) if final_list else None
         
         # 3. Hydrate with Scores & Own Reactions
         ids_to_hydrate = [item["id"] for item in final_list]
@@ -267,8 +362,14 @@ async def proxy_get_feed(
             else:
                 results.append(_transform_post_to_activity(item, interaction_map.get(pid, {}), own_reactions))
 
-        return {"results": results}
+        return {
+            "results": results,
+            "hasMore": has_more,
+            "nextCursor": next_cursor,
+        }
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Native Feed Fetch Error: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -501,6 +602,8 @@ async def proxy_add_reaction(request: Request, body: ReactionPayload, auth_user_
                 "image": res.get("user_image", final_image)
             }
         }
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Native Reaction Error: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))

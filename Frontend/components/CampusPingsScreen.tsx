@@ -58,7 +58,12 @@ import {
 } from 'lucide-react-native';
 
 import { FocusMotionView, ScalePressable } from './common/Motion';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+  type InfiniteData,
+} from '@tanstack/react-query';
 
 import { API_URL } from '../config';
 import { useTheme, WallpaperWrapper } from './SharedUI';
@@ -75,7 +80,8 @@ import {
   deletePing,
   getComments,
   getFriends,
-  getPingFeed,
+  getPingFeedPage,
+  type FeedCursor,
   reportContent,
   toggleLike,
   toggleVote,
@@ -116,7 +122,7 @@ interface FeaturedEvent {
 
 type PingAnchorType = 'place' | 'geo';
 
-interface PingCard {
+export interface PingCard {
   id: string;
   source: 'user' | 'official';
   anchorType: PingAnchorType;
@@ -148,6 +154,14 @@ interface ComposerGeoLocation {
   label: string;
 }
 
+interface PingFeedPage {
+  results: PingCard[];
+  hasMore: boolean;
+  nextCursor: FeedCursor | null;
+}
+
+const PING_PAGE_SIZE = 25;
+
 const PING_CATEGORIES: Array<{ id: PingCategory; accent: string; Icon: any }> = [
   { id: 'Free Food', accent: '#E48B3D', Icon: Pizza },
   { id: 'Hangout', accent: '#D85F8D', Icon: Users },
@@ -173,6 +187,79 @@ export function categoryMeta(category: string) {
       Icon: Sparkles,
     }
   );
+}
+
+function flattenPingFeedPages(data: InfiniteData<PingFeedPage> | undefined): PingCard[] {
+  if (!data) return [];
+
+  const seen = new Set<string>();
+  return data.pages.flatMap((page) =>
+    page.results.filter((entry) => {
+      if (seen.has(entry.id)) return false;
+      seen.add(entry.id);
+      return true;
+    }),
+  );
+}
+
+function mapPingFeedPages(
+  data: InfiniteData<PingFeedPage> | undefined,
+  transform: (entry: PingCard) => PingCard | null,
+): InfiniteData<PingFeedPage> | undefined {
+  if (!data) return data;
+
+  return {
+    ...data,
+    pages: data.pages.map((page) => ({
+      ...page,
+      results: page.results.flatMap((entry) => {
+        const next = transform(entry);
+        return next ? [next] : [];
+      }),
+    })),
+  };
+}
+
+function createOptimisticPingFeedData(ping: PingCard): InfiniteData<PingFeedPage> {
+  return {
+    pageParams: [null],
+    pages: [
+      {
+        results: [ping],
+        hasMore: false,
+        nextCursor: {
+          createdAt: ping.createdAt,
+          id: ping.id,
+        },
+      },
+    ],
+  };
+}
+
+function prependPingToFeedPages(
+  data: InfiniteData<PingFeedPage> | undefined,
+  ping: PingCard,
+): InfiniteData<PingFeedPage> {
+  if (!data) {
+    return createOptimisticPingFeedData(ping);
+  }
+
+  const [firstPage, ...restPages] = data.pages;
+  const nextFirstPage: PingFeedPage = {
+    ...firstPage,
+    results: [ping, ...firstPage.results.filter((entry) => entry.id !== ping.id)],
+  };
+
+  return {
+    ...data,
+    pages: [
+      nextFirstPage,
+      ...restPages.map((page) => ({
+        ...page,
+        results: page.results.filter((entry) => entry.id !== ping.id),
+      })),
+    ],
+  };
 }
 
 function buildPresetWindow(preset: TimePreset, durationHours: number = 3) {
@@ -435,27 +522,43 @@ export function CampusPingsScreen() {
     return m;
   }, [userProfiles]);
 
-  const {
-    data: userPings = [],
-    isLoading: loadingPings,
-    refetch: refetchPings,
-    isRefetching: refreshingPings,
-  } = useQuery({
-    queryKey: ['campus-pings', API_URL],
-    queryFn: async () => {
-      const activities = await getPingFeed(60);
-      return (activities || []).map((a: any) => mapActivityToPing(a, user, userMap));
-    },
-    refetchInterval: 15000,
-    staleTime: 1000 * 30,
-  });
-
   const [feedConnected, setFeedConnected] = useState(false);
   const [feedError, setFeedError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<FeedFilter>('All');
   const [showScrollTop, setShowScrollTop] = useState(false);
   const pingsListRef = useRef<FlatList<PingCard> | null>(null);
+
+  const campusPingsFeedKey = ['campus-pings-feed', API_URL, user?.id] as const;
+
+  const {
+    data: pagedUserPings,
+    isLoading: loadingPings,
+    refetch: refetchPings,
+    hasNextPage,
+    fetchNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: campusPingsFeedKey,
+    initialPageParam: null as FeedCursor | null,
+    queryFn: async ({ pageParam }) => {
+      const response = await getPingFeedPage({
+        limit: PING_PAGE_SIZE,
+        cursor: pageParam,
+      });
+      return {
+        ...response,
+        results: (response.results || []).map((activity: any) => mapActivityToPing(activity, user, userMap)),
+      };
+    },
+    getNextPageParam: (lastPage) => {
+      if (!lastPage.hasMore || !lastPage.nextCursor) return undefined;
+      return lastPage.nextCursor;
+    },
+    enabled: !user?.id || feedConnected,
+    refetchInterval: 30000,
+    staleTime: 1000 * 30,
+  });
 
   const [composerVisible, setComposerVisible] = useState(false);
   const [composerTitle, setComposerTitle] = useState('');
@@ -474,6 +577,8 @@ export function CampusPingsScreen() {
 
   const [activeFeaturedEvent, setActiveFeaturedEvent] = useState<FeaturedEvent | null>(null);
   const [activeCommentsPing, setActiveCommentsPing] = useState<PingCard | null>(null);
+
+  const userPings = useMemo(() => flattenPingFeedPages(pagedUserPings), [pagedUserPings]);
 
   const { data: friends = [] } = useQuery({
     queryKey: ['campus-ping-friends', API_URL, user?.id],
@@ -588,10 +693,6 @@ export function CampusPingsScreen() {
       }
     }
   }, [user, feedConnected]);
-
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
 
   const handleRefresh = useCallback(() => {
     loadAll();
@@ -851,6 +952,10 @@ export function CampusPingsScreen() {
       const createdActivity = createdPing?.activity;
       if (createdActivity) {
         const optimisticPing = mapActivityToPing(createdActivity, user, userMap);
+        queryClient.setQueryData(
+          campusPingsFeedKey,
+          (current: InfiniteData<PingFeedPage> | undefined) => prependPingToFeedPages(current, optimisticPing),
+        );
         queryClient.setQueryData(['campus-pings', API_URL], (current: PingCard[] | undefined) => {
           const existing = current || [];
           return [optimisticPing, ...existing.filter((entry) => entry.id !== optimisticPing.id)];
@@ -859,6 +964,7 @@ export function CampusPingsScreen() {
 
       setComposerVisible(false);
       resetComposer();
+      queryClient.invalidateQueries({ queryKey: campusPingsFeedKey });
       queryClient.invalidateQueries({ queryKey: ['campus-pings', API_URL] });
       queryClient.invalidateQueries({ queryKey: ['campus-pulse', user?.id, API_URL] });
     } catch (error: any) {
@@ -868,6 +974,7 @@ export function CampusPingsScreen() {
       setIsPosting(false);
     }
   }, [
+    campusPingsFeedKey,
     composerBody,
     composerCategory,
     composerTitle,
@@ -896,27 +1003,29 @@ export function CampusPingsScreen() {
       const nextUserVote = currentVote === direction ? 0 : direction;
 
       // Optimistic Update
-      const previousPings = queryClient.getQueryData<PingCard[]>(['campus-pings', API_URL]);
+      const previousPings = queryClient.getQueryData<InfiniteData<PingFeedPage>>(campusPingsFeedKey);
       if (previousPings) {
-        const newPings = previousPings.map(p => {
-          if (p.id !== ping.id) return p;
-          
-          let scoreAdjustment = 0;
-          if (nextUserVote === 0) {
-            scoreAdjustment = -currentVote; // Remove old vote
-          } else if (currentVote === 0) {
-            scoreAdjustment = direction; // Add new vote
-          } else {
-            scoreAdjustment = direction * 2; // Flip vote (e.g. -1 to +1 is +2)
-          }
+        queryClient.setQueryData(
+          campusPingsFeedKey,
+          mapPingFeedPages(previousPings, (entry) => {
+            if (entry.id !== ping.id) return entry;
 
-          return {
-            ...p,
-            userVote: nextUserVote,
-            score: (p.score || 0) + scoreAdjustment
-          };
-        });
-        queryClient.setQueryData(['campus-pings', API_URL], newPings);
+            let scoreAdjustment = 0;
+            if (nextUserVote === 0) {
+              scoreAdjustment = -currentVote;
+            } else if (currentVote === 0) {
+              scoreAdjustment = direction;
+            } else {
+              scoreAdjustment = direction * 2;
+            }
+
+            return {
+              ...entry,
+              userVote: nextUserVote,
+              score: (entry.score || 0) + scoreAdjustment,
+            };
+          }),
+        );
       }
 
       try {
@@ -928,7 +1037,7 @@ export function CampusPingsScreen() {
         console.warn('[Pings] vote failed', error);
         // Rollback
         if (previousPings) {
-          queryClient.setQueryData(['campus-pings', API_URL], previousPings);
+          queryClient.setQueryData(campusPingsFeedKey, previousPings);
         }
         if (error instanceof Error && /blocked/i.test(error.message)) {
           Alert.alert(
@@ -943,7 +1052,7 @@ export function CampusPingsScreen() {
         }
       }
     },
-    [navigation, queryClient],
+    [campusPingsFeedKey, queryClient],
   );
 
   const handleDeletePing = useCallback(
@@ -957,10 +1066,11 @@ export function CampusPingsScreen() {
           onPress: async () => {
             try {
               await deletePing(ping.activityId!);
-              queryClient.setQueryData(['campus-pings', API_URL], (current: PingCard[] | undefined) => {
-                if (!current) return current;
-                return current.filter((entry) => entry.id !== ping.id);
-              });
+              queryClient.setQueryData(
+                campusPingsFeedKey,
+                (current: InfiniteData<PingFeedPage> | undefined) =>
+                  mapPingFeedPages(current, (entry) => (entry.id === ping.id ? null : entry)),
+              );
             } catch (error) {
               console.warn('[Pings] delete failed (silent)', error);
             }
@@ -968,15 +1078,16 @@ export function CampusPingsScreen() {
         },
       ]);
     },
-    [],
+    [campusPingsFeedKey, queryClient],
   );
 
   const removeBlockedUserFromVisibleFeed = useCallback((blockedUserId: string) => {
-    queryClient.setQueryData(['campus-pings', API_URL], (current: PingCard[] | undefined) => {
-      if (!current) return current;
-      return current.filter((entry) => entry.userId !== blockedUserId);
-    });
-  }, [queryClient]);
+    queryClient.setQueryData(
+      campusPingsFeedKey,
+      (current: InfiniteData<PingFeedPage> | undefined) =>
+        mapPingFeedPages(current, (entry) => (entry.userId === blockedUserId ? null : entry)),
+    );
+  }, [campusPingsFeedKey, queryClient]);
 
   const handleReportPing = useCallback((ping: PingCard) => {
     if (!user?.id || !ping.userId) {
@@ -1043,15 +1154,16 @@ export function CampusPingsScreen() {
 
   const handleCommentPosted = useCallback(() => {
     if (!activeCommentsPing) return;
-    queryClient.setQueryData(['campus-pings', API_URL], (current: PingCard[] | undefined) => {
-      if (!current) return current;
-      return current.map((entry) =>
-        entry.id === activeCommentsPing.id
-          ? { ...entry, commentCount: (entry.commentCount || 0) + 1 }
-          : entry,
-      );
-    });
-  }, [activeCommentsPing, queryClient]);
+    queryClient.setQueryData(
+      campusPingsFeedKey,
+      (current: InfiniteData<PingFeedPage> | undefined) =>
+        mapPingFeedPages(current, (entry) =>
+          entry.id === activeCommentsPing.id
+            ? { ...entry, commentCount: (entry.commentCount || 0) + 1 }
+            : entry,
+        ),
+    );
+  }, [activeCommentsPing, campusPingsFeedKey, queryClient]);
 
   const handleAddPingAuthorAsFriend = useCallback((ping: PingCard) => {
     if (!user?.id || !ping.userId) {
@@ -1502,6 +1614,13 @@ export function CampusPingsScreen() {
             <Text style={styles.emptyQuote}>Be the first to post what is happening.</Text>
           </View>
         }
+        ListFooterComponent={
+          isFetchingNextPage ? (
+            <View style={styles.feedFooterLoader}>
+              <ActivityIndicator size="small" color={COLORS.textSecondary} />
+            </View>
+          ) : null
+        }
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
@@ -1517,6 +1636,11 @@ export function CampusPingsScreen() {
           const nextShow = event.nativeEvent.contentOffset.y > 360;
           setShowScrollTop((current) => (current === nextShow ? current : nextShow));
         }}
+        onEndReached={() => {
+          if (!hasNextPage || isFetchingNextPage) return;
+          fetchNextPage();
+        }}
+        onEndReachedThreshold={0.45}
         scrollEventThrottle={16}
       />
 
@@ -1936,6 +2060,12 @@ const getStyles = (theme: any) => {
     },
     listContent: {
       paddingBottom: 120,
+    },
+    feedFooterLoader: {
+      paddingTop: 6,
+      paddingBottom: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     headerWrap: {
       paddingTop: 18,

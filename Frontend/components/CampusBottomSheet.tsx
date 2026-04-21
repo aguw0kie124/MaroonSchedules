@@ -18,7 +18,7 @@ interface CampusBottomSheetProps {
   onSelect: (item: CampusSearchResult) => void;
   hasRoute: boolean;
   destinationName?: string;
-  routeMode?: 'walk' | 'drive' | 'bus';
+  routeMode?: 'walk' | 'bus';
   routeTitle?: string;
   distanceLabel?: string;
   etaLabel?: string;
@@ -74,7 +74,7 @@ export function CampusBottomSheet({
           <View style={styles.routeHeader}>
             <View style={[styles.routeModeBadge, routeAccentColor ? { backgroundColor: routeAccentColor } : null]}>
               <Text style={styles.routeModeBadgeText}>
-                {routeMode === 'bus' ? 'Bus Route' : routeMode === 'drive' ? 'Drive Route' : 'Walk Route'}
+                {routeMode === 'bus' ? 'Bus Route' : 'Walk Route'}
               </Text>
             </View>
             <Pressable
@@ -86,7 +86,7 @@ export function CampusBottomSheet({
           </View>
           <View style={styles.routeInfo}>
             <Text style={styles.routeTitle} numberOfLines={2}>
-              {routeTitle || `${routeMode === 'bus' ? 'Bus' : routeMode === 'drive' ? 'Drive' : 'Walk'} to ${destinationName}`}
+              {routeTitle || `${routeMode === 'bus' ? 'Bus' : 'Walk'} to ${destinationName}`}
             </Text>
             <Text style={styles.routeSub}>{distanceLabel} • {etaLabel}</Text>
             {routeMeta ? (
@@ -107,7 +107,7 @@ export function CampusBottomSheet({
               disabled={isLoadingRoute}
             >
               <Text style={styles.startBtnText}>
-                {isLoadingRoute ? 'Loading…' : routeMode === 'bus' ? 'Start Trip' : routeMode === 'drive' ? 'Start Drive' : 'Start Walk'}
+                {isLoadingRoute ? 'Loading…' : routeMode === 'bus' ? 'Start Trip' : 'Start Walk'}
               </Text>
             </Pressable>
           </View>

@@ -1140,26 +1140,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
   ]);
 
   const openNavigationToLocation = useCallback(
-    (loc: CampusLocation, mode: "walk" | "drive" | "bus" = "walk") => {
+    (loc: CampusLocation, mode: "walk" | "bus" = "walk") => {
       const rootNav =
         navigation.getParent?.("RootStack") || navigation.getParent?.();
-      const distanceFromUser = userCoord
-        ? haversineDistanceMeters(
-          userCoord.latitude,
-          userCoord.longitude,
-          loc.coord.lat,
-          loc.coord.lng,
-        )
-        : null;
-      const resolvedMode =
-        mode === "walk" &&
-          loc.source === "global" &&
-          distanceFromUser != null &&
-          distanceFromUser > 5000
-          ? "drive"
-          : mode;
       const params = {
-        initialTravelMode: resolvedMode,
+        initialTravelMode: mode,
         initialDestination: {
           id: loc.location,
           name: loc.location,

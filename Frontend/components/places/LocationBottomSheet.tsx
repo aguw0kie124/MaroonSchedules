@@ -261,7 +261,7 @@ interface LocationBottomSheetProps {
   // Bus state — to know when not to show
   selectedStop: any;
   selectedBus: any;
-  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "drive" | "bus") => void;
+  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "bus") => void;
   isFetchingDetail?: boolean;
   // Meal Tracking integration
   trackerCounts?: Record<string, { count: number; entryIds: number[] }>;

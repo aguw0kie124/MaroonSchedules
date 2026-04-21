@@ -462,7 +462,7 @@ export const searchGlobalMapPlaces = async (query: string, limit = 8) => {
 export const fetchGlobalMapRoute = async (payload: {
     origin: { latitude: number; longitude: number };
     destination: { latitude: number; longitude: number };
-    mode: 'walk' | 'drive' | 'bike';
+    mode: 'walk' | 'bike';
     origin_name?: string;
     destination_name?: string;
 }) => {

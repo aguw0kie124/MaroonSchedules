@@ -151,7 +151,13 @@ def add_crowdping_post(
         conn.commit()
     return _row_to_post_dict(row)
 
-def get_crowdping_feed(post_types: List[str] = None, limit: int = 40, exclude_user_ids: List[str] = None) -> List[Dict[str, Any]]:
+def get_crowdping_feed(
+    post_types: List[str] = None,
+    limit: int = 40,
+    exclude_user_ids: List[str] = None,
+    cursor_created_at: Optional[str] = None,
+    cursor_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     with psycopg.connect(CONNECTION_PARAMS) as conn:
         with conn.cursor() as cur:
             sql = """
@@ -171,8 +177,12 @@ def get_crowdping_feed(post_types: List[str] = None, limit: int = 40, exclude_us
             if exclude_user_ids:
                 sql += " AND p.user_id != ALL(%s)"
                 params.append(exclude_user_ids)
+
+            if cursor_created_at and cursor_id:
+                sql += " AND (p.created_at, p.id) < (%s, %s)"
+                params.extend([cursor_created_at, cursor_id])
                 
-            sql += " ORDER BY p.created_at DESC LIMIT %s"
+            sql += " ORDER BY p.created_at DESC, p.id DESC LIMIT %s"
             params.append(limit)
             
             cur.execute(sql, tuple(params))

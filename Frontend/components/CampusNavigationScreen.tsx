@@ -57,7 +57,7 @@ import {
 } from './map/mapUtils';
 
 type NavMode = 'idle' | 'selected' | 'navigating';
-type TravelMode = 'walk' | 'drive' | 'bus';
+type TravelMode = 'walk' | 'bus';
 
 type ManualOrigin = {
   name: string;
@@ -81,10 +81,13 @@ type NavigationDestination = {
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const CAMPUS_DISCOVERY_RADIUS_METERS = 20000;
-const AUTO_DRIVE_DISTANCE_METERS = 5000;
 const TRANSIT_WALK_DOT_SPACING_METERS = 52;
 const TRANSIT_BUS_HANDOFF_TRIM_METERS = 55;
 const TRANSIT_WALK_DOT_COLOR = '#5AA9FF';
+
+function normalizeTravelMode(value?: string): TravelMode {
+  return value === 'bus' ? 'bus' : 'walk';
+}
 
 function buildDottedPathPoints(
   points: Coordinate[],
@@ -337,7 +340,7 @@ export function CampusNavigationScreen() {
   const route = useRoute<any>();
   const initialDestinationParam = route.params?.initialDestination as SeededLocationParams | undefined;
   const initialOriginParam = route.params?.initialOrigin as SeededLocationParams | undefined;
-  const initialTravelModeParam = route.params?.initialTravelMode as TravelMode | undefined;
+  const initialTravelModeParam = normalizeTravelMode(route.params?.initialTravelMode);
   const navigationLocations = useMemo(
     () => buildExpandedPlacesDirectory().filter((location) => !location.searchOnly),
     [],
@@ -399,7 +402,7 @@ export function CampusNavigationScreen() {
     isCoordinateNearTexasAM(destinationCoord, CAMPUS_DISCOVERY_RADIUS_METERS)
   );
   const activeTransitPlan = travelMode === 'bus' ? transitPlan : null;
-  const effectiveMode: TravelMode = activeTransitPlan ? 'bus' : travelMode === 'bus' ? 'walk' : travelMode;
+  const effectiveMode: TravelMode = activeTransitPlan ? 'bus' : 'walk';
   const hasActiveRoute = !!destination && (!!activeRoute || !!activeTransitPlan);
   const summaryMode: TravelMode = travelMode === 'bus' && (activeTransitPlan || routeLoading) ? 'bus' : effectiveMode;
   const displayedDistanceLabel = activeTransitPlan
@@ -417,9 +420,7 @@ export function CampusNavigationScreen() {
       ? `Ride ${activeTransitPlan.routeShortName || 'Bus'} to ${destination.name}`
       : travelMode === 'bus'
         ? `Plan a bus trip to ${destination.name}`
-        : travelMode === 'drive'
-          ? `Drive to ${destination.name}`
-          : `Walk to ${destination.name}`
+        : `Walk to ${destination.name}`
     : undefined;
   const displayedRouteMeta = activeTransitPlan
     ? `Board at ${activeTransitPlan.originStop.Name} • Exit at ${activeTransitPlan.destinationStop.Name}`
@@ -498,13 +499,12 @@ export function CampusNavigationScreen() {
     setDestination(toNavigationDestination(location));
     setNavMode('selected');
     if (travelMode === 'bus' && (!originSupportsCampusTransit || !destinationSupportsCampusTransit)) {
-      setTravelMode('drive');
-      setRouteNotice('Campus buses only operate near Texas A&M, so this trip switched to driving directions.');
+      setTravelMode('walk');
+      setRouteNotice('Campus buses only operate near Texas A&M, so this trip switched to walking directions.');
       return;
     }
-    if (travelMode === 'walk' && distanceFromStart > AUTO_DRIVE_DISTANCE_METERS) {
-      setTravelMode('drive');
-      setRouteNotice('This is a longer trip, so driving directions are selected by default.');
+    if (travelMode === 'walk' && distanceFromStart > 5000) {
+      setRouteNotice('This is a longer trip, so walking may take a while.');
       return;
     }
     setRouteNotice(null);
@@ -723,14 +723,14 @@ export function CampusNavigationScreen() {
         if (!busModeAvailable) {
           setTransitPlan(null);
           setSteps(fallbackSteps);
-          setRouteNotice('Campus buses only operate near Texas A&M. Choose Drive or Walk for this trip.');
+          setRouteNotice('Campus buses only operate near Texas A&M. Walking directions are shown for this trip.');
           setRouteLoading(false);
           return;
         }
         setRouteNotice('Finding the best bus connection...');
       } else {
         setTransitPlan(null);
-        setRouteNotice(travelMode === 'drive' ? 'Finding the best driving route...' : 'Finding the best walking route...');
+        setRouteNotice('Finding the best walking route...');
       }
 
       try {
@@ -760,7 +760,7 @@ export function CampusNavigationScreen() {
           const routedTrip = await buildGlobalRoute({
             origin: routeStartCoord,
             destination: destCoord,
-            mode: travelMode === 'drive' ? 'drive' : 'walk',
+            mode: 'walk',
             originName: routeStartName,
             destinationName: destination.name,
           });
@@ -781,9 +781,7 @@ export function CampusNavigationScreen() {
           setRouteNotice(
             travelMode === 'bus'
               ? 'Bus directions are temporarily unavailable. Walking directions are ready instead.'
-              : travelMode === 'drive'
-                ? 'Live driving directions are temporarily unavailable. Showing a direct route estimate instead.'
-                : 'Walking directions are temporarily unavailable. Showing a direct route estimate instead.',
+              : 'Walking directions are temporarily unavailable. Showing a direct route estimate instead.',
           );
         }
       } finally {
@@ -863,8 +861,8 @@ export function CampusNavigationScreen() {
 
   useEffect(() => {
     if (travelMode !== 'bus' || !destinationCoord || busModeAvailable) return;
-    setTravelMode('drive');
-    setRouteNotice('Campus buses only operate near Texas A&M, so this trip switched to driving directions.');
+    setTravelMode('walk');
+    setRouteNotice('Campus buses only operate near Texas A&M, so this trip switched to walking directions.');
   }, [busModeAvailable, destinationCoord, travelMode]);
 
   // ─── Handlers ───────────────────────────────────────────────
@@ -1213,25 +1211,13 @@ export function CampusNavigationScreen() {
                 <Pressable
                   style={({ pressed }) => [
                     styles.modePill,
-                    travelMode === 'drive' && styles.modePillActive,
-                    pressed && styles.btnPressed,
-                  ]}
-                  onPress={() => setTravelMode('drive')}
-                >
-                  <Text style={[styles.modePillText, travelMode === 'drive' && styles.modePillTextActive]}>
-                    Drive
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.modePill,
                     travelMode === 'bus' && styles.modePillActive,
                     !busModeAvailable && destinationCoord && styles.modePillDisabled,
                     pressed && styles.btnPressed,
                   ]}
                   onPress={() => {
                     if (!busModeAvailable && destinationCoord) {
-                      setRouteNotice('Campus buses only operate near Texas A&M. Use Drive or Walk for this trip.');
+                      setRouteNotice('Campus buses only operate near Texas A&M. Use walking directions for this trip.');
                       return;
                     }
                     setTravelMode('bus');
@@ -1267,9 +1253,7 @@ export function CampusNavigationScreen() {
             modeLabel={
               effectiveMode === 'bus'
                 ? 'Bus Trip'
-                : effectiveMode === 'drive'
-                  ? 'Driving'
-                  : 'Walking'
+                : 'Walking'
             }
             routeNote={displayedRouteNote}
             onEnd={handleEndDirections}
