@@ -236,11 +236,41 @@ export function useBusTransit(
       return;
     }
 
-    transitService.getBulkRoutePatterns(routesToLoad.map((r) => r.Key)).then((results) => {
+    try {
+      const routeKeys = routesToLoad.map((route) => route.Key).filter(Boolean);
+      let results = await transitService.getBulkRoutePatterns(routeKeys);
+
+      const loadedCount = Object.values(results).filter((pattern: any) =>
+        Array.isArray(pattern?.points) && pattern.points.length >= 2,
+      ).length;
+
+      if (loadedCount < Math.max(1, Math.ceil(routeKeys.length * 0.5))) {
+        console.warn(
+          `[Transit] Bulk pattern load incomplete (${loadedCount}/${routeKeys.length}); falling back to per-route fetches.`,
+        );
+        const fallbackEntries = await Promise.all(
+          routesToLoad.map(async (route) => {
+            try {
+              const pattern = await transitService.getRoutePattern(route.Key);
+              return [route.Key, pattern] as [string, { points: any[]; stops: any[]; paths?: any[] }];
+            } catch (error) {
+              console.warn(`[Transit] Route pattern fallback failed for ${route.Key}:`, error);
+              return [route.Key, { points: [], stops: [], paths: [] }] as [string, { points: any[]; stops: any[]; paths?: any[] }];
+            }
+          }),
+        );
+
+        results = fallbackEntries.reduce((acc, [routeKey, pattern]) => {
+          acc[routeKey] = pattern;
+          return acc;
+        }, {} as Record<string, { points: any[]; stops: any[]; paths?: any[] }>);
+      }
+
       setAllRoutePatternsById(results);
-    }).catch((err) => {
-      console.warn("[Transit] Bulk pattern load failed:", err);
-    });
+    } catch (err) {
+      console.warn("[Transit] All-routes pattern load failed:", err);
+      setAllRoutePatternsById({});
+    }
 
     setBusVehicles([]);
     setVehicleFreshness({
