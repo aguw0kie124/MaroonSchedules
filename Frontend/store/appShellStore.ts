@@ -43,14 +43,14 @@ export const DEFAULT_NAV_ITEMS: ToggleLayoutItem<NavItemId>[] = [
 
 export const DEFAULT_PLACES_PILLS: ToggleLayoutItem<PlacesPillId>[] = [
   { id: 'Pulse', label: 'Pulse', visible: true, order: 0 },
-  { id: 'Today', label: 'Today', visible: true, order: 1 },
-  { id: 'Bus', label: 'Buses', visible: true, order: 2 },
-  { id: 'Dining', label: 'Dining', visible: true, order: 3 },
-  { id: 'Heatmap', label: 'Traffic', visible: false, order: 4 },
-  { id: 'Parking', label: 'Parking', visible: false, order: 5 },
-  { id: 'Library', label: 'Libraries', visible: true, order: 6 },
-  { id: 'Academic', label: 'Academic', visible: false, order: 7 },
-  { id: 'Rec', label: 'Gyms', visible: false, order: 8 },
+  { id: 'Rec', label: 'Gyms', visible: true, order: 1 },
+  { id: 'Dining', label: 'Dining', visible: true, order: 2 },
+  { id: 'Bus', label: 'Buses', visible: true, order: 3 },
+  { id: 'Library', label: 'Libraries', visible: true, order: 4 },
+  { id: 'Today', label: 'Today', visible: false, order: 5 },
+  { id: 'Heatmap', label: 'Traffic', visible: false, order: 6 },
+  { id: 'Parking', label: 'Parking', visible: false, order: 7 },
+  { id: 'Academic', label: 'Academic', visible: false, order: 8 },
 ];
 
 function sortItems<T extends string>(items: ToggleLayoutItem<T>[]) {
@@ -364,7 +364,7 @@ export const useAppShellStore = create<AppShellState>()(
 
           if (state.placesPills && Array.isArray(state.placesPills)) {
             newState.placesPills = state.placesPills.map(p => 
-              p.id === 'Rec' ? { ...p, visible: false } : p
+              p.id === 'Rec' ? { ...p, visible: true } : p
             );
           }
           newState.isEventPreferencesCompleted = typeof state.isEventPreferencesCompleted === 'boolean'

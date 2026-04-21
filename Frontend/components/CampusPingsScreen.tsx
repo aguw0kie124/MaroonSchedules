@@ -42,6 +42,7 @@ import {
   EyeOff,
   ExternalLink,
   Flame,
+  GraduationCap,
   LocateFixed,
   MapPin,
   Megaphone,
@@ -165,7 +166,7 @@ const PING_PAGE_SIZE = 25;
 const PING_CATEGORIES: Array<{ id: PingCategory; accent: string; Icon: any }> = [
   { id: 'Free Food', accent: '#E48B3D', Icon: Pizza },
   { id: 'Hangout', accent: '#D85F8D', Icon: Users },
-  { id: 'Study', accent: '#6888E8', Icon: Sparkles },
+  { id: 'Study', accent: '#6888E8', Icon: GraduationCap },
   { id: 'Show', accent: '#855FF0', Icon: Flame },
   { id: 'Sports', accent: '#3CA86E', Icon: Flame },
   { id: 'Popup', accent: '#4B8AC9', Icon: Megaphone },
@@ -1409,7 +1410,6 @@ export function CampusPingsScreen() {
                   </View>
                 ) : null}
               </View>
-              <Text style={styles.pingTimestamp}>{formatRelativeAge(item.createdAt)}</Text>
             </View>
           </View>
         ) : (
@@ -1420,9 +1420,6 @@ export function CampusPingsScreen() {
                 <Text style={[styles.pingCategoryBadgeText, { color: accent }]}>{normalizedCategory}</Text>
               </View>
             ) : null}
-            <Text style={[styles.pingTimestamp, !hasCategory && styles.pingTimestampSolo]}>
-              {formatRelativeAge(item.createdAt)}
-            </Text>
           </View>
         )}
 
@@ -1434,6 +1431,7 @@ export function CampusPingsScreen() {
           <View style={styles.pingTextPostBlock}>
             <Text style={styles.pingTitle}>{item.title}</Text>
             {item.body ? <Text style={styles.pingBody}>{item.body}</Text> : null}
+            <Text style={styles.pingTimestampInline}>{formatRelativeAge(item.createdAt)}</Text>
           </View>
         )}
 
@@ -1499,6 +1497,11 @@ export function CampusPingsScreen() {
         {hasImage && item.body ? (
           <View style={styles.pingContent}>
             <Text style={styles.pingBody}>{item.body}</Text>
+            <Text style={styles.pingTimestampInline}>{formatRelativeAge(item.createdAt)}</Text>
+          </View>
+        ) : hasImage ? (
+          <View style={styles.pingContent}>
+            <Text style={styles.pingTimestampInline}>{formatRelativeAge(item.createdAt)}</Text>
           </View>
         ) : null}
 
@@ -2335,13 +2338,11 @@ const getStyles = (theme: any) => {
       paddingTop: 10,
       paddingBottom: 10,
     },
-    pingTimestamp: {
+    pingTimestampInline: {
       color: COLORS.textSecondary,
       fontSize: 12,
       fontWeight: '500',
-    },
-    pingTimestampSolo: {
-      marginLeft: 'auto',
+      marginTop: 10,
     },
     pingCategoryBadge: {
       flexDirection: 'row',
@@ -2401,6 +2402,7 @@ const getStyles = (theme: any) => {
       paddingHorizontal: 14,
       paddingTop: 18,
       paddingBottom: 12,
+      gap: 8,
     },
     pingTitle: {
       color: COLORS.textPrimary,

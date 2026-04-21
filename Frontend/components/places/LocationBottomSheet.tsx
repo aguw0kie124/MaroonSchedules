@@ -15,11 +15,9 @@ import {
   ActivityIndicator,
   TextInput,
 } from "react-native";
-import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import {
   X,
   ExternalLink,
-  Calendar,
   Search,
   Bell,
   BellRing,
@@ -61,7 +59,7 @@ import {
   shiftDiningMenuDate,
 } from "../../services/diningMenuCache";
 import { Alert } from "react-native";
-import { getLocalDateString, parseLocalDateString } from "../../services/dateUtils";
+import { getLocalDateString } from "../../services/dateUtils";
 import { getDiningReminderId, getDiningReminderIds, toggleDiningReminder } from "../../services/diningReminders";
 
 import { ClassMeetingCard } from "./ClassMeetingCard";
@@ -325,7 +323,6 @@ export function LocationBottomSheet({
   const [diningSearchQuery, setDiningSearchQuery] = useState("");
   const [diningSearchResults, setDiningSearchResults] = useState<DiningMenuSearchResult[]>([]);
   const [isSearchingDiningMenus, setIsSearchingDiningMenus] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [activeReminderIds, setActiveReminderIds] = useState<Set<string>>(new Set());
   const [syncingReminderId, setSyncingReminderId] = useState<string | null>(null);
 
@@ -333,10 +330,6 @@ export function LocationBottomSheet({
   const isCurrentDiningDate = activeDiningDate === todayDateKey;
   const canStepBackward = activeDiningDate !== shiftDiningMenuDate(todayDateKey, -30);
   const canStepForward = activeDiningDate !== shiftDiningMenuDate(todayDateKey, 120);
-  const activeDiningDateObject = useMemo(
-    () => parseLocalDateString(activeDiningDate),
-    [activeDiningDate],
-  );
   const activeDiningHeaderTitle = useMemo(
     () => formatDiningMenuDateLabel(activeDiningDate),
     [activeDiningDate],
@@ -396,17 +389,6 @@ export function LocationBottomSheet({
       clearTimeout(timeoutId);
     };
   }, [activeDiningDate, activeDiningMenu, diningSearchQuery, isDiningSearchOpen]);
-
-  const handleDiningDateChange = useCallback(
-    (_event: DateTimePickerEvent, selectedValue?: Date) => {
-      if (Platform.OS === "android") {
-        setShowDatePicker(false);
-      }
-      if (!selectedValue) return;
-      setActiveDiningDate(getLocalDateString(selectedValue));
-    },
-    [setActiveDiningDate],
-  );
 
   const toggleMenuReminder = useCallback(
     async (item: any, categoryName: string, overrides?: { dateKey?: string; mealPeriod?: DiningMealPeriod }) => {
@@ -477,7 +459,6 @@ export function LocationBottomSheet({
     setIsDiningSearchOpen(false);
     setDiningSearchQuery("");
     setDiningSearchResults([]);
-    setShowDatePicker(false);
   }, [selectedId]);
 
   const animateSheet = useCallback(
@@ -1480,22 +1461,6 @@ export function LocationBottomSheet({
               >
                 <View style={{ marginBottom: 12, gap: 12 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 16, position: 'relative', minHeight: 40 }}>
-                      <View style={{ position: 'absolute', left: 0 }}>
-                        <TouchableOpacity
-                          onPress={() => setShowDatePicker((current) => !current)}
-                          style={{
-                            width: 34,
-                            height: 34,
-                            borderRadius: 17,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            backgroundColor: isDark ? "#1A1A1A" : "#EEF1F6",
-                          }}
-                        >
-                          <Calendar size={16} color={COLORS.textPrimary} />
-                        </TouchableOpacity>
-                      </View>
-
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                         <TouchableOpacity
                           onPress={() => setActiveDiningDate(shiftDiningMenuDate(activeDiningDate, -1))}
@@ -1600,26 +1565,6 @@ export function LocationBottomSheet({
                     </View>
                   ) : null}
 
-                  {showDatePicker ? (
-                    <View
-                      style={{
-                        borderRadius: 18,
-                        overflow: "hidden",
-                        borderWidth: 1,
-                        borderColor: COLORS.border,
-                        backgroundColor: COLORS.card,
-                      }}
-                    >
-                      <DateTimePicker
-                        value={activeDiningDateObject}
-                        mode="date"
-                        display={Platform.OS === "ios" ? "inline" : "default"}
-                        minimumDate={parseLocalDateString(shiftDiningMenuDate(todayDateKey, -30))}
-                        maximumDate={parseLocalDateString(shiftDiningMenuDate(todayDateKey, 120))}
-                        onChange={handleDiningDateChange}
-                      />
-                    </View>
-                  ) : null}
                 </View>
 
                 <View style={{ marginBottom: 20, flexDirection: 'row', gap: 16 }}>
