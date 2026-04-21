@@ -17,6 +17,7 @@ import {
   CampusTransitPlan,
   TransitTripPreference,
 } from '../services/campusTransitRouting';
+import { formatExactLocalTime } from '../services/dateUtils';
 
 type PlannerLocation = {
   id: string;
@@ -32,13 +33,17 @@ type PlannerLocation = {
 type TimingMode = 'leave_at' | 'arrive_by';
 
 function formatClockTime(value: Date) {
-  return value.toLocaleTimeString([], {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  return formatExactLocalTime(value);
 }
 
 function getTripWindow(plan: CampusTransitPlan, plannedTimestamp: number, timingMode: TimingMode) {
+  if (plan.leaveOriginTimeUtc && plan.arriveDestinationTimeUtc) {
+    return {
+      depart: new Date(plan.leaveOriginTimeUtc),
+      arrive: new Date(plan.arriveDestinationTimeUtc),
+    };
+  }
+
   const anchor = new Date(plannedTimestamp);
   if (timingMode === 'arrive_by') {
     const depart = new Date(anchor.getTime() - plan.estimatedTimeMinutes * 60_000);
@@ -72,12 +77,11 @@ function buildStepWindows(plan: CampusTransitPlan, depart: Date) {
 
 function buildArrivalSummary(plan: CampusTransitPlan, depart: Date) {
   const walkToStopMin = Math.max(1, Math.round((plan.walkingToStopMeters || 0) / 84));
-  const waitMin = plan.estimatedWaitMinutes || 5;
+  const waitMin = plan.estimatedWaitMinutes ?? 0;
   const busArrivalMs = depart.getTime() + (walkToStopMin + waitMin) * 60_000;
-  const busArrivalTime = new Date(busArrivalMs).toLocaleTimeString([], {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  const busArrivalTime = plan.scheduledBoardTimeUtc
+    ? formatExactLocalTime(plan.scheduledBoardTimeUtc)
+    : formatExactLocalTime(new Date(busArrivalMs));
   const stopName = plan.originStop?.Name || 'Stop';
   return {
     arrivalTime: busArrivalTime,
@@ -127,6 +131,8 @@ export function TransitTripResultsScreen() {
         preference,
         preferredRouteKey,
         limit: 5,
+        plannedTimestamp,
+        timingMode,
       },
     )
       .then((plans) => {
@@ -154,7 +160,7 @@ export function TransitTripResultsScreen() {
     return () => {
       mounted = false;
     };
-  }, [destination, origin, preference, preferredRouteKey]);
+  }, [destination, origin, plannedTimestamp, preference, preferredRouteKey, timingMode]);
 
   const summaryText = useMemo(() => {
     if (!origin || !destination) return null;

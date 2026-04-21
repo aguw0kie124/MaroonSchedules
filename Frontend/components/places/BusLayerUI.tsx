@@ -9,6 +9,7 @@ import {
 import { X, ChevronDown, Clock, MapPin, Bus, Route } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { getStopLabel } from "./utils";
+import { transitService } from "../../services/transitService";
 
 interface BusLayerUIProps {
   styles: any;
@@ -32,6 +33,16 @@ interface BusLayerUIProps {
   nearestBusInfo: string | null;
   handleStopPress: (stop: any) => void;
   openTransitTripPlanner?: () => void;
+}
+
+function getRouteLegendColor(route: any) {
+  const rawColor = typeof route?.Color === "string" ? route.Color.trim() : "";
+  if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(rawColor)) {
+    return rawColor;
+  }
+  return transitService.getRouteColor(
+    route?.Key || route?.ShortName || route?.Name || "",
+  );
 }
 
 export function BusRouteSelector({
@@ -195,6 +206,7 @@ export function BusRouteSelector({
             ) : (
               filteredBusRoutes.map((route) => {
                 const isSelected = selectedBusRouteId === route.Key;
+                const legendColor = getRouteLegendColor(route);
                 return (
                   <TouchableOpacity
                     key={route.Key}
@@ -208,6 +220,14 @@ export function BusRouteSelector({
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     }}
                   >
+                    <View
+                      style={[
+                        styles.routeLegendSwatch,
+                        {
+                          backgroundColor: legendColor,
+                        },
+                      ]}
+                    />
                     <View
                       style={[
                         styles.routeItemBadge,

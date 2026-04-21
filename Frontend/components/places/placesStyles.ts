@@ -2114,6 +2114,14 @@ export const getStyles = (COLORS: any, isDark: boolean) =>
     busRouteItemActive: {
       backgroundColor: isDark ? "rgba(128,0,0,0.1)" : "rgba(80,0,0,0.08)",
     },
+    routeLegendSwatch: {
+      width: 12,
+      height: 12,
+      borderRadius: 4,
+      marginRight: 10,
+      borderWidth: 1,
+      borderColor: isDark ? "rgba(255,255,255,0.22)" : "rgba(12,12,14,0.14)",
+    },
     routeItemBadge: {
       minWidth: 36,
       paddingHorizontal: 6,

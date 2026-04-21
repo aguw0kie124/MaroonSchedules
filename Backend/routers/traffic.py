@@ -1,8 +1,9 @@
-from __future__ import annotations
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query, Request, Body
+from zoneinfo import ZoneInfo
 from pydantic import BaseModel
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Optional
 from typing import List, Dict, Any, Optional
 import random
 from urllib.parse import quote
@@ -11,6 +12,7 @@ import json
 import re
 from threading import Lock
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from services import cache_service, place_registry_service
 
@@ -20,6 +22,7 @@ except ImportError:
     Perplexity = None
 
 from rate_limit import limiter
+from repositories.transit_repository import transit_repo
 
 router = APIRouter()
 
@@ -675,17 +678,21 @@ class AggieSpiritProxy:
             data = self._post("/RouteMap/GetBaseData/", "")
             routes = []
             for route in data.get("routes", []):
+                direction_names = []
                 for direction in route.get("directionList", []):
                     dkey = direction.get("direction", {}).get("key")
                     dname = direction.get("destination") or direction.get(
                         "direction", {}).get("name")
                     if dkey and dname:
                         self._direction_cache[dkey] = dname
+                    if dname:
+                        direction_names.append(dname)
 
                 routes.append({
                     "Key": route.get("key") or route.get("Key"),
                     "Name": route.get("name") or route.get("Name"),
                     "ShortName": route.get("shortName") or route.get("ShortName"),
+                    "DirectionNames": direction_names,
                     "Color": route.get("color") or route.get("Color") or next((
                         direction.get("lineColor")
                         for direction in (route.get("directionList") or [])
@@ -737,7 +744,7 @@ class AggieSpiritProxy:
                                 "Name": stop_name,
                                 "Latitude": point.get("latitude"),
                                 "Longitude": point.get("longitude"),
-                                "StopCode": stop.get("stopCode"),
+                                "StopCode": str(stop.get("stopCode") or ""),
                                 "DirectionKey": dkey,
                                 "DirectionName": resolved_dir,
                             })
@@ -800,7 +807,7 @@ class AggieSpiritProxy:
                                     "Name": stop_name,
                                     "Latitude": point.get("latitude"),
                                     "Longitude": point.get("longitude"),
-                                    "StopCode": stop.get("stopCode"),
+                                    "StopCode": str(stop.get("stopCode") or ""),
                                 })
                         
                         paths.append({
@@ -817,6 +824,7 @@ class AggieSpiritProxy:
 
     def get_vehicles(self, route_id: str = "") -> Dict[str, Any]:
         normalized_route_id = (route_id or "").strip().lower()
+        fetched_at = datetime.now(ZoneInfo("UTC")).isoformat()
         
         # Determine which routes to fetch
         if normalized_route_id and normalized_route_id != "__all__":
@@ -931,22 +939,97 @@ class AggieSpiritProxy:
                     self._vehicle_cache["v2:__all__"] = vehicles
             
             cached = self._vehicle_cache.get(cache_key, [])
-            return {"vehicles": vehicles if vehicles else cached, "live": bool(vehicles), "used_cache": not bool(vehicles) and bool(cached)}
+            using_cache = not bool(vehicles) and bool(cached)
+            source = "live" if vehicles else ("stale_cache" if cached else "unavailable")
+            return {
+                "vehicles": vehicles if vehicles else cached,
+                "live": bool(vehicles),
+                "used_cache": using_cache,
+                "fetched_at": fetched_at,
+                "source": source,
+            }
         except Exception:
             cache_key = normalized_route_id or "__all__"
             cached = self._vehicle_cache.get(cache_key, [])
-            return {"vehicles": cached, "live": False, "used_cache": bool(cached)}
+            return {
+                "vehicles": cached,
+                "live": False,
+                "used_cache": bool(cached),
+                "fetched_at": fetched_at,
+                "source": "stale_cache" if cached else "unavailable",
+            }
+
+    def get_stop_schedule(
+        self,
+        route_number: str,
+        stop_code: str,
+        direction_name: str,
+        service_date: str,
+    ) -> List[Dict[str, Any]]:
+        cache_key = f"traffic:transit:stop_schedule:v2:{route_number}:{stop_code}:{direction_name}:{service_date}"
+        cached = cache_service.get_json(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            payload = json.dumps({
+                "routeNumber": route_number,
+                "stopCode": stop_code,
+                "directionName": direction_name,
+                "date": service_date,
+            })
+            response = self._post(
+                "/Schedule/GetStopSchedules",
+                body=payload,
+                content_type="application/json",
+            )
+            schedules = response.get("routeStopSchedules") or []
+            if not schedules:
+                return []
+            merged_times: List[Dict[str, Any]] = []
+            for schedule in schedules:
+                schedule_direction_name = str(schedule.get("directionName") or "").strip()
+                for stop_time in schedule.get("stopTimes") or []:
+                    merged_times.append({
+                        **stop_time,
+                        "sourceDirectionName": schedule_direction_name,
+                    })
+            if merged_times:
+                cache_service.set_json(cache_key, merged_times, 3600)
+            return merged_times
+        except Exception as exc:
+            print(f"[TransitProxy] Stop schedule error for route {route_number} stop {stop_code}: {exc}")
+            return []
 
     def get_route_timetable(self, route_key: str, max_stops: int = 12) -> Dict[str, Any]:
-        try:
-            route_lookup = {
-                route["Key"]: route for route in self.get_routes() if route.get("Key")
-            }
-            route = route_lookup.get(route_key)
-            if not route:
-                return {"route": None, "entries": []}
+        cache_key = f"traffic:transit:timetable:v3:{route_key}:{max_stops}"
+        cached = cache_service.get_json(cache_key)
+        if cached is not None:
+            return cached
 
-            pattern = self.get_pattern(route_key)
+        try:
+            max_stops = max(1, min(int(max_stops or 12), 20))
+            normalized_route_key = str(route_key or "").strip().lower()
+            route = None
+            for candidate in self.get_routes():
+                identifiers = {
+                    str(candidate.get("Key") or "").strip().lower(),
+                    str(candidate.get("ShortName") or "").strip().lower(),
+                    str(candidate.get("Name") or "").strip().lower(),
+                }
+                identifiers.discard("")
+                if normalized_route_key and normalized_route_key in identifiers:
+                    route = candidate
+                    break
+            if not route:
+                return {
+                    "route": None,
+                    "entries": [],
+                    "freshness": _build_transit_freshness(source="unavailable"),
+                }
+
+            resolved_route_key = str(route.get("Key") or route_key)
+            pattern = self.get_pattern(resolved_route_key)
             raw_stops = pattern.get("stops") or []
             unique_stops: List[Dict[str, Any]] = []
             seen_pairs = set()
@@ -964,12 +1047,16 @@ class AggieSpiritProxy:
                     break
 
             if not unique_stops:
-                return {"route": route, "entries": []}
+                return {
+                    "route": route,
+                    "entries": [],
+                    "freshness": _build_transit_freshness(source="unavailable"),
+                }
 
             payload = {
                 "routes": [
                     {
-                        "routeKey": route_key,
+                        "routeKey": resolved_route_key,
                         "nearbyStops": [
                             {
                                 "stopCode": stop["StopCode"],
@@ -988,16 +1075,21 @@ class AggieSpiritProxy:
             )
             route_payload = response[0] if isinstance(response, list) and response else {}
             nearby_stops = route_payload.get("nearbyStops") or []
-            stop_by_pair = {
-                (stop.get("StopCode"), stop.get("DirectionKey")): stop
-                for stop in unique_stops
+            nearby_stop_by_pair = {
+                (item.get("stopCode"), item.get("directionKey")): item
+                for item in nearby_stops
             }
-            entries: List[Dict[str, Any]] = []
-            for index, stop_payload in enumerate(nearby_stops):
-                stop_code = stop_payload.get("stopCode")
-                direction_key = stop_payload.get("directionKey")
-                pattern_stop = stop_by_pair.get((stop_code, direction_key)) or {}
-                departures = []
+            now_utc = datetime.now(ZoneInfo("UTC"))
+            service_date = _local_service_date(now_utc)
+            entries: List[Optional[Dict[str, Any]]] = [None] * len(unique_stops)
+
+            def fetch_departure_info(idx: int, pattern_stop: Dict[str, Any]) -> None:
+                stop_code = pattern_stop.get("StopCode")
+                direction_key = pattern_stop.get("DirectionKey")
+                direction_name = pattern_stop.get("DirectionName") or ""
+                stop_payload = nearby_stop_by_pair.get((stop_code, direction_key)) or {}
+
+                departures: List[Dict[str, Any]] = []
                 for departure in stop_payload.get("nextStopTimes") or []:
                     scheduled = departure.get("scheduledDepartTimeUtc")
                     estimated = departure.get("estimatedDepartTimeUtc")
@@ -1009,31 +1101,297 @@ class AggieSpiritProxy:
                             "is_off_route": bool(departure.get("isOffRoute")),
                         }
                     )
+                
+                if not departures and stop_code and direction_name:
+                    exact_times = self.get_stop_schedule(
+                        route.get("ShortName"),
+                        str(stop_code),
+                        str(direction_name),
+                        service_date,
+                    )
+                    seen_departures = set()
+                    for departure in exact_times:
+                        scheduled = departure.get("scheduledDepartTimeUtc")
+                        parsed = _parse_stop_schedule_time(scheduled)
+                        if parsed is None or parsed < now_utc:
+                            continue
+                        if scheduled in seen_departures:
+                            continue
+                        seen_departures.add(scheduled)
+                        departures.append(
+                            {
+                                "scheduled_depart_time_utc": scheduled,
+                                "estimated_depart_time_utc": departure.get("estimatedDepartTimeUtc") or scheduled,
+                                "is_realtime": False,
+                                "is_off_route": bool(departure.get("isOffRoute")),
+                            }
+                        )
+                        if len(departures) >= 5:
+                            break
+                            
+                deduped_departures = []
+                seen_departure_keys = set()
+                for departure in departures:
+                    departure_key = (
+                        departure.get("estimated_depart_time_utc")
+                        or departure.get("scheduled_depart_time_utc")
+                    )
+                    if not departure_key or departure_key in seen_departure_keys:
+                        continue
+                    seen_departure_keys.add(departure_key)
+                    deduped_departures.append(departure)
 
-                entries.append(
-                    {
-                        "sequence": index + 1,
-                        "stop": {
-                            "Name": stop_payload.get("stopName") or pattern_stop.get("Name"),
-                            "StopCode": stop_code,
-                            "Latitude": pattern_stop.get("Latitude"),
-                            "Longitude": pattern_stop.get("Longitude"),
-                            "DirectionKey": direction_key,
-                            "DirectionName": stop_payload.get("directionName")
-                            or pattern_stop.get("DirectionName"),
-                        },
-                        "departures": departures,
-                        "amenities": stop_payload.get("amenities") or [],
-                    }
+                deduped_departures.sort(
+                    key=lambda item: (
+                        item.get("estimated_depart_time_utc")
+                        or item.get("scheduled_depart_time_utc")
+                        or ""
+                    )
                 )
 
-            return {"route": route, "entries": entries}
-        except Exception:
-            return {"route": None, "entries": []}
+                entries[idx] = {
+                    "stop": pattern_stop,
+                    "sequence": idx + 1,
+                    "departures": deduped_departures[:5],
+                    "has_live_departures": any(
+                        bool(item.get("is_realtime")) for item in deduped_departures
+                    ),
+                    "used_schedule_fallback": bool(deduped_departures)
+                    and not any(bool(item.get("is_realtime")) for item in deduped_departures),
+                }
+
+            with ThreadPoolExecutor(max_workers=min(len(unique_stops), 12) or 1) as executor:
+                futures = [
+                    executor.submit(fetch_departure_info, idx, stop)
+                    for idx, stop in enumerate(unique_stops)
+                ]
+                for future in as_completed(futures):
+                    future.result()
+
+            resolved_entries = [entry for entry in entries if entry is not None]
+            live_count = sum(
+                1 for entry in resolved_entries if entry.get("has_live_departures")
+            )
+            fallback_count = sum(
+                1 for entry in resolved_entries if entry.get("used_schedule_fallback")
+            )
+            if live_count > 0:
+                source = "live"
+            elif fallback_count > 0:
+                source = "schedule_fallback"
+            else:
+                source = "unavailable"
+
+            return {
+                "route": route,
+                "entries": resolved_entries,
+                "freshness": _build_transit_freshness(
+                    source=source,
+                    live=live_count > 0,
+                    used_schedule_fallback=fallback_count > 0,
+                    realtime_stop_count=live_count,
+                    scheduled_stop_count=fallback_count,
+                ),
+            }
+        except Exception as exc:
+            print(f"[TransitProxy] Timetable error for route {route_key}: {exc}")
+            return {
+                "route": None,
+                "entries": [],
+                "freshness": _build_transit_freshness(source="unavailable"),
+            }
 
 
 transit_proxy = AggieSpiritProxy()
 _TRANSIT_LOCKS = defaultdict(Lock)
+
+
+def _local_service_date(dt: datetime) -> str:
+    return dt.astimezone(ZoneInfo("America/Chicago")).date().isoformat()
+
+
+def _parse_stop_schedule_time(value: Any) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _build_transit_freshness(
+    *,
+    source: str,
+    live: bool = False,
+    used_schedule_fallback: bool = False,
+    realtime_stop_count: int = 0,
+    scheduled_stop_count: int = 0,
+) -> Dict[str, Any]:
+    fetched_at = datetime.now(ZoneInfo("UTC")).isoformat()
+    return {
+        "source": source,
+        "live": live,
+        "used_schedule_fallback": used_schedule_fallback,
+        "realtime_stop_count": realtime_stop_count,
+        "scheduled_stop_count": scheduled_stop_count,
+        "fetched_at": fetched_at,
+        "age_seconds": 0,
+    }
+
+
+def _find_live_trip(
+    origin_stop_code: str,
+    dest_stop_code: str,
+    target_time: datetime,
+    route_number: str,
+    timing_mode: str = "leave_at",
+    minimum_travel_minutes: int = 0,
+) -> Optional[Dict[str, Any]]:
+    route = next(
+        (
+            item
+            for item in transit_proxy.get_routes()
+            if item.get("ShortName") == route_number or item.get("Key") == route_number
+        ),
+        None,
+    )
+    if not route or not route.get("Key"):
+        return None
+
+    pattern = transit_proxy.get_pattern(route["Key"])
+    stops = pattern.get("stops") or []
+    origin_dirs = {
+        str(stop.get("DirectionName") or "").strip()
+        for stop in stops
+        if str(stop.get("StopCode") or "").strip() == origin_stop_code and str(stop.get("DirectionName") or "").strip()
+    }
+    dest_dirs = {
+        str(stop.get("DirectionName") or "").strip()
+        for stop in stops
+        if str(stop.get("StopCode") or "").strip() == dest_stop_code and str(stop.get("DirectionName") or "").strip()
+    }
+
+    direction_candidates = [name for name in origin_dirs if name in dest_dirs]
+    if not direction_candidates:
+        route_direction_names = [
+            str(name or "").strip()
+            for name in (route.get("DirectionNames") or [])
+            if str(name or "").strip()
+        ]
+        direction_candidates = route_direction_names or list(origin_dirs or dest_dirs)
+
+    if not direction_candidates:
+        return None
+
+    service_date = _local_service_date(target_time)
+    minimum_travel_minutes = max(0, int(minimum_travel_minutes or 0))
+    best_plan: Optional[Dict[str, Any]] = None
+
+    for direction_name in direction_candidates:
+        origin_schedule = transit_proxy.get_stop_schedule(
+            route_number,
+            origin_stop_code,
+            direction_name,
+            service_date,
+        )
+        dest_schedule = transit_proxy.get_stop_schedule(
+            route_number,
+            dest_stop_code,
+            direction_name,
+            service_date,
+        )
+
+        origin_by_schedule_direction: Dict[str, List[datetime]] = defaultdict(list)
+        dest_by_schedule_direction: Dict[str, List[datetime]] = defaultdict(list)
+
+        for item in origin_schedule:
+            parsed = _parse_stop_schedule_time(item.get("scheduledDepartTimeUtc"))
+            if parsed is None:
+                continue
+            origin_by_schedule_direction[str(item.get("sourceDirectionName") or direction_name or "").strip()].append(parsed)
+
+        for item in dest_schedule:
+            parsed = _parse_stop_schedule_time(item.get("scheduledDepartTimeUtc"))
+            if parsed is None:
+                continue
+            dest_by_schedule_direction[str(item.get("sourceDirectionName") or direction_name or "").strip()].append(parsed)
+
+        matching_schedule_directions = [
+            schedule_direction
+            for schedule_direction in origin_by_schedule_direction.keys()
+            if schedule_direction in dest_by_schedule_direction
+        ]
+        if not matching_schedule_directions:
+            continue
+
+        candidate: Optional[Dict[str, Any]] = None
+        for schedule_direction_name in matching_schedule_directions:
+            origin_times = sorted(origin_by_schedule_direction[schedule_direction_name])
+            dest_times = sorted(dest_by_schedule_direction[schedule_direction_name])
+            if not origin_times or not dest_times:
+                continue
+
+            local_candidate: Optional[Dict[str, Any]] = None
+            if timing_mode == "arrive_by":
+                for dest_time in reversed(dest_times):
+                    if dest_time > target_time:
+                        continue
+                    latest_origin_cutoff = dest_time - timedelta(minutes=minimum_travel_minutes)
+                    matching_origins = [origin_time for origin_time in origin_times if origin_time < latest_origin_cutoff]
+                    if matching_origins:
+                        local_candidate = {
+                            "origin_time": matching_origins[-1],
+                            "dest_time": dest_time,
+                            "direction": schedule_direction_name or direction_name,
+                        }
+                        break
+            else:
+                for origin_time in origin_times:
+                    if origin_time < target_time:
+                        continue
+                    earliest_dest_cutoff = origin_time + timedelta(minutes=minimum_travel_minutes)
+                    matching_dest = next(
+                        (dest_time for dest_time in dest_times if dest_time > earliest_dest_cutoff),
+                        None,
+                    )
+                    if matching_dest is not None:
+                        local_candidate = {
+                            "origin_time": origin_time,
+                            "dest_time": matching_dest,
+                            "direction": schedule_direction_name or direction_name,
+                        }
+                        break
+
+            if local_candidate is None:
+                continue
+
+            if candidate is None:
+                candidate = local_candidate
+                continue
+
+            if timing_mode == "arrive_by":
+                if local_candidate["dest_time"] > candidate["dest_time"]:
+                    candidate = local_candidate
+            else:
+                if local_candidate["origin_time"] < candidate["origin_time"]:
+                    candidate = local_candidate
+
+        if candidate is None:
+            continue
+
+        if best_plan is None:
+            best_plan = candidate
+            continue
+
+        if timing_mode == "arrive_by":
+            if candidate["dest_time"] > best_plan["dest_time"]:
+                best_plan = candidate
+        else:
+            if candidate["origin_time"] < best_plan["origin_time"]:
+                best_plan = candidate
+
+    return best_plan
 
 
 class QueryRequest(BaseModel):
@@ -1090,9 +1448,9 @@ def get_detailed_facility_counts(request: Request, place_id: str, sid: Optional[
 
 
 @router.get("/transit/routes")
-@limiter.limit("120/minute")
+@limiter.limit("60/minute")
 def get_transit_routes(request: Request):
-    cache_key = "traffic:transit:routes:v1"
+    cache_key = "traffic:transit:routes:v3"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
         return cached
@@ -1113,7 +1471,7 @@ def get_transit_routes(request: Request):
 @router.get("/transit/route/{route_key}")
 @limiter.limit("120/minute")
 def get_transit_route(request: Request, route_key: str):
-    cache_key = f"traffic:transit:route:v1:{route_key}"
+    cache_key = f"traffic:transit:route:v2:{route_key}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
         return cached
@@ -1137,7 +1495,7 @@ def get_bulk_transit_patterns(request: Request, ids: str = Query("")):
     id_list = [i.strip() for i in ids.split(",") if i.strip()]
     import hashlib
     h = hashlib.md5(",".join(sorted(id_list)).encode()).hexdigest()
-    cache_key = f"traffic:transit:patterns:v1:{h}"
+    cache_key = f"traffic:transit:patterns:v2:{h}"
     
     cached = cache_service.get_json(cache_key)
     if cached is not None:
@@ -1168,7 +1526,8 @@ def get_transit_vehicles(request: Request, route_id: str = Query("")):
         if not payload.get("vehicles") and not payload.get("live"):
             cache_service.set_json(cache_key, payload, 2)
         else:
-            cache_service.set_json(cache_key, payload, 15)
+            ttl_seconds = 2 if route_id else 8
+            cache_service.set_json(cache_key, payload, ttl_seconds)
             
         return payload
 
@@ -1176,7 +1535,7 @@ def get_transit_vehicles(request: Request, route_id: str = Query("")):
 @router.get("/transit/timetable/{route_key}")
 @limiter.limit("120/minute")
 def get_transit_timetable(request: Request, route_key: str, max_stops: int = Query(12, ge=1, le=20)):
-    cache_key = f"traffic:transit:timetable:v1:{route_key}:{max_stops}"
+    cache_key = f"traffic:transit:timetable:v3:{route_key}:{max_stops}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
         return cached
@@ -1187,13 +1546,300 @@ def get_transit_timetable(request: Request, route_key: str, max_stops: int = Que
             return cached
 
         payload = transit_proxy.get_route_timetable(route_key, max_stops=max_stops)
-        
-        if not payload.get("entries"):
-            cache_service.set_json(cache_key, payload, 2)
+
+        freshness = payload.get("freshness") or {}
+        source = freshness.get("source")
+        if not payload.get("entries") or source == "unavailable":
+            ttl_seconds = 2
+        elif source == "schedule_fallback":
+            ttl_seconds = 45
         else:
-            cache_service.set_json(cache_key, payload, 30)
+            ttl_seconds = 20
+        cache_service.set_json(cache_key, payload, ttl_seconds)
             
         return payload
+
+
+@router.get("/transit/timetable/db/{stop_code}")
+@limiter.limit("120/minute")
+def get_transit_timetable_db(request: Request, stop_code: str, route_number: str = Query(""), start_time: Optional[str] = Query(None)):
+    """Get accurate scheduled stop times from the PostgreSQL cache."""
+    if not start_time:
+        search_time = datetime.now(ZoneInfo("UTC"))
+    else:
+        try:
+            search_time = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+        except ValueError:
+            search_time = datetime.now(ZoneInfo("UTC"))
+            
+    try:
+        times = transit_repo.get_upcoming_stop_times(stop_code, route_number, search_time)
+        return {"stop_code": stop_code, "route_number": route_number, "scheduled_times": times}
+    except Exception as exc:
+        print(f"[traffic] DB timetable lookup failed, falling back live for stop {stop_code}: {exc}")
+        if not route_number:
+            return {"stop_code": stop_code, "route_number": route_number, "scheduled_times": []}
+
+        route = next(
+            (item for item in transit_proxy.get_routes() if item.get("ShortName") == route_number),
+            None,
+        )
+        if not route or not route.get("Key"):
+            return {"stop_code": stop_code, "route_number": route_number, "scheduled_times": []}
+
+        pattern = transit_proxy.get_pattern(route["Key"])
+        direction_names = [
+            str(stop.get("DirectionName") or "").strip()
+            for stop in (pattern.get("stops") or [])
+            if str(stop.get("StopCode") or "").strip() == stop_code and str(stop.get("DirectionName") or "").strip()
+        ]
+        seen = set()
+        times = []
+        for direction_name in direction_names:
+            for item in transit_proxy.get_stop_schedule(
+                route_number,
+                stop_code,
+                direction_name,
+                _local_service_date(search_time),
+            ):
+                dt = _parse_stop_schedule_time(item.get("scheduledDepartTimeUtc"))
+                if dt is None or dt < search_time:
+                    continue
+                key = (dt.isoformat(), direction_name)
+                if key in seen:
+                    continue
+                seen.add(key)
+                times.append({
+                    "scheduled_time": dt.isoformat(),
+                    "direction_name": direction_name,
+                    "is_departure": True,
+                })
+        times.sort(key=lambda item: item["scheduled_time"])
+        return {"stop_code": stop_code, "route_number": route_number, "scheduled_times": times[:5]}
+
+
+class TripPlanRequest(BaseModel):
+    origin_stop_code: str
+    dest_stop_code: str
+    route_number: str
+    departure_time: str
+    timing_mode: str = "leave_at"
+    minimum_travel_minutes: int = 0
+
+
+class BulkTripPlanItem(BaseModel):
+    origin_stop_code: str
+    dest_stop_code: str
+    route_number: str
+    departure_time: str
+    timing_mode: str = "leave_at"
+    minimum_travel_minutes: int = 0
+
+
+class BulkTripPlanRequest(BaseModel):
+    items: List[BulkTripPlanItem]
+
+@router.post("/transit/trip-plan/db")
+@limiter.limit("60/minute")
+def get_transit_trip_plan_db(request: Request, plan_request: TripPlanRequest = Body(...)):
+    """Find the best scheduled trip between two stops using the PostgreSQL cache."""
+    print(f"[traffic] Trip plan request: {plan_request.dict()}")
+    try:
+        dep_time = datetime.fromisoformat(plan_request.departure_time.replace('Z', '+00:00'))
+    except ValueError:
+        return {"error": "Invalid departure_time format"}
+
+    plan = _find_live_trip(
+        plan_request.origin_stop_code,
+        plan_request.dest_stop_code,
+        dep_time,
+        plan_request.route_number,
+        plan_request.timing_mode,
+        plan_request.minimum_travel_minutes,
+    )
+
+    if plan is None:
+        try:
+            plan = transit_repo.find_best_trip(
+                plan_request.origin_stop_code,
+                plan_request.dest_stop_code,
+                dep_time,
+                plan_request.route_number,
+                plan_request.timing_mode,
+                plan_request.minimum_travel_minutes,
+            )
+        except Exception as e:
+            print(f"[traffic] Trip plan DB lookup failed after live lookup: {e}")
+            plan = None
+
+    if plan:
+        plan_copy = dict(plan)
+        origin_time = plan_copy.get('origin_time')
+        dest_time = plan_copy.get('dest_time')
+        if isinstance(origin_time, datetime):
+            plan_copy['origin_time'] = origin_time.isoformat()
+        if isinstance(dest_time, datetime):
+            plan_copy['dest_time'] = dest_time.isoformat()
+        return {"plan": plan_copy}
+
+    return {"plan": None}
+
+
+@router.post("/transit/trip-plan/bulk")
+@limiter.limit("40/minute")
+def get_transit_trip_plan_bulk(request: Request, bulk_request: BulkTripPlanRequest = Body(...)):
+    """Find the best scheduled trips for multiple route candidates in parallel."""
+    print(f"[traffic] Bulk trip plan request for {len(bulk_request.items)} items")
+    
+    # 1. Parsing and Metadata Gathering
+    requests_to_process = []
+    routes_to_lookup = set()
+    for item in bulk_request.items:
+        try:
+            dep_time = datetime.fromisoformat(item.departure_time.replace('Z', '+00:00'))
+            requests_to_process.append({
+                "origin_stop_code": item.origin_stop_code,
+                "dest_stop_code": item.dest_stop_code,
+                "route_number": item.route_number,
+                "departure_time": dep_time,
+                "timing_mode": item.timing_mode,
+                "minimum_travel_minutes": item.minimum_travel_minutes,
+                "plan": None
+            })
+            routes_to_lookup.add(item.route_number)
+        except ValueError:
+            continue
+
+    if not requests_to_process:
+        return {"plans": []}
+
+    # 2. Parallel Route & Pattern Resolution
+    all_routes = transit_proxy.get_routes()
+    route_details = {}
+    for r_num in routes_to_lookup:
+        route = next((r for r in all_routes if r.get("ShortName") == r_num or r.get("Key") == r_num), None)
+        if route and route.get("Key"):
+            route_details[r_num] = {
+                "key": route["Key"],
+                "short_name": route["ShortName"],
+                "direction_names": [str(name or "").strip() for name in (route.get("DirectionNames") or []) if str(name or "").strip()],
+                "pattern": transit_proxy.get_pattern(route["Key"])
+            }
+
+    # 3. Schedule Requirement Identification
+    schedule_tasks = []
+    seen_schedule_tasks = set()
+    
+    for req in requests_to_process:
+        details = route_details.get(req["route_number"])
+        if not details: continue
+        
+        stops = details["pattern"].get("stops") or []
+        origin_code = req["origin_stop_code"]
+        dest_code = req["dest_stop_code"]
+        
+        origin_dirs = {str(s.get("DirectionName") or "").strip() for s in stops if str(s.get("StopCode") or "").strip() == origin_code and str(s.get("DirectionName") or "").strip()}
+        dest_dirs = {str(s.get("DirectionName") or "").strip() for s in stops if str(s.get("StopCode") or "").strip() == dest_code and str(s.get("DirectionName") or "").strip()}
+        
+        candidates = [n for n in origin_dirs if n in dest_dirs]
+        if not candidates:
+            candidates = details["direction_names"] or list(origin_dirs or dest_dirs)
+        
+        if not candidates: continue
+        req["candidates"] = candidates
+        req["service_date"] = _local_service_date(req["departure_time"])
+        
+        for d_name in candidates:
+            for scode in [origin_code, dest_code]:
+                task_key = (req["route_number"], scode, d_name, req["service_date"])
+                if task_key not in seen_schedule_tasks:
+                    seen_schedule_tasks.add(task_key)
+                    schedule_tasks.append(task_key)
+
+    # 4. Parallel Schedule Fetching
+    schedule_lookup = {}
+    with ThreadPoolExecutor(max_workers=min(len(schedule_tasks) or 1, 15)) as executor:
+        future_to_task = {
+            executor.submit(transit_proxy.get_stop_schedule, r, s, d, dt): (r, s, d, dt)
+            for (r, s, d, dt) in schedule_tasks
+        }
+        for future in as_completed(future_to_task):
+            task = future_to_task[future]
+            try:
+                schedule_lookup[task] = future.result()
+            except Exception as e:
+                print(f"[traffic] Bulk schedule fetch failed for {task}: {e}")
+                schedule_lookup[task] = []
+
+    # 5. Plan Calculation (CPU bound, but fast enough sequentially here)
+    final_plans = []
+    for req in requests_to_process:
+        best_plan = None
+        candidates = req.get("candidates") or []
+        
+        if not candidates:
+            # Fallback to DB
+            try:
+                best_plan = transit_repo.find_best_trip(
+                    req["origin_stop_code"], req["dest_stop_code"],
+                    req["departure_time"], req["route_number"],
+                    req["timing_mode"], req["minimum_travel_minutes"]
+                )
+            except Exception: pass
+        else:
+            for direction_name in candidates:
+                origin_schedule = schedule_lookup.get((req["route_number"], req["origin_stop_code"], direction_name, req["service_date"]), [])
+                dest_schedule = schedule_lookup.get((req["route_number"], req["dest_stop_code"], direction_name, req["service_date"]), [])
+                
+                # Filter/Parsings identical to _find_live_trip logic
+                origin_by_dir = defaultdict(list)
+                dest_by_dir = defaultdict(list)
+                for item in origin_schedule:
+                    parsed = _parse_stop_schedule_time(item.get("scheduledDepartTimeUtc"))
+                    if parsed: origin_by_dir[str(item.get("sourceDirectionName") or direction_name or "").strip()].append(parsed)
+                for item in dest_schedule:
+                    parsed = _parse_stop_schedule_time(item.get("scheduledDepartTimeUtc"))
+                    if parsed: dest_by_dir[str(item.get("sourceDirectionName") or direction_name or "").strip()].append(parsed)
+                
+                matching_dirs = [d for d in origin_by_dir if d in dest_by_dir]
+                for s_dir in (matching_dirs or [direction_name]):
+                    o_times = sorted(origin_by_dir[s_dir])
+                    d_times = sorted(dest_by_dir[s_dir])
+                    if not o_times or not d_times: continue
+                    
+                    candidate = None
+                    if req["timing_mode"] == "arrive_by":
+                        for d_time in reversed(d_times):
+                            if d_time > req["departure_time"]: continue
+                            cutoff = d_time - timedelta(minutes=req["minimum_travel_minutes"])
+                            matches = [o for o in o_times if o < cutoff]
+                            if matches:
+                                candidate = {"origin_time": matches[-1], "dest_time": d_time, "direction": s_dir}
+                                break
+                    else:
+                        for o_time in o_times:
+                            if o_time < req["departure_time"]: continue
+                            cutoff = o_time + timedelta(minutes=req["minimum_travel_minutes"])
+                            m_dest = next((d for d in d_times if d > cutoff), None)
+                            if m_dest:
+                                candidate = {"origin_time": o_time, "dest_time": m_dest, "direction": s_dir}
+                                break
+                    
+                    if candidate:
+                        if not best_plan or (req["timing_mode"] == "arrive_by" and candidate["dest_time"] > best_plan["dest_time"]) or (req["timing_mode"] != "arrive_by" and candidate["origin_time"] < best_plan["origin_time"]):
+                            best_plan = candidate
+        
+        # Serialize trip for response
+        if best_plan:
+            best_plan = dict(best_plan)
+            if isinstance(best_plan.get('origin_time'), datetime):
+                best_plan['origin_time'] = best_plan['origin_time'].isoformat()
+            if isinstance(best_plan.get('dest_time'), datetime):
+                best_plan['dest_time'] = best_plan['dest_time'].isoformat()
+        
+        final_plans.append(best_plan)
+
+    return {"plans": final_plans}
 
 
 @router.post("/create-event")
