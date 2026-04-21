@@ -129,7 +129,7 @@ export interface PingCard {
   placeId?: string | null;
   title: string;
   body: string;
-  category: string;
+  category?: string | null;
   locationTag: string;
   startAt: string;
   endAt?: string | null;
@@ -179,10 +179,11 @@ const TIME_PRESETS: Array<{ id: TimePreset; label: string }> = [
   { id: 'tomorrow', label: 'Tomorrow' },
 ];
 
-export function categoryMeta(category: string) {
+export function categoryMeta(category?: string | null) {
+  const normalizedCategory = category?.trim();
   return (
-    PING_CATEGORIES.find((entry) => entry.id === category) || {
-      id: category,
+    PING_CATEGORIES.find((entry) => entry.id === normalizedCategory) || {
+      id: normalizedCategory || 'General',
       accent: '#7A889B',
       Icon: Sparkles,
     }
@@ -410,7 +411,9 @@ export function mapActivityToPing(activity: any, currentUser: any, userMap: Map<
     anchorType: custom.anchor_type === 'geo' ? 'geo' : 'place',
     title: custom.ping_title || 'Campus Ping',
     body: activity.text || '',
-    category: custom.ping_category || 'Popup',
+    category: typeof custom.ping_category === 'string' && custom.ping_category.trim()
+      ? custom.ping_category.trim()
+      : null,
     placeId: custom.place_id || activity.place?.place_id || null,
     locationTag: custom.location_label || custom.location_tag || 'Campus',
     startAt: custom.start_at || activity.time || new Date().toISOString(),
@@ -451,7 +454,7 @@ export function CampusPingsScreen() {
   const resetComposer = useCallback(() => {
     setComposerTitle('');
     setComposerBody('');
-    setComposerCategory('Popup');
+    setComposerCategory(null);
     setComposerTimePreset('now');
     setComposerDurationHours(3);
     setLocationQuery('');
@@ -563,7 +566,7 @@ export function CampusPingsScreen() {
   const [composerVisible, setComposerVisible] = useState(false);
   const [composerTitle, setComposerTitle] = useState('');
   const [composerBody, setComposerBody] = useState('');
-  const [composerCategory, setComposerCategory] = useState<PingCategory>('Popup');
+  const [composerCategory, setComposerCategory] = useState<PingCategory | null>(null);
   const [composerTimePreset, setComposerTimePreset] = useState<TimePreset>('now');
   const [composerDurationHours, setComposerDurationHours] = useState<number>(3);
   const [locationQuery, setLocationQuery] = useState('');
@@ -1326,8 +1329,9 @@ export function CampusPingsScreen() {
   const renderPingCard = ({ item }: { item: PingCard }) => {
     const canDelete = item.userId === user?.id;
     const canModerateAuthor = !!user?.id && !!item.userId && item.userId !== user.id;
-    const CategoryData = PING_CATEGORIES.find((c) => c.id === item.category) || PING_CATEGORIES[PING_CATEGORIES.length - 1];
-    const { Icon, accent } = CategoryData;
+    const normalizedCategory = item.category?.trim() || null;
+    const hasCategory = Boolean(normalizedCategory);
+    const { Icon, accent } = categoryMeta(normalizedCategory);
     const hasImage = !!item.imageUrl;
     const isActive = isPingActiveNow(item.startAt, item.endAt);
 
@@ -1387,13 +1391,40 @@ export function CampusPingsScreen() {
           </View>
         </View>
 
-        <View style={styles.pingMetaRow}>
-          <View style={[styles.pingCategoryBadge, { backgroundColor: `${accent}12`, borderColor: `${accent}25` }]}>
-            <Icon size={12} color={accent} />
-            <Text style={[styles.pingCategoryBadgeText, { color: accent }]}>{item.category}</Text>
+        {hasImage ? (
+          <View style={styles.pingImageHeader}>
+            <View style={styles.pingImageTitleBlock}>
+              <View style={styles.pingImageTitleRow}>
+                <Text style={styles.pingTitle}>{item.title}</Text>
+                {hasCategory ? (
+                  <View
+                    style={[
+                      styles.pingCategoryBadge,
+                      styles.pingImageCategoryBadge,
+                      { backgroundColor: `${accent}12`, borderColor: `${accent}25` },
+                    ]}
+                  >
+                    <Icon size={12} color={accent} />
+                    <Text style={[styles.pingCategoryBadgeText, { color: accent }]}>{normalizedCategory}</Text>
+                  </View>
+                ) : null}
+              </View>
+              <Text style={styles.pingTimestamp}>{formatRelativeAge(item.createdAt)}</Text>
+            </View>
           </View>
-          <Text style={styles.pingTimestamp}>{formatRelativeAge(item.createdAt)}</Text>
-        </View>
+        ) : (
+          <View style={styles.pingMetaRow}>
+            {hasCategory ? (
+              <View style={[styles.pingCategoryBadge, { backgroundColor: `${accent}12`, borderColor: `${accent}25` }]}>
+                <Icon size={12} color={accent} />
+                <Text style={[styles.pingCategoryBadgeText, { color: accent }]}>{normalizedCategory}</Text>
+              </View>
+            ) : null}
+            <Text style={[styles.pingTimestamp, !hasCategory && styles.pingTimestampSolo]}>
+              {formatRelativeAge(item.createdAt)}
+            </Text>
+          </View>
+        )}
 
         {hasImage ? (
           <View style={styles.pingMediaWrap}>
@@ -1465,14 +1496,11 @@ export function CampusPingsScreen() {
           </View>
         </View>
 
-        <View style={styles.pingContent}>
-          {hasImage ? (
-            <>
-              <Text style={styles.pingTitle}>{item.title}</Text>
-              {item.body ? <Text style={styles.pingBody}>{item.body}</Text> : null}
-            </>
-          ) : null}
-        </View>
+        {hasImage && item.body ? (
+          <View style={styles.pingContent}>
+            <Text style={styles.pingBody}>{item.body}</Text>
+          </View>
+        ) : null}
 
         {canDelete ? (
           <ScalePressable style={styles.pingDeleteAction} onPress={() => handleDeletePing(item)}>
@@ -1722,6 +1750,23 @@ export function CampusPingsScreen() {
                       showsHorizontalScrollIndicator={false}
                       contentContainerStyle={styles.composerCategoryRow}
                     >
+                      <Pressable
+                        style={[
+                          styles.composerCategoryPill,
+                          composerCategory === null && styles.composerCategoryPillActive,
+                        ]}
+                        onPress={() => setComposerCategory(null)}
+                      >
+                        <Text
+                          style={[
+                            styles.composerCategoryLabel,
+                            composerCategory === null && styles.composerCategoryLabelActive,
+                          ]}
+                          numberOfLines={1}
+                        >
+                          No label
+                        </Text>
+                      </Pressable>
                       {PING_CATEGORIES.map((cat) => {
                         const active = composerCategory === cat.id;
                         const Icon = cat.Icon;
@@ -2295,6 +2340,9 @@ const getStyles = (theme: any) => {
       fontSize: 12,
       fontWeight: '500',
     },
+    pingTimestampSolo: {
+      marginLeft: 'auto',
+    },
     pingCategoryBadge: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -2331,6 +2379,24 @@ const getStyles = (theme: any) => {
       paddingTop: 0,
       paddingBottom: 16,
     },
+    pingImageHeader: {
+      paddingHorizontal: 14,
+      paddingTop: 18,
+      paddingBottom: 10,
+    },
+    pingImageTitleBlock: {
+      gap: 6,
+    },
+    pingImageTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 10,
+    },
+    pingImageCategoryBadge: {
+      flexShrink: 0,
+      marginTop: 1,
+    },
     pingTextPostBlock: {
       paddingHorizontal: 14,
       paddingTop: 18,
@@ -2342,6 +2408,7 @@ const getStyles = (theme: any) => {
       fontWeight: '700',
       lineHeight: 22,
       letterSpacing: -0.2,
+      flex: 1,
     },
     pingBody: {
       marginTop: 6,

@@ -196,7 +196,7 @@ export async function addPing(params: {
   userImage?: string;
   title: string;
   body: string;
-  category: string;
+  category?: string | null;
   locationTag: string;
   placeId?: string;
   startAt: string;
@@ -231,7 +231,7 @@ export async function addPing(params: {
       user_name: params.userName || getPremiumName(currentFullUser),
       user_image: params.userImage ?? getPremiumImage(currentFullUser) ?? '',
       ping_title: params.title,
-      ping_category: params.category,
+      ping_category: params.category?.trim() || undefined,
       location_tag: params.locationTag,
       place_id: params.placeId || '',
       start_at: params.startAt,

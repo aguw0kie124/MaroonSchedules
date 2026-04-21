@@ -5,7 +5,7 @@
  * All logic has been decomposed into:
  *   hooks/     → useLocationData, useScheduleMap, useBusTransit
  *   places/    → CategoryPillBar, SearchOverlay, BusLayerUI,
- *                ScheduleHeader, LocationBottomSheet, PlacesList
+ *                LocationBottomSheet, PlacesListPopup
  *   utils.ts   → pure functions
  *   campusData.ts → static data & directory
  *   types.ts   → shared interfaces & constants
@@ -25,7 +25,6 @@ import {
   TouchableOpacity,
   Animated,
   Platform,
-  Dimensions,
   ScrollView,
   InteractionManager,
   ActivityIndicator,
@@ -35,22 +34,14 @@ import {
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
 import {
-  Menu,
   ChevronRight,
   ChevronLeft,
   Navigation,
   Compass,
-  Calendar,
   LocateFixed,
   Orbit,
-  Plus,
-  Locate,
   Maximize2,
   Minimize2,
-  Bus,
-  ChevronDown,
-  Share2,
-  X,
 } from "lucide-react-native";
 import type { WalkingRoute } from "../services/campusDirections";
 import { useTheme } from "./SharedUI";
@@ -80,7 +71,6 @@ import {
   getDiningMealPeriodForLocation,
   isDiningHallMenuLocation,
 } from "../services/diningMenuCache";
-import { triggerNativeShare } from "../utils/share";
 import { getStaticRestaurantMenu } from "../data/restaurantMenus";
 
 // ── Sub-components ────────────────────────────────────────────
@@ -96,8 +86,7 @@ import {
 import { BusTimetableSheet } from "./places/BusTimetableSheet";
 import { PulseHotspotSheet } from "./places/PulseHotspotSheet";
 import { LocationBottomSheet } from "./places/LocationBottomSheet";
-import { ScheduleHeader } from "./places/ScheduleHeader";
-import { PlacesList } from "./places/PlacesList";
+import { PlacesListPopup } from "./places/PlacesListPopup";
 import { TodayTimeline } from "./places/TodayTimeline";
 import { useLocationData } from "./places/useLocationData";
 import { usePlacesSelection } from "./places/usePlacesSelection";
@@ -326,7 +315,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const styles = getStyles(COLORS, isDark);
   const { user } = useUser();
   const insets = useSafeAreaInsets();
-  const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
   // ── App-shell store ───────────────────────────────────────
   const placesPills = useAppShellStore((s) => s.placesPills);
@@ -921,6 +909,19 @@ export function PlacesMapScreen({ route, navigation }: any) {
       }
     }, [activeTargetName, advanceStep, isMapTilted, pulseHotspots]),
   });
+
+  useEffect(() => {
+    if (
+      isSearchExpanded ||
+      selectedId ||
+      activeLayer === "Today" ||
+      activeLayer === "Bus" ||
+      activeLayer === "Pulse"
+    ) {
+      setIsListDroppedDown(false);
+    }
+  }, [activeLayer, isSearchExpanded, selectedId]);
+
   const selectedHotspot = useMemo(
     () =>
       pulseHotspots.find((hotspot) => hotspot.id === selectedHotspotId) || null,
@@ -2374,6 +2375,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
           })}
       </MapViewRNM>
 
+      {isListDroppedDown ? (
+        <Pressable
+          style={[StyleSheet.absoluteFill, { zIndex: 7000, elevation: 30 }]}
+          onPress={() => setIsListDroppedDown(false)}
+        />
+      ) : null}
+
       {/* Top UI Floating Elements */}
       <View
         pointerEvents="box-none"
@@ -2388,14 +2396,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
           setSearchQuery={setSearchQuery}
           setShowSearchResults={setShowSearchResults}
           onOpenSettings={() => setIsEditorVisible(true)}
-          onShare={() =>
-            triggerNativeShare({
-              title: "Campus Map",
-              message: "Check out the live campus map on MaroonSchedules!",
-              url: "https://maroonschedules.tamu.edu/places",
-              type: "place",
-            })
-          }
           onSubmitSearch={() => runGlobalSearch()}
         />
 
@@ -2409,6 +2409,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 activeLayer={activeLayer}
                 layers={visibleCategories}
                 onSelectLayer={(layer) => {
+                  setIsListDroppedDown(false);
                   setActiveLayer(layer);
                   setSelectedId(null);
                   setSelectedStop(null);
@@ -2553,182 +2554,29 @@ export function PlacesMapScreen({ route, navigation }: any) {
             {activeLayer !== "Today" &&
               activeLayer !== "Bus" &&
               activeLayer !== "Pulse" && (
-                <View
-                  style={{
-                    marginTop: 12,
-                    width: "100%",
-                    alignItems: "flex-start",
-                  }}
-                >
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={[
-                      (styles as any).listDropdownHeader,
-                      isListDroppedDown &&
-                      (styles as any).listDropdownHeaderOpen,
-                    ]}
-                    onPress={() => setIsListDroppedDown(!isListDroppedDown)}
-                  >
-                    <Text style={(styles as any).listDropdownLabel}>
-                      List View
-                    </Text>
-                    <ChevronDown
-                      size={18}
-                      color={COLORS.textPrimary}
-                      style={{
-                        marginLeft: 8,
-                        transform: [
-                          { rotate: isListDroppedDown ? "180deg" : "0deg" },
-                        ],
-                      }}
-                    />
-                  </TouchableOpacity>
-
-                  {isListDroppedDown && (
-                    <View
-                      style={[
-                        (styles as any).listDropdownContent,
-                        { width: SCREEN_WIDTH - 32 },
-                      ]}
-                    >
-                      <ScrollView
-                        ref={listDropdownScrollRef}
-                        style={{ maxHeight: 320 }}
-                        showsVerticalScrollIndicator={false}
-                      >
-                        {sortedFilteredLocations.map((loc) => {
-                          const locCapacity = "capacity" in loc ? loc.capacity : null;
-                          const locCurrentCount = "current_count" in loc ? loc.current_count : null;
-                          const displayPercent =
-                            locCapacity && locCapacity > 0 && locCurrentCount != null
-                              ? Math.round((locCurrentCount / locCapacity) * 100)
-                              : loc.percent_full != null && Number.isFinite(loc.percent_full)
-                                ? loc.percent_full
-                                : null;
-                          const recUpdatedLabel =
-                            loc.type === "Rec" &&
-                            (("capacity_last_updated" in loc && loc.capacity_last_updated) ||
-                              ("capacity_as_of" in loc && loc.capacity_as_of))
-                              ? (() => {
-                                  const raw =
-                                    ("capacity_last_updated" in loc && loc.capacity_last_updated) ||
-                                    ("capacity_as_of" in loc && loc.capacity_as_of);
-                                  const parsed = new Date(
-                                    String(raw).includes("T")
-                                      ? String(raw)
-                                      : String(raw).replace(" ", "T"),
-                                  );
-                                  return Number.isNaN(parsed.getTime())
-                                    ? null
-                                    : `Updated ${parsed.toLocaleTimeString("en-US", {
-                                        hour: "numeric",
-                                        minute: "2-digit",
-                                      })}`;
-                                })()
-                              : null;
-
-                          const isRecCenterTourItem =
-                            getCanonicalLocationName(loc.location) ===
-                            getCanonicalLocationName("Student Recreation Center");
-
-                          const visitorGarageIds = [
-                            "osm:way:91100311",
-                            "garage-polo",
-                            "osm:way:450686873",
-                            "garage-university-center",
-                            "garage-west-campus"
-                          ];
-                          const isVisitorParkingGarage = loc.type === "Parking" && (
-                            visitorGarageIds.includes(("placeId" in loc ? loc.placeId : "")) ||
-                            loc.location.includes("Central Campus Garage") ||
-                            loc.location.includes("Polo") ||
-                            loc.location.includes("Stallings") ||
-                            loc.location.includes("University Center Garage") ||
-                            loc.location.includes("West Campus Garage")
-                          );
-                          const parkingAvailable = (loc as any).visitor_parking_available;
-
-                          const item = (
-                            <TouchableOpacity
-                              key={`${('placeId' in loc && loc.placeId) || loc.location}-${loc.coord.lat}-${loc.coord.lng}`}
-                              style={(styles as any).listDropdownItem}
-                              onLayout={
-                                isRecCenterTourItem
-                                  ? (event) => {
-                                    recCenterDropdownYRef.current =
-                                      event.nativeEvent.layout.y;
-                                    if (activeTargetName === "rec-center-item") {
-                                      setTimeout(scrollToRecCenterDropdownItem, 0);
-                                    }
-                                  }
-                                  : undefined
-                              }
-                              onPress={() => {
-                                handleSelectLocation(loc);
-                                setIsListDroppedDown(false);
-                                if (
-                                  isRecCenterTourItem &&
-                                  activeTargetName === "rec-center-item"
-                                ) {
-                                  setTimeout(() => {
-                                    advanceStep("rec-center-item");
-                                  }, 0);
-                                }
-                              }}
-                            >
-                              <View style={{ flex: 1 }}>
-                                <Text
-                                  style={(styles as any).listDropdownItemTitle}
-                                  numberOfLines={1}
-                                >
-                                  {loc.location}
-                                </Text>
-                                <Text
-                                  style={(styles as any).listDropdownItemSub}
-                                  numberOfLines={1}
-                                >
-                                  {(loc.type === "Library" ||
-                                    loc.type === "Rec") &&
-                                    displayPercent != null
-                                    ? `${displayPercent}% full${recUpdatedLabel ? ` · ${recUpdatedLabel}` : ""} · `
-                                    : isVisitorParkingGarage && parkingAvailable != null
-                                      ? `${parkingAvailable.toLocaleString()} spaces available · `
-                                      : ""}
-                                  {loc.type !== "Dining" && loc.type !== "Hub"
-                                    ? loc.type
-                                    : ""}
-                                </Text>
-                              </View>
-                              <ChevronRight
-                                size={16}
-                                color={COLORS.textTertiary}
-                              />
-                            </TouchableOpacity>
-                          );
-
-                          if (!isRecCenterTourItem) {
-                            return item;
-                          }
-
-                          return (
-                            <TourTarget
-                              key={`tour-${loc.location}`}
-                              name="rec-center-item"
-                              assistAction={() => {
-                                handleSelectLocation(loc);
-                                setIsListDroppedDown(false);
-                                setTimeout(() => {
-                                  advanceStep("rec-center-item");
-                                }, 0);
-                              }}
-                            >
-                              {item}
-                            </TourTarget>
-                          );
-                        })}
-                      </ScrollView>
-                    </View>
-                  )}
+                <View style={{ marginTop: 12, width: "100%" }}>
+                  <PlacesListPopup
+                    styles={styles}
+                    COLORS={COLORS}
+                    activeLayer={activeLayer}
+                    visible={isListDroppedDown}
+                    locations={sortedFilteredLocations}
+                    userCoord={userCoord}
+                    parkingPermit={parkingPermit}
+                    recreationFacilityMap={recreationFacilityMap}
+                    onToggle={() => setIsListDroppedDown((value) => !value)}
+                    onSelectLocation={(loc) => {
+                      handleSelectLocation(loc);
+                      setIsListDroppedDown(false);
+                    }}
+                    listScrollRef={listDropdownScrollRef}
+                    activeTargetName={activeTargetName}
+                    advanceStep={advanceStep}
+                    onRecCenterRowLayout={(y) => {
+                      recCenterDropdownYRef.current = y;
+                    }}
+                    scrollToRecCenterItem={scrollToRecCenterDropdownItem}
+                  />
                 </View>
               )}
           </>

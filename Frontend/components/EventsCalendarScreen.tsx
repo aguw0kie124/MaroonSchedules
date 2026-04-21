@@ -173,6 +173,7 @@ type ExploreCategory =
   | 'Academic'
   | 'Entertainment'
   | 'Health & Wellness';
+type ListFilterOption = 'All' | ExploreCategory;
 type StandardExploreCategory = Exclude<ExploreCategory, 'For U' | 'Featured'>;
 
 type SocialMode = 'casual' | 'professional';
@@ -205,12 +206,12 @@ const ALL_CATEGORIES: ExploreCategory[] = [
   'Advocacy',
   'Miscellaneous',
 ];
+const LIST_FILTER_OPTIONS: ListFilterOption[] = ['All', ...ALL_CATEGORIES];
 
 const ALL_STANDARD_CATEGORIES = ALL_CATEGORIES.filter(
   (category): category is StandardExploreCategory => category !== 'Featured' && category !== 'For U',
 );
-const DEFAULT_SELECTED_CATEGORIES: ExploreCategory[] = ['Featured', 'For U'];
-const FALLBACK_BROWSE_CATEGORIES: ExploreCategory[] = ['Featured', ...ALL_STANDARD_CATEGORIES];
+const DEFAULT_SELECTED_CATEGORIES: ListFilterOption[] = ['All'];
 const DISCOVER_SECTION_ORDER: StandardExploreCategory[] = [
   'Sports',
   'Academic',
@@ -308,14 +309,8 @@ function isExploreCategory(value: string): value is ExploreCategory {
   return ALL_CATEGORIES.includes(value as ExploreCategory);
 }
 
-function selectedCategoriesFromDeselects(deselected: string[]): Set<ExploreCategory> {
-  const next = new Set(DEFAULT_SELECTED_CATEGORIES);
-  deselected.forEach((cat) => {
-    if (isExploreCategory(cat)) {
-      next.delete(cat as ExploreCategory);
-    }
-  });
-  return next.size ? next : new Set(DEFAULT_SELECTED_CATEGORIES);
+function selectedCategoriesFromDeselects(_deselected: string[]): Set<ListFilterOption> {
+  return new Set(DEFAULT_SELECTED_CATEGORIES);
 }
 
 function normalizePreferredCategories(categories: string[] | undefined) {
@@ -348,14 +343,12 @@ function buildRecommendedSelectedCategories(
   );
 
   if (!hasBrowsableCategory) {
-    ALL_STANDARD_CATEGORIES.forEach((category) => {
-      if (!deselected.has(category)) {
-        next.add(category);
-      }
-    });
+    return new Set<ListFilterOption>(DEFAULT_SELECTED_CATEGORIES);
   }
 
-  return next.size ? next : new Set(FALLBACK_BROWSE_CATEGORIES);
+  return next.size
+    ? new Set<ListFilterOption>(next)
+    : new Set<ListFilterOption>(DEFAULT_SELECTED_CATEGORIES);
 }
 
 function getMatchedInterestIds(event: TAMUEvent, preferredInterests: string[]) {
@@ -1086,10 +1079,9 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
 
   const [view, setView] = useState<EventsView>('discover');
 
-  const [selectedCategories, setSelectedCategories] = useState<Set<ExploreCategory>>(
+  const [selectedCategories, setSelectedCategories] = useState<Set<ListFilterOption>>(
     () => new Set(DEFAULT_SELECTED_CATEGORIES),
   );
-  const hasSelectedCategory = selectedCategories.size > 0;
   const [socialMode, setSocialMode] = useState<SocialMode>('casual');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -1366,14 +1358,35 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     return counts;
   }, [isMajorSpecific, nowTs, personalizedEvents, selectedMajor]);
 
+  const allFilterCount = useMemo(() => {
+    let next = personalizedEvents.filter((event) => {
+      return (event.date2_ts != null && event.date2_ts > nowTs) || (event.date_ts >= nowTs - 7200);
+    });
+
+    if (deferredSearchQuery.trim()) {
+      const q = deferredSearchQuery.toLowerCase();
+      next = next.filter((event) => (event._searchBlob || getSearchBlob(event)).includes(q));
+    }
+
+    if (isMajorSpecific) {
+      next = next.filter((event) => matchesMajor(event, selectedMajor) || event.is_admin_event);
+    }
+
+    next = next.filter((event) => !dislikedEventIds.includes(String(event.id)));
+
+    return next.length;
+  }, [deferredSearchQuery, dislikedEventIds, isMajorSpecific, nowTs, personalizedEvents, selectedMajor]);
+
   const standardSelectedCategories = useMemo(
     () =>
       Array.from(selectedCategories).filter(
-        (category): category is StandardExploreCategory => category !== 'For U' && category !== 'Featured',
+        (category): category is StandardExploreCategory =>
+          category !== 'All' && category !== 'For U' && category !== 'Featured',
       ),
     [selectedCategories],
   );
 
+  const isAllSelected = selectedCategories.has('All');
   const isForYouSelected = selectedCategories.has('For U');
   const isFeaturedSelected = selectedCategories.has('Featured');
 
@@ -1395,27 +1408,29 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     // When Featured is active, admin events always pass through regardless of other filters
     const hasNonFeaturedFilters = isForYouSelected || standardSelectedCategories.length > 0;
 
-    if (hasNonFeaturedFilters) {
-      next = next.filter((event) => {
-        // Featured events always pass when Featured is selected
-        if (isFeaturedSelected && event.is_admin_event) return true;
+    if (!isAllSelected) {
+      if (hasNonFeaturedFilters) {
+        next = next.filter((event) => {
+          // Featured events always pass when Featured is selected
+          if (isFeaturedSelected && event.is_admin_event) return true;
 
-        const category = event._category || classifyCategory(event);
+          const category = event._category || classifyCategory(event);
 
-        if (isForYouSelected && event._forYouMatched) return true;
+          if (isForYouSelected && event._forYouMatched) return true;
 
-        if (standardSelectedCategories.length > 0) {
-          return category !== 'For U' && category !== 'Featured' && standardSelectedCategories.includes(category);
-        }
+          if (standardSelectedCategories.length > 0) {
+            return category !== 'For U' && category !== 'Featured' && standardSelectedCategories.includes(category);
+          }
 
-        return false;
-      });
-    } else if (isFeaturedSelected) {
-      // Only Featured is selected — show admin events only
-      next = next.filter((event) => event.is_admin_event);
+          return false;
+        });
+      } else if (isFeaturedSelected) {
+        // Only Featured is selected — show admin events only
+        next = next.filter((event) => event.is_admin_event);
+      }
     }
 
-    if (standardSelectedCategories.includes('Social')) {
+    if (!isAllSelected && standardSelectedCategories.includes('Social')) {
       next = next.filter((event) => {
         const category = event._category || classifyCategory(event);
         return category !== 'Social' || (event._socialMode || getSocialMode(event)) === socialMode;
@@ -1433,7 +1448,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     } else {
       next = [...next].sort((left, right) => {
         // Pin admin events to top when Featured is selected
-        if (isFeaturedSelected) {
+        if (!isAllSelected && isFeaturedSelected) {
           const leftAdmin = left.is_admin_event ? 1 : 0;
           const rightAdmin = right.is_admin_event ? 1 : 0;
           if (leftAdmin !== rightAdmin) return rightAdmin - leftAdmin;
@@ -1474,6 +1489,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
     effectiveProfilePreferences.preferredTime,
     deferredSearchQuery,
     preferredSocialMode,
+    isAllSelected,
     selectedCategories,
     socialMode,
     standardSelectedCategories,
@@ -1616,7 +1632,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const handleDiscoverSeeAll = useCallback(
     (category: Exclude<ExploreCategory, 'Featured'>) => {
       setSearchQuery('');
-      setSelectedCategories(new Set([category]));
+      setSelectedCategories(new Set<ListFilterOption>([category]));
       changeView('list');
     },
     [changeView],
@@ -1632,20 +1648,25 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   }, [navigation, user]);
 
   const toggleCategory = useCallback(
-    (category: ExploreCategory) => {
+    (category: ListFilterOption) => {
+      if (category === 'All') {
+        setSelectedCategories(new Set(DEFAULT_SELECTED_CATEGORIES));
+        return;
+      }
+
       const wasSelected = selectedCategories.has(category);
       setSelectedCategories(() => {
         if (wasSelected && selectedCategories.size <= 1) {
           queueMicrotask(() => {
             toggleCategoryDeselection(category, true);
           });
-          return new Set(DEFAULT_SELECTED_CATEGORIES);
+          return new Set<ListFilterOption>(DEFAULT_SELECTED_CATEGORIES);
         }
 
         queueMicrotask(() => {
           toggleCategoryDeselection(category, false);
         });
-        return new Set([category]);
+        return new Set<ListFilterOption>([category]);
       });
     },
     [selectedCategories, toggleCategoryDeselection],
@@ -2232,11 +2253,11 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={[s.categoryCollapsedRow, { paddingLeft: 20 }]}
                 >
-              {ALL_CATEGORIES.map((category) => (
+              {LIST_FILTER_OPTIONS.map((category) => (
                 <CategoryChip
                   key={category}
                   category={category}
-                  count={categoryCounts[category] || 0}
+                  count={category === 'All' ? allFilterCount : (categoryCounts[category] || 0)}
                   active={selectedCategories.has(category)}
                   onPress={() => toggleCategory(category)}
                 />
@@ -2303,13 +2324,13 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
                       ? 'Add your profile preferences in onboarding or planner settings, then try For U again.'
                       : 'Try another category, turn off major-specific filtering, or clear hidden events.'}
                   </Text>
-                  {(searchQuery || isMajorSpecific || selectedCategories.size !== DEFAULT_SELECTED_CATEGORIES.length) && (
+                  {(searchQuery || isMajorSpecific || !isAllSelected) && (
                     <Pressable
                       style={[s.emptyActionButton, { backgroundColor: COLORS.primary }]}
                       onPress={() => {
                         setSearchQuery('');
                         setMajorSpecific(false);
-                        setSelectedCategories(new Set(DEFAULT_SELECTED_CATEGORIES));
+                        setSelectedCategories(new Set<ListFilterOption>(DEFAULT_SELECTED_CATEGORIES));
                       }}
                     >
                       <Text style={s.emptyActionText}>Clear All Filters</Text>
@@ -2441,35 +2462,41 @@ function CategoryChip({
   dimmed = false,
   onPress,
 }: {
-  category: ExploreCategory;
+  category: ListFilterOption;
   count: number;
   active: boolean;
   dimmed?: boolean;
   onPress: () => void;
 }) {
-  const { accent, chipBg, chipText, icon: Icon } = CATEGORY_META[category];
+  const { COLORS } = useTheme();
+  const isAllChip = category === 'All';
+  const accent = isAllChip ? COLORS.primary : CATEGORY_META[category].accent;
+  const Icon = isAllChip ? null : CATEGORY_META[category].icon;
   return (
     <Pressable
       onPress={onPress}
       style={[
         stylesStatic.categoryChip,
         {
-          backgroundColor: active ? accent : chipBg,
+          backgroundColor: active ? accent : COLORS.background,
           opacity: dimmed ? 0.42 : 1,
-          borderWidth: active ? 2 : 1,
-          borderColor: active ? '#FFFFFF' : `${chipText}26`,
-          shadowOpacity: active ? 0.1 : 0.04,
+          borderColor: active ? accent : `${accent}2E`,
         },
       ]}
     >
-      <Icon size={15} color={active ? '#FFFFFF' : chipText} />
-      <Text style={[stylesStatic.categoryChipText, { color: active ? '#FFFFFF' : chipText }]}>
+      {Icon ? <Icon size={14} color={active ? '#FFFFFF' : COLORS.textTertiary} /> : null}
+      <Text
+        style={[
+          stylesStatic.categoryChipText,
+          { color: active ? '#FFFFFF' : COLORS.textSecondary },
+        ]}
+      >
         {category}
       </Text>
       <Text
         style={[
           stylesStatic.categoryChipCount,
-          { color: active ? 'rgba(255,255,255,0.82)' : `${chipText}CC` },
+          { color: active ? 'rgba(255,255,255,0.82)' : COLORS.textTertiary },
         ]}
       >
         {count}
@@ -2903,9 +2930,10 @@ function SettingsModal({
   setSelectedMajor: (major: MajorOption) => void;
   socialMode: SocialMode;
   setSocialMode: (mode: SocialMode) => void;
-  selectedCategories: Set<ExploreCategory>;
+  selectedCategories: Set<ListFilterOption>;
   dislikedEventIds: string[];
   events: TAMUEvent[];
+  onRestoreCategory: (category?: ExploreCategory) => void;
   scheduledEvents: TAMUEvent[];
   onPress: (event: TAMUEvent) => void;
   onSchedule: (event: TAMUEvent) => void;
@@ -4033,24 +4061,24 @@ const stylesStatic = StyleSheet.create({
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: 6,
     borderRadius: 999,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    borderWidth: 1.25,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderWidth: 1,
     shadowColor: '#000000',
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    shadowOpacity: 0.03,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
   categoryChipText: {
-    fontSize: 13,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '700',
   },
   categoryChipCount: {
-    fontSize: 10,
-    fontWeight: '800',
+    fontSize: 9,
+    fontWeight: '700',
     marginLeft: 2,
   },
   discoverRailCard: {

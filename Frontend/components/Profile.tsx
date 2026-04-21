@@ -1070,6 +1070,9 @@ export function Profile() {
   const renderEnlargedPostModal = () => {
     if (!selectedPing) return null;
     const cat = categoryMeta(selectedPing.category);
+    const pingMetaLine = selectedPing.category
+      ? `${selectedPing.category} • ${formatRelativeAge(selectedPing.createdAt)}`
+      : formatRelativeAge(selectedPing.createdAt);
 
     return (
       <Modal
@@ -1101,7 +1104,7 @@ export function Profile() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.textPrimary }}>{selectedPing.title}</Text>
-                    <Text style={{ fontSize: 13, color: COLORS.textTertiary, fontWeight: '600' }}>{selectedPing.category} • {formatRelativeAge(selectedPing.createdAt)}</Text>
+                    <Text style={{ fontSize: 13, color: COLORS.textTertiary, fontWeight: '600' }}>{pingMetaLine}</Text>
                   </View>
                   <ScalePressable onPress={() => setSelectedPing(null)} style={{ padding: 4 }}>
                     <X size={20} color={COLORS.textTertiary} />
@@ -1956,7 +1959,7 @@ export function Profile() {
         target={activeCommentsPing ? {
           activityId: activeCommentsPing.activityId || activeCommentsPing.id,
           title: activeCommentsPing.title,
-          subtitle: activeCommentsPing.category
+          subtitle: activeCommentsPing.category || undefined
         } : null}
         onClose={() => setActiveCommentsPing(null)}
         onCommentPosted={() => {
