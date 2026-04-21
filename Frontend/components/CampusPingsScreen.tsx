@@ -1411,6 +1411,7 @@ export function CampusPingsScreen() {
             <View style={styles.pingVoteRow}>
               <ScalePressable
                 onPress={() => item.activityId && handleVotePing(item, 1)}
+                pressNudgeY={-9}
                 style={styles.pingIconAction}
               >
                 <ArrowBigUp
@@ -1432,6 +1433,7 @@ export function CampusPingsScreen() {
 
               <ScalePressable
                 onPress={() => item.activityId && handleVotePing(item, -1)}
+                pressNudgeY={9}
                 style={styles.pingIconAction}
               >
                 <ArrowBigDown

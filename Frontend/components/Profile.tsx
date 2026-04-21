@@ -1133,6 +1133,7 @@ export function Profile() {
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                       <ScalePressable 
                         onPress={() => handleVotePing(selectedPing, 1)}
+                        pressNudgeY={-10}
                         style={{ padding: 6 }}
                       >
                         <ArrowBigUp 
@@ -1152,6 +1153,7 @@ export function Profile() {
                       
                       <ScalePressable 
                         onPress={() => handleVotePing(selectedPing, -1)}
+                        pressNudgeY={10}
                         style={{ padding: 6 }}
                       >
                         <ArrowBigDown 
