@@ -18,7 +18,6 @@ import {
   ExternalLink,
   Mail,
   Moon,
-  Palette,
   RotateCw,
   Shield,
   Sun,
@@ -44,8 +43,6 @@ export default function ProfileSettingsScreen({ navigation }: any) {
     COLORS,
     theme,
     setTheme,
-    accentColor,
-    setAccentColor,
   } = useTheme();
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark);
@@ -251,50 +248,26 @@ export default function ProfileSettingsScreen({ navigation }: any) {
         <View style={styles.sectionGroup}>
           <Text style={styles.groupLabel}>App</Text>
           <View style={styles.sectionCard}>
-            <View style={styles.settingsRowStatic}>
-              <View style={[styles.rowIconWrap, { backgroundColor: `${COLORS.primary}15` }]}>
-                <Palette size={18} color={COLORS.primary} />
-              </View>
-              <View style={styles.rowTextWrap}>
-                <Text style={styles.rowTitle}>Theme mode</Text>
-                <Text style={styles.rowSubtitle}>Choose how MaroonLife looks across the app.</Text>
-              </View>
-            </View>
-            <View style={styles.segmentedRow}>
-              {['light', 'dark'].map((mode) => {
-                const selected = theme === mode;
-                return (
-                  <Pressable
-                    key={mode}
-                    onPress={() => setTheme(mode)}
-                    style={[styles.segmentButton, selected && styles.segmentButtonSelected]}
-                  >
-                    {mode === 'light' ? (
-                      <Sun size={14} color={selected ? COLORS.textPrimary : COLORS.textTertiary} />
-                    ) : (
-                      <Moon size={14} color={selected ? COLORS.textPrimary : COLORS.textTertiary} />
-                    )}
-                    <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>
-                      {mode === 'light' ? 'Light' : 'Dark'}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-
-            <View style={styles.rowDivider} />
-
-            <Pressable
-              onPress={() => setAccentColor(COLORS.primary)}
-              style={styles.accentCard}
-            >
-              <View style={[styles.accentSwatch, { backgroundColor: accentColor }]} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.accentTitle}>Custom tint</Text>
-                <Text style={styles.accentValue}>{accentColor?.toUpperCase()}</Text>
-              </View>
-              <ChevronRight size={18} color={COLORS.textTertiary} />
-            </Pressable>
+            {renderSettingRow({
+              icon: theme === 'dark'
+                ? <Moon size={18} color={COLORS.primary} />
+                : <Sun size={18} color={COLORS.primary} />,
+              iconBg: `${COLORS.primary}15`,
+              title: 'Theme',
+              right: (
+                <View style={styles.themeToggleWrap}>
+                  <Text style={styles.themeToggleLabel}>{theme === 'dark' ? 'Dark' : 'Light'}</Text>
+                  <View style={{ transform: [{ scale: 0.82 }] }}>
+                    <Switch
+                      value={theme === 'dark'}
+                      onValueChange={(value) => setTheme(value ? 'dark' : 'light')}
+                      trackColor={{ false: COLORS.border, true: COLORS.primary }}
+                      thumbColor="#FFF"
+                    />
+                  </View>
+                </View>
+              ),
+            })}
 
             <View style={styles.rowDivider} />
 
@@ -518,12 +491,13 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     color: COLORS.textPrimary,
   },
   content: {
-    padding: 16,
-    gap: 20,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    gap: 18,
     paddingBottom: 56,
   },
   sectionGroup: {
-    gap: 10,
+    gap: 6,
   },
   groupLabel: {
     fontSize: 12,
@@ -531,32 +505,32 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     color: COLORS.textTertiary,
     textTransform: 'uppercase',
     letterSpacing: 0.9,
-    marginLeft: 6,
+    marginLeft: 2,
   },
   sectionCard: {
-    backgroundColor: isDark ? 'rgba(18,18,20,0.82)' : 'rgba(255,255,255,0.9)',
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: 16,
-    gap: 12,
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    borderWidth: 0,
+    borderColor: 'transparent',
+    padding: 0,
+    gap: 0,
   },
   settingsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    minHeight: 54,
+    gap: 14,
+    paddingVertical: 10,
   },
   settingsRowStatic: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    minHeight: 46,
+    gap: 14,
+    paddingVertical: 10,
   },
   rowIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -566,7 +540,7 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     minWidth: 0,
   },
   rowTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '700',
     color: COLORS.textPrimary,
     letterSpacing: -0.1,
@@ -577,12 +551,12 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   rowSubtitle: {
     marginTop: 2,
     fontSize: 12,
-    lineHeight: 17,
+    lineHeight: 16,
     color: COLORS.textTertiary,
   },
   rowValue: {
     maxWidth: 120,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: COLORS.textSecondary,
     textAlign: 'right',
@@ -613,65 +587,22 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     color: COLORS.textPrimary,
   },
   inlineLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: COLORS.textTertiary,
-    marginBottom: 10,
+    marginBottom: 8,
     textTransform: 'uppercase',
     letterSpacing: 1,
   },
-  segmentedRow: {
-    flexDirection: 'row',
-    backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.05)',
-    borderRadius: 14,
-    padding: 4,
-    gap: 4,
-  },
-  segmentButton: {
-    flex: 1,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-    gap: 6,
-  },
-  segmentButtonSelected: {
-    backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#FFF',
-  },
-  segmentText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.textTertiary,
-  },
-  segmentTextSelected: {
-    color: COLORS.textPrimary,
-  },
-  accentCard: {
+  themeToggleWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: 12,
+    gap: 10,
   },
-  accentSwatch: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#FFF',
-  },
-  accentTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  accentValue: {
+  themeToggleLabel: {
     fontSize: 12,
-    color: COLORS.textTertiary,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
   },
   settingRow: {
     flexDirection: 'row',
@@ -686,8 +617,9 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     color: COLORS.textSecondary,
   },
   leadTimeBlock: {
-    marginTop: 8,
-    paddingTop: 14,
+    marginTop: 0,
+    marginLeft: 50,
+    paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
@@ -696,20 +628,19 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   },
   leadTimeRow: {
     flexDirection: 'row',
-    backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.05)',
-    borderRadius: 12,
-    padding: 4,
-    gap: 4,
+    gap: 14,
+    flexWrap: 'wrap',
   },
   leadTimeButton: {
-    flex: 1,
-    height: 32,
-    borderRadius: 8,
+    height: 26,
+    paddingHorizontal: 2,
     alignItems: 'center',
     justifyContent: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
   },
   leadTimeButtonSelected: {
-    backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : '#FFF',
+    borderBottomColor: COLORS.textPrimary,
   },
   leadTimeText: {
     fontSize: 12,
@@ -800,19 +731,19 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     color: COLORS.textSecondary,
   },
   logoutButton: {
-    paddingTop: 8,
-    paddingBottom: 4,
-    alignItems: 'center',
+    paddingTop: 6,
+    paddingBottom: 2,
+    alignItems: 'flex-start',
   },
   logoutText: {
     color: isDark ? 'rgba(248,113,113,0.86)' : '#B45353',
     fontWeight: '700',
-    fontSize: 16,
+    fontSize: 15,
   },
   deleteButton: {
-    paddingTop: 4,
+    paddingTop: 0,
     paddingBottom: 16,
-    alignItems: 'center',
+    alignItems: 'flex-start',
   },
   deleteText: {
     color: COLORS.danger || '#EF4444',
