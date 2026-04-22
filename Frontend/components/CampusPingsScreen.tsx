@@ -538,8 +538,6 @@ export function CampusPingsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<FeedFilter>('All');
   const [showScrollTop, setShowScrollTop] = useState(false);
-  const defaultPinnedHeaderHeight = Math.max(insets.top + 66, 84);
-  const [pinnedHeaderHeight, setPinnedHeaderHeight] = useState(defaultPinnedHeaderHeight);
   const pingsListRef = useRef<FlatList<PingCard> | null>(null);
 
   const campusPingsFeedKey = ['campus-pings-feed', API_URL, user?.id] as const;
@@ -1524,14 +1522,8 @@ export function CampusPingsScreen() {
     );
   };
 
-  const pinnedHeader = (
-    <View
-      style={[styles.pinnedHeaderWrap, { paddingTop: Math.max(insets.top + 8, 18) }]}
-      onLayout={(event) => {
-        const nextHeight = event.nativeEvent.layout.height;
-        setPinnedHeaderHeight((current) => (Math.abs(current - nextHeight) > 1 ? nextHeight : current));
-      }}
-    >
+  const header = (
+    <View style={[styles.headerWrap, { paddingTop: Math.max(insets.top + 8, 18) }]}>
       <View style={styles.heroTopRow}>
         <View style={styles.heroTitleRow}>
           <View style={styles.heroBrandBadge}>
@@ -1559,16 +1551,13 @@ export function CampusPingsScreen() {
           </Pressable>
         </TourTarget>
       </View>
+
       {isManuallyRefreshing ? (
         <View style={styles.refreshWheelWrap}>
           <ActivityIndicator size="small" color={COLORS.textPrimary} />
         </View>
       ) : null}
-    </View>
-  );
 
-  const header = (
-    <View style={styles.headerWrap}>
       {featuredCards.length > 0 ? (
         <View style={styles.featuredSection}>
           <ScrollView
@@ -1648,57 +1637,59 @@ export function CampusPingsScreen() {
   return (
     <View style={styles.container}>
       <WallpaperWrapper>
-        {pinnedHeader}
         <FlatList
-        ref={pingsListRef}
-        data={filteredFeed}
-        keyExtractor={(item, index) => item?.id || `ping-idx-${index}`}
-        renderItem={renderPingCard}
-        ListHeaderComponent={header}
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIconRow}>
-              <Pizza size={20} color="#FF7A3E" />
-              <Flame size={20} color="#A462F4" />
-              <Megaphone size={20} color="#FF8B52" />
+          ref={pingsListRef}
+          data={filteredFeed}
+          keyExtractor={(item, index) => item?.id || `ping-idx-${index}`}
+          renderItem={renderPingCard}
+          ListHeaderComponent={header}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconRow}>
+                <Pizza size={20} color="#FF7A3E" />
+                <Flame size={20} color="#A462F4" />
+                <Megaphone size={20} color="#FF8B52" />
+              </View>
+              <Text style={styles.emptyTitle}>No posts yet</Text>
+              <Text style={styles.emptyQuote}>Be the first to post what is happening.</Text>
             </View>
-            <Text style={styles.emptyTitle}>No posts yet</Text>
-            <Text style={styles.emptyQuote}>Be the first to post what is happening.</Text>
-          </View>
-        }
-        ListFooterComponent={
-          isFetchingNextPage ? (
-            <View style={styles.feedFooterLoader}>
-              <ActivityIndicator size="small" color={COLORS.textSecondary} />
-            </View>
-          ) : null
-        }
-        contentContainerStyle={[
-          styles.listContent,
-          { paddingTop: Math.max(pinnedHeaderHeight, defaultPinnedHeaderHeight) },
-        ]}
-        scrollIndicatorInsets={{ top: Math.max(pinnedHeaderHeight, defaultPinnedHeaderHeight) }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor="transparent"
-            colors={['transparent']}
-            progressBackgroundColor="transparent"
-          />
-        }
-        showsVerticalScrollIndicator={false}
-        onScroll={(event) => {
-          const nextShow = event.nativeEvent.contentOffset.y > 360;
-          setShowScrollTop((current) => (current === nextShow ? current : nextShow));
-        }}
-        onEndReached={() => {
-          if (!hasNextPage || isFetchingNextPage) return;
-          fetchNextPage();
-        }}
-        onEndReachedThreshold={0.45}
-        scrollEventThrottle={16}
-      />
+          }
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <View style={styles.feedFooterLoader}>
+                <ActivityIndicator size="small" color={COLORS.textSecondary} />
+              </View>
+            ) : null
+          }
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor="transparent"
+              colors={['transparent']}
+              progressBackgroundColor="transparent"
+            />
+          }
+          showsVerticalScrollIndicator={false}
+          onScroll={(event) => {
+            const nextShow = event.nativeEvent.contentOffset.y > 360;
+            setShowScrollTop((current) => (current === nextShow ? current : nextShow));
+          }}
+          onEndReached={() => {
+            if (!hasNextPage || isFetchingNextPage) return;
+            fetchNextPage();
+          }}
+          onEndReachedThreshold={0.45}
+          scrollEventThrottle={16}
+        />
+        <View
+          pointerEvents="none"
+          style={[
+            styles.topSafeHeader,
+            { height: Math.max(insets.top, 12) },
+          ]}
+        />
 
       {showScrollTop ? (
         <ScalePressable
@@ -2129,7 +2120,7 @@ const getStyles = (theme: any) => {
       alignItems: 'center',
       justifyContent: 'center',
       paddingTop: 5,
-      paddingBottom: 10,
+      paddingBottom: 20,
     },
     listContent: {
       paddingBottom: 120,
@@ -2141,20 +2132,17 @@ const getStyles = (theme: any) => {
       justifyContent: 'center',
     },
     headerWrap: {
+      paddingTop: 18,
       paddingHorizontal: 14,
       paddingBottom: 12,
     },
-    pinnedHeaderWrap: {
+    topSafeHeader: {
       position: 'absolute',
       top: 0,
       left: 0,
       right: 0,
-      zIndex: 20,
-      paddingHorizontal: 14,
-      paddingBottom: 10,
+      zIndex: 25,
       backgroundColor: COLORS.background,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: COLORS.border,
     },
     heroTopRow: {
       flexDirection: 'row',

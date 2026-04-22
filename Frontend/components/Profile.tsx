@@ -71,6 +71,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
 import { Plus } from 'lucide-react-native';
 import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fetchCampusOverview, fetchSchedules, fetchUserProfile } from '../api/client';
 import { SUPPORT_CONTACT_URL } from '../config';
@@ -212,6 +213,7 @@ export function Profile() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const isFocused = useIsFocused();
+  const insets = useSafeAreaInsets();
   const { user } = useUser();
   const { scheduleEvent, saveEvent, scheduledEvents } = useEventStore();
   const queryClient = useQueryClient();
@@ -1975,6 +1977,13 @@ export function Profile() {
 
         <View style={{ height: 120 }} />
       </ScrollView>
+      <View
+        pointerEvents="none"
+        style={[
+          styles.topSafeHeader,
+          { height: Math.max(insets.top, 12) },
+        ]}
+      />
 
       {/* FAB for Creating Ping */}
       {activeTab === 'pings' && (
@@ -2188,6 +2197,14 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
   StyleSheet.create({
     container: {
       flex: 1,
+      backgroundColor: COLORS.background,
+    },
+    topSafeHeader: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 25,
       backgroundColor: COLORS.background,
     },
     contentContainer: {
