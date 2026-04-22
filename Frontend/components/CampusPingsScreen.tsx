@@ -29,7 +29,7 @@ import Animated, {
   SlideOutDown 
 } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -443,6 +443,7 @@ export function CampusPingsScreen() {
   const styles = getStyles(theme);
   const COLORS = theme.COLORS;
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const isDark = theme.theme === 'dark';
   const { activeTargetName, advanceStep } = useTour();
 
@@ -474,6 +475,12 @@ export function CampusPingsScreen() {
     setComposerVisible(false);
     resetComposer();
   }, [resetComposer]);
+
+  useEffect(() => {
+    if (!route.params?.openComposer) return;
+    openComposer();
+    navigation.setParams({ openComposer: false });
+  }, [navigation, openComposer, route.params?.openComposer]);
 
   const {
     data: featuredEvents = [],

@@ -35,7 +35,7 @@ import AnimatedReanimated, {
   interpolate,
   Extrapolate
 } from 'react-native-reanimated';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useUser } from '@clerk/clerk-expo';
 import * as Haptics from 'expo-haptics';
 import {
@@ -47,7 +47,6 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  Filter,
   GraduationCap,
   Heart,
   HeartPulse,
@@ -1071,6 +1070,7 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const { user } = useUser();
   const s = useMemo(() => getStyles(COLORS, isDark, embedded), [COLORS, isDark, embedded]);
   const isGuest = useSessionStore((state) => state.isGuest);
@@ -1122,6 +1122,14 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
   const savedEventIds = persistedSavedEventIds || [];
   const dislikedEventIds = persistedDislikedEventIds || [];
   const receivedInvites = persistedReceivedInvites || [];
+
+  useEffect(() => {
+    const routeEvent = route.params?.openEventDetail;
+    if (!routeEvent) return;
+
+    setDetailEvent(routeEvent);
+    navigation.setParams({ openEventDetail: undefined });
+  }, [navigation, route.params?.openEventDetail]);
 
   const pan = useRef(new Animated.ValueXY()).current;
   const opacity = useRef(new Animated.Value(1)).current;
@@ -1988,11 +1996,6 @@ export function EventsCalendarScreen({ embedded = false }: { embedded?: boolean 
       <View style={s.headerTopRow}>
         <View style={{ flex: 1 }}>
           <Text style={s.pageTitle}>{title}</Text>
-        </View>
-        <View style={s.headerRightActions}>
-          <Pressable style={s.headerIconButton} onPress={() => setSettingsVisible(true)}>
-            <Filter size={24} color={COLORS.textPrimary} strokeWidth={2.2} />
-          </Pressable>
         </View>
       </View>
 

@@ -73,7 +73,7 @@ function TimetableRow({
     if (!prefs.placeNotifications) {
       Alert.alert(
         "Notifications Disabled",
-        "Please enable transit alerts in your notification settings.",
+        "Please enable notifications in your settings.",
       );
       return;
     }

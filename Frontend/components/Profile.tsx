@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Path, Circle as SvgCircle, G } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import {
   BriefcaseBusiness,
   Building2,
@@ -29,6 +29,7 @@ import {
   ExternalLink,
   Flame,
   GraduationCap,
+  Instagram,
   LibraryBig,
   LogIn,
   LogOut,
@@ -43,12 +44,13 @@ import {
   Shield,
   Scale,
   UserX,
-  Bell,
   LifeBuoy,
   CalendarDays,
+  CalendarCheck2,
   X,
   LayoutGrid,
   Bookmark as BookmarkIcon,
+  Heart,
   RotateCw,
   UserCheck,
   Repeat,
@@ -60,19 +62,17 @@ import {
   MessageCircle,
   Settings,
   MoreVertical,
+  Pizza,
+  Megaphone,
   Utensils,
-  Palette,
-  Sun,
-  Moon,
-  Ban,
 } from 'lucide-react-native';
 import { useClerk, useUser } from '@clerk/clerk-expo';
 import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
 import { Plus } from 'lucide-react-native';
-import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 
-import { fetchCampusOverview, fetchUserProfile } from '../api/client';
+import { fetchCampusOverview, fetchSchedules, fetchUserProfile } from '../api/client';
 import { SUPPORT_CONTACT_URL } from '../config';
 import { PARKING_PERMIT_OPTIONS, useAppShellStore } from '../store/appShellStore';
 import { useSessionStore } from '../store/sessionStore';
@@ -98,16 +98,13 @@ import { PingCard, mapActivityToPing } from './CampusPingsScreen';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { StoryViewer } from './pings/StoryViewer';
 import DiningDashboard from './dining/DiningDashboard';
-import { ClubAccessScreen } from './ClubAccessScreen';
-import { Users } from 'lucide-react-native';
-
-
+import { CATEGORY_META, classifyCategory } from './events/EventUtils';
 const PROFILE_TABS = [
   { key: 'pings', icon: LayoutGrid },
+  { key: 'saved', icon: Heart },
+  { key: 'schedules', icon: CalendarCheck2 },
   { key: 'nutrition', icon: Utensils },
-  { key: 'clubs', icon: Users },
   { key: 'resources', icon: LibraryBig },
-  { key: 'personal', icon: Settings },
 ] as const;
 
 type ProfileTabKey = typeof PROFILE_TABS[number]['key'];
@@ -194,11 +191,29 @@ function formatRelativeAge(isoValue: string) {
   return `${diffDays}d ago`;
 }
 
+function splitDisplayName(name: string | null | undefined) {
+  const trimmed = (name || '').trim();
+  if (!trimmed) {
+    return { firstName: '', lastName: '' };
+  }
+
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) {
+    return { firstName: parts[0], lastName: '' };
+  }
+
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' '),
+  };
+}
+
 export function Profile() {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
   const isFocused = useIsFocused();
   const { user } = useUser();
-  const { scheduleEvent, saveEvent } = useEventStore();
+  const { scheduleEvent, saveEvent, scheduledEvents } = useEventStore();
   const queryClient = useQueryClient();
   const { data: userPings = [], isLoading: isLoadingPings } = useQuery({
     queryKey: ['user-pings', API_URL, user?.id],
@@ -252,6 +267,13 @@ export function Profile() {
     enabled: !!user?.id,
   });
 
+  const userDisplayName = useAppShellStore((state) => state.userDisplayName);
+  const userBio = useAppShellStore((state) => state.userBio);
+  const userGender = useAppShellStore((state) => state.userGender);
+  const showPingsOnProfile = useAppShellStore((state) => state.showPingsOnProfile);
+  const setUserProfile = useAppShellStore((state) => state.setUserProfile);
+  const resolvedDisplayName = userDisplayName || user?.fullName || '';
+
   const { viewedStoryIds, addViewedStory } = useAppShellStore();
   const [selectedStoryUserIndex, setSelectedStoryUserIndex] = useState(0);
   const [storyViewerVisible, setStoryViewerVisible] = useState(false);
@@ -263,6 +285,17 @@ export function Profile() {
       const feed = await getPingFeed(100);
       return feed.map((act: any) => mapActivityToPing(act, user, new Map()));
     },
+  });
+
+  const { data: academicSchedules = [], isLoading: isLoadingSchedules } = useQuery({
+    queryKey: ['profile-academic-schedules', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return [];
+      const result = await fetchSchedules(user.id);
+      return Array.isArray(result) ? result : [];
+    },
+    enabled: !!user?.id,
+    staleTime: 1000 * 60 * 5,
   });
 
   const groupedStories = useMemo(() => {
@@ -281,7 +314,7 @@ export function Profile() {
       const allSeen = pings.every(p => viewedStoryIds.includes(p.id));
       return {
         id: uid,
-        name: uid === user?.id ? (userDisplayName || fullName || user?.username || user?.firstName || 'Me') : first.userName,
+        name: uid === user?.id ? (resolvedDisplayName || user?.username || user?.firstName || 'Me') : first.userName,
         image: uid === user?.id ? user?.imageUrl : first.userImage,
         pings: pings.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()),
         hasMedia: pings.some(p => p.imageUrl),
@@ -297,7 +330,7 @@ export function Profile() {
     }
 
     return storyUsers;
-  }, [allFeedPings, user, viewedStoryIds, userDisplayName, fullName]);
+  }, [allFeedPings, user, viewedStoryIds, resolvedDisplayName]);
 
   const activeStoryUser = groupedStories[selectedStoryUserIndex];
 
@@ -333,7 +366,6 @@ export function Profile() {
     }
   }, [selectedStoryUserIndex]);
 
-  const [composerVisible, setComposerVisible] = useState(false);
   const [selectedPing, setSelectedPing] = useState<any | null>(null);
   const { signOut } = useClerk();
   const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
@@ -351,15 +383,27 @@ export function Profile() {
   } = useTheme();
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark, accentColor);
+  const profileTabUnderlineLeft = useSharedValue(0);
+  const profileTabUnderlineWidth = useSharedValue(0);
+  const profileTabUnderlineAnimatedStyle = useAnimatedStyle(() => ({
+    left: profileTabUnderlineLeft.value,
+    width: profileTabUnderlineWidth.value,
+  }));
 
   const [academicStatus, setAcademicStatus] = useState<any | null>(null);
   const [loadingAcademicStatus, setLoadingAcademicStatus] = useState(true);
   const [accentSliderWidth, setAccentSliderWidth] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<ProfileTabKey>('pings');
+  const [profileTabLayouts, setProfileTabLayouts] = useState<Record<ProfileTabKey, { x: number; width: number } | undefined>>({
+    pings: undefined,
+    saved: undefined,
+    schedules: undefined,
+    nutrition: undefined,
+    resources: undefined,
+  });
   const {
     eventNotifications,
-    placeNotifications,
     pingNotifications,
     setNotificationPreference,
     notificationLeadTime,
@@ -377,15 +421,19 @@ export function Profile() {
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [showFriendsModal, setShowFriendsModal] = useState(false);
   const [showSavedPingsModal, setShowSavedPingsModal] = useState(false);
-  
-  const userDisplayName = useAppShellStore((state) => state.userDisplayName);
-  const userBio = useAppShellStore((state) => state.userBio);
-  const userGender = useAppShellStore((state) => state.userGender);
-  const showPingsOnProfile = useAppShellStore((state) => state.showPingsOnProfile);
-  
-  const setUserProfile = useAppShellStore((state) => state.setUserProfile);
+  const [composerVisible, setComposerVisible] = useState(false);
 
-  const [fullName, setFullName] = useState(userDisplayName || user?.fullName || '');
+  useEffect(() => {
+    if (route.params?.openComposer) {
+      setComposerVisible(true);
+      navigation.setParams({ openComposer: undefined });
+    }
+  }, [route.params?.openComposer]);
+
+  const initialNameParts = useMemo(() => splitDisplayName(resolvedDisplayName), [resolvedDisplayName]);
+  const [firstName, setFirstName] = useState(initialNameParts.firstName);
+  const [lastName, setLastName] = useState(initialNameParts.lastName);
+  const editedDisplayName = `${firstName.trim()} ${lastName.trim()}`.trim();
   const [bio, setBio] = useState(userBio);
   const [gender, setGender] = useState(userGender);
 
@@ -399,6 +447,33 @@ export function Profile() {
   const [profileTags, setProfileTags] = useState<string[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [loadingBlocked, setLoadingBlocked] = useState(false);
+
+  useEffect(() => {
+    const targetLayout = profileTabLayouts[activeTab];
+    if (!targetLayout) return;
+
+    profileTabUnderlineLeft.value = withSpring(targetLayout.x, {
+      damping: 26,
+      stiffness: 240,
+      mass: 0.9,
+    });
+    profileTabUnderlineWidth.value = withSpring(targetLayout.width, {
+      damping: 26,
+      stiffness: 240,
+      mass: 0.9,
+    });
+  }, [activeTab, profileTabLayouts, profileTabUnderlineLeft, profileTabUnderlineWidth]);
+
+  useEffect(() => {
+    setFirstName(initialNameParts.firstName);
+    setLastName(initialNameParts.lastName);
+  }, [initialNameParts]);
+
+  useEffect(() => {
+    if (!isFocused || !route.params?.openEditProfile) return;
+    setShowEditProfile(true);
+    navigation.setParams({ openEditProfile: false });
+  }, [isFocused, navigation, route.params?.openEditProfile]);
 
   const handleVotePing = async (ping: any, direction: number) => {
     if (!ping) return;
@@ -492,14 +567,14 @@ export function Profile() {
     try {
       const { updateUserProfile } = await import('../services/socialFeedService');
       await updateUserProfile(user.id, {
-        full_name: fullName,
+        full_name: editedDisplayName,
         bio: bio,
         website: website,
         graduation_year: '', // placeholder if needed
         major: '' // placeholder if needed
       });
 
-      setUserProfile({ bio, website, gender, displayName: fullName });
+      setUserProfile({ bio, website, gender, displayName: editedDisplayName });
       setShowEditProfile(false);
       
       // Refresh user data
@@ -511,7 +586,7 @@ export function Profile() {
       console.warn('Failed to save profile:', err);
       Alert.alert('Sync Error', 'Your changes were saved locally but could not sync with the server.');
       // Still update locally for responsiveness
-      setUserProfile({ bio, website, gender, displayName: fullName });
+      setUserProfile({ bio, website, gender, displayName: editedDisplayName });
       setShowEditProfile(false);
     }
   };
@@ -571,13 +646,6 @@ export function Profile() {
       cancelled = true;
     };
   }, [isFocused, isGuest, user]);
-
-  useEffect(() => {
-    if (activeTab === 'personal' && user) {
-        loadFriends();
-        loadBlockedUsers();
-    }
-  }, [activeTab, isGuest, user]);
 
   useEffect(() => {
     if (!user?.id || !showFriendSearchPanel) {
@@ -692,10 +760,6 @@ export function Profile() {
       setAcademicStatus(data?.academic || null);
       const profile = await fetchUserProfile(user.id);
       setProfileTags(Array.isArray(profile?.tags) ? profile.tags : []);
-      if (activeTab === 'personal') {
-        await loadFriends();
-        await loadBlockedUsers();
-      }
     } catch (error) {
       console.warn('Failed to refresh settings:', error);
     } finally {
@@ -828,7 +892,7 @@ export function Profile() {
               />
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 17, fontWeight: '700', color: COLORS.textPrimary }} numberOfLines={1}>
-                  {userDisplayName || fullName || user?.username || user?.firstName}
+                  {editedDisplayName || resolvedDisplayName || user?.username || user?.firstName}
                 </Text>
                 <Text style={{ color: COLORS.textTertiary, fontSize: 13 }}>{user?.primaryEmailAddress?.emailAddress}</Text>
               </View>
@@ -854,25 +918,47 @@ export function Profile() {
           {/* Personality Card */}
           <View style={[styles.editProfileCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)' }]}>
             <View style={{ gap: 16, width: '100%' }}>
-              <View>
-                <Text style={styles.inputLabel}>DISPLAY NAME</Text>
-                <TextInput
-                  value={fullName}
-                  onChangeText={setFullName}
-                  placeholder="Your Name"
-                  placeholderTextColor={COLORS.textTertiary}
-                  style={[
-                    styles.modalInput, 
-                    { 
-                      backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7', 
-                      borderRadius: 14, 
-                      height: 48, 
-                      paddingHorizontal: 16,
-                      color: COLORS.textPrimary,
-                      fontWeight: '600',
-                    }
-                  ]}
-                />
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>FIRST NAME</Text>
+                  <TextInput
+                    value={firstName}
+                    onChangeText={setFirstName}
+                    placeholder="First name"
+                    placeholderTextColor={COLORS.textTertiary}
+                    style={[
+                      styles.modalInput, 
+                      { 
+                        backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7', 
+                        borderRadius: 14, 
+                        height: 48, 
+                        paddingHorizontal: 16,
+                        color: COLORS.textPrimary,
+                        fontWeight: '600',
+                      }
+                    ]}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.inputLabel}>LAST NAME</Text>
+                  <TextInput
+                    value={lastName}
+                    onChangeText={setLastName}
+                    placeholder="Last name"
+                    placeholderTextColor={COLORS.textTertiary}
+                    style={[
+                      styles.modalInput, 
+                      { 
+                        backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7', 
+                        borderRadius: 14, 
+                        height: 48, 
+                        paddingHorizontal: 16,
+                        color: COLORS.textPrimary,
+                        fontWeight: '600',
+                      }
+                    ]}
+                  />
+                </View>
               </View>
               <View>
                 <Text style={styles.inputLabel}>BIO</Text>
@@ -933,69 +1019,94 @@ export function Profile() {
 
    const renderProfileHeader = () => (
      <View style={styles.modernProfileHeader}>
-       <View style={{ alignItems: 'center', marginBottom: 24, marginTop: 10 }}>
-         <ScalePressable 
-           onPress={() => {
-             if (myStoryData.pings?.length) {
-               Alert.alert(
-                 'Profile Photo',
-                 'Would you like to view your story or update your profile photo?',
-                 [
-                   { text: 'View Story', onPress: handleStoryPress },
-                   { text: 'Update Photo', onPress: handleAvatarPress },
-                   { text: 'Cancel', style: 'cancel' }
-                 ]
-               );
-             } else {
-               handleAvatarPress();
-             }
-           }}
-           style={[
-             styles.modernAvatarWrapper,
-             { width: 110, height: 110, borderRadius: 55, borderWidth: 3, borderColor: COLORS.primary, padding: 5 }
-           ]}
-         >
-           <View style={{ 
-             backgroundColor: COLORS.background, 
-             borderRadius: 50, 
-             padding: 2,
-             width: '100%',
-             height: '100%',
-             overflow: 'hidden'
-           }}>
-             {user?.imageUrl ? (
-               <Image source={{ uri: user.imageUrl }} style={{ width: '100%', height: '100%', borderRadius: 50 }} />
-             ) : (
-               <View style={[styles.modernAvatarPlaceholder, { backgroundColor: COLORS.surfaceElevated }]}>
-                 <Text style={[styles.modernAvatarText, { fontSize: 40 }]}>{user?.firstName?.[0] || 'U'}</Text>
-               </View>
-             )}
-           </View>
-         </ScalePressable>
-         
-         <View style={{ alignItems: 'center', marginTop: 18 }}>
-           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-             <Text style={[styles.modernName, { fontSize: 24, fontWeight: '900' }]}>{userDisplayName || fullName || user?.fullName || 'Aggie User'}</Text>
+       <View style={styles.modernHeaderTopRow}>
+         <View style={styles.profileHeaderTitleWrap}>
+           <View style={styles.profileHeaderTitleRow}>
+             <View style={styles.profileHeaderBadge}>
+               <UserRound size={14} color={COLORS.textPrimary} />
+             </View>
+             <Text style={styles.profileHeaderTitle}>Profile</Text>
            </View>
          </View>
+         <Pressable
+           onPress={() => navigation.navigate('ProfileSettings')}
+           style={styles.profileSettingsButton}
+           accessibilityRole="button"
+           accessibilityLabel="Open settings"
+         >
+           <Settings size={18} color={COLORS.textPrimary} />
+         </Pressable>
        </View>
 
-       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12, paddingHorizontal: 16 }}>
-          <ScalePressable 
-            containerStyle={{ flex: 1 }}
-            style={styles.modernStatCard}
-            onPress={() => setShowFriendsModal(true)}
-          >
-             <Text style={styles.modernStatValue}>{friends.length || 0}</Text>
-             <Text style={styles.modernStatLabel}>Friends</Text>
-          </ScalePressable>
-          <ScalePressable 
-            containerStyle={{ flex: 1 }}
-            style={styles.modernStatCard}
-          >
-             <Text style={styles.modernStatValue}>{userPings.length || 0}</Text>
-             <Text style={styles.modernStatLabel}>Pings</Text>
-          </ScalePressable>
+       <View style={styles.profileIdentityBlock}>
+         <View style={styles.profileTopRow}>
+           <ScalePressable 
+             onPress={() => {
+               if (myStoryData.pings?.length) {
+                 Alert.alert(
+                   'Profile Photo',
+                   'Would you like to view your story or update your profile photo?',
+                   [
+                     { text: 'View Story', onPress: handleStoryPress },
+                     { text: 'Update Photo', onPress: handleAvatarPress },
+                     { text: 'Cancel', style: 'cancel' }
+                   ]
+                 );
+               } else {
+                 handleAvatarPress();
+               }
+             }}
+             style={styles.modernAvatarWrapper}
+           >
+             <View style={styles.modernAvatarInner}>
+               {user?.imageUrl ? (
+                 <Image source={{ uri: user.imageUrl }} style={styles.modernAvatarImage} />
+               ) : (
+                 <View style={[styles.modernAvatarPlaceholder, { backgroundColor: COLORS.surfaceElevated }]}>
+                   <Text style={[styles.modernAvatarText, { fontSize: 40 }]}>{user?.firstName?.[0] || 'U'}</Text>
+                 </View>
+               )}
+             </View>
+             <View style={styles.avatarCameraBadge}>
+               <Camera size={14} color={COLORS.textPrimary} />
+             </View>
+           </ScalePressable>
+
+           <View style={styles.profileStatsRow}>
+             <ScalePressable 
+               containerStyle={styles.profileStatContainer}
+               style={styles.profileStatButton}
+               onPress={() => setShowFriendsModal(true)}
+             >
+               <Text style={styles.modernStatValue}>{friends.length || 0}</Text>
+               <Text style={styles.modernStatLabel}>Friends</Text>
+             </ScalePressable>
+             <ScalePressable 
+               containerStyle={styles.profileStatContainer}
+               style={styles.profileStatButton}
+             >
+               <Text style={styles.modernStatValue}>{userPings.length || 0}</Text>
+               <Text style={styles.modernStatLabel}>Pings</Text>
+             </ScalePressable>
+           </View>
+         </View>
+
+        <View style={styles.profileIdentityText}>
+          <View style={styles.profileNameRow}>
+            <Text style={styles.modernName}>{resolvedDisplayName || user?.fullName || 'Aggie User'}</Text>
+            <Pressable
+              onPress={() => setShowEditProfile(true)}
+              style={styles.profileEditButton}
+            >
+              <Text style={styles.profileEditButtonText}>Edit profile</Text>
+            </Pressable>
+          </View>
+          {bio?.trim() ? (
+            <Text style={styles.modernBio} numberOfLines={3}>
+              {bio.trim()}
+            </Text>
+          ) : null}
+        </View>
        </View>
 
 
@@ -1020,12 +1131,16 @@ export function Profile() {
     if (filteredByToggle.length === 0) {
       return (
         <View style={{ padding: 60, alignItems: 'center', justifyContent: 'center' }}>
-          <LayoutGrid size={48} color={COLORS.textTertiary} style={{ opacity: 0.3, marginBottom: 16 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 18 }}>
+            <Pizza size={20} color="#FF7A3E" />
+            <Flame size={20} color="#A462F4" />
+            <Megaphone size={20} color="#FF8B52" />
+          </View>
           <Text style={{ color: COLORS.textTertiary, fontSize: 16, fontWeight: '600', textAlign: 'center' }}>
             No pings yet.
           </Text>
           <Text style={{ color: COLORS.textTertiary, fontSize: 13, textAlign: 'center', marginTop: 4 }}>
-            Your shared moments will appear here.
+            Make your mark on the world.
           </Text>
         </View>
       );
@@ -1039,22 +1154,21 @@ export function Profile() {
     });
 
     return (
-      <View style={[styles.postsGrid, { gap: 10, paddingHorizontal: 4 }]}>
+      <View style={styles.postsGrid}>
         {sortedPings.map((post, idx) => {
           return (
             <ScalePressable 
               key={post.id || idx} 
-              style={[styles.postSquare, { 
-                width: (Dimensions.get('window').width - 60) / 3,
-                borderRadius: 24,
-                height: ((Dimensions.get('window').width - 60) / 3) * 1.33 
+              style={[styles.postSquare, {
+                width: (Dimensions.get('window').width - 46) / 3,
+                height: ((Dimensions.get('window').width - 46) / 3) * 1.33
               }]}
               onPress={() => setSelectedPing(post)}
             >
               {post.imageUrl ? (
-                <Image source={{ uri: post.imageUrl }} style={[styles.postImage, { borderRadius: 24 }]} />
+                <Image source={{ uri: post.imageUrl }} style={styles.postImage} />
               ) : (
-                <View style={[styles.postFallback, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)', padding: 12, borderRadius: 24 }]}>
+                <View style={styles.postFallback}>
                   <Text style={{ color: COLORS.textPrimary, fontSize: 12, fontWeight: '700', lineHeight: 16 }} numberOfLines={5}>
                     {post.title}
                   </Text>
@@ -1457,26 +1571,184 @@ export function Profile() {
     </Modal>
   );
 
-  const renderResourcesTab = () => (
-    <View style={{ gap: 16 }}>
-      <Text style={[styles.sectionHeading, { marginLeft: 4 }]}>Academic & Campus</Text>
+  const formatEventDate = (value: string | number | null | undefined) => {
+    if (!value) return 'TBA';
+    const date = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
+    if (Number.isNaN(date.getTime())) return 'TBA';
+    return date.toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  };
 
-      <View style={styles.heroCard}>
+  const formatTermName = (code: string) => {
+    if (!code) return 'Unknown term';
+    const year = code.substring(0, 4);
+    const suffix = code.substring(4);
+    const seasonMap: Record<string, string> = {
+      '11': 'Spring',
+      '21': 'Summer',
+      '22': 'Summer I',
+      '23': 'Summer II',
+      '31': 'Fall',
+      '32': 'Fall (2)',
+      '41': 'Winter',
+    };
+    const season = seasonMap[suffix] || `Term ${suffix}`;
+    return `${season} ${year}`;
+  };
+
+  const renderSavedEventsTab = () => {
+    if (!scheduledEvents.length) {
+      return (
+        <View style={styles.emptyTabState}>
+          <Heart size={34} color={COLORS.textTertiary} strokeWidth={1.8} />
+          <Text style={styles.emptyTabTitle}>No saved events yet</Text>
+          <Text style={styles.emptyTabSubtitle}>Events you add to your calendar will show up here.</Text>
+          <Pressable style={styles.emptyTabButton} onPress={() => navigation.navigate('EventsCalendar')}>
+            <Text style={styles.emptyTabButtonText}>Browse Events</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.resourceList}>
+        {scheduledEvents.map((event) => {
+          const eventCategory = classifyCategory(event as any);
+          const eventMeta = CATEGORY_META[eventCategory];
+          const EventIcon = eventMeta.icon;
+
+          return (
+            <Pressable
+              key={event.id}
+              style={styles.resourceListRow}
+              onPress={() =>
+                navigation.navigate('EventsCalendar', {
+                  openEventDetail: event,
+                })
+              }
+            >
+              <View style={[styles.resourceListIconWrap, { backgroundColor: eventMeta.cardTint }]}>
+                <EventIcon size={19} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.resourceListTitle} numberOfLines={2}>{event.title}</Text>
+                <Text style={styles.resourceListMeta} numberOfLines={1}>
+                  {formatEventDate(event.date_iso || event.date_ts)}{event.location ? ` • ${event.location}` : ''}
+                </Text>
+              </View>
+              <ChevronRight size={17} color={COLORS.textTertiary} />
+            </Pressable>
+          );
+        })}
+      </View>
+    );
+  };
+
+  const renderSchedulesTab = () => {
+    if (isLoadingSchedules) {
+      return (
+        <View style={styles.emptyTabState}>
+          <ActivityIndicator color={COLORS.primary} />
+          <Text style={styles.emptyTabTitle}>Loading schedules...</Text>
+        </View>
+      );
+    }
+
+    if (!academicSchedules.length) {
+      return (
+        <View style={styles.emptyTabState}>
+          <CalendarCheck2 size={34} color={COLORS.textTertiary} strokeWidth={1.8} />
+          <Text style={styles.emptyTabTitle}>No schedules yet</Text>
+          <Text style={styles.emptyTabSubtitle}>Create or edit an academic schedule builder plan and it will show up here.</Text>
+          <Pressable style={styles.emptyTabButton} onPress={() => navigation.navigate('ScheduleList')}>
+            <Text style={styles.emptyTabButtonText}>Open Schedules</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.tabSection}>
+        {academicSchedules.map((schedule: any) => (
+          <Pressable
+            key={schedule.schedule_id}
+            style={styles.listCard}
+            onPress={() =>
+              navigation.navigate('ScheduleDetail', {
+                scheduleId: schedule.schedule_id,
+                scheduleObj: schedule,
+              })
+            }
+          >
+            <View style={styles.listCardIconWrap}>
+              <CalendarDays size={18} color={COLORS.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.listCardTitle} numberOfLines={2}>{schedule.name}</Text>
+              <Text style={styles.listCardMeta} numberOfLines={1}>
+                {formatTermName(schedule.term_code)} • {schedule.section_ids?.length || 0} classes
+              </Text>
+            </View>
+            <ChevronRight size={18} color={COLORS.textTertiary} />
+          </Pressable>
+        ))}
+      </View>
+    );
+  };
+
+  const renderResourcesTab = () => (
+    <View style={styles.resourceSections}>
+      <View style={styles.resourceList}>
         {[
           {
-            key: 'schedules',
-            title: 'Manage Schedules',
-            icon: CalendarDays,
-            iconColor: COLORS.primary,
-            iconBg: COLORS.primary + '15',
-            action: () => navigation.navigate('ScheduleList'),
+            key: 'instagram',
+            title: 'Follow our Instagram!',
+            icon: Instagram,
+            iconColor: '#E1306C',
+            iconBg: '#E1306C15',
+            action: () => openExternal('https://www.instagram.com/tamumaroonlife/'),
           },
+          {
+            key: 'support',
+            title: 'Support',
+            subtitle: 'Get help or contact us with feedback.',
+            icon: LifeBuoy,
+            iconColor: '#0EA5E9',
+            iconBg: '#0EA5E915',
+            action: () => openExternal(SUPPORT_CONTACT_URL),
+          },
+        ].map((item) => (
+          <Pressable
+            key={item.key}
+            onPress={() => item.action()}
+            style={styles.resourceListRow}
+          >
+            <View style={[styles.resourceListIconWrap, { backgroundColor: item.iconBg }]}>
+              <item.icon size={19} color={item.iconColor} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.resourceListTitle}>{item.title}</Text>
+              {item.subtitle ? <Text style={styles.resourceListMeta}>{item.subtitle}</Text> : null}
+            </View>
+            <ChevronRight size={17} color={COLORS.textTertiary} />
+          </Pressable>
+        ))}
+      </View>
+
+      <View style={styles.resourceList}>
+        <Text style={styles.resourceListHeading}>Academic & Campus</Text>
+
+        {[
           {
             key: 'grades',
             title: 'Grades & Distributions',
             icon: GraduationCap,
             iconColor: '#10B981',
-            iconBg: '#10B981' + '15',
+            iconBg: '#10B98115',
             action: () => navigation.navigate('GradesScreen'),
           },
           {
@@ -1484,7 +1756,7 @@ export function Profile() {
             title: 'Library Services',
             icon: LibraryBig,
             iconColor: '#00CFC7',
-            iconBg: '#00CFC7' + '15',
+            iconBg: '#00CFC715',
             action: () => navigation.navigate('AnnexHub'),
           },
           {
@@ -1502,23 +1774,21 @@ export function Profile() {
             iconColor: '#F59E0B',
             iconBg: 'rgba(245, 158, 11, 0.15)',
             action: () => openExternal('https://eacct-tamu-sp.transactcampus.com/eAccounts/BoardTransaction.aspx'),
-          }
-        ].map((item, idx, arr) => (
-          <React.Fragment key={item.key}>
-            <Pressable 
-              onPress={() => item.action()}
-              style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14, gap: 16 }}
-            >
-              <View style={[styles.toolIconBg, { backgroundColor: item.iconBg, width: 44, height: 44 }]}>
-                <item.icon size={22} color={item.iconColor} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: COLORS.textPrimary }}>{item.title}</Text>
-              </View>
-              <ChevronRight size={18} color={COLORS.textTertiary} />
-            </Pressable>
-            {idx < arr.length - 1 && <View style={{ height: 1, backgroundColor: COLORS.border, marginLeft: 60 }} />}
-          </React.Fragment>
+          },
+        ].map((item) => (
+          <Pressable
+            key={item.key}
+            onPress={() => item.action()}
+            style={styles.resourceListRow}
+          >
+            <View style={[styles.resourceListIconWrap, { backgroundColor: item.iconBg }]}>
+              <item.icon size={19} color={item.iconColor} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.resourceListTitle}>{item.title}</Text>
+            </View>
+            <ChevronRight size={17} color={COLORS.textTertiary} />
+          </Pressable>
         ))}
       </View>
     </View>
@@ -1634,6 +1904,15 @@ export function Profile() {
               {renderProfileHeader()}
               
               <View style={styles.profileTabsWrapper}>
+                {profileTabLayouts[activeTab] ? (
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.profileTabUnderline,
+                      profileTabUnderlineAnimatedStyle,
+                    ]}
+                  />
+                ) : null}
                 {PROFILE_TABS.map((tab) => {
                   const Icon = tab.icon;
                   const isActive = activeTab === tab.key;
@@ -1642,6 +1921,19 @@ export function Profile() {
                       key={tab.key}
                       onPress={() => setActiveTab(tab.key)}
                       style={[styles.profileTabButton, isActive && styles.profileTabButtonActive]}
+                      onLayout={(event) => {
+                        const { x, width } = event.nativeEvent.layout;
+                        setProfileTabLayouts((current) => {
+                          const previous = current[tab.key];
+                          if (previous && previous.x === x && previous.width === width) {
+                            return current;
+                          }
+                          return {
+                            ...current,
+                            [tab.key]: { x, width },
+                          };
+                        });
+                      }}
                     >
                       <Icon size={24} color={isActive ? COLORS.textPrimary : COLORS.textTertiary} />
                     </Pressable>
@@ -1650,16 +1942,26 @@ export function Profile() {
               </View>
             </View>
 
-            <View style={{ flex: 1 }}>
+            <Animated.View
+              key={activeTab}
+              entering={FadeIn.duration(180)}
+              exiting={FadeOut.duration(120)}
+              style={{ flex: 1 }}
+            >
               {activeTab === 'pings' && renderContentGrid(userPings)}
               {activeTab === 'nutrition' && (
                 <View style={{ flex: 1, backgroundColor: COLORS.background }}>
                    <DiningDashboard navigation={navigation} />
                 </View>
               )}
-              {activeTab === 'clubs' && (
-                <View style={{ flex: 1, backgroundColor: COLORS.background }}>
-                  <ClubAccessScreen navigation={navigation} />
+              {activeTab === 'saved' && (
+                <View style={{ padding: 16 }}>
+                  {renderSavedEventsTab()}
+                </View>
+              )}
+              {activeTab === 'schedules' && (
+                <View style={{ padding: 16 }}>
+                  {renderSchedulesTab()}
                 </View>
               )}
               {activeTab === 'resources' && (
@@ -1667,246 +1969,7 @@ export function Profile() {
                   {renderResourcesTab()}
                 </View>
               )}
-              {activeTab === 'personal' && (
-                <View style={{ padding: 16, gap: 24, paddingBottom: 60 }}>
-                  
-                  {/* Visuals Group */}
-                  <View style={styles.heroCard}>
-                    <View style={styles.heroHeader}>
-                      <View style={[styles.toolIconBg, { backgroundColor: COLORS.primary + '15' }]}>
-                        <Palette size={20} color={COLORS.primary} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.eyebrow}>Visuals</Text>
-                        <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.textPrimary }}>Appearance</Text>
-                      </View>
-                    </View>
-
-                    <View style={{ gap: 16 }}>
-                      {/* Theme Selector */}
-                      <View>
-                        <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textTertiary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>Theme Mode</Text>
-                        <View style={{ flexDirection: 'row', backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.05)', borderRadius: 14, padding: 4 }}>
-                          {['light', 'dark'].map((mode) => {
-                            const selected = theme === mode;
-                            return (
-                              <Pressable
-                                key={mode}
-                                onPress={() => setTheme(mode)}
-                                style={{
-                                  flex: 1,
-                                  height: 36,
-                                  borderRadius: 10,
-                                  backgroundColor: selected ? (isDark ? 'rgba(255,255,255,0.1)' : '#FFF') : 'transparent',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  flexDirection: 'row',
-                                  gap: 6,
-                                  ...(selected && { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 1, elevation: 1 })
-                                }}
-                              >
-                                {mode === 'light' ? <Sun size={14} color={selected ? COLORS.primary : COLORS.textTertiary} /> : <Moon size={14} color={selected ? COLORS.primary : COLORS.textTertiary} />}
-                                <Text style={{ fontSize: 13, fontWeight: '700', color: selected ? COLORS.textPrimary : COLORS.textTertiary }}>
-                                  {mode === 'light' ? 'Light' : 'Dark'}
-                                </Text>
-                              </Pressable>
-                            );
-                          })}
-                        </View>
-                      </View>
-
-                      {/* Accent Picker */}
-                      <View>
-                         <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textTertiary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>Accent Color</Text>
-                         <Pressable 
-                           onPress={() => setShowColorPicker(true)}
-                           style={{ 
-                             flexDirection: 'row', 
-                             alignItems: 'center', 
-                             backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
-                             borderRadius: 16,
-                             padding: 12,
-                             borderWidth: 1,
-                             borderColor: COLORS.border
-                           }}
-                         >
-                           <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: accentColor, marginRight: 12, borderWidth: 2, borderColor: '#FFF' }} />
-                           <View style={{ flex: 1 }}>
-                             <Text style={{ fontSize: 15, fontWeight: '700', color: COLORS.textPrimary }}>Custom Tint</Text>
-                             <Text style={{ fontSize: 12, color: COLORS.textTertiary }}>{accentColor?.toUpperCase()}</Text>
-                           </View>
-                           <View style={{ backgroundColor: COLORS.primary + '15', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }}>
-                             <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.primary }}>Change</Text>
-                           </View>
-                         </Pressable>
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* Notifications Group */}
-                  <View style={styles.heroCard}>
-                    <View style={styles.heroHeader}>
-                      <View style={[styles.toolIconBg, { backgroundColor: '#F59E0B' + '15' }]}>
-                        <Bell size={20} color="#F59E0B" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.eyebrow}>Experience</Text>
-                        <Text style={{ fontSize: 18, fontWeight: '900', color: COLORS.textPrimary }}>Notifications</Text>
-                      </View>
-                      <Switch 
-                        value={eventNotifications && placeNotifications && pingNotifications}
-                        onValueChange={(v) => {
-                          setNotificationPreference('event', v);
-                          setNotificationPreference('place', v);
-                          setNotificationPreference('ping', v);
-                        }}
-                        trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                        thumbColor="#FFF"
-                      />
-                    </View>
-
-                    <View style={{ gap: 4 }}>
-                      {[
-                        { label: 'Event Reminders', val: eventNotifications, key: 'event' as const },
-                        { label: 'Transit Alerts', val: placeNotifications, key: 'place' as const },
-                        { label: 'Social Pings', val: pingNotifications, key: 'ping' as const },
-                      ].map((item, idx) => (
-                        <View key={item.key} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}>
-                           <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: COLORS.textSecondary }}>{item.label}</Text>
-                           <Switch 
-                             value={item.val}
-                             onValueChange={(v) => setNotificationPreference(item.key, v)}
-                             scaleX={0.8} scaleY={0.8}
-                             trackColor={{ false: COLORS.border, true: COLORS.primary }}
-                             thumbColor="#FFF"
-                           />
-                        </View>
-                      ))}
-
-                      <View style={{ marginTop: 12, paddingTop: 16, borderTopWidth: 1, borderTopColor: COLORS.border }}>
-                         <Text style={{ fontSize: 13, fontWeight: '700', color: COLORS.textTertiary, marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Lead Time</Text>
-                         <View style={{ flexDirection: 'row', backgroundColor: isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4 }}>
-                            {[
-                              { id: 5, label: '5m' },
-                              { id: 10, label: '10m' },
-                              { id: 15, label: '15m' },
-                              { id: 30, label: '30m' },
-                              { id: 60, label: '1h' },
-                            ].map((opt) => {
-                              const selected = notificationLeadTime === opt.id;
-                              return (
-                                <Pressable
-                                  key={opt.id}
-                                  onPress={() => setNotificationLeadTime(opt.id)}
-                                  style={{
-                                    flex: 1,
-                                    height: 32,
-                                    borderRadius: 8,
-                                    backgroundColor: selected ? (isDark ? 'rgba(255,255,255,0.1)' : '#FFF') : 'transparent',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    ...(selected && { shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 1, elevation: 1 })
-                                  }}
-                                >
-                                  <Text style={{ fontSize: 12, fontWeight: '700', color: selected ? COLORS.textPrimary : COLORS.textTertiary }}>{opt.label}</Text>
-                                </Pressable>
-                              );
-                            })}
-                         </View>
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* Settings Utility Section */}
-                  <View style={{ gap: 12 }}>
-                    <Text style={[styles.sectionHeading, { marginLeft: 4 }]}>Account & Activity</Text>
-                    
-                    <View style={styles.heroCard}>
-                      <Pressable onPress={() => setShowSavedPingsModal(true)}>
-                        <View style={styles.modernSettingRow}>
-                          <View style={[styles.toolIconBg, { backgroundColor: '#3B82F6' + '15' }]}>
-                            <BookmarkIcon size={20} color="#3B82F6" />
-                          </View>
-                          <Text style={styles.modernSettingLabel}>Saved Pings</Text>
-                          <ChevronRight size={20} color={COLORS.textTertiary} />
-                        </View>
-                      </Pressable>
-
-                      <View style={{ height: 1, backgroundColor: COLORS.border }} />
-
-                      <Pressable onPress={() => setShowBlockedPanel(prev => !prev)}>
-                        <View style={styles.modernSettingRow}>
-                          <View style={[styles.toolIconBg, { backgroundColor: '#EF4444' + '15' }]}>
-                            <Ban size={20} color="#EF4444" />
-                          </View>
-                          <Text style={styles.modernSettingLabel}>Blocked Users</Text>
-                          <ChevronRight 
-                            size={20} 
-                            color={COLORS.textTertiary} 
-                            style={{ transform: [{ rotate: showBlockedPanel ? '90deg' : '0deg' }] }}
-                          />
-                        </View>
-                      </Pressable>
-
-                      {showBlockedPanel && (
-                        <View style={{ paddingBottom: 12 }}>
-                          {renderBlockedTab && renderBlockedTab(true, true)}
-                        </View>
-                      )}
-
-                      <View style={{ height: 1, backgroundColor: COLORS.border }} />
-
-                      <Pressable
-                        onPress={() => {
-                          useAppShellStore.setState({
-                            isNameOnboardingCompleted: false,
-                            showNameOnboarding: true,
-                            isEventPreferencesCompleted: false,
-                            showEventPreferencesOnboarding: true,
-                          });
-                        }}
-                      >
-                        <View style={styles.modernSettingRow}>
-                          <View style={[styles.toolIconBg, { backgroundColor: '#2F80ED' + '15' }]}>
-                            <Sparkles size={20} color="#2F80ED" />
-                          </View>
-                          <Text style={styles.modernSettingLabel}>Retake Onboarding</Text>
-                          <ChevronRight size={20} color={COLORS.textTertiary} />
-                        </View>
-                      </Pressable>
-                    </View>
-
-                    <View style={styles.heroCard}>
-                       <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }} onPress={() => openExternal('https://www.termsfeed.com/live/2fc33440-a5a9-4943-a1da-d3c5d5abc1e5')}>
-                          <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: COLORS.textSecondary }}>Terms of Service</Text>
-                          <ExternalLink size={16} color={COLORS.textTertiary} />
-                       </Pressable>
-                       <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: 8 }} />
-                       <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }} onPress={() => openExternal('https://www.termsfeed.com/live/4889a318-ae78-48e2-975d-2eddfe043866')}>
-                          <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: COLORS.textSecondary }}>Privacy Policy</Text>
-                          <ExternalLink size={16} color={COLORS.textTertiary} />
-                       </Pressable>
-                       <View style={{ height: 1, backgroundColor: COLORS.border, marginVertical: 8 }} />
-                       <Pressable style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }} onPress={() => openExternal(SUPPORT_CONTACT_URL)}>
-                          <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: COLORS.textSecondary }}>Support Help Center</Text>
-                          <LifeBuoy size={16} color={COLORS.textTertiary} />
-                       </Pressable>
-                    </View>
-                  </View>
-                
-                <Pressable onPress={handleLogout} style={{ marginTop: 20, padding: 16, alignItems: 'center' }}>
-                  <Text style={{ color: COLORS.textTertiary, fontWeight: '700' }}>Log Out</Text>
-                </Pressable>
-
-                <Pressable 
-                  onPress={handleDeleteAccount}
-                  style={{ marginTop: 4, padding: 16, alignItems: 'center' }}
-                >
-                  <Text style={{ color: COLORS.danger, fontWeight: '700' }}>Delete Account</Text>
-                </Pressable>
-              </View>
-            )}
-            </View>
+            </Animated.View>
           </>
         )}
 
@@ -1950,6 +2013,7 @@ export function Profile() {
         />
       )}
 
+      {renderEditProfileModal()}
       {renderFriendsModal()}
       {renderSavedPingsModal()}
       {renderEnlargedPostModal()}
@@ -1963,6 +2027,15 @@ export function Profile() {
         } : null}
         onClose={() => setActiveCommentsPing(null)}
         onCommentPosted={() => {
+          queryClient.invalidateQueries({ queryKey: ['user-pings'] });
+          queryClient.invalidateQueries({ queryKey: ['campus-pings'] });
+        }}
+      />
+      <PingComposerModal
+        visible={composerVisible}
+        onClose={() => setComposerVisible(false)}
+        user={user}
+        onSuccess={() => {
           queryClient.invalidateQueries({ queryKey: ['user-pings'] });
           queryClient.invalidateQueries({ queryKey: ['campus-pings'] });
         }}
@@ -2106,18 +2179,6 @@ export function Profile() {
         </View>
       </Modal>
 
-      <PingComposerModal
-        visible={composerVisible}
-        onClose={() => setComposerVisible(false)}
-        user={user}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: ['campus-pings', API_URL] });
-          queryClient.invalidateQueries({ queryKey: ['user-pings', API_URL, user?.id] });
-          setTimeout(() => {
-            queryClient.refetchQueries({ queryKey: ['user-pings', API_URL, user?.id] });
-          }, 1500);
-        }}
-      />
     </WallpaperWrapper>
   </View>
 );
@@ -2136,7 +2197,68 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
     },
     // Modern Profile Header Styles
     modernProfileHeader: {
-      marginBottom: 0,
+      marginBottom: 2,
+      paddingBottom: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.border,
+    },
+    modernHeaderTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 14,
+    },
+    profileHeaderTitleWrap: {
+      flex: 1,
+      alignItems: 'flex-start',
+      paddingLeft: 2,
+    },
+    profileHeaderTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    profileHeaderBadge: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: COLORS.surfaceElevated,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+    },
+    profileHeaderTitle: {
+      fontSize: 26,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+      letterSpacing: -0.8,
+    },
+    modernHeaderSpacer: {
+      width: 38,
+      height: 38,
+    },
+    profileSettingsButton: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    profileIdentityBlock: {
+      marginTop: 0,
+      marginBottom: 14,
+      paddingHorizontal: 2,
+      gap: 10,
+    },
+    profileTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+      gap: 28,
     },
     headerTopRow: {
       flexDirection: 'row',
@@ -2145,24 +2267,51 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       marginBottom: 16,
     },
     modernAvatarWrapper: {
-      width: 86,
-      height: 86,
-      borderRadius: 43,
-      borderWidth: 1.5,
-      borderColor: COLORS.textPrimary,
-      padding: 2,
+      width: 100,
+      height: 100,
+      borderRadius: 50,
+      padding: 0,
+      backgroundColor: 'transparent',
+      position: 'relative',
+    },
+    modernAvatarInner: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 50,
+      overflow: 'hidden',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+      borderWidth: 2,
+      borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(0,0,0,0.12)',
     },
     modernAvatarImage: {
       width: '100%',
       height: '100%',
-      borderRadius: 40,
+      borderRadius: 50,
     },
     modernAvatarPlaceholder: {
       width: '100%',
       height: '100%',
-      borderRadius: 40,
+      borderRadius: 50,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    avatarCameraBadge: {
+      position: 'absolute',
+      right: -2,
+      bottom: -2,
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      borderWidth: 2,
+      borderColor: COLORS.background,
+      backgroundColor: isDark ? 'rgba(22,22,24,0.96)' : '#FFFFFF',
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.12,
+      shadowRadius: 6,
+      elevation: 3,
     },
     modernAvatarText: {
       fontSize: 32,
@@ -2175,39 +2324,83 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       justifyContent: 'space-around',
       marginLeft: 20,
     },
-    modernStatCard: {
-      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
-      borderRadius: 20,
-      paddingVertical: 10,
+    profileIdentityText: {
+      gap: 3,
+      paddingLeft: 0,
+    },
+    profileNameRow: {
+      flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    profileEditButton: {
+      alignSelf: 'flex-start',
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
+    },
+    profileEditButtonText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
+      letterSpacing: -0.1,
+    },
+    profileStatsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+      gap: 28,
+      flexShrink: 1,
+      paddingTop: 0,
+      marginLeft: 6,
+    },
+    profileStatContainer: {
+      flex: 0,
+    },
+    profileStatButton: {
+      alignItems: 'center',
+      justifyContent: 'flex-start',
+      minWidth: 62,
+      paddingVertical: 0,
+      gap: 2,
+      backgroundColor: 'transparent',
+    },
+    profileStatDivider: {
+      width: 1,
+      alignSelf: 'stretch',
+      backgroundColor: COLORS.border,
+      marginHorizontal: 2,
     },
     modernStatValue: {
       fontSize: 17,
-      fontWeight: '900',
+      fontWeight: '700',
       color: COLORS.textPrimary,
+      letterSpacing: -0.1,
     },
     modernStatLabel: {
-      fontSize: 10,
-      fontWeight: '800',
+      fontSize: 11,
+      fontWeight: '500',
       color: COLORS.textTertiary,
-      marginTop: 2,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      letterSpacing: 0.1,
     },
     bioSection: {
       marginBottom: 16,
     },
     modernName: {
-      fontSize: 16,
-      fontWeight: '900',
+      fontSize: 19,
+      fontWeight: '600',
       color: COLORS.textPrimary,
+      letterSpacing: -0.1,
+      flex: 1,
     },
     modernBio: {
-      fontSize: 14,
-      color: COLORS.textPrimary,
-      marginTop: 2,
-      lineHeight: 20,
+      fontSize: 13,
+      color: COLORS.textSecondary,
+      lineHeight: 19,
     },
     headerActionsRow: {
       flexDirection: 'row',
@@ -2256,15 +2449,18 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
     postsGrid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 1,
-      paddingHorizontal: 0,
+      gap: 6,
+      width: '100%',
+      paddingHorizontal: 16,
+      paddingTop: 12,
+      paddingBottom: 8,
     },
     postSquare: {
-      width: '33.33%',
       aspectRatio: 3 / 4,
-      backgroundColor: COLORS.surfaceElevated,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
       overflow: 'hidden',
       position: 'relative',
+      borderRadius: 18,
     },
     pinOverlay: {
       position: 'absolute',
@@ -2285,12 +2481,15 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
     postImage: {
       width: '100%',
       height: '100%',
+      borderRadius: 18,
     },
     postFallback: {
       flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: 4,
+      justifyContent: 'flex-end',
+      paddingHorizontal: 12,
+      paddingVertical: 14,
+      borderRadius: 18,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)',
     },
     // Modern Settings Row
     settingsSection: {
@@ -2730,19 +2929,194 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
     // Redesign Styles
     profileTabsWrapper: {
       flexDirection: 'row',
-      borderTopWidth: 1,
-      borderTopColor: COLORS.border,
-      marginTop: 4,
+      gap: 0,
+      marginTop: 10,
+      marginBottom: 2,
+      paddingHorizontal: 0,
+      width: '100%',
+      position: 'relative',
     },
     profileTabButton: {
       flex: 1,
       alignItems: 'center',
-      paddingVertical: 12,
-      borderBottomWidth: 2,
-      borderBottomColor: 'transparent',
+      justifyContent: 'center',
+      paddingVertical: 14,
     },
     profileTabButtonActive: {
-      borderBottomColor: COLORS.textPrimary,
+      backgroundColor: 'transparent',
+    },
+    profileTabUnderline: {
+      position: 'absolute',
+      bottom: 0,
+      height: 3,
+      borderRadius: 999,
+      backgroundColor: COLORS.primary,
+    },
+    tabSection: {
+      gap: 10,
+      paddingBottom: 20,
+    },
+    listCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      padding: 14,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+    },
+    listCardIconWrap: {
+      width: 38,
+      height: 38,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.7)',
+    },
+    listCardTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
+      marginBottom: 3,
+    },
+    listCardMeta: {
+      fontSize: 12,
+      color: COLORS.textTertiary,
+    },
+    resourceList: {
+      gap: 2,
+      paddingTop: 2,
+      paddingBottom: 12,
+    },
+    resourceSections: {
+      gap: 18,
+      paddingTop: 2,
+      paddingBottom: 12,
+    },
+    resourceListHeading: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+      marginBottom: 6,
+    },
+    resourceListRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      minHeight: 56,
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.border,
+    },
+    resourceListIconWrap: {
+      width: 36,
+      height: 36,
+      borderRadius: 11,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    resourceListTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
+      letterSpacing: -0.1,
+    },
+    resourceListMeta: {
+      fontSize: 12,
+      color: COLORS.textTertiary,
+      marginTop: 2,
+    },
+    emptyTabState: {
+      minHeight: 280,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 28,
+      gap: 10,
+    },
+    emptyTabTitle: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+      textAlign: 'center',
+    },
+    emptyTabSubtitle: {
+      fontSize: 14,
+      lineHeight: 20,
+      color: COLORS.textSecondary,
+      textAlign: 'center',
+      maxWidth: 280,
+    },
+    emptyTabButton: {
+      marginTop: 8,
+      borderRadius: 999,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: COLORS.primary,
+    },
+    emptyTabButtonText: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: '#FFF',
+    },
+    settingsSheet: {
+      width: '100%',
+      maxHeight: '88%',
+      marginTop: 'auto',
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      borderWidth: 1,
+      borderColor: COLORS.border,
+      overflow: 'hidden',
+    },
+    settingsSheetHandleWrap: {
+      alignItems: 'center',
+      paddingTop: 10,
+      paddingBottom: 4,
+    },
+    settingsSheetHandle: {
+      width: 42,
+      height: 5,
+      borderRadius: 999,
+      backgroundColor: COLORS.border,
+    },
+    settingsSheetHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 18,
+      paddingTop: 6,
+      paddingBottom: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: COLORS.border,
+    },
+    settingsSheetTitle: {
+      fontSize: 17,
+      fontWeight: '800',
+      color: COLORS.textPrimary,
+    },
+    settingsSheetClose: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)',
+    },
+    settingsSheetContent: {
+      padding: 16,
+      gap: 20,
+      paddingBottom: 44,
+    },
+    profileTabText: {
+      color: COLORS.textSecondary,
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    profileTabTextActive: {
+      color: COLORS.textPrimary,
+      fontWeight: '800',
     },
     modalHeader: {
       flexDirection: 'row',

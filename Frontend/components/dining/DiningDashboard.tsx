@@ -130,8 +130,8 @@ export default function DiningDashboard({ navigation }: any) {
               );
             })}
           </View>
-          
-          <Pressable 
+
+          <Pressable
             onPress={openFullMenu}
             style={({ pressed }) => ({
               backgroundColor: COLORS.primary,
@@ -160,23 +160,23 @@ export default function DiningDashboard({ navigation }: any) {
         {/* TRACKER */}
         <View style={{ gap: 20 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-             <View>
-               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: T.amber + '15', alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 16 }}>🔥</Text>
-                  </View>
-                  <Text style={{ fontSize: 12, fontWeight: '800', color: T.amber, textTransform: 'uppercase', letterSpacing: 0.8 }}>{currentStreak} Day Streak</Text>
-               </View>
-               <Text style={{ fontSize: 24, fontWeight: '900', color: COLORS.textPrimary }}>{trackerDate === getLocalDateString() ? 'Today' : trackerDate}</Text>
-             </View>
-             <View style={{ flexDirection: 'row', gap: 8 }}>
-                <Pressable onPress={() => shiftDate(-1)} style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : '#FFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border }}>
-                  <ChevronLeft size={20} color={COLORS.textPrimary} />
-                </Pressable>
-                <Pressable onPress={() => shiftDate(1)} disabled={trackerDate === getLocalDateString()} style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : '#FFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border, opacity: trackerDate === getLocalDateString() ? 0.3 : 1 }}>
-                  <ChevronRight size={20} color={COLORS.textPrimary} />
-                </Pressable>
-             </View>
+            <View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: T.amber + '15', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 16 }}>🔥</Text>
+                </View>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: T.amber, textTransform: 'uppercase', letterSpacing: 0.8 }}>{currentStreak} Day Streak</Text>
+              </View>
+              <Text style={{ fontSize: 24, fontWeight: '900', color: COLORS.textPrimary }}>{trackerDate === getLocalDateString() ? 'Today' : trackerDate}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Pressable onPress={() => shiftDate(-1)} style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : '#FFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border }}>
+                <ChevronLeft size={20} color={COLORS.textPrimary} />
+              </Pressable>
+              <Pressable onPress={() => shiftDate(1)} disabled={trackerDate === getLocalDateString()} style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: darkMode ? 'rgba(255,255,255,0.05)' : '#FFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border, opacity: trackerDate === getLocalDateString() ? 0.3 : 1 }}>
+                <ChevronRight size={20} color={COLORS.textPrimary} />
+              </Pressable>
+            </View>
           </View>
 
           {trackerLoading ? (
@@ -213,22 +213,22 @@ export default function DiningDashboard({ navigation }: any) {
                 <View style={{ padding: 20, paddingTop: 0 }}>
                   {(() => {
                     const grouped = (tracker.entries || []).reduce((acc: any, entry: any) => {
-                       const p = entry.meal_period === 'every-day' ? 'Restaurants' : (entry.meal_period || 'Other');
-                       if (!acc[p]) acc[p] = [];
-                       acc[p].push(entry);
-                       return acc;
+                      const p = entry.meal_period === 'every-day' ? 'Restaurants' : (entry.meal_period || 'Other');
+                      if (!acc[p]) acc[p] = [];
+                      acc[p].push(entry);
+                      return acc;
                     }, {});
                     return Object.entries(grouped).map(([period, items]: any, pIdx, pArr) => (
                       <View key={period} style={{ marginTop: pIdx === 0 ? 0 : 16 }}>
-                           <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.textTertiary, letterSpacing: 1, marginBottom: 8 }}>{period.toUpperCase()}</Text>
-                           {items.map((it: any, iIdx: number, iArr: any[]) => (
-                             <View key={it.id} style={{ paddingVertical: 10, borderBottomWidth: iIdx === iArr.length - 1 ? 0 : 1, borderBottomColor: COLORS.border }}>
-                               <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.textPrimary }}>{it.label}</Text>
-                               <Text style={{ fontSize: 12, color: COLORS.textTertiary, marginTop: 2 }}>
-                                 {Math.round(it.calories)} kcal • {Math.round(it.protein)}g P • {Math.round(it.carbs)}g C • {Math.round(it.fat)}g F
-                               </Text>
-                             </View>
-                           ))}
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: COLORS.textTertiary, letterSpacing: 1, marginBottom: 8 }}>{period.toUpperCase()}</Text>
+                        {items.map((it: any, iIdx: number, iArr: any[]) => (
+                          <View key={it.id} style={{ paddingVertical: 10, borderBottomWidth: iIdx === iArr.length - 1 ? 0 : 1, borderBottomColor: COLORS.border }}>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: COLORS.textPrimary }}>{it.label}</Text>
+                            <Text style={{ fontSize: 12, color: COLORS.textTertiary, marginTop: 2 }}>
+                              {Math.round(it.calories)} kcal • {Math.round(it.protein)}g P • {Math.round(it.carbs)}g C • {Math.round(it.fat)}g F
+                            </Text>
+                          </View>
+                        ))}
                       </View>
                     ));
                   })()}
@@ -248,10 +248,10 @@ const s = StyleSheet.create({
     paddingBottom: 18,
   },
   chipRow: { flexDirection: 'row', gap: 10, marginTop: 8, justifyContent: 'space-between' },
-  chip: { 
+  chip: {
     flex: 1,
     maxWidth: '31.5%',
-    alignItems: 'center', 
+    alignItems: 'center',
     justifyContent: 'center',
     minHeight: 124,
     paddingHorizontal: 10,
@@ -440,16 +440,16 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     safeArea: {
       flex: 1,
       backgroundColor: COLORS.background,
-    container: {
-      flex: 1,
-      backgroundColor: COLORS.background,
-    },
-    contentContainerStyle: {
-      paddingHorizontal: 18,
-      paddingTop: 0,
-      paddingBottom: 40,
-      gap: 14,
-    },
+      container: {
+        flex: 1,
+        backgroundColor: COLORS.background,
+      },
+      contentContainerStyle: {
+        paddingHorizontal: 18,
+        paddingTop: 0,
+        paddingBottom: 40,
+        gap: 14,
+      },
       alignItems: 'center',
       marginBottom: 4,
     },
