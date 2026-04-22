@@ -37,8 +37,8 @@ export const LIGHT_COLORS = {
   warning: '#FF9500',
 };
 
-export const DEFAULT_LIGHT_ACCENT = '#500000';
-export const DEFAULT_DARK_ACCENT = '#500000';
+export const DEFAULT_LIGHT_ACCENT = '#A00000';
+export const DEFAULT_DARK_ACCENT = '#FF8A8A';
 const LEGACY_DEFAULT_ACCENT = '#8E8E93';
 
 export function getDefaultAccentColor(theme: 'light' | 'dark') {
@@ -46,7 +46,8 @@ export function getDefaultAccentColor(theme: 'light' | 'dark') {
 }
 
 function isLegacyDefaultAccent(accentColor: string | null | undefined) {
-  return (accentColor || '').toUpperCase() === LEGACY_DEFAULT_ACCENT;
+  const c = (accentColor || '').toUpperCase();
+  return c === LEGACY_DEFAULT_ACCENT || c === '#500000';
 }
 
 // Zustand Theme Store
@@ -92,7 +93,15 @@ export const useThemeStore = create<any>((set, get) => ({
 
       const nextState: any = {};
       if (storedTheme) nextState.theme = storedTheme;
-      if (storedAccent) nextState.accentColor = storedAccent;
+      
+      if (storedAccent) {
+        if (isLegacyDefaultAccent(storedAccent)) {
+          nextState.accentColor = getDefaultAccentColor(storedTheme || 'light');
+        } else {
+          nextState.accentColor = storedAccent;
+        }
+      }
+      
       if (storedTextAccent !== null) nextState.applyAccentToText = JSON.parse(storedTextAccent);
       if (storedTabBar) nextState.tabBarMode = storedTabBar;
 
@@ -118,7 +127,7 @@ export const useTheme = () => {
   const palette = theme === 'dark' ? DARK_COLORS : LIGHT_COLORS;
   const COLORS = {
     ...palette,
-    primary: accentColor,
+    primary: palette.primary,
     accent: accentColor,
     accentText: applyAccentToText ? accentColor : palette.textPrimary,
   };
