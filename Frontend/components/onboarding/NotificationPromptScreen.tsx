@@ -8,7 +8,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Bell, BellRing, BellOff, ChevronRight, Bus, Calendar, Radio } from 'lucide-react-native';
+import { Bell, BellRing, BellOff, ChevronRight, Calendar, Radio } from 'lucide-react-native';
 import { useTheme } from '../SharedUI';
 import { useAppShellStore } from '../../store/appShellStore';
 import { requestNotificationPermissions } from '../../services/notificationService';
@@ -62,22 +62,11 @@ export function NotificationPromptScreen({ onDone }: NotificationPromptScreenPro
             </View>
             <Text style={[styles.title, { color: COLORS.textPrimary }]}>Stay in the Loop</Text>
             <Text style={[styles.subtitle, { color: COLORS.textSecondary }]}>
-              Get helpful reminders for your classes, buses, and campus activity.
+              Get helpful reminders for your events and campus activity.
             </Text>
           </View>
 
           <View style={styles.features}>
-            <View style={styles.featureItem}>
-              <View style={[styles.featureIcon, { backgroundColor: 'rgba(52, 199, 89, 0.1)' }]}>
-                <Bus size={20} color="#32D74B" />
-              </View>
-              <View style={styles.featureText}>
-                <Text style={[styles.featureTitle, { color: COLORS.textPrimary }]}>Transit Alerts</Text>
-                <Text style={[styles.featureDesc, { color: COLORS.textSecondary }]}>
-                  5-minute warnings before your bus arrives at the stop.
-                </Text>
-              </View>
-            </View>
 
             <View style={styles.featureItem}>
               <View style={[styles.featureIcon, { backgroundColor: 'rgba(255, 149, 0, 0.1)' }]}>

@@ -39,7 +39,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { useTheme } from '../SharedUI';
 import { ScalePressable } from '../common/Motion';
-import { TourTarget } from '../onboarding/TourProvider';
+import { TourTarget, useTour } from '../onboarding/TourProvider';
 import { addPing, uploadMediaImage } from '../../services/socialFeedService';
 import { buildCampusDirectory, getCanonicalLocationName } from '../places/campusData';
 
@@ -138,6 +138,7 @@ export const PingComposerModal: React.FC<PingComposerModalProps> = ({
   const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
 
+  const { activeTargetName, advanceStep } = useTour();
   const [composerTitle, setComposerTitle] = useState('');
   const [composerBody, setComposerBody] = useState('');
   const [composerCategory, setComposerCategory] = useState<PingCategory>('Popup');
@@ -441,106 +442,121 @@ export const PingComposerModal: React.FC<PingComposerModalProps> = ({
 
   const styles = StyleSheet.create({
     composerOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'flex-end',
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: COLORS.background,
+      zIndex: 20,
     },
     composerSheet: {
+      flex: 1,
       backgroundColor: COLORS.background,
-      borderTopLeftRadius: 32,
-      borderTopRightRadius: 32,
-      height: '92%',
-      overflow: 'hidden',
     },
     composerKeyboardWrap: {
       flex: 1,
     },
     composerScreen: {
       flex: 1,
+      backgroundColor: COLORS.background,
+      paddingHorizontal: 18,
     },
     composerTopBar: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 20,
-      paddingVertical: 16,
-      borderBottomWidth: 1,
+      paddingBottom: 10,
+      marginBottom: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: COLORS.border,
     },
     composerTopIconButton: {
-      padding: 8,
-      borderRadius: 12,
-      backgroundColor: COLORS.surfaceElevated,
+      width: 52,
+      height: 44,
+      borderRadius: 22,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     composerTopTitle: {
-      fontSize: 18,
-      fontWeight: '800',
+      flex: 1,
+      textAlign: 'center',
       color: COLORS.textPrimary,
+      fontSize: 19,
+      fontWeight: '800',
+      letterSpacing: -0.5,
     },
     composerTopPostButton: {
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 20,
-      backgroundColor: COLORS.primary + '10',
+      width: 52,
+      minHeight: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     composerTopPostLabel: {
-      fontSize: 15,
-      fontWeight: '700',
       color: COLORS.primary,
+      fontSize: 18,
+      fontWeight: '800',
     },
     composerTopPostLabelDisabled: {
-      opacity: 0.4,
+      opacity: 0.38,
     },
     composerScroll: {
       flex: 1,
     },
     composerScrollContent: {
-      paddingHorizontal: 20,
-      paddingTop: 16,
+      paddingTop: 2,
     },
     composerCategoryRow: {
       flexDirection: 'row',
       marginBottom: 24,
+      gap: 6,
+      paddingRight: 18,
+      paddingBottom: 10,
     },
     composerCategoryPill: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 16,
+      alignSelf: 'flex-start',
+      paddingHorizontal: 12,
       paddingVertical: 8,
-      borderRadius: 20,
+      borderRadius: 999,
       backgroundColor: COLORS.surfaceElevated,
       marginRight: 10,
-      gap: 8,
+      gap: 6,
       borderWidth: 1,
       borderColor: COLORS.border,
     },
     composerCategoryPillActive: {
       backgroundColor: COLORS.primary,
       borderColor: COLORS.primary,
+      shadowColor: COLORS.primary,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.16,
+      shadowRadius: 16,
+      elevation: 4,
     },
     composerCategoryLabel: {
-      fontSize: 14,
-      fontWeight: '600',
-      color: COLORS.textSecondary,
+      fontSize: 12,
+      fontWeight: '700',
+      color: COLORS.textPrimary,
     },
     composerCategoryLabelActive: {
       color: '#FFFFFF',
     },
     composerTextStack: {
-      marginBottom: 24,
+      gap: 10,
+      paddingTop: 2,
+      paddingBottom: 12,
     },
     composerTitleInput: {
-      fontSize: 24,
+      fontSize: 17,
       fontWeight: '800',
       color: COLORS.textPrimary,
-      marginBottom: 12,
     },
     composerPromptInput: {
-      fontSize: 17,
-      color: COLORS.textSecondary,
-      lineHeight: 24,
-      minHeight: 100,
+      fontSize: 15,
+      color: COLORS.textPrimary,
+      fontWeight: '600',
+      lineHeight: 22,
+      minHeight: 120,
       textAlignVertical: 'top',
+      paddingTop: 0,
     },
     composerMediaCard: {
       marginBottom: 24,
@@ -823,9 +839,25 @@ export const PingComposerModal: React.FC<PingComposerModalProps> = ({
             <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
               <View style={[styles.composerScreen, { paddingTop: Math.max(insets.top + 8, 20) }]}>
                 <View style={styles.composerTopBar}>
-                  <Pressable onPress={handleClose} style={styles.composerTopIconButton}>
-                    <X size={20} color={COLORS.textPrimary} />
-                  </Pressable>
+                  <TourTarget
+                    name="crowdping-close"
+                    assistAction={() => {
+                      handleClose();
+                      setTimeout(() => advanceStep('crowdping-close'), 250);
+                    }}
+                  >
+                    <Pressable
+                      onPress={() => {
+                        handleClose();
+                        if (activeTargetName === 'crowdping-close') {
+                          setTimeout(() => advanceStep('crowdping-close'), 150);
+                        }
+                      }}
+                      style={styles.composerTopIconButton}
+                    >
+                      <X size={20} color={COLORS.textPrimary} />
+                    </Pressable>
+                  </TourTarget>
 
                   <Text style={styles.composerTopTitle}>Create</Text>
 

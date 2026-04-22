@@ -15,7 +15,7 @@ export type PlacesPillId =
   | 'Academic'
   | 'Heatmap';
 export type ParkingPermit = 'visitor' | 'garage' | 'any_valid' | 'west_campus' | 'resident';
-export type SettingsTabId = 'pings' | 'nutrition' | 'clubs' | 'resources' | 'personal';
+export type SettingsTabId = 'pings' | 'nutrition' | 'resources' | 'personal';
 export type EventTimePreference = 'Morning' | 'Afternoon' | 'Evening' | 'Anytime';
 export type EventSocialPreference = 'casual' | 'professional';
 
@@ -116,7 +116,7 @@ function isPermit(value: unknown): value is ParkingPermit {
 }
 
 function isSettingsTabId(value: unknown): value is SettingsTabId {
-  return value === 'personal' || value === 'pings' || value === 'resources' || value === 'nutrition' || value === 'clubs';
+  return value === 'personal' || value === 'pings' || value === 'resources' || value === 'nutrition';
 }
 
 type AppShellState = {

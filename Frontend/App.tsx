@@ -13,6 +13,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 import { Dashboard } from './components/Dashboard';
 import { Profile } from './components/Profile';
+import ProfileSettingsScreen from './components/ProfileSettingsScreen';
 import { RecreationFacilitiesScreen } from './components/RecreationFacilitiesScreen';
 import { CourseDetail } from './components/CourseDetail';
 import { AuthLanding } from './components/AuthLanding';
@@ -545,6 +546,7 @@ function RootNavigator() {
             <Stack.Screen name="AnnexLibraryDetail" component={AnnexLibraryDetailScreen} options={{ headerShown: false }} />
             <Stack.Screen name="AnnexRentalDetail" component={AnnexRentalDetailScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ClubAccess" component={ClubAccessScreen} options={{ headerShown: true, title: 'Club Access' }} />
+            <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} options={{ headerShown: false }} />
             <Stack.Screen name="PublicProfile" component={PublicProfileScreen} options={{ headerShown: false }} />
             <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
             <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
