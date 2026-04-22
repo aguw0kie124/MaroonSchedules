@@ -274,12 +274,11 @@ export default function ProfileSettingsScreen({ navigation }: any) {
             {renderSettingRow({
               icon: <RotateCw size={18} color="#2563EB" />,
               iconBg: '#2563EB15',
-              title: 'Retake onboarding',
+              title: 'Retake preferences survey',
               subtitle: 'Refresh your event, academic, and campus preferences.',
               onPress: () => {
                 useAppShellStore.setState({
-                  isNameOnboardingCompleted: false,
-                  showNameOnboarding: true,
+                  showNameOnboarding: false,
                   isEventPreferencesCompleted: false,
                   showEventPreferencesOnboarding: true,
                 });
