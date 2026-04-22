@@ -118,66 +118,6 @@ export function CampusBottomSheet({
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Pinned quick actions */}
-          {pinnedItems.length > 0 ? (
-            <>
-              <Text style={styles.sectionLabel}>Quick Actions</Text>
-              <View style={styles.quickRow}>
-                {pinnedItems.map((item) => (
-                  (() => {
-                    return (
-                      <Pressable
-                        key={item.id}
-                        style={({ pressed }) => [styles.quickCard, pressed && styles.quickCardPressed]}
-                        onPress={() => onSelect(item)}
-                      >
-                        <View style={styles.quickIconWrap}>
-                          {renderIcon(item)}
-                        </View>
-                        <Text style={styles.quickLabel} numberOfLines={2}>{item.label}</Text>
-                      </Pressable>
-                    );
-                  })()
-                ))}
-              </View>
-            </>
-          ) : null}
-
-          {/* Nearby */}
-          {nearbyItems.length > 0 ? (
-            <>
-              <Text style={styles.sectionLabel}>Nearby</Text>
-              {nearbyItems.map((item) => (
-                (() => {
-                  return (
-                    <Pressable
-                      key={item.id}
-                      style={({ pressed }) => [styles.nearbyRow, pressed && styles.nearbyRowPressed]}
-                      onPress={() => onSelect(item)}
-                    >
-                      <View style={styles.nearbyIconWrap}>
-                        {renderIcon(item)}
-                      </View>
-                      <View style={styles.nearbyText}>
-                        <Text style={styles.nearbyLabel} numberOfLines={1}>{item.label}</Text>
-                        <Text style={styles.nearbySub}>
-                          {item.subtitle}
-                          {item.distance != null ? ` • ${formatDistance(item.distance)}` : ''}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })()
-              ))}
-            </>
-          ) : (
-            <View style={styles.emptyBrowseCard}>
-              <Text style={styles.emptyBrowseTitle}>Search Anywhere</Text>
-              <Text style={styles.emptyBrowseBody}>
-                Search for any city, campus, address, or landmark worldwide to start directions.
-              </Text>
-            </View>
-          )}
         </ScrollView>
       )}
     </View>
