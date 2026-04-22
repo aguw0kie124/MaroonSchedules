@@ -1357,13 +1357,13 @@ export function CampusPingsScreen() {
         <View style={styles.pingCardHeader}>
           <Pressable 
             style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-            onPress={() => {
+            onPress={item.isAnonymous ? undefined : () => {
               if (item.userId) {
                 openPublicProfile(
                   item.userId, 
-                  item.isAnonymous ? 'Anonymous' : item.userName, 
-                  item.isAnonymous ? undefined : item.userImage,
-                  item.isAnonymous
+                  item.userName, 
+                  item.userImage,
+                  false
                 );
               }
             }}
@@ -1378,7 +1378,7 @@ export function CampusPingsScreen() {
             <View style={styles.pingAuthorBlock}>
               <Text style={styles.pingAuthorName}>{item.userName}</Text>
               <Text style={styles.pingAuthorMeta} numberOfLines={1}>
-                {item.isAnonymous ? `Anonymous · ${item.locationTag}` : item.locationTag}
+                {item.locationTag}
               </Text>
             </View>
           </Pressable>
