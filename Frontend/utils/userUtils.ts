@@ -62,13 +62,6 @@ export function resolveDisplayName(
   if (userId && currentUser?.id && userId === currentUser.id) {
     return getPremiumName(currentUser);
   }
-  if (userId && userMap?.has(userId)) {
-    const name = userMap.get(userId)!;
-    if (name.includes("@")) {
-      return name.split("@")[0] || "Aggie User";
-    }
-    return name;
-  }
   if (isEncryptedString(rawName)) {
     return 'Aggie User';
   }

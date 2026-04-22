@@ -1,4 +1,4 @@
-import { getPremiumName, getPremiumImage } from '../utils/userUtils';
+import { getPremiumName, getPremiumImage, isEncryptedString } from '../utils/userUtils';
 import { apiFetch } from '../api/client';
 import { API_KEY } from '../config';
 
@@ -46,6 +46,67 @@ export interface PaginatedFeedResponse<T> {
   results: T[];
   hasMore: boolean;
   nextCursor: FeedCursor | null;
+}
+
+export async function hydrateAggieUsers(activities: any[]): Promise<any[]> {
+  const missingUserIds = new Set<string>();
+  for (const act of activities) {
+    const rawName = act.actor?.name || act.actor?.data?.name || act.custom?.user_name || 'Aggie User';
+    if (rawName === 'Aggie User' || isEncryptedString(rawName)) {
+      if (act.actor?.id) {
+        const userId = act.actor.id.replace('SU:', '').replace('user_', '');
+        missingUserIds.add(`user_${userId}`);
+      }
+    }
+  }
+
+  if (missingUserIds.size > 0) {
+    console.warn(`[Hydration] Found ${missingUserIds.size} Aggie Users:`, Array.from(missingUserIds));
+  } else {
+    return activities;
+  }
+
+  const nameMap = new Map<string, any>();
+  await Promise.all(Array.from(missingUserIds).map(async (userId) => {
+    try {
+      const res = await feedFetch(`/chat/users/${userId}/public`, {}, 3000);
+      if (res.ok) {
+        const data = await res.json();
+        console.warn(`[Hydration] Fetched profile for ${userId}:`, data.full_name);
+        if (data.full_name && data.full_name !== 'Aggie User') {
+          nameMap.set(userId, { name: data.full_name, image: data.profile_image_url || '' });
+        }
+      } else {
+        console.warn(`[Hydration] Failed to fetch profile for ${userId}, status: ${res.status}`);
+      }
+    } catch (e) {
+      console.warn(`[Hydration] Error fetching profile for ${userId}:`, e);
+    }
+  }));
+
+  if (nameMap.size === 0) {
+    console.warn('[Hydration] No profiles could be successfully resolved from the backend.');
+    return activities;
+  }
+
+  return activities.map(act => {
+    const cleanId = act.actor?.id?.replace('SU:', '').replace('user_', '');
+    const userId = cleanId ? `user_${cleanId}` : null;
+    
+    if (userId && nameMap.has(userId)) {
+      const profile = nameMap.get(userId)!;
+      const newAct = JSON.parse(JSON.stringify(act));
+      if (!newAct.actor) newAct.actor = {};
+      if (!newAct.actor.data) newAct.actor.data = {};
+      newAct.actor.data.name = profile.name;
+      newAct.actor.data.image = profile.image;
+      if (!newAct.custom) newAct.custom = {};
+      newAct.custom.user_name = profile.name;
+      newAct.custom.user_image = profile.image;
+      return newAct;
+    }
+    return act;
+  });
 }
 
 export async function uploadMediaImage(uri: string): Promise<string> {
@@ -113,7 +174,7 @@ export async function getCampusFeed(limit = 25): Promise<any[]> {
     const res = await feedFetch(`/chat/feeds/proxy/flat/campus_global?limit=${limit}`);
     if (!res.ok) throw new Error('Proxy Fetch Error');
     const data = await res.json();
-    return data.results || [];
+    return await hydrateAggieUsers(data.results || []);
   } catch (e) {
     warnFeedRead('[NativeFeeds] getCampusFeed', e);
     return [];
@@ -143,7 +204,7 @@ export async function getUserPingFeed(feedId: string, limit = 50): Promise<any[]
     if (results.length === 0) {
       return await filterGlobalFeed();
     }
-    return results;
+    return await hydrateAggieUsers(results);
   } catch (e) {
     return await filterGlobalFeed();
   }
@@ -179,8 +240,9 @@ export async function getPingFeedPage(params: {
     const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?${searchParams.toString()}`, {}, 12000);
     if (!res.ok) throw new Error('Proxy Fetch Error');
     const data = await res.json();
+    const hydratedResults = await hydrateAggieUsers(data.results || []);
     return {
-      results: data.results || [],
+      results: hydratedResults,
       hasMore: Boolean(data.hasMore),
       nextCursor: data.nextCursor || null,
     };
@@ -490,7 +552,7 @@ export async function getReelsFeed(limit = 20): Promise<any[]> {
     const res = await feedFetch(`/chat/feeds/proxy/flat/reels_global?limit=${limit}`);
     if (!res.ok) throw new Error('Proxy Fetch Error');
     const data = await res.json();
-    return data.results || [];
+    return await hydrateAggieUsers(data.results || []);
   } catch (e) {
     console.warn('[NativeFeeds] getReelsFeed error:', e);
     return [];
@@ -504,10 +566,10 @@ export async function getPlaceReviews(placeId: string, limit = 5): Promise<any[]
         const res = await feedFetch(`/chat/feeds/proxy/flat/place_review_${slug}?limit=${limit}`, {}, 6000);
         if (!res.ok) throw new Error(`Proxy Fetch Error: ${res.status}`);
         const data = await res.json();
-        const results = data.results || [];
+        const results = await hydrateAggieUsers(data.results || []);
         return results.map((act: any) => ({
             id: act.id,
-            user: act.custom?.user_name || 'Aggie User',
+            user: act.custom?.user_name || act.actor?.data?.name || act.actor?.name || 'Aggie User',
             userId: act.custom?.user_id || act.actor?.id?.replace('SU:', '') || '',
             rating: act.custom?.rating || 0,
             comment: act.text || act.custom?.comment || ''
