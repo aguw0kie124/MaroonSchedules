@@ -5,6 +5,7 @@ import requests
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from typing import List, Dict, Any, Optional
+import time
 import random
 from urllib.parse import quote
 import pytz
@@ -25,6 +26,28 @@ from rate_limit import limiter
 from repositories.transit_repository import transit_repo
 
 router = APIRouter()
+
+_LOCAL_TRAFFIC_CACHE: Dict[str, tuple[float, Any]] = {}
+_LOCAL_TRAFFIC_CACHE_LOCK = Lock()
+
+
+def _local_cache_get(key: str, ttl_seconds: int) -> Any | None:
+    with _LOCAL_TRAFFIC_CACHE_LOCK:
+        cached = _LOCAL_TRAFFIC_CACHE.get(key)
+        if not cached:
+            return None
+
+        cached_at, payload = cached
+        if time.time() - cached_at >= ttl_seconds:
+            _LOCAL_TRAFFIC_CACHE.pop(key, None)
+            return None
+        return payload
+
+
+def _local_cache_set(key: str, payload: Any) -> Any:
+    with _LOCAL_TRAFFIC_CACHE_LOCK:
+        _LOCAL_TRAFFIC_CACHE[key] = (time.time(), payload)
+    return payload
 
 REC_OCCUPANCY_LOCATION_PREFERENCES: Dict[str, tuple[str, ...]] = {
     "rec": (
@@ -183,12 +206,12 @@ class TAMUFacilityTracker:
     def fetch_rec_data(self) -> List[Dict]:
         """Returns raw sub-location list from GoBoard."""
         cache_key = "traffic:capacity:raw_rec:v3"
-        cached = cache_service.get_json(cache_key)
+        cached = _local_cache_get(cache_key, 60)
         if cached is not None:
             return cached
         data = self._get_json(self.rec_api) or []
         if data:
-            cache_service.set_json(cache_key, data, 60)
+            _local_cache_set(cache_key, data)
         return data
 
     def get_rec_place_catalog(self) -> Dict[str, Dict[str, Any]]:
@@ -326,14 +349,13 @@ class TAMUFacilityTracker:
     def fetch_library_data(self) -> Dict[str, Any]:
         """Returns the full library API dict (keyed by abbreviation)."""
         cache_key = "traffic:capacity:raw_libraries:v3"
-        cached = cache_service.get_json(cache_key)
+        cached = _local_cache_get(cache_key, 60)
         if cached is not None:
             return cached
         data = self._get_json(self.library_api)
         if not data or not isinstance(data, dict):
             return {}
-        cache_service.set_json(cache_key, data, 60)
-        return data
+        return _local_cache_set(cache_key, data)
 
     def fetch_event_data(self, limit: int = 20) -> List[Dict]:
         cache_key = f"traffic:events:limit_{limit}"
@@ -1002,11 +1024,6 @@ class AggieSpiritProxy:
             return []
 
     def get_route_timetable(self, route_key: str, max_stops: int = 12) -> Dict[str, Any]:
-        cache_key = f"traffic:transit:timetable:v3:{route_key}:{max_stops}"
-        cached = cache_service.get_json(cache_key)
-        if cached is not None:
-            return cached
-
         try:
             max_stops = max(1, min(int(max_stops or 12), 20))
             normalized_route_key = str(route_key or "").strip().lower()
@@ -1417,13 +1434,12 @@ def ask_perplexity(request: Request, body_request: QueryRequest):
 @limiter.limit("60/minute")
 def retrieve_locations(request: Request):
     cache_key = "traffic:retrieve:main:v2"
-    cached = cache_service.get_json(cache_key)
+    cached = _local_cache_get(cache_key, 30)
     if cached is not None:
         return cached
     
     payload = tracker.get_all_locations_with_events()
-    cache_service.set_json(cache_key, payload, 30) # 30s cache for heartbeat
-    return payload
+    return _local_cache_set(cache_key, payload)
 
 
 @router.get("/capacity/facility-counts/{place_id}")
@@ -1433,7 +1449,7 @@ def get_detailed_facility_counts(request: Request, place_id: str, sid: Optional[
     cache_key = f"traffic:capacity:facility-counts:{sid or 'global'}:{place_id}"
     
     if not refresh:
-        cached = cache_service.get_json(cache_key)
+        cached = _local_cache_get(cache_key, 120)
         if cached is not None:
             return cached
 
@@ -1441,8 +1457,7 @@ def get_detailed_facility_counts(request: Request, place_id: str, sid: Optional[
     rec_live_counts = tracker.get_rec_center_live_counts(include_sub_areas=True)
     if place_id in rec_live_counts:
         payload = {"facility_counts": rec_live_counts[place_id].get("facility_counts", [])}
-        cache_service.set_json(cache_key, payload, 120) # 2 min cache
-        return payload
+        return _local_cache_set(cache_key, payload)
     
     return {"facility_counts": []}
 
@@ -1511,23 +1526,31 @@ def get_bulk_transit_patterns(request: Request, ids: str = Query("")):
 @limiter.limit("120/minute")
 def get_transit_vehicles(request: Request, route_id: str = Query("")):
     cache_key = f"traffic:transit:vehicles:v2:{route_id or '__all__'}"
-    cached = cache_service.get_json(cache_key)
+    cached = _local_cache_get(cache_key, 8 if not route_id else 2)
     if cached is not None:
-        return cached
+        if cached.get("vehicles") or cached.get("live"):
+            return cached
+        empty_cached = _local_cache_get(cache_key, 2)
+        if empty_cached is not None:
+            return empty_cached
 
     with _TRANSIT_LOCKS[cache_key]:
-        cached = cache_service.get_json(cache_key)
+        cached = _local_cache_get(cache_key, 8 if not route_id else 2)
         if cached is not None:
-            return cached
+            if cached.get("vehicles") or cached.get("live"):
+                return cached
+            empty_cached = _local_cache_get(cache_key, 2)
+            if empty_cached is not None:
+                return empty_cached
 
         payload = transit_proxy.get_vehicles(route_id)
         
         # Don't aggressively cache empty payloads (which causes buses to flicker off)
         if not payload.get("vehicles") and not payload.get("live"):
-            cache_service.set_json(cache_key, payload, 2)
+            _local_cache_set(cache_key, payload)
         else:
             ttl_seconds = 2 if route_id else 8
-            cache_service.set_json(cache_key, payload, ttl_seconds)
+            _local_cache_set(cache_key, payload)
             
         return payload
 
@@ -1536,26 +1559,48 @@ def get_transit_vehicles(request: Request, route_id: str = Query("")):
 @limiter.limit("120/minute")
 def get_transit_timetable(request: Request, route_key: str, max_stops: int = Query(12, ge=1, le=20)):
     cache_key = f"traffic:transit:timetable:v3:{route_key}:{max_stops}"
-    cached = cache_service.get_json(cache_key)
+    cached = _local_cache_get(cache_key, 45)
     if cached is not None:
-        return cached
+        freshness = cached.get("freshness") or {}
+        source = freshness.get("source")
+        if source == "live":
+            # Freshest live timetables should only persist briefly.
+            live_cached = _local_cache_get(cache_key, 20)
+            if live_cached is not None:
+                return live_cached
+        elif source == "unavailable":
+            unavailable_cached = _local_cache_get(cache_key, 2)
+            if unavailable_cached is not None:
+                return unavailable_cached
+        else:
+            return cached
 
     with _TRANSIT_LOCKS[cache_key]:
-        cached = cache_service.get_json(cache_key)
+        cached = _local_cache_get(cache_key, 45)
         if cached is not None:
-            return cached
+            freshness = cached.get("freshness") or {}
+            source = freshness.get("source")
+            if source == "live":
+                live_cached = _local_cache_get(cache_key, 20)
+                if live_cached is not None:
+                    return live_cached
+            elif source == "unavailable":
+                unavailable_cached = _local_cache_get(cache_key, 2)
+                if unavailable_cached is not None:
+                    return unavailable_cached
+            else:
+                return cached
 
         payload = transit_proxy.get_route_timetable(route_key, max_stops=max_stops)
 
         freshness = payload.get("freshness") or {}
         source = freshness.get("source")
         if not payload.get("entries") or source == "unavailable":
-            ttl_seconds = 2
+            _local_cache_set(cache_key, payload)
         elif source == "schedule_fallback":
-            ttl_seconds = 45
+            _local_cache_set(cache_key, payload)
         else:
-            ttl_seconds = 20
-        cache_service.set_json(cache_key, payload, ttl_seconds)
+            _local_cache_set(cache_key, payload)
             
         return payload
 

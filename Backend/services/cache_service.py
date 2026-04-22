@@ -29,6 +29,7 @@ REDIS_MAX_CONNECTIONS = max(1, int(os.environ.get("REDIS_MAX_CONNECTIONS", "4"))
 REDIS_SOCKET_CONNECT_TIMEOUT = max(1.0, float(os.environ.get("REDIS_SOCKET_CONNECT_TIMEOUT", "3")))
 REDIS_SOCKET_TIMEOUT = max(1.0, float(os.environ.get("REDIS_SOCKET_TIMEOUT", "3")))
 MEMORY_CACHE_MAX_ENTRIES = max(32, int(os.environ.get("MEMORY_CACHE_MAX_ENTRIES", "256")))
+MEMORY_CACHE_READ_TTL_SECONDS = max(1, int(os.environ.get("MEMORY_CACHE_READ_TTL_SECONDS", "5")))
 
 
 @dataclass
@@ -137,20 +138,61 @@ def _redis_write_failed_due_to_capacity(exc: Exception) -> bool:
 
 
 def get_json(key: str) -> Any | None:
+    memory_value = _memory_get(key)
+    if memory_value is not None:
+        return memory_value
+
     client = _get_client()
     if client is not None:
         try:
             payload = client.get(key)
             if payload is None:
                 print(f"[cache] MISS (Redis): {key}")
-                return _memory_get(key)
+                return None
             print(f"[cache] HIT  (Redis): {key}")
             decoded = json.loads(payload)
-            _memory_set(key, decoded, 30)
+            _memory_set(key, decoded, MEMORY_CACHE_READ_TTL_SECONDS)
             return decoded
         except Exception:
             pass
     return _memory_get(key)
+
+
+def get_json_many(keys: list[str]) -> dict[str, Any]:
+    if not keys:
+        return {}
+
+    found: dict[str, Any] = {}
+    missing_keys: list[str] = []
+
+    for key in keys:
+        memory_value = _memory_get(key)
+        if memory_value is not None:
+            found[key] = memory_value
+        else:
+            missing_keys.append(key)
+
+    if not missing_keys:
+        return found
+
+    client = _get_client()
+    if client is None:
+        return found
+
+    try:
+        payloads = client.mget(missing_keys)
+        for key, payload in zip(missing_keys, payloads):
+            if payload is None:
+                print(f"[cache] MISS (Redis): {key}")
+                continue
+            print(f"[cache] HIT  (Redis): {key}")
+            decoded = json.loads(payload)
+            _memory_set(key, decoded, MEMORY_CACHE_READ_TTL_SECONDS)
+            found[key] = decoded
+    except Exception:
+        pass
+
+    return found
 
 
 def set_json(key: str, value: Any, ttl_seconds: int) -> None:
@@ -169,6 +211,38 @@ def set_json(key: str, value: Any, ttl_seconds: int) -> None:
                     _REDIS_CAPACITY_WARNING_LOGGED = True
                 return
             pass
+
+
+def set_json_many(items: dict[str, Any], ttl_seconds: int) -> None:
+    if not items:
+        return
+
+    normalized_ttl = max(1, int(ttl_seconds))
+    serialized_items = {
+        key: json.dumps(value, ensure_ascii=False)
+        for key, value in items.items()
+    }
+
+    for key, value in items.items():
+        _memory_set(key, value, normalized_ttl)
+
+    client = _get_client()
+    if client is None:
+        return
+
+    try:
+        with client.pipeline(transaction=False) as pipeline:
+            for key, payload in serialized_items.items():
+                pipeline.setex(key, normalized_ttl, payload)
+            pipeline.execute()
+        for key in items:
+            print(f"[cache] SET  (Redis): {key} (TTL: {normalized_ttl}s)")
+    except Exception as exc:
+        if _redis_write_failed_due_to_capacity(exc):
+            global _REDIS_CAPACITY_WARNING_LOGGED
+            if not _REDIS_CAPACITY_WARNING_LOGGED:
+                print("[cache] Redis at capacity, continuing with in-memory fallback")
+                _REDIS_CAPACITY_WARNING_LOGGED = True
 
 
 def delete(key: str) -> None:

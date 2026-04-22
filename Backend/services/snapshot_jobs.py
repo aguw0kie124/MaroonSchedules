@@ -74,7 +74,7 @@ def _refresh_recreation() -> object:
 
 
 def _refresh_transit_routes() -> object:
-    cache_key = "traffic:transit:routes:v1"
+    cache_key = "traffic:transit:routes:v3"
 
     def build() -> dict[str, object]:
         return {
@@ -82,13 +82,13 @@ def _refresh_transit_routes() -> object:
             "activeRouteIds": traffic.transit_proxy.get_active_routes(),
         }
 
-    return _rebuild_in_place(cache_key, build, ttl_seconds=1800)
+    return _rebuild_in_place(cache_key, build, ttl_seconds=300)
 
 
 def _refresh_transit_route_patterns() -> object:
     active_route_ids = traffic.transit_proxy.get_active_routes() or []
     for route_id in active_route_ids:
-        cache_key = f"traffic:transit:route:v1:{route_id}"
+        cache_key = f"traffic:transit:route:v2:{route_id}"
         _rebuild_in_place(cache_key, lambda route_id=route_id: traffic.transit_proxy.get_pattern(route_id), ttl_seconds=3600)
     return {"routeCount": len(active_route_ids)}
 
@@ -97,7 +97,8 @@ def _refresh_transit_vehicles() -> object:
     return _rebuild_in_place(
         "traffic:transit:vehicles:v2:__all__",
         lambda: traffic.transit_proxy.get_vehicles(""),
-        ttl_seconds=60
+        ttl_seconds=60,
+        write_cache=False,
     )
 
 

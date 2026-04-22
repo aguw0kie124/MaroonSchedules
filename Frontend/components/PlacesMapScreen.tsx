@@ -989,13 +989,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const selectedRecreationFacility = useMemo(() => {
     if (!selectedLoc) return null;
     return (
-      selectedPlaceDetail?.recreation ||
       recreationFacilityMap.get(
         getCanonicalLocationName(selectedLoc.location),
       ) ||
       null
     );
-  }, [recreationFacilityMap, selectedLoc, selectedPlaceDetail?.recreation]);
+  }, [recreationFacilityMap, selectedLoc]);
 
   // ── Callbacks ─────────────────────────────────────────────
   const runGlobalSearch = useCallback(

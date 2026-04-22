@@ -340,11 +340,13 @@ def get_batch_interaction_counts(post_ids: List[str]) -> Dict[str, Dict[str, Any
     
     final_counts = {}
     missing_ids = []
+    cache_keys = {pid: f"post:interactions:{pid}" for pid in post_ids}
     
     # 1. Try to get from Cache first
+    cached_counts = cache_service.get_json_many(list(cache_keys.values()))
     for pid in post_ids:
-        cached = cache_service.get_json(f"post:interactions:{pid}")
-        if cached:
+        cached = cached_counts.get(cache_keys[pid])
+        if cached is not None:
             final_counts[pid] = cached
         else:
             missing_ids.append(pid)
@@ -373,11 +375,13 @@ def get_batch_interaction_counts(post_ids: List[str]) -> Dict[str, Dict[str, Any
                         batch_counts[pid][itype] = count
 
                 # Post-process scores and Cache each result
+                cache_payloads = {}
                 for pid in batch_counts:
                     batch_counts[pid]["score"] = batch_counts[pid]["upvote"] - batch_counts[pid]["downvote"]
                     # Cache individual post results (30 min TTL for high-traffic metadata)
-                    cache_service.set_json(f"post:interactions:{pid}", batch_counts[pid], ttl_seconds=1800)
+                    cache_payloads[cache_keys[pid]] = batch_counts[pid]
                     final_counts[pid] = batch_counts[pid]
+                cache_service.set_json_many(cache_payloads, ttl_seconds=1800)
                     
     except Exception as e:
         print(f"Error in get_batch_interaction_counts: {e}")

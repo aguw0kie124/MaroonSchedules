@@ -3,6 +3,8 @@ from pydantic import BaseModel
 import os
 import psycopg
 from datetime import datetime
+import time
+import threading
 from dotenv import load_dotenv
 import requests as http_requests
 from typing import Dict, Any, List, Optional
@@ -23,6 +25,15 @@ from rate_limit import limiter
 from fastapi import Request
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+ACCESS_SCOPE_CACHE_TTL_SECONDS = 300
+BLOCK_IDS_CACHE_TTL_SECONDS = 3600
+BLOCK_RELATIONSHIPS_CACHE_TTL_SECONDS = 3600
+
+_ACCESS_SCOPE_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
+_BLOCK_IDS_CACHE: Dict[str, tuple[float, List[str]]] = {}
+_BLOCK_RELATIONSHIPS_CACHE: Dict[str, tuple[float, List[str]]] = {}
+_LOCAL_CACHE_LOCK = threading.Lock()
 
 # --- Models ---
 
@@ -54,6 +65,30 @@ class FriendRequest(SanitizedBaseModel):
 
 def _ensure_social_schema() -> None:
     campus_hub_service._ensure_social_tables()
+
+
+def _local_cache_get(cache_store: Dict[str, tuple[float, Any]], key: str, ttl_seconds: int) -> Any | None:
+    with _LOCAL_CACHE_LOCK:
+        cached = cache_store.get(key)
+        if not cached:
+            return None
+
+        cached_at, payload = cached
+        if time.time() - cached_at >= ttl_seconds:
+            cache_store.pop(key, None)
+            return None
+        return payload
+
+
+def _local_cache_set(cache_store: Dict[str, tuple[float, Any]], key: str, payload: Any) -> Any:
+    with _LOCAL_CACHE_LOCK:
+        cache_store[key] = (time.time(), payload)
+    return payload
+
+
+def _local_cache_delete(cache_store: Dict[str, tuple[float, Any]], key: str) -> None:
+    with _LOCAL_CACHE_LOCK:
+        cache_store.pop(key, None)
 
 
 def _invalidate_feed_cache(feed_group: str, feed_id: str) -> None:
@@ -173,13 +208,13 @@ async def get_public_profile(clerk_id: str, _auth_user_id: Optional[str] = Depen
 # --- Feed Proxy (Now 100% Native) ---
 
 def _resolve_access_scope_cached(clerk_id: Optional[str]) -> tuple[List[str], bool]:
-    """Retrieves user tags and admin status with Redis caching (5 min TTL)."""
+    """Retrieves user tags and admin status with short-lived local caching."""
     if not clerk_id:
         return [], False
     
     cache_key = f"auth:access_scope:{clerk_id}"
-    cached = cache_service.get_json(cache_key)
-    if cached:
+    cached = _local_cache_get(_ACCESS_SCOPE_CACHE, cache_key, ACCESS_SCOPE_CACHE_TTL_SECONDS)
+    if cached is not None:
         return cached["tags"], cached["is_admin"]
     
     # Cache miss
@@ -193,7 +228,7 @@ def _resolve_access_scope_cached(clerk_id: Optional[str]) -> tuple[List[str], bo
     
     is_admin = bool(profile.get("is_admin"))
     result = {"tags": user_tags, "is_admin": is_admin}
-    cache_service.set_json(cache_key, result, ttl_seconds=300)
+    _local_cache_set(_ACCESS_SCOPE_CACHE, cache_key, result)
     return user_tags, is_admin
 
 
@@ -651,9 +686,9 @@ async def proxy_block_user(request: Request, clerk_id: str, body: BlockRequest =
         ensure_matching_user(auth_user_id, clerk_id, detail="You can only block users from your own account")
         feed_repository.add_block(clerk_id, body.target_id)
         # Invalidate cached blocked list
-        cache_service.delete(f"user:blocks:{clerk_id}")
-        cache_service.delete(f"user:block-relationships:{clerk_id}")
-        cache_service.delete(f"user:block-relationships:{body.target_id}")
+        _local_cache_delete(_BLOCK_IDS_CACHE, f"user:blocks:{clerk_id}")
+        _local_cache_delete(_BLOCK_RELATIONSHIPS_CACHE, f"user:block-relationships:{clerk_id}")
+        _local_cache_delete(_BLOCK_RELATIONSHIPS_CACHE, f"user:block-relationships:{body.target_id}")
         return {"status": "success"}
     except Exception as e:
         print(f"Block Error: {e}")
@@ -716,7 +751,7 @@ async def update_user_profile(clerk_id: str, body: Dict[str, Any] = Body(...), a
         if not updated:
             raise HTTPException(status_code=404, detail="User not found")
         # Invalidate related caches
-        cache_service.delete(f"auth:access_scope:{clerk_id}")
+        _local_cache_delete(_ACCESS_SCOPE_CACHE, f"auth:access_scope:{clerk_id}")
         return {"status": "success", "profile": updated}
     except Exception as e:
         print(f"Update Profile Error: {e}")
@@ -730,9 +765,9 @@ async def proxy_unblock_user(clerk_id: str, target_id: str, auth_user_id: str = 
         removed = feed_repository.remove_block(clerk_id, target_id)
         if not removed:
             raise HTTPException(status_code=404, detail="Block record not found")
-        cache_service.delete(f"user:blocks:{clerk_id}")
-        cache_service.delete(f"user:block-relationships:{clerk_id}")
-        cache_service.delete(f"user:block-relationships:{target_id}")
+        _local_cache_delete(_BLOCK_IDS_CACHE, f"user:blocks:{clerk_id}")
+        _local_cache_delete(_BLOCK_RELATIONSHIPS_CACHE, f"user:block-relationships:{clerk_id}")
+        _local_cache_delete(_BLOCK_RELATIONSHIPS_CACHE, f"user:block-relationships:{target_id}")
         return {"status": "success"}
     except HTTPException:
         raise
@@ -824,24 +859,28 @@ async def proxy_report_content(request: Request, body: ReportRequest, auth_user_
         raise HTTPException(status_code=500, detail=str(e))
 
 def _get_blocked_ids_cached(clerk_id: str) -> List[str]:
-    """Helper to fetch blocked IDs with Redis caching."""
+    """Helper to fetch blocked IDs with local caching."""
     cache_key = f"user:blocks:{clerk_id}"
-    cached = cache_service.get_json(cache_key)
+    cached = _local_cache_get(_BLOCK_IDS_CACHE, cache_key, BLOCK_IDS_CACHE_TTL_SECONDS)
     if cached is not None:
         return cached
     
     ids = feed_repository.get_blocked_user_ids(clerk_id)
-    cache_service.set_json(cache_key, ids, ttl_seconds=3600)
+    _local_cache_set(_BLOCK_IDS_CACHE, cache_key, ids)
     return ids
 
 
 def _get_block_relationship_ids_cached(clerk_id: str) -> List[str]:
     """Users the caller has blocked or who have blocked the caller."""
     cache_key = f"user:block-relationships:{clerk_id}"
-    cached = cache_service.get_json(cache_key)
+    cached = _local_cache_get(
+        _BLOCK_RELATIONSHIPS_CACHE,
+        cache_key,
+        BLOCK_RELATIONSHIPS_CACHE_TTL_SECONDS,
+    )
     if cached is not None:
         return cached
 
     ids = feed_repository.get_block_relationship_user_ids(clerk_id)
-    cache_service.set_json(cache_key, ids, ttl_seconds=3600)
+    _local_cache_set(_BLOCK_RELATIONSHIPS_CACHE, cache_key, ids)
     return ids
