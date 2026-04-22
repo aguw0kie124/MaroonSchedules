@@ -538,6 +538,8 @@ export function CampusPingsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState<FeedFilter>('All');
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const defaultPinnedHeaderHeight = Math.max(insets.top + 66, 84);
+  const [pinnedHeaderHeight, setPinnedHeaderHeight] = useState(defaultPinnedHeaderHeight);
   const pingsListRef = useRef<FlatList<PingCard> | null>(null);
 
   const campusPingsFeedKey = ['campus-pings-feed', API_URL, user?.id] as const;
@@ -1522,8 +1524,14 @@ export function CampusPingsScreen() {
     );
   };
 
-  const header = (
-    <View style={[styles.headerWrap, { paddingTop: Math.max(insets.top + 8, 18) }]}>
+  const pinnedHeader = (
+    <View
+      style={[styles.pinnedHeaderWrap, { paddingTop: Math.max(insets.top + 8, 18) }]}
+      onLayout={(event) => {
+        const nextHeight = event.nativeEvent.layout.height;
+        setPinnedHeaderHeight((current) => (Math.abs(current - nextHeight) > 1 ? nextHeight : current));
+      }}
+    >
       <View style={styles.heroTopRow}>
         <View style={styles.heroTitleRow}>
           <View style={styles.heroBrandBadge}>
@@ -1551,13 +1559,16 @@ export function CampusPingsScreen() {
           </Pressable>
         </TourTarget>
       </View>
-
       {isManuallyRefreshing ? (
         <View style={styles.refreshWheelWrap}>
           <ActivityIndicator size="small" color={COLORS.textPrimary} />
         </View>
       ) : null}
+    </View>
+  );
 
+  const header = (
+    <View style={styles.headerWrap}>
       {featuredCards.length > 0 ? (
         <View style={styles.featuredSection}>
           <ScrollView
@@ -1637,6 +1648,7 @@ export function CampusPingsScreen() {
   return (
     <View style={styles.container}>
       <WallpaperWrapper>
+        {pinnedHeader}
         <FlatList
         ref={pingsListRef}
         data={filteredFeed}
@@ -1661,7 +1673,11 @@ export function CampusPingsScreen() {
             </View>
           ) : null
         }
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingTop: Math.max(pinnedHeaderHeight, defaultPinnedHeaderHeight) },
+        ]}
+        scrollIndicatorInsets={{ top: Math.max(pinnedHeaderHeight, defaultPinnedHeaderHeight) }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -2113,7 +2129,7 @@ const getStyles = (theme: any) => {
       alignItems: 'center',
       justifyContent: 'center',
       paddingTop: 5,
-      paddingBottom: 20,
+      paddingBottom: 10,
     },
     listContent: {
       paddingBottom: 120,
@@ -2125,9 +2141,20 @@ const getStyles = (theme: any) => {
       justifyContent: 'center',
     },
     headerWrap: {
-      paddingTop: 18,
       paddingHorizontal: 14,
       paddingBottom: 12,
+    },
+    pinnedHeaderWrap: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      zIndex: 20,
+      paddingHorizontal: 14,
+      paddingBottom: 10,
+      backgroundColor: COLORS.background,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: COLORS.border,
     },
     heroTopRow: {
       flexDirection: 'row',
