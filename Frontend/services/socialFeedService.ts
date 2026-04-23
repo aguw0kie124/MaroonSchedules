@@ -10,6 +10,9 @@ function warnFeedRead(scope: string, e: unknown) {
 
 let connectedUserId: string | null = null;
 let currentFullUser: any | null = null;
+type HydratedFeedProfile = { name: string; image: string };
+const hydratedAggieProfileCache = new Map<string, HydratedFeedProfile>();
+const pendingAggieProfileRequests = new Map<string, Promise<HydratedFeedProfile | null>>();
 
 function getFeedHeaders(extraHeaders: HeadersInit = {}) {
   return {
@@ -60,32 +63,63 @@ export async function hydrateAggieUsers(activities: any[]): Promise<any[]> {
     }
   }
 
-  if (missingUserIds.size > 0) {
-    console.warn(`[Hydration] Found ${missingUserIds.size} Aggie Users:`, Array.from(missingUserIds));
-  } else {
+  if (missingUserIds.size === 0) {
     return activities;
   }
 
-  const nameMap = new Map<string, any>();
-  await Promise.all(Array.from(missingUserIds).map(async (userId) => {
-    try {
-      const res = await feedFetch(`/chat/users/${userId}/public`, {}, 3000);
-      if (res.ok) {
-        const data = await res.json();
-        console.warn(`[Hydration] Fetched profile for ${userId}:`, data.full_name);
-        if (data.full_name && data.full_name !== 'Aggie User') {
-          nameMap.set(userId, { name: data.full_name, image: data.profile_image_url || '' });
+  const nameMap = new Map<string, HydratedFeedProfile>();
+  const unresolvedUserIds: string[] = [];
+
+  for (const userId of missingUserIds) {
+    const cachedProfile = hydratedAggieProfileCache.get(userId);
+    if (cachedProfile) {
+      nameMap.set(userId, cachedProfile);
+      continue;
+    }
+    unresolvedUserIds.push(userId);
+  }
+
+  await Promise.all(unresolvedUserIds.map(async (userId) => {
+    const existingRequest = pendingAggieProfileRequests.get(userId);
+    const request = existingRequest ?? (async (): Promise<HydratedFeedProfile | null> => {
+      try {
+        const res = await feedFetch(`/chat/users/${userId}/public`, {}, 3000);
+        if (!res.ok) {
+          if (__DEV__) {
+            console.warn(`[Hydration] Failed to fetch profile for ${userId}, status: ${res.status}`);
+          }
+          return null;
         }
-      } else {
-        console.warn(`[Hydration] Failed to fetch profile for ${userId}, status: ${res.status}`);
+
+        const data = await res.json();
+        if (!data.full_name || data.full_name === 'Aggie User') {
+          return null;
+        }
+
+        const profile = { name: data.full_name, image: data.profile_image_url || '' };
+        hydratedAggieProfileCache.set(userId, profile);
+        return profile;
+      } catch (e) {
+        if (__DEV__) {
+          console.warn(`[Hydration] Error fetching profile for ${userId}:`, e);
+        }
+        return null;
+      } finally {
+        pendingAggieProfileRequests.delete(userId);
       }
-    } catch (e) {
-      console.warn(`[Hydration] Error fetching profile for ${userId}:`, e);
+    })();
+
+    if (!existingRequest) {
+      pendingAggieProfileRequests.set(userId, request);
+    }
+
+    const profile = await request;
+    if (profile) {
+      nameMap.set(userId, profile);
     }
   }));
 
   if (nameMap.size === 0) {
-    console.warn('[Hydration] No profiles could be successfully resolved from the backend.');
     return activities;
   }
 

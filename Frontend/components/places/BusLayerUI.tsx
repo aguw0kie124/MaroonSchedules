@@ -69,8 +69,6 @@ export function BusRouteSelector({
   setSelectedDirection?: (val: string) => void;
   availableDirections?: string[];
 }) {
-  if (busRoutes.length === 0) return null;
-
   const subtitle = `${filteredBusRoutes.length} route${filteredBusRoutes.length === 1 ? "" : "s"}`;
   const popupHeight = Math.min(Math.round(SCREEN_HEIGHT * 0.54), 460);
   const animationProgress = React.useRef(
@@ -104,6 +102,8 @@ export function BusRouteSelector({
       animation.stop();
     };
   }, [animationProgress, isRouteDropdownOpen]);
+
+  if (busRoutes.length === 0) return null;
 
   const chevronAnimatedStyle = {
     transform: [

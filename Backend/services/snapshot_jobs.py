@@ -87,10 +87,25 @@ def _refresh_transit_routes() -> object:
 
 def _refresh_transit_route_patterns() -> object:
     active_route_ids = traffic.transit_proxy.get_active_routes() or []
+    cache_keys = {
+        route_id: f"traffic:transit:route:v2:{route_id}"
+        for route_id in active_route_ids
+    }
+    cached_patterns = cache_service.get_json_many(list(cache_keys.values()))
+    warmed_count = 0
+
     for route_id in active_route_ids:
-        cache_key = f"traffic:transit:route:v2:{route_id}"
+        cache_key = cache_keys[route_id]
+        if cached_patterns.get(cache_key) is not None:
+            continue
         _rebuild_in_place(cache_key, lambda route_id=route_id: traffic.transit_proxy.get_pattern(route_id), ttl_seconds=3600)
-    return {"routeCount": len(active_route_ids)}
+        warmed_count += 1
+
+    return {
+        "routeCount": len(active_route_ids),
+        "warmedCount": warmed_count,
+        "cachedCount": max(0, len(active_route_ids) - warmed_count),
+    }
 
 
 def _refresh_transit_vehicles() -> object:
