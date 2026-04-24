@@ -49,7 +49,7 @@ interface PlacesListProps {
   isTodayExpanded?: boolean;
   setIsTodayExpanded?: (expanded: boolean) => void;
   onShare?: (content: ShareContent) => void;
-  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "drive" | "bus") => void;
+  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "bus") => void;
 }
 
 export function PlacesList({
@@ -327,18 +327,66 @@ export function PlacesList({
         : null;
     const recreationFacility =
       recreationFacilityMap.get(getCanonicalLocationName(loc.location)) || null;
-    const isCapacityType = loc.type === "Rec" || loc.type === "Library";
-    const hoursForList =
-      loc.hours_today ||
-      loc.hours ||
-      recreationFacility?.today_hours ||
-      recreationFacility?.hours_hint;
+    const isBushLibrary = loc.location?.includes("Bush") || loc.shortName === "BUSH";
+
+    // Identification for the 5 visitor garages with live data
+    const visitorGarageIds = [
+      "osm:way:91100311", 
+      "garage-polo", 
+      "osm:way:450686873", 
+      "garage-university-center", 
+      "garage-west-campus"
+    ];
+    const isVisitorParkingGarage = loc.type === "Parking" && (
+      visitorGarageIds.includes(loc.placeId) || 
+      loc.location.includes("Central") ||
+      loc.location.includes("Polo") ||
+      loc.location.includes("Stallings") ||
+      loc.location.includes("University Center") ||
+      loc.location.includes("West Campus")
+    );
+
+    const parkingAvailable = (loc.type === "Parking" || loc.visitor_parking_available != null) ? loc.visitor_parking_available : null;
+    
+    // Approximate capacities for status chip categorization if percentage isn't provided
+    const getParkingPercent = () => {
+      if (loc.percent_full != null && Number.isFinite(loc.percent_full)) return loc.percent_full;
+      if (parkingAvailable == null) return null;
+      
+      let cap = 1000; // default
+      if (loc.location.includes("Central Campus")) cap = 600;
+      else if (loc.location.includes("Stallings")) cap = 1300;
+      else if (loc.location.includes("University Center")) cap = 2300;
+      else if (loc.location.includes("West Campus")) cap = 3500;
+      else if (loc.location.includes("Polo")) cap = 1000;
+      
+      // We have AVAILABLE spots, so percent_full = (cap - available) / cap
+      return Math.round(Math.max(0, (cap - parkingAvailable) / cap) * 100);
+    };
+
     const displayPercent =
       loc.capacity && loc.capacity > 0 && loc.current_count != null
         ? Math.round((loc.current_count / loc.capacity) * 100)
         : loc.percent_full != null && Number.isFinite(loc.percent_full)
           ? loc.percent_full
-          : null;
+          : isVisitorParkingGarage ? getParkingPercent() : null;
+
+    const isCapacityType = loc.type === "Rec" || loc.type === "Library" || isVisitorParkingGarage;
+    const parkingUpdatedLabel = (loc.type === "Parking" || loc.visitor_parking_available != null) && (loc.visitor_parking_as_of)
+        ? (() => {
+            const raw = loc.visitor_parking_as_of;
+            const parsed = new Date(
+              String(raw).includes("T") ? String(raw) : String(raw).replace(" ", "T"),
+            );
+            return Number.isNaN(parsed.getTime())
+              ? null
+              : `Updated ${parsed.toLocaleTimeString("en-US", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}`;
+          })()
+        : null;
+
     const recUpdatedLabel =
       loc.type === "Rec" && (loc.capacity_last_updated || loc.capacity_as_of)
         ? (() => {
@@ -355,21 +403,33 @@ export function PlacesList({
           })()
         : null;
 
+    const hoursForList =
+      loc.hours_today ||
+      loc.hours ||
+      recreationFacility?.today_hours ||
+      recreationFacility?.hours_hint;
+
     const primaryMeta = loc.classMeetings?.length
       ? `${loc.classMeetings.length} class${loc.classMeetings.length === 1 ? "" : "es"}`
-      : isCapacityType
-        ? `${
-            displayPercent != null
-              ? `${displayPercent}% full${recUpdatedLabel ? ` · ${recUpdatedLabel}` : ""}`
-              : hoursForList || "Hours available"
-          }`
+      : (isCapacityType && !isBushLibrary)
+        ? isVisitorParkingGarage
+          ? `${displayPercent != null ? `${displayPercent}% full · ` : ""}${parkingAvailable != null ? `${parkingAvailable.toLocaleString()} spots available` : "Real-time data busy"}${parkingUpdatedLabel ? ` · ${parkingUpdatedLabel}` : ""}`
+          : `${
+              displayPercent != null
+                ? `${displayPercent}% full${recUpdatedLabel ? ` · ${recUpdatedLabel}` : ""}`
+                : hoursForList || "Hours available"
+            }`
         : loc.hours_today || loc.hours || loc.type;
+
     const secondaryMeta =
-      loc.type === "Parking"
-        ? parkingRecommendation?.badge || null
-        : displayPercent != null && isCapacityType
+      (isVisitorParkingGarage || loc.type === "Parking" || parkingAvailable != null)
+        ? (parkingAvailable != null 
+            ? `${displayPercent != null ? `${displayPercent}% full · ` : ""}${parkingAvailable.toLocaleString()} spaces` 
+            : (parkingRecommendation?.badge || null))
+        : (displayPercent != null && isCapacityType && !isBushLibrary)
           ? `${displayPercent}% full`
           : (loc.type !== "Dining" && loc.type !== "Hub" ? loc.type : null);
+
     const statusChips: string[] = [];
 
     if (loc.classMeetings?.length) {
@@ -380,7 +440,8 @@ export function PlacesList({
     }
     if (
       displayPercent != null &&
-      isCapacityType
+      isCapacityType && 
+      !isBushLibrary
     ) {
       statusChips.push(
         displayPercent >= 80

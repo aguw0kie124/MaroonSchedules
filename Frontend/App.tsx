@@ -1,8 +1,10 @@
+import 'react-native-gesture-handler';
 import React from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable, Image } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ClerkProvider, ClerkLoaded, useAuth, useUser } from '@clerk/clerk-expo';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import { useTheme, useThemeStore } from './components/SharedUI';
@@ -11,6 +13,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 import { Dashboard } from './components/Dashboard';
 import { Profile } from './components/Profile';
+import ProfileSettingsScreen from './components/ProfileSettingsScreen';
 import { RecreationFacilitiesScreen } from './components/RecreationFacilitiesScreen';
 import { CourseDetail } from './components/CourseDetail';
 import { AuthLanding } from './components/AuthLanding';
@@ -23,6 +26,7 @@ import { NewCourseSearchScreen } from './components/NewCourseSearchScreen';
 import { NewCourseDetailScreen } from './components/NewCourseDetailScreen';
 import { ScheduleListScreen } from './components/ScheduleListScreen';
 import { ScheduleDetailScreen } from './components/ScheduleDetailScreen';
+import FacilityCountsScreen from './components/places/FacilityCountsScreen';
 import { CampusNavigationScreen } from './components/CampusNavigationScreen';
 import BusTimetableScreen from './components/BusTimetableScreen';
 import TransitTripPlannerScreen from './components/TransitTripPlannerScreen';
@@ -48,8 +52,7 @@ import TrackerHubScreen from './components/dining/TrackerHubScreen';
 import StreakHubScreen from './components/dining/StreakHubScreen';
 import RestaurantMenuScreen from './components/dining/RestaurantMenuScreen';
 
-import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio } from 'lucide-react-native';
-import { GlassPillTabBar } from './components/GlassPillTabBar';
+import { Home, Map, Users, User, Cog, UtensilsCrossed, Clock3, Settings, Radio, UserRound, LayoutGrid, RotateCw, LibraryBig } from 'lucide-react-native';
 import { getOrderedItems, getOrderedVisibleItems, useAppShellStore } from './store/appShellStore';
 import { useSessionStore } from './store/sessionStore';
 import { TourTarget, useTour } from './components/onboarding/TourProvider';
@@ -62,14 +65,16 @@ import {
   syncUser,
 } from './api/client';
 import { TOSScreen } from './components/TOSScreen';
-import { NotificationPromptScreen } from './components/onboarding/NotificationPromptScreen';
 import { EventPreferenceOnboardingScreen } from './components/onboarding/EventPreferenceOnboardingScreen';
+import { NameOnboardingScreen } from './components/onboarding/NameOnboardingScreen';
 
 import { AdminApplicationScreen } from './components/admin/AdminApplicationScreen';
 import { AdminPortal } from './components/admin/AdminPortal';
 import { PendingReviewInterceptor } from './components/events/PendingReviewInterceptor';
+import { FriendPingNotificationBridge } from './components/pings/FriendPingNotificationBridge';
 import { API_URL } from './config';
 import { ClubAccessScreen } from './components/ClubAccessScreen';
+import PublicProfileScreen from './components/social/PublicProfileScreen';
 import { FocusMotionView } from './components/common/Motion';
 import { useEventStore, type MajorOption } from './store/eventStore';
 
@@ -92,25 +97,38 @@ function isMajorOption(value: unknown): value is MajorOption {
 
 function UserSync({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
-  const isTourCompleted = useAppShellStore((state) => state.isTourCompleted);
-  const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
-  const preferredEventCategories = useAppShellStore((state) => state.preferredEventCategories);
-  const preferredTime = useAppShellStore((state) => state.preferredTime);
-  const preferredSocialMode = useAppShellStore((state) => state.preferredSocialMode);
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
-  const setTourCompleted = useAppShellStore((state) => state.setTourCompleted);
   const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
   const setPreferredEventCategories = useAppShellStore((state) => state.setPreferredEventCategories);
+  const setPreferredEventInterests = useAppShellStore((state) => state.setPreferredEventInterests);
   const setPreferredTime = useAppShellStore((state) => state.setPreferredTime);
   const setPreferredSocialMode = useAppShellStore((state) => state.setPreferredSocialMode);
   const setSelectedMajor = useEventStore((state) => state.setSelectedMajor);
-  const isMajorSpecific = useEventStore((state) => state.isMajorSpecific);
   const setMajorSpecific = useEventStore((state) => state.setMajorSpecific);
   const lastSyncedUserId = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     if (user?.id && lastSyncedUserId.current !== user.id) {
+      const previousUserId = lastSyncedUserId.current;
       lastSyncedUserId.current = user.id;
+      const reopeningPrefs = useAppShellStore.getState().showEventPreferencesOnboarding;
+
+      // Prevent a prior Clerk account's locally persisted onboarding state
+      // from leaking into a newly signed-in user on the same device.
+      if (previousUserId && previousUserId !== user.id && !reopeningPrefs) {
+        useAppShellStore.setState({
+          isTOSAccepted: false,
+          isNotificationPrompted: false,
+          isEventPreferencesCompleted: false,
+          preferredEventCategories: [],
+          preferredEventInterests: [],
+          preferredTime: null,
+          preferredSocialMode: null,
+        });
+        setMajorSpecific(false);
+        setSelectedMajor('Engineering');
+      }
+
       syncUser(
         user.id,
         user.primaryEmailAddress?.emailAddress,
@@ -121,10 +139,6 @@ function UserSync({ children }: { children: React.ReactNode }) {
           if (typeof data.tos_accepted === 'boolean') {
             setTOSAccepted(data.tos_accepted);
           }
-          if (typeof data.tour_completed === 'boolean') {
-            setTourCompleted(isTourCompleted || data.tour_completed);
-          }
-          const reopeningPrefs = useAppShellStore.getState().showEventPreferencesOnboarding;
           if (!reopeningPrefs) {
             const hasLegacyPreferenceShape =
               !('event_preferences_completed' in data) ||
@@ -136,20 +150,15 @@ function UserSync({ children }: { children: React.ReactNode }) {
               typeof data.event_preferences_completed === 'boolean'
                 ? data.event_preferences_completed
                 : hasLegacyPreferenceShape;
-            setEventPreferencesCompleted(
-              isEventPreferencesCompleted || nextEventPreferencesCompleted,
-            );
+            setEventPreferencesCompleted(nextEventPreferencesCompleted);
             if (Array.isArray(data.preferred_event_categories)) {
               setPreferredEventCategories(
                 data.preferred_event_categories.filter((entry: unknown): entry is string => typeof entry === 'string'),
               );
-            } else if (!isEventPreferencesCompleted) {
-              setPreferredEventCategories([]);
-            } else if (preferredEventCategories.length > 0) {
-              setPreferredEventCategories(preferredEventCategories);
             } else {
               setPreferredEventCategories([]);
             }
+            setPreferredEventInterests([]);
             if (
               data.preferred_time === 'Morning' ||
               data.preferred_time === 'Afternoon' ||
@@ -157,28 +166,25 @@ function UserSync({ children }: { children: React.ReactNode }) {
               data.preferred_time === 'Anytime'
             ) {
               setPreferredTime(data.preferred_time);
-            } else if (isEventPreferencesCompleted && preferredTime) {
-              setPreferredTime(preferredTime);
             } else {
               setPreferredTime(null);
             }
             if (data.preferred_social_mode === 'casual' || data.preferred_social_mode === 'professional') {
               setPreferredSocialMode(data.preferred_social_mode);
-            } else if (isEventPreferencesCompleted && preferredSocialMode) {
-              setPreferredSocialMode(preferredSocialMode);
             } else {
               setPreferredSocialMode(null);
             }
             if (isMajorOption(data.major)) {
               setSelectedMajor(data.major);
-            } else if (!isEventPreferencesCompleted) {
+            } else {
               setMajorSpecific(false);
+              setSelectedMajor('Engineering');
             }
           }
         }
       }).catch((err: any) => console.warn('UserSync failed:', err));
     }
-  }, [isEventPreferencesCompleted, isMajorSpecific, isTourCompleted, preferredEventCategories, preferredSocialMode, preferredTime, setEventPreferencesCompleted, setMajorSpecific, setPreferredEventCategories, setPreferredSocialMode, setPreferredTime, setSelectedMajor, setTOSAccepted, setTourCompleted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
+  }, [setEventPreferencesCompleted, setMajorSpecific, setPreferredEventCategories, setPreferredEventInterests, setPreferredSocialMode, setPreferredTime, setSelectedMajor, setTOSAccepted, user?.fullName, user?.id, user?.imageUrl, user?.primaryEmailAddress?.emailAddress]);
 
   return <>{children}</>;
 }
@@ -258,23 +264,17 @@ function withTabMotion(Component: React.ComponentType<any>, delay = 0) {
 
 const AnimatedDashboardScreen = withTabMotion(Dashboard, 0);
 const AnimatedPlacesScreen = withTabMotion(PlacesMapScreen, 40);
-const AnimatedSocialScreen = withTabMotion(SocialHubScreen, 60);
-const AnimatedDiningScreen = withTabMotion(
-  () => (
-    <ErrorBoundary name="Dining Dashboard">
-      <DiningDashboard />
-    </ErrorBoundary>
-  ),
-  50,
-);
-const AnimatedTimerScreen = withTabMotion(TimerScreen, 80);
-const AnimatedSettingsScreen = withTabMotion(Profile, 80);
+const AnimatedSocialScreen = withTabMotion(SocialHubScreen, 10);
+const AnimatedDiningScreen = withTabMotion(DiningDashboard, 30);
+const AnimatedClubsScreen = withTabMotion(ClubAccessScreen, 50);
+const AnimatedSettingsScreen = withTabMotion(Profile, 90);
 
 function MainTabs(props: any) {
   const { COLORS } = useTheme();
+  const { user } = useUser();
   const navItems = useAppShellStore((state) => state.navItems);
-  const tabBarMode = useAppShellStore((state) => state.tabBarMode);
   const isGuest = useSessionStore((state) => state.isGuest);
+
   const visibleNavItems = React.useMemo(() => {
     if (!isGuest) {
       return getOrderedVisibleItems(navItems).filter((item: any) => item.id !== 'Dining');
@@ -292,7 +292,6 @@ function MainTabs(props: any) {
           component: AnimatedDashboardScreen,
           title: 'Events',
           icon: Home,
-          initialParams: undefined,
         };
       }
       if (item.id === 'Places') {
@@ -301,16 +300,14 @@ function MainTabs(props: any) {
           component: AnimatedPlacesScreen,
           title: 'Places',
           icon: Map,
-          initialParams: undefined,
         };
       }
       if (item.id === 'Social') {
         return {
           name: 'Social',
           component: AnimatedSocialScreen,
-          title: 'Pings',
+          title: 'Social',
           icon: Radio,
-          initialParams: undefined,
         };
       }
       if (item.id === 'Dining') {
@@ -319,44 +316,34 @@ function MainTabs(props: any) {
           component: AnimatedDiningScreen,
           title: 'Dining',
           icon: UtensilsCrossed,
-          initialParams: undefined,
         };
       }
-      return {
-        name: 'Timer',
-        component: AnimatedTimerScreen,
-        title: 'Timer',
-        icon: Clock3,
-        initialParams: undefined,
-      };
-    }),
+      return null;
+    }).filter(s => s !== null),
     {
-      name: 'Settings',
+      name: 'Profile',
       component: AnimatedSettingsScreen,
-      title: 'Settings',
-      icon: Settings,
-      initialParams: undefined,
+      title: 'Profile',
+      icon: UserRound,
     },
   ];
 
   const availableRouteNames = tabScreens.map((screen) => screen.name);
-  const initialRouteName = availableRouteNames.includes('Dashboard')
-    ? 'Dashboard'
+  const initialRouteName = availableRouteNames.includes('Places')
+    ? 'Places'
     : availableRouteNames[0];
-  const shellKey = `${tabBarMode}:${availableRouteNames.join('|')}`;
+  const shellKey = availableRouteNames.join('|');
 
   return (
     <Tab.Navigator
       key={shellKey}
       id="MainTabs"
       initialRouteName={initialRouteName}
-      tabBar={tabBarMode === 'floating' ? (props) => <GlassPillTabBar {...props} /> : undefined}
       screenOptions={{
         headerShown: false,
-        tabBarShowLabel: tabBarMode !== 'floating',
+        tabBarShowLabel: true,
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
-          display: tabBarMode === 'floating' ? 'none' : 'flex',
           height: 70,
           borderTopWidth: 1,
           borderTopColor: COLORS.border,
@@ -379,10 +366,41 @@ function MainTabs(props: any) {
           initialParams={screen.initialParams}
           options={{
             title: screen.title,
-            tabBarButton: (props) => {
-              return <TabButtonWrapper screenName={screen.name} props={props} />;
-            },
+            tabBarButton: (p) => <TabButtonWrapper screenName={screen.name} props={p} />,
             tabBarIcon: ({ color, focused }) => {
+              if (screen.name === 'Settings') {
+                return (
+                  <View 
+                    style={{ 
+                      width: 28, 
+                      height: 28, 
+                      borderRadius: 14, 
+                      overflow: 'hidden',
+                      borderWidth: focused ? 2 : 0,
+                      borderColor: COLORS.textPrimary,
+                    }}
+                  >
+                    {user?.imageUrl ? (
+                      <Image 
+                        source={{ uri: user.imageUrl }} 
+                        style={{ width: '100%', height: '100%' }} 
+                      />
+                    ) : (
+                      <View 
+                        style={{ 
+                          width: '100%', 
+                          height: '100%', 
+                          backgroundColor: COLORS.surfaceElevated,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <UserRound size={16} color={color} />
+                      </View>
+                    )}
+                  </View>
+                );
+              }
               return (
                 <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                   <screen.icon
@@ -409,12 +427,14 @@ function RootNavigator() {
   const exitGuestMode = useSessionStore((state) => state.exitGuestMode);
   const isTOSAccepted = useAppShellStore((state) => state.isTOSAccepted);
   const setTOSAccepted = useAppShellStore((state) => state.setTOSAccepted);
-  const isNotificationPrompted = useAppShellStore((state) => state.isNotificationPrompted);
-  const setNotificationPrompted = useAppShellStore((state) => state.setNotificationPrompted);
   const isEventPreferencesCompleted = useAppShellStore((state) => state.isEventPreferencesCompleted);
+  const isNameOnboardingCompleted = useAppShellStore((state) => state.isNameOnboardingCompleted);
+  const setNameOnboardingCompleted = useAppShellStore((state) => state.setNameOnboardingCompleted);
   const setEventPreferencesCompleted = useAppShellStore((state) => state.setEventPreferencesCompleted);
   const showEventPreferencesOnboarding = useAppShellStore((state) => state.showEventPreferencesOnboarding);
   const setShowEventPreferencesOnboarding = useAppShellStore((state) => state.setShowEventPreferencesOnboarding);
+  const showNameOnboarding = useAppShellStore((state) => state.showNameOnboarding);
+  const setShowNameOnboarding = useAppShellStore((state) => state.setShowNameOnboarding);
   const isAdmin = useAppShellStore((state) => state.adminAccessStatus);
   const setIsAdmin = useAppShellStore((state) => state.setAdminAccessStatus);
   const isRegularUserFlow = isSignedIn && authMode !== 'admin';
@@ -446,18 +466,20 @@ function RootNavigator() {
         onAccepted={() => setTOSAccepted(true)} 
       />
     );
-  } else if (isSignedIn && isTOSAccepted && !isNotificationPrompted) {
+  } else if (isSignedIn && isTOSAccepted && (!isNameOnboardingCompleted || showNameOnboarding)) {
     content = (
-      <NotificationPromptScreen 
-        onDone={() => setNotificationPrompted(true)} 
+      <NameOnboardingScreen 
+        onDone={() => {
+          setNameOnboardingCompleted(true);
+          setShowNameOnboarding(false);
+        }} 
       />
     );
-  } else if (isRegularUserFlow && isTOSAccepted && isNotificationPrompted && isAdmin === null) {
+  } else if (isRegularUserFlow && isTOSAccepted && isAdmin === null) {
     content = <View style={{ flex: 1, backgroundColor: COLORS.background }} />;
   } else if (
     isRegularUserFlow &&
     isTOSAccepted &&
-    isNotificationPrompted &&
     (showEventPreferencesOnboarding || isAdmin === false) &&
     (!isEventPreferencesCompleted || showEventPreferencesOnboarding) &&
     user?.id
@@ -524,8 +546,11 @@ function RootNavigator() {
             <Stack.Screen name="AnnexLibraryDetail" component={AnnexLibraryDetailScreen} options={{ headerShown: false }} />
             <Stack.Screen name="AnnexRentalDetail" component={AnnexRentalDetailScreen} options={{ headerShown: false }} />
             <Stack.Screen name="ClubAccess" component={ClubAccessScreen} options={{ headerShown: true, title: 'Club Access' }} />
+            <Stack.Screen name="ProfileSettings" component={ProfileSettingsScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="PublicProfile" component={PublicProfileScreen} options={{ headerShown: false }} />
             <Stack.Screen name="GPACalculator" component={GPACalculatorScreen} options={{ headerShown: false }} />
             <Stack.Screen name="RecreationFacilities" component={RecreationFacilitiesScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="FacilityCounts" component={FacilityCountsScreen} options={{ headerShown: false }} />
             <Stack.Screen
               name="FullMenu"
               component={FullMenuScreen}
@@ -561,14 +586,19 @@ function RootNavigator() {
     );
   }
 
-  return (
-    <>
-      <ApiAuthBridge />
-      {isSignedIn ? <UserSync>{content}</UserSync> : content}
-      {isSignedIn && <PendingReviewInterceptor />}
-    </>
-  );
-}
+    return (
+      <View style={{ flex: 1, backgroundColor: COLORS.background }}>
+        <ApiAuthBridge />
+        {isSignedIn ? (
+          <UserSync>
+            {content}
+          </UserSync>
+        ) : content}
+        {isSignedIn && <PendingReviewInterceptor />}
+        {isSignedIn && <FriendPingNotificationBridge />}
+      </View>
+    );
+  }
 
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { navigationRef } from './navigation/Refs';
@@ -632,7 +662,9 @@ function TabButtonWrapper({ screenName, props }: { screenName: string; props: an
           },
         ]}
       >
-        <Pressable {...rest} onPress={handlePress} onLongPress={onLongPress} />
+        <Pressable {...rest} onPress={handlePress} onLongPress={onLongPress}>
+          {props.children}
+        </Pressable>
       </View>
     </TourTarget>
   );
@@ -642,7 +674,7 @@ function App() {
   const { theme, COLORS } = useTheme();
 
   React.useEffect(() => {
-    useThemeStore.getState().loadWallpaperPref().catch((error: unknown) => {
+    useThemeStore.getState().loadThemePrefs().catch((error: unknown) => {
       console.warn('Failed to load theme preferences', error);
     });
   }, []);
@@ -664,19 +696,21 @@ function App() {
   }, [COLORS.background, COLORS.border, COLORS.primary, COLORS.surface, COLORS.textPrimary, theme]);
 
   return (
-    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-      <ClerkLoaded>
-        <QueryClientProvider client={queryClient}>
-          <NavigationContainer theme={navigationTheme} ref={navigationRef}>
-            <TourProvider>
-              <ErrorBoundary name="Root Navigator">
-                <RootNavigator />
-              </ErrorBoundary>
-            </TourProvider>
-          </NavigationContainer>
-        </QueryClientProvider>
-      </ClerkLoaded>
-    </ClerkProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+        <ClerkLoaded>
+          <QueryClientProvider client={queryClient}>
+            <NavigationContainer theme={navigationTheme} ref={navigationRef}>
+              <TourProvider>
+                <ErrorBoundary name="Root Navigator">
+                  <RootNavigator />
+                </ErrorBoundary>
+              </TourProvider>
+            </NavigationContainer>
+          </QueryClientProvider>
+        </ClerkLoaded>
+      </ClerkProvider>
+    </GestureHandlerRootView>
   );
 }
 

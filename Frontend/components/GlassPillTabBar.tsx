@@ -23,21 +23,29 @@ export function GlassPillTabBar({
   descriptors,
   navigation,
 }: BottomTabBarProps) {
-  const { COLORS, theme } = useTheme();
+  const { COLORS, theme, tabBarMode } = useTheme();
   const { activeTargetName, advanceStep } = useTour();
   const isBottomBarHidden = useAppShellStore((store) => store.isBottomBarHidden);
-  const tabBarMode = useAppShellStore((store) => store.tabBarMode);
 
   const [collapsedRouteKey, setCollapsedRouteKey] = React.useState<string | null>(
     tabBarMode === 'floating' ? state.routes[state.index]?.key ?? null : null,
   );
+  const prevIndexRef = React.useRef(state.index);
+  const prevModeRef = React.useRef(tabBarMode);
 
   React.useEffect(() => {
-    if (tabBarMode === 'floating') {
-      setCollapsedRouteKey(state.routes[state.index]?.key ?? null);
-      return;
+    const indexChanged = prevIndexRef.current !== state.index;
+    const modeChanged = prevModeRef.current !== tabBarMode;
+
+    if (indexChanged || modeChanged) {
+      if (tabBarMode === 'floating') {
+        setCollapsedRouteKey(state.routes[state.index]?.key ?? null);
+      } else {
+        setCollapsedRouteKey(null);
+      }
+      prevIndexRef.current = state.index;
+      prevModeRef.current = tabBarMode;
     }
-    setCollapsedRouteKey(null);
   }, [state.index, state.routes, tabBarMode]);
 
   const isDark = theme === 'dark';
@@ -49,7 +57,7 @@ export function GlassPillTabBar({
 
   return (
     <View pointerEvents="box-none" style={styles.outer}>
-      <View style={[styles.shell, collapsedRouteKey ? styles.shellCollapsed : null]}>
+      <View pointerEvents="box-none" style={[styles.shell, collapsedRouteKey ? styles.shellCollapsed : null]}>
         {state.routes.map((route, index) => {
           const descriptor = descriptors[route.key];
           const options = descriptor.options;
@@ -111,6 +119,7 @@ export function GlassPillTabBar({
           }
 
           const getTargetName = () => {
+            if (route.name === 'Dashboard') return 'dashboard-tab';
             if (route.name === 'Places') return 'places-tab';
             if (route.name === 'Social') return 'social-tab';
             if (route.name === 'Settings') return 'settings-tab';
@@ -171,7 +180,7 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       position: 'absolute',
       left: 16,
       right: 16,
-      bottom: 18,
+      bottom: 24,
       alignItems: 'center',
     },
     shell: {
@@ -181,8 +190,14 @@ const getStyles = (COLORS: any, isDark: boolean) =>
       width: '100%',
       paddingVertical: 8,
       borderRadius: 999,
-      backgroundColor: isDark ? 'rgba(16,16,18,0.88)' : 'rgba(255,255,255,0.88)',
-      elevation: 4,
+      backgroundColor: isDark ? 'rgba(12,12,14,0.85)' : 'rgba(255,255,255,0.92)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.15,
+      shadowRadius: 10,
+      elevation: 6,
     },
     shellCollapsed: {
       width: 'auto',
@@ -206,24 +221,25 @@ const getStyles = (COLORS: any, isDark: boolean) =>
     },
     itemCollapsed: {
       flex: 0,
-      width: 56,
-      minWidth: 56,
-      height: 56,
-      minHeight: 56,
+      width: 60,
+      minWidth: 60,
+      height: 60,
+      minHeight: 60,
       paddingHorizontal: 0,
       paddingVertical: 0,
-      borderRadius: 28,
+      borderRadius: 30,
       gap: 0,
+      backgroundColor: isDark ? 'rgba(12,12,14,0.95)' : 'rgba(255,255,255,1)',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.2,
+      shadowRadius: 12,
+      elevation: 10,
     },
     itemFocusedCollapsed: {
-      backgroundColor: isDark ? 'rgba(0,0,0,0.82)' : 'rgba(255,255,255,1)',
-      borderWidth: 0,
-      borderColor: 'transparent',
-      shadowColor: 'transparent',
-      shadowOpacity: 0,
-      shadowRadius: 0,
-      shadowOffset: { width: 0, height: 0 },
-      elevation: 0,
+      // Keep background or highlight if needed
     },
     iconWrap: {
       alignItems: 'center',

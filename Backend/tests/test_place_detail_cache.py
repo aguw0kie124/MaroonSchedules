@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import unittest
 from unittest import mock
 
@@ -34,29 +35,28 @@ class PlaceRegistryResolutionTests(unittest.TestCase):
 
 
 class PlaceDetailCacheTests(unittest.TestCase):
+    def setUp(self):
+        campus_hub_service.PLACE_DETAIL_CACHE.clear()
+
     @mock.patch.object(campus_hub_service, "get_recreation_snapshot", return_value=None)
     @mock.patch.object(campus_hub_service, "get_transit_snapshot", return_value=None)
     @mock.patch.object(campus_hub_service.campus_places_service, "get_places_map_snapshot", return_value={"locations": []})
     @mock.patch.object(campus_hub_service.place_registry_service, "serialize_place")
     @mock.patch.object(campus_hub_service.place_registry_service, "get_place_by_id")
-    @mock.patch.object(campus_hub_service.cache_service, "set_json")
-    @mock.patch.object(campus_hub_service.cache_service, "get_json")
     def test_get_place_detail_rebuilds_when_cached_live_payload_has_no_place(
         self,
-        mock_get_json,
-        mock_set_json,
         mock_get_place_by_id,
         mock_serialize_place,
         _mock_get_places_map,
         _mock_get_transit,
         _mock_get_recreation,
     ):
-        mock_get_json.return_value = {
+        campus_hub_service.PLACE_DETAIL_CACHE["v2:libr"] = (time.time(), {
             "generated_at": "2026-04-06T00:00:00Z",
             "stale_after": 60,
             "source_status": "live",
             "place": None,
-        }
+        })
         mock_get_place_by_id.return_value = {
             "place_id": "libr",
             "name": "Sterling C. Evans Library",
@@ -70,9 +70,7 @@ class PlaceDetailCacheTests(unittest.TestCase):
         result = campus_hub_service.get_place_detail_snapshot("libr")
 
         self.assertEqual(result["place"]["place_id"], "libr")
-        mock_set_json.assert_called_once()
-        cache_key = mock_set_json.call_args.args[0]
-        self.assertIn("campus:place-detail:v2:libr", cache_key)
+        self.assertIn("v2:libr", campus_hub_service.PLACE_DETAIL_CACHE)
 
     @mock.patch.object(campus_hub_service, "get_recreation_snapshot", return_value=None)
     @mock.patch.object(campus_hub_service, "get_transit_snapshot", return_value=None)
@@ -80,12 +78,8 @@ class PlaceDetailCacheTests(unittest.TestCase):
     @mock.patch.object(campus_hub_service.campus_places_service, "get_places_map_snapshot")
     @mock.patch.object(campus_hub_service.place_registry_service, "serialize_place")
     @mock.patch.object(campus_hub_service.place_registry_service, "get_place_by_id")
-    @mock.patch.object(campus_hub_service.cache_service, "set_json")
-    @mock.patch.object(campus_hub_service.cache_service, "get_json", return_value=None)
     def test_get_place_detail_overlays_fresh_library_capacity(
         self,
-        _mock_get_json,
-        _mock_set_json,
         mock_get_place_by_id,
         _mock_serialize_place,
         mock_get_places_map,
@@ -133,6 +127,35 @@ class PlaceDetailCacheTests(unittest.TestCase):
         self.assertEqual(result["place"]["current_count"], 171)
         self.assertEqual(result["place"]["available_seats"], 963)
         self.assertEqual(result["place"]["capacity_as_of"], "2026-04-15 01:43:01")
+
+    @mock.patch.object(campus_hub_service.campus_places_service, "get_places_map_snapshot")
+    @mock.patch.object(campus_hub_service.place_registry_service, "get_place_by_id")
+    def test_get_place_detail_returns_thin_overlay_payload(
+        self,
+        mock_get_place_by_id,
+        mock_get_places_map,
+    ):
+        mock_get_place_by_id.return_value = {
+            "place_id": "msc",
+            "name": "Memorial Student Center",
+            "type": "Hub",
+        }
+        mock_get_places_map.return_value = {
+            "locations": [
+                {
+                    "placeId": "msc",
+                    "location": "Memorial Student Center",
+                    "type": "Hub",
+                    "hours_today": "Tuesday (Central Time): 7:00 AM - 10:00 PM",
+                }
+            ]
+        }
+
+        result = campus_hub_service.get_place_detail_snapshot("msc")
+
+        self.assertIn("place", result)
+        self.assertNotIn("recreation", result)
+        self.assertNotIn("transport", result)
 
 
 if __name__ == "__main__":

@@ -149,6 +149,11 @@ class CrowdPingRouteTests(unittest.TestCase):
         self.assertEqual(activity["id"], "ping-1")
         self.assertEqual(activity["reaction_counts"]["score"], 3)
         self.assertEqual(activity["own_reactions"], {"upvote": [True]})
+        self.assertFalse(response["hasMore"])
+        self.assertEqual(
+            response["nextCursor"],
+            {"createdAt": "2099-01-01T11:55:00+00:00", "id": "ping-1"},
+        )
         mock_ensure_tables.assert_called_once()
         mock_get_crowdping_feed.assert_called_once_with(post_types=["ping", "post"], limit=50)
         mock_get_user_interactions_batch.assert_called_once_with("user_123", ["ping-1"])
@@ -257,6 +262,98 @@ class CrowdPingRouteTests(unittest.TestCase):
         )
 
         self.assertEqual([item["id"] for item in response["results"]], ["visible-ping"])
+        self.assertFalse(response["hasMore"])
+        self.assertEqual(
+            response["nextCursor"],
+            {"createdAt": "2099-01-01T11:56:00+00:00", "id": "visible-ping"},
+        )
+
+    @mock.patch.object(chat.feed_repository, "get_user_interactions_batch", return_value={})
+    @mock.patch.object(chat.feed_repository, "get_batch_interaction_counts", return_value={})
+    @mock.patch.object(chat.feed_repository, "get_crowdping_feed")
+    @mock.patch.object(chat.cache_service, "get_json", return_value=None)
+    @mock.patch.object(chat, "_get_block_relationship_ids_cached", return_value=["blocked_user"])
+    @mock.patch.object(chat, "_resolve_access_scope_cached", return_value=([], False))
+    @mock.patch.object(chat.campus_hub_service, "_ensure_social_tables")
+    def test_proxy_get_feed_uses_cursor_to_continue_past_filtered_batches(
+        self,
+        _mock_ensure_tables,
+        _mock_resolve_access_scope,
+        _mock_get_block_relationship_ids,
+        _mock_cache_get_json,
+        mock_get_crowdping_feed,
+        _mock_get_batch_counts,
+        _mock_get_user_interactions_batch,
+    ):
+        first_batch = [
+            {
+                "id": f"blocked-{index}",
+                "user_id": "blocked_user",
+                "user_name": "Blocked User",
+                "user_image": "",
+                "content": "Hidden",
+                "lat": None,
+                "lng": None,
+                "location_tag": "Nowhere",
+                "event_id": None,
+                "images": [],
+                "is_anonymous": False,
+                "visibility": "public",
+                "post_type": "ping",
+                "custom_data": {},
+                "created_at": f"2099-01-01T11:{59 - index:02d}:00+00:00",
+            }
+            for index in range(20)
+        ]
+        second_batch = [
+            {
+                "id": "visible-cursor-ping",
+                "user_id": "user_789",
+                "user_name": "Visible User",
+                "user_image": "",
+                "content": "Visible",
+                "lat": None,
+                "lng": None,
+                "location_tag": "MSC",
+                "event_id": None,
+                "images": [],
+                "is_anonymous": False,
+                "visibility": "public",
+                "post_type": "ping",
+                "custom_data": {},
+                "created_at": "2099-01-01T11:10:00+00:00",
+            },
+        ]
+        mock_get_crowdping_feed.side_effect = [first_batch, second_batch]
+
+        response = asyncio.run(
+            chat.proxy_get_feed(
+                request=make_request(),
+                feed_group="flat",
+                feed_id="campus_pings",
+                limit=10,
+                clerk_id=None,
+                refresh=False,
+                auth_user_id="user_123",
+            )
+        )
+
+        self.assertEqual([item["id"] for item in response["results"]], ["visible-cursor-ping"])
+        self.assertFalse(response["hasMore"])
+        self.assertEqual(
+            response["nextCursor"],
+            {"createdAt": "2099-01-01T11:10:00+00:00", "id": "visible-cursor-ping"},
+        )
+        self.assertEqual(mock_get_crowdping_feed.call_count, 2)
+        self.assertEqual(
+            mock_get_crowdping_feed.call_args_list[1],
+            mock.call(
+                post_types=["ping", "post"],
+                limit=20,
+                cursor_created_at="2099-01-01T11:40:00+00:00",
+                cursor_id="blocked-19",
+            ),
+        )
 
     @mock.patch.object(chat.feed_repository, "has_block_relationship", return_value=True)
     @mock.patch.object(chat.feed_repository, "get_crowdping_post_owner", return_value="blocked_user")

@@ -1,14 +1,18 @@
 import React from "react";
 import {
+  Animated,
+  Dimensions,
+  Easing,
   View,
   Text,
   TouchableOpacity,
   ScrollView,
-  LayoutAnimation,
 } from "react-native";
 import { X, ChevronDown, Clock, MapPin, Bus, Route } from "lucide-react-native";
-import * as Haptics from "expo-haptics";
 import { getStopLabel } from "./utils";
+import { transitService } from "../../services/transitService";
+
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 interface BusLayerUIProps {
   styles: any;
@@ -34,6 +38,16 @@ interface BusLayerUIProps {
   openTransitTripPlanner?: () => void;
 }
 
+function getRouteLegendColor(route: any) {
+  const rawColor = typeof route?.Color === "string" ? route.Color.trim() : "";
+  if (/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(rawColor)) {
+    return rawColor;
+  }
+  return transitService.getRouteColor(
+    route?.Key || route?.ShortName || route?.Name || "",
+  );
+}
+
 export function BusRouteSelector({
   styles,
   COLORS,
@@ -55,19 +69,82 @@ export function BusRouteSelector({
   setSelectedDirection?: (val: string) => void;
   availableDirections?: string[];
 }) {
+  const subtitle = `${filteredBusRoutes.length} route${filteredBusRoutes.length === 1 ? "" : "s"}`;
+  const popupHeight = Math.min(Math.round(SCREEN_HEIGHT * 0.54), 460);
+  const animationProgress = React.useRef(
+    new Animated.Value(isRouteDropdownOpen ? 1 : 0),
+  ).current;
+  const [shouldRenderPopup, setShouldRenderPopup] = React.useState(
+    isRouteDropdownOpen,
+  );
+
+  React.useEffect(() => {
+    if (isRouteDropdownOpen) {
+      setShouldRenderPopup(true);
+    }
+
+    const animation = Animated.timing(animationProgress, {
+      toValue: isRouteDropdownOpen ? 1 : 0,
+      duration: isRouteDropdownOpen ? 220 : 180,
+      easing: isRouteDropdownOpen
+        ? Easing.out(Easing.cubic)
+        : Easing.inOut(Easing.cubic),
+      useNativeDriver: true,
+    });
+
+    animation.start(({ finished }) => {
+      if (finished && !isRouteDropdownOpen) {
+        setShouldRenderPopup(false);
+      }
+    });
+
+    return () => {
+      animation.stop();
+    };
+  }, [animationProgress, isRouteDropdownOpen]);
+
   if (busRoutes.length === 0) return null;
+
+  const chevronAnimatedStyle = {
+    transform: [
+      {
+        rotate: animationProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: ["0deg", "180deg"],
+        }),
+      },
+    ],
+  };
+
+  const popupAnimatedStyle = {
+    opacity: animationProgress,
+    transform: [
+      {
+        translateY: animationProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [-12, 0],
+        }),
+      },
+      {
+        scale: animationProgress.interpolate({
+          inputRange: [0, 1],
+          outputRange: [0.985, 1],
+        }),
+      },
+    ],
+  };
 
   return (
     <View style={styles.busRouteSelectorOuter} pointerEvents="box-none">
       <View style={styles.busRouteSelectorRow}>
         <TouchableOpacity
-          style={styles.busRouteDropdownTrigger}
+          style={[
+            styles.busRouteDropdownTrigger,
+            isRouteDropdownOpen && styles.busRouteDropdownTriggerOpen,
+          ]}
+          activeOpacity={0.88}
           onPress={() => {
-            LayoutAnimation.configureNext(
-              LayoutAnimation.Presets.easeInEaseOut,
-            );
             setIsRouteDropdownOpen(!isRouteDropdownOpen);
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           }}
         >
           <View
@@ -100,15 +177,9 @@ export function BusRouteSelector({
                   "Select Route"}
             </Text>
           </View>
-          <View style={styles.chevronIcon}>
-            <ChevronDown
-              size={16}
-              color={COLORS.textTertiary}
-              style={
-                isRouteDropdownOpen && { transform: [{ rotate: "180deg" }] }
-              }
-            />
-          </View>
+          <Animated.View style={[styles.chevronIcon, chevronAnimatedStyle]}>
+            <ChevronDown size={18} color={COLORS.textPrimary} />
+          </Animated.View>
         </TouchableOpacity>
 
         {!isAllBusRoutesSelected && (
@@ -176,71 +247,102 @@ export function BusRouteSelector({
         </ScrollView>
       )}
 
-      {isRouteDropdownOpen && (
-        <View style={styles.busRoutesDropdown}>
+      {shouldRenderPopup ? (
+        <Animated.View
+          style={[
+            styles.placesListPopupCard,
+            styles.busRoutesPopupCard,
+            { maxHeight: popupHeight },
+            popupAnimatedStyle,
+          ]}
+          pointerEvents={isRouteDropdownOpen ? "auto" : "none"}
+        >
+          <View style={styles.placesListPopupHeader}>
+            <View style={styles.placesListPopupHandle} />
+            <Text style={styles.placesListPopupTitle}>Bus Routes</Text>
+            <Text style={styles.placesListPopupSubtitle}>{subtitle}</Text>
+          </View>
+
           <ScrollView
+            style={styles.placesListPopupScroll}
             showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.busDropdownScroll}
+            contentContainerStyle={styles.placesListPopupContent}
             nestedScrollEnabled={true}
           >
             {filteredBusRoutes.length === 0 ? (
-              <View style={styles.emptyRouteSearchState}>
-                <Text style={styles.emptyRouteSearchTitle}>
-                  No routes available right now.
+              <View style={styles.placesListPopupEmptyState}>
+                <Text style={styles.placesListPopupEmptyTitle}>
+                  No routes available right now
                 </Text>
-                <Text style={styles.emptyRouteSearchBody}>
+                <Text style={styles.placesListPopupEmptySubtitle}>
                   Pull to refresh live transit data and try again.
                 </Text>
               </View>
             ) : (
               filteredBusRoutes.map((route) => {
                 const isSelected = selectedBusRouteId === route.Key;
+                const legendColor = getRouteLegendColor(route);
                 return (
                   <TouchableOpacity
                     key={route.Key}
                     style={[
-                      styles.busRouteItem,
-                      isSelected && styles.busRouteItemActive,
+                      styles.placesListPopupRow,
+                      isSelected && styles.busRoutePopupRowActive,
                     ]}
+                    activeOpacity={0.88}
                     onPress={() => {
                       handleSelectBusRoute(route.Key);
                       setIsRouteDropdownOpen(false);
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     }}
                   >
                     <View
                       style={[
-                        styles.routeItemBadge,
-                        isSelected
-                          ? styles.routeItemBadgeActive
-                          : styles.routeItemBadgeIdle,
+                        styles.busRoutePopupIcon,
+                        isSelected && styles.busRoutePopupIconActive,
                       ]}
                     >
+                      <View
+                        style={[
+                          styles.busRoutePopupLegendSwatch,
+                          { backgroundColor: legendColor },
+                        ]}
+                      />
                       <Text
                         style={[
-                          styles.routeItemNumber,
-                          !isSelected && styles.routeItemNumberIdle,
+                          styles.busRoutePopupNumber,
+                          !isSelected && styles.busRoutePopupNumberIdle,
                         ]}
                       >
                         {route.ShortName}
                       </Text>
                     </View>
-                    <Text
-                      style={[
-                        styles.routeItemName,
-                        isSelected && styles.routeItemNameActive,
-                      ]}
-                    >
-                      {route.Name}
-                    </Text>
-                    {isSelected && <View style={styles.activeCheckDot} />}
+                    <View style={styles.placesListPopupRowBody}>
+                      <Text
+                        style={styles.placesListPopupRowTitle}
+                        numberOfLines={1}
+                      >
+                        {route.Name}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.placesListPopupRowEyebrow,
+                          isSelected && styles.busRoutePopupEyebrowActive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        Route {route.ShortName}
+                      </Text>
+                    </View>
+                    {isSelected ? (
+                      <View style={styles.busRoutePopupActiveIndicator} />
+                    ) : null}
                   </TouchableOpacity>
                 );
               })
             )}
           </ScrollView>
-        </View>
-      )}
+        </Animated.View>
+      ) : null}
     </View>
   );
 }

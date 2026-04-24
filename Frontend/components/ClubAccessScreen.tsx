@@ -166,15 +166,21 @@ export function ClubAccessScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: COLORS.background }]}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 60 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
       >
         <View style={styles.heroCard}>
-          <Text style={styles.eyebrow}>Club Access</Text>
-          <Text style={styles.title}>Request Event Access</Text>
-          <Text style={styles.subtitle}>Join organization access groups and review your active tags.</Text>
+           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: COLORS.primary + '15', alignItems: 'center', justifyContent: 'center' }}>
+                <UserRoundPlus size={22} color={COLORS.primary} />
+              </View>
+              <View>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: COLORS.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>Memberships</Text>
+                <Text style={{ fontSize: 20, fontWeight: '900', color: COLORS.textPrimary }}>Club Access</Text>
+              </View>
+           </View>
         </View>
 
         {clubs.length ? (
@@ -184,42 +190,60 @@ export function ClubAccessScreen() {
             const isPending = status === 'pending';
             return (
               <View key={club.clerk_id} style={styles.clubCard}>
-                <View style={{ gap: 6 }}>
-                  <Text style={styles.clubName}>{club.organization_name}</Text>
-                  <Text style={styles.clubMeta}>
-                    {club.auto_approve_join_requests
-                      ? 'Requests for this club are approved automatically.'
-                      : 'Requests for this club are reviewed by the organizers.'}
-                  </Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                   <View style={{ flex: 1, gap: 4 }}>
+                      <Text style={{ fontSize: 17, fontWeight: '800', color: COLORS.textPrimary }}>{club.organization_name}</Text>
+                      <TagChips tags={club.club_tag ? [club.club_tag] : []} label="Official" />
+                   </View>
                 </View>
-                <TagChips tags={club.club_tag ? [club.club_tag] : []} label="Club tag" />
-                {isApproved ? (
-                  <Button variant="secondary" disabled>
-                    Access Granted
-                  </Button>
-                ) : isPending ? (
-                  <Button variant="secondary" disabled>
-                    Request Pending
-                  </Button>
-                ) : (
-                  <Button
-                    onPress={() => requestJoin(club)}
-                    disabled={requestingClubId === club.clerk_id}
-                  >
-                    {requestingClubId === club.clerk_id ? 'Sending...' : 'Request to Join'}
-                  </Button>
-                )}
+                
+                <Text style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 18 }}>
+                  {club.auto_approve_join_requests
+                    ? 'This organization grants access automatically upon request.'
+                    : 'Membership requests are reviewed manually by club officers.'}
+                </Text>
+
+                <View style={{ marginTop: 4 }}>
+                  {isApproved ? (
+                    <View style={{ height: 44, borderRadius: 12, backgroundColor: '#10B981' + '15', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#10B981' + '30' }}>
+                       <Text style={{ fontSize: 14, fontWeight: '800', color: '#10B981' }}>Access Granted</Text>
+                    </View>
+                  ) : isPending ? (
+                    <View style={{ height: 44, borderRadius: 12, backgroundColor: COLORS.border, alignItems: 'center', justifyContent: 'center' }}>
+                       <Text style={{ fontSize: 14, fontWeight: '800', color: COLORS.textTertiary }}>Request Pending</Text>
+                    </View>
+                  ) : (
+                    <Pressable
+                      onPress={() => requestJoin(club)}
+                      disabled={requestingClubId === club.clerk_id}
+                      style={({ pressed }) => ({
+                        height: 48,
+                        borderRadius: 14,
+                        backgroundColor: COLORS.primary,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        opacity: (pressed || requestingClubId === club.clerk_id) ? 0.8 : 1,
+                        shadowColor: COLORS.primary,
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.2,
+                        shadowRadius: 8,
+                        elevation: 4
+                      })}
+                    >
+                       <Text style={{ color: '#FFF', fontSize: 15, fontWeight: '900' }}>
+                         {requestingClubId === club.clerk_id ? 'Sending...' : 'Request to Join'}
+                       </Text>
+                    </Pressable>
+                  )}
+                </View>
               </View>
             );
           })
         ) : (
-          <View style={styles.heroCard}>
-            <View style={{ alignItems: 'center', gap: 10 }}>
-              <UserRoundPlus size={24} color={COLORS.primary} />
-              <Text style={styles.emptyText}>
+          <View style={[styles.heroCard, { paddingVertical: 40, alignItems: 'center' }]}>
+              <Text style={{ color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' }}>
                 No clubs have configured access tags yet.
               </Text>
-            </View>
           </View>
         )}
       </ScrollView>

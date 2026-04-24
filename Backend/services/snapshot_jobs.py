@@ -6,19 +6,18 @@ from datetime import datetime
 from typing import Awaitable, Callable, Iterable
 
 from routers import traffic
-from services import cache_service, campus_events_service, campus_hub_service, campus_places_service, dining_service, pulse_service
+from services import cache_service
+from services import campus_events_service, campus_hub_service, campus_places_service, dining_service
 
 
 SNAPSHOT_JOBS_ENABLED = os.environ.get("SNAPSHOT_JOBS_ENABLED", "true").strip().lower() not in {"0", "false", "no"}
 PLACES_REFRESH_SECONDS = max(15, int(os.environ.get("PLACES_REFRESH_SECONDS", "45")))
-PULSE_REFRESH_SECONDS = max(10, int(os.environ.get("PULSE_REFRESH_SECONDS", "45")))
 EVENTS_REFRESH_SECONDS = max(60, int(os.environ.get("EVENTS_REFRESH_SECONDS", "300")))
 RECREATION_REFRESH_SECONDS = max(30, int(os.environ.get("RECREATION_REFRESH_SECONDS", "120")))
 TRANSIT_REFRESH_SECONDS = max(15, int(os.environ.get("TRANSIT_REFRESH_SECONDS", "60")))
 TRANSIT_VEHICLES_REFRESH_SECONDS = max(5, int(os.environ.get("TRANSIT_VEHICLES_REFRESH_SECONDS", "15")))
 DINING_REFRESH_SECONDS = max(60, int(os.environ.get("DINING_REFRESH_SECONDS", "300")))
 PLACE_DETAILS_REFRESH_SECONDS = max(30, int(os.environ.get("PLACE_DETAILS_REFRESH_SECONDS", "90")))
-PULSE_LIMIT = 60
 PLACE_DETAILS_WARM_LIMIT = max(6, int(os.environ.get("PLACE_DETAILS_WARM_LIMIT", "18")))
 
 _TaskFactory = Callable[[], Awaitable[None]]
@@ -28,9 +27,15 @@ def _log(message: str) -> None:
     print(f"[snapshot_jobs] {message}")
 
 
-def _rebuild_in_place(cache_key: str, builder: Callable[[], object], ttl_seconds: int = 300) -> object:
+def _rebuild_in_place(
+    cache_key: str,
+    builder: Callable[[], object],
+    ttl_seconds: int = 300,
+    *,
+    write_cache: bool = True,
+) -> object:
     data = builder()
-    if data:
+    if write_cache and data:
         cache_service.set_json(cache_key, data, ttl_seconds=ttl_seconds)
     return data
 
@@ -51,26 +56,25 @@ def _refresh_places() -> object:
     return _rebuild_in_place(
         f"campus:places:map:{campus_places_service.PLACE_SNAPSHOT_CACHE_VERSION}",
         campus_places_service.get_places_map_snapshot,
-        ttl_seconds=3600,
+        ttl_seconds=campus_places_service.PLACE_SNAPSHOT_TTL_SECONDS,
+        write_cache=False,
     )
-
-
-def _refresh_pulse() -> object:
-    # Match the v2 cache key used in pulse_service.py
-    cache_key = f"campus:pulse:map:v2:{PULSE_LIMIT}"
-    return _rebuild_in_place(cache_key, lambda: pulse_service.get_pulse_map(limit=PULSE_LIMIT), ttl_seconds=600)
-
 
 def _refresh_events() -> object:
     return campus_events_service.load_campus_events(force_refresh=True)
 
 
 def _refresh_recreation() -> object:
-    return _rebuild_in_place("campus:recreation:snapshot:v1", campus_hub_service.get_recreation_snapshot, ttl_seconds=600)
+    return _rebuild_in_place(
+        "campus:recreation:snapshot:v1",
+        campus_hub_service.get_recreation_snapshot,
+        ttl_seconds=campus_hub_service.RECREATION_SNAPSHOT_TTL_SECONDS,
+        write_cache=False,
+    )
 
 
 def _refresh_transit_routes() -> object:
-    cache_key = "traffic:transit:routes:v1"
+    cache_key = "traffic:transit:routes:v3"
 
     def build() -> dict[str, object]:
         return {
@@ -78,22 +82,38 @@ def _refresh_transit_routes() -> object:
             "activeRouteIds": traffic.transit_proxy.get_active_routes(),
         }
 
-    return _rebuild_in_place(cache_key, build, ttl_seconds=1800)
+    return _rebuild_in_place(cache_key, build, ttl_seconds=300)
 
 
 def _refresh_transit_route_patterns() -> object:
     active_route_ids = traffic.transit_proxy.get_active_routes() or []
+    cache_keys = {
+        route_id: f"traffic:transit:route:v2:{route_id}"
+        for route_id in active_route_ids
+    }
+    cached_patterns = cache_service.get_json_many(list(cache_keys.values()))
+    warmed_count = 0
+
     for route_id in active_route_ids:
-        cache_key = f"traffic:transit:route:v1:{route_id}"
+        cache_key = cache_keys[route_id]
+        if cached_patterns.get(cache_key) is not None:
+            continue
         _rebuild_in_place(cache_key, lambda route_id=route_id: traffic.transit_proxy.get_pattern(route_id), ttl_seconds=3600)
-    return {"routeCount": len(active_route_ids)}
+        warmed_count += 1
+
+    return {
+        "routeCount": len(active_route_ids),
+        "warmedCount": warmed_count,
+        "cachedCount": max(0, len(active_route_ids) - warmed_count),
+    }
 
 
 def _refresh_transit_vehicles() -> object:
     return _rebuild_in_place(
-        "traffic:transit:vehicles:v1:__all__",
+        "traffic:transit:vehicles:v2:__all__",
         lambda: traffic.transit_proxy.get_vehicles(""),
-        ttl_seconds=60
+        ttl_seconds=60,
+        write_cache=False,
     )
 
 
@@ -116,7 +136,8 @@ def _refresh_dining() -> object:
                     meal_period=period,
                     date_str=today,
                 ),
-                ttl_seconds=3600
+                ttl_seconds=dining_service._menu_success_ttl_seconds(today),
+                write_cache=False,
             )
     return {"locations": list(locations), "periods": list(periods)}
 
@@ -146,7 +167,12 @@ def _refresh_place_details() -> object:
     warmed = []
     for place_id in _place_ids_to_warm():
         cache_key = f"campus:place-detail:{campus_hub_service.PLACE_DETAIL_CACHE_VERSION}:{place_id}"
-        _rebuild_in_place(cache_key, lambda place_id=place_id: campus_hub_service.get_place_detail_snapshot(place_id), ttl_seconds=1800)
+        _rebuild_in_place(
+            cache_key,
+            lambda place_id=place_id: campus_hub_service.get_place_detail_snapshot(place_id),
+            ttl_seconds=60,
+            write_cache=False,
+        )
         warmed.append(place_id)
     return {"placeIds": warmed}
 

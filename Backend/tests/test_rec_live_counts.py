@@ -91,7 +91,7 @@ class RecLiveCountSelectionTests(unittest.TestCase):
             },
         ]
 
-        summaries = tracker.get_rec_center_live_counts(rows)
+        summaries = tracker.get_rec_center_live_counts(rows, include_sub_areas=True)
 
         self.assertEqual(
             summaries["rec"]["location_name"],
@@ -155,7 +155,7 @@ class RecLiveCountSelectionTests(unittest.TestCase):
             },
         ]
 
-        summaries = tracker.get_rec_center_live_counts(rows)
+        summaries = tracker.get_rec_center_live_counts(rows, include_sub_areas=True)
 
         self.assertEqual(summaries["aquatics"]["location_name"], "50-Meter")
         self.assertEqual(summaries["peap"]["location_name"], "Indoor Court D")
@@ -171,8 +171,9 @@ class RecLiveCountSelectionTests(unittest.TestCase):
 
 
 class RecreationSnapshotTests(unittest.TestCase):
-    @mock.patch.object(campus_hub_service.cache_service, "set_json")
-    @mock.patch.object(campus_hub_service.cache_service, "get_json", return_value=None)
+    def setUp(self):
+        campus_hub_service.RECREATION_SNAPSHOT_CACHE.clear()
+
     @mock.patch.object(campus_hub_service, "_fetch_rec_notices", return_value=[])
     @mock.patch.object(campus_hub_service, "_fetch_rec_facility_page_details", return_value={})
     @mock.patch.object(campus_hub_service.place_registry_service, "get_all_places")
@@ -185,8 +186,6 @@ class RecreationSnapshotTests(unittest.TestCase):
         mock_get_all_places,
         _mock_fetch_page_details,
         _mock_fetch_notices,
-        _mock_get_json,
-        mock_set_json,
     ):
         mock_fetch_rec_data.return_value = [{"FacilityName": "Student Rec Center"}]
         mock_get_rec_center_live_counts.return_value = {
@@ -240,12 +239,8 @@ class RecreationSnapshotTests(unittest.TestCase):
         self.assertEqual(student_rec["current_count"], 150)
         self.assertEqual(student_rec["capacity"], 400)
         self.assertEqual(student_rec["percent_full"], 37.5)
-        self.assertTrue(
-            any(call.args and call.args[0] == "campus:recreation:snapshot:v1" for call in mock_set_json.call_args_list)
-        )
+        self.assertIn("campus:recreation:snapshot:v1", campus_hub_service.RECREATION_SNAPSHOT_CACHE)
 
-    @mock.patch.object(campus_hub_service.cache_service, "set_json")
-    @mock.patch.object(campus_hub_service.cache_service, "get_json", return_value=None)
     @mock.patch.object(campus_hub_service, "_fetch_rec_notices", return_value=[])
     @mock.patch.object(campus_hub_service, "_fetch_rec_facility_page_details", return_value={})
     @mock.patch.object(campus_hub_service.place_registry_service, "get_all_places", return_value=[])
@@ -258,8 +253,6 @@ class RecreationSnapshotTests(unittest.TestCase):
         _mock_get_all_places,
         _mock_fetch_page_details,
         _mock_fetch_notices,
-        _mock_get_json,
-        _mock_set_json,
     ):
         mock_fetch_rec_data.return_value = [{"FacilityName": "Aquatics"}]
         mock_get_rec_center_live_counts.return_value = {

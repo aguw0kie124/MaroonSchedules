@@ -301,8 +301,6 @@ def _route_via_osrm(
     profile_map = {
         "walk": "foot",
         "walking": "foot",
-        "drive": "driving",
-        "driving": "driving",
         "bike": "bike",
         "bicycle": "bike",
         "cycling": "bike",
@@ -351,9 +349,8 @@ def _route_via_osrm(
 
     return {
         "provider": "osrm",
-        "mode": normalized_mode if normalized_mode in {"walk", "drive", "bike"} else {
+        "mode": normalized_mode if normalized_mode in {"walk", "bike"} else {
             "foot": "walk",
-            "driving": "drive",
             "bike": "bike",
         }.get(osrm_profile, normalized_mode),
         "origin_name": _normalized_text(origin_name) or "Origin",
@@ -379,8 +376,6 @@ def _route_via_valhalla(
     costing_map = {
         "walk": "pedestrian",
         "walking": "pedestrian",
-        "drive": "auto",
-        "driving": "auto",
         "bike": "bicycle",
         "bicycle": "bicycle",
         "cycling": "bicycle",
@@ -427,9 +422,8 @@ def _route_via_valhalla(
     destination_label = _normalized_text(destination_name) or "your destination"
     return {
         "provider": "valhalla",
-        "mode": normalized_mode if normalized_mode in {"walk", "drive", "bike"} else {
+        "mode": normalized_mode if normalized_mode in {"walk", "bike"} else {
             "pedestrian": "walk",
-            "auto": "drive",
             "bicycle": "bike",
         }.get(costing, normalized_mode),
         "origin_name": _normalized_text(origin_name) or "Origin",
@@ -536,7 +530,7 @@ def route_between(
     destination_name: str | None = None,
 ) -> Dict[str, Any]:
     normalized_mode = _normalized_text(mode).lower()
-    if normalized_mode not in {"walk", "walking", "drive", "driving", "bike", "bicycle", "cycling"}:
+    if normalized_mode not in {"walk", "walking", "bike", "bicycle", "cycling"}:
         raise ValueError(f"Unsupported route mode: {mode}")
 
     cache_key = _cache_key(

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable, Modal, ScrollView, StyleSheet } from 'react-native';
-import { Calendar as CalendarIcon, MapPin, BadgeCheck, Heart, Share2, Map } from 'lucide-react-native';
+import { Calendar as CalendarIcon, MapPin, BadgeCheck, Heart, Share2, Map as MapIcon } from 'lucide-react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { TAMUEvent, CATEGORY_META, classifyCategory, formatDate, formatTime, stripHtml, handleGoogleCalendar, openNativeMaps } from './EventUtils';
 import { useTheme } from '../SharedUI';
@@ -251,7 +251,7 @@ export function EventDetailModal({
                   ]}
                   onPress={() => onMap(event)}
                 >
-                  <Map size={18} color={COLORS.textPrimary} />
+                  <MapIcon size={18} color={COLORS.textPrimary} />
                   <Text style={[styles.secondaryDetailButtonText, { color: COLORS.textPrimary }]}>
                     Places
                   </Text>

@@ -2,6 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Query, Body
 from pydantic import BaseModel
 import os
 import psycopg
+from datetime import datetime
+import time
+import threading
 from dotenv import load_dotenv
 import requests as http_requests
 from typing import Dict, Any, List, Optional
@@ -23,6 +26,15 @@ from fastapi import Request
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
+ACCESS_SCOPE_CACHE_TTL_SECONDS = 300
+BLOCK_IDS_CACHE_TTL_SECONDS = 3600
+BLOCK_RELATIONSHIPS_CACHE_TTL_SECONDS = 3600
+
+_ACCESS_SCOPE_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
+_BLOCK_IDS_CACHE: Dict[str, tuple[float, List[str]]] = {}
+_BLOCK_RELATIONSHIPS_CACHE: Dict[str, tuple[float, List[str]]] = {}
+_LOCAL_CACHE_LOCK = threading.Lock()
+
 # --- Models ---
 
 class FeedActivity(SanitizedBaseModel):
@@ -33,6 +45,7 @@ class ReactionPayload(SanitizedBaseModel):
     activity_id: str
     user_id: str
     data: Optional[Dict[str, Any]] = None
+    parent_id: Optional[str] = None
 
 class BlockRequest(SanitizedBaseModel):
     target_id: str
@@ -52,6 +65,30 @@ class FriendRequest(SanitizedBaseModel):
 
 def _ensure_social_schema() -> None:
     campus_hub_service._ensure_social_tables()
+
+
+def _local_cache_get(cache_store: Dict[str, tuple[float, Any]], key: str, ttl_seconds: int) -> Any | None:
+    with _LOCAL_CACHE_LOCK:
+        cached = cache_store.get(key)
+        if not cached:
+            return None
+
+        cached_at, payload = cached
+        if time.time() - cached_at >= ttl_seconds:
+            cache_store.pop(key, None)
+            return None
+        return payload
+
+
+def _local_cache_set(cache_store: Dict[str, tuple[float, Any]], key: str, payload: Any) -> Any:
+    with _LOCAL_CACHE_LOCK:
+        cache_store[key] = (time.time(), payload)
+    return payload
+
+
+def _local_cache_delete(cache_store: Dict[str, tuple[float, Any]], key: str) -> None:
+    with _LOCAL_CACHE_LOCK:
+        cache_store.pop(key, None)
 
 
 def _invalidate_feed_cache(feed_group: str, feed_id: str) -> None:
@@ -95,6 +132,27 @@ def _passes_access_filter(item: Dict[str, Any], user_tags: List[str], bypass_res
         bypass_restrictions=bypass_restrictions,
     )
 
+
+def _parse_feed_cursor_created_at(value: Optional[str]) -> Optional[str]:
+    if not value or not isinstance(value, str):
+        return None
+
+    try:
+        return datetime.fromisoformat(value).isoformat()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Invalid feed cursor") from exc
+
+
+def _cursor_from_feed_item(item: Dict[str, Any]) -> Optional[Dict[str, str]]:
+    created_at = item.get("created_at")
+    item_id = item.get("id")
+    if not created_at or not item_id:
+        return None
+    return {
+        "createdAt": str(created_at),
+        "id": str(item_id),
+    }
+
 # --- User Management (Clerk) ---
 
 @router.get("/users")
@@ -130,16 +188,33 @@ async def list_users(request: Request, exclude_id: str = "", _auth_user_id: str 
         print(f"Clerk API Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/users/{clerk_id}/public")
+async def get_public_profile(clerk_id: str, _auth_user_id: Optional[str] = Depends(optional_auth)):
+    """Return sanitized profile for public viewing (no sensitive data)."""
+    profile = user_repository.get_user(clerk_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    return {
+        "clerk_id": profile["clerk_id"],
+        "full_name": profile.get("full_name") or "Aggie User",
+        "profile_image_url": profile.get("profile_image_url"),
+        "major": profile.get("major"),
+        "graduation_year": profile.get("graduation_year"),
+        "bio": profile.get("bio"),
+        "website": profile.get("website"),
+    }
+
 # --- Feed Proxy (Now 100% Native) ---
 
 def _resolve_access_scope_cached(clerk_id: Optional[str]) -> tuple[List[str], bool]:
-    """Retrieves user tags and admin status with Redis caching (5 min TTL)."""
+    """Retrieves user tags and admin status with short-lived local caching."""
     if not clerk_id:
         return [], False
     
     cache_key = f"auth:access_scope:{clerk_id}"
-    cached = cache_service.get_json(cache_key)
-    if cached:
+    cached = _local_cache_get(_ACCESS_SCOPE_CACHE, cache_key, ACCESS_SCOPE_CACHE_TTL_SECONDS)
+    if cached is not None:
         return cached["tags"], cached["is_admin"]
     
     # Cache miss
@@ -153,7 +228,7 @@ def _resolve_access_scope_cached(clerk_id: Optional[str]) -> tuple[List[str], bo
     
     is_admin = bool(profile.get("is_admin"))
     result = {"tags": user_tags, "is_admin": is_admin}
-    cache_service.set_json(cache_key, result, ttl_seconds=300)
+    _local_cache_set(_ACCESS_SCOPE_CACHE, cache_key, result)
     return user_tags, is_admin
 
 
@@ -164,6 +239,8 @@ async def proxy_get_feed(
     feed_group: str,
     feed_id: str,
     limit: int = Query(25, ge=1, le=100),
+    cursor_created_at: Optional[str] = Query(None),
+    cursor_id: Optional[str] = Query(None),
     clerk_id: Optional[str] = Query(None),
     refresh: bool = Query(False),
     auth_user_id: Optional[str] = Depends(optional_auth),
@@ -175,52 +252,126 @@ async def proxy_get_feed(
             ensure_matching_user(auth_user_id, clerk_id, detail="Feed identity header does not match the signed-in user")
         resolved_user_id = auth_user_id or clerk_id
         user_access_tags, bypass_access_restrictions = _resolve_access_scope_cached(resolved_user_id)
+        blocked_ids = _get_block_relationship_ids_cached(resolved_user_id) if resolved_user_id else []
 
         # 1. Check Backbone Cache
         cache_key = f"feed:backbone:{feed_group}:{feed_id}"
         if feed_id == "for_u" and resolved_user_id:
             cache_key = f"feed:backbone:{feed_group}:for_u:{resolved_user_id}"
-            
-        if refresh:
+
+        raw_cursor_created_at = _parse_feed_cursor_created_at(cursor_created_at)
+        raw_cursor_id = cursor_id if isinstance(cursor_id, str) and cursor_id else None
+        if bool(raw_cursor_created_at) != bool(raw_cursor_id):
+            raise HTTPException(status_code=400, detail="Invalid feed cursor")
+
+        use_backbone_cache = not raw_cursor_created_at and not raw_cursor_id
+        supports_cursor_feed = (
+            feed_group == "flat"
+            and (
+                feed_id in ["campus_global", "campus_pings", "reels_global"]
+                or (feed_id == "for_u" and not resolved_user_id)
+            )
+        )
+
+        if refresh and use_backbone_cache:
             cache_service.delete(cache_key)
             backbone = None
-        else:
+        elif use_backbone_cache:
             backbone = cache_service.get_json(cache_key)
-        
-        raw_items = []
-        if backbone:
-            raw_items = backbone[:limit]
         else:
-            # Backbone Miss - Fetch from DB (unfiltered by user)
-            if feed_group == "flat":
-                if feed_id == "for_u":
-                    if resolved_user_id:
-                        raw_items = feed_repository.get_tailored_feed_for_user(resolved_user_id, limit=limit*2)
-                    else:
-                        raw_items = feed_repository.get_crowdping_feed(post_types=['ping', 'post'], limit=limit*2)
-                elif feed_id.startswith("place_review_"):
-                    place_id = feed_id.replace("place_review_", "")
-                    raw_items = feed_repository.get_place_reviews(place_id, limit=limit*2)
-                elif feed_id in ["campus_global", "campus_pings", "reels_global"]:
-                    post_types = ['post', 'reel', 'ping']
-                    if feed_id == "campus_pings": post_types = ['ping', 'post']
-                    elif feed_id == "reels_global": post_types = ['reel']
-                    raw_items = feed_repository.get_crowdping_feed(post_types=post_types, limit=limit*2)
-            
-            # Keep the feed warm, but refresh often enough that recent pings don't disappear.
-            if raw_items:
-                cache_service.set_json(cache_key, raw_items, ttl_seconds=60)
+            backbone = None
+        
+        batch_limit = min(max(limit * 2, 20), 100)
+        visible_items: List[Dict[str, Any]] = []
+        source_exhausted = False
+        pending_cursor_created_at = raw_cursor_created_at
+        pending_cursor_id = raw_cursor_id
+        cached_first_batch = False
+
+        while len(visible_items) < limit + 1 and not source_exhausted:
+            raw_items = []
+            batch_supports_cursor = supports_cursor_feed
+            if backbone is not None:
+                raw_items = list(backbone)
+                backbone = None
+                cached_first_batch = True
+            else:
+                # Backbone Miss - Fetch from DB (unfiltered by user)
+                if feed_group == "flat":
+                    if feed_id == "for_u":
+                        if resolved_user_id:
+                            raw_items = feed_repository.get_tailored_feed_for_user(resolved_user_id, limit=batch_limit)
+                        else:
+                            if pending_cursor_created_at and pending_cursor_id:
+                                raw_items = feed_repository.get_crowdping_feed(
+                                    post_types=['ping', 'post'],
+                                    limit=batch_limit,
+                                    cursor_created_at=pending_cursor_created_at,
+                                    cursor_id=pending_cursor_id,
+                                )
+                            else:
+                                raw_items = feed_repository.get_crowdping_feed(
+                                    post_types=['ping', 'post'],
+                                    limit=batch_limit,
+                                )
+                    elif feed_id.startswith("place_review_"):
+                        place_id = feed_id.replace("place_review_", "")
+                        raw_items = feed_repository.get_place_reviews(place_id, limit=batch_limit)
+                    elif feed_id in ["campus_global", "campus_pings", "reels_global"]:
+                        post_types = ['post', 'reel', 'ping']
+                        if feed_id == "campus_pings":
+                            post_types = ['ping', 'post']
+                        elif feed_id == "reels_global":
+                            post_types = ['reel']
+
+                        if pending_cursor_created_at and pending_cursor_id:
+                            raw_items = feed_repository.get_crowdping_feed(
+                                post_types=post_types,
+                                limit=batch_limit,
+                                cursor_created_at=pending_cursor_created_at,
+                                cursor_id=pending_cursor_id,
+                            )
+                        else:
+                            raw_items = feed_repository.get_crowdping_feed(
+                                post_types=post_types,
+                                limit=batch_limit,
+                            )
+                    elif feed_id.startswith("user_"):
+                        target_user_id = feed_id.replace("user_", "")
+                        raw_items = feed_repository.get_user_feed(target_user_id, limit=batch_limit)
+
+                # Keep the first uncached page warm, but refresh often enough that recent pings don't disappear.
+                if use_backbone_cache and raw_items and not cached_first_batch:
+                    cache_service.set_json(cache_key, raw_items, ttl_seconds=60)
+                    cached_first_batch = True
+
+            if not raw_items:
+                source_exhausted = True
+                break
+
+            filtered_items = [
+                item
+                for item in raw_items
+                if item.get("user_id") not in blocked_ids
+                and _passes_access_filter(item, user_access_tags, bypass_access_restrictions)
+            ]
+            visible_items.extend(filtered_items)
+
+            if len(raw_items) < batch_limit or not batch_supports_cursor:
+                source_exhausted = True
+                break
+
+            last_raw_item = raw_items[-1]
+            pending_cursor_created_at = str(last_raw_item.get("created_at") or "")
+            pending_cursor_id = str(last_raw_item.get("id") or "")
+            if not pending_cursor_created_at or not pending_cursor_id:
+                source_exhausted = True
+                break
 
         # 2. In-Memory Personalization (Filtering & Hydration)
-        blocked_ids = _get_block_relationship_ids_cached(resolved_user_id) if resolved_user_id else []
-        
-        filtered_items = [
-            item
-            for item in raw_items
-            if item.get("user_id") not in blocked_ids
-            and _passes_access_filter(item, user_access_tags, bypass_access_restrictions)
-        ]
-        final_list = filtered_items[:limit]
+        final_list = visible_items[:limit]
+        has_more = len(visible_items) > limit or not source_exhausted
+        next_cursor = _cursor_from_feed_item(final_list[-1]) if final_list else None
         
         # 3. Hydrate with Scores & Own Reactions
         ids_to_hydrate = [item["id"] for item in final_list]
@@ -246,8 +397,14 @@ async def proxy_get_feed(
             else:
                 results.append(_transform_post_to_activity(item, interaction_map.get(pid, {}), own_reactions))
 
-        return {"results": results}
+        return {
+            "results": results,
+            "hasMore": has_more,
+            "nextCursor": next_cursor,
+        }
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Native Feed Fetch Error: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -349,6 +506,8 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
             if feed_id == "campus_pings":
                  activity = ping_service.normalize_ping_activity_payload(activity)
                  custom = activity.get("custom", {})
+
+            is_anonymous = bool(custom.get("is_anonymous"))
             
             images = custom.get("images", [])
             if not images and "attachments" in activity:
@@ -382,8 +541,8 @@ async def proxy_add_activity(request: Request, feed_group: str, feed_id: str, bo
                 lng=fl_lng,
                 location_tag=custom.get("location_tag", ""),
                 images=images,
-                is_anonymous=False,
-                custom_data={**custom, "is_anonymous": False},
+                is_anonymous=is_anonymous,
+                custom_data={**custom, "is_anonymous": is_anonymous},
             )
             created_activity = _transform_post_to_activity(
                 created_post,
@@ -459,7 +618,8 @@ async def proxy_add_reaction(request: Request, body: ReactionPayload, auth_user_
             interaction_type=body.kind,
             comment_text=body.data.get("text") or body.data.get("comment") if body.data else None,
             user_name=final_name,
-            user_image=final_image
+            user_image=final_image,
+            parent_id=body.parent_id
         )
         
         if res.get("status") in ["unliked", "removed"]:
@@ -477,6 +637,8 @@ async def proxy_add_reaction(request: Request, body: ReactionPayload, auth_user_
                 "image": res.get("user_image", final_image)
             }
         }
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Native Reaction Error: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -506,7 +668,8 @@ async def proxy_get_reactions(activity_id: str, kind: str, auth_user_id: Optiona
                     "image": i["user_image"]
                 },
                 "data": {"text": i["comment_text"]} if i["comment_text"] else {},
-                "created_at": i["created_at"]
+                "created_at": i["created_at"],
+                "parent_id": i.get("parent_id")
             })
         return {"results": results}
     except Exception as e:
@@ -523,9 +686,9 @@ async def proxy_block_user(request: Request, clerk_id: str, body: BlockRequest =
         ensure_matching_user(auth_user_id, clerk_id, detail="You can only block users from your own account")
         feed_repository.add_block(clerk_id, body.target_id)
         # Invalidate cached blocked list
-        cache_service.delete(f"user:blocks:{clerk_id}")
-        cache_service.delete(f"user:block-relationships:{clerk_id}")
-        cache_service.delete(f"user:block-relationships:{body.target_id}")
+        _local_cache_delete(_BLOCK_IDS_CACHE, f"user:blocks:{clerk_id}")
+        _local_cache_delete(_BLOCK_RELATIONSHIPS_CACHE, f"user:block-relationships:{clerk_id}")
+        _local_cache_delete(_BLOCK_RELATIONSHIPS_CACHE, f"user:block-relationships:{body.target_id}")
         return {"status": "success"}
     except Exception as e:
         print(f"Block Error: {e}")
@@ -579,6 +742,21 @@ async def get_blocked_users(clerk_id: str, auth_user_id: str = Depends(require_a
         print(f"Get Blocked Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/users/{clerk_id}/profile")
+async def update_user_profile(clerk_id: str, body: Dict[str, Any] = Body(...), auth_user_id: str = Depends(require_auth)):
+    """Update profile metadata for the current user."""
+    try:
+        ensure_matching_user(auth_user_id, clerk_id)
+        updated = user_repository.update_profile(clerk_id, body)
+        if not updated:
+            raise HTTPException(status_code=404, detail="User not found")
+        # Invalidate related caches
+        _local_cache_delete(_ACCESS_SCOPE_CACHE, f"auth:access_scope:{clerk_id}")
+        return {"status": "success", "profile": updated}
+    except Exception as e:
+        print(f"Update Profile Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.delete("/users/{clerk_id}/block/{target_id}")
 async def proxy_unblock_user(clerk_id: str, target_id: str, auth_user_id: str = Depends(require_auth)):
     """Unblock another user."""
@@ -587,9 +765,9 @@ async def proxy_unblock_user(clerk_id: str, target_id: str, auth_user_id: str = 
         removed = feed_repository.remove_block(clerk_id, target_id)
         if not removed:
             raise HTTPException(status_code=404, detail="Block record not found")
-        cache_service.delete(f"user:blocks:{clerk_id}")
-        cache_service.delete(f"user:block-relationships:{clerk_id}")
-        cache_service.delete(f"user:block-relationships:{target_id}")
+        _local_cache_delete(_BLOCK_IDS_CACHE, f"user:blocks:{clerk_id}")
+        _local_cache_delete(_BLOCK_RELATIONSHIPS_CACHE, f"user:block-relationships:{clerk_id}")
+        _local_cache_delete(_BLOCK_RELATIONSHIPS_CACHE, f"user:block-relationships:{target_id}")
         return {"status": "success"}
     except HTTPException:
         raise
@@ -610,7 +788,11 @@ async def add_friend_for_user(
         ensure_matching_user(auth_user_id, clerk_id, detail="You can only add friends from your own account")
         if feed_repository.has_block_relationship(clerk_id, body.target_id):
             raise HTTPException(status_code=403, detail="You cannot friend a blocked user")
+        # Allow establishing connections even if the target hasn't synced their profile yet
+        # The connection will be visible once they sync.
         result = user_repository.add_friend(clerk_id, body.target_id)
+        if result.get("status") == "error":
+             raise HTTPException(status_code=400, detail=result.get("message", "Could not add friend"))
         return {"status": "success", "friendship": result}
     except HTTPException:
         raise
@@ -677,24 +859,28 @@ async def proxy_report_content(request: Request, body: ReportRequest, auth_user_
         raise HTTPException(status_code=500, detail=str(e))
 
 def _get_blocked_ids_cached(clerk_id: str) -> List[str]:
-    """Helper to fetch blocked IDs with Redis caching."""
+    """Helper to fetch blocked IDs with local caching."""
     cache_key = f"user:blocks:{clerk_id}"
-    cached = cache_service.get_json(cache_key)
+    cached = _local_cache_get(_BLOCK_IDS_CACHE, cache_key, BLOCK_IDS_CACHE_TTL_SECONDS)
     if cached is not None:
         return cached
     
     ids = feed_repository.get_blocked_user_ids(clerk_id)
-    cache_service.set_json(cache_key, ids, ttl_seconds=3600)
+    _local_cache_set(_BLOCK_IDS_CACHE, cache_key, ids)
     return ids
 
 
 def _get_block_relationship_ids_cached(clerk_id: str) -> List[str]:
     """Users the caller has blocked or who have blocked the caller."""
     cache_key = f"user:block-relationships:{clerk_id}"
-    cached = cache_service.get_json(cache_key)
+    cached = _local_cache_get(
+        _BLOCK_RELATIONSHIPS_CACHE,
+        cache_key,
+        BLOCK_RELATIONSHIPS_CACHE_TTL_SECONDS,
+    )
     if cached is not None:
         return cached
 
     ids = feed_repository.get_block_relationship_user_ids(clerk_id)
-    cache_service.set_json(cache_key, ids, ttl_seconds=3600)
+    _local_cache_set(_BLOCK_RELATIONSHIPS_CACHE, cache_key, ids)
     return ids

@@ -354,7 +354,10 @@ def optimize_retail_combo(request: Request, req: OptimizeComboRequest, clerk_id:
 @router.post("/tracker/{clerk_id}")
 @limiter.limit("30/minute")
 def log_meal(request: Request, clerk_id: str, req: LogMealRequest = Body(...), _auth_user_id: str = Depends(require_clerk_user)):
+    print(f"[Dining] Logging meal for {clerk_id} on {req.date}: {req.label}")
+    print(f"[Dining] Foods in request: {req.foods}")
     totals = dining_service.compute_totals(req.foods)
+    print(f"[Dining] Computed totals: {totals}")
     with get_pool().connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -463,16 +466,22 @@ def get_tracker(request: Request, clerk_id: str, date: str = Query(None), _auth_
     if not date:
         date = datetime.now().strftime('%Y-%m-%d')
 
+    print(f"[Dining] Fetching tracker for {clerk_id} on {date}")
     with get_pool().connection() as conn:
         with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
             cur.execute("SELECT * FROM meal_log WHERE clerk_id = %s AND date = %s", (clerk_id, date))
             entries = cur.fetchall()
+            print(f"[Dining] Found {len(entries)} entries for {date}")
 
             # Sum totals
             totals = {k: 0.0 for k in ['calories','protein','carbs','fat','fiber','sodium','potassium','calcium','iron','vitamin_c','vitamin_d','magnesium']}
             for e in entries:
                 for k in totals:
-                    totals[k] += (float(e.get(k) or 0))
+                    val = e.get(k)
+                    if val is not None:
+                        totals[k] += float(val)
+
+    print(f"[Dining] Final totals for response: {totals}")
     return {"date": date, "entries": entries, "totals": totals}
 
 @router.get("/weights/{clerk_id}")

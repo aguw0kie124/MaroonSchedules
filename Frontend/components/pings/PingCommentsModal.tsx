@@ -1,28 +1,39 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Dimensions,
+  Keyboard,
   KeyboardAvoidingView,
+  KeyboardEvent,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
-import { MessageCircle, Send, X } from 'lucide-react-native';
-
-import { addComment, getComments } from '../../services/socialFeedService';
+import { MessageCircle, Send, X, ArrowUp, ArrowDown, CornerDownRight } from 'lucide-react-native';
+import { addComment, getComments, toggleVote } from '../../services/socialFeedService';
 import { useTheme } from '../SharedUI';
+import { useQuery } from '@tanstack/react-query';
+import { API_URL } from '../../config';
+import { resolveDisplayName } from '../../utils/userUtils';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type PingComment = {
   id: string;
   text: string;
   createdAt: string;
   userName: string;
+  parentId?: string | null;
+  score: number;
+  ownVote?: 'upvote' | 'downvote' | null;
+  replies?: PingComment[];
 };
 
 export type PingCommentTarget = {
@@ -55,12 +66,27 @@ function formatCommentTime(isoValue: string) {
   });
 }
 
-function mapRawComment(comment: any): PingComment {
+function mapRawComment(comment: any, currentUser: any, userMap: Map<string, string>): PingComment {
+  const userId = String(comment?.user_id ?? comment?.user?.id ?? '').replace('SU:', '');
+  const rawName = String(comment?.user?.name ?? comment?.data?.name ?? 'Aggie User');
+
+  const ownReactions = comment?.own_reactions || {};
+  let ownVote: 'upvote' | 'downvote' | null = null;
+  if (ownReactions.upvote) ownVote = 'upvote';
+  else if (ownReactions.downvote) ownVote = 'downvote';
+
+  const counts = comment?.reaction_counts || {};
+  const score = (counts.upvote || 0) - (counts.downvote || 0);
+
   return {
     id: String(comment?.id ?? `${comment?.created_at ?? Date.now()}`),
     text: String(comment?.data?.text ?? comment?.text ?? ''),
     createdAt: String(comment?.created_at ?? new Date().toISOString()),
-    userName: String(comment?.user?.name ?? 'Aggie User'),
+    userName: resolveDisplayName(userId, rawName, currentUser, userMap),
+    parentId: comment?.parent_id,
+    score,
+    ownVote,
+    replies: [],
   };
 }
 
@@ -70,27 +96,77 @@ export function PingCommentsModal({
   onClose,
   onCommentPosted,
 }: PingCommentsModalProps) {
+  const SCREEN_HEIGHT = Dimensions.get('window').height;
+  const SHEET_HEIGHT = Math.round(SCREEN_HEIGHT * 0.86);
+  const SHEET_TOP_SNAP = 0;
+  const SHEET_MID_SNAP = SHEET_TOP_SNAP; // No mid snap, show full height to see composer
+  const SHEET_HIDDEN_SNAP = SHEET_HEIGHT + 32;
   const { COLORS } = useTheme();
   const { user } = useUser();
+  const insets = useSafeAreaInsets();
 
   const [comments, setComments] = React.useState<PingComment[]>([]);
   const [draft, setDraft] = React.useState('');
+  const [replyingTo, setReplyingTo] = React.useState<PingComment | null>(null);
+  const [expandedThreads, setExpandedThreads] = React.useState<Set<string>>(new Set());
   const [loading, setLoading] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
+  const [isMounted, setIsMounted] = React.useState(visible);
+  const [keyboardInset, setKeyboardInset] = React.useState(0);
+  const isClosingRef = React.useRef(false);
+  const sheetY = React.useRef(new Animated.Value(SHEET_HIDDEN_SNAP)).current;
+  const sheetSnap = React.useRef<number>(SHEET_HIDDEN_SNAP);
+  const panStartY = React.useRef<number>(SHEET_HIDDEN_SNAP);
+  const scrollOffsetY = React.useRef(0);
+  const [sheetMode, setSheetMode] = React.useState<'hidden' | 'mid' | 'top'>('hidden');
+  const inputRef = React.useRef<TextInput>(null);
+
+  const { data: userProfiles = [] } = useQuery({
+    queryKey: ['campus-chat-directory', API_URL],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`${API_URL}/chat/users`);
+        if (!res.ok) return [];
+        return await res.json();
+      } catch {
+        return [];
+      }
+    },
+    staleTime: 1000 * 60 * 30, // 30 mins
+  });
+
+  const userMap = React.useMemo(() => {
+    const m = new Map<string, string>();
+    userProfiles.forEach((u: any) => {
+      if (u.id && u.name) m.set(u.id, u.name);
+    });
+    return m;
+  }, [userProfiles]);
 
   const loadComments = React.useCallback(async () => {
     if (!target?.activityId) return;
     setLoading(true);
     try {
-      const nextComments = await getComments(target.activityId);
-      setComments(nextComments.map(mapRawComment));
+      const resp = await getComments(target.activityId);
+      const all: PingComment[] = resp.map(c => mapRawComment(c, user, userMap));
+      
+      // Grouping: strictly one level deep for now (parent -> reply)
+      const roots = all.filter(c => !c.parentId);
+      const children = all.filter(c => !!c.parentId);
+      
+      const thread = roots.map(root => ({
+        ...root,
+        replies: children.filter(child => child.parentId === root.id).reverse() // Sort replies chronologically
+      }));
+
+      setComments(thread);
     } catch (error) {
       console.warn('[Comments] load failed', error);
       setComments([]);
     } finally {
       setLoading(false);
     }
-  }, [target?.activityId]);
+  }, [target?.activityId, user, userMap]);
 
   React.useEffect(() => {
     if (!visible || !target?.activityId) return;
@@ -98,21 +174,176 @@ export function PingCommentsModal({
   }, [loadComments, target?.activityId, visible]);
 
   React.useEffect(() => {
+    if (visible) {
+      setIsMounted(true);
+      isClosingRef.current = false;
+      scrollOffsetY.current = 0;
+      sheetSnap.current = SHEET_HIDDEN_SNAP;
+      setSheetMode('hidden');
+      sheetY.setValue(SHEET_HIDDEN_SNAP);
+      Animated.spring(sheetY, {
+        toValue: SHEET_TOP_SNAP,
+        useNativeDriver: true,
+        damping: 30,
+        stiffness: 260,
+        mass: 0.92,
+      }).start(() => {
+        sheetSnap.current = SHEET_TOP_SNAP;
+        setSheetMode('top');
+      });
+      return;
+    }
     if (!visible) {
+      setKeyboardInset(0);
       setDraft('');
+      setReplyingTo(null);
+      setExpandedThreads(new Set());
       setComments([]);
       setLoading(false);
       setSubmitting(false);
+      setSheetMode('hidden');
+      sheetSnap.current = SHEET_HIDDEN_SNAP;
+      sheetY.setValue(SHEET_HIDDEN_SNAP);
+      setIsMounted(false);
+      isClosingRef.current = false;
     }
-  }, [visible]);
+  }, [SHEET_HIDDEN_SNAP, SHEET_MID_SNAP, sheetY, visible]);
+
+  React.useEffect(() => {
+    if (!visible) return;
+
+    const getKeyboardInset = (event?: KeyboardEvent) => {
+      const keyboardHeight = event?.endCoordinates?.height ?? 0;
+      return Math.max(0, keyboardHeight - insets.bottom);
+    };
+
+    const handleKeyboardFrame = (event: KeyboardEvent) => {
+      setKeyboardInset(getKeyboardInset(event));
+    };
+
+    const handleKeyboardHide = () => {
+      setKeyboardInset(0);
+    };
+
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const showSub = Keyboard.addListener(showEvent, handleKeyboardFrame);
+    const hideSub = Keyboard.addListener(hideEvent, handleKeyboardHide);
+
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [insets.bottom, visible]);
+
+  const backdropOpacity = sheetY.interpolate({
+    inputRange: [SHEET_TOP_SNAP, SHEET_MID_SNAP, SHEET_HIDDEN_SNAP],
+    outputRange: [1, 0.88, 0],
+    extrapolate: 'clamp',
+  });
+
+  const animateSheet = React.useCallback((toValue: number, onDone?: () => void) => {
+    sheetSnap.current = toValue;
+    setSheetMode(
+      toValue === SHEET_TOP_SNAP ? 'top' : toValue === SHEET_MID_SNAP ? 'mid' : 'hidden',
+    );
+    Animated.spring(sheetY, {
+      toValue,
+      useNativeDriver: true,
+      damping: 30,
+      stiffness: 260,
+      mass: 0.92,
+    }).start(() => {
+      if (onDone) onDone();
+    });
+  }, [SHEET_HIDDEN_SNAP, SHEET_MID_SNAP, SHEET_TOP_SNAP, sheetY]);
+
+  const closeSheet = React.useCallback(() => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
+    animateSheet(SHEET_HIDDEN_SNAP, onClose);
+  }, [SHEET_HIDDEN_SNAP, animateSheet, onClose]);
+
+  const beginGesture = React.useCallback(() => {
+    panStartY.current = sheetSnap.current;
+    sheetY.stopAnimation();
+  }, [sheetY]);
+
+  const moveGesture = React.useCallback((dy: number) => {
+    const next = Math.max(
+      SHEET_TOP_SNAP,
+      Math.min(SHEET_HIDDEN_SNAP, panStartY.current + dy),
+    );
+    sheetY.setValue(next);
+  }, [SHEET_HIDDEN_SNAP, SHEET_TOP_SNAP, sheetY]);
+
+  const settleGesture = React.useCallback((dy: number, vy: number) => {
+    const liveY = panStartY.current + dy;
+    if (vy < -1.0) {
+      animateSheet(SHEET_TOP_SNAP);
+      return;
+    }
+    if (vy > 1.0) {
+      if (liveY > SHEET_MID_SNAP + 80) {
+        closeSheet();
+      } else {
+        animateSheet(SHEET_MID_SNAP);
+      }
+      return;
+    }
+
+    const topMidThreshold = (SHEET_TOP_SNAP + SHEET_MID_SNAP) / 2;
+    const midHiddenThreshold = (SHEET_MID_SNAP + SHEET_HIDDEN_SNAP) / 2;
+
+    if (liveY <= topMidThreshold) {
+      animateSheet(SHEET_TOP_SNAP);
+    } else if (liveY >= midHiddenThreshold) {
+      closeSheet();
+    } else {
+      animateSheet(SHEET_MID_SNAP);
+    }
+  }, [SHEET_HIDDEN_SNAP, SHEET_MID_SNAP, SHEET_TOP_SNAP, animateSheet, closeSheet]);
+
+  const bodyPanResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponderCapture: (_, gestureState) =>
+          gestureState.dy > 6 &&
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx) &&
+          scrollOffsetY.current <= 0,
+        onPanResponderGrant: beginGesture,
+        onPanResponderMove: (_, gestureState) => moveGesture(Math.max(0, gestureState.dy)),
+        onPanResponderRelease: (_, gestureState) =>
+          settleGesture(Math.max(0, gestureState.dy), gestureState.vy),
+        onPanResponderTerminate: () => animateSheet(sheetSnap.current),
+      }),
+    [animateSheet, beginGesture, moveGesture, settleGesture],
+  );
+
+  const headerPanResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) =>
+          Math.abs(gestureState.dy) > 6 &&
+          Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+        onPanResponderGrant: beginGesture,
+        onPanResponderMove: (_, gestureState) => moveGesture(gestureState.dy),
+        onPanResponderRelease: (_, gestureState) =>
+          settleGesture(gestureState.dy, gestureState.vy),
+        onPanResponderTerminate: () => animateSheet(sheetSnap.current),
+      }),
+    [animateSheet, beginGesture, moveGesture, settleGesture],
+  );
 
   const handleSubmit = React.useCallback(async () => {
     if (!target?.activityId || !draft.trim() || !user) return;
 
     setSubmitting(true);
     try {
-      await addComment(target.activityId, user, draft.trim());
+      await addComment(target.activityId, user, draft.trim(), replyingTo?.id);
       setDraft('');
+      setReplyingTo(null);
       await loadComments();
       onCommentPosted?.();
     } catch (error) {
@@ -120,109 +351,261 @@ export function PingCommentsModal({
     } finally {
       setSubmitting(false);
     }
-  }, [draft, loadComments, onCommentPosted, target?.activityId, user]);
+  }, [draft, loadComments, onCommentPosted, replyingTo?.id, target?.activityId, user]);
+
+  const handleReply = React.useCallback((comment: PingComment) => {
+    // If replying to a reply, use the root parent ID to keep it in the same thread (one-level deep)
+    const target = {
+      ...comment,
+      id: comment.parentId || comment.id
+    };
+    setReplyingTo(target);
+    inputRef.current?.focus();
+  }, []);
+
+  const handleVoteAction = React.useCallback(async (commentId: string, type: 'upvote' | 'downvote') => {
+    if (!target?.activityId || !user) return;
+    try {
+      await toggleVote(target.activityId, type, commentId);
+      await loadComments();
+    } catch (error) {
+      console.warn('[Comments] vote failed', error);
+    }
+  }, [loadComments, target?.activityId, user]);
+
+  const toggleThread = React.useCallback((commentId: string) => {
+    setExpandedThreads(prev => {
+      const next = new Set(prev);
+      if (next.has(commentId)) next.delete(commentId);
+      else next.add(commentId);
+      return next;
+    });
+  }, []);
+
+  const renderComment = (comment: PingComment, isReply = false) => (
+    <View
+      key={comment.id}
+      style={[
+        styles.commentRow,
+        { 
+          borderBottomColor: COLORS.border,
+          marginLeft: isReply ? 46 : 0,
+        }
+      ]}
+    >
+      <View style={[styles.avatar, { backgroundColor: `${COLORS.primary}14` }]}>
+        <MessageCircle size={14} color={COLORS.primary} />
+      </View>
+      <View style={styles.commentCopy}>
+        <View style={styles.commentMetaRow}>
+          <Text style={[styles.commentAuthor, { color: COLORS.textPrimary }]}>
+            {comment.userName}
+          </Text>
+          <Text style={[styles.commentTime, { color: COLORS.textTertiary }]}>
+            {formatCommentTime(comment.createdAt)}
+          </Text>
+        </View>
+        <Text style={[styles.commentText, { color: COLORS.textSecondary }]}>
+          {comment.text || 'No text'}
+        </Text>
+        
+        <View style={styles.commentActions}>
+          <View style={[styles.voteGroup, { backgroundColor: `${COLORS.border}30` }]}>
+            <Pressable 
+              onPress={() => handleVoteAction(comment.id, 'upvote')}
+              style={styles.voteBtn}
+            >
+              <ArrowUp 
+                size={14} 
+                color={comment.ownVote === 'upvote' ? COLORS.primary : COLORS.textSecondary} 
+                strokeWidth={3}
+              />
+            </Pressable>
+            <Text style={[styles.scoreText, { color: COLORS.textPrimary }]}>
+              {comment.score}
+            </Text>
+            <Pressable 
+               onPress={() => handleVoteAction(comment.id, 'downvote')}
+               style={styles.voteBtn}
+            >
+              <ArrowDown 
+                size={14} 
+                color={comment.ownVote === 'downvote' ? COLORS.primary : COLORS.textSecondary} 
+                strokeWidth={3}
+              />
+            </Pressable>
+          </View>
+          
+          <Pressable 
+            onPress={() => handleReply(comment)}
+            style={styles.actionLink}
+          >
+            <Text style={[styles.actionLinkText, { color: COLORS.textTertiary }]}>
+              Reply {!isReply && comment.replies && comment.replies.length > 0 ? `(${comment.replies.length})` : ''}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
 
   return (
-    <Modal visible={visible} animationType="fade" transparent statusBarTranslucent>
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.backdrop}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.keyboardWrap}
+    <Modal visible={isMounted} animationType="none" transparent statusBarTranslucent>
+      <View style={styles.backdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={closeSheet}>
+          <Animated.View pointerEvents="none" style={[styles.backdropScrim, { opacity: backdropOpacity }]} />
+        </Pressable>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardWrap}
+          pointerEvents="box-none"
+        >
+          <Animated.View
+            {...bodyPanResponder.panHandlers}
+            style={[
+              styles.card,
+              {
+                backgroundColor: COLORS.surface,
+                height: SHEET_HEIGHT,
+                paddingBottom: Math.max(insets.bottom, 18),
+                transform: [{ translateY: sheetY }],
+              },
+            ]}
           >
-            <TouchableWithoutFeedback>
-              <View style={[styles.card, { backgroundColor: COLORS.surface }]}>
-                <View style={styles.header}>
-                  <View style={styles.headerCopy}>
-                    <Text style={[styles.title, { color: COLORS.textPrimary }]} numberOfLines={2}>
-                      {target?.title || 'Comments'}
-                    </Text>
-                    <Text style={[styles.subtitle, { color: COLORS.textSecondary }]} numberOfLines={2}>
-                      {target?.subtitle || `${target?.commentCount || 0} comments`}
-                    </Text>
+            <View style={styles.sheetTopZone} {...headerPanResponder.panHandlers}>
+                  <View style={styles.handleWrap}>
+                    <View style={[styles.handle, { backgroundColor: COLORS.border }]} />
                   </View>
-                  <Pressable onPress={onClose} style={styles.closeButton}>
-                    <X size={18} color={COLORS.textPrimary} />
-                  </Pressable>
+                  <View style={styles.header}>
+                    <View style={styles.headerCopy}>
+                      <Text style={[styles.title, { color: COLORS.textPrimary }]} numberOfLines={2}>
+                        {target?.title || 'Comments'}
+                      </Text>
+                      <Text style={[styles.subtitle, { color: COLORS.textSecondary }]} numberOfLines={2}>
+                        {target?.commentCount === 1 ? '1 comment' : `${target?.commentCount || 0} comments`} • {target?.subtitle}
+                      </Text>
+                    </View>
+                    <Pressable onPress={closeSheet} style={styles.closeButton}>
+                      <X size={18} color={COLORS.textPrimary} />
+                    </Pressable>
+                  </View>
                 </View>
 
-                <View style={[styles.threadCard, { borderColor: COLORS.border }]}>
-                  {loading ? (
-                    <View style={styles.loadingWrap}>
-                      <ActivityIndicator size="small" color={COLORS.primary} />
-                    </View>
-                  ) : comments.length ? (
-                    <ScrollView
-                      style={styles.threadScroll}
-                      contentContainerStyle={styles.threadContent}
-                      keyboardShouldPersistTaps="handled"
-                      showsVerticalScrollIndicator={false}
-                    >
-                      {comments.map((comment) => (
-                        <View
-                          key={comment.id}
-                          style={[styles.commentRow, { borderBottomColor: COLORS.border }]}
-                        >
-                          <View style={[styles.avatar, { backgroundColor: `${COLORS.primary}14` }]}>
-                            <MessageCircle size={14} color={COLORS.primary} />
-                          </View>
-                          <View style={styles.commentCopy}>
-                            <View style={styles.commentMetaRow}>
-                              <Text style={[styles.commentAuthor, { color: COLORS.textPrimary }]}>
-                                {comment.userName}
-                              </Text>
-                              <Text style={[styles.commentTime, { color: COLORS.textTertiary }]}>
-                                {formatCommentTime(comment.createdAt)}
-                              </Text>
-                            </View>
-                            <Text style={[styles.commentText, { color: COLORS.textSecondary }]}>
-                              {comment.text || 'No text'}
+            <View style={[styles.threadCard, { borderColor: COLORS.border }]}>
+              {loading ? (
+                <View style={styles.loadingWrap}>
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                </View>
+              ) : comments.length ? (
+                <ScrollView
+                  style={styles.threadScroll}
+                  contentContainerStyle={[
+                    styles.threadContent,
+                    {
+                      paddingBottom: Math.max(
+                        20,
+                        insets.bottom + keyboardInset + (replyingTo ? 120 : 92),
+                      ),
+                    },
+                  ]}
+                  scrollEnabled={sheetMode === 'top'}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                  scrollEventThrottle={16}
+                  onScroll={(event) => {
+                    scrollOffsetY.current = event.nativeEvent.contentOffset.y;
+                  }}
+                >
+                  {comments.map((root) => {
+                    const isExpanded = expandedThreads.has(root.id);
+                    const allReplies = root.replies || [];
+                    const visibleReplies = isExpanded ? allReplies : allReplies.slice(0, 3);
+                    const hasMore = allReplies.length > 3;
+
+                    return (
+                      <View key={root.id}>
+                        {renderComment(root)}
+                        {visibleReplies.map(child => renderComment(child, true))}
+                        
+                        {hasMore && (
+                          <Pressable 
+                            onPress={() => toggleThread(root.id)}
+                            style={styles.viewMoreReplies}
+                          >
+                            <CornerDownRight size={14} color={COLORS.primary} />
+                            <Text style={[styles.viewMoreText, { color: COLORS.primary }]}>
+                              {isExpanded 
+                                ? 'Show fewer replies' 
+                                : `View ${allReplies.length - 3} more replies...`
+                              }
                             </Text>
-                          </View>
-                        </View>
-                      ))}
-                    </ScrollView>
-                  ) : (
-                    <View style={styles.emptyWrap}>
-                      <Text style={[styles.emptyTitle, { color: COLORS.textPrimary }]}>
-                        No comments yet
-                      </Text>
-                      <Text style={[styles.emptySubtitle, { color: COLORS.textSecondary }]}>
-                        Start the conversation for this ping.
-                      </Text>
-                    </View>
-                  )}
+                          </Pressable>
+                        )}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              ) : (
+                <View style={styles.emptyWrap}>
+                  <Text style={[styles.emptyTitle, { color: COLORS.textPrimary }]}>
+                    No comments yet
+                  </Text>
+                  <Text style={[styles.emptySubtitle, { color: COLORS.textSecondary }]}>
+                    Start the conversation for this ping.
+                  </Text>
                 </View>
+              )}
+            </View>
 
-                <View style={[styles.composer, { borderColor: COLORS.border }]}>
-                  <TextInput
-                    value={draft}
-                    onChangeText={setDraft}
-                    placeholder="Add a comment..."
-                    placeholderTextColor={COLORS.textTertiary}
-                    style={[styles.input, { color: COLORS.textPrimary }]}
-                    multiline
-                  />
-                  <Pressable
-                    style={[
-                      styles.sendButton,
-                      { backgroundColor: draft.trim() ? COLORS.primary : COLORS.border },
-                    ]}
-                    disabled={!draft.trim() || submitting || !user}
-                    onPress={handleSubmit}
-                  >
-                    {submitting ? (
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                      <Send size={15} color="#FFFFFF" />
-                    )}
+            <View
+              style={[
+                styles.composerWrap,
+                {
+                  borderColor: COLORS.border,
+                  marginBottom: keyboardInset,
+                },
+              ]}
+            >
+              {replyingTo && (
+                <View style={[styles.replyHeader, { borderBottomColor: COLORS.border }]}>
+                  <CornerDownRight size={12} color={COLORS.textTertiary} />
+                  <Text style={[styles.replyToText, { color: COLORS.textTertiary }]}>
+                    Replying to <Text style={{ fontWeight: '700' }}>{replyingTo.userName}</Text>
+                  </Text>
+                  <Pressable onPress={() => setReplyingTo(null)} style={styles.replyCancel}>
+                    <X size={14} color={COLORS.textTertiary} />
                   </Pressable>
                 </View>
+              )}
+              <View style={styles.composer}>
+                <TextInput
+                  ref={inputRef}
+                  value={draft}
+                  onChangeText={setDraft}
+                  placeholder={replyingTo ? "Add a reply..." : "Add a comment..."}
+                  placeholderTextColor={COLORS.textTertiary}
+                  style={[styles.input, { color: COLORS.textPrimary }]}
+                  multiline
+                />
+                <Pressable
+                  style={[
+                    styles.sendButton,
+                    { backgroundColor: draft.trim() ? COLORS.primary : COLORS.border },
+                  ]}
+                  disabled={!draft.trim() || submitting || !user}
+                  onPress={handleSubmit}
+                >
+                  {submitting ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Send size={15} color="#FFFFFF" />
+                  )}
+                </Pressable>
               </View>
-            </TouchableWithoutFeedback>
-          </KeyboardAvoidingView>
-        </View>
-      </TouchableWithoutFeedback>
+            </View>
+          </Animated.View>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
@@ -230,18 +613,39 @@ export function PingCommentsModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
+    justifyContent: 'flex-end',
+  },
+  backdropScrim: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.36)',
-    justifyContent: 'center',
-    paddingHorizontal: 18,
   },
   keyboardWrap: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
   },
   card: {
-    borderRadius: 28,
-    padding: 18,
-    maxHeight: '78%',
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 18,
+    paddingTop: 8,
+    paddingBottom: 18,
+  },
+  sheetTopZone: {
+    flexShrink: 0,
+  },
+  handleWrap: {
+    alignItems: 'center',
+    paddingTop: 2,
+    paddingBottom: 10,
+  },
+  handle: {
+    width: 42,
+    height: 5,
+    borderRadius: 999,
   },
   header: {
     flexDirection: 'row',
@@ -270,22 +674,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   threadCard: {
-    borderWidth: 1,
-    borderRadius: 22,
-    minHeight: 220,
-    maxHeight: 360,
+    flex: 1,
+    borderWidth: 0,
+    borderRadius: 0,
+    minHeight: 0,
     overflow: 'hidden',
   },
   loadingWrap: {
-    minHeight: 220,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   threadScroll: {
-    flexGrow: 0,
+    flex: 1,
   },
   threadContent: {
     padding: 14,
+    paddingBottom: 20,
   },
   commentRow: {
     flexDirection: 'row',
@@ -324,7 +729,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   emptyWrap: {
-    minHeight: 220,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
@@ -339,11 +744,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  composer: {
-    marginTop: 14,
+  composerWrap: {
+    marginTop: 12,
     borderWidth: 1,
-    borderRadius: 22,
-    padding: 12,
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  replyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+  },
+  replyToText: {
+    flex: 1,
+    fontSize: 12,
+  },
+  replyCancel: {
+    padding: 2,
+  },
+  composer: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 12,
@@ -361,5 +785,46 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 2,
+  },
+  commentActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 16,
+  },
+  voteGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    paddingHorizontal: 4,
+  },
+  voteBtn: {
+    padding: 6,
+  },
+  scoreText: {
+    fontSize: 13,
+    fontWeight: '700',
+    minWidth: 18,
+    textAlign: 'center',
+  },
+  actionLink: {
+    paddingVertical: 4,
+  },
+  actionLinkText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  viewMoreReplies: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginLeft: 46,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  viewMoreText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

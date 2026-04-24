@@ -12,22 +12,33 @@ import Animated, {
 type ScalePressableProps = PressableProps & {
   children: React.ReactNode;
   containerStyle?: StyleProp<ViewStyle>;
+  pressNudgeX?: number;
+  pressNudgeY?: number;
   scaleTo?: number;
 };
 
 export function ScalePressable({
   children,
   containerStyle,
+  onPress,
   onPressIn,
   onPressOut,
+  pressNudgeX = 0,
+  pressNudgeY = 0,
   scaleTo = 0.975,
   style,
   ...rest
 }: ScalePressableProps) {
   const scale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
 
   const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
+    transform: [
+      { translateX: translateX.value } as any,
+      { translateY: translateY.value } as any,
+      { scale: scale.value } as any,
+    ],
   }));
 
   const handlePressIn = React.useCallback<NonNullable<PressableProps['onPressIn']>>(
@@ -54,9 +65,42 @@ export function ScalePressable({
     [onPressOut, scale],
   );
 
+  const handlePress = React.useCallback<NonNullable<PressableProps['onPress']>>(
+    (event) => {
+      if (pressNudgeX || pressNudgeY) {
+        translateX.value = withTiming(pressNudgeX, { duration: 95 }, (finished) => {
+          if (finished) {
+            translateX.value = withSpring(0, {
+              damping: 15,
+              stiffness: 220,
+              mass: 0.6,
+            });
+          }
+        });
+        translateY.value = withTiming(pressNudgeY, { duration: 95 }, (finished) => {
+          if (finished) {
+            translateY.value = withSpring(0, {
+              damping: 15,
+              stiffness: 220,
+              mass: 0.6,
+            });
+          }
+        });
+      }
+      onPress?.(event);
+    },
+    [onPress, pressNudgeX, pressNudgeY, translateX, translateY],
+  );
+
   return (
     <Animated.View style={[animatedStyle, containerStyle]}>
-      <Pressable {...rest} onPressIn={handlePressIn} onPressOut={handlePressOut} style={style}>
+      <Pressable
+        {...rest}
+        onPress={handlePress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        style={style}
+      >
         {children}
       </Pressable>
     </Animated.View>

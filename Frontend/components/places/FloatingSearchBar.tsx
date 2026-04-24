@@ -8,8 +8,6 @@ import {
 import {
   Search,
   X,
-  SlidersHorizontal,
-  Share2,
 } from "lucide-react-native";
 
 interface FloatingSearchBarProps {
@@ -21,7 +19,6 @@ interface FloatingSearchBarProps {
   setSearchQuery: (value: string) => void;
   setShowSearchResults: (value: boolean) => void;
   onOpenSettings: () => void;
-  onShare: () => void;
   onSubmitSearch?: () => void;
 }
 
@@ -34,7 +31,6 @@ export function FloatingSearchBar({
   setSearchQuery,
   setShowSearchResults,
   onOpenSettings,
-  onShare,
   onSubmitSearch,
 }: FloatingSearchBarProps) {
   return (
@@ -106,15 +102,6 @@ export function FloatingSearchBar({
             }}
           >
             <Text style={styles.searchCancelText}>Cancel</Text>
-          </TouchableOpacity>
-        )}
-
-        {!isSearchExpanded && (
-          <TouchableOpacity
-            style={styles.searchTrailingButton}
-            onPress={onShare}
-          >
-            <Share2 size={18} color={COLORS.textPrimary} />
           </TouchableOpacity>
         )}
       </View>

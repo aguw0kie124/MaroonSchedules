@@ -1,30 +1,75 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Platform,
-  SafeAreaView,
-  Alert,
-  Image,
-  TextInput,
   ActivityIndicator,
-  Pressable,
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { useOAuth, useSignIn, useSignUp } from '@clerk/clerk-expo';
-import { COLORS, TYPOGRAPHY, SPACING } from '../constants';
-import { Button } from './Button';
-import * as Linking from 'expo-linking';
+import * as AuthSession from 'expo-auth-session';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
+import * as Haptics from 'expo-haptics';
+import {
+  ChevronLeft,
+  GraduationCap,
+  Hash,
+  KeyRound,
+  Mail,
+  ShieldCheck,
+} from 'lucide-react-native';
+import Animated, {
+  FadeInDown,
+  FadeInRight,
+  FadeInUp,
+  FadeOutLeft,
+  ZoomIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from 'react-native-reanimated';
+
 import { useSessionStore } from '../store/sessionStore';
-import { GoogleIcon } from './common/CustomIcons';
-import { Mail, KeyRound, ArrowLeft, UserPlus, LogIn, Hash } from 'lucide-react-native';
+import { AppleIcon, GoogleIcon } from './common/CustomIcons';
 
-const APPLE_LABEL = '\uF8FF';
+const COLORS = {
+  maroon: '#500000',
+  maroonLight: '#700000',
+  background: '#FDFCFB',
+  surface: '#FFFFFF',
+  textPrimary: '#1A1A1A',
+  textSecondary: '#565555',
+  outline: 'rgba(0, 0, 0, 0.08)',
+};
 
-type AuthFlow = 'initial' | 'email_signin' | 'email_signup' | 'otp_verify' | 'forgot_password' | 'reset_password';
+type EntryView = 'welcome' | 'signup' | 'login' | 'admin';
+type ScreenView =
+  | EntryView
+  | 'email_signin'
+  | 'email_signup'
+  | 'otp_verify'
+  | 'forgot_password'
+  | 'reset_password';
+type AccountMode = 'user' | 'admin';
+type OAuthFlow = 'tamu' | 'admin' | 'apple' | 'adminApple' | 'email';
+type HapticKind = 'selection' | 'light' | 'medium' | 'success' | 'warning' | 'error' | 'none';
 
-export function AuthLanding() {
+const PAGE_ENTERING = FadeInRight.duration(300);
+const PAGE_EXITING = FadeOutLeft.duration(220);
+
+interface AuthLandingProps {
+  initialView?: EntryView;
+  onBack?: () => void;
+}
+
+export function AuthLanding({ initialView = 'welcome', onBack }: AuthLandingProps) {
   const { startOAuthFlow: startGoogleOAuthFlow } = useOAuth({ strategy: 'oauth_google' });
   const { startOAuthFlow: startAppleOAuthFlow } = useOAuth({ strategy: 'oauth_apple' });
   const { isLoaded: isSignInLoaded, signIn, setActive: setSignInActive } = useSignIn();
@@ -35,26 +80,151 @@ export function AuthLanding() {
   const resetSessionMode = useSessionStore((state) => state.resetSessionMode);
   const authMode = useSessionStore((state) => state.authMode);
 
+  const [view, setView] = useState<ScreenView>(initialView);
+  const [entryView, setEntryView] = useState<EntryView>(initialView);
   const [isLoading, setIsLoading] = useState(false);
-  const [activeFlow, setActiveFlow] = useState<'tamu' | 'admin' | 'apple' | 'adminApple' | 'email' | null>(null);
-  const [authFlow, setAuthFlow] = useState<AuthFlow>('initial');
-
-  // Email flow state
+  const [activeFlow, setActiveFlow] = useState<OAuthFlow | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
+  const liveGlow = useSharedValue(0);
+  const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+  const oauthRedirectUrl = useMemo(
+    () =>
+      AuthSession.makeRedirectUri({
+        scheme: 'maroonlife',
+        path: 'sso-callback',
+      }),
+    [],
+  );
 
-  const getAuthErrorMessage = (flow: string, err: any) => {
-    return (
-      err?.errors?.[0]?.longMessage ||
-      err?.errors?.[0]?.message ||
-      err?.message ||
-      'Action failed'
+  useEffect(() => {
+    setView(initialView);
+    setEntryView(initialView);
+    if (initialView === 'welcome') {
+      resetSessionMode();
+      return;
+    }
+    setAuthMode(initialView === 'admin' ? 'admin' : 'user');
+  }, [initialView, resetSessionMode, setAuthMode]);
+
+  useEffect(() => {
+    liveGlow.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1800 }),
+        withTiming(0, { duration: 1800 }),
+      ),
+      -1,
+      false,
     );
+  }, [liveGlow]);
+
+  const selectedMode: AccountMode = useMemo(
+    () => (entryView === 'admin' || authMode === 'admin' ? 'admin' : 'user'),
+    [authMode, entryView],
+  );
+
+  const liveGlowStyle = useAnimatedStyle(() => ({
+    opacity: 0.92 + liveGlow.value * 0.08,
+    textShadowRadius: 4 + liveGlow.value * 6,
+    transform: [{ scale: 1 + liveGlow.value * 0.012 }],
+  }));
+
+  const iconGlowStyle = useAnimatedStyle(() => ({
+    opacity: 0.16 + liveGlow.value * 0.16,
+    shadowOpacity: 0.18 + liveGlow.value * 0.14,
+    shadowRadius: 18 + liveGlow.value * 16,
+    transform: [{ scale: 1.02 + liveGlow.value * 0.14 }],
+  }));
+
+  const triggerHaptic = (kind: HapticKind = 'selection') => {
+    switch (kind) {
+      case 'selection':
+        Haptics.selectionAsync().catch(() => {});
+        return;
+      case 'light':
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        return;
+      case 'medium':
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+        return;
+      case 'success':
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        return;
+      case 'warning':
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+        return;
+      case 'error':
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+        return;
+      case 'none':
+      default:
+        return;
+    }
   };
 
-  const onOAuthPress = async (flow: 'tamu' | 'admin' | 'apple' | 'adminApple') => {
+  const transitionToView = (nextView: ScreenView, haptic: HapticKind = 'selection') => {
+    if (nextView !== view) {
+      triggerHaptic(haptic);
+    }
+    setView(nextView);
+  };
+
+  const getAuthErrorMessage = (_flow: string, err: any) =>
+    err?.errors?.[0]?.longMessage ||
+    err?.errors?.[0]?.message ||
+    err?.message ||
+    'Action failed';
+
+  const resetFields = () => {
+    setEmail('');
+    setPassword('');
+    setCode('');
+  };
+
+  const navigateToEntry = (nextView: EntryView) => {
+    if (nextView !== view || nextView !== entryView) {
+      triggerHaptic(nextView === 'welcome' ? 'selection' : 'light');
+    }
+    resetFields();
+    setEntryView(nextView);
+    setView(nextView);
+    if (nextView === 'welcome') {
+      resetSessionMode();
+      return;
+    }
+    setAuthMode(nextView === 'admin' ? 'admin' : 'user');
+  };
+
+  const handleEntryBack = () => {
+    if (onBack && initialView !== 'welcome' && entryView === initialView && view === initialView) {
+      triggerHaptic('selection');
+      onBack();
+      return;
+    }
+    navigateToEntry('welcome');
+  };
+
+  const openEmailFlow = (nextView: 'email_signin' | 'email_signup') => {
+    triggerHaptic('light');
+    exitGuestMode();
+    setAuthMode(entryView === 'admin' ? 'admin' : 'user');
+    setPassword('');
+    setCode('');
+    setView(nextView);
+  };
+
+  const onOAuthPress = async (flow: Exclude<OAuthFlow, 'email'>) => {
+    if (isExpoGo) {
+      triggerHaptic('warning');
+      Alert.alert(
+        'Development build required',
+        'Google and Apple sign-in with Clerk require a development build. Expo Go falls back to exp:// callback URLs, which Clerk rejects for mobile OAuth. Run `npm run ios` or `npm run android`, then try again there.',
+      );
+      return;
+    }
     try {
+      triggerHaptic('light');
       exitGuestMode();
       setAuthMode(flow === 'admin' || flow === 'adminApple' ? 'admin' : 'user');
       setIsLoading(true);
@@ -62,19 +232,22 @@ export function AuthLanding() {
       const authResult =
         flow === 'apple' || flow === 'adminApple'
           ? await startAppleOAuthFlow({
-              redirectUrl: Linking.createURL('/'),
+              redirectUrl: oauthRedirectUrl,
             })
           : await startGoogleOAuthFlow({
-              redirectUrl: Linking.createURL('/'),
+              redirectUrl: oauthRedirectUrl,
             });
       const { createdSessionId, setActive } = authResult;
       if (createdSessionId && setActive) {
         await setActive({ session: createdSessionId });
+        triggerHaptic('success');
       } else {
+        triggerHaptic('error');
         resetSessionMode();
         Alert.alert('Error', 'Clerk did not return a valid session for this sign-in attempt.');
       }
     } catch (err: any) {
+      triggerHaptic('error');
       resetSessionMode();
       console.warn('Sign in failed', flow, JSON.stringify(err, null, 2));
       Alert.alert('Error', getAuthErrorMessage(flow, err));
@@ -84,36 +257,36 @@ export function AuthLanding() {
     }
   };
 
-  const onEmailFlowEntry = (mode: 'user' | 'admin') => {
-    setAuthMode(mode);
-    setEmail('');
-    setPassword('');
-    setAuthFlow('email_signin');
-  };
-
-  const toggleAuthFlow = (flow: AuthFlow) => {
-    setEmail('');
-    setPassword('');
-    setAuthFlow(flow);
-  };
-
-  // Logic copied from LoginScreen.tsx
   const onEmailSignIn = async () => {
     if (!isSignInLoaded) return;
     if (!email || !password) {
+      triggerHaptic('warning');
       Alert.alert('Error', 'Please enter both email and password.');
       return;
     }
+
     setIsLoading(true);
     setActiveFlow('email');
     try {
-      const result = await signIn.create({ identifier: email, password });
+      const result = await signIn.create({
+        identifier: email,
+        password,
+      });
+
       if (result.status === 'complete') {
         await setSignInActive({ session: result.createdSessionId });
+        triggerHaptic('success');
       } else {
-        Alert.alert('Notice', 'Additional verification is required. Please use a browser to complete setup.');
+        triggerHaptic('warning');
+        console.warn('Incomplete sign in status:', result.status);
+        Alert.alert(
+          'Notice',
+          'Additional verification is required. Please use a browser to complete your account setup.',
+        );
       }
     } catch (err: any) {
+      triggerHaptic('error');
+      console.warn('Email sign in failed', JSON.stringify(err, null, 2));
       Alert.alert('Error', getAuthErrorMessage('email', err));
     } finally {
       setIsLoading(false);
@@ -124,16 +297,25 @@ export function AuthLanding() {
   const onEmailSignUp = async () => {
     if (!isSignUpLoaded) return;
     if (!email || !password) {
+      triggerHaptic('warning');
       Alert.alert('Error', 'Please enter both email and password.');
       return;
     }
+
     setIsLoading(true);
     setActiveFlow('email');
     try {
-      await signUp.create({ emailAddress: email, password });
+      await signUp.create({
+        emailAddress: email,
+        password,
+      });
+
       await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-      setAuthFlow('otp_verify');
+      triggerHaptic('success');
+      transitionToView('otp_verify', 'none');
     } catch (err: any) {
+      triggerHaptic('error');
+      console.warn('Email sign up failed', JSON.stringify(err, null, 2));
       Alert.alert('Error', getAuthErrorMessage('email', err));
     } finally {
       setIsLoading(false);
@@ -144,17 +326,29 @@ export function AuthLanding() {
   const onVerifyEmail = async () => {
     if (!isSignUpLoaded) return;
     if (!code) {
-      Alert.alert('Error', 'Please enter verification code.');
+      triggerHaptic('warning');
+      Alert.alert('Error', 'Please enter the verification code.');
       return;
     }
+
     setIsLoading(true);
     setActiveFlow('email');
     try {
-      const result = await signUp.attemptEmailAddressVerification({ code });
+      const result = await signUp.attemptEmailAddressVerification({
+        code,
+      });
+
       if (result.status === 'complete') {
         await setSignUpActive({ session: result.createdSessionId });
+        triggerHaptic('success');
+      } else {
+        triggerHaptic('warning');
+        console.warn('Incomplete verification status:', result.status);
+        Alert.alert('Error', 'Verification failed. Please check the code and try again.');
       }
     } catch (err: any) {
+      triggerHaptic('error');
+      console.warn('Verification failed', JSON.stringify(err, null, 2));
       Alert.alert('Error', getAuthErrorMessage('email', err));
     } finally {
       setIsLoading(false);
@@ -163,516 +357,812 @@ export function AuthLanding() {
   };
 
   const onForgotPassword = async () => {
-    if (!isSignInLoaded || !email) {
-      Alert.alert('Error', 'Enter email first.');
+    if (!isSignInLoaded) return;
+    if (!email) {
+      triggerHaptic('warning');
+      Alert.alert('Error', 'Please enter your email address first.');
       return;
     }
+
     setIsLoading(true);
+    setActiveFlow('email');
     try {
-      await signIn.create({ strategy: 'reset_password_email_code', identifier: email });
-      setAuthFlow('reset_password');
+      await signIn.create({
+        strategy: 'reset_password_email_code',
+        identifier: email,
+      });
+      triggerHaptic('success');
+      transitionToView('reset_password', 'none');
     } catch (err: any) {
+      triggerHaptic('error');
+      console.warn('Password reset request failed', JSON.stringify(err, null, 2));
       Alert.alert('Error', getAuthErrorMessage('email', err));
     } finally {
       setIsLoading(false);
+      setActiveFlow(null);
     }
   };
 
   const onResetPassword = async () => {
-    if (!isSignInLoaded || !code || !password) return;
+    if (!isSignInLoaded) return;
+    if (!code || !password) {
+      triggerHaptic('warning');
+      Alert.alert('Error', 'Please enter both the code and your new password.');
+      return;
+    }
+
     setIsLoading(true);
+    setActiveFlow('email');
     try {
-      const result = await signIn.attemptFirstFactor({ strategy: 'reset_password_email_code', code, password });
-      if (result.status === 'complete') await setSignInActive({ session: result.createdSessionId });
+      const result = await signIn.attemptFirstFactor({
+        strategy: 'reset_password_email_code',
+        code,
+        password,
+      });
+
+      if (result.status === 'complete') {
+        await setSignInActive({ session: result.createdSessionId });
+        triggerHaptic('success');
+      } else {
+        triggerHaptic('warning');
+        console.warn('Incomplete reset status:', result.status);
+        Alert.alert('Error', 'Reset failed. Please check the code and try again.');
+      }
     } catch (err: any) {
+      triggerHaptic('error');
+      console.warn('Password reset failed', JSON.stringify(err, null, 2));
       Alert.alert('Error', getAuthErrorMessage('email', err));
     } finally {
       setIsLoading(false);
+      setActiveFlow(null);
     }
   };
 
-  const renderGoogleLabel = () => (
-    <View style={styles.oauthLabel}>
-      <GoogleIcon size={24} />
-    </View>
-  );
+  const resendVerificationCode = async () => {
+    if (!isSignUpLoaded) return;
+    try {
+      triggerHaptic('selection');
+      setIsLoading(true);
+      setActiveFlow('email');
+      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+      triggerHaptic('success');
+      Alert.alert('Verification code sent', 'Check your inbox for a fresh code.');
+    } catch (err: any) {
+      triggerHaptic('error');
+      Alert.alert('Error', getAuthErrorMessage('email', err));
+    } finally {
+      setIsLoading(false);
+      setActiveFlow(null);
+    }
+  };
 
-  const renderAppleLabel = () => (
-    <View style={styles.oauthLabel}>
-      <Text style={styles.appleIconOnly}>{APPLE_LABEL}</Text>
-    </View>
-  );
-
-  const renderInitialFlow = () => (
-    <View style={styles.buttonGroup}>
-      <View style={styles.accountCard}>
-        <View style={styles.accountHeader}>
-          <Text style={styles.accountTitle}>Student</Text>
-          <Text style={styles.accountSubtitle}>Classes, events, places, and campus tools</Text>
+  const renderWelcome = () => (
+    <Animated.View entering={PAGE_ENTERING} exiting={PAGE_EXITING} style={styles.container}>
+      <Animated.View entering={FadeInDown.duration(280)} style={styles.centerContent}>
+        <View style={styles.logoHeroWrap}>
+          <Animated.View style={[styles.logoGlowHalo, iconGlowStyle]} />
+          <Animated.View entering={ZoomIn.duration(340)} style={styles.logoCircleLarge}>
+            <GraduationCap size={48} color="#FFFFFF" />
+          </Animated.View>
         </View>
-            <View style={styles.providerRow}>
-              <Button
-                variant="primary"
-                style={styles.providerButton}
-                onPress={() => onOAuthPress('tamu')}
-                disabled={isLoading}
-              >
-                {isLoading && activeFlow === 'tamu' ? <ActivityIndicator color="#FFF" /> : renderGoogleLabel()}
-              </Button>
-              {Platform.OS === 'ios' && (
-                <Button
-                  variant="secondary"
-                  style={styles.providerButton}
-                  onPress={() => onOAuthPress('apple')}
-                  disabled={isLoading}
-                >
-                  {isLoading && activeFlow === 'apple' ? <ActivityIndicator color={COLORS.primary} /> : renderAppleLabel()}
-                </Button>
+        <Animated.View entering={FadeInDown.delay(50).duration(260)} style={styles.brandNameRow}>
+          <Text style={[styles.brandName, styles.brandMaroonText]}>Maroon</Text>
+          <Text style={[styles.brandName, styles.brandLifeText]}>Life</Text>
+        </Animated.View>
+        <Animated.View entering={FadeInUp.delay(120).duration(280)} style={styles.taglineRow}>
+          <Text style={styles.tagline}>Your Campus. </Text>
+          <Animated.Text style={[styles.tagline, styles.liveText, liveGlowStyle]}>Live</Animated.Text>
+          <Text style={styles.tagline}>.</Text>
+        </Animated.View>
+      </Animated.View>
+
+      <View style={styles.buttonGroup}>
+        <Animated.View entering={FadeInUp.delay(180).duration(280)}>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => navigateToEntry('signup')}
+            disabled={isLoading}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.primaryButtonText}>Sign up free</Text>
+          </TouchableOpacity>
+        </Animated.View>
+
+        <Animated.View entering={FadeInUp.delay(240).duration(280)}>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={() => navigateToEntry('login')}
+            disabled={isLoading}
+            activeOpacity={0.9}
+          >
+            <Text style={styles.secondaryButtonText}>Log in</Text>
+          </TouchableOpacity>
+        </Animated.View>
+
+        <Animated.View entering={FadeInUp.delay(300).duration(280)}>
+          <TouchableOpacity
+            style={styles.adminButton}
+            onPress={() => navigateToEntry('admin')}
+            disabled={isLoading}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.adminButtonText}>Are you an admin?</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Animated.View>
+  );
+
+  const renderAuthView = (type: Extract<EntryView, 'signup' | 'login' | 'admin'>) => {
+    const googleFlow = type === 'admin' ? 'admin' : 'tamu';
+    const appleFlow = type === 'admin' ? 'adminApple' : 'apple';
+
+    return (
+      <Animated.View entering={PAGE_ENTERING} exiting={PAGE_EXITING} style={styles.container}>
+        <Animated.View entering={FadeInDown.duration(220)}>
+          <TouchableOpacity style={styles.backButton} onPress={handleEntryBack} activeOpacity={0.8}>
+            <ChevronLeft size={24} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(50).duration(260)} style={styles.headerArea}>
+          <Animated.View entering={ZoomIn.delay(70).duration(280)} style={styles.logoCircleSmall}>
+            {type === 'admin' ? (
+              <ShieldCheck size={32} color={COLORS.maroon} />
+            ) : (
+              <GraduationCap size={32} color={COLORS.maroon} />
+            )}
+          </Animated.View>
+          <Text style={styles.viewTitle}>
+            {type === 'signup' ? 'Get started' : type === 'login' ? 'Login to MaroonLife' : 'Admin'}
+          </Text>
+          <Text style={styles.viewCaption}>
+            {type === 'signup'
+              ? 'Discover events, places, social, and more.'
+              : type === 'admin'
+                ? 'Post and manage featured campus events'
+                : ''}
+          </Text>
+        </Animated.View>
+
+        <Animated.View entering={FadeInUp.delay(120).duration(300)} style={styles.authGroup}>
+          <Animated.View entering={FadeInUp.delay(140).duration(280)}>
+            <TouchableOpacity
+              style={styles.primaryAuthButton}
+              onPress={() => openEmailFlow(type === 'signup' ? 'email_signup' : 'email_signin')}
+              disabled={isLoading}
+              activeOpacity={0.9}
+            >
+              <Mail size={20} color="#FFFFFF" />
+              <Text style={styles.primaryButtonText}>Continue with email</Text>
+            </TouchableOpacity>
+          </Animated.View>
+
+          <Animated.View entering={FadeInUp.delay(180).duration(280)} style={styles.divider}>
+            <View style={styles.line} />
+            <Text style={styles.dividerText}>or</Text>
+            <View style={styles.line} />
+          </Animated.View>
+
+          <Animated.View entering={FadeInUp.delay(220).duration(280)}>
+            <TouchableOpacity
+              style={styles.socialButton}
+              onPress={() => onOAuthPress(googleFlow)}
+              disabled={isLoading}
+              activeOpacity={0.9}
+            >
+              {isLoading && activeFlow === googleFlow ? (
+                <ActivityIndicator color={COLORS.maroon} />
+              ) : (
+                <GoogleIcon size={20} />
               )}
-            </View>
-        <View style={styles.dividerRow}>
-          <View style={styles.line} />
-          <Text style={styles.dividerText}>or</Text>
-          <View style={styles.line} />
-        </View>
-        <Button
-          variant="secondary"
-          style={styles.emailOptionButton}
-          onPress={() => onEmailFlowEntry('user')}
-          disabled={isLoading}
-        >
-          <Mail size={18} color={COLORS.primary} />
-          <Text style={styles.emailOptionText}>Continue with Email</Text>
-        </Button>
-      </View>
+              <Text style={styles.socialButtonText}>Continue with Google</Text>
+            </TouchableOpacity>
+          </Animated.View>
 
-      <View style={styles.accountCard}>
-        <View style={styles.accountHeader}>
-          <Text style={styles.accountTitle}>Admin</Text>
-          <Text style={styles.accountSubtitle}>Post and manage featured campus events</Text>
-        </View>
-            <View style={styles.providerRow}>
-              <Button
-                variant="secondary"
-                style={styles.providerButton}
-                onPress={() => onOAuthPress('admin')}
-                disabled={isLoading}
-              >
-                {isLoading && activeFlow === 'admin' ? <ActivityIndicator color={COLORS.primary} /> : renderGoogleLabel()}
-              </Button>
-              {Platform.OS === 'ios' && (
-                <Button
-                  variant="secondary"
-                  style={styles.providerButton}
-                  onPress={() => onOAuthPress('adminApple')}
-                  disabled={isLoading}
-                >
-                  {isLoading && activeFlow === 'adminApple' ? <ActivityIndicator color={COLORS.primary} /> : renderAppleLabel()}
-                </Button>
+          <Animated.View entering={FadeInUp.delay(260).duration(280)}>
+            <TouchableOpacity
+              style={styles.socialButton}
+              onPress={() => onOAuthPress(appleFlow)}
+              disabled={isLoading}
+              activeOpacity={0.9}
+            >
+              {isLoading && activeFlow === appleFlow ? (
+                <ActivityIndicator color={COLORS.maroon} />
+              ) : (
+                <AppleIcon size={20} color={COLORS.maroon} />
               )}
-            </View>
-        <View style={styles.dividerRow}>
-          <View style={styles.line} />
-          <Text style={styles.dividerText}>or</Text>
-          <View style={styles.line} />
-        </View>
-        <Button
-          variant="secondary"
-          style={styles.emailOptionButton}
-          onPress={() => onEmailFlowEntry('admin')}
-          disabled={isLoading}
-        >
-          <Mail size={18} color={COLORS.primary} />
-          <Text style={styles.emailOptionText}>Continue with Email</Text>
-        </Button>
-      </View>
+              <Text style={styles.socialButtonText}>Continue with Apple</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </Animated.View>
+
+        <Animated.View entering={FadeInUp.delay(320).duration(280)} style={styles.footer}>
+          <Text style={styles.footerText}>
+            {type === 'admin'
+              ? 'Not an Admin? '
+              : type === 'signup'
+                ? 'Already have an account? '
+                : "Don't have an account? "}
+            <Text
+              style={styles.footerLink}
+              onPress={() => {
+                if (type === 'admin') {
+                  navigateToEntry('welcome');
+                  return;
+                }
+                navigateToEntry(type === 'signup' ? 'login' : 'signup');
+              }}
+            >
+              {type === 'admin' ? 'Go back' : type === 'signup' ? 'Log in' : 'Sign up'}
+            </Text>
+          </Text>
+        </Animated.View>
+      </Animated.View>
+    );
+  };
+
+  const renderInput = ({
+    value,
+    onChangeText,
+    placeholder,
+    icon,
+    secureTextEntry,
+    keyboardType,
+  }: {
+    value: string;
+    onChangeText: (text: string) => void;
+    placeholder: string;
+    icon: React.ReactNode;
+    secureTextEntry?: boolean;
+    keyboardType?: 'default' | 'email-address' | 'number-pad';
+  }) => (
+    <View style={styles.inputField}>
+      {icon}
+      <TextInput
+        style={styles.input}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={COLORS.textSecondary}
+        secureTextEntry={secureTextEntry}
+        keyboardType={keyboardType}
+        autoCapitalize="none"
+        editable={!isLoading}
+      />
     </View>
   );
 
-  const renderEmailSignIn = () => (
-    <View style={styles.emailFlowContainer}>
-      <Pressable style={styles.backButtonInline} onPress={() => setAuthFlow('initial')}>
-        <ArrowLeft size={20} color={COLORS.primary} />
-        <Text style={styles.backButtonTextInline}>Back</Text>
-      </Pressable>
-      <Text style={styles.flowTitle}>{authMode === 'admin' ? 'Admin Login' : 'Student Login'}</Text>
-      <Text style={styles.flowSubtitle}>Enter your email and password.</Text>
-      <View style={styles.inputWrapper}>
-        <Mail size={20} color={COLORS.textTertiary} style={styles.inputIcon} />
-        <TextInput style={styles.input} placeholder="Email address" placeholderTextColor={COLORS.textTertiary} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
-      </View>
-      <View style={styles.inputWrapper}>
-        <KeyRound size={20} color={COLORS.textTertiary} style={styles.inputIcon} />
-        <TextInput style={styles.input} placeholder="Password" placeholderTextColor={COLORS.textTertiary} value={password} onChangeText={setPassword} secureTextEntry />
-      </View>
-      <Button variant="primary" style={styles.submitButton} onPress={onEmailSignIn} disabled={isLoading}>
-        {isLoading ? <ActivityIndicator color="#FFF" /> : <View style={styles.buttonContent}><LogIn size={20} color="#FFF" /><Text style={styles.submitButtonText}>Sign In</Text></View>}
-      </Button>
-      <View style={styles.authLinksRow}>
-        <Pressable onPress={() => setAuthFlow('forgot_password')}><Text style={styles.footerLink}>Forgot password?</Text></Pressable>
-      </View>
-      <View style={styles.footerRow}>
-        <Text style={styles.footerText}>New here?</Text>
-        <Pressable 
-          onPress={() => toggleAuthFlow('email_signup')}
-          hitSlop={15}
-        >
-          <Text style={styles.footerLink}>Create account</Text>
-        </Pressable>
-      </View>
-    </View>
+  const renderFormLayout = ({
+    title,
+    caption,
+    icon,
+    backTarget,
+    actionLabel,
+    onAction,
+    children,
+    footerContent,
+  }: {
+    title: string;
+    caption: string;
+    icon: React.ReactNode;
+    backTarget: ScreenView;
+    actionLabel: string;
+    onAction: () => void;
+    children: React.ReactNode;
+    footerContent?: React.ReactNode;
+  }) => (
+    <ScrollView
+      style={styles.scroll}
+      contentContainerStyle={styles.formScrollContent}
+      keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
+    >
+      <Animated.View entering={PAGE_ENTERING} exiting={PAGE_EXITING} style={styles.formContainer}>
+        <Animated.View entering={FadeInDown.duration(220)}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => transitionToView(backTarget)}
+            activeOpacity={0.8}
+          >
+            <ChevronLeft size={24} color={COLORS.textSecondary} />
+          </TouchableOpacity>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(50).duration(260)} style={styles.headerArea}>
+          <Animated.View entering={ZoomIn.delay(70).duration(280)} style={styles.logoCircleSmall}>
+            {icon}
+          </Animated.View>
+          <Text style={styles.viewTitle}>{title}</Text>
+          <Text style={styles.viewCaption}>{caption}</Text>
+        </Animated.View>
+
+        <Animated.View entering={FadeInUp.delay(130).duration(300)} style={styles.formGroup}>
+          {children}
+          <Animated.View entering={FadeInUp.delay(220).duration(280)}>
+            <TouchableOpacity
+              style={styles.primaryAuthButton}
+              onPress={onAction}
+              disabled={isLoading}
+              activeOpacity={0.9}
+            >
+              {isLoading && activeFlow === 'email' ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Text style={styles.primaryButtonText}>{actionLabel}</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </Animated.View>
+        </Animated.View>
+
+        {footerContent ? (
+          <Animated.View entering={FadeInUp.delay(280).duration(280)} style={styles.footer}>
+            {footerContent}
+          </Animated.View>
+        ) : null}
+      </Animated.View>
+    </ScrollView>
   );
 
-  const renderEmailSignUp = () => (
-    <View style={styles.emailFlowContainer}>
-      <Pressable style={styles.backButtonInline} onPress={() => setAuthFlow('email_signin')}>
-        <ArrowLeft size={20} color={COLORS.primary} />
-        <Text style={styles.backButtonTextInline}>Back to sign in</Text>
-      </Pressable>
-      <Text style={styles.flowTitle}>Create Account</Text>
-      <Text style={styles.flowSubtitle}>Join MaroonSchedules as a {authMode === 'admin' ? 'Campus Admin' : 'Student'}.</Text>
-      <View style={styles.inputWrapper}>
-        <Mail size={20} color={COLORS.textTertiary} style={styles.inputIcon} />
-        <TextInput style={styles.input} placeholder="Email address" placeholderTextColor={COLORS.textTertiary} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
-      </View>
-      <View style={styles.inputWrapper}>
-        <KeyRound size={20} color={COLORS.textTertiary} style={styles.inputIcon} />
-        <TextInput style={styles.input} placeholder="Password" placeholderTextColor={COLORS.textTertiary} value={password} onChangeText={setPassword} secureTextEntry />
-      </View>
-      <Button variant="primary" style={styles.submitButton} onPress={onEmailSignUp} disabled={isLoading}>
-        {isLoading ? <ActivityIndicator color="#FFF" /> : <View style={styles.buttonContent}><UserPlus size={20} color="#FFF" /><Text style={styles.submitButtonText}>Create Account</Text></View>}
-      </Button>
-    </View>
-  );
+  const renderEmailSignIn = () =>
+    renderFormLayout({
+      title: selectedMode === 'admin' ? 'Admin' : 'Log in',
+      caption:
+        selectedMode === 'admin'
+          ? 'Use your organizer credentials to continue.'
+          : 'Enter your email and password to continue.',
+      icon:
+        selectedMode === 'admin' ? (
+          <ShieldCheck size={32} color={COLORS.maroon} />
+        ) : (
+          <GraduationCap size={32} color={COLORS.maroon} />
+        ),
+      backTarget: entryView,
+      actionLabel: 'Log in',
+      onAction: onEmailSignIn,
+      children: (
+        <>
+          {renderInput({
+            value: email,
+            onChangeText: setEmail,
+            placeholder: 'Email address',
+            icon: <Mail size={20} color={COLORS.maroon} />,
+            keyboardType: 'email-address',
+          })}
+          {renderInput({
+            value: password,
+            onChangeText: setPassword,
+            placeholder: 'Password',
+            icon: <KeyRound size={20} color={COLORS.maroon} />,
+            secureTextEntry: true,
+          })}
+          <TouchableOpacity
+            style={styles.inlineLinkButton}
+            onPress={() => transitionToView('forgot_password')}
+            disabled={isLoading}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.inlineLinkText}>Forgot password?</Text>
+          </TouchableOpacity>
+        </>
+      ),
+      footerContent:
+        selectedMode === 'admin' ? (
+          <Text style={styles.footerText}>
+            Not an Admin?{' '}
+            <Text style={styles.footerLink} onPress={() => navigateToEntry('welcome')}>
+              Go back
+            </Text>
+          </Text>
+        ) : (
+          <Text style={styles.footerText}>
+            {"Don't have an account? "}
+            <Text style={styles.footerLink} onPress={() => transitionToView('email_signup')}>
+              Sign up
+            </Text>
+          </Text>
+        ),
+    });
 
-  const renderOtpVerify = () => (
-    <View style={styles.emailFlowContainer}>
-      <Text style={styles.flowTitle}>Verify Email</Text>
-      <Text style={styles.flowSubtitle}>Enter the code sent to {email}.</Text>
-      <View style={styles.inputWrapper}>
-        <Hash size={20} color={COLORS.textTertiary} style={styles.inputIcon} />
-        <TextInput style={styles.input} placeholder="Code" placeholderTextColor={COLORS.textTertiary} value={code} onChangeText={setCode} keyboardType="number-pad" />
-      </View>
-      <Button variant="primary" style={styles.submitButton} onPress={onVerifyEmail} disabled={isLoading}>
-        {isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Verify & Continue</Text>}
-      </Button>
-    </View>
-  );
+  const renderEmailSignUp = () =>
+    renderFormLayout({
+      title: 'Create account',
+      caption: 'Create your MaroonLife account with email and password.',
+      icon: <GraduationCap size={32} color={COLORS.maroon} />,
+      backTarget: entryView,
+      actionLabel: 'Sign up free',
+      onAction: onEmailSignUp,
+      children: (
+        <>
+          {renderInput({
+            value: email,
+            onChangeText: setEmail,
+            placeholder: 'Email address',
+            icon: <Mail size={20} color={COLORS.maroon} />,
+            keyboardType: 'email-address',
+          })}
+          {renderInput({
+            value: password,
+            onChangeText: setPassword,
+            placeholder: 'Password',
+            icon: <KeyRound size={20} color={COLORS.maroon} />,
+            secureTextEntry: true,
+          })}
+        </>
+      ),
+      footerContent: (
+        <Text style={styles.footerText}>
+          Already have an account?{' '}
+          <Text style={styles.footerLink} onPress={() => transitionToView('email_signin')}>
+            Log in
+          </Text>
+        </Text>
+      ),
+    });
 
-  const renderForgotPassword = () => (
-    <View style={styles.emailFlowContainer}>
-      <Pressable style={styles.backButtonInline} onPress={() => setAuthFlow('email_signin')}>
-        <ArrowLeft size={20} color={COLORS.primary} />
-        <Text style={styles.backButtonTextInline}>Back</Text>
-      </Pressable>
-      <Text style={styles.flowTitle}>Reset Password</Text>
-      <View style={styles.inputWrapper}>
-        <Mail size={20} color={COLORS.textTertiary} style={styles.inputIcon} />
-        <TextInput style={styles.input} placeholder="Email" placeholderTextColor={COLORS.textTertiary} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" />
-      </View>
-      <Button variant="primary" style={styles.submitButton} onPress={onForgotPassword} disabled={isLoading}>
-        {isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Send Reset Code</Text>}
-      </Button>
-    </View>
-  );
+  const renderOtpVerify = () =>
+    renderFormLayout({
+      title: 'Verify email',
+      caption: `Enter the code sent to ${email || 'your inbox'}.`,
+      icon: <GraduationCap size={32} color={COLORS.maroon} />,
+      backTarget: 'email_signup',
+      actionLabel: 'Verify and continue',
+      onAction: onVerifyEmail,
+      children: (
+        <>
+          {renderInput({
+            value: code,
+            onChangeText: setCode,
+            placeholder: 'Verification code',
+            icon: <Hash size={20} color={COLORS.maroon} />,
+            keyboardType: 'number-pad',
+          })}
+          <TouchableOpacity
+            style={styles.inlineLinkButton}
+            onPress={resendVerificationCode}
+            disabled={isLoading}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.inlineLinkText}>Resend code</Text>
+          </TouchableOpacity>
+        </>
+      ),
+    });
 
-  const renderResetPassword = () => (
-    <View style={styles.emailFlowContainer}>
-      <Text style={styles.flowTitle}>New Password</Text>
-      <View style={styles.inputWrapper}>
-        <Hash size={20} color={COLORS.textTertiary} style={styles.inputIcon} />
-        <TextInput style={styles.input} placeholder="Code" placeholderTextColor={COLORS.textTertiary} value={code} onChangeText={setCode} keyboardType="number-pad" />
-      </View>
-      <View style={styles.inputWrapper}>
-        <KeyRound size={20} color={COLORS.textTertiary} style={styles.inputIcon} />
-        <TextInput style={styles.input} placeholder="New Password" placeholderTextColor={COLORS.textTertiary} value={password} onChangeText={setPassword} secureTextEntry />
-      </View>
-      <Button variant="primary" style={styles.submitButton} onPress={onResetPassword} disabled={isLoading}>
-        {isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>Reset Password</Text>}
-      </Button>
-    </View>
-  );
+  const renderForgotPassword = () =>
+    renderFormLayout({
+      title: 'Reset password',
+      caption: 'Enter your email to receive a reset code.',
+      icon:
+        selectedMode === 'admin' ? (
+          <ShieldCheck size={32} color={COLORS.maroon} />
+        ) : (
+          <GraduationCap size={32} color={COLORS.maroon} />
+        ),
+      backTarget: 'email_signin',
+      actionLabel: 'Send reset code',
+      onAction: onForgotPassword,
+      children: (
+        <>
+          {renderInput({
+            value: email,
+            onChangeText: setEmail,
+            placeholder: 'Email address',
+            icon: <Mail size={20} color={COLORS.maroon} />,
+            keyboardType: 'email-address',
+          })}
+        </>
+      ),
+    });
+
+  const renderResetPassword = () =>
+    renderFormLayout({
+      title: 'Choose a new password',
+      caption: 'Enter the reset code and your new password.',
+      icon:
+        selectedMode === 'admin' ? (
+          <ShieldCheck size={32} color={COLORS.maroon} />
+        ) : (
+          <GraduationCap size={32} color={COLORS.maroon} />
+        ),
+      backTarget: 'forgot_password',
+      actionLabel: 'Reset password',
+      onAction: onResetPassword,
+      children: (
+        <>
+          {renderInput({
+            value: code,
+            onChangeText: setCode,
+            placeholder: 'Reset code',
+            icon: <Hash size={20} color={COLORS.maroon} />,
+            keyboardType: 'number-pad',
+          })}
+          {renderInput({
+            value: password,
+            onChangeText: setPassword,
+            placeholder: 'New password',
+            icon: <KeyRound size={20} color={COLORS.maroon} />,
+            secureTextEntry: true,
+          })}
+        </>
+      ),
+    });
+
+  const renderCurrentView = () => {
+    switch (view) {
+      case 'welcome':
+        return renderWelcome();
+      case 'signup':
+      case 'login':
+      case 'admin':
+        return renderAuthView(view);
+      case 'email_signin':
+        return renderEmailSignIn();
+      case 'email_signup':
+        return renderEmailSignUp();
+      case 'otp_verify':
+        return renderOtpVerify();
+      case 'forgot_password':
+        return renderForgotPassword();
+      case 'reset_password':
+        return renderResetPassword();
+      default:
+        return renderWelcome();
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
-          <View style={styles.colorAccentTop} />
-          {authFlow === 'initial' && (
-            <>
-              <View style={styles.logoContainer}>
-                <Image source={require('../../assets/login-logo-transparent.png')} style={styles.logoImage} resizeMode="contain" />
-              </View>
-              <View><Text style={styles.appTitle}>MaroonSchedules</Text></View>
-              <View style={styles.accentLine} />
-              <View style={styles.spacer} />
-              {renderInitialFlow()}
-            </>
-          )}
-          {authFlow === 'email_signin' && renderEmailSignIn()}
-          {authFlow === 'email_signup' && renderEmailSignUp()}
-          {authFlow === 'otp_verify' && renderOtpVerify()}
-          {authFlow === 'forgot_password' && renderForgotPassword()}
-          {authFlow === 'reset_password' && renderResetPassword()}
-          <View style={styles.colorAccentBottom} />
-        </View>
-      </ScrollView>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" />
+      {renderCurrentView()}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  scrollContent: {
+  scroll: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+    paddingHorizontal: 24,
+    justifyContent: 'space-between',
+    paddingBottom: 40,
+    paddingTop: 40,
+  },
+  formScrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    minHeight: '100%',
-    position: 'relative',
   },
-  content: {
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.xl,
-    maxWidth: 420,
-    width: '100%',
-    alignSelf: 'center',
-    position: 'relative',
+  formContainer: {
+    flexGrow: 1,
+    paddingHorizontal: 24,
+    justifyContent: 'space-between',
+    paddingBottom: 40,
+    paddingTop: 40,
   },
-  colorAccentTop: {
-    position: 'absolute',
-    top: -50,
-    left: -50,
-    width: 200,
-    height: 200,
-    backgroundColor: COLORS.primaryLight,
-    borderRadius: 100,
-    zIndex: 0,
-    opacity: 0.5,
-  },
-  colorAccentBottom: {
-    position: 'absolute',
-    bottom: -80,
-    right: -50,
-    width: 180,
-    height: 180,
-    backgroundColor: COLORS.primary + '10',
-    borderRadius: 90,
-    zIndex: 0,
-  },
-  logoContainer: {
-    marginBottom: SPACING.lg,
+  centerContent: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    zIndex: 1,
+    marginTop: -20,
   },
-  logoImage: {
-    width: 140,
-    height: 140,
+  logoHeroWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
   },
-  appTitle: {
-    ...TYPOGRAPHY.title,
-    fontSize: 32,
+  logoGlowHalo: {
+    position: 'absolute',
+    width: 132,
+    height: 132,
+    borderRadius: 66,
+    backgroundColor: 'rgba(128, 12, 12, 0.18)',
+    shadowColor: COLORS.maroon,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  logoCircleLarge: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: COLORS.maroon,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 8,
+    shadowColor: COLORS.maroon,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+  },
+  brandNameRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  brandName: {
+    fontSize: 48,
+    fontWeight: '800',
+    letterSpacing: -1.5,
+  },
+  brandMaroonText: {
+    color: COLORS.maroon,
+  },
+  brandLifeText: {
+    color: '#121212',
+  },
+  taglineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tagline: {
+    fontSize: 18,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+  },
+  liveText: {
+    color: COLORS.maroon,
     fontWeight: '700',
-    color: '#000000',
-    marginBottom: SPACING.sm,
-    textAlign: 'center',
-    zIndex: 1,
-  },
-  accentLine: {
-    width: 60,
-    height: 4,
-    backgroundColor: COLORS.accent,
-    borderRadius: 2,
-    marginBottom: SPACING.lg,
-    zIndex: 1,
-  },
-  spacer: {
-    height: SPACING.xs,
+    textShadowColor: 'rgba(128, 12, 12, 0.35)',
+    textShadowOffset: { width: 0, height: 0 },
   },
   buttonGroup: {
-    width: '100%',
-    zIndex: 1,
-    gap: SPACING.md,
+    gap: 16,
   },
-  accountCard: {
-    width: '100%',
-    backgroundColor: COLORS.white,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    padding: SPACING.md,
-    gap: SPACING.sm,
-  },
-  accountHeader: {
+  primaryButton: {
+    backgroundColor: COLORS.maroon,
+    paddingVertical: 14,
+    borderRadius: 100,
     alignItems: 'center',
-    gap: 4,
-    marginBottom: 4,
   },
-  accountTitle: {
-    ...TYPOGRAPHY.body,
-    fontSize: 18,
-    fontWeight: '700',
-    color: COLORS.primary,
-    textAlign: 'center',
-  },
-  accountSubtitle: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    lineHeight: 18,
-    textAlign: 'center',
-  },
-  providerRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: SPACING.md,
-    marginTop: 4,
-  },
-  providerButton: {
-    width: 64,
-    height: 52,
-    paddingHorizontal: 0,
-  },
-  oauthLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  providerButtonText: {
-    fontWeight: '600',
-    fontSize: 15,
-  },
-  appleIconOnly: {
-    fontSize: 24,
-    color: COLORS.primary,
-  },
-  oauthLabelTextPrimary: {
+  primaryButtonText: {
     color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
   },
-  oauthLabelTextSecondary: {
-    color: COLORS.primary,
-  },
-  emailOptionButton: {
+  secondaryButton: {
     backgroundColor: '#FFFFFF',
+    paddingVertical: 14,
+    borderRadius: 100,
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: COLORS.outline,
+  },
+  secondaryButtonText: {
+    color: COLORS.maroon,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  adminButton: {
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  adminButtonText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerArea: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  logoCircleSmall: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: COLORS.outline,
+  },
+  viewTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: COLORS.maroon,
+    textAlign: 'center',
+  },
+  viewCaption: {
+    fontSize: 16,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  authGroup: {
+    gap: 12,
+  },
+  formGroup: {
+    gap: 12,
+  },
+  primaryAuthButton: {
     flexDirection: 'row',
+    backgroundColor: COLORS.maroon,
+    paddingVertical: 14,
+    borderRadius: 100,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
-    height: 48,
-    borderRadius: 12,
+    minHeight: 52,
   },
-  emailOptionText: {
-    color: COLORS.primary,
-    fontWeight: '600',
-    fontSize: 15,
-  },
-  dividerRow: {
+  divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 4,
+    marginVertical: 16,
   },
   line: {
     flex: 1,
     height: 1,
-    backgroundColor: COLORS.border,
+    backgroundColor: COLORS.outline,
   },
   dividerText: {
-    ...TYPOGRAPHY.body,
-    paddingHorizontal: 10,
-    color: COLORS.textTertiary,
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
+    marginHorizontal: 16,
+    color: COLORS.textSecondary,
+    fontSize: 14,
   },
-  emailFlowContainer: {
-    width: '100%',
-    paddingTop: SPACING.md,
-  },
-  backButtonInline: {
+  socialButton: {
     flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 14,
+    borderRadius: 100,
     alignItems: 'center',
-    marginBottom: SPACING.lg,
-    gap: 8,
+    justifyContent: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderColor: COLORS.outline,
+    minHeight: 52,
   },
-  backButtonTextInline: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.primary,
+  socialButtonText: {
+    color: COLORS.textPrimary,
     fontSize: 16,
     fontWeight: '600',
   },
-  flowTitle: {
-    ...TYPOGRAPHY.title,
-    fontSize: 28,
-    fontWeight: '700',
-    color: COLORS.primary,
-    marginBottom: 8,
-  },
-  flowSubtitle: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.textSecondary,
-    marginBottom: 24,
-  },
-  inputWrapper: {
+  inputField: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.white,
+    gap: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    height: 56,
-  },
-  inputIcon: {
-    marginRight: 12,
+    borderColor: COLORS.outline,
+    paddingHorizontal: 18,
+    minHeight: 56,
   },
   input: {
     flex: 1,
     color: COLORS.textPrimary,
     fontSize: 16,
-    ...TYPOGRAPHY.body,
   },
-  submitButton: {
-    height: 56,
-    borderRadius: 16,
-    marginTop: 8,
-  },
-  buttonContent: {
-    flexDirection: 'row',
+  inlineLinkButton: {
     alignItems: 'center',
-    gap: 10,
+    marginTop: 4,
   },
-  submitButtonText: {
-    color: '#FFF',
-    fontSize: 18,
+  inlineLinkText: {
+    color: COLORS.maroon,
+    fontSize: 14,
     fontWeight: '700',
   },
-  footerRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 24,
-    gap: 6,
+  footer: {
+    marginTop: 40,
+    alignItems: 'center',
   },
   footerText: {
-    ...TYPOGRAPHY.body,
     color: COLORS.textSecondary,
-    fontSize: 15,
+    fontSize: 14,
+    textAlign: 'center',
   },
   footerLink: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.primary,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  authLinksRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 12,
+    color: COLORS.maroon,
+    fontWeight: '800',
   },
 });

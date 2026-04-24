@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowRight, ChartNoAxesColumn, ClipboardList } from 'lucide-react-native';
 import { useTheme } from '../SharedUI';
@@ -25,11 +25,9 @@ const OPTIONS = [
 ];
 
 export default function TrackerHubScreen({ navigation, embedded = false }: any) {
-  const { theme, wallpaperUri } = useTheme();
+  const { theme } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
-
-  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const content = (
     <View style={{ flex: 1, padding: embedded ? 0 : 24 }}>
@@ -74,9 +72,6 @@ export default function TrackerHubScreen({ navigation, embedded = false }: any) 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
       <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
-      <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.4)' }]} />
-      </ImageBackground>
       {content}
     </SafeAreaView>
   );

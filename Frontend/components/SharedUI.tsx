@@ -37,8 +37,8 @@ export const LIGHT_COLORS = {
   warning: '#FF9500',
 };
 
-export const DEFAULT_LIGHT_ACCENT = '#500000';
-export const DEFAULT_DARK_ACCENT = '#500000';
+export const DEFAULT_LIGHT_ACCENT = '#A00000';
+export const DEFAULT_DARK_ACCENT = '#FF8A8A';
 const LEGACY_DEFAULT_ACCENT = '#8E8E93';
 
 export function getDefaultAccentColor(theme: 'light' | 'dark') {
@@ -46,16 +46,20 @@ export function getDefaultAccentColor(theme: 'light' | 'dark') {
 }
 
 function isLegacyDefaultAccent(accentColor: string | null | undefined) {
-  return (accentColor || '').toUpperCase() === LEGACY_DEFAULT_ACCENT;
+  const c = (accentColor || '').toUpperCase();
+  return c === LEGACY_DEFAULT_ACCENT || c === '#500000';
 }
 
 // Zustand Theme Store
 export const useThemeStore = create<any>((set, get) => ({
   theme: 'light', // 'dark' | 'light'
-  backgroundMode: 'solid', // 'solid' | 'custom'
-  customWallpaperUri: null as string | null,
   accentColor: DEFAULT_DARK_ACCENT,
-  applyAccentToText: false,
+  applyAccentToText: true,
+  tabBarMode: 'solid',
+  pickerPos: { x: 180, y: 140 },
+  huePos: 140,
+  setPickerPos: (pos: { x: number, y: number }) => set({ pickerPos: pos }),
+  setHuePos: (pos: number) => set({ huePos: pos }),
   setTheme: (newTheme: string) => {
     const currentTheme = get().theme as 'light' | 'dark';
     const currentAccent = get().accentColor;
@@ -70,108 +74,73 @@ export const useThemeStore = create<any>((set, get) => ({
     set(nextState);
     AsyncStorage.setItem('theme_mode', newTheme).catch(() => {});
   },
-  setAccentColor: (accentColor: string) => {
-    set({ accentColor });
-    AsyncStorage.setItem('accent_color', accentColor).catch(() => {});
+  setAccentColor: (nextAccent: string) => {
+    set({ accentColor: nextAccent });
+    AsyncStorage.setItem('accent_color', nextAccent).catch(() => {});
   },
-  setApplyAccentToText: (applyAccentToText: boolean) => {
-    set({ applyAccentToText });
-    AsyncStorage.setItem('accent_text_enabled', JSON.stringify(applyAccentToText)).catch(() => {});
+  setApplyAccentToText: (enabled: boolean) => {
+    set({ applyAccentToText: enabled });
+    AsyncStorage.setItem('accent_text_enabled', JSON.stringify(enabled)).catch(() => {});
   },
-  setUseWallpaper: (val: boolean) => {
-    const nextMode = val && get().customWallpaperUri ? 'custom' : 'solid';
-    set({ backgroundMode: nextMode });
-    AsyncStorage.setItem('background_mode', nextMode).catch(() => {});
-  },
-  setBackgroundMode: (mode: 'solid' | 'custom') => {
-    const nextMode = mode === 'custom' && !get().customWallpaperUri ? 'solid' : mode;
-    set({ backgroundMode: nextMode });
-    AsyncStorage.setItem('background_mode', nextMode).catch(() => {});
-  },
-  setCustomWallpaper: async (uri: string | null) => {
-    if (!uri) {
-      set({ customWallpaperUri: null, backgroundMode: 'solid' });
-      await AsyncStorage.removeItem('custom_wallpaper_uri');
-      await AsyncStorage.setItem('background_mode', 'solid');
-      return;
-    }
-    set({ customWallpaperUri: uri, backgroundMode: 'custom' });
-    await AsyncStorage.setItem('custom_wallpaper_uri', uri);
-    await AsyncStorage.setItem('background_mode', 'custom');
-  },
-  loadWallpaperPref: async () => {
-    const [legacy, storedTheme, backgroundMode, customWallpaperUri, accentColor, accentTextEnabled] = await Promise.all([
-      AsyncStorage.getItem('use_wallpaper'),
-      AsyncStorage.getItem('theme_mode'),
-      AsyncStorage.getItem('background_mode'),
-      AsyncStorage.getItem('custom_wallpaper_uri'),
-      AsyncStorage.getItem('accent_color'),
-      AsyncStorage.getItem('accent_text_enabled'),
-    ]);
+  loadThemePrefs: async () => {
+    try {
+      const [storedTheme, storedAccent, storedTextAccent, storedTabBar] = await Promise.all([
+        AsyncStorage.getItem('theme_mode'),
+        AsyncStorage.getItem('accent_color'),
+        AsyncStorage.getItem('accent_text_enabled'),
+        AsyncStorage.getItem('tab_bar_mode'),
+      ]);
 
-    const nextState: Record<string, unknown> = {};
+      const nextState: any = {};
+      if (storedTheme) nextState.theme = storedTheme;
+      
+      if (storedAccent) {
+        if (isLegacyDefaultAccent(storedAccent)) {
+          nextState.accentColor = getDefaultAccentColor(storedTheme || 'light');
+        } else {
+          nextState.accentColor = storedAccent;
+        }
+      }
+      
+      if (storedTextAccent !== null) nextState.applyAccentToText = JSON.parse(storedTextAccent);
+      if (storedTabBar) nextState.tabBarMode = storedTabBar;
 
-    const nextTheme = storedTheme === 'light' || storedTheme === 'dark' ? storedTheme : get().theme;
-    if (storedTheme === 'light' || storedTheme === 'dark') {
-      nextState.theme = storedTheme;
-    }
-
-    nextState.accentColor =
-      !accentColor || isLegacyDefaultAccent(accentColor)
-        ? getDefaultAccentColor(nextTheme)
-        : accentColor;
-
-    if (accentTextEnabled !== null) {
-      nextState.applyAccentToText = accentTextEnabled === 'true';
-    }
-
-    if (customWallpaperUri) {
-      set({
-        ...nextState,
-        customWallpaperUri,
-        backgroundMode: backgroundMode === 'custom' ? 'custom' : 'solid',
-      });
-      return;
-    }
-
-    if (backgroundMode) {
-      set({ ...nextState, backgroundMode });
-      return;
-    }
-
-    if (legacy !== null) {
-      set({ ...nextState, backgroundMode: JSON.parse(legacy) ? 'solid' : 'solid' });
-      return;
-    }
-
-    if (Object.keys(nextState).length) {
-      set(nextState);
+      if (Object.keys(nextState).length) {
+        set(nextState);
+      }
+    } catch (e) {
+      console.warn('Failed to load theme preferences:', e);
     }
   },
+  setTabBarMode: (mode: 'floating' | 'solid') => {
+    set({ tabBarMode: mode });
+    AsyncStorage.setItem('tab_bar_mode', mode).catch(() => {});
+  }
 }));
 
 export const useTheme = () => {
   const theme = useThemeStore((s: any) => s.theme);
-  const backgroundMode = useThemeStore((s: any) => s.backgroundMode);
-  const wallpaperUri = useThemeStore((s: any) => s.customWallpaperUri);
   const accentColor = useThemeStore((s: any) => s.accentColor);
   const applyAccentToText = useThemeStore((s: any) => s.applyAccentToText);
-  const useWallpaper = backgroundMode === 'custom' && !!wallpaperUri;
+  const tabBarMode = useThemeStore((s: any) => s.tabBarMode);
+  
   const palette = theme === 'dark' ? DARK_COLORS : LIGHT_COLORS;
   const COLORS = {
     ...palette,
-    primary: accentColor,
+    primary: palette.primary,
     accent: accentColor,
     accentText: applyAccentToText ? accentColor : palette.textPrimary,
   };
   return {
-    COLORS, theme, useWallpaper, backgroundMode, wallpaperUri, accentColor, applyAccentToText,
+    COLORS, 
+    theme, 
+    accentColor, 
+    applyAccentToText,
+    tabBarMode,
     setTheme: useThemeStore.getState().setTheme,
-    setUseWallpaper: useThemeStore.getState().setUseWallpaper,
-    setBackgroundMode: useThemeStore.getState().setBackgroundMode,
-    setCustomWallpaper: useThemeStore.getState().setCustomWallpaper,
     setAccentColor: useThemeStore.getState().setAccentColor,
     setApplyAccentToText: useThemeStore.getState().setApplyAccentToText,
+    setTabBarMode: useThemeStore.getState().setTabBarMode,
   };
 };
 
@@ -191,6 +160,11 @@ export const useSavedStore = create<any>((set, get) => ({
     await AsyncStorage.setItem('saved_sections_store', JSON.stringify(newSaved));
   }
 }));
+
+export const WallpaperWrapper = ({ children }: { children: React.ReactNode }) => {
+  const { COLORS } = useTheme();
+  return <View style={{ flex: 1, backgroundColor: COLORS.background }}>{children}</View>;
+};
 
 export const Card = ({ children, style }: any) => {
   const { COLORS, theme } = useTheme();

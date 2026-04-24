@@ -18,7 +18,7 @@ interface CampusBottomSheetProps {
   onSelect: (item: CampusSearchResult) => void;
   hasRoute: boolean;
   destinationName?: string;
-  routeMode?: 'walk' | 'drive' | 'bus';
+  routeMode?: 'walk' | 'bus';
   routeTitle?: string;
   distanceLabel?: string;
   etaLabel?: string;
@@ -74,7 +74,7 @@ export function CampusBottomSheet({
           <View style={styles.routeHeader}>
             <View style={[styles.routeModeBadge, routeAccentColor ? { backgroundColor: routeAccentColor } : null]}>
               <Text style={styles.routeModeBadgeText}>
-                {routeMode === 'bus' ? 'Bus Route' : routeMode === 'drive' ? 'Drive Route' : 'Walk Route'}
+                {routeMode === 'bus' ? 'Bus Route' : 'Walk Route'}
               </Text>
             </View>
             <Pressable
@@ -86,7 +86,7 @@ export function CampusBottomSheet({
           </View>
           <View style={styles.routeInfo}>
             <Text style={styles.routeTitle} numberOfLines={2}>
-              {routeTitle || `${routeMode === 'bus' ? 'Bus' : routeMode === 'drive' ? 'Drive' : 'Walk'} to ${destinationName}`}
+              {routeTitle || `${routeMode === 'bus' ? 'Bus' : 'Walk'} to ${destinationName}`}
             </Text>
             <Text style={styles.routeSub}>{distanceLabel} • {etaLabel}</Text>
             {routeMeta ? (
@@ -107,7 +107,7 @@ export function CampusBottomSheet({
               disabled={isLoadingRoute}
             >
               <Text style={styles.startBtnText}>
-                {isLoadingRoute ? 'Loading…' : routeMode === 'bus' ? 'Start Trip' : routeMode === 'drive' ? 'Start Drive' : 'Start Walk'}
+                {isLoadingRoute ? 'Loading…' : routeMode === 'bus' ? 'Start Trip' : 'Start Walk'}
               </Text>
             </Pressable>
           </View>
@@ -118,66 +118,6 @@ export function CampusBottomSheet({
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Pinned quick actions */}
-          {pinnedItems.length > 0 ? (
-            <>
-              <Text style={styles.sectionLabel}>Quick Actions</Text>
-              <View style={styles.quickRow}>
-                {pinnedItems.map((item) => (
-                  (() => {
-                    return (
-                      <Pressable
-                        key={item.id}
-                        style={({ pressed }) => [styles.quickCard, pressed && styles.quickCardPressed]}
-                        onPress={() => onSelect(item)}
-                      >
-                        <View style={styles.quickIconWrap}>
-                          {renderIcon(item)}
-                        </View>
-                        <Text style={styles.quickLabel} numberOfLines={2}>{item.label}</Text>
-                      </Pressable>
-                    );
-                  })()
-                ))}
-              </View>
-            </>
-          ) : null}
-
-          {/* Nearby */}
-          {nearbyItems.length > 0 ? (
-            <>
-              <Text style={styles.sectionLabel}>Nearby</Text>
-              {nearbyItems.map((item) => (
-                (() => {
-                  return (
-                    <Pressable
-                      key={item.id}
-                      style={({ pressed }) => [styles.nearbyRow, pressed && styles.nearbyRowPressed]}
-                      onPress={() => onSelect(item)}
-                    >
-                      <View style={styles.nearbyIconWrap}>
-                        {renderIcon(item)}
-                      </View>
-                      <View style={styles.nearbyText}>
-                        <Text style={styles.nearbyLabel} numberOfLines={1}>{item.label}</Text>
-                        <Text style={styles.nearbySub}>
-                          {item.subtitle}
-                          {item.distance != null ? ` • ${formatDistance(item.distance)}` : ''}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })()
-              ))}
-            </>
-          ) : (
-            <View style={styles.emptyBrowseCard}>
-              <Text style={styles.emptyBrowseTitle}>Search Anywhere</Text>
-              <Text style={styles.emptyBrowseBody}>
-                Search for any city, campus, address, or landmark worldwide to start directions.
-              </Text>
-            </View>
-          )}
         </ScrollView>
       )}
     </View>
@@ -220,12 +160,12 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     marginBottom: 8,
   },
   routeCard: {
-    padding: 18,
+    padding: 14,
     backgroundColor: isDark ? 'rgba(8,8,8,0.96)' : 'rgba(255,255,255,0.98)',
-    borderRadius: 30,
+    borderRadius: 26,
     borderWidth: 1,
     borderColor: COLORS.primary,
-    gap: 16,
+    gap: 10,
   },
   routeHeader: {
     flexDirection: 'row',
@@ -249,13 +189,13 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   },
   routeTitle: {
     color: COLORS.textPrimary,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
-    lineHeight: 24,
+    lineHeight: 21,
   },
   routeSub: {
     color: COLORS.textSecondary,
-    fontSize: 13,
+    fontSize: 12,
   },
   routeMetaText: {
     color: COLORS.textPrimary,

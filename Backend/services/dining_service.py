@@ -5,9 +5,13 @@ import psycopg
 import psycopg.rows
 from typing import Optional, Dict, List, Any
 from pulp import LpMaximize, LpProblem, LpVariable, lpSum, value as pulp_value, PULP_CBC_CMD
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from db_config import get_db_connection, get_pool
 from services import cache_service
+
+CENTRAL_TZ = ZoneInfo("America/Chicago")
+DINING_MENU_ERROR_TTL_SECONDS = 600
 
 def get_db_conn():
     return get_pool().connection()
@@ -41,8 +45,11 @@ def init_db():
 # Full mapping of TAMU DineOnCampus locations to their API IDs
 DINING_LOCATIONS = {
     "The Commons Dining Hall (South Campus)": "59972586ee596fe55d2eef75",
+    "The Commons Dining Hall": "59972586ee596fe55d2eef75",
     "Sbisa Dining Hall (North Campus)": "587909deee596f31cedc179c",
+    "Sbisa Dining Hall": "587909deee596f31cedc179c",
     "Duncan Dining Hall (South Campus/Quad)": "5878eb5cee596f847636f114",
+    "Duncan Dining Hall": "5878eb5cee596f847636f114",
     "1876 Burgers - Sbisa Complex": "5873c5f43191a200e44eba43",
     "Chick-Fil-A - Sbisa Underground Food Court": "586d0bf1ee596f6e75049512",
     "Copperhead Jack's - Sbisa Complex": "5c9a291319e02b0c4cd18d87",
@@ -321,9 +328,9 @@ def compute_totals(foods: List[Dict]) -> Dict[str, float]:
 # ============ PERIOD MATCHING ============
 # Which DB meal_period slugs count for each user-facing meal
 PERIOD_ALIASES = {
-    'breakfast': ['breakfast', 'every-day', 'everyday', 'all-day'],
-    'lunch':     ['lunch', 'every-day', 'everyday', 'all-day'],
-    'dinner':    ['dinner', 'every-day', 'everyday', 'all-day'],
+    'breakfast': ['breakfast', 'every-day', 'everyday', 'all-day', 'standard-breakfast', 'weekday-breakfast', 'weekend-breakfast'],
+    'lunch':     ['lunch', 'brunch', 'every-day', 'everyday', 'all-day', 'standard-lunch', 'weekday-lunch', 'weekend-lunch', 'midday'],
+    'dinner':    ['dinner', 'every-day', 'everyday', 'all-day', 'standard-dinner', 'weekday-dinner', 'weekend-dinner', 'evening'],
 }
 
 SEMANTIC_PERIOD_ALIASES = {
@@ -490,8 +497,45 @@ def group_menu_items(items: List[Dict[str, Any]], meal_period: Optional[str] = N
     return result
 
 
+def _menu_success_ttl_seconds(date_str: Optional[str] = None) -> int:
+    now = datetime.now(CENTRAL_TZ)
+    target_date = now.date()
+
+    if date_str:
+        try:
+            target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            target_date = now.date()
+
+    if target_date < now.date():
+        return 60 * 60
+
+    next_midnight = datetime(
+        target_date.year,
+        target_date.month,
+        target_date.day,
+        0,
+        0,
+        0,
+        0,
+        tzinfo=CENTRAL_TZ,
+    ) + timedelta(days=1)
+    ttl_seconds = int((next_midnight - now).total_seconds())
+    return max(60, ttl_seconds)
+
+
+def _normalize_menu_date_key(date_str: Optional[str] = None) -> str:
+    if date_str:
+        try:
+            return datetime.strptime(date_str, '%Y-%m-%d').strftime('%Y-%m-%d')
+        except ValueError:
+            pass
+    return datetime.now(tz=CENTRAL_TZ).strftime('%Y-%m-%d')
+
+
 def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str = None) -> Dict[str, Any]:
-    cache_key = f"dining:full-menu:v1:{location_name.lower()}:{(meal_period or 'lunch').lower()}:{date_str or datetime.now().strftime('%Y-%m-%d')}"
+    normalized_date = _normalize_menu_date_key(date_str)
+    cache_key = f"dining:full-menu:v2:{location_name.lower()}:{(meal_period or 'lunch').lower()}:{normalized_date}"
     cached = cache_service.get_json(cache_key)
     if cached is not None:
         return cached
@@ -504,7 +548,7 @@ def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str 
     resolved_locations = [resolved_name]
 
     if is_dining_hall:
-        live_result = fetch_dine_on_campus_menu(resolved_name, date_str=date_str, meal_period=period)
+        live_result = fetch_dine_on_campus_menu(resolved_name, date_str=normalized_date, meal_period=period)
         if live_result.get('success') and live_result.get('items'):
             items = live_result['items']
             source = 'live'
@@ -519,12 +563,13 @@ def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str 
                             WHERE (location = %s OR location ILIKE %s)
                             AND location_type = 'dining_hall'
                             AND meal_period IN ({placeholders})
+                            AND date = %s
                             AND active = TRUE
-                        """, [resolved_name, f"%{resolved_name}%"] + aliases)
+                        """, [resolved_name, f"%{resolved_name}%"] + aliases + [normalized_date])
                         items = [dict(row) for row in cur.fetchall()]
             except Exception:
                 items = []
-            source = 'database'
+            source = 'database' if items else 'unavailable'
     else:
         aliases = PERIOD_ALIASES.get(period, [period, 'every-day', 'everyday', 'all-day'])
         resolved_locations = RESTAURANT_GROUPS.get(location_name, [resolved_name])
@@ -552,9 +597,11 @@ def get_full_menu(location_name: str, meal_period: str = 'lunch', date_str: str 
         "mealPeriod": period,
         "source": source,
         "count": len(items),
+        "date": normalized_date,
         "categories": grouped_items,
     }
-    cache_service.set_json(cache_key, payload, 120)
+    ttl_seconds = _menu_success_ttl_seconds(normalized_date) if payload["success"] else DINING_MENU_ERROR_TTL_SECONDS
+    cache_service.set_json(cache_key, payload, ttl_seconds)
     return payload
 
 
@@ -729,13 +776,13 @@ def fetch_dine_on_campus_menu(location_name: str, date_str: str = None, meal_per
             "resolvedPeriod": resolved_period,
             "apiBase": menu_url.rsplit('/locations/', 1)[0],
         }
-        cache_service.set_json(cache_key, payload, 300)
+        cache_service.set_json(cache_key, payload, _menu_success_ttl_seconds(date_str))
         return payload
     except Exception as e:
         last_error = str(e)
 
     payload = {"success": False, "error": last_error or "Unable to reach DineOnCampus", "items": []}
-    cache_service.set_json(cache_key, payload, 60)
+    cache_service.set_json(cache_key, payload, DINING_MENU_ERROR_TTL_SECONDS)
     return payload
 
 

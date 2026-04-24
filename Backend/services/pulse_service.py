@@ -15,7 +15,6 @@ HOT_COLOR = "#FF6B57"
 ACTIVE_COLOR = "#FFB347"
 BUBBLING_COLOR = "#5ACD7C"
 BOOSTED_GOLD_COLOR = "#F5B301"
-PULSE_SNAPSHOT_TTL_SECONDS = 60
 PULSE_CACHE_LIMITS: Tuple[int, ...] = tuple(range(1, 251))
 
 
@@ -247,18 +246,17 @@ def _load_occupancy_by_place() -> Dict[str, int]:
 
 
 def invalidate_pulse_map_cache() -> None:
-    for limit in PULSE_CACHE_LIMITS:
-        cache_service.delete(f"campus:pulse:map:v2:{limit}")
+    keys = [f"campus:pulse:map:v2:{limit}" for limit in PULSE_CACHE_LIMITS]
+    if hasattr(cache_service, 'delete_many'):
+        cache_service.delete_many(keys)
+    else:
+        for limit in PULSE_CACHE_LIMITS:
+            cache_service.delete(f"campus:pulse:map:v2:{limit}")
 
 
 def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh: bool = False) -> Dict[str, Any]:
-    cache_key = f"campus:pulse:map:v2:{limit}"
     if force_refresh and not clerk_id:
-        cache_service.delete(cache_key)
-    if not clerk_id and not force_refresh:
-        cached = cache_service.get_json(cache_key)
-        if cached is not None:
-            return cached
+        cache_service.delete(f"campus:pulse:map:v2:{limit}")
 
     user_access_tags, bypass_access_restrictions = _resolve_access_scope(clerk_id)
 
@@ -425,10 +423,16 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
         category = str(custom.get("ping_category") or ping.get("post_type") or "Popup")
         start_at = str(custom.get("start_at") or ping.get("created_at") or datetime.now(timezone.utc).isoformat())
 
+        end_at = str(custom.get("end_at") or "")
+        end_time = _parse_iso(end_at)
         target_time = _parse_iso(start_at)
-        if target_time:
+
+        if end_time:
+            if datetime.now(timezone.utc) > end_time:
+                continue
+        elif target_time:
             age_hours = (datetime.now(timezone.utc) - target_time).total_seconds() / 3600
-            if age_hours > 24:
+            if age_hours > 3:
                 continue
 
         counts = interactions.get(ping_id, {})
@@ -615,6 +619,4 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "hotspots": ordered_hotspots,
     }
-    if not clerk_id:
-        cache_service.set_json(cache_key, payload, PULSE_SNAPSHOT_TTL_SECONDS)
     return payload

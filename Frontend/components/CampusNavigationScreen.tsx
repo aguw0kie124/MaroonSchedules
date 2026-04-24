@@ -5,13 +5,13 @@ import {
   StyleSheet,
   ActivityIndicator,
   Platform,
-  SafeAreaView,
   Pressable,
   Animated,
   Vibration,
   Keyboard,
   Dimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView from 'react-native-maps';
@@ -57,7 +57,7 @@ import {
 } from './map/mapUtils';
 
 type NavMode = 'idle' | 'selected' | 'navigating';
-type TravelMode = 'walk' | 'drive' | 'bus';
+type TravelMode = 'walk' | 'bus';
 
 type ManualOrigin = {
   name: string;
@@ -81,7 +81,66 @@ type NavigationDestination = {
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const CAMPUS_DISCOVERY_RADIUS_METERS = 20000;
-const AUTO_DRIVE_DISTANCE_METERS = 5000;
+const TRANSIT_WALK_DOT_SPACING_METERS = 52;
+const TRANSIT_BUS_HANDOFF_TRIM_METERS = 55;
+const TRANSIT_WALK_DOT_COLOR = '#5AA9FF';
+
+function normalizeTravelMode(value?: string): TravelMode {
+  return value === 'bus' ? 'bus' : 'walk';
+}
+
+function buildDottedPathPoints(
+  points: Coordinate[],
+  spacingMeters = TRANSIT_WALK_DOT_SPACING_METERS,
+): Coordinate[] {
+  const validPoints = points.filter(
+    (point) =>
+      point &&
+      Number.isFinite(point.latitude) &&
+      Number.isFinite(point.longitude),
+  );
+  if (validPoints.length < 2) {
+    return validPoints;
+  }
+
+  const dotted: Coordinate[] = [validPoints[0]];
+  let carryMeters = 0;
+
+  for (let index = 1; index < validPoints.length; index += 1) {
+    const start = validPoints[index - 1];
+    const end = validPoints[index];
+    const segmentMeters = computeDistanceMeters(start, end);
+    if (!Number.isFinite(segmentMeters) || segmentMeters <= 0) {
+      continue;
+    }
+
+    let distanceAlongSegment = spacingMeters - carryMeters;
+    while (distanceAlongSegment <= segmentMeters) {
+      const ratio = distanceAlongSegment / segmentMeters;
+      dotted.push({
+        latitude: start.latitude + (end.latitude - start.latitude) * ratio,
+        longitude: start.longitude + (end.longitude - start.longitude) * ratio,
+      });
+      distanceAlongSegment += spacingMeters;
+    }
+
+    carryMeters = Math.max(0, segmentMeters - (distanceAlongSegment - spacingMeters));
+    if (carryMeters >= spacingMeters) {
+      carryMeters = 0;
+    }
+  }
+
+  const lastPoint = validPoints[validPoints.length - 1];
+  const previousPoint = dotted[dotted.length - 1];
+  if (
+    !previousPoint ||
+    computeDistanceMeters(previousPoint, lastPoint) > spacingMeters * 0.4
+  ) {
+    dotted.push(lastPoint);
+  }
+
+  return dotted;
+}
 
 function coerceSeededLocationType(type?: string): CampusLocation['type'] {
   switch ((type || '').toLowerCase()) {
@@ -281,7 +340,7 @@ export function CampusNavigationScreen() {
   const route = useRoute<any>();
   const initialDestinationParam = route.params?.initialDestination as SeededLocationParams | undefined;
   const initialOriginParam = route.params?.initialOrigin as SeededLocationParams | undefined;
-  const initialTravelModeParam = route.params?.initialTravelMode as TravelMode | undefined;
+  const initialTravelModeParam = normalizeTravelMode(route.params?.initialTravelMode);
   const navigationLocations = useMemo(
     () => buildExpandedPlacesDirectory().filter((location) => !location.searchOnly),
     [],
@@ -315,12 +374,18 @@ export function CampusNavigationScreen() {
   const seededOriginKeyRef = useRef<string | null>(null);
   const seededTravelModeRef = useRef<TravelMode | null>(null);
   const didAutoCenterOnUserRef = useRef(false);
+  // Debounced coordinate for route computation — only updates when user moves >50m
+  const [debouncedUserCoord, setDebouncedUserCoord] = useState<Coordinate>({
+    latitude: DEFAULT_USER_LOCATION.latitude,
+    longitude: DEFAULT_USER_LOCATION.longitude,
+  });
+  const lastRouteCoordRef = useRef<Coordinate>(debouncedUserCoord);
 
   const initialRegion = TAMU_CENTER;
 
   const preferredRouteKey = route.params?.preferredRouteKey as string | null | undefined;
   const tripPreference = route.params?.tripPreference as 'best' | 'fewer_transfers' | 'less_walking' | undefined;
-  const routeStartCoord = manualOrigin?.coordinate || userCoord;
+  const routeStartCoord = manualOrigin?.coordinate || debouncedUserCoord;
   const routeStartName = manualOrigin?.name || 'Current Location';
   const isUserNearCampus = isCoordinateNearTexasAM(userCoord, CAMPUS_DISCOVERY_RADIUS_METERS);
   const pinnedItems = useMemo(
@@ -337,7 +402,7 @@ export function CampusNavigationScreen() {
     isCoordinateNearTexasAM(destinationCoord, CAMPUS_DISCOVERY_RADIUS_METERS)
   );
   const activeTransitPlan = travelMode === 'bus' ? transitPlan : null;
-  const effectiveMode: TravelMode = activeTransitPlan ? 'bus' : travelMode === 'bus' ? 'walk' : travelMode;
+  const effectiveMode: TravelMode = activeTransitPlan ? 'bus' : 'walk';
   const hasActiveRoute = !!destination && (!!activeRoute || !!activeTransitPlan);
   const summaryMode: TravelMode = travelMode === 'bus' && (activeTransitPlan || routeLoading) ? 'bus' : effectiveMode;
   const displayedDistanceLabel = activeTransitPlan
@@ -355,9 +420,7 @@ export function CampusNavigationScreen() {
       ? `Ride ${activeTransitPlan.routeShortName || 'Bus'} to ${destination.name}`
       : travelMode === 'bus'
         ? `Plan a bus trip to ${destination.name}`
-        : travelMode === 'drive'
-          ? `Drive to ${destination.name}`
-          : `Walk to ${destination.name}`
+        : `Walk to ${destination.name}`
     : undefined;
   const displayedRouteMeta = activeTransitPlan
     ? `Board at ${activeTransitPlan.originStop.Name} • Exit at ${activeTransitPlan.destinationStop.Name}`
@@ -436,13 +499,12 @@ export function CampusNavigationScreen() {
     setDestination(toNavigationDestination(location));
     setNavMode('selected');
     if (travelMode === 'bus' && (!originSupportsCampusTransit || !destinationSupportsCampusTransit)) {
-      setTravelMode('drive');
-      setRouteNotice('Campus buses only operate near Texas A&M, so this trip switched to driving directions.');
+      setTravelMode('walk');
+      setRouteNotice('Campus buses only operate near Texas A&M, so this trip switched to walking directions.');
       return;
     }
-    if (travelMode === 'walk' && distanceFromStart > AUTO_DRIVE_DISTANCE_METERS) {
-      setTravelMode('drive');
-      setRouteNotice('This is a longer trip, so driving directions are selected by default.');
+    if (travelMode === 'walk' && distanceFromStart > 5000) {
+      setRouteNotice('This is a longer trip, so walking may take a while.');
       return;
     }
     setRouteNotice(null);
@@ -575,6 +637,15 @@ export function CampusNavigationScreen() {
     };
   }, []);
 
+  // Debounce user coord for route computation: only update when moved >50m
+  useEffect(() => {
+    const delta = computeDistanceMeters(userCoord, lastRouteCoordRef.current);
+    if (delta > 50) {
+      lastRouteCoordRef.current = userCoord;
+      setDebouncedUserCoord(userCoord);
+    }
+  }, [userCoord]);
+
   // Update nearby items when location changes
   useEffect(() => {
     setNearbyItems(isUserNearCampus ? getNearbyItems(userCoord, 10) : []);
@@ -652,14 +723,14 @@ export function CampusNavigationScreen() {
         if (!busModeAvailable) {
           setTransitPlan(null);
           setSteps(fallbackSteps);
-          setRouteNotice('Campus buses only operate near Texas A&M. Choose Drive or Walk for this trip.');
+          setRouteNotice('Campus buses only operate near Texas A&M. Walking directions are shown for this trip.');
           setRouteLoading(false);
           return;
         }
         setRouteNotice('Finding the best bus connection...');
       } else {
         setTransitPlan(null);
-        setRouteNotice(travelMode === 'drive' ? 'Finding the best driving route...' : 'Finding the best walking route...');
+        setRouteNotice('Finding the best walking route...');
       }
 
       try {
@@ -671,6 +742,7 @@ export function CampusNavigationScreen() {
           if (cancelled || generationId !== routeGenerationRef.current) return;
 
           if (plan) {
+            setActiveRoute(null);
             setTransitPlan(plan);
             setSteps(plan.steps);
             setRouteNotice(
@@ -688,7 +760,7 @@ export function CampusNavigationScreen() {
           const routedTrip = await buildGlobalRoute({
             origin: routeStartCoord,
             destination: destCoord,
-            mode: travelMode === 'drive' ? 'drive' : 'walk',
+            mode: 'walk',
             originName: routeStartName,
             destinationName: destination.name,
           });
@@ -709,9 +781,7 @@ export function CampusNavigationScreen() {
           setRouteNotice(
             travelMode === 'bus'
               ? 'Bus directions are temporarily unavailable. Walking directions are ready instead.'
-              : travelMode === 'drive'
-                ? 'Live driving directions are temporarily unavailable. Showing a direct route estimate instead.'
-                : 'Walking directions are temporarily unavailable. Showing a direct route estimate instead.',
+              : 'Walking directions are temporarily unavailable. Showing a direct route estimate instead.',
           );
         }
       } finally {
@@ -725,6 +795,8 @@ export function CampusNavigationScreen() {
     return () => {
       cancelled = true;
     };
+  // routeStartCoord is derived from debouncedUserCoord (50m threshold)
+  // so this effect no longer fires on every GPS tick
   }, [
     busModeAvailable,
     destination,
@@ -789,8 +861,8 @@ export function CampusNavigationScreen() {
 
   useEffect(() => {
     if (travelMode !== 'bus' || !destinationCoord || busModeAvailable) return;
-    setTravelMode('drive');
-    setRouteNotice('Campus buses only operate near Texas A&M, so this trip switched to driving directions.');
+    setTravelMode('walk');
+    setRouteNotice('Campus buses only operate near Texas A&M, so this trip switched to walking directions.');
   }, [busModeAvailable, destinationCoord, travelMode]);
 
   // ─── Handlers ───────────────────────────────────────────────
@@ -874,43 +946,110 @@ export function CampusNavigationScreen() {
           rotateEnabled={false}
         >
           {/* Route polyline */}
-          {(activeTransitPlan || activeRoute) && (
-            <MapPolylineOverlay
-              id="campus-navigation-route"
-              coordinates={activeTransitPlan?.polyline || activeRoute?.polyline || []}
-              color={activeTransitPlan?.routeColor || COLORS.primary}
-              width={4}
-              lineDasharray={activeTransitPlan ? undefined : [2, 2]}
-            />
-          )}
+          {(activeTransitPlan || activeRoute) && (() => {
+            if (activeTransitPlan) {
+              const busPolyline = (activeTransitPlan.busPolyline || []).filter(
+                (pt: any) => pt && Number.isFinite(pt.latitude) && Number.isFinite(pt.longitude),
+              );
+              const walkingToStopDots = buildDottedPathPoints(
+                activeTransitPlan.walkingToStopPolyline || [],
+              );
+              const walkingFromStopDots = buildDottedPathPoints(
+                activeTransitPlan.walkingFromStopPolyline || [],
+              );
+
+              return (
+                <>
+                  {busPolyline.length >= 2 ? (
+                    <MapPolylineOverlay
+                      id="campus-navigation-route-bus"
+                      coordinates={busPolyline}
+                      color={activeTransitPlan.routeColor || COLORS.primary}
+                      width={4}
+                    />
+                  ) : null}
+                  {walkingToStopDots.map((point, index) => (
+                    <MapMarker
+                      key={`campus-navigation-route-walk-start-dot-${index}`}
+                      id={`campus-navigation-route-walk-start-dot-${index}`}
+                      coordinate={point}
+                      anchor={{ x: 0.5, y: 0.5 }}
+                      tracksViewChanges={false}
+                    >
+                      <View
+                        style={[
+                          styles.transitWalkDot,
+                          { backgroundColor: TRANSIT_WALK_DOT_COLOR },
+                        ]}
+                      />
+                    </MapMarker>
+                  ))}
+                  {walkingFromStopDots.map((point, index) => (
+                    <MapMarker
+                      key={`campus-navigation-route-walk-end-dot-${index}`}
+                      id={`campus-navigation-route-walk-end-dot-${index}`}
+                      coordinate={point}
+                      anchor={{ x: 0.5, y: 0.5 }}
+                      tracksViewChanges={false}
+                    >
+                      <View
+                        style={[
+                          styles.transitWalkDot,
+                          { backgroundColor: TRANSIT_WALK_DOT_COLOR },
+                        ]}
+                      />
+                    </MapMarker>
+                  ))}
+                </>
+              );
+            }
+
+            const polyCoords = activeRoute?.polyline || [];
+            const validPoly = polyCoords.filter((pt: any) => pt && Number.isFinite(pt.latitude) && Number.isFinite(pt.longitude));
+            return validPoly.length >= 2 ? (
+              <MapPolylineOverlay
+                id="campus-navigation-route"
+                coordinates={validPoly}
+                color={COLORS.primary}
+                width={4}
+                lineDasharray={[2, 2]}
+                lineCap="round"
+              />
+            ) : null;
+          })()}
 
           {/* User location marker */}
-          <MapMarker
-            id="campus-navigation-user"
-            coordinate={userCoord}
-            anchor={{ x: 0.5, y: 0.5 }}
-          >
-            <Animated.View style={[styles.userMarker, { transform: [{ scale: pulseAnim }] }]}>
-              <MapPin size={18} color="#FFFFFF" />
-            </Animated.View>
-          </MapMarker>
-          {manualOrigin && manualOrigin.coordinate?.latitude != null && manualOrigin.coordinate?.longitude != null && (
+          {Number.isFinite(userCoord.latitude) && Number.isFinite(userCoord.longitude) && (
+            <MapMarker
+              id="campus-navigation-user"
+              coordinate={userCoord}
+              anchor={{ x: 0.5, y: 0.5 }}
+            >
+              <Animated.View style={[styles.userMarker, { transform: [{ scale: pulseAnim }] }]}>
+                <MapPin size={18} color="#FFFFFF" />
+              </Animated.View>
+            </MapMarker>
+          )}
+          {/* Manual origin marker */}
+          {manualOrigin && manualOrigin.coordinate?.latitude != null && manualOrigin.coordinate?.longitude != null && Number.isFinite(manualOrigin.coordinate.latitude) && Number.isFinite(manualOrigin.coordinate.longitude) && (
             <MapMarker
               id="campus-navigation-origin"
               coordinate={manualOrigin.coordinate}
               anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={false}
             >
               <View style={styles.startMarker}>
                 <Text style={styles.startMarkerText}>S</Text>
               </View>
             </MapMarker>
           )}
-          {transitStopMarkers.filter(s => s.coordinate?.latitude != null && s.coordinate?.longitude != null).map((stop) => (
+          {transitStopMarkers.filter(s => s.coordinate?.latitude != null && s.coordinate?.longitude != null && Number.isFinite(s.coordinate.latitude) && Number.isFinite(s.coordinate.longitude)).map((stop) => (
             <MapMarker
               key={stop.key}
               id={`campus-navigation-stop-${stop.key}`}
               coordinate={stop.coordinate}
               anchor={{ x: 0.5, y: 1 }}
+              tracksViewChanges={false}
             >
               <View style={styles.transitStopMarkerWrap}>
                 <View style={[
@@ -930,58 +1069,63 @@ export function CampusNavigationScreen() {
             </MapMarker>
           ))}
           {/* Bus route stops (intermediate stops along the selected transit route) */}
-          {activeTransitPlan && busRouteStops.length > 0 && busRouteStops.map((stop) => {
+          {activeTransitPlan && busRouteStops.length > 0 && busRouteStops.map((stop, idx) => {
             const sLat = stop.Latitude != null ? stop.Latitude : stop.lat;
             const sLng = stop.Longitude != null ? stop.Longitude : stop.lng;
-            if (sLat == null || sLng == null) return null;
+            if (sLat == null || sLng == null || !Number.isFinite(sLat) || !Number.isFinite(sLng)) return null;
             // Skip board/exit stops — they already have distinct markers
             const boardCode = activeTransitPlan.originStop?.StopCode || activeTransitPlan.originStop?.Name;
             const exitCode = activeTransitPlan.destinationStop?.StopCode || activeTransitPlan.destinationStop?.Name;
             const stopCode = stop.StopCode || stop.Name;
             if (stopCode && (stopCode === boardCode || stopCode === exitCode)) return null;
+            const stableKey = `route-stop-${stopCode || idx}-${String(sLat).slice(0,8)}`;
             return (
               <MapMarker
-                key={`route-stop-${stopCode || sLat}-${sLng}`}
-                id={`route-stop-${stopCode || sLat}-${sLng}`}
+                key={stableKey}
+                id={stableKey}
                 coordinate={{ latitude: sLat, longitude: sLng }}
                 anchor={{ x: 0.5, y: 0.5 }}
                 tracksViewChanges={false}
               >
                 <View style={{
-                  width: 18,
-                  height: 18,
-                  borderRadius: 9,
+                  width: 12,
+                  height: 12,
+                  borderRadius: 6,
                   backgroundColor: activeTransitPlan.routeColor || COLORS.primary,
-                  borderWidth: 3,
+                  borderWidth: 2.5,
                   borderColor: '#FFFFFF',
                   shadowColor: '#000',
-                  shadowOpacity: 0.3,
+                  shadowOpacity: 0.25,
                   shadowRadius: 2,
                   shadowOffset: { width: 0, height: 1 },
                 }} />
               </MapMarker>
             );
           })}
-          {destinationCoord ? (
+          {destinationCoord && Number.isFinite(destinationCoord.latitude) && Number.isFinite(destinationCoord.longitude) ? (
             <MapMarker
               id="campus-navigation-destination"
               coordinate={destinationCoord}
               anchor={{ x: 0.5, y: 0.5 }}
+              tracksViewChanges={false}
             >
               <View style={styles.destinationMarker}>
                 <Text style={styles.destinationMarkerText}>E</Text>
               </View>
             </MapMarker>
           ) : null}
-          <MapMarker
-            id="campus-navigation-user-label"
-            coordinate={{ latitude: userCoord.latitude + 0.00012, longitude: userCoord.longitude }}
-            anchor={{ x: 0.5, y: 1 }}
-          >
-            <View style={styles.youBadge}>
-              <Text style={styles.youBadgeText}>You are here</Text>
-            </View>
-          </MapMarker>
+          {Number.isFinite(userCoord.latitude) && Number.isFinite(userCoord.longitude) && (
+            <MapMarker
+              id="campus-navigation-user-label"
+              coordinate={{ latitude: userCoord.latitude + 0.00012, longitude: userCoord.longitude }}
+              anchor={{ x: 0.5, y: 1 }}
+              tracksViewChanges={false}
+            >
+              <View style={styles.youBadge}>
+                <Text style={styles.youBadgeText}>You are here</Text>
+              </View>
+            </MapMarker>
+          )}
 
           {/* Discovery markers */}
           {discoveryMarkers.map((location) => {
@@ -1067,25 +1211,13 @@ export function CampusNavigationScreen() {
                 <Pressable
                   style={({ pressed }) => [
                     styles.modePill,
-                    travelMode === 'drive' && styles.modePillActive,
-                    pressed && styles.btnPressed,
-                  ]}
-                  onPress={() => setTravelMode('drive')}
-                >
-                  <Text style={[styles.modePillText, travelMode === 'drive' && styles.modePillTextActive]}>
-                    Drive
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.modePill,
                     travelMode === 'bus' && styles.modePillActive,
                     !busModeAvailable && destinationCoord && styles.modePillDisabled,
                     pressed && styles.btnPressed,
                   ]}
                   onPress={() => {
                     if (!busModeAvailable && destinationCoord) {
-                      setRouteNotice('Campus buses only operate near Texas A&M. Use Drive or Walk for this trip.');
+                      setRouteNotice('Campus buses only operate near Texas A&M. Use walking directions for this trip.');
                       return;
                     }
                     setTravelMode('bus');
@@ -1121,9 +1253,7 @@ export function CampusNavigationScreen() {
             modeLabel={
               effectiveMode === 'bus'
                 ? 'Bus Trip'
-                : effectiveMode === 'drive'
-                  ? 'Driving'
-                  : 'Walking'
+                : 'Walking'
             }
             routeNote={displayedRouteNote}
             onEnd={handleEndDirections}
@@ -1368,17 +1498,20 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
     alignItems: 'center',
   },
   transitStopPill: {
-    maxWidth: 190,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginBottom: 6,
+    maxWidth: 140,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginBottom: 4,
     borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
   },
   transitStopPillBoard: {
     backgroundColor: isDark ? 'rgba(8,8,8,0.94)' : 'rgba(255,255,255,0.98)',
@@ -1390,21 +1523,21 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   },
   transitStopPillBadge: {
     color: COLORS.textSecondary,
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '800',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 2,
+    letterSpacing: 0.4,
   },
   transitStopPillTitle: {
     color: COLORS.textPrimary,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
+    flexShrink: 1,
   },
   transitStopPin: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     borderWidth: 2,
     borderColor: '#FFF',
   },
@@ -1413,6 +1546,12 @@ const getStyles = (COLORS: any, isDark: boolean) => StyleSheet.create({
   },
   transitStopPinExit: {
     backgroundColor: COLORS.danger,
+  },
+  transitWalkDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    opacity: 0.95,
   },
   destinationMarker: {
     minWidth: 32,

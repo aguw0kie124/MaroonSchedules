@@ -5,7 +5,7 @@
  * All logic has been decomposed into:
  *   hooks/     → useLocationData, useScheduleMap, useBusTransit
  *   places/    → CategoryPillBar, SearchOverlay, BusLayerUI,
- *                ScheduleHeader, LocationBottomSheet, PlacesList
+ *                LocationBottomSheet, PlacesListPopup
  *   utils.ts   → pure functions
  *   campusData.ts → static data & directory
  *   types.ts   → shared interfaces & constants
@@ -25,7 +25,6 @@ import {
   TouchableOpacity,
   Animated,
   Platform,
-  Dimensions,
   ScrollView,
   InteractionManager,
   ActivityIndicator,
@@ -35,22 +34,14 @@ import {
 import * as Location from "expo-location";
 import * as Linking from "expo-linking";
 import {
-  Menu,
   ChevronRight,
   ChevronLeft,
   Navigation,
   Compass,
-  Calendar,
   LocateFixed,
   Orbit,
-  Plus,
-  Locate,
   Maximize2,
   Minimize2,
-  Bus,
-  ChevronDown,
-  Share2,
-  X,
 } from "lucide-react-native";
 import type { WalkingRoute } from "../services/campusDirections";
 import { useTheme } from "./SharedUI";
@@ -68,6 +59,8 @@ import { useUser } from "@clerk/clerk-expo";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { initializeFeedUser, toggleVote } from "../services/socialFeedService";
+import { requestJson } from "../api/client";
+import { getLocalDateString } from "../services/dateUtils";
 import { API_URL } from "../config";
 
 import { useCampusHubStore } from "../store/campusHubStore";
@@ -78,7 +71,6 @@ import {
   getDiningMealPeriodForLocation,
   isDiningHallMenuLocation,
 } from "../services/diningMenuCache";
-import { triggerNativeShare } from "../utils/share";
 import { getStaticRestaurantMenu } from "../data/restaurantMenus";
 
 // ── Sub-components ────────────────────────────────────────────
@@ -94,12 +86,12 @@ import {
 import { BusTimetableSheet } from "./places/BusTimetableSheet";
 import { PulseHotspotSheet } from "./places/PulseHotspotSheet";
 import { LocationBottomSheet } from "./places/LocationBottomSheet";
-import { ScheduleHeader } from "./places/ScheduleHeader";
-import { PlacesList } from "./places/PlacesList";
+import { PlacesListPopup } from "./places/PlacesListPopup";
 import { TodayTimeline } from "./places/TodayTimeline";
 import { useLocationData } from "./places/useLocationData";
 import { usePlacesSelection } from "./places/usePlacesSelection";
 import { useScheduleMap } from "./places/useScheduleMap";
+import { useBusTransit } from "./places/useBusTransit";
 
 // ── Shared data / utilities ───────────────────────────────────
 import { TourProvider, TourTarget, useTour } from "./onboarding/TourProvider";
@@ -119,6 +111,7 @@ import {
   getZoneDensity,
   mergeCampusLocations,
   shouldHideFoodCourtLocationInBrowse,
+  normalizeBuildingKey,
 } from "./places/campusData";
 import {
   getStatusColor,
@@ -130,7 +123,6 @@ import {
   getApproximateEtaMinutes,
   isVehicleOnRoute,
 } from "./places/utils";
-import { transitService } from "../services/transitService";
 import { getStyles } from "./places/placesStyles";
 import {
   applyCampusHotspotItemVote,
@@ -217,13 +209,112 @@ const zoomFromLatitudeDelta = (latitudeDelta?: number) => {
   return Math.log2(360 / latitudeDelta);
 };
 
+// ── Memoized Bus Marker ────────────────────────────────────
+const BusMarker = React.memo(({ 
+  bus, 
+  onPress, 
+  isDark, 
+  routeColor, 
+  routeShortName, 
+  isAllBusRoutesSelected, 
+  selectedDirection,
+  isTrackedBus
+}: any) => {
+  const bLat = bus.Latitude != null ? bus.Latitude : bus.lat;
+  const bLng = bus.Longitude != null ? bus.Longitude : bus.lng;
+  const rawHeading = bus.heading || bus.Heading || 0;
+  const heading = Number.isFinite(Number(rawHeading)) ? Number(rawHeading) : 0;
+
+  // Performance optimization: only track view changes for 250ms when coordinates change
+  const [tracksViewChanges, setTracksViewChanges] = useState(true);
+
+  useEffect(() => {
+    setTracksViewChanges(true);
+    const timer = setTimeout(() => {
+      setTracksViewChanges(false);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [bLat, bLng, heading]);
+
+  if (bLat == null || bLng == null || !Number.isFinite(bLat) || !Number.isFinite(bLng)) return null;
+
+  const busDir = bus.direction || bus.DirectionName || "Unknown Direction";
+  const matchesDirection =
+    isAllBusRoutesSelected ||
+    selectedDirection === "All" ||
+    (busDir || "").toLowerCase().includes((selectedDirection || "All").toLowerCase());
+  
+  const opacity = matchesDirection ? 1 : 0.8;
+  const displayName = routeShortName.length > 3 ? routeShortName.slice(0, 3) : routeShortName;
+  const busCompositeKey = `bus-${bus.RouteKey}-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`;
+
+  return (
+    <MapMarker
+      id={busCompositeKey}
+      coordinate={{ latitude: bLat, longitude: bLng }}
+      onPress={onPress}
+      anchor={{ x: 0.5, y: 0.5 }}
+      tracksViewChanges={tracksViewChanges}
+    >
+      <View
+        style={{
+          opacity,
+          alignItems: "center",
+          justifyContent: "center",
+          transform: [{ rotate: `${heading}deg` }],
+        }}
+        renderToHardwareTextureAndroid={true}
+        shouldRasterizeIOS={true}
+      >
+        <View
+          style={{
+            width: 0,
+            height: 0,
+            borderLeftWidth: 6,
+            borderRightWidth: 6,
+            borderBottomWidth: 8,
+            borderLeftColor: "transparent",
+            borderRightColor: "transparent",
+            borderBottomColor: isDark ? "#fff" : "#000",
+            marginBottom: -2,
+            zIndex: 2,
+          }}
+        />
+        <View
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 15,
+            backgroundColor: routeColor,
+            alignItems: "center",
+            justifyContent: "center",
+            borderWidth: 2,
+            borderColor: isDark ? "#fff" : "#000",
+          }}
+        >
+          <Text
+            style={{
+              color: "#fff",
+              fontSize: 10,
+              fontWeight: "800",
+              textAlign: "center",
+              transform: [{ rotate: `${-heading}deg` }],
+            }}
+          >
+            {displayName}
+          </Text>
+        </View>
+      </View>
+    </MapMarker>
+  );
+});
+
 export function PlacesMapScreen({ route, navigation }: any) {
   const { COLORS, theme } = useTheme();
   const isDark = theme === "dark";
   const styles = getStyles(COLORS, isDark);
   const { user } = useUser();
   const insets = useSafeAreaInsets();
-  const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
   // ── App-shell store ───────────────────────────────────────
   const placesPills = useAppShellStore((s) => s.placesPills);
@@ -316,7 +407,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
     useState<WalkingRoute | null>(null);
   const [isTodayExpanded, setIsTodayExpanded] = useState(false);
   const [hasManualMapMovement, setHasManualMapMovement] = useState(false);
+  const [isCompactDetail, setIsCompactDetail] = useState(false);
   const timelineHeight = useSharedValue(0);
+
+  // ── Meal Tracking state ───────────────────────────────────
+  const [trackerCounts, setTrackerCounts] = useState<Record<string, { count: number; entryIds: number[] }>>({});
+  const [isSyncingTracker, setIsSyncingTracker] = useState(false);
 
   // ── Location data ─────────────────────────────────────────
   const {
@@ -448,61 +544,45 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // Onboarding: Fallback idle timers removed to enforce distinct user actions.
 
-  // ── Bus state ─────────────────────────────────────────────
-  const [busRoutes, setBusRoutes] = useState<any[]>([]);
-  const [busVehicles, setBusVehicles] = useState<any[]>([]);
-  const [busStops, setBusStops] = useState<any[]>([]);
-  const [selectedBusRouteId, setSelectedBusRouteId] = useState<string | null>(
-    ALL_BUS_ROUTES_KEY,
-  );
-  const [temporaryBusFocusRouteId, setTemporaryBusFocusRouteId] = useState<string | null>(null);
-  const [routePatterns, setRoutePatterns] = useState<any[]>([]);
-  const [routePaths, setRoutePaths] = useState<any[]>([]);
-  const [allRoutePatternsById, setAllRoutePatternsById] = useState<
-    Record<string, { points: any[]; stops: any[]; paths?: any[] }>
-  >({});
-  const [isFetchingBus, setIsFetchingBus] = useState(false);
-  const [isRouteDropdownOpen, setIsRouteDropdownOpen] = useState(false);
-  const [selectedStop, setSelectedStop] = useState<any | null>(null);
-  const [selectedBus, setSelectedBus] = useState<any | null>(null);
-  const [selectedDirection, setSelectedDirection] = useState<string>("All");
-  const [routeTimetableEntries, setRouteTimetableEntries] = useState<any[]>([]);
+  // ── Unified Bus Transit Hook ──────────────────────────────
+  const {
+    busRoutes,
+    busVehicles,
+    busStops,
+    selectedBusRouteId,
+    setSelectedBusRouteId,
+    selectedRoute,
+    busRouteOptions,
+    isRouteDropdownOpen,
+    setIsRouteDropdownOpen,
+    selectedDirection,
+    setSelectedDirection,
+    selectedStop,
+    setSelectedStop,
+    selectedBus,
+    setSelectedBus,
+    nearestBusInfo,
+    setNearestBusInfo,
+    isAllBusRoutesSelected,
+    routePatterns,
+    routePaths,
+    allRoutePatternsById,
+    temporaryBusFocusRouteId,
+    setTemporaryBusFocusRouteId,
+    handleSelectBusRoute,
+    resolveNearestBusForStop,
+    stopTimetable,
+    allRouteBoards,
+    filteredBusRoutes,
+    getNearbyTransitInsight,
+    availableDirections,
+    routeTimetableState,
+    vehicleFreshness,
+    routeTimetableFreshness,
+    vehicleStatusLabel,
+  } = useBusTransit(activeLayer, mapRef);
 
-  const isAllBusRoutesSelected =
-    !selectedBusRouteId ||
-    selectedBusRouteId === ALL_BUS_ROUTES_KEY ||
-    selectedBusRouteId === "all";
-
-  const availableDirections = useMemo(() => {
-    if (isAllBusRoutesSelected) return ["All"];
-    const dirs = new Set<string>();
-    busVehicles.forEach((bus) => {
-      const dir = bus.direction || bus.DirectionName;
-      if (dir && typeof dir === "string") dirs.add(dir.trim());
-    });
-    // Add any missing directions from the stops just in case vehicles are offline
-    busStops.forEach((stop) => {
-      const dir = stop.DirectionName || stop.direction;
-      if (dir && typeof dir === "string") dirs.add(dir.trim());
-    });
-    return Array.from(dirs).filter(Boolean);
-  }, [busVehicles, busStops, isAllBusRoutesSelected]);
-
-  useEffect(() => {
-    if (!isAllBusRoutesSelected && availableDirections.length > 0) {
-      if (
-        !availableDirections.includes(selectedDirection) ||
-        selectedDirection === "All"
-      ) {
-        setSelectedDirection(availableDirections[0]);
-      }
-    } else {
-      setSelectedDirection("All");
-    }
-  }, [availableDirections, isAllBusRoutesSelected]);
-
-  const [nearestBusInfo, setNearestBusInfo] = useState<string | null>(null);
-  const busPollInterval = useRef<any>(null);
+  const nearbyTransitInsight = useMemo(() => getNearbyTransitInsight(userCoord), [getNearbyTransitInsight, userCoord]);
 
   useEffect(() => {
     setIsListDroppedDown(false);
@@ -576,11 +656,22 @@ export function PlacesMapScreen({ route, navigation }: any) {
   const allMapLocations = useMemo(() => {
     // API `locations` must merge last: schedule rows set percent_full: 0 and omit hours_today /
     // visitor_parking_* and would otherwise overwrite live campus map snapshot fields.
-    return mergeCampusLocations(
+    const merged = mergeCampusLocations(
       scheduleLocations as CampusLocation[],
       dynamicSearchLocations,
       locations,
     );
+
+    // Remove the fake/duplicate Evans Library sitting at the Memorial Student Center (MSC) location
+    // The real one is near the Annex (~30.616, -96.339). The ghost one is ~30.612, -96.341.
+    return merged.filter(l => {
+      const isIncorrectEvans = (l.location || "").includes("Evans Library") &&
+                              l.coord.lat < 30.615 &&
+                              l.coord.lng < -96.340;
+      const isCainGarage = (l.location || "").toLowerCase().includes("cain") &&
+                           (l.location || "").toLowerCase().includes("garage");
+      return !isIncorrectEvans && !isCainGarage;
+    });
   }, [dynamicSearchLocations, locations, scheduleLocations]);
 
   const pulsePlaces = useMemo(() => {
@@ -601,12 +692,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (activeLayer === "Heatmap") return [];
     if (activeLayer === "Today") return scheduleLocations;
     if (activeLayer === "Dining") {
-      const isMarket = (l: CampusLocation) => 
-        l.location.includes("Market") || l.location.includes("Aggie Express");
+      const isMarket = (l: CampusLocation) =>
+        (l.location || "").includes("Market") || (l.location || "").includes("Aggie Express");
 
       return allMapLocations.filter(
         (l) =>
-          ((l.type === "Dining" || l.type === "Hub") && 
+          ((l.type === "Dining" || l.type === "Hub") &&
            (!l.searchOnly || isMarket(l))) &&
           !shouldHideFoodCourtLocationInBrowse(l, allMapLocations),
       );
@@ -618,7 +709,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (activeLayer === "Rec")
       return browsableLocations.filter(
         (l) =>
-          l.type === "Rec" || (l.type === "Hub" && l.location.includes("Rec")),
+          l.type === "Rec" || (l.type === "Hub" && (l.location || "").includes("Rec")),
       );
     return browsableLocations.filter((l) => l.type === activeLayer);
   }, [activeLayer, allMapLocations, scheduleLocations, pulseHotspots]);
@@ -627,8 +718,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
     return [...filteredLocations].sort((a, b) => {
       // Prioritize primary dining over markets/convenience
       if (activeLayer === "Dining") {
-        const isAMarket = a.location.includes("Market") || a.location.includes("Aggie Express");
-        const isBMarket = b.location.includes("Market") || b.location.includes("Aggie Express");
+        const isAMarket = (a.location || "").includes("Market") || (a.location || "").includes("Aggie Express");
+        const isBMarket = (b.location || "").includes("Market") || (b.location || "").includes("Aggie Express");
         if (isAMarket && !isBMarket) return 1;
         if (!isAMarket && isBMarket) return -1;
       }
@@ -650,14 +741,44 @@ export function PlacesMapScreen({ route, navigation }: any) {
         )
         : null;
       if (activeLayer === "Parking") {
-        const aP = getParkingRecommendation(a.location, parkingPermit);
-        const bP = getParkingRecommendation(b.location, parkingPermit);
+        const visitorGarageIds = [
+          "osm:way:91100311",
+          "garage-polo",
+          "osm:way:450686873",
+          "garage-university-center",
+          "garage-west-campus"
+        ];
+        const aLoc = a.location || "";
+        const bLoc = b.location || "";
+        const isAVisitor = visitorGarageIds.includes(("placeId" in a ? a.placeId : "")) ||
+                          aLoc.includes("Central Campus Garage") ||
+                          aLoc.includes("Polo") ||
+                          aLoc.includes("Stallings") ||
+                          aLoc.includes("University Center Garage") ||
+                          aLoc.includes("West Campus Garage");
+        const isBVisitor = visitorGarageIds.includes(("placeId" in b ? b.placeId : "")) ||
+                          bLoc.includes("Central Campus Garage") ||
+                          bLoc.includes("Polo") ||
+                          bLoc.includes("Stallings") ||
+                          bLoc.includes("University Center Garage") ||
+                          bLoc.includes("West Campus Garage");
+
+        if (isAVisitor && !isBVisitor) return -1;
+        if (!isAVisitor && isBVisitor) return 1;
+        if (isAVisitor && isBVisitor) {
+           const aSpots = (a as any).visitor_parking_available ?? 0;
+           const bSpots = (b as any).visitor_parking_available ?? 0;
+           if (aSpots !== bSpots) return bSpots - aSpots;
+        }
+
+        const aP = getParkingRecommendation(a.location || "", parkingPermit);
+        const bP = getParkingRecommendation(b.location || "", parkingPermit);
         if (aP.score !== bP.score) return aP.score - bP.score;
       }
       if (aD != null && bD != null) {
         if (Math.abs(aD - bD) > 20) return aD - bD;
       }
-      return a.location.localeCompare(b.location);
+      return (a.location || "").localeCompare(b.location || "");
     });
   }, [activeLayer, filteredLocations, parkingPermit, userCoord]);
 
@@ -670,14 +791,26 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   const busRouteSearchResults = useMemo(() => {
     if (!searchQuery.trim()) return [];
-    const q = searchQuery.toLowerCase();
-    return busRoutes
-      .filter((route) => {
-        const shortName = (route.ShortName || "").toString().toLowerCase();
-        const name = (route.Name || "").toString().toLowerCase();
-        return shortName.includes(q) || name.includes(q);
-      })
-      .slice(0, 4);
+    const q = searchQuery.trim().toLowerCase();
+    const isNumericQuery = /^\d+$/.test(q);
+    const matches = busRoutes.filter((route) => {
+      const shortName = (route.ShortName || "").toString().toLowerCase();
+      const name = (route.Name || "").toString().toLowerCase();
+      if (isNumericQuery) {
+        // For numeric queries, require exact ShortName match or name substring
+        return shortName === q || name.includes(q);
+      }
+      return shortName.includes(q) || name.includes(q);
+    });
+    // Sort exact ShortName matches first
+    matches.sort((a, b) => {
+      const aShort = (a.ShortName || "").toString().toLowerCase();
+      const bShort = (b.ShortName || "").toString().toLowerCase();
+      const aExact = aShort === q ? 0 : 1;
+      const bExact = bShort === q ? 0 : 1;
+      return aExact - bExact;
+    });
+    return matches.slice(0, 4);
   }, [busRoutes, searchQuery]);
 
   useEffect(() => {
@@ -707,6 +840,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setSelectedId,
     selectedLoc,
     selectedPlaceDetail,
+    isFetchingDetail,
     foodCourtVenues,
     isFetchingDining,
     diningMenuOptions,
@@ -714,6 +848,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setActiveDiningMenu,
     activeDiningMealPeriod,
     setActiveDiningMealPeriod,
+    activeDiningDate,
+    setActiveDiningDate,
     diningMenuPreview,
     isPrimaryDiningHallSelection,
     handleSelectLocation,
@@ -737,6 +873,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setIsSearchExpanded(false);
       setSearchQuery("");
       setShowSearchResults(false);
+      setIsCompactDetail(false);
 
       if (
         activeTargetName === "rec-center-item" &&
@@ -772,6 +909,19 @@ export function PlacesMapScreen({ route, navigation }: any) {
       }
     }, [activeTargetName, advanceStep, isMapTilted, pulseHotspots]),
   });
+
+  useEffect(() => {
+    if (
+      isSearchExpanded ||
+      selectedId ||
+      activeLayer === "Today" ||
+      activeLayer === "Bus" ||
+      activeLayer === "Pulse"
+    ) {
+      setIsListDroppedDown(false);
+    }
+  }, [activeLayer, isSearchExpanded, selectedId]);
+
   const selectedHotspot = useMemo(
     () =>
       pulseHotspots.find((hotspot) => hotspot.id === selectedHotspotId) || null,
@@ -789,215 +939,62 @@ export function PlacesMapScreen({ route, navigation }: any) {
   }, [pulseHotspots]);
   const hottestHotspot = pulseHotspots[0] || null;
 
+  const [isMapTransitionsStable, setIsMapTransitionsStable] = useState(false);
+
+  useEffect(() => {
+    setIsMapTransitionsStable(true);
+    const timer = setTimeout(() => setIsMapTransitionsStable(false), 2500);
+    return () => clearTimeout(timer);
+  }, [selectedId]);
+
   const markerLocations = useMemo(() => {
-    if (activeLayer === "Pulse") return [];
+    if (activeLayer === "Pulse") return selectedLoc ? [selectedLoc] : [];
     if (activeLayer === "Heatmap" || activeLayer === "Bus")
       return selectedLoc ? [selectedLoc] : [];
+
     const merged = new Map<string, CampusLocation>();
-    filteredLocations.forEach((l) => merged.set(getLocationSelectionId(l), l));
-    if (selectedLoc)
-      merged.set(getLocationSelectionId(selectedLoc), selectedLoc);
+
+    // Canonicalize keys to prevent overlaps for major garages
+    const getGarageStableKey = (l: CampusLocation) => {
+      const name = (l.location || "").toLowerCase();
+      if (name.includes("central campus") || (name.includes("central") && name.includes("garage"))) return "garage-central-canonical";
+      if (name.includes("cain") && name.includes("garage")) return "garage-cain-canonical";
+      if (name.includes("polo") && name.includes("garage")) return "garage-polo-canonical";
+      if (name.includes("stallings") && name.includes("garage")) return "garage-stallings-canonical";
+      if (name.includes("university center") && name.includes("garage")) return "garage-ucg-canonical";
+      if (name.includes("west campus") && name.includes("garage")) return "garage-wcg-canonical";
+      return getLocationSelectionId(l);
+    };
+
+    filteredLocations.forEach((l) => {
+      const key = getGarageStableKey(l);
+      const existing = merged.get(key);
+      // If we have multiple, prefer the one with live data or more detail
+      if (!existing || (l.visitor_parking_available != null && existing.visitor_parking_available == null)) {
+        merged.set(key, l);
+      }
+    });
+
+    // Stable Marker Fix: Only add selectedLoc if it's NOT already in the layer's
+    // filtered list (using the stable key)
+    if (selectedLoc) {
+      const key = getGarageStableKey(selectedLoc);
+      if (!merged.has(key)) {
+        merged.set(key, selectedLoc);
+      }
+    }
     return Array.from(merged.values());
   }, [activeLayer, filteredLocations, selectedLoc]);
-
-  const selectedRoute = useMemo(
-    () =>
-      isAllBusRoutesSelected
-        ? null
-        : (busRoutes.find((r) => r.Key === selectedBusRouteId) ?? null),
-    [busRoutes, isAllBusRoutesSelected, selectedBusRouteId],
-  );
-  useEffect(() => {
-    let cancelled = false;
-
-    if (activeLayer !== "Bus" || !selectedRoute || isAllBusRoutesSelected) {
-      setRouteTimetableEntries([]);
-      return;
-    }
-
-    transitService.getRouteTimetable(selectedRoute.Key, 12)
-      .then((entries) => {
-        if (!cancelled) {
-          setRouteTimetableEntries(entries);
-        }
-      })
-      .catch((error) => {
-        console.warn("[Transit] Failed to fetch timetable", error);
-        if (!cancelled) {
-          setRouteTimetableEntries([]);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeLayer, isAllBusRoutesSelected, selectedRoute]);
-  const busRouteOptions = useMemo(
-    () => [
-      {
-        Key: ALL_BUS_ROUTES_KEY,
-        ShortName: "ALL",
-        Name: "All Routes",
-        Color: "#1E1E1E",
-      },
-      ...busRoutes,
-    ],
-    [busRoutes],
-  );
-  const filteredBusRoutes = busRouteOptions;
 
   const selectedRecreationFacility = useMemo(() => {
     if (!selectedLoc) return null;
     return (
-      selectedPlaceDetail?.recreation ||
       recreationFacilityMap.get(
         getCanonicalLocationName(selectedLoc.location),
       ) ||
       null
     );
-  }, [recreationFacilityMap, selectedLoc, selectedPlaceDetail?.recreation]);
-
-  const stopTimetable = useMemo(() => {
-    if (
-      activeLayer !== "Bus" ||
-      !selectedRoute ||
-      (busStops.length === 0 && routeTimetableEntries.length === 0)
-    )
-      return [];
-    if (routeTimetableEntries.length > 0) {
-      return routeTimetableEntries.map((entry, i) => {
-        const departures = Array.isArray(entry.departures) ? entry.departures : [];
-        const nextDeparture = departures[0] || null;
-        const primaryTimeValue =
-          nextDeparture?.estimated_depart_time_utc ||
-          nextDeparture?.scheduled_depart_time_utc;
-        const primaryTime = primaryTimeValue
-          ? new Date(primaryTimeValue).toLocaleTimeString("en-US", {
-            hour: "numeric",
-            minute: "2-digit",
-          })
-          : "No times";
-        return {
-          stop: entry.stop || busStops[i],
-          sequence: entry.sequence ?? i + 1,
-          etaLabel: primaryTime,
-          detail: nextDeparture?.is_realtime
-            ? "Live departure board"
-            : "Scheduled departure board",
-          departures,
-        };
-      });
-    }
-    return busStops.slice(0, 12).map((stop, i) => {
-      if (busVehicles.length === 0)
-        return {
-          stop,
-          sequence: i + 1,
-          etaLabel: "Route loaded",
-          detail: "ETA pending",
-          departures: [],
-        };
-      const ranked = busVehicles
-        .map((bus) => ({
-          bus,
-          etaMinutes: getApproximateEtaMinutes(routePatterns, stop, bus),
-        }))
-        .sort((a, b) => a.etaMinutes - b.etaMinutes);
-      const next = ranked[0];
-      if (!next)
-        return {
-          stop,
-          sequence: i + 1,
-          etaLabel: "No estimate",
-          detail: "Live feed unavailable",
-          departures: [],
-        };
-      return {
-        stop,
-        sequence: i + 1,
-        etaLabel: next.etaMinutes <= 1 ? "Now" : `${next.etaMinutes} min`,
-        detail: next.bus.RouteShortName
-          ? `Route ${next.bus.RouteShortName}`
-          : next.bus.Name || "Live bus",
-        departures: [],
-      };
-    });
-  }, [activeLayer, busStops, busVehicles, routePatterns, routeTimetableEntries, selectedRoute]);
-
-  const allRouteBoards = useMemo(() => {
-    if (!isAllBusRoutesSelected) return [];
-    return busRoutes
-      .map((route) => {
-        const pattern = allRoutePatternsById[route.Key];
-        if (!pattern) return { route, liveCount: 0, entries: [] };
-        const routePoints = pattern.points || [];
-        const routeStops = pattern.stops || [];
-        const routeVehicles = busVehicles.filter((bus) =>
-          isVehicleOnRoute(bus, route),
-        );
-        const entries = routeStops.slice(0, 4).map((stop: any, i: number) => {
-          const ranked = routeVehicles
-            .map((bus) => ({
-              bus,
-              etaMinutes: getApproximateEtaMinutes(routePoints, stop, bus),
-            }))
-            .sort((a: any, b: any) => a.etaMinutes - b.etaMinutes);
-          const next = ranked[0];
-          return {
-            stop,
-            sequence: i + 1,
-            etaLabel: next
-              ? next.etaMinutes <= 1
-                ? "Now"
-                : `${next.etaMinutes} min`
-              : "Route loaded",
-            detail: next?.bus?.RouteShortName
-              ? `Route ${next.bus.RouteShortName}`
-              : route.Name || "Transit route",
-          };
-        });
-        return { route, liveCount: routeVehicles.length, entries };
-      })
-      .filter((b: any) => b.entries.length > 0 || b.liveCount > 0);
-  }, [allRoutePatternsById, busRoutes, busVehicles, isAllBusRoutesSelected]);
-
-  const nearbyTransitInsight = useMemo(() => {
-    if (!userCoord || activeLayer !== "Bus" || !selectedRoute) return null;
-    const nearestStop = busStops.reduce((best: any, stop) => {
-      const sLat = stop.Latitude !== undefined ? stop.Latitude : stop.lat;
-      const sLng = stop.Longitude !== undefined ? stop.Longitude : stop.lng;
-      if (sLat == null || sLng == null) return best;
-      const d = haversineDistanceMeters(
-        userCoord.latitude,
-        userCoord.longitude,
-        sLat,
-        sLng,
-      );
-      return !best || d < best.distanceMeters
-        ? { stop, distanceMeters: d }
-        : best;
-    }, null as any);
-    const nearestVehicle = busVehicles.reduce((best: any, v) => {
-      const vLat = v.Latitude !== undefined ? v.Latitude : v.lat;
-      const vLng = v.Longitude !== undefined ? v.Longitude : v.lng;
-      if (vLat == null || vLng == null) return best;
-      const d = haversineDistanceMeters(
-        userCoord.latitude,
-        userCoord.longitude,
-        vLat,
-        vLng,
-      );
-      return !best || d < best.distanceMeters
-        ? { vehicle: v, distanceMeters: d }
-        : best;
-    }, null as any);
-    if (
-      (!nearestStop || nearestStop.distanceMeters > 320) &&
-      (!nearestVehicle || nearestVehicle.distanceMeters > 380)
-    )
-      return null;
-    return { nearestStop, nearestVehicle };
-  }, [activeLayer, busStops, busVehicles, selectedRoute, userCoord]);
+  }, [recreationFacilityMap, selectedLoc]);
 
   // ── Callbacks ─────────────────────────────────────────────
   const runGlobalSearch = useCallback(
@@ -1076,7 +1073,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
     (locationName: string, mealPeriod?: DiningMealPeriod) => {
       const rootNav =
         navigation.getParent?.("RootStack") || navigation.getParent?.();
-      
+
       const isHall = isDiningHallMenuLocation(locationName);
       const staticMenu = getStaticRestaurantMenu(locationName);
 
@@ -1097,6 +1094,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
     },
     [navigation],
   );
+
+  const openFacilityCounts = useCallback((loc: CampusLocation) => {
+    const rootNav = navigation.getParent?.("RootStack") || navigation.getParent?.();
+    (rootNav?.navigate || navigation.navigate)("FacilityCounts", { location: loc });
+  }, [navigation]);
 
   const openScheduleList = useCallback(() => {
     const rootNav =
@@ -1138,26 +1140,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
   ]);
 
   const openNavigationToLocation = useCallback(
-    (loc: CampusLocation, mode: "walk" | "drive" | "bus" = "walk") => {
+    (loc: CampusLocation, mode: "walk" | "bus" = "walk") => {
       const rootNav =
         navigation.getParent?.("RootStack") || navigation.getParent?.();
-      const distanceFromUser = userCoord
-        ? haversineDistanceMeters(
-          userCoord.latitude,
-          userCoord.longitude,
-          loc.coord.lat,
-          loc.coord.lng,
-        )
-        : null;
-      const resolvedMode =
-        mode === "walk" &&
-          loc.source === "global" &&
-          distanceFromUser != null &&
-          distanceFromUser > 5000
-          ? "drive"
-          : mode;
       const params = {
-        initialTravelMode: resolvedMode,
+        initialTravelMode: mode,
         initialDestination: {
           id: loc.location,
           name: loc.location,
@@ -1285,16 +1272,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
     try {
       try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch (_) {}
-      
+
       // 2. Dispatch real vote to backend
       const kind = finalVote === 1 ? 'upvote' : (finalVote === -1 ? 'downvote' : 'none');
       await toggleVote(itemId, kind);
-      
+
       // 3. Sync memory-based cache for non-query-client consumers
       await voteHotspotItem(itemId, finalVote);
     } catch (e) {
       console.warn("[Pulse] vote failed", e);
-      
+
       // 4. Rollback on failure
       if (prevPulseData) {
         queryClient.setQueryData(pulseKey, prevPulseData);
@@ -1303,13 +1290,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       if (/rate limit/i.test(errorMsg)) {
         Alert.alert(
-          "Slow down!", 
+          "Slow down!",
           "You are voting too fast. Please wait a minute before trying again.",
           [{ text: "Understood" }]
         );
       } else if (/blocked/i.test(errorMsg)) {
         Alert.alert(
-          "Interaction unavailable", 
+          "Interaction unavailable",
           "You cannot interact with this content due to a block relationship."
         );
       } else {
@@ -1318,6 +1305,81 @@ export function PlacesMapScreen({ route, navigation }: any) {
       }
     }
   }, [user?.id, queryClient, applyCampusHotspotItemVote, pulseHotspots]);
+
+  const refreshTrackerCounts = useCallback(async (locName: string, mealPeriod: DiningMealPeriod) => {
+    if (!user) return;
+    try {
+      const tracker = await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}?date=${encodeURIComponent(getLocalDateString())}`);
+      const entries = Array.isArray(tracker?.entries) ? tracker.entries : [];
+      const nextCounts = entries.reduce((acc: Record<string, { count: number; entryIds: number[] }>, entry: any) => {
+        if (entry.meal_period !== mealPeriod) return acc;
+        const key = entry.label;
+        const existing = acc[key] || { count: 0, entryIds: [] };
+        existing.count += 1;
+        existing.entryIds.push(entry.id);
+        acc[key] = existing;
+        return acc;
+      }, {});
+      setTrackerCounts(nextCounts);
+    } catch (e) {
+      console.warn('Failed to refresh tracker counts in map screen', e);
+    }
+  }, [user]);
+
+  const addMealEntry = useCallback(async (item: any, location: string, mealPeriod: DiningMealPeriod) => {
+    if (!user) {
+      Alert.alert("Sign In", "Please sign in to track meals.");
+      return;
+    }
+    setIsSyncingTracker(true);
+    try {
+      await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}`, {
+        method: 'POST',
+        body: JSON.stringify({
+          date: getLocalDateString(),
+          meal_period: mealPeriod,
+          label: item.name,
+          foods: [{
+            name: item.name,
+            source: 'dining_menu',
+            calories: Number(item.calories || 0),
+            protein: Number(item.protein || 0),
+            carbs: Number(item.carbs || 0),
+            fat: Number(item.fat || 0),
+            location: location,
+            meal_period: mealPeriod,
+            quantity: 1,
+          }],
+        }),
+      });
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch (_) {}
+      await refreshTrackerCounts(location, mealPeriod);
+    } catch (e) {
+      console.warn('Meal add failed', e);
+    } finally {
+      setIsSyncingTracker(false);
+    }
+  }, [user, refreshTrackerCounts]);
+
+  const removeMealEntry = useCallback(async (item: any, location: string, mealPeriod: DiningMealPeriod) => {
+    if (!user) return;
+    const existing = trackerCounts[item.name];
+    if (!existing || existing.entryIds.length === 0) return;
+
+    setIsSyncingTracker(true);
+    try {
+      const entryId = existing.entryIds[existing.entryIds.length - 1];
+      await requestJson(`/dining/tracker/${encodeURIComponent(user.id)}/${entryId}`, {
+        method: 'DELETE',
+      });
+      try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch (_) {}
+      await refreshTrackerCounts(location, mealPeriod);
+    } catch (e) {
+      console.warn('Meal remove failed', e);
+    } finally {
+      setIsSyncingTracker(false);
+    }
+  }, [user, trackerCounts, refreshTrackerCounts]);
 
 
   const fetchPulseHotspots = useCallback(async (options: { force?: boolean } = {}) => {
@@ -1333,9 +1395,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
     if (activeLayer !== "Pulse") return;
     if (!hasSeenPulseLayer.current) {
       hasSeenPulseLayer.current = true;
-      return;
+    } else {
+      fetchPulseHotspots({ force: true });
     }
-    fetchPulseHotspots({ force: true });
+    setIsCompactDetail(false);
   }, [activeLayer, fetchPulseHotspots]);
 
   useFocusEffect(
@@ -1390,64 +1453,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
   // ── Transit handlers ──────────────────────────────────────
   // transitService is now imported at top level
 
-  const loadAllBusRoutes = useCallback(async (routesToLoad: any[]) => {
-    setBusVehicles([]);
-    setBusStops([]);
-    setRoutePatterns([]);
-    setRoutePaths([]);
-    setRouteTimetableEntries([]);
-    if (!routesToLoad.length) {
-      setAllRoutePatternsById({});
-      return;
-    }
-    const patternEntries = await Promise.allSettled(
-      routesToLoad.map(
-        async (r) => [r.Key, await transitService.getRoutePattern(r.Key)] as const,
-      ),
-    );
-    const nextPatterns = patternEntries.reduce((acc, result) => {
-      if (result.status !== "fulfilled") return acc;
-      const [k, p] = result.value;
-      acc[k] = p;
-      return acc;
-    }, {} as any);
-    setAllRoutePatternsById(nextPatterns);
-    const vehicles = await transitService.getVehicles();
-    setBusVehicles(vehicles || []);
-
-    const routeCoords = Object.values(nextPatterns).flatMap((pattern: any) =>
-      Array.isArray(pattern?.points)
-        ? pattern.points.map((point: any) => ({
-          latitude: point.latitude,
-          longitude: point.longitude,
-        })).filter(
-          (coord: any) =>
-            typeof coord.latitude === "number" &&
-            Number.isFinite(coord.latitude) &&
-            typeof coord.longitude === "number" &&
-            Number.isFinite(coord.longitude),
-        )
-        : [],
-    );
-    const vehicleCoords = (vehicles || [])
-      .map((bus: any) => ({
-        latitude: bus.Latitude,
-        longitude: bus.Longitude,
-      }))
-      .filter(
-        (coord: { latitude?: number; longitude?: number }) =>
-          typeof coord.latitude === "number" && typeof coord.longitude === "number",
-      ) as { latitude: number; longitude: number }[];
-
-    const fitCoords = [...routeCoords, ...vehicleCoords];
-    if (mapRef.current && fitCoords.length > 1) {
-      mapRef.current.fitToCoordinates(fitCoords, {
-        edgePadding: { top: 180, right: 50, bottom: 220, left: 50 },
-        animated: true,
-      });
-    }
-  }, []);
-
   const fitMapToActiveOverview = useCallback(() => {
     if (!mapRef.current) return;
 
@@ -1455,12 +1460,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
       coords: { latitude: number; longitude: number }[],
       edgePadding = { top: 180, right: 48, bottom: 220, left: 48 },
     ) => {
-      if (coords.length === 0) return;
-      if (coords.length === 1) {
+      const sanitizedCoords = coords.filter(
+        c => c && Number.isFinite(c.latitude) && Number.isFinite(c.longitude)
+      );
+      if (sanitizedCoords.length === 0) return;
+      if (sanitizedCoords.length === 1) {
         mapRef.current.animateToRegion(
           {
-            latitude: coords[0].latitude - 0.0018,
-            longitude: coords[0].longitude,
+            latitude: sanitizedCoords[0].latitude - 0.0018,
+            longitude: sanitizedCoords[0].longitude,
             latitudeDelta: 0.008,
             longitudeDelta: 0.008,
           },
@@ -1468,7 +1476,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
         );
         return;
       }
-      mapRef.current.fitToCoordinates(coords, {
+      mapRef.current.fitToCoordinates(sanitizedCoords, {
         edgePadding,
         animated: true,
       });
@@ -1484,16 +1492,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
             }))
             : [],
         );
-        const vehicleCoords = busVehicles
-          .map((bus: any) => ({
-            latitude: bus.Latitude,
-            longitude: bus.Longitude,
-          }))
-          .filter(
-            (coord: { latitude?: number; longitude?: number }) =>
-              typeof coord.latitude === "number" && typeof coord.longitude === "number",
-          ) as { latitude: number; longitude: number }[];
-        fitToCoords([...routeCoords, ...vehicleCoords]);
+        fitToCoords(routeCoords);
         return;
       }
 
@@ -1636,48 +1635,16 @@ export function PlacesMapScreen({ route, navigation }: any) {
     hasManualMapMovement,
   ]);
 
-  const handleSelectBusRoute = useCallback(
-    async (routeId: string, availableRoutes: any[] = busRoutes) => {
-      setSelectedBusRouteId(routeId);
-      currentBusRouteFetchId.current = routeId;
-      setBusVehicles([]);
-      setSelectedStop(null);
-      setSelectedBus(null);
-      setHasManualMapMovement(false);
-      setRoutePatterns([]); // Clear previous traces
-      setRoutePaths([]);
-      setBusStops([]);
-      setRouteTimetableEntries([]);
 
-      if (routeId === ALL_BUS_ROUTES_KEY) {
-        await loadAllBusRoutes(availableRoutes);
-        return;
-      }
-      try {
-        const { points, stops, paths } =
-          await transitService.getRoutePattern(routeId);
-
-        if (currentBusRouteFetchId.current !== routeId) return; // Prevent race condition crashes
-
-        setRoutePatterns(points?.length ? points : []);
-        setRoutePaths(paths?.length ? paths : []);
-        setBusStops(stops?.length ? stops : []);
-        if (mapRef.current && points?.length)
-          mapRef.current.fitToCoordinates(points, {
-            edgePadding: { top: 220, right: 60, bottom: 80, left: 60 },
-            animated: true,
-          });
-
-        const vehicles = await transitService.getVehicles(routeId);
-        if (currentBusRouteFetchId.current === routeId) {
-          setBusVehicles(vehicles);
-        }
-      } catch (e) {
-        console.warn("Failed to select bus route", e);
-      }
-    },
-    [busRoutes, loadAllBusRoutes],
-  );
+  // ── Meal Tracking Hydration ──────────────────────────────
+  useEffect(() => {
+    if (selectedLoc && isDiningHallMenuLocation(selectedLoc.location)) {
+      const activePeriod = getDiningMealPeriodForLocation(selectedLoc.location);
+      refreshTrackerCounts(selectedLoc.location, activePeriod);
+    } else if (!selectedLoc) {
+      setTrackerCounts({});
+    }
+  }, [selectedLoc, refreshTrackerCounts]);
 
   const handleSelectBusRouteFromSearch = useCallback(
     async (route: any) => {
@@ -1729,80 +1696,42 @@ export function PlacesMapScreen({ route, navigation }: any) {
     ],
   );
 
-  const {
-    getClosestProgressMeters,
-    haversineDistanceMeters: hav,
-    formatBusDistance,
-  } = require("./places/utils");
-  const resolveNearestBusForStop = useCallback(
-    (stop: any, vehicles: any[]) => {
-      if (!stop || vehicles.length === 0) {
-        setNearestBusInfo(
-          selectedRoute ? "Route loaded" : "Transit route loaded",
-        );
-        return;
-      }
-      const sLatP = stop.Latitude !== undefined ? stop.Latitude : stop.lat;
-      const sLngP = stop.Longitude !== undefined ? stop.Longitude : stop.lng;
-      if (sLatP == null || sLngP == null) return;
+  const memoizedBusMarkers = useMemo(() => {
+    return busVehicles.map((bus) => {
+      const isTrackedBus =
+        selectedBus?.Key && bus.Key
+          ? selectedBus.Key === bus.Key
+          : selectedBus?.Name === bus.Name;
 
-      const stopProgress = getClosestProgressMeters(routePatterns, {
-        latitude: sLatP,
-        longitude: sLngP,
-      });
-      const ranked = vehicles
-        .map((bus) => {
-          const busLat = bus.Latitude !== undefined ? bus.Latitude : bus.lat;
-          const busLng = bus.Longitude !== undefined ? bus.Longitude : bus.lng;
-          const stopLat =
-            stop.Latitude !== undefined ? stop.Latitude : stop.lat;
-          const stopLng =
-            stop.Longitude !== undefined ? stop.Longitude : stop.lng;
+      const routeShortName =
+        (bus.routeShortName ||
+        bus.RouteShortName ||
+        selectedRoute?.ShortName ||
+        "").toString();
 
-          if (!busLat || !busLng || !stopLat || !stopLng) {
-            return { bus, distanceMeters: Infinity };
-          }
+      const routeColor =
+        bus.routeColor ||
+        bus.RouteColor ||
+        selectedRoute?.Color ||
+        "#007AFF";
 
-          const direct = hav(busLat, busLng, stopLat, stopLng);
-          if (!stopProgress) return { bus, distanceMeters: direct };
-          const busProgress = getClosestProgressMeters(routePatterns, {
-            latitude: busLat,
-            longitude: busLng,
-          });
-          if (!busProgress) return { bus, distanceMeters: direct };
-          const delta = Math.abs(
-            stopProgress.progressMeters - busProgress.progressMeters,
-          );
-          const wrapped =
-            stopProgress.totalRouteMeters > 0
-              ? Math.min(delta, stopProgress.totalRouteMeters - delta)
-              : delta;
-          return {
-            bus,
-            distanceMeters: Math.min(
-              direct,
-              wrapped + stopProgress.offsetMeters + busProgress.offsetMeters,
-            ),
-          };
-        })
-        .sort((a, b) => a.distanceMeters - b.distanceMeters);
-      const nearest = ranked[0];
-      if (!nearest) {
-        setNearestBusInfo(
-          selectedRoute ? "Route loaded" : "Transit route loaded",
-        );
-        return;
-      }
-      const eta = Math.max(1, Math.round(nearest.distanceMeters / 220));
-      const label = nearest.bus.RouteShortName
-        ? `Route ${nearest.bus.RouteShortName}`
-        : nearest.bus.Name
-          ? `Bus ${nearest.bus.Name}`
-          : undefined;
-      setNearestBusInfo(formatBusDistance(nearest.distanceMeters, eta, label));
-    },
-    [routePatterns, selectedRoute],
-  );
+      return (
+        <BusMarker
+          key={`bus-${bus.Key || bus.Id || bus.Name}`}
+          bus={bus}
+          isDark={isDark}
+          routeColor={routeColor}
+          routeShortName={routeShortName}
+          isAllBusRoutesSelected={isAllBusRoutesSelected}
+          selectedDirection={selectedDirection}
+          isTrackedBus={isTrackedBus}
+          onPress={() => handleBusMarkerPress(bus)}
+        />
+      );
+    });
+  }, [busVehicles, handleBusMarkerPress, isAllBusRoutesSelected, isDark, selectedBus, selectedDirection, selectedRoute]);
+
+
 
   const handleStopPress = useCallback(
     (stop: any) => {
@@ -1881,21 +1810,33 @@ export function PlacesMapScreen({ route, navigation }: any) {
     setPendingInitialLocation(
       typeof nextLocation === "string" ? nextLocation : null,
     );
+    if (nextLocation) {
+        setIsCompactDetail(true);
+    }
   }, [
     route.params?.focusToken,
     route.params?.initialLayer,
     route.params?.initialLocation,
+    route.params?.isCompact,
   ]);
 
   useEffect(() => {
     if (!pendingInitialLocation) return;
     const targetName = getCanonicalLocationName(pendingInitialLocation);
-    const match = allMapLocations.find(
-      (loc) => getCanonicalLocationName(loc.location) === targetName,
-    );
+    const targetKey = normalizeBuildingKey(pendingInitialLocation);
+    
+    const match = allMapLocations.find((loc) => {
+      const locName = getCanonicalLocationName(loc.location);
+      if (locName === targetName) return true;
+      if (normalizeBuildingKey(loc.location) === targetKey) return true;
+      if (loc.shortName && normalizeBuildingKey(loc.shortName) === targetKey) return true;
+      if (Array.isArray(loc.aliases) && loc.aliases.some(a => normalizeBuildingKey(a) === targetKey)) return true;
+      return false;
+    });
     if (!match) return;
     setSelectedId(getLocationSelectionId(match));
     setPendingInitialLocation(null);
+    suppressNextOverviewFitRef.current = true;
   }, [allMapLocations, pendingInitialLocation]);
 
   useEffect(() => {
@@ -1908,6 +1849,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
     setSelectedHotspotId(hotspotMatch.id);
     setPendingInitialLocation(null);
+    suppressNextOverviewFitRef.current = true;
 
     if (!mapRef.current) return;
     mapRef.current.animateToRegion(
@@ -1993,79 +1935,14 @@ export function PlacesMapScreen({ route, navigation }: any) {
       setActiveScheduleId(scheduleOptions[0].id);
   }, [activeScheduleId, scheduleOptions]);
 
-  // Bus fetch on layer switch
-  useEffect(() => {
-    if (activeLayer === "Bus") {
-      (async () => {
-        if (isFetchingRef.current) return;
-        isFetchingRef.current = true;
-        setIsFetchingBus(true);
-        try {
-          const metadata = await transitService.getRoutesMetadata();
-          const activeIds = await transitService.getActiveRoutes();
-          const active = metadata.filter(
-            (m: any) =>
-              activeIds.includes(m.ShortName) ||
-              activeIds.includes(m.Key) ||
-              activeIds.includes(m.Name),
-          );
-          const final = active.length ? active : metadata;
-          setBusRoutes(final);
-          const valid = final.some((r: any) => r.Key === selectedBusRouteId);
-          if (
-            final.length &&
-            (isAllBusRoutesSelected || !selectedBusRouteId || !valid)
-          )
-            handleSelectBusRoute(ALL_BUS_ROUTES_KEY, final);
-        } catch (e) {
-          console.warn("Failed to fetch bus routes", e);
-        } finally {
-          setIsFetchingBus(false);
-          isFetchingRef.current = false;
-        }
-      })();
-    }
-  }, [activeLayer]);
 
-  // Bus polling — wrapped in try/catch with stale-guard to prevent crashes
-  useEffect(() => {
-    let cancelled = false;
-    if (activeLayer === "Bus" && selectedBusRouteId) {
-      busPollInterval.current = setInterval(async () => {
-        try {
-          const updated = isAllBusRoutesSelected
-            ? await transitService.getVehicles()
-            : await transitService.getVehicles(selectedBusRouteId);
-          if (!cancelled) setBusVehicles(updated || []);
-        } catch (e) {
-          console.warn('[Transit] Polling error:', e);
-        }
-      }, 5000);
-    } else {
-      if (busPollInterval.current) clearInterval(busPollInterval.current);
-    }
-    return () => {
-      cancelled = true;
-      if (busPollInterval.current) clearInterval(busPollInterval.current);
-    };
-  }, [activeLayer, isAllBusRoutesSelected, selectedBusRouteId]);
 
   // Today selection should not auto-generate directions.
   useEffect(() => {
     setActiveWalkingRoute(null);
   }, [activeLayer, nextEntry, userCoord, selectedDate]);
 
-  // Update nearest bus when vehicles change
-  useEffect(() => {
-    if (activeLayer === "Bus" && selectedStop)
-      resolveNearestBusForStop(selectedStop, busVehicles);
-  }, [
-    activeLayer,
-    busVehicles,
-    routePatterns,
-    selectedStop,
-    resolveNearestBusForStop,
-  ]);
+
 
   // Auto-fit map to filtered locations
   useEffect(() => {
@@ -2199,7 +2076,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           })}
 
         {activeLayer === "Pulse" &&
-          pulseHotspots.filter(h => h && h.coord && h.coord.lat != null && h.coord.lng != null).map((hotspot) => (
+          pulseHotspots.filter(h => h && h.coord && Number.isFinite(h.coord.lat) && Number.isFinite(h.coord.lng)).map((hotspot) => (
             <MapCircleOverlay
               key={`pulse-radius-${hotspot.id}`}
               id={`pulse-radius-${hotspot.id}`}
@@ -2224,49 +2101,53 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 (path.DirectionName || "")
                   .toLowerCase()
                   .includes((selectedDirection || "All").toLowerCase());
-              return (path.points || []).length > 0 ? (
+              const validPoints = (path.points || []).filter((pt: any) => pt && Number.isFinite(pt.latitude) && Number.isFinite(pt.longitude));
+              return validPoints.length >= 2 ? (
                 <MapPolylineOverlay
                   key={`path-${idx}`}
                   id={`path-${idx}`}
-                  coordinates={path.points}
-                  color={
-                    isSelected
-                      ? getNeonColor(selectedRoute?.Color || "#007AFF")
-                      : getNeonColor(selectedRoute?.Color || "#007AFF") + "40"
-                  }
-                  width={isSelected ? 4 : 2}
+                  coordinates={validPoints}
+                  color={getNeonColor(selectedRoute?.Color || "#007AFF")}
+                  width={isSelected ? 6 : 4}
                 />
               ) : null;
             })
-            : routePatterns.length > 0 && (
-              <MapPolylineOverlay
-                id="bus-route-pattern"
-                coordinates={routePatterns}
-                color={getNeonColor(selectedRoute?.Color || "#007AFF")}
-                width={4}
-              />
-            ))}
+            : (() => {
+                const validPoints = routePatterns.filter((pt: any) => pt && Number.isFinite(pt.latitude) && Number.isFinite(pt.longitude));
+                return validPoints.length >= 2 ? (
+                  <MapPolylineOverlay
+                    id="bus-route-pattern"
+                    coordinates={validPoints}
+                    color={getNeonColor(selectedRoute?.Color || "#007AFF")}
+                    width={4}
+                  />
+                ) : null;
+              })()
+          )}
         {activeLayer === "Bus" &&
           isAllBusRoutesSelected &&
           Object.entries(allRoutePatternsById).map(([routeKey, pattern]) => {
             const route = busRoutes.find((r) => r.Key === routeKey);
-            return pattern?.points?.length > 0 ? (
+            const validPoints = (pattern?.points || []).filter((pt: any) => pt && typeof pt.latitude === "number" && Number.isFinite(pt.latitude) && typeof pt.longitude === "number" && Number.isFinite(pt.longitude));
+            return validPoints.length >= 2 ? (
               <MapPolylineOverlay
                 key={routeKey}
                 id={`all-route-${routeKey}`}
-                coordinates={pattern.points}
+                coordinates={validPoints}
                 color={getNeonColor(route?.Color || "#007AFF")}
                 width={4}
               />
             ) : null;
           })}
 
+        {/* Bus Layer: Vehicles and Stops */}
+        {activeLayer === "Bus" && !isAllBusRoutesSelected && memoizedBusMarkers}
+
         {activeLayer === "Bus" &&
           busStops.map((stop) => {
             const sLat = stop.Latitude != null ? stop.Latitude : stop.lat;
-            const sLng =
-              stop.Longitude != null ? stop.Longitude : stop.lng;
-            if (sLat == null || sLng == null || typeof sLat !== 'number' || typeof sLng !== 'number') return null;
+            const sLng = stop.Longitude != null ? stop.Longitude : stop.lng;
+            if (sLat == null || sLng == null || !Number.isFinite(sLat) || !Number.isFinite(sLng)) return null;
 
             const stopDir = stop.DirectionName || stop.direction || "Unknown";
             const stopSelected =
@@ -2290,7 +2171,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 <View
                   style={[
                     styles.busStopMarker,
-                    { opacity: stopSelected ? 1 : 0.3 },
+                    { opacity: 1 },
                   ]}
                 >
                   <View style={styles.busStopMarkerInner} />
@@ -2299,118 +2180,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
             );
           })}
 
-        {activeLayer === "Bus" &&
-          busVehicles.map((bus) => {
-            const bLat = bus.Latitude != null ? bus.Latitude : bus.lat;
-            const bLng = bus.Longitude != null ? bus.Longitude : bus.lng;
-            // CRITICAL: skip buses with invalid coordinates — nil coords crash AIRMap
-            if (bLat == null || bLng == null || typeof bLat !== 'number' || typeof bLng !== 'number') return null;
 
-            const isTrackedBus =
-              selectedBus?.Key && bus.Key
-                ? selectedBus.Key === bus.Key
-                : selectedBus?.Name === bus.Name;
-            
-            const routeShortName =
-              (bus.routeShortName ||
-              bus.RouteShortName ||
-              selectedRoute?.ShortName ||
-              "").toString();
 
-            const routeColor =
-              bus.routeColor ||
-              bus.RouteColor ||
-              selectedRoute?.Color ||
-              "#007AFF";
-            const heading = bus.heading || bus.Heading || 0;
-            const busDir =
-              bus.direction || bus.DirectionName || "Unknown Direction";
-
-            const matchesDirection =
-              isAllBusRoutesSelected ||
-              selectedDirection === "All" ||
-              (busDir || "")
-                .toLowerCase()
-                .includes((selectedDirection || "All").toLowerCase());
-            const opacity = matchesDirection ? (isTrackedBus ? 1 : 0.9) : 0.3;
-
-            // Uniform circular marker for all bus names
-            const displayName = routeShortName.length > 3
-              ? routeShortName.slice(0, 3)
-              : routeShortName;
-
-            return (
-              <MapMarker
-                key={`bus-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`}
-                id={`bus-${bus.Key || bus.Id || bus.Name || bus.VehicleId}`}
-                coordinate={{
-                  latitude: bLat,
-                  longitude: bLng,
-                }}
-                onPress={() => {
-                  handleBusMarkerPress(bus);
-                }}
-                anchor={{ x: 0.5, y: 0.5 }}
-              >
-                <View
-                  style={{
-                    opacity,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    transform: [{ rotate: `${heading}deg` }],
-                    shadowColor: "#000",
-                    shadowOpacity: 0.3,
-                    shadowRadius: 3,
-                    shadowOffset: { width: 0, height: 2 },
-                  }}
-                >
-                  {/* Small directional arrow */}
-                  <View
-                    style={{
-                      width: 0,
-                      height: 0,
-                      borderLeftWidth: 6,
-                      borderRightWidth: 6,
-                      borderBottomWidth: 10,
-                      borderLeftColor: "transparent",
-                      borderRightColor: "transparent",
-                      borderBottomColor: routeColor,
-                      marginBottom: -3,
-                      zIndex: 2,
-                    }}
-                  />
-
-                  {/* Circular Bus Marker */}
-                  <View
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
-                      backgroundColor: routeColor,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderWidth: isTrackedBus ? 3 : 2,
-                      borderColor: isTrackedBus ? "#FFD700" : "white",
-                      zIndex: 1,
-                    }}
-                  >
-                    <View style={{ transform: [{ rotate: `-${heading}deg` }] }}>
-                      <Text
-                        style={{
-                          color: isTrackedBus ? "#FFD700" : "white",
-                          fontSize: displayName.length > 2 ? 10 : 13,
-                          fontWeight: "900",
-                          textAlign: "center",
-                        }}
-                      >
-                        {displayName || "?"}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              </MapMarker>
-            );
-          })}
 
         {activeLayer === "Today" && activeWalkingRoute && (
           <MapPolylineOverlay
@@ -2422,7 +2193,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
           />
         )}
         {activeLayer === "Pulse" &&
-          pulseHotspots.filter(h => h && h.coord && h.coord.lat != null && h.coord.lng != null).map((hotspot) => {
+          pulseHotspots.filter(h => h && h.coord && Number.isFinite(h.coord.lat) && Number.isFinite(h.coord.lng)).map((hotspot) => {
             return (
               <MapMarker
                 key={hotspot.id}
@@ -2490,7 +2261,25 @@ export function PlacesMapScreen({ route, navigation }: any) {
           markerLocations.map((loc) => {
             const isSelected = getLocationSelectionId(loc) === selectedId;
             const isTodayLayer = activeLayer === "Today";
-            const isCapacityType = loc.type === "Library" || loc.type === "Rec";
+            const visitorGarageIds = [
+              "osm:way:91100311",
+              "garage-polo",
+              "osm:way:450686873",
+              "garage-university-center",
+              "garage-west-campus"
+            ];
+            const isVisitorParkingGarage = loc.type === "Parking" && (
+              visitorGarageIds.includes(("placeId" in loc ? loc.placeId : "")) ||
+              loc.location.includes("Central Campus Garage") ||
+              loc.location.includes("Polo") ||
+              loc.location.includes("Stallings") ||
+              loc.location.includes("University Center Garage") ||
+              loc.location.includes("West Campus Garage")
+            );
+            const isCapacityType = loc.type === "Library" || loc.type === "Rec" || isVisitorParkingGarage;
+
+            const tracksChanges = isMapTransitionsStable || isSelected || !!selectedId || isCapacityType;
+
             const displayPercent =
               loc.capacity && loc.capacity > 0 && loc.current_count != null
                 ? Math.round((loc.current_count / loc.capacity) * 100)
@@ -2498,10 +2287,13 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   ? loc.percent_full
                   : null;
 
+            const isClosed = loc.hours_today?.toLowerCase().includes("closed") ||
+                             loc.hours_holiday_notice?.toLowerCase().includes("closed");
+
             const pinColor = isTodayLayer
               ? getCategoryColor(loc.classMeetings?.[0]?.category)
               : isCapacityType
-                ? getStatusColor(displayPercent)
+                ? (isClosed ? "#FF3B30" : getStatusColor(displayPercent))
                 : COLORS.primary;
             const pinText =
               isTodayLayer && loc.sequenceIndex
@@ -2512,7 +2304,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
               return null;
             }
 
-            if (!loc.coord || loc.coord.lat == null || loc.coord.lng == null) return null;
+            if (!loc.coord || !Number.isFinite(loc.coord.lat) || !Number.isFinite(loc.coord.lng)) return null;
 
             return (
               <MapMarker
@@ -2522,8 +2314,12 @@ export function PlacesMapScreen({ route, navigation }: any) {
                   latitude: loc.coord.lat,
                   longitude: loc.coord.lng,
                 }}
-                onPress={() => handleSelectLocation(loc)}
+                onPress={() => {
+                  setIsMapTransitionsStable(true);
+                  handleSelectLocation(loc);
+                }}
                 anchor={{ x: 0.5, y: 1 }}
+                tracksViewChanges={tracksChanges}
               >
                 {isTodayLayer ? (
                   <View
@@ -2578,10 +2374,17 @@ export function PlacesMapScreen({ route, navigation }: any) {
           })}
       </MapViewRNM>
 
+      {isListDroppedDown ? (
+        <Pressable
+          style={[StyleSheet.absoluteFill, { zIndex: 7000, elevation: 30 }]}
+          onPress={() => setIsListDroppedDown(false)}
+        />
+      ) : null}
+
       {/* Top UI Floating Elements */}
       <View
         pointerEvents="box-none"
-        style={[styles.topContainer, { top: 54, alignItems: "center" }]}
+        style={[styles.topContainer, { top: 59, alignItems: "center" }]}
       >
         <FloatingSearchBar
           styles={styles}
@@ -2592,14 +2395,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
           setSearchQuery={setSearchQuery}
           setShowSearchResults={setShowSearchResults}
           onOpenSettings={() => setIsEditorVisible(true)}
-          onShare={() =>
-            triggerNativeShare({
-              title: "Campus Map",
-              message: "Check out the live campus map on MaroonSchedules!",
-              url: "https://maroonschedules.tamu.edu/places",
-              type: "place",
-            })
-          }
           onSubmitSearch={() => runGlobalSearch()}
         />
 
@@ -2613,6 +2408,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
                 activeLayer={activeLayer}
                 layers={visibleCategories}
                 onSelectLayer={(layer) => {
+                  setIsListDroppedDown(false);
                   setActiveLayer(layer);
                   setSelectedId(null);
                   setSelectedStop(null);
@@ -2694,24 +2490,24 @@ export function PlacesMapScreen({ route, navigation }: any) {
                           <Text style={styles.nextUpTitle} numberOfLines={1}>
                             {nextEntry.name}
                           </Text>
-                          <Text style={styles.nextUpLocation} numberOfLines={1}>
-                            {nextEntry.locationLabel}
-                          </Text>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, gap: 8 }}>
+                            <Text style={[styles.nextUpLocation, { flex: 1 }]} numberOfLines={1}>
+                              {nextEntry.locationLabel}
+                            </Text>
+                            <TouchableOpacity
+                              onPress={() => handleGetDirections(nextEntry)}
+                              style={[styles.nextUpDirectionsPill, { paddingVertical: 6, paddingHorizontal: 10 }]}
+                              activeOpacity={0.85}
+                            >
+                              <Navigation size={13} color="#FFFFFF" />
+                              <Text style={[styles.nextUpDirectionsPillText, { fontSize: 11 }]}>
+                                {activeWalkingRoute?.estimatedTimeMinutes
+                                  ? `Get Directions (${activeWalkingRoute.estimatedTimeMinutes} min)`
+                                  : "Get Directions"}
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                      </View>
-                      <View style={{ marginTop: 10, alignItems: "flex-start" }}>
-                        <TouchableOpacity
-                          onPress={() => handleGetDirections(nextEntry)}
-                          style={styles.nextUpDirectionsPill}
-                          activeOpacity={0.85}
-                        >
-                          <Navigation size={14} color="#FFFFFF" />
-                          <Text style={styles.nextUpDirectionsPillText}>
-                            {activeWalkingRoute?.estimatedTimeMinutes
-                              ? `Get Directions (${activeWalkingRoute.estimatedTimeMinutes} min)`
-                              : "Get Directions"}
-                          </Text>
-                        </TouchableOpacity>
                       </View>
                     </View>
                   )}
@@ -2740,7 +2536,9 @@ export function PlacesMapScreen({ route, navigation }: any) {
                     navigation.navigate("TransitTripPlanner")
                   }
                   selectedDirection={selectedDirection}
-                  setSelectedDirection={setSelectedDirection}
+                  setSelectedDirection={(value) =>
+                    setSelectedDirection(value as "All" | "inbound" | "outbound")
+                  }
                   availableDirections={availableDirections}
                   selectedStop={selectedStop}
                   setSelectedStop={setSelectedStop}
@@ -2755,159 +2553,29 @@ export function PlacesMapScreen({ route, navigation }: any) {
             {activeLayer !== "Today" &&
               activeLayer !== "Bus" &&
               activeLayer !== "Pulse" && (
-                <View
-                  style={{
-                    marginTop: 12,
-                    width: "100%",
-                    alignItems: "flex-start",
-                  }}
-                >
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={[
-                      (styles as any).listDropdownHeader,
-                      isListDroppedDown &&
-                      (styles as any).listDropdownHeaderOpen,
-                    ]}
-                    onPress={() => setIsListDroppedDown(!isListDroppedDown)}
-                  >
-                    <Text style={(styles as any).listDropdownLabel}>
-                      List View
-                    </Text>
-                    <ChevronDown
-                      size={18}
-                      color={COLORS.textPrimary}
-                      style={{
-                        marginLeft: 8,
-                        transform: [
-                          { rotate: isListDroppedDown ? "180deg" : "0deg" },
-                        ],
-                      }}
-                    />
-                  </TouchableOpacity>
-
-                  {isListDroppedDown && (
-                    <View
-                      style={[
-                        (styles as any).listDropdownContent,
-                        { width: SCREEN_WIDTH - 32 },
-                      ]}
-                    >
-                      <ScrollView
-                        ref={listDropdownScrollRef}
-                        style={{ maxHeight: 320 }}
-                        showsVerticalScrollIndicator={false}
-                      >
-                        {sortedFilteredLocations.map((loc) => {
-                          const locCapacity = "capacity" in loc ? loc.capacity : null;
-                          const locCurrentCount = "current_count" in loc ? loc.current_count : null;
-                          const displayPercent =
-                            locCapacity && locCapacity > 0 && locCurrentCount != null
-                              ? Math.round((locCurrentCount / locCapacity) * 100)
-                              : loc.percent_full != null && Number.isFinite(loc.percent_full)
-                                ? loc.percent_full
-                                : null;
-                          const recUpdatedLabel =
-                            loc.type === "Rec" && (loc.capacity_last_updated || loc.capacity_as_of)
-                              ? (() => {
-                                  const raw = loc.capacity_last_updated || loc.capacity_as_of;
-                                  const parsed = new Date(
-                                    String(raw).includes("T")
-                                      ? String(raw)
-                                      : String(raw).replace(" ", "T"),
-                                  );
-                                  return Number.isNaN(parsed.getTime())
-                                    ? null
-                                    : `Updated ${parsed.toLocaleTimeString("en-US", {
-                                        hour: "numeric",
-                                        minute: "2-digit",
-                                      })}`;
-                                })()
-                              : null;
-
-                          const isRecCenterTourItem =
-                            getCanonicalLocationName(loc.location) ===
-                            getCanonicalLocationName("Student Recreation Center");
-
-                          const item = (
-                            <TouchableOpacity
-                              key={`${('placeId' in loc && loc.placeId) || loc.location}-${loc.coord.lat}-${loc.coord.lng}`}
-                              style={(styles as any).listDropdownItem}
-                              onLayout={
-                                isRecCenterTourItem
-                                  ? (event) => {
-                                    recCenterDropdownYRef.current =
-                                      event.nativeEvent.layout.y;
-                                    if (activeTargetName === "rec-center-item") {
-                                      setTimeout(scrollToRecCenterDropdownItem, 0);
-                                    }
-                                  }
-                                  : undefined
-                              }
-                              onPress={() => {
-                                handleSelectLocation(loc);
-                                setIsListDroppedDown(false);
-                                if (
-                                  isRecCenterTourItem &&
-                                  activeTargetName === "rec-center-item"
-                                ) {
-                                  setTimeout(() => {
-                                    advanceStep("rec-center-item");
-                                  }, 0);
-                                }
-                              }}
-                            >
-                              <View style={{ flex: 1 }}>
-                                <Text
-                                  style={(styles as any).listDropdownItemTitle}
-                                  numberOfLines={1}
-                                >
-                                  {loc.location}
-                                </Text>
-                                <Text
-                                  style={(styles as any).listDropdownItemSub}
-                                  numberOfLines={1}
-                                >
-                                  {(loc.type === "Library" ||
-                                    loc.type === "Rec") &&
-                                    displayPercent != null
-                                    ? `${displayPercent}% full${recUpdatedLabel ? ` · ${recUpdatedLabel}` : ""} · `
-                                    : ""}
-                                  {loc.type !== "Dining" && loc.type !== "Hub"
-                                    ? loc.type
-                                    : ""}
-                                </Text>
-                              </View>
-                              <ChevronRight
-                                size={16}
-                                color={COLORS.textTertiary}
-                              />
-                            </TouchableOpacity>
-                          );
-
-                          if (!isRecCenterTourItem) {
-                            return item;
-                          }
-
-                          return (
-                            <TourTarget
-                              key={`tour-${loc.location}`}
-                              name="rec-center-item"
-                              assistAction={() => {
-                                handleSelectLocation(loc);
-                                setIsListDroppedDown(false);
-                                setTimeout(() => {
-                                  advanceStep("rec-center-item");
-                                }, 0);
-                              }}
-                            >
-                              {item}
-                            </TourTarget>
-                          );
-                        })}
-                      </ScrollView>
-                    </View>
-                  )}
+                <View style={{ marginTop: 12, width: "100%" }}>
+                  <PlacesListPopup
+                    styles={styles}
+                    COLORS={COLORS}
+                    activeLayer={activeLayer}
+                    visible={isListDroppedDown}
+                    locations={sortedFilteredLocations}
+                    userCoord={userCoord}
+                    parkingPermit={parkingPermit}
+                    recreationFacilityMap={recreationFacilityMap}
+                    onToggle={() => setIsListDroppedDown((value) => !value)}
+                    onSelectLocation={(loc) => {
+                      handleSelectLocation(loc);
+                      setIsListDroppedDown(false);
+                    }}
+                    listScrollRef={listDropdownScrollRef}
+                    activeTargetName={activeTargetName}
+                    advanceStep={advanceStep}
+                    onRecCenterRowLayout={(y) => {
+                      recCenterDropdownYRef.current = y;
+                    }}
+                    scrollToRecCenterItem={scrollToRecCenterDropdownItem}
+                  />
                 </View>
               )}
           </>
@@ -2987,7 +2655,10 @@ export function PlacesMapScreen({ route, navigation }: any) {
         COLORS={COLORS}
         isDark={isDark}
         selectedId={selectedId}
-        setSelectedId={setSelectedId}
+        setSelectedId={(id) => {
+          setIsMapTransitionsStable(true);
+          setSelectedId(id);
+        }}
         selectedLoc={selectedLoc}
         foodCourtVenues={foodCourtVenues}
         diningMenuOptions={diningMenuOptions}
@@ -2995,6 +2666,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
         setActiveDiningMenu={setActiveDiningMenu}
         activeDiningMealPeriod={activeDiningMealPeriod}
         setActiveDiningMealPeriod={setActiveDiningMealPeriod}
+        activeDiningDate={activeDiningDate}
+        setActiveDiningDate={setActiveDiningDate}
         diningMenuPreview={diningMenuPreview}
         isFetchingDining={isFetchingDining}
         isPrimaryDiningHallSelection={isPrimaryDiningHallSelection}
@@ -3002,11 +2675,18 @@ export function PlacesMapScreen({ route, navigation }: any) {
         openScheduleList={openScheduleList}
         selectedRecreationFacility={selectedRecreationFacility}
         recreationFacilityMap={recreationFacilityMap}
+        openFacilityCounts={openFacilityCounts}
         navigation={navigation}
         getPlaceExternalLink={getPlaceExternalLink}
         selectedStop={selectedStop}
         selectedBus={selectedBus}
         openNavigationToLocation={openNavigationToLocation}
+        isFetchingDetail={isFetchingDetail}
+        trackerCounts={trackerCounts}
+        onAddMeal={(item) => selectedLoc && addMealEntry(item, selectedLoc.location, getDiningMealPeriodForLocation(selectedLoc.location))}
+        onRemoveMeal={(item) => selectedLoc && removeMealEntry(item, selectedLoc.location, getDiningMealPeriodForLocation(selectedLoc.location))}
+        isSyncingTracker={isSyncingTracker}
+        isCompact={isCompactDetail}
       />
 
       {/* Module editor modal */}
@@ -3057,11 +2737,15 @@ export function PlacesMapScreen({ route, navigation }: any) {
           isDark={isDark}
           selectedRoute={selectedRoute}
           liveBusCount={busVehicles.length}
+          vehicleFreshness={vehicleFreshness}
+          timetableFreshness={routeTimetableFreshness}
+          vehicleStatusLabel={vehicleStatusLabel}
           stopTimetable={stopTimetable}
           onStopPress={(stop) => {
             setIsTimetableSheetOpen(false);
             handleStopPress(stop);
           }}
+          loading={routeTimetableState === "loading"}
         />
       )}
     </View>

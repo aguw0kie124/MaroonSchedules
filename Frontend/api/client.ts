@@ -5,6 +5,7 @@ const DEFAULT_TIMEOUT_MS = API_REQUEST_TIMEOUT_MS;
 
 let hasLoggedTimeoutDevHint = false;
 const API_BASE = API_URL.replace(/\/+$/, '');
+const SESSION_SID = Math.random().toString(36).substring(2, 12);
 
 type TokenProviderOptions = {
     forceRefresh?: boolean;
@@ -276,12 +277,6 @@ export const acceptToS = async (clerkId: string) => {
     });
 };
 
-export const completeTour = async (clerkId: string) => {
-    return requestJson(`/users/${clerkId}/tour/complete/`, {
-        method: 'POST',
-    });
-};
-
 // ============================================================
 // Course endpoints
 // ============================================================
@@ -380,6 +375,13 @@ export const fetchCampusPlaceDetail = async (placeIdOrIdentifier: string) => {
     return requestJson(`/campus/places/${encodeURIComponent(placeIdOrIdentifier)}/detail`);
 };
 
+export const fetchFacilityCounts = async (placeId: string, force = false) => {
+    const encoded = encodeURIComponent(placeId);
+    let url = `/traffic/capacity/facility-counts/${encoded}?sid=${SESSION_SID}`;
+    if (force) url += '&refresh=true';
+    return requestJson(url);
+};
+
 export const fetchCampusPulseMap = async (limit = 12, clerkId?: string, refresh = false) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (clerkId) params.set('clerk_id', clerkId);
@@ -460,7 +462,7 @@ export const searchGlobalMapPlaces = async (query: string, limit = 8) => {
 export const fetchGlobalMapRoute = async (payload: {
     origin: { latitude: number; longitude: number };
     destination: { latitude: number; longitude: number };
-    mode: 'walk' | 'drive' | 'bike';
+    mode: 'walk' | 'bike';
     origin_name?: string;
     destination_name?: string;
 }) => {

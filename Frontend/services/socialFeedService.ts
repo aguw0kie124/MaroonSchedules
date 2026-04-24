@@ -1,4 +1,4 @@
-import { getPremiumName, getPremiumImage } from '../utils/userUtils';
+import { getPremiumName, getPremiumImage, isEncryptedString } from '../utils/userUtils';
 import { apiFetch } from '../api/client';
 import { API_KEY } from '../config';
 
@@ -10,6 +10,9 @@ function warnFeedRead(scope: string, e: unknown) {
 
 let connectedUserId: string | null = null;
 let currentFullUser: any | null = null;
+type HydratedFeedProfile = { name: string; image: string };
+const hydratedAggieProfileCache = new Map<string, HydratedFeedProfile>();
+const pendingAggieProfileRequests = new Map<string, Promise<HydratedFeedProfile | null>>();
 
 function getFeedHeaders(extraHeaders: HeadersInit = {}) {
   return {
@@ -35,6 +38,109 @@ export function initializeFeedUser(
   currentFullUser = clerkUser;
 
   return { id: clerkUserId };
+}
+
+export interface FeedCursor {
+  createdAt: string;
+  id: string;
+}
+
+export interface PaginatedFeedResponse<T> {
+  results: T[];
+  hasMore: boolean;
+  nextCursor: FeedCursor | null;
+}
+
+export async function hydrateAggieUsers(activities: any[]): Promise<any[]> {
+  const missingUserIds = new Set<string>();
+  for (const act of activities) {
+    const rawName = act.actor?.name || act.actor?.data?.name || act.custom?.user_name || 'Aggie User';
+    if (rawName === 'Aggie User' || isEncryptedString(rawName)) {
+      if (act.actor?.id) {
+        const userId = act.actor.id.replace('SU:', '').replace('user_', '');
+        missingUserIds.add(`user_${userId}`);
+      }
+    }
+  }
+
+  if (missingUserIds.size === 0) {
+    return activities;
+  }
+
+  const nameMap = new Map<string, HydratedFeedProfile>();
+  const unresolvedUserIds: string[] = [];
+
+  for (const userId of missingUserIds) {
+    const cachedProfile = hydratedAggieProfileCache.get(userId);
+    if (cachedProfile) {
+      nameMap.set(userId, cachedProfile);
+      continue;
+    }
+    unresolvedUserIds.push(userId);
+  }
+
+  await Promise.all(unresolvedUserIds.map(async (userId) => {
+    const existingRequest = pendingAggieProfileRequests.get(userId);
+    const request = existingRequest ?? (async (): Promise<HydratedFeedProfile | null> => {
+      try {
+        const res = await feedFetch(`/chat/users/${userId}/public`, {}, 3000);
+        if (!res.ok) {
+          if (__DEV__) {
+            console.warn(`[Hydration] Failed to fetch profile for ${userId}, status: ${res.status}`);
+          }
+          return null;
+        }
+
+        const data = await res.json();
+        if (!data.full_name || data.full_name === 'Aggie User') {
+          return null;
+        }
+
+        const profile = { name: data.full_name, image: data.profile_image_url || '' };
+        hydratedAggieProfileCache.set(userId, profile);
+        return profile;
+      } catch (e) {
+        if (__DEV__) {
+          console.warn(`[Hydration] Error fetching profile for ${userId}:`, e);
+        }
+        return null;
+      } finally {
+        pendingAggieProfileRequests.delete(userId);
+      }
+    })();
+
+    if (!existingRequest) {
+      pendingAggieProfileRequests.set(userId, request);
+    }
+
+    const profile = await request;
+    if (profile) {
+      nameMap.set(userId, profile);
+    }
+  }));
+
+  if (nameMap.size === 0) {
+    return activities;
+  }
+
+  return activities.map(act => {
+    const cleanId = act.actor?.id?.replace('SU:', '').replace('user_', '');
+    const userId = cleanId ? `user_${cleanId}` : null;
+    
+    if (userId && nameMap.has(userId)) {
+      const profile = nameMap.get(userId)!;
+      const newAct = JSON.parse(JSON.stringify(act));
+      if (!newAct.actor) newAct.actor = {};
+      if (!newAct.actor.data) newAct.actor.data = {};
+      newAct.actor.data.name = profile.name;
+      newAct.actor.data.image = profile.image;
+      if (!newAct.custom) newAct.custom = {};
+      newAct.custom.user_name = profile.name;
+      newAct.custom.user_image = profile.image;
+      return newAct;
+    }
+    return act;
+  });
 }
 
 export async function uploadMediaImage(uri: string): Promise<string> {
@@ -102,22 +208,85 @@ export async function getCampusFeed(limit = 25): Promise<any[]> {
     const res = await feedFetch(`/chat/feeds/proxy/flat/campus_global?limit=${limit}`);
     if (!res.ok) throw new Error('Proxy Fetch Error');
     const data = await res.json();
-    return data.results || [];
+    return await hydrateAggieUsers(data.results || []);
   } catch (e) {
     warnFeedRead('[NativeFeeds] getCampusFeed', e);
     return [];
   }
 }
 
+export async function getUserPingFeed(feedId: string, limit = 50): Promise<any[]> {
+  const cleanId = feedId.startsWith('user_') ? feedId.replace('user_', '') : feedId;
+  const targetId = `user_${cleanId}`;
+  
+  const filterGlobalFeed = async () => {
+    const globalFeed = await getPingFeed(limit);
+    return globalFeed.filter((p: any) => {
+      const pId = p.user_id || p.actor?.id?.replace('SU:', '') || p.actor?.replace('SU:', '');
+      return pId === targetId;
+    });
+  };
+
+  try {
+    const res = await feedFetch(`/chat/feeds/proxy/flat/${targetId}?limit=${limit}`, {}, 8000);
+    if (!res.ok) {
+      return await filterGlobalFeed();
+    }
+    const data = await res.json();
+    const results = data.results || [];
+    // If user feed is empty, fallback to global feed for manual filtering
+    if (results.length === 0) {
+      return await filterGlobalFeed();
+    }
+    return await hydrateAggieUsers(results);
+  } catch (e) {
+    return await filterGlobalFeed();
+  }
+}
+
 export async function getPingFeed(limit = 40): Promise<any[]> {
   try {
-    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?limit=${limit}`, {}, 12000);
-    if (!res.ok) throw new Error('Proxy Fetch Error');
-    const data = await res.json();
+    const data = await getPingFeedPage({ limit });
     return data.results || [];
   } catch (e) {
     warnFeedRead('[NativeFeeds] getPingFeed', e);
     return [];
+  }
+}
+
+export async function getPingFeedPage(params: {
+  limit?: number;
+  cursor?: FeedCursor | null;
+  refresh?: boolean;
+} = {}): Promise<PaginatedFeedResponse<any>> {
+  const { limit = 40, cursor = null, refresh = false } = params;
+
+  try {
+    const searchParams = new URLSearchParams({ limit: String(limit) });
+    if (cursor?.createdAt && cursor?.id) {
+      searchParams.set('cursor_created_at', cursor.createdAt);
+      searchParams.set('cursor_id', cursor.id);
+    }
+    if (refresh) {
+      searchParams.set('refresh', 'true');
+    }
+
+    const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings?${searchParams.toString()}`, {}, 12000);
+    if (!res.ok) throw new Error('Proxy Fetch Error');
+    const data = await res.json();
+    const hydratedResults = await hydrateAggieUsers(data.results || []);
+    return {
+      results: hydratedResults,
+      hasMore: Boolean(data.hasMore),
+      nextCursor: data.nextCursor || null,
+    };
+  } catch (e) {
+    warnFeedRead('[NativeFeeds] getPingFeedPage', e);
+    return {
+      results: [],
+      hasMore: false,
+      nextCursor: null,
+    };
   }
 }
 
@@ -127,24 +296,30 @@ export async function addPing(params: {
   userImage?: string;
   title: string;
   body: string;
-  category: string;
+  category?: string | null;
   locationTag: string;
   placeId?: string;
   startAt: string;
   endAt?: string;
   mediaUrl?: string;
+  mediaUrls?: string[];
+  isPinned?: boolean;
   latitude?: number;
   longitude?: number;
   anchorType?: 'place' | 'geo';
+  isAnonymous?: boolean;
 }): Promise<any> {
   const attachments: any[] = [];
-  if (params.mediaUrl) {
+  const urls = params.mediaUrls || (params.mediaUrl ? [params.mediaUrl] : []);
+  
+  urls.forEach(url => {
+    const isVideo = url.toLowerCase().match(/\.(mp4|mov|m4v)$/) || url.includes('video');
     attachments.push({
-      type: 'image',
-      image_url: params.mediaUrl,
+      type: isVideo ? 'video' : 'image',
+      [isVideo ? 'asset_url' : 'image_url']: url,
       custom: {},
     });
-  }
+  });
 
   const activity = {
     actor: `SU:${params.userId}`,
@@ -156,13 +331,13 @@ export async function addPing(params: {
       user_name: params.userName || getPremiumName(currentFullUser),
       user_image: params.userImage ?? getPremiumImage(currentFullUser) ?? '',
       ping_title: params.title,
-      ping_category: params.category,
+      ping_category: params.category?.trim() || undefined,
       location_tag: params.locationTag,
       place_id: params.placeId || '',
       start_at: params.startAt,
       end_at: params.endAt || '',
       content_type: 'ping',
-      is_anonymous: false,
+      is_anonymous: Boolean(params.isAnonymous),
       anchor_type: params.anchorType || 'place',
       place_lat: params.latitude,
       place_lng: params.longitude,
@@ -200,17 +375,20 @@ export async function addPost(params: {
   userImage?: string;
   caption?: string;
   mediaUrl?: string;
+  mediaUrls?: string[];
   mediaType?: 'image' | 'video';
   locationTag?: string;
 }): Promise<any> {
   const attachments: any[] = [];
-  if (params.mediaUrl) {
+  const urls = params.mediaUrls || (params.mediaUrl ? [params.mediaUrl] : []);
+
+  urls.forEach(url => {
     attachments.push({
       type: params.mediaType || 'image',
-      [params.mediaType === 'image' ? 'image_url' : 'asset_url']: params.mediaUrl,
+      [params.mediaType === 'image' ? 'image_url' : 'asset_url']: url,
       custom: {}
     });
-  }
+  });
 
   const activity = {
     actor: `SU:${params.userId}`,
@@ -238,7 +416,21 @@ export async function addPost(params: {
   }
 }
 
-export async function toggleVote(activityId: string, kind: 'upvote' | 'downvote' | 'none' | 'like'): Promise<any> {
+export async function togglePinPing(activityId: string, isPinned: boolean): Promise<any> {
+  const res = await feedFetch(`/chat/feeds/proxy/flat/campus_pings/${activityId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      activity: { 
+        custom: { is_pinned: isPinned } 
+      } 
+    }),
+  });
+  if (!res.ok) throw new Error('Pin toggle failed');
+  return res.json();
+}
+
+export async function toggleVote(activityId: string, kind: 'upvote' | 'downvote' | 'none' | 'like', parentId?: string): Promise<any> {
     if (!connectedUserId) throw new Error('Must be logged in to vote.');
     const res = await feedFetch('/chat/feeds/proxy/reactions', {
         method: 'POST',
@@ -247,6 +439,7 @@ export async function toggleVote(activityId: string, kind: 'upvote' | 'downvote'
             kind: kind, 
             activity_id: activityId, 
             user_id: connectedUserId,
+            parent_id: parentId,
             data: {
               name: getPremiumName(currentFullUser),
               image: getPremiumImage(currentFullUser)
@@ -283,7 +476,7 @@ export async function toggleLike(activityId: string, userId: string): Promise<an
     return res.json();
 }
 
-export async function addComment(activityId: string, user: any, text: string): Promise<any> {
+export async function addComment(activityId: string, user: any, text: string, parentId?: string): Promise<any> {
     const res = await feedFetch('/chat/feeds/proxy/reactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -291,6 +484,7 @@ export async function addComment(activityId: string, user: any, text: string): P
             kind: 'comment', 
             activity_id: activityId, 
             user_id: user?.id || user?.userId || connectedUserId,
+            parent_id: parentId,
             data: { 
                 text: text, 
                 comment: text,
@@ -392,7 +586,7 @@ export async function getReelsFeed(limit = 20): Promise<any[]> {
     const res = await feedFetch(`/chat/feeds/proxy/flat/reels_global?limit=${limit}`);
     if (!res.ok) throw new Error('Proxy Fetch Error');
     const data = await res.json();
-    return data.results || [];
+    return await hydrateAggieUsers(data.results || []);
   } catch (e) {
     console.warn('[NativeFeeds] getReelsFeed error:', e);
     return [];
@@ -406,10 +600,10 @@ export async function getPlaceReviews(placeId: string, limit = 5): Promise<any[]
         const res = await feedFetch(`/chat/feeds/proxy/flat/place_review_${slug}?limit=${limit}`, {}, 6000);
         if (!res.ok) throw new Error(`Proxy Fetch Error: ${res.status}`);
         const data = await res.json();
-        const results = data.results || [];
+        const results = await hydrateAggieUsers(data.results || []);
         return results.map((act: any) => ({
             id: act.id,
-            user: act.custom?.user_name || 'Aggie User',
+            user: act.custom?.user_name || act.actor?.data?.name || act.actor?.name || 'Aggie User',
             userId: act.custom?.user_id || act.actor?.id?.replace('SU:', '') || '',
             rating: act.custom?.rating || 0,
             comment: act.text || act.custom?.comment || ''
@@ -523,12 +717,23 @@ export async function addFriend(targetId: string, actingUserId?: string): Promis
     if (!requesterId) {
         throw new Error('Must be signed in to add a friend.');
     }
+    
+    // Debug logging for troubleshooting social connectivity
+    if (__DEV__) {
+      console.log(`[SocialService] addFriend: requester=${requesterId}, target=${targetId}`);
+    }
+
     const res = await feedFetch(`/chat/users/${requesterId}/friends`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target_id: targetId }),
     });
-    if (!res.ok) throw new Error('Failed to add friend.');
+
+    if (!res.ok) {
+        const errorText = await res.text();
+        console.warn(`[SocialService] addFriend failed: status=${res.status}, body=${errorText}`);
+        throw new Error('Failed to add friend.');
+    }
 }
 
 export async function removeFriend(targetId: string, actingUserId?: string): Promise<void> {
@@ -592,6 +797,15 @@ export async function reportContent(params: {
         })
     });
     if (!res.ok) throw new Error('Failed to submit report.');
+}
+
+export async function updateUserProfile(clerkId: string, profile: any): Promise<void> {
+    const res = await feedFetch(`/chat/users/${clerkId}/profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile),
+    });
+    if (!res.ok) throw new Error('Failed to update user profile.');
 }
 
 export async function deleteAccount(userId: string): Promise<void> {

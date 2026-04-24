@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView, SafeAreaView, StatusBar, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Alert, ScrollView, SafeAreaView, StatusBar } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { Trophy } from 'lucide-react-native';
 import { requestJson } from '../../api/client';
@@ -25,7 +25,7 @@ function shortenLoc(full: string): string {
 
 export default function RetailSwipesScreen({ navigation, embedded = false }: any) {
   const { user } = useUser();
-  const { theme, wallpaperUri } = useTheme();
+  const { theme } = useTheme();
   const darkMode = theme === 'dark';
   const T = useDiningTheme(darkMode);
 
@@ -129,8 +129,6 @@ export default function RetailSwipesScreen({ navigation, embedded = false }: any
       sourceHint: 'database',
     });
   };
-
-  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
 
   const content = (
       <ScrollView style={s.container} contentContainerStyle={{ padding: embedded ? 0 : 20, paddingBottom: 60 }}>
@@ -267,9 +265,6 @@ export default function RetailSwipesScreen({ navigation, embedded = false }: any
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
       <StatusBar barStyle={T.statusBar as any} backgroundColor="transparent" translucent />
-      <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: darkMode ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)' }]} />
-      </ImageBackground>
       {content}
     </SafeAreaView>
   );

@@ -14,15 +14,21 @@ import {
   Platform,
   ActivityIndicator,
   TextInput,
+  LayoutAnimation,
+  UIManager,
 } from "react-native";
 import {
   X,
   ExternalLink,
-  Calendar,
+  Search,
+  Bell,
+  BellRing,
   ChevronRight,
+  ChevronLeft,
   Utensils,
   Star,
   Navigation,
+  Activity,
   Flag,
   Shield,
   Trash2,
@@ -43,14 +49,20 @@ import {
   formatScheduleDays,
   getLocationContextLink,
 } from "./utils";
-import { getCanonicalLocationName } from "./campusData";
+import { getCanonicalLocationName, getLiveHoursForFacility } from "./campusData";
 import { getStaticRestaurantMenu } from "../../data/restaurantMenus";
 import { getRestaurantHoursToday } from "../../data/restaurantHours";
 import {
   DiningMealPeriod,
+  DiningMenuSearchResult,
+  formatDiningMenuDateLabel,
   isDiningHallMenuLocation,
+  searchDiningMenusForLocation,
+  shiftDiningMenuDate,
 } from "../../services/diningMenuCache";
 import { Alert } from "react-native";
+import { getLocalDateString } from "../../services/dateUtils";
+import { getDiningReminderId, getDiningReminderIds, toggleDiningReminder } from "../../services/diningReminders";
 
 import { ClassMeetingCard } from "./ClassMeetingCard";
 import { OccupancyChart } from "./OccupancyChart";
@@ -161,12 +173,41 @@ function formatLiveTimestamp(value?: string | null) {
   });
 }
 
+function formatTodayHoursLine(hoursSource?: string | null) {
+  if (!hoursSource) return null;
+
+  if (/typical/i.test(hoursSource)) {
+    return "Today Open 24 hours";
+  }
+
+  const matches = hoursSource.match(
+    /\d{1,2}:\d{2}\s*(?:am|pm)\s*-\s*\d{1,2}:\d{2}\s*(?:am|pm)/gi,
+  );
+
+  if (matches?.length) {
+    const normalized = matches.slice(0, 2).map((entry) =>
+      entry
+        .replace(/\b(am|pm)\b/gi, (token) => token.toUpperCase())
+        .replace(/\s*-\s*/g, " – ")
+        .replace(/\s+/g, " ")
+        .trim(),
+    );
+    return `Today ${normalized.join(" • ")}`;
+  }
+
+  const cleaned = hoursSource
+    .replace(/^(.*?:\s*)*Open Today:\s*/i, "")
+    .trim();
+
+  return cleaned ? `Today ${cleaned}` : null;
+}
+
 /**
  * ClassMeetingList - Isolated component for better render performance
  */
-const ClassMeetingList = React.memo(({ 
-  meetings, 
-}: { 
+const ClassMeetingList = React.memo(({
+  meetings,
+}: {
   meetings: any[] | null | undefined;
 }) => {
   if (!meetings?.length) return null;
@@ -201,6 +242,8 @@ interface LocationBottomSheetProps {
   setActiveDiningMenu: (v: string | null) => void;
   activeDiningMealPeriod: DiningMealPeriod;
   setActiveDiningMealPeriod: (v: DiningMealPeriod) => void;
+  activeDiningDate: string;
+  setActiveDiningDate: (v: string) => void;
   diningMenuPreview: any | null;
   isFetchingDining: boolean;
   isPrimaryDiningHallSelection: boolean;
@@ -210,6 +253,7 @@ interface LocationBottomSheetProps {
   // Recreation
   selectedRecreationFacility: any | null;
   recreationFacilityMap: Map<string, any>;
+  openFacilityCounts: (loc: CampusLocation) => void;
   // Navigation
   navigation: any;
   // External link
@@ -217,7 +261,14 @@ interface LocationBottomSheetProps {
   // Bus state — to know when not to show
   selectedStop: any;
   selectedBus: any;
-  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "drive" | "bus") => void;
+  openNavigationToLocation?: (loc: CampusLocation, mode?: "walk" | "bus") => void;
+  isFetchingDetail?: boolean;
+  // Meal Tracking integration
+  trackerCounts?: Record<string, { count: number; entryIds: number[] }>;
+  onAddMeal?: (item: any) => void;
+  onRemoveMeal?: (item: any) => void;
+  isSyncingTracker?: boolean;
+  isCompact?: boolean;
 }
 
 export function LocationBottomSheet({
@@ -233,6 +284,8 @@ export function LocationBottomSheet({
   setActiveDiningMenu,
   activeDiningMealPeriod,
   setActiveDiningMealPeriod,
+  activeDiningDate,
+  setActiveDiningDate,
   diningMenuPreview,
   isFetchingDining,
   isPrimaryDiningHallSelection,
@@ -240,11 +293,18 @@ export function LocationBottomSheet({
   openScheduleList,
   selectedRecreationFacility,
   recreationFacilityMap,
+  openFacilityCounts,
   navigation,
   getPlaceExternalLink,
   selectedStop,
   selectedBus,
   openNavigationToLocation,
+  isFetchingDetail,
+  trackerCounts = {},
+  onAddMeal,
+  onRemoveMeal,
+  isSyncingTracker = false,
+  isCompact = false,
 }: LocationBottomSheetProps) {
   const { user } = useUser();
   const { advanceStep, activeTargetName } = useTour();
@@ -256,29 +316,241 @@ export function LocationBottomSheet({
   const panStartY = useRef<number>(SHEET_HIDDEN_SNAP);
   const [sheetMode, setSheetMode] = useState<SheetMode>("hidden");
   const [diningDetailTab, setDiningDetailTab] = useState<"menus">("menus");
-  const [isFacilityCountsExpanded, setIsFacilityCountsExpanded] = useState(false);
+  const [isFacilitySelectorOpen, setIsFacilitySelectorOpen] = useState(false);
+  const [selectedFacilityCountName, setSelectedFacilityCountName] = useState<string | null>(null);
 
   const [activeCategoryKey, setActiveCategoryKey] = useState("all");
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [isDiningSearchOpen, setIsDiningSearchOpen] = useState(false);
+  const [diningSearchQuery, setDiningSearchQuery] = useState("");
+  const [diningSearchResults, setDiningSearchResults] = useState<DiningMenuSearchResult[]>([]);
+  const [isSearchingDiningMenus, setIsSearchingDiningMenus] = useState(false);
+  const [activeReminderIds, setActiveReminderIds] = useState<Set<string>>(new Set());
+  const [syncingReminderId, setSyncingReminderId] = useState<string | null>(null);
+  const diningChevronAnimsRef = useRef<Map<string, Animated.Value>>(new Map());
+  const diningCollapseTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const [closingDiningCategories, setClosingDiningCategories] = useState<Set<string>>(new Set());
+
+  const todayDateKey = getLocalDateString();
+  const isCurrentDiningDate = activeDiningDate === todayDateKey;
+  const canStepBackward = activeDiningDate !== shiftDiningMenuDate(todayDateKey, -30);
+  const canStepForward = activeDiningDate !== shiftDiningMenuDate(todayDateKey, 120);
+  const activeDiningHeaderTitle = useMemo(
+    () => formatDiningMenuDateLabel(activeDiningDate),
+    [activeDiningDate],
+  );
+
+  useEffect(() => {
+    if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
+
+  const getDiningChevronAnim = useCallback(
+    (categoryName: string, expanded: boolean) => {
+      const existing = diningChevronAnimsRef.current.get(categoryName);
+      if (existing) return existing;
+      const next = new Animated.Value(expanded ? 1 : 0);
+      diningChevronAnimsRef.current.set(categoryName, next);
+      return next;
+    },
+    [],
+  );
+
+  const animateDiningChevron = useCallback(
+    (categoryName: string, expanded: boolean) => {
+      const value = getDiningChevronAnim(categoryName, expanded);
+      Animated.timing(value, {
+        toValue: expanded ? 1 : 0,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
+    },
+    [getDiningChevronAnim],
+  );
+
+  const clearDiningCollapseTimer = useCallback((categoryName: string) => {
+    const existing = diningCollapseTimersRef.current.get(categoryName);
+    if (existing) {
+      clearTimeout(existing);
+      diningCollapseTimersRef.current.delete(categoryName);
+    }
+  }, []);
+
+  const loadReminderIds = useCallback(async () => {
+    const reminderIds = await getDiningReminderIds();
+    setActiveReminderIds(reminderIds);
+  }, []);
+
+  useEffect(() => {
+    loadReminderIds().catch(() => null);
+  }, [loadReminderIds]);
+
+  useEffect(() => {
+    if (!isDiningSearchOpen) {
+      setDiningSearchQuery("");
+      setDiningSearchResults([]);
+      setIsSearchingDiningMenus(false);
+      return;
+    }
+
+    if (!activeDiningMenu || diningSearchQuery.trim().length < 2) {
+      setDiningSearchResults([]);
+      setIsSearchingDiningMenus(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timeoutId = setTimeout(() => {
+      setIsSearchingDiningMenus(true);
+      searchDiningMenusForLocation({
+        location: activeDiningMenu,
+        query: diningSearchQuery,
+        startDate: activeDiningDate,
+      })
+        .then((results) => {
+          if (!cancelled) {
+            setDiningSearchResults(results);
+          }
+        })
+        .catch((error) => {
+          console.warn("Failed to search dining menus", error);
+          if (!cancelled) {
+            setDiningSearchResults([]);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setIsSearchingDiningMenus(false);
+          }
+        });
+    }, 220);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [activeDiningDate, activeDiningMenu, diningSearchQuery, isDiningSearchOpen]);
+
+  const toggleMenuReminder = useCallback(
+    async (item: any, categoryName: string, overrides?: { dateKey?: string; mealPeriod?: DiningMealPeriod }) => {
+      if (!selectedLoc) return;
+      const dateKey = overrides?.dateKey || activeDiningDate;
+      const mealPeriod = overrides?.mealPeriod || activeDiningMealPeriod;
+      const reminderId = getDiningReminderId({
+        location: activeDiningMenu || selectedLoc.location,
+        dateKey,
+        mealPeriod,
+        itemName: item.name,
+      });
+
+      setSyncingReminderId(reminderId);
+      try {
+        const result = await toggleDiningReminder({
+          itemName: item.name,
+          categoryName,
+          location: activeDiningMenu || selectedLoc.location,
+          dateKey,
+          mealPeriod,
+          locationLat: selectedLoc.coord.lat,
+          locationLng: selectedLoc.coord.lng,
+        });
+
+        if (result.status === "permission-denied") {
+          Alert.alert(
+            "Notifications Off",
+            "Please allow notifications if you want dining reminders.",
+          );
+          return;
+        }
+
+        await loadReminderIds();
+      } catch (error) {
+        console.warn("Failed to toggle dining reminder", error);
+        Alert.alert("Error", "Could not update this reminder right now.");
+      } finally {
+        setSyncingReminderId(null);
+      }
+    },
+    [
+      activeDiningDate,
+      activeDiningMealPeriod,
+      activeDiningMenu,
+      loadReminderIds,
+      selectedLoc,
+    ],
+  );
 
   const toggleCategory = useCallback((categoryName: string) => {
-    setCollapsedCategories((current) => {
+    clearDiningCollapseTimer(categoryName);
+    const isCurrentlyCollapsed = collapsedCategories.has(categoryName);
+
+    if (isCurrentlyCollapsed) {
+      setClosingDiningCategories((current) => {
+        const next = new Set(current);
+        next.delete(categoryName);
+        return next;
+      });
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setCollapsedCategories((current) => {
+        const next = new Set(current);
+        next.delete(categoryName);
+        return next;
+      });
+      animateDiningChevron(categoryName, true);
+      return;
+    }
+
+    animateDiningChevron(categoryName, false);
+    setClosingDiningCategories((current) => {
       const next = new Set(current);
-      if (next.has(categoryName)) next.delete(categoryName);
-      else next.add(categoryName);
+      next.add(categoryName);
       return next;
     });
-  }, []);
+
+    const timer = setTimeout(() => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setCollapsedCategories((current) => {
+        const next = new Set(current);
+        next.add(categoryName);
+        return next;
+      });
+      setClosingDiningCategories((current) => {
+        const next = new Set(current);
+        next.delete(categoryName);
+        return next;
+      });
+      diningCollapseTimersRef.current.delete(categoryName);
+    }, 220);
+
+    diningCollapseTimersRef.current.set(categoryName, timer);
+  }, [animateDiningChevron, clearDiningCollapseTimer, collapsedCategories]);
 
   useEffect(() => {
     if (diningMenuPreview?.categories) {
       const categoryNames = diningMenuPreview.categories.map((c: any) => c.name);
       setCollapsedCategories(new Set(categoryNames));
+      setClosingDiningCategories(new Set());
+      diningCollapseTimersRef.current.forEach((timer) => clearTimeout(timer));
+      diningCollapseTimersRef.current.clear();
+      categoryNames.forEach((name: string) => {
+        const value = getDiningChevronAnim(name, false);
+        value.setValue(0);
+      });
     }
-  }, [diningMenuPreview]);
+  }, [diningMenuPreview, getDiningChevronAnim]);
 
   useEffect(() => {
-    setIsFacilityCountsExpanded(false);
+    return () => {
+      diningCollapseTimersRef.current.forEach((timer) => clearTimeout(timer));
+      diningCollapseTimersRef.current.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    setIsDiningSearchOpen(false);
+    setDiningSearchQuery("");
+    setDiningSearchResults([]);
   }, [selectedId]);
 
   const animateSheet = useCallback(
@@ -305,15 +577,16 @@ export function LocationBottomSheet({
       setDiningDetailTab("menus");
     }
     if (selectedId) {
-      animateSheet(
-        selectedLoc && isDiningHallMenuLocation(selectedLoc.location) && isPrimaryDiningHallSelection
-          ? SHEET_DINING_HALL_SNAP
-          : SHEET_MID_SNAP,
-      );
+      const snap = isCompact 
+        ? SHEET_PEEK_SNAP 
+        : (selectedLoc && isDiningHallMenuLocation(selectedLoc.location) && isPrimaryDiningHallSelection
+            ? SHEET_DINING_HALL_SNAP
+            : SHEET_MID_SNAP);
+      animateSheet(snap);
     } else {
       animateSheet(SHEET_HIDDEN_SNAP);
     }
-  }, [selectedId, animateSheet, activeTargetName, foodCourtVenues.length, selectedLoc?.location, selectedLoc?.type]);
+  }, [selectedId, animateSheet, activeTargetName, foodCourtVenues.length, selectedLoc?.location, selectedLoc?.type, isCompact]);
 
   const isDiningHallCard =
     !!selectedLoc &&
@@ -326,33 +599,30 @@ export function LocationBottomSheet({
     : SHEET_MID_SNAP;
 
   const isPeekSheet = sheetMode === "peek";
+  const isParking = selectedLoc?.type === "Parking";
+  const isVisitorGarage =
+    isParking &&
+    (selectedLoc?.placeId === "osm:way:91100311" ||
+      selectedLoc?.placeId === "garage-polo" ||
+      selectedLoc?.placeId === "osm:way:450686873" ||
+      selectedLoc?.placeId === "garage-university-center" ||
+      selectedLoc?.placeId === "garage-west-campus");
   const isCapacityPlace =
     selectedLoc?.type === "Library" || selectedLoc?.type === "Rec";
-  const occupancyPercent = selectedLoc
-    ? Math.max(
-        0,
-        Math.min(
-          100,
-          selectedLoc.capacity && selectedLoc.capacity > 0 && selectedLoc.current_count != null
-            ? Math.round((selectedLoc.current_count / selectedLoc.capacity) * 100)
-            : Number.isFinite(selectedLoc.percent_full)
-              ? selectedLoc.percent_full
-              : 0,
-        ),
-      )
-    : 0;
-  const occupancyToneColor = selectedLoc
-    ? getStatusColor(occupancyPercent)
-    : COLORS.primary;
-  const occupancyCountLabel = useMemo(() => {
-    if (!selectedLoc || !isCapacityPlace) return null;
-    const cap = selectedLoc.capacity;
-    const cur = selectedLoc.current_count;
-    if (cap != null && cur != null && cap > 0) {
-      return `About ${cur.toLocaleString()} of ${cap.toLocaleString()} people`;
-    }
-    return null;
-  }, [selectedLoc, isCapacityPlace]);
+  const shouldHideCapacityOnCard = useMemo(() => {
+    if (!selectedLoc) return false;
+    const canonicalName = getCanonicalLocationName(selectedLoc.location);
+    const shortName = (selectedLoc.shortName || "").toUpperCase();
+    return (
+      canonicalName === "PEAP" ||
+      canonicalName === "Aquatics" ||
+      canonicalName === "Penberthy Rec Sports Complex-Tennis" ||
+      canonicalName === "Tennis Courts" ||
+      shortName === "PEAP" ||
+      shortName === "PENBERTHY" ||
+      shortName === "AQUATICS"
+    );
+  }, [selectedLoc]);
   const recreationFacilityCounts = useMemo<FacilityCountEntry[]>(() => {
     if (selectedLoc?.type !== "Rec") return [];
     if (Array.isArray(selectedLoc.facility_counts) && selectedLoc.facility_counts.length) {
@@ -363,24 +633,124 @@ export function LocationBottomSheet({
     }
     return [];
   }, [selectedLoc, selectedRecreationFacility]);
+  const preferredFacilityCount = useMemo<FacilityCountEntry | null>(() => {
+    if (selectedLoc?.type !== "Rec" || !recreationFacilityCounts.length) return null;
+
+    const selectedByName = selectedFacilityCountName
+      ? recreationFacilityCounts.find(
+          (entry) => entry.location_name === selectedFacilityCountName,
+        ) || null
+      : null;
+    if (selectedByName) return selectedByName;
+
+    const normalizedLocation = selectedLoc.location.toLowerCase();
+    const wantsStrengthAndConditioning =
+      normalizedLocation.includes("southside recreation center") ||
+      normalizedLocation.includes("student recreation center");
+
+    if (wantsStrengthAndConditioning) {
+      const strengthEntry =
+        recreationFacilityCounts.find((entry) =>
+          entry.location_name.toLowerCase().includes("strength & conditioning"),
+        ) ||
+        recreationFacilityCounts.find((entry) =>
+          entry.location_name.toLowerCase().includes("strength and conditioning"),
+        ) ||
+        null;
+      if (strengthEntry) return strengthEntry;
+    }
+
+    return recreationFacilityCounts[0] || null;
+  }, [recreationFacilityCounts, selectedFacilityCountName, selectedLoc]);
+  const activeFacilityCount = useMemo<FacilityCountEntry | null>(() => {
+    if (selectedLoc?.type !== "Rec") return null;
+    return preferredFacilityCount;
+  }, [preferredFacilityCount, selectedLoc?.type]);
+  const liveCapacitySource = useMemo(() => {
+    if (!selectedLoc || !isCapacityPlace) return null;
+
+    if (selectedLoc.type === "Rec" && activeFacilityCount) {
+      const capacity = activeFacilityCount.capacity;
+      const currentCount = activeFacilityCount.current_count;
+      const percentFull =
+        capacity && capacity > 0 && currentCount != null
+          ? Math.round((currentCount / capacity) * 100)
+          : Number.isFinite(activeFacilityCount.percent_full)
+            ? Math.round(activeFacilityCount.percent_full as number)
+            : 0;
+
+      return {
+        percentFull: Math.max(0, Math.min(100, percentFull)),
+        currentCount,
+        capacity,
+        lastUpdated: activeFacilityCount.last_updated || null,
+      };
+    }
+
+    const capacity = selectedLoc.capacity;
+    const currentCount = selectedLoc.current_count;
+    const percentFull =
+      capacity && capacity > 0 && currentCount != null
+        ? Math.round((currentCount / capacity) * 100)
+        : Number.isFinite(selectedLoc.percent_full)
+          ? selectedLoc.percent_full
+          : 0;
+
+    return {
+      percentFull: Math.max(0, Math.min(100, percentFull)),
+      currentCount,
+      capacity,
+      lastUpdated:
+        selectedLoc.capacity_last_updated || selectedLoc.capacity_as_of || null,
+    };
+  }, [activeFacilityCount, isCapacityPlace, selectedLoc]);
+  const occupancyPercent = liveCapacitySource?.percentFull ?? 0;
+  const occupancyToneColor = selectedLoc
+    ? getStatusColor(occupancyPercent)
+    : COLORS.primary;
+  const hasLiveParking =
+    isVisitorGarage && selectedLoc?.visitor_parking_available != null;
+  const hasLiveOccupancy =
+    isCapacityPlace &&
+    !shouldHideCapacityOnCard &&
+    liveCapacitySource != null &&
+    (liveCapacitySource.currentCount != null ||
+      selectedLoc?.percent_full != null ||
+      selectedLoc?.type === "Rec");
+  const hasAnyLiveData = hasLiveParking || hasLiveOccupancy;
+  const occupancyCountLabel = useMemo(() => {
+    if (!selectedLoc || !isCapacityPlace || !liveCapacitySource) return null;
+    const cap = liveCapacitySource.capacity;
+    const cur = liveCapacitySource.currentCount;
+    if (cap != null && cur != null && cap > 0) {
+      return `About ${cur.toLocaleString()} of ${cap.toLocaleString()} people`;
+    }
+    return null;
+  }, [isCapacityPlace, liveCapacitySource, selectedLoc]);
+  useEffect(() => {
+    if (selectedLoc?.type !== "Rec") {
+      setSelectedFacilityCountName(null);
+      setIsFacilitySelectorOpen(false);
+      return;
+    }
+
+    const defaultName = preferredFacilityCount?.location_name || null;
+    setSelectedFacilityCountName(defaultName);
+    setIsFacilitySelectorOpen(false);
+  }, [preferredFacilityCount?.location_name, selectedId, selectedLoc?.type]);
   const recCapacityLastUpdatedLabel = useMemo(() => {
-    if (selectedLoc?.type !== "Rec") return null;
-    return formatLiveTimestamp(
-      selectedLoc.capacity_last_updated ||
-        selectedLoc.capacity_as_of ||
-        selectedRecreationFacility?.last_updated ||
-        null,
-    );
+    if (!selectedLoc || !liveCapacitySource) return null;
+    if (selectedLoc.type === "Rec") {
+      return formatLiveTimestamp(
+        liveCapacitySource.lastUpdated || selectedRecreationFacility?.last_updated || null,
+      );
+    }
+    return formatLiveTimestamp(liveCapacitySource.lastUpdated);
   }, [
-    selectedLoc?.capacity_as_of,
-    selectedLoc?.capacity_last_updated,
-    selectedLoc?.type,
+    liveCapacitySource,
     selectedRecreationFacility?.last_updated,
+    selectedLoc,
   ]);
-  const recLiveSourceLabel = useMemo(() => {
-    if (selectedLoc?.type !== "Rec") return null;
-    return selectedLoc.occupancy_name || selectedRecreationFacility?.occupancy_name || null;
-  }, [selectedLoc?.occupancy_name, selectedLoc?.type, selectedRecreationFacility?.occupancy_name]);
   const parkingRecommendation = useMemo(() => {
     if (!selectedLoc || selectedLoc.type !== "Parking") return null;
     const lower = selectedLoc.location.toLowerCase();
@@ -399,9 +769,13 @@ export function LocationBottomSheet({
     if (!selectedLoc) return null;
     const holiday = selectedLoc.hours_holiday_notice;
     const suffix = holiday ? ` · ${holiday}` : "";
-    if (selectedLoc.hours_today) {
-      return `${selectedLoc.hours_today}${suffix}`;
-    }
+      if (selectedLoc.hours_today) {
+        return `${selectedLoc.hours_today}${suffix}`;
+      }
+      const dynamicHours = getLiveHoursForFacility(selectedLoc.location);
+      if (dynamicHours) {
+        return `${dynamicHours}${suffix}`;
+      }
     if (selectedLoc.type === "Rec") {
       const rec =
         selectedRecreationFacility?.today_hours ||
@@ -413,11 +787,45 @@ export function LocationBottomSheet({
     const base = selectedLoc.hours || null;
     return base ? `${base}${suffix}` : holiday || null;
   }, [selectedLoc, selectedRecreationFacility]);
+  const selectedTodayHoursLine = useMemo(() => {
+    if (!selectedLoc) return null;
+
+    const hoursSource =
+      selectedLoc.hours_today ||
+      getLiveHoursForFacility(selectedLoc.location) ||
+      (selectedLoc.type === "Rec"
+        ? selectedRecreationFacility?.today_hours ||
+          selectedRecreationFacility?.hours_hint ||
+          selectedLoc.hours ||
+          null
+        : null) ||
+      (selectedLoc.type === "Dining" || selectedLoc.type === "Hub"
+        ? getRestaurantHoursToday(selectedLoc.location)
+        : null) ||
+      null;
+
+    return formatTodayHoursLine(hoursSource);
+  }, [selectedLoc, selectedRecreationFacility]);
   const peekMetaText = useMemo(() => {
     if (!selectedLoc) return "";
 
-    if (isCapacityPlace) {
-      return `${occupancyPercent}% full`;
+    if (isFetchingDetail && !hasAnyLiveData && isVisitorGarage) {
+      return "Loading...";
+    }
+    if (hasLiveParking) {
+      return `Visitor: ${selectedLoc.visitor_parking_available.toLocaleString()} spaces (live)`;
+    }
+    if (hasLiveOccupancy) {
+      return `${liveCapacitySource?.percentFull ?? occupancyPercent}% full`;
+    }
+    if (selectedTodayHoursLine) {
+      return selectedTodayHoursLine;
+    }
+    if (selectedHoursLabel) {
+      return selectedHoursLabel;
+    }
+    if (isCapacityPlace && !shouldHideCapacityOnCard) {
+      return `${liveCapacitySource?.percentFull ?? occupancyPercent}% full`;
     }
     if (
       selectedLoc.type === "Parking" &&
@@ -427,10 +835,6 @@ export function LocationBottomSheet({
       const name = selectedLoc.visitor_parking_garage_name;
       const label = code && name ? `${code} (${name})` : code || "Garage";
       return `${label}: ${selectedLoc.visitor_parking_available.toLocaleString()} spaces (live)`;
-    }
-    if (selectedHoursLabel) {
-      if (selectedLoc.hours_today) return selectedHoursLabel;
-      return selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel;
     }
     if (isFoodCourtHub) {
       return `${foodCourtVenues.length} locations`;
@@ -449,9 +853,17 @@ export function LocationBottomSheet({
     foodCourtVenues.length,
     isCapacityPlace,
     isFoodCourtHub,
+    hasAnyLiveData,
+    hasLiveOccupancy,
+    hasLiveParking,
+    isFetchingDetail,
+    isVisitorGarage,
+    liveCapacitySource?.percentFull,
     occupancyPercent,
     selectedHoursLabel,
+    selectedTodayHoursLine,
     selectedLoc,
+    shouldHideCapacityOnCard,
   ]);
   const contextLink = useMemo(
     () => (selectedLoc ? getLocationContextLink(selectedLoc) : null),
@@ -463,36 +875,12 @@ export function LocationBottomSheet({
   );
   const heroMetaText = useMemo(() => {
     if (!selectedLoc) return "";
-
-    const bits: string[] = [];
-    if (selectedLoc.address) {
-      bits.push(selectedLoc.address);
-    }
-    const hoursDetailTypes = new Set([
-      "Library",
-      "Dining",
-      "Rec",
-      "Parking",
-      "Hub",
-    ]);
-    const hoursShownInCard =
-      !!selectedLoc.hours_today && hoursDetailTypes.has(selectedLoc.type);
-    if (selectedHoursLabel && !hoursShownInCard) {
-      if (selectedLoc.hours_today) {
-        bits.push(selectedHoursLabel);
-      } else {
-        bits.push(selectedLoc.type === "Rec" ? `Today ${selectedHoursLabel}` : selectedHoursLabel);
-      }
-    } else if (!selectedHoursLabel && selectedLoc.current_event) {
-      bits.push(selectedLoc.current_event);
-    } else if (hoursShownInCard && selectedLoc.current_event) {
-      bits.push(selectedLoc.current_event);
-    }
-    if (!bits.length && isFoodCourtHub) {
-      bits.push(`${foodCourtVenues.length} dining locations inside`);
-    }
-    return bits.filter(Boolean).slice(0, 2).join(" • ");
-  }, [foodCourtVenues.length, isFoodCourtHub, selectedHoursLabel, selectedLoc]);
+    const parts = [
+      selectedLoc.address,
+      selectedTodayHoursLine || selectedHoursLabel,
+    ].filter(Boolean);
+    return parts.slice(0, 2).join(" • ");
+  }, [selectedHoursLabel, selectedLoc, selectedTodayHoursLine]);
   const officialFacilityUrl = useMemo(
     () =>
       selectedLoc?.type === "Rec"
@@ -522,6 +910,9 @@ export function LocationBottomSheet({
   const handlePeekExpand = useCallback(() => {
     animateSheet(preferredExpandedSnap);
   }, [animateSheet, preferredExpandedSnap]);
+  const handleDiningMenuExpand = useCallback(() => {
+    animateSheet(SHEET_TOP_SNAP);
+  }, [animateSheet]);
 
   const handleExternalLinkPress = useCallback(() => {
     if (!selectedLoc || !externalLink) return;
@@ -612,136 +1003,133 @@ export function LocationBottomSheet({
   return (
     <>
       <Animated.View
+        {...(sheetMode !== "top" ? panResponder.panHandlers : {})}
         style={[styles.bottomSheet, { transform: [{ translateY: sheetY }] }]}
-        {...panResponder.panHandlers}
       >
-        <View style={styles.dragHandle} />
-
         {selectedLoc ? (
           <>
-            <View style={[styles.heroCard, isPeekSheet && styles.heroCardPeek]}>
-              <View style={[styles.heroHeadingRow, isPeekSheet && styles.heroHeadingRowPeek]}>
-                <View style={styles.heroHeadingText}>
-                  <Text
-                    style={[
-                      styles.locationName,
-                      isPeekSheet ? styles.locationNamePeek : styles.locationNameExpanded,
-                    ]}
-                    numberOfLines={isPeekSheet ? 1 : 3}
-                  >
-                    {selectedLoc.location}
-                  </Text>
+            <View {...(sheetMode === "top" ? panResponder.panHandlers : {})}>
+              <View style={styles.dragHandle} />
 
-                  {((isPeekSheet ? peekMetaText : heroMetaText) || "").length ? (
+              <View style={[styles.heroCard, isPeekSheet && styles.heroCardPeek]}>
+                <View style={[styles.heroHeadingRow, isPeekSheet && styles.heroHeadingRowPeek]}>
+                  <View style={styles.heroHeadingText}>
                     <Text
                       style={[
-                        styles.heroMetaText,
-                        isPeekSheet && styles.heroMetaTextPeek,
+                        styles.locationName,
+                        isPeekSheet ? styles.locationNamePeek : styles.locationNameExpanded,
                       ]}
-                      numberOfLines={1}
+                      numberOfLines={isPeekSheet ? 1 : 3}
                     >
-                      {isPeekSheet ? peekMetaText : heroMetaText}
+                      {selectedLoc.location}
                     </Text>
-                  ) : null}
-                </View>
 
-                {isPeekSheet ? (
-                  <TouchableOpacity
-                    style={styles.peekPrimaryAction}
-                    activeOpacity={0.85}
-                    onPress={handlePeekExpand}
-                  >
-                    <ChevronRight size={18} color={COLORS.primary} />
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    onPress={() => setSelectedId(null)}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    style={styles.dismissBtn}
-                  >
-                    <X size={16} color="#888" />
-                  </TouchableOpacity>
+                    {((isPeekSheet ? peekMetaText : heroMetaText) || "").length ? (
+                      <Text
+                        style={[
+                          styles.heroMetaText,
+                          isPeekSheet && styles.heroMetaTextPeek,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {isPeekSheet ? peekMetaText : heroMetaText}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  {isPeekSheet ? (
+                    <TouchableOpacity
+                      style={styles.peekPrimaryAction}
+                      activeOpacity={0.85}
+                      onPress={handlePeekExpand}
+                    >
+                      <ChevronRight size={18} color={COLORS.primary} />
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => setSelectedId(null)}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      style={styles.dismissBtn}
+                    >
+                      <X size={16} color="#888" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                
+                {(isCompact || !isPeekSheet) && (
+                  <View style={[styles.quickActionRow, isCompact && { marginTop: 12 }]}>
+                    <TouchableOpacity
+                      style={styles.quickActionPill}
+                      onPress={handleNavigatePress}
+                    >
+                      <Navigation size={14} color={COLORS.textPrimary} strokeWidth={3} />
+                      <Text style={styles.quickActionText}>Directions</Text>
+                    </TouchableOpacity>
+
+                    {contextLink ? (
+                      <TouchableOpacity
+                        style={styles.quickActionPill}
+                        onPress={handleContextLinkPress}
+                      >
+                        <ExternalLink size={14} color={COLORS.textPrimary} strokeWidth={3} />
+                        <Text style={styles.quickActionText}>
+                          {contextLink.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+
+                    {!isCompact && (
+                      <>
+                        {selectedLoc.type === "Rec" && (
+                          <TouchableOpacity
+                            style={styles.quickActionPill}
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                              openFacilityCounts(selectedLoc);
+                            }}
+                          >
+                            <Activity size={14} color={COLORS.textPrimary} />
+                            <Text style={styles.quickActionText}>Live Counts</Text>
+                          </TouchableOpacity>
+                        )}
+
+                        {externalLink && externalLink.label !== "Open in Maps" && (
+                          <TouchableOpacity
+                            style={styles.quickActionPill}
+                            onPress={handleExternalLinkPress}
+                          >
+                            <ExternalLink size={14} color={COLORS.textPrimary} />
+                            <Text style={styles.quickActionText}>
+                              {externalLink.label}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </>
+                    )}
+                  </View>
                 )}
               </View>
-
-              {!isPeekSheet ? (
-                <View style={styles.quickActionRow}>
-                  <TouchableOpacity
-                    style={styles.quickActionPill}
-                    onPress={handleNavigatePress}
-                  >
-                    <Navigation size={14} color={COLORS.textPrimary} />
-                    <Text style={styles.quickActionText}>Directions</Text>
-                  </TouchableOpacity>
-
-                  {externalLink && externalLink.label !== "Open in Maps" ? (
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={handleExternalLinkPress}
-                    >
-                      <ExternalLink size={14} color={COLORS.textPrimary} />
-                      <Text style={styles.quickActionText}>
-                        {externalLink.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-
-                  {activeDiningMenu && isDiningHallCard ? (
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={() => openFullMenu(activeDiningMenu, activeDiningMealPeriod)}
-                    >
-                      <Utensils size={14} color={COLORS.textPrimary} />
-                      <Text style={styles.quickActionText}>Menus</Text>
-                    </TouchableOpacity>
-                  ) : null}
-
-                  {selectedLoc.classMeetings?.length ? (
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={openScheduleList}
-                    >
-                      <Calendar size={14} color={COLORS.textPrimary} />
-                      <Text style={styles.quickActionText}>Today</Text>
-                    </TouchableOpacity>
-                  ) : null}
-
-                  {contextLink ? (
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={handleContextLinkPress}
-                    >
-                      <ExternalLink size={14} color={COLORS.textPrimary} />
-                      <Text style={styles.quickActionText}>
-                        {contextLink.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : null}
-
-                  {selectedLoc.type === "Rec" && recreationFacilityCounts.length ? (
-                    <TouchableOpacity
-                      style={styles.quickActionPill}
-                      onPress={() =>
-                        setIsFacilityCountsExpanded((current) => !current)
-                      }
-                    >
-                      <ChevronDown
-                        size={14}
-                        color={COLORS.textPrimary}
-                        style={{
-                          transform: [
-                            { rotate: isFacilityCountsExpanded ? "180deg" : "0deg" },
-                          ],
-                        }}
-                      />
-                      <Text style={styles.quickActionText}>Facility Counts</Text>
-                    </TouchableOpacity>
-                  ) : null}
-                </View>
-              ) : null}
             </View>
 
-            {!isPeekSheet && selectedLoc.type === "Parking" ? (
+            {!isPeekSheet && isFetchingDetail && !hasAnyLiveData && isVisitorGarage ? (
+              <View style={{ paddingVertical: 80, alignItems: "center", justifyContent: "center" }}>
+                <ActivityIndicator color={COLORS.primary} size="large" />
+                <Text
+                  style={{
+                    marginTop: 16,
+                    color: COLORS.textTertiary,
+                    fontSize: 13,
+                    fontWeight: "600",
+                  }}
+                >
+                  Fetching live data...
+                </Text>
+              </View>
+            ) : null}
+
+            {!isPeekSheet &&
+            selectedLoc.type === "Parking" &&
+            !(isFetchingDetail && !hasAnyLiveData && isVisitorGarage) ? (
               <View style={[styles.occupancyBlock, { padding: 18 }]}>
                 {selectedLoc.visitor_parking_available != null ? (
                   <View style={{ marginBottom: 14 }}>
@@ -781,10 +1169,10 @@ export function LocationBottomSheet({
                             color: COLORS.textPrimary,
                           },
                         ]}
-                      >
-                        {selectedLoc.visitor_parking_available.toLocaleString()}
-                      </Text>
-                      <Text
+                    >
+                      {selectedLoc.visitor_parking_available.toLocaleString()}
+                    </Text>
+                    <Text
                         style={[
                           styles.sectionTitle,
                           {
@@ -793,12 +1181,22 @@ export function LocationBottomSheet({
                             color: COLORS.textSecondary,
                           },
                         ]}
-                      >
-                        SPACES OPEN
-                      </Text>
-                    </View>
+                    >
+                      SPACES OPEN
+                    </Text>
                   </View>
-                ) : (
+                  {selectedLoc.visitor_parking_as_of ? (
+                    <Text
+                      style={[
+                        styles.contextCardBody,
+                        { marginTop: 6, opacity: 0.8, fontSize: 12 },
+                      ]}
+                    >
+                      Updated {formatLiveTimestamp(selectedLoc.visitor_parking_as_of)}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : (
                   <View style={{ marginBottom: 14 }}>
                     <Text style={[styles.sectionTitle, { marginBottom: 4 }]}>
                       Visitor Parking
@@ -818,7 +1216,7 @@ export function LocationBottomSheet({
                   style={[styles.sheetDivider, { marginVertical: 12, opacity: 0.5 }]}
                 />
 
-                {selectedLoc.hours_today && (
+                {(selectedTodayHoursLine || selectedHoursLabel) ? (
                   <View
                     style={{
                       flexDirection: "row",
@@ -840,13 +1238,11 @@ export function LocationBottomSheet({
                           { fontWeight: "700", color: COLORS.textPrimary },
                         ]}
                       >
-                        {selectedLoc.hours_today.includes("Typical")
-                          ? "Available 24/7"
-                          : selectedLoc.hours_today.replace(/.*?:\s*/, "")}
+                        {selectedTodayHoursLine || selectedHoursLabel}
                       </Text>
                     </View>
                   </View>
-                )}
+                ) : null}
 
                 {selectedLoc.visitor_parking_available == null && (
                   <Text
@@ -881,7 +1277,7 @@ export function LocationBottomSheet({
             ) : null}
 
             {!isPeekSheet &&
-            selectedLoc.type !== "Parking" &&
+            selectedLoc.type === "Parking" &&
             parkingRecommendation ? (
               <View style={styles.contextCard}>
                 <Text style={styles.contextCardTitle}>
@@ -889,27 +1285,6 @@ export function LocationBottomSheet({
                 </Text>
                 <Text style={styles.contextCardBody}>
                   {parkingRecommendation.detail}
-                </Text>
-              </View>
-            ) : null}
-
-            {!isPeekSheet &&
-            (selectedLoc.hours_today || getRestaurantHoursToday(selectedLoc.location)) &&
-            selectedLoc.type !== "Parking" &&
-            (selectedLoc.type === "Library" ||
-              selectedLoc.type === "Dining" ||
-              selectedLoc.type === "Rec" ||
-              selectedLoc.type === "Hub") ? (
-              <View style={styles.contextCard}>
-                <Text style={styles.contextCardTitle}>Open today</Text>
-                <Text style={styles.contextCardBody}>
-                  {(() => {
-                    const hoursSource = selectedLoc.hours_today || getRestaurantHoursToday(selectedLoc.location) || "";
-                    const matches = hoursSource.match(/\d{1,2}:\d{2}\s*(?:am|pm)\s*-\s*\d{1,2}:\d{2}\s*(?:am|pm)/gi);
-                    return matches && matches.length > 0 
-                      ? matches.join(", ") 
-                      : hoursSource.replace(/^(.*?:\s*)*Open Today:\s*/i, "").trim();
-                  })()}
                 </Text>
               </View>
             ) : null}
@@ -926,7 +1301,7 @@ export function LocationBottomSheet({
             ) : null}
 
             {/* Occupancy / links */}
-            {!isPeekSheet && isCapacityPlace ? (
+            {!isPeekSheet && isCapacityPlace && !shouldHideCapacityOnCard ? (
               <View style={styles.infoBlock}>
                 <View style={styles.occupancyBlock}>
                   <View style={styles.occupancySummaryRow}>
@@ -953,6 +1328,33 @@ export function LocationBottomSheet({
                       ]}
                     />
                   </View>
+                  {selectedLoc.type === "Rec" && recreationFacilityCounts.length ? (
+                    <View style={styles.facilityPickerWrap}>
+                      <TouchableOpacity
+                        style={styles.facilityPickerTrigger}
+                        onPress={() =>
+                          setIsFacilitySelectorOpen((current) => !current)
+                        }
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          style={styles.facilityPickerText}
+                          numberOfLines={1}
+                        >
+                          {activeFacilityCount?.location_name || "Choose facility"}
+                        </Text>
+                        <ChevronDown
+                          size={14}
+                          color={COLORS.textSecondary}
+                          style={{
+                            transform: [
+                              { rotate: isFacilitySelectorOpen ? "180deg" : "0deg" },
+                            ],
+                          }}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
                 </View>
 
                 {occupancyCountLabel ? (
@@ -966,17 +1368,6 @@ export function LocationBottomSheet({
                   </Text>
                 ) : null}
 
-                {selectedLoc.type === "Rec" && recLiveSourceLabel ? (
-                  <Text
-                    style={[
-                      styles.contextCardBody,
-                      { marginTop: occupancyCountLabel ? 6 : 8, opacity: 0.95 },
-                    ]}
-                  >
-                    Live source: {recLiveSourceLabel}
-                  </Text>
-                ) : null}
-
                 {selectedLoc.type === "Rec" && recCapacityLastUpdatedLabel ? (
                   <Text
                     style={[
@@ -986,18 +1377,6 @@ export function LocationBottomSheet({
                   >
                     Last updated: {recCapacityLastUpdatedLabel}
                   </Text>
-                ) : null}
-
-                {officialFacilityUrl && officialFacilityUrl !== externalLink?.url ? (
-                  <TouchableOpacity
-                    style={styles.inlineLinkRow}
-                    onPress={() => Linking.openURL(officialFacilityUrl).catch(() => {})}
-                  >
-                    <ExternalLink size={14} color={COLORS.primary} />
-                    <Text style={styles.inlineLinkText}>
-                      Open official facility page
-                    </Text>
-                  </TouchableOpacity>
                 ) : null}
               </View>
             ) : null}
@@ -1013,69 +1392,57 @@ export function LocationBottomSheet({
             >
               {isDiningMenuExperience ? (
                 <>
-                  <View style={styles.detailTabsWrap}>
-                    <View style={styles.mapsTabRow}>
-                      {[
-                        {
-                          key: "menus",
-                          label: isDiningHallCard ? "Menu" : "Locations",
-                        },
-                      ].map((tab) => {
-                        const isActive = diningDetailTab === tab.key;
-                        return (
-                          <TouchableOpacity
-                            key={tab.key}
-                            style={styles.mapsTabButton}
-                            onPress={() =>
-                              setDiningDetailTab(tab.key as "menus")
-                            }
-                            activeOpacity={0.75}
+                  {isDiningHallCard ? (
+                    <View style={styles.detailTabsWrap}>
+                      <View style={styles.mapsTabRow}>
+                        <TouchableOpacity
+                          style={styles.mapsTabButton}
+                          onPress={() => setDiningDetailTab("menus")}
+                          activeOpacity={0.75}
+                        >
+                          <Text
+                            style={[
+                              styles.mapsTabLabel,
+                              diningDetailTab === "menus" && styles.mapsTabLabelActive,
+                            ]}
                           >
-                            <Text
-                              style={[
-                                styles.mapsTabLabel,
-                                isActive && styles.mapsTabLabelActive,
-                              ]}
-                            >
-                              {tab.label}
-                            </Text>
-                            <View
-                              style={[
-                                styles.mapsTabUnderline,
-                                isActive && styles.mapsTabUnderlineActive,
-                              ]}
-                            />
-                          </TouchableOpacity>
-                        );
-                      })}
+                            Menu
+                          </Text>
+                          <View
+                            style={[
+                              styles.mapsTabUnderline,
+                              diningDetailTab === "menus" &&
+                                styles.mapsTabUnderlineActive,
+                            ]}
+                          />
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                  </View>
+                  ) : null}
 
                   {diningDetailTab === "menus" ? (
                     <View style={styles.infoBlock}>
-                      <View style={styles.reviewsHeader}>
+                      <View
+                        style={[
+                          styles.reviewsHeader,
+                          !isDiningHallCard && styles.reviewsHeaderCompact,
+                        ]}
+                      >
                         <View>
-                          <Text style={styles.sectionTitle}>
-                            {isDiningHallCard ? "Menu" : "Inside this Food Court"}
-                          </Text>
-                          <Text style={styles.menuIntroText}>
-                            {isDiningHallCard
-                              ? "Use the Menus button above to open the full dining hall menu."
-                              : "Browse the dining locations available inside this hub."}
-                          </Text>
-                        </View>
-                        {isDiningHallCard && activeDiningMenu ? (
-                          <TouchableOpacity
-                            onPress={() =>
-                              openFullMenu(
-                                activeDiningMenu || selectedLoc.location,
-                                activeDiningMealPeriod,
-                              )
-                            }
+                          <Text
+                            style={[
+                              styles.sectionTitle,
+                              !isDiningHallCard && styles.sectionTitleCompact,
+                            ]}
                           >
-                            <Text style={styles.seeAllText}>Open full menu</Text>
-                          </TouchableOpacity>
-                        ) : null}
+                            {isDiningHallCard ? "Menu" : "Dining Locations"}
+                          </Text>
+                          {isDiningHallCard ? (
+                            <Text style={styles.menuIntroText}>
+                              Browse the current dining hall menu below.
+                            </Text>
+                          ) : null}
+                        </View>
                       </View>
 
                       {!isDiningHallCard && foodCourtVenues.length > 0 ? (
@@ -1083,33 +1450,35 @@ export function LocationBottomSheet({
                           {foodCourtVenues.map((venue, idx) => {
                             const candidate = venue.menuCandidate || venue.location.location;
                             const hasMenuSource = !!getStaticRestaurantMenu(candidate) || isDiningHallMenuLocation(candidate);
-                            
+
                             return (
-                            <View key={`${venue.selectionId}-${idx}`} style={styles.foodCourtVenueCard}>
-                              <View style={{ flex: 1, paddingRight: 12 }}>
+                            <View
+                              key={`${venue.selectionId}-${idx}`}
+                              style={styles.foodCourtVenueRow}
+                            >
+                              <View style={styles.foodCourtVenueRowMain}>
                                 <Text style={styles.foodCourtVenueTitle}>
                                   {venue.label}
                                 </Text>
                                 <Text style={styles.foodCourtVenueMeta}>
-                                  {getRestaurantHoursToday(venue.label) || 
+                                  {getRestaurantHoursToday(venue.label) ||
                                    (venue.location.shortName && venue.location.shortName !== venue.location.location
                                      ? venue.location.shortName
                                      : "Dining location")}
                                 </Text>
                               </View>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <Text style={styles.foodCourtVenueAction}>Inside</Text>
-                                {hasMenuSource ? (
-                                  <TouchableOpacity
-                                    onPress={() => openFullMenu(candidate)}
-                                    style={styles.foodCourtVenueMenuBtn}
-                                    activeOpacity={0.7}
-                                  >
-                                    <Utensils size={11} color="#FFF" />
-                                    <Text style={styles.foodCourtVenueMenuBtnText}>Menu</Text>
-                                  </TouchableOpacity>
-                                ) : null}
-                              </View>
+                              {hasMenuSource ? (
+                                <TouchableOpacity
+                                  onPress={() => openFullMenu(candidate)}
+                                  style={styles.foodCourtVenueMenuLink}
+                                  activeOpacity={0.7}
+                                >
+                                  <Utensils size={12} color={COLORS.primary} />
+                                  <Text style={styles.foodCourtVenueMenuLinkText}>
+                                    Menu
+                                  </Text>
+                                </TouchableOpacity>
+                              ) : null}
                             </View>
                             );
                           })}
@@ -1145,68 +1514,6 @@ export function LocationBottomSheet({
                 </>
               ) : (
                 <>
-                  {selectedLoc.type === "Rec" &&
-                  isFacilityCountsExpanded &&
-                  recreationFacilityCounts.length ? (
-                    <View style={styles.infoBlock}>
-                      <View style={styles.reviewsHeader}>
-                        <View>
-                          <Text style={styles.sectionTitle}>Facility Counts</Text>
-                          <Text style={styles.menuIntroText}>
-                            Live sub-facility counts from the rec API.
-                          </Text>
-                        </View>
-                      </View>
-
-                      <View style={styles.facilityCountsPanel}>
-                        {recreationFacilityCounts.map((entry, index) => {
-                          const percentLabel =
-                            typeof entry.percent_full === "number"
-                              ? `${Math.round(entry.percent_full)}% full`
-                              : "No live percentage";
-                          const countLabel =
-                            entry.current_count != null && entry.capacity != null
-                              ? `${entry.current_count.toLocaleString()} / ${entry.capacity.toLocaleString()} people`
-                              : entry.current_count != null
-                                ? `${entry.current_count.toLocaleString()} people`
-                                : "No live count";
-                          const updatedLabel = formatLiveTimestamp(entry.last_updated);
-
-                          return (
-                            <View
-                              key={`${entry.location_name}-${index}`}
-                              style={styles.facilityCountCard}
-                            >
-                              <View style={styles.facilityCountHeader}>
-                                <Text style={styles.facilityCountName}>
-                                  {entry.location_name}
-                                </Text>
-                                {entry.is_closed ? (
-                                  <View style={styles.facilityCountBadge}>
-                                    <Text style={styles.facilityCountBadgeText}>
-                                      Closed
-                                    </Text>
-                                  </View>
-                                ) : null}
-                              </View>
-                              <Text style={styles.facilityCountMeta}>
-                                {countLabel}
-                              </Text>
-                              <Text style={styles.facilityCountMeta}>
-                                {percentLabel}
-                              </Text>
-                              {updatedLabel ? (
-                                <Text style={styles.facilityCountMeta}>
-                                  Last updated: {updatedLabel}
-                                </Text>
-                              ) : null}
-                            </View>
-                          );
-                        })}
-                      </View>
-                    </View>
-                  ) : null}
-
                   {/* Traffic chart */}
                   {(selectedLoc.type === "Library" ||
                     selectedLoc.type === "Rec") && (
@@ -1244,11 +1551,115 @@ export function LocationBottomSheet({
                 contentContainerStyle={{ paddingBottom: 60, paddingTop: 12 }}
                 scrollEventThrottle={16}
               >
-                <View style={{ marginBottom: 12 }}>
-                  <Text style={styles.sectionTitle}>Menu</Text>
+                <View style={{ marginBottom: 12, gap: 12 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 16, position: 'relative', minHeight: 40 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                        <TouchableOpacity
+                          onPress={() => setActiveDiningDate(shiftDiningMenuDate(activeDiningDate, -1))}
+                          disabled={!canStepBackward}
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 17,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: COLORS.card,
+                            opacity: canStepBackward ? 1 : 0.35,
+                          }}
+                        >
+                          <ChevronLeft size={18} color={COLORS.textPrimary} />
+                        </TouchableOpacity>
+
+                        <Text
+                          style={{
+                            fontSize: 15,
+                            fontWeight: "600",
+                            color: COLORS.textPrimary,
+                            textTransform: 'none',
+                          }}
+                        >
+                          {activeDiningHeaderTitle}
+                        </Text>
+
+                        <TouchableOpacity
+                          onPress={() => setActiveDiningDate(shiftDiningMenuDate(activeDiningDate, 1))}
+                          disabled={!canStepForward}
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 17,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: COLORS.card,
+                            opacity: canStepForward ? 1 : 0.35,
+                          }}
+                        >
+                          <ChevronRight size={18} color={COLORS.textPrimary} />
+                        </TouchableOpacity>
+                      </View>
+
+                      <View style={{ position: 'absolute', right: 0 }}>
+                        <TouchableOpacity
+                          onPress={() => setIsDiningSearchOpen((current) => !current)}
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 17,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor: isDiningSearchOpen
+                              ? (isDark ? "rgba(80,0,0,0.22)" : "rgba(80,0,0,0.1)")
+                              : COLORS.card,
+                          }}
+                        >
+                          <Search size={17} color={COLORS.textPrimary} />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                  {isDiningSearchOpen ? (
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 10,
+                        borderRadius: 16,
+                        paddingHorizontal: 14,
+                        paddingVertical: 12,
+                        backgroundColor: COLORS.card,
+                        borderWidth: 1,
+                        borderColor: COLORS.border,
+                        marginTop: 4,
+                        marginBottom: 4,
+                      }}
+                    >
+                      <Search size={16} color={COLORS.textSecondary} />
+                      <TextInput
+                        value={diningSearchQuery}
+                        onChangeText={setDiningSearchQuery}
+                        placeholder="Search menus..."
+                        placeholderTextColor={COLORS.textTertiary}
+                        style={{
+                          flex: 1,
+                          color: COLORS.textPrimary,
+                          fontSize: 15,
+                          fontWeight: "600",
+                          paddingVertical: 0,
+                        }}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                      {diningSearchQuery.length > 0 ? (
+                        <TouchableOpacity onPress={() => setDiningSearchQuery("")}>
+                          <X size={16} color={COLORS.textSecondary} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                  ) : null}
+
                 </View>
 
-                <View style={{ marginBottom: 16, flexDirection: 'row', gap: 24 }}>
+                <View style={{ marginBottom: 20, flexDirection: 'row', gap: 16 }}>
                   {ALL_DINING_MEAL_PERIODS.map((period) => {
                     const isActive = activeDiningMealPeriod === period;
                     return (
@@ -1256,15 +1667,18 @@ export function LocationBottomSheet({
                         key={period}
                         onPress={() => setActiveDiningMealPeriod(period)}
                         style={{
-                          paddingBottom: 6,
+                          flex: 1,
+                          alignItems: 'center',
+                          paddingVertical: 12,
                           borderBottomWidth: 2,
                           borderBottomColor: isActive ? COLORS.primary : 'transparent',
                         }}
                       >
                         <Text style={{
-                          fontSize: 15,
-                          fontWeight: isActive ? '700' : '600',
+                          fontSize: 14,
+                          fontWeight: isActive ? '700' : '500',
                           color: isActive ? COLORS.textPrimary : COLORS.textTertiary,
+                          letterSpacing: 0.2,
                         }}>
                           {period.charAt(0).toUpperCase() + period.slice(1)}
                         </Text>
@@ -1273,7 +1687,106 @@ export function LocationBottomSheet({
                   })}
                 </View>
 
-                {diningMenuPreview?.categories?.length > 0 ? (
+                {isDiningSearchOpen ? (
+                  <View style={{ marginBottom: 18, gap: 10 }}>
+                    {isSearchingDiningMenus ? (
+                      <View style={{ paddingVertical: 12, alignItems: "center" }}>
+                        <ActivityIndicator color={COLORS.primary} />
+                      </View>
+                    ) : diningSearchQuery.trim().length < 2 ? (
+                      null
+                    ) : diningSearchResults.length === 0 ? (
+                      <Text style={{ color: COLORS.textSecondary, fontSize: 13, fontWeight: "600" }}>
+                        No upcoming matches found yet for "{diningSearchQuery.trim()}".
+                      </Text>
+                    ) : (
+                      diningSearchResults.map((result) => {
+                        const reminderId = getDiningReminderId({
+                          location: result.resolvedLocation,
+                          dateKey: result.dateKey,
+                          mealPeriod: result.mealPeriod,
+                          itemName: result.item.name,
+                        });
+                        const hasReminder = activeReminderIds.has(reminderId);
+                        const isSyncingReminder = syncingReminderId === reminderId;
+
+                        return (
+                          <TouchableOpacity
+                            key={result.id}
+                            activeOpacity={0.86}
+                            onPress={() => {
+                              setActiveDiningDate(result.dateKey);
+                              setActiveDiningMealPeriod(result.mealPeriod);
+                              setActiveCategoryKey(result.categoryName);
+                              setIsDiningSearchOpen(false);
+                            }}
+                            style={{
+                              borderRadius: 18,
+                              padding: 14,
+                              backgroundColor: COLORS.card,
+                              borderWidth: 1,
+                              borderColor: COLORS.border,
+                              gap: 8,
+                            }}
+                          >
+                            <View
+                              style={{
+                                flexDirection: "row",
+                                justifyContent: "space-between",
+                                alignItems: "flex-start",
+                                gap: 12,
+                              }}
+                            >
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ color: COLORS.textPrimary, fontSize: 15, fontWeight: "800" }}>
+                                  {result.item.name}
+                                </Text>
+                                <Text style={{ color: COLORS.textSecondary, fontSize: 12, fontWeight: "700", marginTop: 4 }}>
+                                  {result.categoryName} · {result.mealPeriod.charAt(0).toUpperCase() + result.mealPeriod.slice(1)} · {formatDiningMenuDateLabel(result.dateKey).replace(/\sMenu$/, "")}
+                                </Text>
+                                {result.mealWindowLabel ? (
+                                  <Text style={{ color: COLORS.textTertiary, fontSize: 12, fontWeight: "600", marginTop: 2 }}>
+                                    {result.mealWindowLabel}
+                                  </Text>
+                                ) : null}
+                              </View>
+
+                              <TouchableOpacity
+                                onPress={() =>
+                                  toggleMenuReminder(result.item, result.categoryName, {
+                                    dateKey: result.dateKey,
+                                    mealPeriod: result.mealPeriod,
+                                  })
+                                }
+                                disabled={isSyncingReminder}
+                                style={{
+                                  width: 38,
+                                  height: 38,
+                                  borderRadius: 19,
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  backgroundColor: hasReminder
+                                    ? (isDark ? "rgba(80,0,0,0.22)" : "rgba(80,0,0,0.12)")
+                                    : (isDark ? "#17181B" : "#F5F6F8"),
+                                }}
+                              >
+                                {isSyncingReminder ? (
+                                  <ActivityIndicator size="small" color={COLORS.primary} />
+                                ) : hasReminder ? (
+                                  <BellRing size={16} color={COLORS.primary} />
+                                ) : (
+                                  <Bell size={16} color={COLORS.textSecondary} />
+                                )}
+                              </TouchableOpacity>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })
+                    )}
+                  </View>
+                ) : null}
+
+                {!isDiningSearchOpen && diningMenuPreview?.categories?.length > 0 ? (
                   <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
@@ -1300,8 +1813,13 @@ export function LocationBottomSheet({
                         },
                       ]}
                       onPress={() => {
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                         setActiveCategoryKey("all");
                         const categoryNames = diningMenuPreview.categories.map((c: any) => c.name);
+                        categoryNames.forEach((name: string) => {
+                          const value = getDiningChevronAnim(name, false);
+                          value.setValue(0);
+                        });
                         setCollapsedCategories(new Set(categoryNames));
                       }}
                       activeOpacity={0.8}
@@ -1336,13 +1854,15 @@ export function LocationBottomSheet({
                             borderColor: "transparent",
                             backgroundColor: "#E8EEF9",
                           },
-                        ]}
-                        onPress={() => {
-                          setActiveCategoryKey(category.name);
-                          setCollapsedCategories(new Set());
-                        }}
-                        activeOpacity={0.8}
-                      >
+                      ]}
+                      onPress={() => {
+                        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                        setActiveCategoryKey(category.name);
+                        setCollapsedCategories(new Set());
+                        animateDiningChevron(category.name, true);
+                      }}
+                      activeOpacity={0.8}
+                    >
                         <Text
                           style={[
                             { fontSize: 13, fontWeight: "600", color: COLORS.textSecondary },
@@ -1356,7 +1876,7 @@ export function LocationBottomSheet({
                   </ScrollView>
                 ) : null}
 
-                {isFetchingDining ? (
+                {isDiningSearchOpen ? null : isFetchingDining ? (
                   <View style={{ paddingTop: 40, alignItems: "center" }}>
                     <ActivityIndicator color={COLORS.primary} size="large" />
                   </View>
@@ -1377,16 +1897,42 @@ export function LocationBottomSheet({
                       .map((category: any) => {
                         const isAllSelected = activeCategoryKey === "all";
                         const isCollapsed = isAllSelected && collapsedCategories.has(category.name);
-                        
+                        const isClosing = isAllSelected && closingDiningCategories.has(category.name);
+                        const shouldRenderContent = !isCollapsed || isClosing;
+                        const chevronAnim = getDiningChevronAnim(category.name, !isCollapsed);
+                        const chevronAnimatedStyle = {
+                          transform: [
+                            {
+                              rotate: chevronAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: ["0deg", "180deg"],
+                              }),
+                            },
+                          ],
+                        };
+
                         return (
-                          <View key={category.name} style={isAllSelected ? { marginBottom: 12, backgroundColor: COLORS.card, borderRadius: 16, overflow: "hidden" } : {}}>
+                          <View
+                            key={category.name}
+                            style={
+                              isAllSelected
+                                ? {
+                                    marginBottom: 12,
+                                    marginHorizontal: -4,
+                                    backgroundColor: COLORS.card,
+                                    borderRadius: 16,
+                                    overflow: "hidden",
+                                  }
+                                : {}
+                            }
+                          >
                             {isAllSelected && (
                               <TouchableOpacity
                                 style={{
                                   flexDirection: "row",
                                   alignItems: "center",
                                   justifyContent: "space-between",
-                                  paddingHorizontal: 16,
+                                  paddingHorizontal: 12,
                                   paddingVertical: 18,
                                 }}
                                 onPress={() => toggleCategory(category.name)}
@@ -1395,60 +1941,222 @@ export function LocationBottomSheet({
                                 <Text style={{ fontSize: 18, fontWeight: "800", color: COLORS.textPrimary }}>
                                   {category.name}
                                 </Text>
-                                {!isCollapsed ? (
-                                  <ChevronUp size={20} color={COLORS.primary} />
-                                ) : (
+                                <Animated.View style={chevronAnimatedStyle}>
                                   <ChevronDown size={20} color={COLORS.primary} />
-                                )}
+                                </Animated.View>
                               </TouchableOpacity>
                             )}
 
-                            {!isCollapsed && (
-                              <View style={isAllSelected ? { paddingHorizontal: 16, paddingBottom: 16 } : {}}>
-                                {category.items.map((item: any, idx: number) => (
-                                  <View
-                                    key={`${category.name}-${item.name}-${idx}`}
-                                    style={{
-                                      paddingVertical: 14,
-                                      borderBottomWidth: idx === category.items.length - 1 ? 0 : 1,
-                                      borderBottomColor: COLORS.border,
-                                    }}
-                                  >
-                                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-                                      <View style={{ flex: 1, paddingRight: 12 }}>
-                                        <Text style={{ fontSize: 15, fontWeight: "700", color: COLORS.textPrimary, marginBottom: 8, lineHeight: 20 }}>
-                                          {item.name}
-                                        </Text>
-                                        <View style={{ flexDirection: "row", gap: 16 }}>
-                                          <View>
-                                            <Text style={{ fontSize: 9, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 2 }}>
-                                              Energy
-                                            </Text>
-                                            <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.textPrimary }}>
-                                              {Math.round(item.calories || 0)} kcal
-                                            </Text>
-                                          </View>
-                                          {item.protein ? (
+                            {shouldRenderContent && (
+                              <Animated.View
+                                style={
+                                  isAllSelected
+                                    ? {
+                                        paddingHorizontal: 10,
+                                        paddingBottom: 14,
+                                        opacity: chevronAnim,
+                                        transform: [
+                                          {
+                                            translateY: chevronAnim.interpolate({
+                                              inputRange: [0, 1],
+                                              outputRange: [-10, 0],
+                                            }),
+                                          },
+                                        ],
+                                      }
+                                    : {
+                                        opacity: chevronAnim,
+                                        transform: [
+                                          {
+                                            translateY: chevronAnim.interpolate({
+                                              inputRange: [0, 1],
+                                              outputRange: [-8, 0],
+                                            }),
+                                          },
+                                        ],
+                                      }
+                                }
+                              >
+                                {category.items.map((item: any, idx: number) => {
+                                  const reminderId = getDiningReminderId({
+                                    location: activeDiningMenu || selectedLoc?.location || "",
+                                    dateKey: activeDiningDate,
+                                    mealPeriod: activeDiningMealPeriod,
+                                    itemName: item.name,
+                                  });
+                                  const hasReminder = activeReminderIds.has(reminderId);
+                                  const isReminderSyncing = syncingReminderId === reminderId;
+                                  const itemAnimatedStyle = {
+                                    opacity: chevronAnim.interpolate({
+                                      inputRange: [0, Math.min(1, 0.28 + idx * 0.08), 1],
+                                      outputRange: [0, 0, 1],
+                                    }),
+                                    transform: [
+                                      {
+                                        translateY: chevronAnim.interpolate({
+                                          inputRange: [0, Math.min(1, 0.32 + idx * 0.08), 1],
+                                          outputRange: [-10 - idx * 2, -6, 0],
+                                        }),
+                                      },
+                                    ],
+                                  };
+
+                                  return (
+                                    <Animated.View
+                                      key={`${category.name}-${item.name}-${idx}`}
+                                      style={[
+                                        {
+                                          paddingVertical: 12,
+                                          borderBottomWidth: idx === category.items.length - 1 ? 0 : 1,
+                                          borderBottomColor: COLORS.border,
+                                        },
+                                        itemAnimatedStyle,
+                                      ]}
+                                    >
+                                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                        <View style={{ flex: 1, paddingRight: 10 }}>
+                                          <Text style={{ fontSize: 15, fontWeight: "700", color: COLORS.textPrimary, marginBottom: 7, lineHeight: 20 }}>
+                                            {item.name}
+                                          </Text>
+                                          <View style={{ flexDirection: "row", gap: 12 }}>
                                             <View>
                                               <Text style={{ fontSize: 9, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 2 }}>
-                                                Protein
+                                                Energy
                                               </Text>
                                               <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.textPrimary }}>
-                                                {Math.round(item.protein)}g
+                                                {Math.round(item.calories || 0)} kcal
                                               </Text>
                                             </View>
-                                          ) : null}
+                                            {item.protein ? (
+                                              <View>
+                                                <Text style={{ fontSize: 9, fontWeight: "700", color: COLORS.textSecondary, textTransform: "uppercase", marginBottom: 2 }}>
+                                                  Protein
+                                                </Text>
+                                                <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.textPrimary }}>
+                                                  {Math.round(item.protein)}g
+                                                </Text>
+                                              </View>
+                                            ) : null}
+                                          </View>
                                         </View>
+
+                                        <View style={{ alignItems: "flex-end", marginTop: 4 }}>
+                                          {isDiningHallCard && isCurrentDiningDate && onAddMeal && onRemoveMeal ? (
+                                            <View style={{
+                                              flexDirection: 'row',
+                                              alignItems: 'center',
+                                              gap: 6,
+                                              marginLeft: 2,
+                                            }}>
+                                              <TouchableOpacity
+                                                onPress={() => toggleMenuReminder(item, category.name)}
+                                                disabled={isReminderSyncing}
+                                                style={{
+                                                  width: 34,
+                                                  height: 34,
+                                                  borderRadius: 17,
+                                                  alignItems: "center",
+                                                  justifyContent: "center",
+                                                  backgroundColor: hasReminder
+                                                    ? (isDark ? "rgba(80,0,0,0.22)" : "rgba(80,0,0,0.12)")
+                                                    : (isDark ? "#17181B" : "#F5F6F8"),
+                                                }}
+                                              >
+                                                {isReminderSyncing ? (
+                                                  <ActivityIndicator size="small" color={COLORS.primary} />
+                                                ) : hasReminder ? (
+                                                  <BellRing size={16} color={COLORS.primary} />
+                                                ) : (
+                                                  <Bell size={16} color={COLORS.textSecondary} />
+                                                )}
+                                              </TouchableOpacity>
+
+                                              <View style={{ minWidth: 26, alignItems: 'flex-end', justifyContent: 'center' }}>
+                                                {(trackerCounts[item.name]?.count || 0) > 0 && (
+                                                  <Text style={{ fontSize: 12, fontWeight: "800", color: COLORS.textSecondary }}>
+                                                    {trackerCounts[item.name].count}x
+                                                  </Text>
+                                                )}
+                                              </View>
+
+                                              {(trackerCounts[item.name]?.count || 0) > 0 && (
+                                                <TouchableOpacity
+                                                  onPress={() => onRemoveMeal(item)}
+                                                  disabled={isSyncingTracker}
+                                                  style={{
+                                                    width: 32,
+                                                    height: 32,
+                                                    borderRadius: 16,
+                                                    borderWidth: 1.5,
+                                                    borderColor: "#FF4D6D",
+                                                    backgroundColor: isDark ? "rgba(255,77,109,0.12)" : "rgba(255,77,109,0.08)",
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    opacity: isSyncingTracker ? 0.6 : 1
+                                                  }}
+                                                >
+                                                  <Text style={{ fontSize: 20, fontWeight: "900", color: "#FF4D6D", lineHeight: 22 }}>-</Text>
+                                                </TouchableOpacity>
+                                              )}
+
+                                              <TouchableOpacity
+                                                onPress={() => onAddMeal(item)}
+                                                disabled={isSyncingTracker}
+                                                style={{
+                                                  width: 32,
+                                                  height: 32,
+                                                  borderRadius: 16,
+                                                  borderWidth: 1.5,
+                                                  borderColor: "#5B9A68",
+                                                  backgroundColor: isDark ? "rgba(91,154,104,0.12)" : "rgba(91,154,104,0.08)",
+                                                  alignItems: 'center',
+                                                  justifyContent: 'center',
+                                                  opacity: isSyncingTracker ? 0.6 : 1
+                                                }}
+                                              >
+                                                {isSyncingTracker ? (
+                                                  <ActivityIndicator size="small" color="#5B9A68" />
+                                                ) : (
+                                                  <Text style={{ fontSize: 20, fontWeight: "900", color: "#5B9A68", lineHeight: 22 }}>+</Text>
+                                                )}
+                                              </TouchableOpacity>
+                                            </View>
+                                          ) : (
+                                            <TouchableOpacity
+                                              onPress={() => toggleMenuReminder(item, category.name)}
+                                              disabled={isReminderSyncing}
+                                              style={{
+                                                width: 34,
+                                                height: 34,
+                                                borderRadius: 17,
+                                                alignItems: "center",
+                                                justifyContent: "center",
+                                                backgroundColor: hasReminder
+                                                  ? (isDark ? "rgba(80,0,0,0.22)" : "rgba(80,0,0,0.12)")
+                                                  : (isDark ? "#17181B" : "#F5F6F8"),
+                                              }}
+                                            >
+                                              {isReminderSyncing ? (
+                                                <ActivityIndicator size="small" color={COLORS.primary} />
+                                              ) : hasReminder ? (
+                                                <BellRing size={16} color={COLORS.primary} />
+                                              ) : (
+                                                <Bell size={16} color={COLORS.textSecondary} />
+                                              )}
+                                            </TouchableOpacity>
+                                          )}
+                                        </View>
+
+                                        {!isDiningHallCard && (item.dietary?.includes("Vegetarian") || item.dietary?.includes("Vegan")) ? (
+                                          <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#E6EFDE", alignItems: "center", justifyContent: "center", marginTop: 2 }}>
+                                            <Leaf size={13} color="#5B9A68" />
+                                          </View>
+                                        ) : null}
                                       </View>
-                                      {item.dietary?.includes("Vegetarian") || item.dietary?.includes("Vegan") ? (
-                                        <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: "#E6EFDE", alignItems: "center", justifyContent: "center", marginTop: 2 }}>
-                                          <Leaf size={13} color="#5B9A68" />
-                                        </View>
-                                      ) : null}
-                                    </View>
-                                  </View>
-                                ))}
-                              </View>
+                                    </Animated.View>
+                                  );
+                                })}
+                              </Animated.View>
                             )}
                           </View>
                         );
@@ -1461,8 +2169,52 @@ export function LocationBottomSheet({
         ) : null}
       </Animated.View>
 
+      <Modal
+        visible={isFacilitySelectorOpen}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setIsFacilitySelectorOpen(false)}
+      >
+        <TouchableWithoutFeedback onPress={() => setIsFacilitySelectorOpen(false)}>
+          <View style={styles.facilityListBackdrop}>
+            <TouchableWithoutFeedback>
+              <View style={styles.facilityListModal}>
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.facilityListContent}
+                >
+                  {recreationFacilityCounts.map((entry, index) => {
+                    const isSelected =
+                      entry.location_name === activeFacilityCount?.location_name;
 
-
+                    return (
+                      <TouchableOpacity
+                        key={`${entry.location_name}-${index}`}
+                        style={[
+                          styles.facilityListRow,
+                          isSelected && styles.facilityListRowActive,
+                        ]}
+                        activeOpacity={0.85}
+                        onPress={() => {
+                          setSelectedFacilityCountName(entry.location_name);
+                          setIsFacilitySelectorOpen(false);
+                        }}
+                      >
+                        <Text
+                          style={styles.facilityListRowText}
+                          numberOfLines={1}
+                        >
+                          {entry.location_name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
     </>
   );

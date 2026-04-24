@@ -12,6 +12,7 @@
       "distribution": "internal"
     },
     "production": {
+      "node": "20.19.0",
       "autoIncrement": true
     }
   },

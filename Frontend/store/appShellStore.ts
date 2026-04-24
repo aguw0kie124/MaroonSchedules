@@ -15,8 +15,7 @@ export type PlacesPillId =
   | 'Academic'
   | 'Heatmap';
 export type ParkingPermit = 'visitor' | 'garage' | 'any_valid' | 'west_campus' | 'resident';
-export type SettingsTabId = 'personal' | 'layout' | 'resources';
-export type TabBarMode = 'floating' | 'solid';
+export type SettingsTabId = 'pings' | 'nutrition' | 'resources' | 'personal';
 export type EventTimePreference = 'Morning' | 'Afternoon' | 'Evening' | 'Anytime';
 export type EventSocialPreference = 'casual' | 'professional';
 
@@ -38,20 +37,20 @@ export const PARKING_PERMIT_OPTIONS: Array<{ id: ParkingPermit; label: string; d
 export const DEFAULT_NAV_ITEMS: ToggleLayoutItem<NavItemId>[] = [
   { id: 'Dashboard', label: 'Events', visible: true, order: 0 },
   { id: 'Places', label: 'Places', visible: true, order: 1 },
-  { id: 'Social', label: 'Pings', visible: true, order: 2 },
+  { id: 'Social', label: 'Social', visible: true, order: 2 },
   { id: 'Dining', label: 'Dining', visible: false, order: 3 },
 ];
 
 export const DEFAULT_PLACES_PILLS: ToggleLayoutItem<PlacesPillId>[] = [
   { id: 'Pulse', label: 'Pulse', visible: true, order: 0 },
-  { id: 'Today', label: 'Today', visible: true, order: 1 },
-  { id: 'Bus', label: 'Buses', visible: true, order: 2 },
-  { id: 'Dining', label: 'Dining', visible: true, order: 3 },
-  { id: 'Heatmap', label: 'Traffic', visible: false, order: 4 },
-  { id: 'Parking', label: 'Parking', visible: false, order: 5 },
-  { id: 'Library', label: 'Libraries', visible: true, order: 6 },
-  { id: 'Academic', label: 'Academic', visible: false, order: 7 },
-  { id: 'Rec', label: 'Gyms', visible: false, order: 8 },
+  { id: 'Rec', label: 'Gyms', visible: true, order: 1 },
+  { id: 'Dining', label: 'Dining', visible: true, order: 2 },
+  { id: 'Bus', label: 'Buses', visible: true, order: 3 },
+  { id: 'Library', label: 'Libraries', visible: true, order: 4 },
+  { id: 'Today', label: 'Today', visible: false, order: 5 },
+  { id: 'Heatmap', label: 'Traffic', visible: false, order: 6 },
+  { id: 'Parking', label: 'Parking', visible: false, order: 7 },
+  { id: 'Academic', label: 'Academic', visible: false, order: 8 },
 ];
 
 function sortItems<T extends string>(items: ToggleLayoutItem<T>[]) {
@@ -117,11 +116,7 @@ function isPermit(value: unknown): value is ParkingPermit {
 }
 
 function isSettingsTabId(value: unknown): value is SettingsTabId {
-  return value === 'personal' || value === 'layout' || value === 'resources';
-}
-
-function isTabBarMode(value: unknown): value is TabBarMode {
-  return value === 'floating' || value === 'solid';
+  return value === 'personal' || value === 'pings' || value === 'resources' || value === 'nutrition';
 }
 
 type AppShellState = {
@@ -129,15 +124,16 @@ type AppShellState = {
   placesPills: ToggleLayoutItem<PlacesPillId>[];
   navItems: ToggleLayoutItem<NavItemId>[];
   settingsTab: SettingsTabId;
-  tabBarMode: TabBarMode;
   isBottomBarHidden: boolean;
   selectedScheduleId: string | null;
   isTOSAccepted: boolean;
-  isTourCompleted: boolean;
   isNotificationPrompted: boolean;
+  isNameOnboardingCompleted: boolean;
+  showNameOnboarding: boolean;
   isEventPreferencesCompleted: boolean;
   showEventPreferencesOnboarding: boolean;
   preferredEventCategories: string[];
+  preferredEventInterests: string[];
   preferredTime: EventTimePreference | null;
   preferredSocialMode: EventSocialPreference | null;
   adminAccessStatus: boolean | null;
@@ -146,27 +142,37 @@ type AppShellState = {
   placeNotifications: boolean;
   pingNotifications: boolean;
   notificationLeadTime: number;
+  tabBarMode: 'floating' | 'solid';
+  userBio: string;
+  userGender: string;
+  userDisplayName: string;
+  showPingsOnProfile: boolean;
+  viewedStoryIds: string[];
   setParkingPermit: (permit: ParkingPermit) => void;
   togglePlacesPill: (id: PlacesPillId) => void;
   movePlacesPill: (id: PlacesPillId, direction: -1 | 1) => void;
   toggleNavItem: (id: NavItemId) => void;
   moveNavItem: (id: NavItemId, direction: -1 | 1) => void;
   setSettingsTab: (tab: SettingsTabId) => void;
-  setTabBarMode: (mode: TabBarMode) => void;
   setBottomBarHidden: (hidden: boolean) => void;
   setSelectedScheduleId: (id: string | null) => void;
   setTOSAccepted: (accepted: boolean) => void;
-  setTourCompleted: (completed: boolean) => void;
   setNotificationPrompted: (prompted: boolean) => void;
+  setNameOnboardingCompleted: (completed: boolean) => void;
+  setShowNameOnboarding: (visible: boolean) => void;
   setEventPreferencesCompleted: (completed: boolean) => void;
   setShowEventPreferencesOnboarding: (visible: boolean) => void;
   setPreferredEventCategories: (categories: string[]) => void;
+  setPreferredEventInterests: (interests: string[]) => void;
   setPreferredTime: (time: EventTimePreference | null) => void;
   setPreferredSocialMode: (mode: EventSocialPreference | null) => void;
   setAdminAccessStatus: (status: boolean | null) => void;
   setNotificationsEnabled: (enabled: boolean) => void;
   setNotificationPreference: (key: 'event' | 'place' | 'ping', value: boolean) => void;
   setNotificationLeadTime: (time: number) => void;
+  setTabBarMode: (mode: 'floating' | 'solid') => void;
+  setUserProfile: (data: { bio?: string; gender?: string; showPings?: boolean; displayName?: string }) => void;
+  addViewedStory: (id: string) => void;
 };
 
 export const useAppShellStore = create<AppShellState>()(
@@ -175,16 +181,17 @@ export const useAppShellStore = create<AppShellState>()(
       parkingPermit: 'any_valid',
       placesPills: DEFAULT_PLACES_PILLS,
       navItems: DEFAULT_NAV_ITEMS,
-      settingsTab: 'personal',
-      tabBarMode: 'solid',
+      settingsTab: 'pings',
       isBottomBarHidden: false,
       selectedScheduleId: null,
       isTOSAccepted: false,
-      isTourCompleted: false,
       isNotificationPrompted: false,
+      isNameOnboardingCompleted: false,
+      showNameOnboarding: false,
       isEventPreferencesCompleted: false,
       showEventPreferencesOnboarding: false,
       preferredEventCategories: [],
+      preferredEventInterests: [],
       preferredTime: null,
       preferredSocialMode: null,
       adminAccessStatus: null,
@@ -193,6 +200,7 @@ export const useAppShellStore = create<AppShellState>()(
       placeNotifications: true,
       pingNotifications: true,
       notificationLeadTime: 5,
+      tabBarMode: 'solid',
       setParkingPermit: (parkingPermit) => set({ parkingPermit }),
       togglePlacesPill: (id) =>
         set((state) => ({
@@ -211,15 +219,16 @@ export const useAppShellStore = create<AppShellState>()(
           navItems: moveItem(state.navItems, id, direction),
         })),
       setSettingsTab: (settingsTab) => set({ settingsTab }),
-      setTabBarMode: (tabBarMode) => set({ tabBarMode }),
       setBottomBarHidden: (isBottomBarHidden) => set({ isBottomBarHidden }),
       setSelectedScheduleId: (selectedScheduleId) => set({ selectedScheduleId }),
       setTOSAccepted: (isTOSAccepted) => set({ isTOSAccepted }),
-      setTourCompleted: (isTourCompleted) => set({ isTourCompleted }),
       setNotificationPrompted: (isNotificationPrompted) => set({ isNotificationPrompted }),
+      setNameOnboardingCompleted: (isNameOnboardingCompleted) => set({ isNameOnboardingCompleted }),
+      setShowNameOnboarding: (showNameOnboarding) => set({ showNameOnboarding }),
       setEventPreferencesCompleted: (isEventPreferencesCompleted) => set({ isEventPreferencesCompleted }),
       setShowEventPreferencesOnboarding: (showEventPreferencesOnboarding) => set({ showEventPreferencesOnboarding }),
       setPreferredEventCategories: (preferredEventCategories) => set({ preferredEventCategories }),
+      setPreferredEventInterests: (preferredEventInterests) => set({ preferredEventInterests }),
       setPreferredTime: (preferredTime) => set({ preferredTime }),
       setPreferredSocialMode: (preferredSocialMode) => set({ preferredSocialMode }),
       setAdminAccessStatus: (adminAccessStatus) => set({ adminAccessStatus }),
@@ -228,23 +237,40 @@ export const useAppShellStore = create<AppShellState>()(
         [`${key}Notifications`]: value,
       })),
       setNotificationLeadTime: (notificationLeadTime) => set({ notificationLeadTime }),
+      setTabBarMode: (tabBarMode) => set({ tabBarMode }),
+      userBio: '',
+      userGender: '',
+      userDisplayName: '',
+      showPingsOnProfile: true,
+      viewedStoryIds: [],
+      setUserProfile: (data) =>
+        set((state) => ({
+          userBio: data.bio !== undefined ? data.bio : state.userBio,
+          userGender: data.gender !== undefined ? data.gender : state.userGender,
+          userDisplayName: data.displayName !== undefined ? data.displayName : state.userDisplayName,
+          showPingsOnProfile: data.showPings !== undefined ? data.showPings : state.showPingsOnProfile,
+        })),
+      addViewedStory: (id) => set((state) => ({
+        viewedStoryIds: state.viewedStoryIds.includes(id) ? state.viewedStoryIds : [...state.viewedStoryIds, id],
+      })),
     }),
     {
       name: 'app-shell-store',
-      version: 6,
+      version: 11,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         parkingPermit: state.parkingPermit,
         placesPills: state.placesPills,
         navItems: state.navItems,
         settingsTab: state.settingsTab,
-        tabBarMode: state.tabBarMode,
         selectedScheduleId: state.selectedScheduleId,
         isTOSAccepted: state.isTOSAccepted,
-        isTourCompleted: state.isTourCompleted,
         isNotificationPrompted: state.isNotificationPrompted,
+        isNameOnboardingCompleted: state.isNameOnboardingCompleted,
+        showNameOnboarding: state.showNameOnboarding,
         isEventPreferencesCompleted: state.isEventPreferencesCompleted,
         preferredEventCategories: state.preferredEventCategories,
+        preferredEventInterests: state.preferredEventInterests,
         preferredTime: state.preferredTime,
         preferredSocialMode: state.preferredSocialMode,
         notificationsEnabled: state.notificationsEnabled,
@@ -252,6 +278,12 @@ export const useAppShellStore = create<AppShellState>()(
         placeNotifications: state.placeNotifications,
         pingNotifications: state.pingNotifications,
         notificationLeadTime: state.notificationLeadTime,
+        tabBarMode: state.tabBarMode,
+        userBio: state.userBio,
+        userGender: state.userGender,
+        userDisplayName: state.userDisplayName,
+        showPingsOnProfile: state.showPingsOnProfile,
+        viewedStoryIds: state.viewedStoryIds,
       }),
       merge: (persistedState, currentState) => {
         const persisted = (persistedState as Partial<AppShellState>) || {};
@@ -265,9 +297,6 @@ export const useAppShellStore = create<AppShellState>()(
           settingsTab: isSettingsTabId(persisted.settingsTab)
             ? persisted.settingsTab
             : currentState.settingsTab,
-          tabBarMode: isTabBarMode(persisted.tabBarMode)
-            ? persisted.tabBarMode
-            : currentState.tabBarMode,
           selectedScheduleId:
             typeof persisted.selectedScheduleId === 'string' || persisted.selectedScheduleId === null
               ? persisted.selectedScheduleId
@@ -275,18 +304,24 @@ export const useAppShellStore = create<AppShellState>()(
           isTOSAccepted: typeof persisted.isTOSAccepted === 'boolean'
             ? persisted.isTOSAccepted
             : currentState.isTOSAccepted,
-          isTourCompleted: typeof persisted.isTourCompleted === 'boolean'
-            ? persisted.isTourCompleted
-            : currentState.isTourCompleted,
           isNotificationPrompted: typeof persisted.isNotificationPrompted === 'boolean'
             ? persisted.isNotificationPrompted
             : currentState.isNotificationPrompted,
+          isNameOnboardingCompleted: typeof persisted.isNameOnboardingCompleted === 'boolean'
+            ? persisted.isNameOnboardingCompleted
+            : currentState.isNameOnboardingCompleted,
+          showNameOnboarding: typeof persisted.showNameOnboarding === 'boolean'
+            ? persisted.showNameOnboarding
+            : currentState.showNameOnboarding,
           isEventPreferencesCompleted: typeof persisted.isEventPreferencesCompleted === 'boolean'
             ? persisted.isEventPreferencesCompleted
             : currentState.isEventPreferencesCompleted,
           preferredEventCategories: Array.isArray(persisted.preferredEventCategories)
             ? persisted.preferredEventCategories.filter((item): item is string => typeof item === 'string')
             : currentState.preferredEventCategories,
+          preferredEventInterests: Array.isArray(persisted.preferredEventInterests)
+            ? persisted.preferredEventInterests.filter((item): item is string => typeof item === 'string')
+            : currentState.preferredEventInterests,
           preferredTime: typeof persisted.preferredTime === 'string'
             ? persisted.preferredTime as EventTimePreference
             : currentState.preferredTime,
@@ -308,6 +343,16 @@ export const useAppShellStore = create<AppShellState>()(
           notificationLeadTime: typeof persisted.notificationLeadTime === 'number'
             ? persisted.notificationLeadTime
             : currentState.notificationLeadTime,
+          tabBarMode: persisted.tabBarMode === 'floating' || persisted.tabBarMode === 'solid'
+            ? persisted.tabBarMode
+            : currentState.tabBarMode,
+          viewedStoryIds: Array.isArray(persisted.viewedStoryIds)
+            ? persisted.viewedStoryIds.filter((id): id is string => typeof id === 'string')
+            : currentState.viewedStoryIds,
+          userBio: typeof persisted.userBio === 'string' ? persisted.userBio : currentState.userBio,
+          userGender: typeof persisted.userGender === 'string' ? persisted.userGender : currentState.userGender,
+          userDisplayName: typeof persisted.userDisplayName === 'string' ? persisted.userDisplayName : currentState.userDisplayName,
+          showPingsOnProfile: typeof persisted.showPingsOnProfile === 'boolean' ? persisted.showPingsOnProfile : currentState.showPingsOnProfile,
         };
       },
       migrate: (persistedState: any, version: number) => {
@@ -316,11 +361,10 @@ export const useAppShellStore = create<AppShellState>()(
           const newState = { ...state };
           
           newState.navItems = DEFAULT_NAV_ITEMS;
-          newState.tabBarMode = 'solid';
 
           if (state.placesPills && Array.isArray(state.placesPills)) {
             newState.placesPills = state.placesPills.map(p => 
-              p.id === 'Rec' ? { ...p, visible: false } : p
+              p.id === 'Rec' ? { ...p, visible: true } : p
             );
           }
           newState.isEventPreferencesCompleted = typeof state.isEventPreferencesCompleted === 'boolean'
@@ -345,8 +389,35 @@ export const useAppShellStore = create<AppShellState>()(
           const newState = { ...state };
           
           newState.settingsTab = 'personal';
-          newState.tabBarMode = 'solid';
 
+          return newState;
+        }
+        if (version < 7) {
+          const state = persistedState as Partial<AppShellState> & { isTourCompleted?: boolean };
+          const { isTourCompleted: _removedTourCompleted, ...newState } = state;
+          return newState;
+        }
+        if (version < 8) {
+          const state = persistedState as Partial<AppShellState>;
+          return {
+            ...state,
+            preferredEventInterests: Array.isArray(state.preferredEventInterests)
+              ? state.preferredEventInterests.filter((item): item is string => typeof item === 'string')
+              : [],
+          };
+        }
+        if (version < 9) {
+          const state = persistedState as Partial<AppShellState> & {
+            showWelcomeGreeting?: boolean;
+            useWallpaper?: boolean;
+            wallpaperUri?: string | null;
+          };
+          const {
+            showWelcomeGreeting: _removedShowWelcomeGreeting,
+            useWallpaper: _removedUseWallpaper,
+            wallpaperUri: _removedWallpaperUri,
+            ...newState
+          } = state;
           return newState;
         }
         return persistedState;

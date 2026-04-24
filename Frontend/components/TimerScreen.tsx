@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  ImageBackground,
   Pressable,
   StyleSheet,
   Text,
@@ -14,7 +13,7 @@ import { Card, useTheme } from './SharedUI';
 const FOCUS_DURATIONS = [5, 10, 25, 60] as const;
 
 export function TimerScreen() {
-  const { COLORS, theme, useWallpaper, wallpaperUri } = useTheme();
+  const { COLORS, theme } = useTheme();
   const isDark = theme === 'dark';
   const styles = getStyles(COLORS, isDark);
 
@@ -42,8 +41,6 @@ export function TimerScreen() {
     return () => clearInterval(interval);
   }, [isRunning, secondsLeft, selectedMinutes]);
 
-  const wallpaperSource = wallpaperUri ? { uri: wallpaperUri } : undefined;
-
   const minutes = Math.floor(secondsLeft / 60);
   const seconds = secondsLeft % 60;
   const formattedTime = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
@@ -68,17 +65,6 @@ export function TimerScreen() {
 
   return (
     <View style={styles.container}>
-      {useWallpaper ? (
-        <ImageBackground source={wallpaperSource} style={StyleSheet.absoluteFill} resizeMode="cover">
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              { backgroundColor: isDark ? 'rgba(0,0,0,0.34)' : 'rgba(255,255,255,0.18)' },
-            ]}
-          />
-        </ImageBackground>
-      ) : null}
-
       <View style={styles.content}>
         <Card style={styles.timerCard}>
           <View style={styles.headerRow}>

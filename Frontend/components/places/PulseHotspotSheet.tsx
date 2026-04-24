@@ -18,6 +18,7 @@ import { useTheme } from '../SharedUI';
 import type { CampusHotspot, CampusHotspotItem } from '../../services/campusPulse';
 import { getCampusHotspotItemVoteScore } from '../../services/campusPulse';
 import { PingCommentsModal } from '../pings/PingCommentsModal';
+import { ScalePressable } from '../common/Motion';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const HORIZONTAL_MARGIN = 12;
@@ -318,14 +319,6 @@ function PreviewPage({
                       size={14}
                       color={hasImage ? '#FFFFFF' : hotspot.pulseColor}
                     />
-                    <Text
-                      style={[
-                        styles.iconActionLabel,
-                        { color: hasImage ? '#FFFFFF' : hotspot.pulseColor },
-                      ]}
-                    >
-                      {item.commentCount || 0}
-                    </Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -479,8 +472,9 @@ function ItemVoteControls({
         },
       ]}
     >
-      <Pressable
+      <ScalePressable
         onPress={() => onVote(userVote === 1 ? 0 : 1)}
+        pressNudgeY={-8}
         style={({ pressed }) => [
           styles.voteButton,
           userVote === 1 && { backgroundColor: `${categoryColor}1F` },
@@ -498,7 +492,7 @@ function ItemVoteControls({
           }
           strokeWidth={userVote === 1 ? 3 : 2}
         />
-      </Pressable>
+      </ScalePressable>
 
       <Text
         style={[
@@ -511,8 +505,9 @@ function ItemVoteControls({
         {score}
       </Text>
 
-      <Pressable
+      <ScalePressable
         onPress={() => onVote(userVote === -1 ? 0 : -1)}
+        pressNudgeY={8}
         style={({ pressed }) => [
           styles.voteButton,
           userVote === -1 && { backgroundColor: 'rgba(255,77,109,0.14)' },
@@ -530,7 +525,7 @@ function ItemVoteControls({
           }
           strokeWidth={userVote === -1 ? 3 : 2}
         />
-      </Pressable>
+      </ScalePressable>
     </View>
   );
 }
@@ -722,10 +717,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
     borderWidth: 1,
-  },
-  iconActionLabel: {
-    fontSize: 11,
-    fontWeight: '800',
   },
   eventPill: {
     paddingHorizontal: 10,

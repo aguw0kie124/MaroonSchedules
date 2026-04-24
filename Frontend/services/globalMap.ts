@@ -4,7 +4,7 @@ import type { Coordinate, DirectionStep, WalkingRoute } from './campusDirections
 import { TAMU_CENTER } from '../components/places/types';
 import { computeDistanceMeters } from './campusDirections';
 
-export type GlobalRouteMode = 'walk' | 'drive' | 'bike';
+export type GlobalRouteMode = 'walk' | 'bike';
 
 export interface GlobalPlaceResult {
   id: string;
@@ -229,9 +229,8 @@ async function buildGlobalRouteDirect(params: {
   originName?: string;
   destinationName?: string;
 }): Promise<GlobalRouteResult> {
-  const costingByMode: Record<GlobalRouteMode, 'pedestrian' | 'auto' | 'bicycle'> = {
+  const costingByMode: Record<GlobalRouteMode, 'pedestrian' | 'bicycle'> = {
     walk: 'pedestrian',
-    drive: 'auto',
     bike: 'bicycle',
   };
   const response = await requestTimeout(fetch(VALHALLA_FALLBACK_URL, {
