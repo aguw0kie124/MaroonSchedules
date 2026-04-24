@@ -7,6 +7,7 @@ import {
   Alert,
   FlatList,
   Image,
+  InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
   Linking,
@@ -161,7 +162,7 @@ interface PingFeedPage {
   nextCursor: FeedCursor | null;
 }
 
-const PING_PAGE_SIZE = 25;
+const PING_PAGE_SIZE = 10;
 
 const PING_CATEGORIES: Array<{ id: PingCategory; accent: string; Icon: any }> = [
   { id: 'Free Food', accent: '#E48B3D', Icon: Pizza },
@@ -540,6 +541,7 @@ export function CampusPingsScreen() {
   const [categoryFilter, setCategoryFilter] = useState<FeedFilter>('All');
   const [showScrollTop, setShowScrollTop] = useState(false);
   const pingsListRef = useRef<FlatList<PingCard> | null>(null);
+  const initialFeedPrefetchDoneRef = useRef(false);
 
   const campusPingsFeedKey = ['campus-pings-feed', API_URL, user?.id] as const;
 
@@ -595,6 +597,7 @@ export function CampusPingsScreen() {
   const [activeCommentsPing, setActiveCommentsPing] = useState<PingCard | null>(null);
 
   const userPings = useMemo(() => flattenPingFeedPages(pagedUserPings), [pagedUserPings]);
+  const loadedPingPageCount = pagedUserPings?.pages?.length || 0;
 
   const { data: friends = [] } = useQuery({
     queryKey: ['campus-ping-friends', API_URL, user?.id],
@@ -683,6 +686,40 @@ export function CampusPingsScreen() {
 
   const isInitialPingsLoading = loadingPings && userPings.length === 0;
   const isManuallyRefreshing = refreshing && !isInitialPingsLoading;
+
+  useEffect(() => {
+    if (userPings.length === 0 || loadedPingPageCount === 0) {
+      initialFeedPrefetchDoneRef.current = false;
+      return;
+    }
+    if (initialFeedPrefetchDoneRef.current) {
+      return;
+    }
+    if (loadedPingPageCount !== 1 || !hasNextPage || isFetchingNextPage) {
+      return;
+    }
+
+    initialFeedPrefetchDoneRef.current = true;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const interactionTask = InteractionManager.runAfterInteractions(() => {
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        fetchNextPage().catch((error) => {
+          initialFeedPrefetchDoneRef.current = false;
+          console.warn('[Pings] background prefetch failed', error);
+        });
+      }, 180);
+    });
+
+    return () => {
+      cancelled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+      interactionTask.cancel();
+    };
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage, loadedPingPageCount, userPings.length]);
 
   const loadAll = useCallback(async () => {
     setRefreshing(true);
