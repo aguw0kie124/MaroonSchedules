@@ -1,6 +1,5 @@
 import React from "react";
 import { ScrollView, Text, TouchableOpacity, View } from "react-native";
-import { Cog } from "lucide-react-native";
 import { getCategoryPillIcon } from "./utils";
 import { TourTarget, useTour } from "../onboarding/TourProvider";
 
@@ -24,14 +23,14 @@ export function LayerPillScroller({
   activeLayer,
   layers,
   onSelectLayer,
-  onOpenSettings,
+  onOpenSettings: _onOpenSettings,
 }: LayerPillScrollerProps) {
   const { advanceStep, activeTargetName } = useTour();
   const scrollRef = React.useRef<ScrollView>(null);
 
   // Auto-scroll to highlight targets when they appear
   React.useEffect(() => {
-    if ((activeTargetName === 'gyms-pill' || activeTargetName === 'places-settings') && scrollRef.current) {
+    if (activeTargetName === 'gyms-pill' && scrollRef.current) {
       // Keep the right-side controls visible so the highlighted target is reliably tappable.
       setTimeout(() => {
         scrollRef.current?.scrollToEnd({ animated: true });
@@ -108,27 +107,6 @@ export function LayerPillScroller({
           
           return <React.Fragment key={layer.id}>{pill}</React.Fragment>;
         })}
-
-        <TourTarget
-          name="places-settings"
-          assistAction={() => {
-            onOpenSettings();
-            setTimeout(() => advanceStep('places-settings'), 250);
-          }}
-        >
-          <TouchableOpacity
-            style={styles.layerSettingsPill}
-            onPress={() => {
-              onOpenSettings();
-              if (activeTargetName === 'places-settings') {
-                advanceStep('places-settings');
-              }
-            }}
-          >
-            <Cog size={16} color={COLORS.textPrimary} />
-            <Text style={styles.layerSettingsPillText}>Edit</Text>
-          </TouchableOpacity>
-        </TourTarget>
       </ScrollView>
     </View>
   );

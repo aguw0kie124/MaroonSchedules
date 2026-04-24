@@ -189,12 +189,24 @@ async def list_users(request: Request, exclude_id: str = "", _auth_user_id: str 
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/users/{clerk_id}/public")
-async def get_public_profile(clerk_id: str, _auth_user_id: Optional[str] = Depends(optional_auth)):
+async def get_public_profile(clerk_id: str, auth_user_id: Optional[str] = Depends(optional_auth)):
     """Return sanitized profile for public viewing (no sensitive data)."""
     profile = user_repository.get_user(clerk_id)
     if not profile:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
+    relationship_status = "none"
+    if auth_user_id:
+        try:
+            relationship_status = user_repository.get_connection_relationship(auth_user_id, clerk_id)
+        except Exception:
+            relationship_status = "none"
+
+    try:
+        friend_count = len(user_repository.list_friends(clerk_id))
+    except Exception:
+        friend_count = 0
+
     return {
         "clerk_id": profile["clerk_id"],
         "full_name": profile.get("full_name") or "Aggie User",
@@ -203,6 +215,8 @@ async def get_public_profile(clerk_id: str, _auth_user_id: Optional[str] = Depen
         "graduation_year": profile.get("graduation_year"),
         "bio": profile.get("bio"),
         "website": profile.get("website"),
+        "relationship_status": relationship_status,
+        "friend_count": friend_count,
     }
 
 # --- Feed Proxy (Now 100% Native) ---
@@ -806,6 +820,16 @@ async def get_friends_for_user(clerk_id: str, auth_user_id: str = Depends(requir
         _ensure_social_schema()
         ensure_matching_user(auth_user_id, clerk_id, detail="You can only view your own friends list")
         return user_repository.list_friends(clerk_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/users/{clerk_id}/friends/requests")
+async def get_friend_requests_for_user(clerk_id: str, auth_user_id: str = Depends(require_auth)):
+    try:
+        _ensure_social_schema()
+        ensure_matching_user(auth_user_id, clerk_id, detail="You can only view your own friend requests")
+        return user_repository.list_friend_requests(clerk_id)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

@@ -391,17 +391,86 @@ def add_friend(requester_id: str, friend_id: str) -> Dict[str, Any]:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 """
+                SELECT requester_id, recipient_id, status
+                FROM network_connections
+                WHERE
+                    (requester_id = %s AND recipient_id = %s)
+                    OR
+                    (requester_id = %s AND recipient_id = %s)
+                """,
+                (requester_id, friend_id, friend_id, requester_id),
+            )
+            existing_rows = cur.fetchall() or []
+            accepted_row = next((row for row in existing_rows if row.get("status") == "accepted"), None)
+            if accepted_row:
+                row = dict(accepted_row)
+                row["action"] = "already_connected"
+                return row
+
+            reverse_pending = next(
+                (
+                    row
+                    for row in existing_rows
+                    if row.get("status") == "pending"
+                    and row.get("requester_id") == friend_id
+                    and row.get("recipient_id") == requester_id
+                ),
+                None,
+            )
+
+            if reverse_pending:
+                cur.execute(
+                    """
+                    DELETE FROM network_connections
+                    WHERE
+                        (requester_id = %s AND recipient_id = %s)
+                        OR
+                        (requester_id = %s AND recipient_id = %s)
+                    """,
+                    (requester_id, friend_id, friend_id, requester_id),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO network_connections (requester_id, recipient_id, status, updated_at)
+                    VALUES (%s, %s, 'accepted', NOW())
+                    RETURNING requester_id, recipient_id, status, updated_at
+                    """,
+                    (requester_id, friend_id),
+                )
+                row = dict(cur.fetchone() or {})
+                row["action"] = "accepted"
+                conn.commit()
+                return row
+
+            same_direction_pending = next(
+                (
+                    row
+                    for row in existing_rows
+                    if row.get("status") == "pending"
+                    and row.get("requester_id") == requester_id
+                    and row.get("recipient_id") == friend_id
+                ),
+                None,
+            )
+            if same_direction_pending:
+                row = dict(same_direction_pending)
+                row["action"] = "request_pending"
+                return row
+
+            cur.execute(
+                """
                 INSERT INTO network_connections (requester_id, recipient_id, status, updated_at)
-                VALUES (%s, %s, 'accepted', NOW())
+                VALUES (%s, %s, 'pending', NOW())
                 ON CONFLICT (requester_id, recipient_id)
-                DO UPDATE SET status = 'accepted', updated_at = NOW()
+                DO UPDATE SET status = 'pending', updated_at = NOW()
                 RETURNING requester_id, recipient_id, status, updated_at
                 """,
                 (requester_id, friend_id),
             )
-            row = cur.fetchone()
+            row = dict(cur.fetchone() or {})
         conn.commit()
-    return dict(row or {})
+    row["action"] = "requested"
+    return row
 
 
 def remove_friend(user_id: str, friend_id: str) -> bool:
@@ -413,8 +482,7 @@ def remove_friend(user_id: str, friend_id: str) -> bool:
             cur.execute(
                 """
                 DELETE FROM network_connections
-                WHERE status = 'accepted'
-                  AND (
+                WHERE (
                     (requester_id = %s AND recipient_id = %s)
                     OR (requester_id = %s AND recipient_id = %s)
                   )
@@ -424,6 +492,53 @@ def remove_friend(user_id: str, friend_id: str) -> bool:
             deleted = cur.rowcount > 0
         conn.commit()
     return deleted
+
+
+def get_connection_relationship(clerk_id: str, other_id: str) -> str:
+    if not clerk_id or not other_id:
+        return "none"
+    if clerk_id == other_id:
+        return "self"
+    return get_connection_relationships(clerk_id).get(other_id, "none")
+
+
+def get_connection_relationships(clerk_id: str) -> dict[str, str]:
+    if not clerk_id:
+        return {}
+
+    with get_pool().connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT requester_id, recipient_id, status
+                FROM network_connections
+                WHERE requester_id = %s OR recipient_id = %s
+                ORDER BY updated_at DESC
+                """,
+                (clerk_id, clerk_id),
+            )
+            rows = cur.fetchall() or []
+
+    relationships: dict[str, str] = {}
+    for row in rows:
+        requester_id = row.get("requester_id")
+        recipient_id = row.get("recipient_id")
+        if not requester_id or not recipient_id:
+            continue
+
+        other_id = recipient_id if requester_id == clerk_id else requester_id
+        if not other_id:
+            continue
+
+        status = row.get("status") or "pending"
+        if status == "accepted":
+            relationships[other_id] = "accepted"
+            continue
+        if other_id in relationships and relationships[other_id] == "accepted":
+            continue
+        relationships[other_id] = "outgoing_pending" if requester_id == clerk_id else "incoming_pending"
+
+    return relationships
 
 
 def list_friends(clerk_id: str) -> list[dict]:
@@ -465,9 +580,63 @@ def list_friends(clerk_id: str) -> list[dict]:
                 "profile_image_url": profile.get("profile_image_url"),
                 "major": profile.get("major"),
                 "graduation_year": profile.get("graduation_year"),
+                "relationship_status": "accepted",
             }
         )
     return friends
+
+
+def list_friend_requests(clerk_id: str) -> dict[str, list[dict]]:
+    if not clerk_id:
+        return {"incoming": [], "outgoing": []}
+
+    with get_pool().connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT requester_id, recipient_id, updated_at
+                FROM network_connections
+                WHERE status = 'pending'
+                  AND (requester_id = %s OR recipient_id = %s)
+                ORDER BY updated_at DESC
+                """,
+                (clerk_id, clerk_id),
+            )
+            rows = cur.fetchall() or []
+
+    incoming: list[dict] = []
+    outgoing: list[dict] = []
+
+    for row in rows:
+        requester_id = row.get("requester_id")
+        recipient_id = row.get("recipient_id")
+        if not requester_id or not recipient_id:
+            continue
+
+        other_id = requester_id if recipient_id == clerk_id else recipient_id
+        profile = get_user(other_id)
+        if not profile:
+            continue
+
+        payload = {
+            "id": profile["clerk_id"],
+            "name": profile.get("full_name") or profile.get("email") or "Aggie User",
+            "profile_image_url": profile.get("profile_image_url"),
+            "major": profile.get("major"),
+            "graduation_year": profile.get("graduation_year"),
+            "requested_at": str(row.get("updated_at")) if row.get("updated_at") else None,
+            "relationship_status": "incoming_pending" if recipient_id == clerk_id else "outgoing_pending",
+        }
+
+        if recipient_id == clerk_id:
+            incoming.append(payload)
+        else:
+            outgoing.append(payload)
+
+    return {
+        "incoming": incoming,
+        "outgoing": outgoing,
+    }
 
 
 def search_users(searcher_id: str, query: str, limit: int = 10) -> list[dict]:
@@ -483,7 +652,7 @@ def search_users(searcher_id: str, query: str, limit: int = 10) -> list[dict]:
     except Exception:
         blocked_ids = set()
 
-    friends = {friend["id"] for friend in list_friends(searcher_id)}
+    relationships = get_connection_relationships(searcher_id)
 
     with get_pool().connection() as conn:
         _ensure_user_schema_once(conn)
@@ -520,7 +689,10 @@ def search_users(searcher_id: str, query: str, limit: int = 10) -> list[dict]:
                 "profile_image_url": row.get("profile_image_url"),
                 "major": major or None,
                 "graduation_year": row.get("graduation_year") or None,
-                "is_friend": clerk_id in friends,
+                "relationship_status": relationships.get(clerk_id, "none"),
+                "is_friend": relationships.get(clerk_id) == "accepted",
+                "request_sent": relationships.get(clerk_id) == "outgoing_pending",
+                "request_received": relationships.get(clerk_id) == "incoming_pending",
             }
         )
         if len(results) >= limit:

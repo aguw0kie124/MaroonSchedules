@@ -36,10 +36,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUser } from '@clerk/clerk-expo';
 
 import { useTheme, getDefaultAccentColor, WallpaperWrapper } from '../SharedUI';
-import { apiFetch, requestJson } from '../../api/client';
-import { API_URL } from '../../config';
 import { ScalePressable } from '../common/Motion';
-import { getUserPingFeed, getFriends } from '../../services/socialFeedService';
+import { addFriend, getUserPingFeed, removeFriend } from '../../services/socialFeedService';
 import { 
   mapActivityToPing, 
   categoryMeta, 
@@ -48,11 +46,9 @@ import {
 import { PingCommentsModal } from '../pings/PingCommentsModal';
 
 const { width } = Dimensions.get('window');
-const COLUMN_COUNT = 3;
-const GRID_SIZE = width / COLUMN_COUNT;
 
 export default function PublicProfileScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { targetUserId, targetUserName, targetUserImage, isAnonymous } = route.params;
   const { user: currentUser } = useUser();
@@ -65,11 +61,12 @@ export default function PublicProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   // 1. Fetch Basic Profile (Skip if anonymous)
-  const { data: profile, isLoading: isLoadingProfile } = useQuery({
+  const { data: profile, isLoading: isLoadingProfile, refetch: refetchProfile } = useQuery({
     queryKey: ['public-profile', targetUserId, isAnonymous],
     queryFn: async () => {
       if (isAnonymous) return { full_name: 'Anonymous', clerk_id: 'anonymous' };
       try {
+        const { requestJson } = await import('../../api/client');
         return await requestJson(`/chat/users/${targetUserId}/public`);
       } catch (e) {
         console.warn('Failed to fetch public profile', e);
@@ -77,7 +74,9 @@ export default function PublicProfileScreen() {
           clerk_id: targetUserId,
           full_name: targetUserName || 'Aggie User',
           profile_image_url: targetUserImage || '',
-          bio: ''
+          bio: '',
+          relationship_status: 'none',
+          friend_count: 0,
         };
       }
     }
@@ -92,23 +91,41 @@ export default function PublicProfileScreen() {
     }
   });
 
-  // 3. Fetch Friends (to get count) - Skip if anonymous
-  const { data: friendsList = [], isLoading: isLoadingFriends, refetch: refetchFriends } = useQuery({
-    queryKey: ['public-user-friends', targetUserId, isAnonymous],
-    queryFn: async () => {
-      if (isAnonymous) return [];
-      return await getFriends(targetUserId);
-    }
-  });
-
-  // 4. Friend Relationship Check (is following/friend?)
   const isMe = currentUser?.id === targetUserId;
-  const isFriend = useMemo(() => {
-    if (!currentUser?.id) return false;
-    // Check if current user is in target user's friends list or vice versa
-    // This is a bit complex without a dedicated "isFriend" endpoint, so we'll look for match
-    return friendsList.some((f: any) => f.clerk_id === currentUser.id || f.id === currentUser.id);
-  }, [friendsList, currentUser?.id]);
+  const relationshipStatus = profile?.relationship_status || 'none';
+  const connectionMeta = useMemo(() => {
+    if (relationshipStatus === 'accepted') {
+      return {
+        icon: UserCheck,
+        label: 'Connected',
+        tint: COLORS.primary,
+        backgroundColor: `${COLORS.primary}20`,
+      };
+    }
+    if (relationshipStatus === 'incoming_pending') {
+      return {
+        icon: UserCheck,
+        label: 'Accept',
+        tint: COLORS.primary,
+        backgroundColor: `${COLORS.primary}14`,
+      };
+    }
+    if (relationshipStatus === 'outgoing_pending') {
+      return {
+        icon: UserPlus,
+        label: 'Pending',
+        tint: COLORS.textPrimary,
+        backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+      };
+    }
+    return {
+      icon: UserPlus,
+      label: 'Connect',
+      tint: COLORS.textPrimary,
+      backgroundColor: undefined,
+    };
+  }, [COLORS.primary, COLORS.textPrimary, isDark, relationshipStatus]);
+  const ConnectionIcon = connectionMeta.icon;
 
   const handleVotePing = async (ping: any, direction: number) => {
     if (!ping) return;
@@ -134,8 +151,11 @@ export default function PublicProfileScreen() {
     } : null);
 
     try {
-      await toggleVote(ping.id, direction);
-      queryClient.invalidateQueries({ queryKey: ['public-user-feed', targetUserId] });
+      await toggleVote(
+        ping.activityId || ping.id,
+        direction === 1 ? 'upvote' : 'downvote',
+      );
+      queryClient.invalidateQueries({ queryKey: ['public-user-pings', targetUserId] });
     } catch (error) {
       // Revert optimistic update on error if needed
     }
@@ -147,7 +167,14 @@ export default function PublicProfileScreen() {
   };
 
   const openPingOnMap = (ping: any) => {
-    navigation.navigate('PlacesMap', { targetPing: ping });
+    navigation.navigate('Main', {
+      screen: 'Places',
+      params: {
+        initialLayer: 'Pulse',
+        initialLocation: ping.locationTag,
+        focusToken: `public-ping:${ping.id}:${ping.createdAt}`,
+      },
+    });
   };
 
   const savePingToPlans = (ping: any) => {
@@ -281,28 +308,42 @@ export default function PublicProfileScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refetchPings(), refetchFriends()]);
+    await Promise.all([refetchProfile(), refetchPings()]);
     setRefreshing(false);
-  }, [refetchPings, refetchFriends]);
+  }, [refetchPings, refetchProfile]);
 
   const toggleFriend = async () => {
+    if (!currentUser?.id || isMe || isAnonymous) {
+      return;
+    }
+
     try {
-      if (isFriend) {
-          await requestJson(`/chat/users/${targetUserId}/friends/remove`, {
-              method: 'DELETE',
-              body: JSON.stringify({ friend_id: currentUser?.id })
-          });
+      if (relationshipStatus === 'accepted' || relationshipStatus === 'outgoing_pending') {
+        await removeFriend(targetUserId, currentUser.id);
+        Alert.alert(
+          relationshipStatus === 'accepted' ? 'Connection removed' : 'Request canceled',
+          relationshipStatus === 'accepted'
+            ? `You are no longer connected with ${profile?.full_name || targetUserName || 'this user'}.`
+            : `Your connection request to ${profile?.full_name || targetUserName || 'this user'} was canceled.`,
+        );
       } else {
-          await requestJson(`/chat/users/${targetUserId}/friends/add`, {
-              method: 'POST',
-              body: JSON.stringify({ friend_id: currentUser?.id })
-          });
+        const result = await addFriend(targetUserId, currentUser.id);
+        const action = result?.friendship?.action;
+        if (action === 'accepted') {
+          Alert.alert('Connection accepted', `${profile?.full_name || targetUserName || 'This user'} is now connected with you.`);
+        } else if (action === 'request_pending') {
+          Alert.alert('Request pending', `Your connection request to ${profile?.full_name || targetUserName || 'this user'} is still pending.`);
+        } else if (action === 'already_connected') {
+          Alert.alert('Already connected', `You are already connected with ${profile?.full_name || targetUserName || 'this user'}.`);
+        } else {
+          Alert.alert('Request sent', `${profile?.full_name || targetUserName || 'This user'} can accept your connection request from their profile.`);
+        }
       }
-      refetchFriends();
+      await refetchProfile();
       queryClient.invalidateQueries({ queryKey: ['campus-ping-friends'] });
     } catch (e) {
-      console.warn('Failed to toggle friend status', e);
-      Alert.alert('Error', 'Could not update friend status. Try again later.');
+      console.warn('Failed to toggle connection status', e);
+      Alert.alert('Error', 'Could not update connection status. Try again later.');
     }
   };
 
@@ -333,7 +374,7 @@ export default function PublicProfileScreen() {
     return (
       <View style={currentStyles.postsGrid}>
         {userPings.map((ping: any, index: number) => {
-          const cardWidth = (width - 32 - 20) / 3;
+          const cardWidth = Math.floor((width - 52) / 3);
           return (
             <ScalePressable
               key={ping.id || index}
@@ -400,9 +441,8 @@ export default function PublicProfileScreen() {
             <ScalePressable 
               containerStyle={{ flex: 1 }}
               style={currentStyles.modernStatCard}
-              onPress={() => friendsList.length > 0 && Alert.alert('Friends', `${profile?.full_name || 'This user'} has ${friendsList.length} friends.`)}
             >
-               <Text style={currentStyles.modernStatValue}>{friendsList.length}</Text>
+               <Text style={currentStyles.modernStatValue}>{profile?.friend_count ?? 0}</Text>
                <Text style={currentStyles.modernStatLabel}>Friends</Text>
             </ScalePressable>
 
@@ -419,17 +459,13 @@ export default function PublicProfileScreen() {
                 containerStyle={{ flex: 1 }}
                 style={[
                   currentStyles.modernStatCard, 
-                  isFriend && { backgroundColor: `${COLORS.primary}20` }
+                  connectionMeta.backgroundColor ? { backgroundColor: connectionMeta.backgroundColor } : null,
                 ]}
                 onPress={toggleFriend}
               >
-                {isFriend ? (
-                  <UserCheck size={20} color={COLORS.primary} />
-                ) : (
-                  <UserPlus size={20} color={COLORS.textPrimary} />
-                )}
-                <Text style={[currentStyles.modernStatLabel, isFriend && { color: COLORS.primary }]}>
-                  {isFriend ? 'Friends' : 'Add'}
+                <ConnectionIcon size={20} color={connectionMeta.tint} />
+                <Text style={[currentStyles.modernStatLabel, { color: connectionMeta.tint }]}>
+                  {connectionMeta.label}
                 </Text>
               </ScalePressable>
             )}
@@ -447,7 +483,16 @@ export default function PublicProfileScreen() {
       {activeCommentsPing && (
         <PingCommentsModal
           visible={!!activeCommentsPing}
-          ping={activeCommentsPing}
+          target={
+            activeCommentsPing
+              ? {
+                  activityId: activeCommentsPing.activityId || activeCommentsPing.id,
+                  title: activeCommentsPing.title,
+                  subtitle: activeCommentsPing.locationTag,
+                  commentCount: activeCommentsPing.commentCount,
+                }
+              : null
+          }
           onClose={() => setActiveCommentsPing(null)}
         />
       )}

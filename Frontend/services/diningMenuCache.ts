@@ -111,6 +111,13 @@ function getMinutesFromDate(date: Date) {
   return toMinutes(date.getHours(), date.getMinutes());
 }
 
+export function getDiningContextDate(dateKey?: string) {
+  if (!dateKey || dateKey === getLocalDateString()) {
+    return new Date();
+  }
+  return parseLocalDateString(dateKey);
+}
+
 function isWeekend(date: Date) {
   const day = date.getDay();
   return day === 0 || day === 6;
@@ -237,7 +244,7 @@ export function getDiningMealPeriodForLocation(locationName?: string | null, dat
     return nextWindow.mealPeriod;
   }
 
-  return windows[0]?.mealPeriod || 'lunch';
+  return windows[windows.length - 1]?.mealPeriod || 'lunch';
 }
 
 export function getDiningMealWindow(
@@ -673,7 +680,7 @@ export function warmDiningMenusInBackground({
   const effectiveMealPeriods =
     mealPeriods && mealPeriods.length > 0
       ? mealPeriods
-      : [getDiningMealPeriodForLocation(resolvedLocation, parseLocalDateString(centerDate))];
+      : [getDiningMealPeriodForLocation(resolvedLocation, getDiningContextDate(centerDate))];
   const dateKeys = Array.from({ length: pastDays + futureDays + 1 }, (_, index) =>
     shiftLocalDateString(centerDate, index - pastDays),
   );

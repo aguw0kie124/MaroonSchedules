@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchCampusPlaceDetail } from "../../api/client";
 import {
   fetchDiningFullMenuCached,
+  getDiningContextDate,
   getDiningMealPeriodForLocation,
   getDiningMenuCandidates,
   isDiningHallMenuLocation,
   warmDiningMenusInBackground,
   type DiningMealPeriod,
 } from "../../services/diningMenuCache";
-import { getLocalDateString, parseLocalDateString } from "../../services/dateUtils";
+import { getLocalDateString } from "../../services/dateUtils";
 import {
   findFoodCourtParentLocation,
   getFoodCourtVenueLabel,
@@ -187,7 +188,7 @@ export function usePlacesSelection({
         setActiveDiningMenu(loc.location);
         setActiveDiningDate(todayKey);
         setActiveDiningMealPeriod(
-          getDiningMealPeriodForLocation(loc.location, parseLocalDateString(todayKey)) as DiningMealPeriod,
+          getDiningMealPeriodForLocation(loc.location, getDiningContextDate(todayKey)) as DiningMealPeriod,
         );
         setDiningMenuPreview(null);
       } catch (error) {

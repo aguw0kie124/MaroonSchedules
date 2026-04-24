@@ -326,10 +326,6 @@ export function PlacesMapScreen({ route, navigation }: any) {
     () => getOrderedItems(placesPills),
     [placesPills],
   );
-  const visiblePlacesPills = useMemo(
-    () => orderedPlacesPills.filter((item) => item.visible),
-    [orderedPlacesPills],
-  );
 
   const campusHubSnapshot = useCampusHubStore((s) => s.snapshot);
   const hydrateCampusHub = useCampusHubStore((s) => s.hydrate);
@@ -631,7 +627,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
 
   // ── Category / pill bar ───────────────────────────────────
   const visibleCategories = useMemo(() => {
-    const ordered: any[] = visiblePlacesPills
+    const ordered: any[] = orderedPlacesPills
       .map((item) => CATEGORIES.find((c) => c.id === item.id))
       .filter((c) => c?.id !== "Academic" && c?.id !== "Heatmap")
       .filter((c) => c != null);
@@ -650,7 +646,7 @@ export function PlacesMapScreen({ route, navigation }: any) {
       return [active, ...ordered];
     }
     return ordered;
-  }, [activeLayer, visiblePlacesPills]);
+  }, [activeLayer, orderedPlacesPills]);
 
   // ── Derived map locations ─────────────────────────────────
   const allMapLocations = useMemo(() => {
@@ -1639,12 +1635,11 @@ export function PlacesMapScreen({ route, navigation }: any) {
   // ── Meal Tracking Hydration ──────────────────────────────
   useEffect(() => {
     if (selectedLoc && isDiningHallMenuLocation(selectedLoc.location)) {
-      const activePeriod = getDiningMealPeriodForLocation(selectedLoc.location);
-      refreshTrackerCounts(selectedLoc.location, activePeriod);
+      refreshTrackerCounts(selectedLoc.location, activeDiningMealPeriod);
     } else if (!selectedLoc) {
       setTrackerCounts({});
     }
-  }, [selectedLoc, refreshTrackerCounts]);
+  }, [activeDiningMealPeriod, refreshTrackerCounts, selectedLoc]);
 
   const handleSelectBusRouteFromSearch = useCallback(
     async (route: any) => {
@@ -2683,8 +2678,8 @@ export function PlacesMapScreen({ route, navigation }: any) {
         openNavigationToLocation={openNavigationToLocation}
         isFetchingDetail={isFetchingDetail}
         trackerCounts={trackerCounts}
-        onAddMeal={(item) => selectedLoc && addMealEntry(item, selectedLoc.location, getDiningMealPeriodForLocation(selectedLoc.location))}
-        onRemoveMeal={(item) => selectedLoc && removeMealEntry(item, selectedLoc.location, getDiningMealPeriodForLocation(selectedLoc.location))}
+        onAddMeal={(item) => selectedLoc && addMealEntry(item, selectedLoc.location, activeDiningMealPeriod)}
+        onRemoveMeal={(item) => selectedLoc && removeMealEntry(item, selectedLoc.location, activeDiningMealPeriod)}
         isSyncingTracker={isSyncingTracker}
         isCompact={isCompactDetail}
       />

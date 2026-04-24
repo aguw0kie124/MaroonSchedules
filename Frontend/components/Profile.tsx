@@ -82,6 +82,7 @@ import {
   addFriend,
   deleteAccount,
   getBlockedUsers,
+  getFriendRequests,
   getFriends,
   removeFriend,
   searchUsers,
@@ -268,6 +269,20 @@ export function Profile() {
     },
     enabled: !!user?.id,
   });
+  const {
+    data: friendRequests = { incoming: [], outgoing: [] },
+    refetch: refetchFriendRequests,
+    isLoading: loadingFriendRequests,
+  } = useQuery({
+    queryKey: ['campus-ping-friend-requests', API_URL, user?.id],
+    queryFn: async () => {
+      if (!user?.id) {
+        return { incoming: [], outgoing: [] };
+      }
+      return await getFriendRequests(user.id);
+    },
+    enabled: !!user?.id,
+  });
 
   const userDisplayName = useAppShellStore((state) => state.userDisplayName);
   const userBio = useAppShellStore((state) => state.userBio);
@@ -439,7 +454,6 @@ export function Profile() {
   const [bio, setBio] = useState(userBio);
   const [gender, setGender] = useState(userGender);
 
-  const [showFriendSearchPanel, setShowFriendSearchPanel] = useState(false);
   const [friendSearchQuery, setFriendSearchQuery] = useState('');
   const [friendSearchResults, setFriendSearchResults] = useState<any[]>([]);
   const [searchingFriends, setSearchingFriends] = useState(false);
@@ -476,6 +490,19 @@ export function Profile() {
     setShowEditProfile(true);
     navigation.setParams({ openEditProfile: false });
   }, [isFocused, navigation, route.params?.openEditProfile]);
+
+  useEffect(() => {
+    if (!isFocused || !route.params?.openFriendsManager) return;
+    setShowFriendsModal(true);
+    navigation.setParams({ openFriendsManager: false });
+  }, [isFocused, navigation, route.params?.openFriendsManager]);
+
+  useEffect(() => {
+    if (showFriendsModal) return;
+    setFriendSearchQuery('');
+    setFriendSearchResults([]);
+    setSearchingFriends(false);
+  }, [showFriendsModal]);
 
   const handleVotePing = async (ping: any, direction: number) => {
     if (!ping) return;
@@ -529,6 +556,13 @@ export function Profile() {
     },
     [navigation],
   );
+
+  const openEventsTab = useCallback((params?: Record<string, any>) => {
+    navigation.navigate('Main', {
+      screen: 'Dashboard',
+      params,
+    });
+  }, [navigation]);
 
   const savePingToPlans = useCallback(
     (ping: any) => {
@@ -650,7 +684,7 @@ export function Profile() {
   }, [isFocused, isGuest, user]);
 
   useEffect(() => {
-    if (!user?.id || !showFriendSearchPanel) {
+    if (!user?.id || !showFriendsModal) {
       setFriendSearchResults([]);
       setSearchingFriends(false);
       return;
@@ -684,7 +718,7 @@ export function Profile() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [friendSearchQuery, showFriendSearchPanel, user?.id]);
+  }, [friendSearchQuery, showFriendsModal, user?.id]);
 
   const loadBlockedUsers = async () => {
     if (!user) return;
@@ -702,8 +736,44 @@ export function Profile() {
   };
 
   const loadFriends = async () => {
-    refetchFriends();
+    await Promise.all([refetchFriends(), refetchFriendRequests()]);
+    queryClient.invalidateQueries({ queryKey: ['campus-ping-friends'] });
   };
+
+  const incomingFriendRequests = friendRequests?.incoming || [];
+  const outgoingFriendRequests = friendRequests?.outgoing || [];
+
+  const getConnectionStatus = useCallback((entry: any) => {
+    if (entry?.relationship_status) return entry.relationship_status;
+    if (entry?.is_friend) return 'accepted';
+    if (entry?.request_received) return 'incoming_pending';
+    if (entry?.request_sent) return 'outgoing_pending';
+    return 'none';
+  }, []);
+
+  const updateSearchRelationshipState = useCallback((targetId: string, relationshipStatus: string) => {
+    setFriendSearchResults((current) =>
+      current.map((item) =>
+        item.id === targetId
+          ? {
+              ...item,
+              relationship_status: relationshipStatus,
+              is_friend: relationshipStatus === 'accepted',
+              request_sent: relationshipStatus === 'outgoing_pending',
+              request_received: relationshipStatus === 'incoming_pending',
+            }
+          : item,
+      ),
+    );
+  }, []);
+
+  const getConnectionActionLabel = useCallback((entry: any) => {
+    const relationshipStatus = getConnectionStatus(entry);
+    if (relationshipStatus === 'accepted') return 'Remove';
+    if (relationshipStatus === 'incoming_pending') return 'Accept';
+    if (relationshipStatus === 'outgoing_pending') return 'Pending';
+    return 'Connect';
+  }, [getConnectionStatus]);
 
   const handleUnblock = async (targetId: string) => {
     if (!user?.id) {
@@ -721,36 +791,53 @@ export function Profile() {
     }
   };
 
-  const handleAddFriend = async (targetId: string, name?: string) => {
+  const handleConnectionAction = async (targetId: string, name?: string, relationshipStatus = 'none') => {
     if (!user?.id) {
-      Alert.alert('Error', 'You must be signed in to add a friend.');
+      Alert.alert('Error', 'You must be signed in to manage connections.');
       return;
     }
     try {
-      await addFriend(targetId, user.id);
-      await loadFriends();
-      setFriendSearchResults((current) =>
-        current.map((item) => (item.id === targetId ? { ...item, is_friend: true } : item)),
-      );
-      Alert.alert('Friend added', `${name || 'User'} has been added to your friends.`);
-    } catch (err) {
-      console.warn('Failed to add friend', err);
-      Alert.alert('Error', 'Failed to add friend.');
-    }
-  };
+      if (relationshipStatus === 'accepted') {
+        await removeFriend(targetId, user.id);
+        updateSearchRelationshipState(targetId, 'none');
+        await loadFriends();
+        Alert.alert('Connection removed', `${name || 'User'} has been removed from your friends.`);
+        return;
+      }
 
-  const handleRemoveFriend = async (targetId: string) => {
-    if (!user?.id) {
-      Alert.alert('Error', 'You must be signed in to remove a friend.');
-      return;
-    }
-    try {
-      await removeFriend(targetId, user.id);
+      if (relationshipStatus === 'outgoing_pending') {
+        await removeFriend(targetId, user.id);
+        updateSearchRelationshipState(targetId, 'none');
+        await loadFriends();
+        Alert.alert('Request canceled', `Your connection request to ${name || 'this user'} was canceled.`);
+        return;
+      }
+
+      const result = await addFriend(targetId, user.id);
+      const action = result?.friendship?.action;
+      if (action === 'accepted' || relationshipStatus === 'incoming_pending') {
+        updateSearchRelationshipState(targetId, 'accepted');
+        await loadFriends();
+        Alert.alert('Connection accepted', `${name || 'User'} is now connected with you.`);
+        return;
+      }
+      if (action === 'already_connected') {
+        updateSearchRelationshipState(targetId, 'accepted');
+        await loadFriends();
+        Alert.alert('Already connected', `${name || 'User'} is already in your friends list.`);
+        return;
+      }
+      updateSearchRelationshipState(targetId, 'outgoing_pending');
       await loadFriends();
-      Alert.alert('Friend removed', 'User removed from your friends.');
+      Alert.alert(
+        action === 'request_pending' ? 'Request pending' : 'Request sent',
+        action === 'request_pending'
+          ? `Your connection request to ${name || 'this user'} is still pending.`
+          : `${name || 'User'} can accept your connection request from their profile.`,
+      );
     } catch (err) {
-      console.warn('Failed to remove friend', err);
-      Alert.alert('Error', 'Failed to remove friend.');
+      console.warn('Failed to update connection', err);
+      Alert.alert('Error', 'Failed to update connection.');
     }
   };
 
@@ -1162,8 +1249,8 @@ export function Profile() {
             <ScalePressable 
               key={post.id || idx} 
               style={[styles.postSquare, {
-                width: (Dimensions.get('window').width - 46) / 3,
-                height: ((Dimensions.get('window').width - 46) / 3) * 1.33
+                width: Math.floor((Dimensions.get('window').width - 44) / 3),
+                height: Math.floor((Dimensions.get('window').width - 44) / 3) * 1.33
               }]}
               onPress={() => setSelectedPing(post)}
             >
@@ -1389,6 +1476,37 @@ export function Profile() {
     if (embedded) return content;
     return <View style={styles.section}>{content}</View>;
   }
+
+  const renderConnectionRow = (item: any) => (
+    <View key={item.id} style={styles.modalFriendRow}>
+      <View style={styles.listAvatar}>
+        {item.profile_image_url ? (
+          <Image source={{ uri: item.profile_image_url }} style={styles.listAvatarImage} />
+        ) : (
+          <View style={[styles.listAvatarImage, { backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' }]}>
+            <Text style={{ color: COLORS.textPrimary, fontWeight: '700' }}>{item.name?.[0] || 'U'}</Text>
+          </View>
+        )}
+      </View>
+      <View style={{ flex: 1, marginLeft: 12 }}>
+        <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 15 }}>{item.username || item.name}</Text>
+        <Text style={{ color: COLORS.textTertiary, fontSize: 13 }} numberOfLines={1}>
+          {item.major || item.name}
+        </Text>
+      </View>
+      <Pressable
+        style={[
+          styles.friendCardActionButton,
+          { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }
+        ]}
+        onPress={() => handleConnectionAction(item.id, item.name, getConnectionStatus(item))}
+      >
+        <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 13 }}>
+          {getConnectionActionLabel(item)}
+        </Text>
+      </Pressable>
+    </View>
+  );
   
   const renderFriendsModal = () => (
     <Modal
@@ -1425,7 +1543,7 @@ export function Profile() {
             {/* Header */}
             <View style={styles.modalCardHeader}>
               <View style={{ width: 40 }} />
-              <Text style={[styles.modalCardTitle, { color: COLORS.textPrimary }]}>Friends</Text>
+              <Text style={[styles.modalCardTitle, { color: COLORS.textPrimary }]}>Connections</Text>
               <Pressable onPress={() => setShowFriendsModal(false)} style={styles.modalCardClose}>
                 <X size={22} color={COLORS.textPrimary} />
               </Pressable>
@@ -1459,34 +1577,7 @@ export function Profile() {
                   {searchingFriends ? (
                     <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
                   ) : friendSearchResults.length > 0 ? (
-                    friendSearchResults.map((item) => (
-                      <View key={item.id} style={styles.modalFriendRow}>
-                        <View style={styles.listAvatar}>
-                          {item.profile_image_url ? (
-                            <Image source={{ uri: item.profile_image_url }} style={styles.listAvatarImage} />
-                          ) : (
-                            <View style={[styles.listAvatarImage, { backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' }]}>
-                              <Text style={{ color: COLORS.textPrimary, fontWeight: '700' }}>{item.name?.[0] || 'U'}</Text>
-                            </View>
-                          )}
-                        </View>
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 15 }}>{item.username || item.name}</Text>
-                          <Text style={{ color: COLORS.textTertiary, fontSize: 13 }} numberOfLines={1}>{item.name}</Text>
-                        </View>
-                        <Pressable
-                          style={[
-                            styles.friendCardActionButton,
-                            { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }
-                          ]}
-                          onPress={() => item.is_friend ? handleRemoveFriend(item.id) : handleAddFriend(item.id, item.name)}
-                        >
-                          <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 13 }}>
-                            {item.is_friend ? 'Remove' : 'Add'}
-                          </Text>
-                        </Pressable>
-                      </View>
-                    ))
+                    friendSearchResults.map((item) => renderConnectionRow(item))
                   ) : (
                     <View style={styles.modalEmptyState}>
                       <Text style={{ color: COLORS.textTertiary }}>No users found.</Text>
@@ -1495,39 +1586,39 @@ export function Profile() {
                 </View>
               ) : (
                 <View>
-                  {loadingFriends ? (
+                  {loadingFriends || loadingFriendRequests ? (
                     <ActivityIndicator color={COLORS.primary} style={{ marginTop: 20 }} />
-                  ) : friends.length > 0 ? (
-                    friends.map((item) => (
-                      <View key={item.id} style={styles.modalFriendRow}>
-                        <View style={styles.listAvatar}>
-                          {item.profile_image_url ? (
-                            <Image source={{ uri: item.profile_image_url }} style={styles.listAvatarImage} />
-                          ) : (
-                            <View style={[styles.listAvatarImage, { backgroundColor: COLORS.surfaceElevated, alignItems: 'center', justifyContent: 'center' }]}>
-                              <Text style={{ color: COLORS.textPrimary, fontWeight: '700' }}>{item.name?.[0] || 'U'}</Text>
-                            </View>
-                          )}
+                  ) : incomingFriendRequests.length > 0 || outgoingFriendRequests.length > 0 || friends.length > 0 ? (
+                    <View>
+                      {incomingFriendRequests.length > 0 ? (
+                        <View style={{ marginBottom: 20 }}>
+                          <Text style={{ color: COLORS.textTertiary, fontSize: 12, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 10 }}>
+                            Requests To Review
+                          </Text>
+                          {incomingFriendRequests.map((item) => renderConnectionRow(item))}
                         </View>
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                          <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 15 }}>{item.username || item.name}</Text>
-                          <Text style={{ color: COLORS.textTertiary, fontSize: 13 }} numberOfLines={1}>{item.name}</Text>
+                      ) : null}
+                      {outgoingFriendRequests.length > 0 ? (
+                        <View style={{ marginBottom: 20 }}>
+                          <Text style={{ color: COLORS.textTertiary, fontSize: 12, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 10 }}>
+                            Pending Requests
+                          </Text>
+                          {outgoingFriendRequests.map((item) => renderConnectionRow(item))}
                         </View>
-                        <Pressable 
-                          style={[
-                            styles.friendCardActionButton, 
-                            { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }
-                          ]} 
-                          onPress={() => handleRemoveFriend(item.id)}
-                        >
-                          <Text style={{ color: COLORS.textPrimary, fontWeight: '700', fontSize: 13 }}>Remove</Text>
-                        </Pressable>
-                      </View>
-                    ))
+                      ) : null}
+                      {friends.length > 0 ? (
+                        <View>
+                          <Text style={{ color: COLORS.textTertiary, fontSize: 12, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 10 }}>
+                            Friends
+                          </Text>
+                          {friends.map((item) => renderConnectionRow(item))}
+                        </View>
+                      ) : null}
+                    </View>
                   ) : (
                     <View style={styles.modalEmptyState}>
                       <UserRound size={48} color={COLORS.textTertiary} strokeWidth={1} />
-                      <Text style={{ color: COLORS.textTertiary, marginTop: 12 }}>No friends yet</Text>
+                      <Text style={{ color: COLORS.textTertiary, marginTop: 12 }}>No connections yet</Text>
                     </View>
                   )}
                 </View>
@@ -1609,7 +1700,7 @@ export function Profile() {
           <Heart size={34} color={COLORS.textTertiary} strokeWidth={1.8} />
           <Text style={styles.emptyTabTitle}>No saved events yet</Text>
           <Text style={styles.emptyTabSubtitle}>Events you add to your calendar will show up here.</Text>
-          <Pressable style={styles.emptyTabButton} onPress={() => navigation.navigate('EventsCalendar')}>
+          <Pressable style={styles.emptyTabButton} onPress={() => openEventsTab()}>
             <Text style={styles.emptyTabButtonText}>Browse Events</Text>
           </Pressable>
         </View>
@@ -1627,11 +1718,7 @@ export function Profile() {
             <Pressable
               key={event.id}
               style={styles.resourceListRow}
-              onPress={() =>
-                navigation.navigate('EventsCalendar', {
-                  openEventDetail: event,
-                })
-              }
+              onPress={() => openEventsTab({ openEventDetail: event })}
             >
               <View style={[styles.resourceListIconWrap, { backgroundColor: eventMeta.cardTint }]}>
                 <EventIcon size={19} color="#FFFFFF" />
@@ -3293,5 +3380,10 @@ const getStyles = (COLORS: any, isDark: boolean, accentColor: string) =>
       paddingHorizontal: 16,
       paddingVertical: 8,
       borderRadius: 10,
+    },
+    modalEmptyState: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 28,
     },
   });

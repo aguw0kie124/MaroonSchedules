@@ -163,6 +163,13 @@ export default function ProfileSettingsScreen({ navigation }: any) {
     });
   }, [navigation]);
 
+  const openConnectionsManager = useCallback(() => {
+    navigation.navigate('Main', {
+      screen: 'Profile',
+      params: { openFriendsManager: true },
+    });
+  }, [navigation]);
+
   const renderSettingRow = ({
     icon,
     iconColor,
@@ -382,6 +389,14 @@ export default function ProfileSettingsScreen({ navigation }: any) {
               subtitle: 'Manage people you have blocked.',
               value: blockedUsers.length ? String(blockedUsers.length) : '0',
               onPress: () => setShowBlockedPanel(true),
+            })}
+            <View style={styles.rowDivider} />
+            {renderSettingRow({
+              icon: <UserRound size={18} color={COLORS.primary} />,
+              iconBg: `${COLORS.primary}15`,
+              title: 'Connections',
+              subtitle: 'Review requests and manage your friends.',
+              onPress: openConnectionsManager,
             })}
             <View style={styles.rowDivider} />
             {renderSettingRow({
