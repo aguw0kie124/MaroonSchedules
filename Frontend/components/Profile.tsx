@@ -605,12 +605,9 @@ export function Profile() {
       await updateUserProfile(user.id, {
         full_name: editedDisplayName,
         bio: bio,
-        website: website,
-        graduation_year: '', // placeholder if needed
-        major: '' // placeholder if needed
       });
 
-      setUserProfile({ bio, website, gender, displayName: editedDisplayName });
+      setUserProfile({ bio, gender, displayName: editedDisplayName });
       setShowEditProfile(false);
       
       // Refresh user data
@@ -620,10 +617,10 @@ export function Profile() {
       Alert.alert('Profile Saved', 'Your changes have been updated and synced.');
     } catch (err) {
       console.warn('Failed to save profile:', err);
-      Alert.alert('Sync Error', 'Your changes were saved locally but could not sync with the server.');
       // Still update locally for responsiveness
-      setUserProfile({ bio, website, gender, displayName: editedDisplayName });
+      setUserProfile({ bio, gender, displayName: editedDisplayName });
       setShowEditProfile(false);
+      Alert.alert('Sync Error', 'Your changes were saved locally but could not sync with the server. Please try again later.');
     }
   };
 

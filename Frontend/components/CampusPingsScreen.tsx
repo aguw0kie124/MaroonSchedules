@@ -687,6 +687,52 @@ export function CampusPingsScreen() {
   const isInitialPingsLoading = loadingPings && userPings.length === 0;
   const isManuallyRefreshing = refreshing && !isInitialPingsLoading;
 
+  // Track friend post IDs we've already notified about to avoid duplicates
+  const notifiedFriendPostIdsRef = useRef(new Set<string>());
+
+  // Fire local push notifications for new friend posts
+  useEffect(() => {
+    if (!user?.id || friendIds.size === 0 || userPings.length === 0) return;
+
+    const { notificationsEnabled, pingNotifications } = useAppShellStore.getState();
+    if (!notificationsEnabled || !pingNotifications) return;
+
+    const newFriendPosts = userPings.filter((ping) => {
+      if (!ping.userId || ping.isAnonymous || ping.source !== 'user') return false;
+      if (ping.userId === user.id) return false;
+      if (!friendIds.has(String(ping.userId))) return false;
+      if (notifiedFriendPostIdsRef.current.has(ping.id)) return false;
+      // Only notify for posts created in the last 5 minutes
+      const age = Date.now() - new Date(ping.createdAt).getTime();
+      return age < 5 * 60 * 1000;
+    });
+
+    if (newFriendPosts.length === 0) return;
+
+    (async () => {
+      try {
+        const Notifications = await import('expo-notifications');
+        for (const post of newFriendPosts) {
+          notifiedFriendPostIdsRef.current.add(post.id);
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: `${post.userName} just posted`,
+              body: post.title || post.body || 'Check out their new post!',
+              data: { type: 'friend_post', postId: post.id, userId: post.userId },
+              sound: false,
+            },
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+              seconds: 1,
+            },
+          });
+        }
+      } catch (e) {
+        console.warn('[Pings] Failed to send friend post notification', e);
+      }
+    })();
+  }, [userPings, friendIds, user?.id]);
+
   useEffect(() => {
     if (userPings.length === 0 || loadedPingPageCount === 0) {
       initialFeedPrefetchDoneRef.current = false;
