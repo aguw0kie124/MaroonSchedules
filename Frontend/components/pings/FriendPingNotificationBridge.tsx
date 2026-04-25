@@ -59,6 +59,7 @@ function mapActivityToFriendPing(activity: any): FriendPingActivity | null {
   const actor = activity?.actor || {};
   const activityId = typeof activity?.id === 'string' ? activity.id : '';
   if (!activityId) return null;
+  if (custom?.is_anonymous) return null;
 
   const rawUserId = actor?.id || activity?.actor || '';
   const userId = String(rawUserId).replace(/^SU:/, '').trim() || null;

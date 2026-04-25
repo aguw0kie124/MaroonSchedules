@@ -51,6 +51,15 @@ export interface PaginatedFeedResponse<T> {
   nextCursor: FeedCursor | null;
 }
 
+type UploadableMedia =
+  | string
+  | {
+      uri: string;
+      fileName?: string | null;
+      mimeType?: string | null;
+      type?: string | null;
+    };
+
 export async function hydrateAggieUsers(activities: any[]): Promise<any[]> {
   const missingUserIds = new Set<string>();
   for (const act of activities) {
@@ -143,17 +152,49 @@ export async function hydrateAggieUsers(activities: any[]): Promise<any[]> {
   });
 }
 
-export async function uploadMediaImage(uri: string): Promise<string> {
-  try {
-    const filename = uri.split('/').pop() || 'upload.jpg';
+function resolveUploadAsset(source: UploadableMedia) {
+  if (typeof source === 'string') {
+    const filename = source.split('/').pop() || 'upload.jpg';
     const match = /\.(\w+)$/.exec(filename);
-    const type = match ? `image/${match[1]}` : `image/jpeg`;
+    const ext = match?.[1]?.toLowerCase();
+    const mimeType = ext ? `image/${ext === 'jpg' ? 'jpeg' : ext}` : 'image/jpeg';
+    return {
+      uri: source,
+      filename,
+      mimeType,
+    };
+  }
+
+  const uri = source.uri;
+  const fileName = source.fileName?.trim() || uri.split('/').pop() || '';
+  const explicitMime = (source.mimeType || source.type || '').toLowerCase();
+  const match = /\.(\w+)$/.exec(fileName);
+  const ext = match?.[1]?.toLowerCase();
+  const mimeType =
+    explicitMime ||
+    (ext ? `image/${ext === 'jpg' ? 'jpeg' : ext}` : 'image/jpeg');
+  const safeExt =
+    ext ||
+    mimeType.replace(/^image\//, '').replace('jpeg', 'jpg') ||
+    'jpg';
+  const filename = fileName || `upload.${safeExt}`;
+
+  return {
+    uri,
+    filename,
+    mimeType,
+  };
+}
+
+export async function uploadMediaImage(source: UploadableMedia): Promise<string> {
+  try {
+    const { uri, filename, mimeType } = resolveUploadAsset(source);
 
     const formData = new FormData();
     formData.append('file', {
       uri,
       name: filename,
-      type: type,
+      type: mimeType,
     } as any);
 
     const res = await feedFetch('/upload/image', {
@@ -712,7 +753,7 @@ export async function getBlockedUsers(userId: string): Promise<any[]> {
     }
 }
 
-export async function addFriend(targetId: string, actingUserId?: string): Promise<void> {
+export async function addFriend(targetId: string, actingUserId?: string): Promise<any> {
     const requesterId = actingUserId || connectedUserId;
     if (!requesterId) {
         throw new Error('Must be signed in to add a friend.');
@@ -734,9 +775,10 @@ export async function addFriend(targetId: string, actingUserId?: string): Promis
         console.warn(`[SocialService] addFriend failed: status=${res.status}, body=${errorText}`);
         throw new Error('Failed to add friend.');
     }
+    return await res.json();
 }
 
-export async function removeFriend(targetId: string, actingUserId?: string): Promise<void> {
+export async function removeFriend(targetId: string, actingUserId?: string): Promise<any> {
     const requesterId = actingUserId || connectedUserId;
     if (!requesterId) {
         throw new Error('Must be signed in to remove a friend.');
@@ -745,6 +787,7 @@ export async function removeFriend(targetId: string, actingUserId?: string): Pro
         method: 'DELETE',
     });
     if (!res.ok) throw new Error('Failed to remove friend.');
+    return await res.json();
 }
 
 export async function getFriends(userId: string): Promise<any[]> {
@@ -757,6 +800,25 @@ export async function getFriends(userId: string): Promise<any[]> {
             console.warn('[NativeFeeds] getFriends: network error, returning empty list', e);
         }
         return [];
+    }
+}
+
+export async function getFriendRequests(userId: string): Promise<{ incoming: any[]; outgoing: any[] }> {
+    try {
+        const res = await feedFetch(`/chat/users/${userId}/friends/requests`);
+        if (!res.ok) {
+            return { incoming: [], outgoing: [] };
+        }
+        const data = await res.json();
+        return {
+            incoming: Array.isArray(data?.incoming) ? data.incoming : [],
+            outgoing: Array.isArray(data?.outgoing) ? data.outgoing : [],
+        };
+    } catch (e) {
+        if (__DEV__) {
+            console.warn('[NativeFeeds] getFriendRequests: network error, returning empty lists', e);
+        }
+        return { incoming: [], outgoing: [] };
     }
 }
 

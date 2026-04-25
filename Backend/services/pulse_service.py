@@ -465,7 +465,7 @@ def get_pulse_map(limit: int = 60, clerk_id: Optional[str] = None, force_refresh
                 "id": ping_id,
                 "source": "ping",
                 "title": custom.get("ping_title") or ping.get("content") or "Campus Ping",
-                "subtitle": custom.get("user_name") or ping.get("user_name") or "Aggie",
+                "subtitle": "Anonymous" if custom.get("is_anonymous") else (custom.get("user_name") or ping.get("user_name") or "Aggie"),
                 "body": ping.get("content") or "",
                 "category": category,
                 "timeLabel": _format_time_label(start_at),

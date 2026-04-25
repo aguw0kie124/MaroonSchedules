@@ -40,7 +40,7 @@ import Animated, { FadeIn, FadeOut, SlideInDown, SlideOutDown } from 'react-nati
 import { useTheme } from '../SharedUI';
 import { ScalePressable } from '../common/Motion';
 import { TourTarget, useTour } from '../onboarding/TourProvider';
-import { addPing, uploadMediaImage } from '../../services/socialFeedService';
+import { addPing, initializeFeedUser, uploadMediaImage } from '../../services/socialFeedService';
 import { buildCampusDirectory, getCanonicalLocationName } from '../places/campusData';
 
 export type PingCategory =
@@ -148,6 +148,7 @@ export const PingComposerModal: React.FC<PingComposerModalProps> = ({
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [composerGeoLocation, setComposerGeoLocation] = useState<ComposerGeoLocation | null>(null);
   const [composerImageUri, setComposerImageUri] = useState<string | null>(null);
+  const [composerImageAsset, setComposerImageAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [composerAnonymous, setComposerAnonymous] = useState(false);
   const [useCurrentLocation, setUseCurrentLocation] = useState(true);
   const [isPosting, setIsPosting] = useState(false);
@@ -170,6 +171,7 @@ export const PingComposerModal: React.FC<PingComposerModalProps> = ({
     setSelectedLocation(null);
     setComposerGeoLocation(null);
     setComposerImageUri(null);
+    setComposerImageAsset(null);
     setComposerAnonymous(false);
     setUseCurrentLocation(true);
   }, []);
@@ -281,6 +283,7 @@ export const PingComposerModal: React.FC<PingComposerModalProps> = ({
         });
 
         if (!result.canceled && result.assets[0]) {
+          setComposerImageAsset(result.assets[0]);
           setComposerImageUri(result.assets[0].uri);
         }
       } catch (error) {
@@ -310,6 +313,7 @@ export const PingComposerModal: React.FC<PingComposerModalProps> = ({
         });
 
         if (!result.canceled && result.assets[0]) {
+          setComposerImageAsset(result.assets[0]);
           setComposerImageUri(result.assets[0].uri);
         }
       } catch (error) {
@@ -378,9 +382,10 @@ export const PingComposerModal: React.FC<PingComposerModalProps> = ({
     const { startAt, endAt } = buildPresetWindow(composerTimePreset, composerDurationHours);
     setIsPosting(true);
     try {
+      initializeFeedUser(user);
       let uploadedImageUrl: string | undefined;
       if (composerImageUri) {
-        uploadedImageUrl = await uploadMediaImage(composerImageUri);
+        uploadedImageUrl = await uploadMediaImage(composerImageAsset || composerImageUri);
       }
 
       const createdPing = await addPing({
@@ -414,6 +419,7 @@ export const PingComposerModal: React.FC<PingComposerModalProps> = ({
     composerTitle,
     composerDurationHours,
     composerTimePreset,
+    composerImageAsset,
     composerImageUri,
     composerAnonymous,
     composerGeoLocation,
@@ -945,7 +951,13 @@ export const PingComposerModal: React.FC<PingComposerModalProps> = ({
                         <Pressable style={styles.composerMediaStageOverlay} onPress={handlePickPingImage}>
                           <Text style={styles.composerMediaStageOverlayText}>Tap to replace</Text>
                         </Pressable>
-                        <Pressable style={styles.composerMediaRemoveButton} onPress={() => setComposerImageUri(null)}>
+                        <Pressable
+                          style={styles.composerMediaRemoveButton}
+                          onPress={() => {
+                            setComposerImageUri(null);
+                            setComposerImageAsset(null);
+                          }}
+                        >
                           <X size={14} color="#FFFFFF" />
                         </Pressable>
                       </View>

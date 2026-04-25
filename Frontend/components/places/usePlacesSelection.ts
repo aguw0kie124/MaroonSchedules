@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchCampusPlaceDetail } from "../../api/client";
 import {
   fetchDiningFullMenuCached,
+  getDiningContextDate,
   getDiningMealPeriodForLocation,
   getDiningMenuCandidates,
   isDiningHallMenuLocation,
   warmDiningMenusInBackground,
   type DiningMealPeriod,
 } from "../../services/diningMenuCache";
-import { getLocalDateString, parseLocalDateString } from "../../services/dateUtils";
+import { getLocalDateString } from "../../services/dateUtils";
 import {
   findFoodCourtParentLocation,
   getFoodCourtVenueLabel,
@@ -98,7 +99,7 @@ export function usePlacesSelection({
   const [diningMenuOptions, setDiningMenuOptions] = useState<string[]>([]);
   const [activeDiningMenu, setActiveDiningMenu] = useState<string | null>(null);
   const [activeDiningMealPeriod, setActiveDiningMealPeriod] =
-    useState<DiningMealPeriod>("lunch");
+    useState<DiningMealPeriod>(() => getDiningMealPeriodForLocation(null));
   const [activeDiningDate, setActiveDiningDate] = useState<string>(getLocalDateString());
   const [diningMenuPreview, setDiningMenuPreview] = useState<any | null>(null);
   const [selectedPlaceDetail, setSelectedPlaceDetail] = useState<any | null>(null);
@@ -128,7 +129,7 @@ export function usePlacesSelection({
   const resetDiningState = useCallback(() => {
     setDiningMenuOptions([]);
     setActiveDiningMenu(null);
-    setActiveDiningMealPeriod("lunch");
+    setActiveDiningMealPeriod(getDiningMealPeriodForLocation(null) as DiningMealPeriod);
     setActiveDiningDate(getLocalDateString());
     setDiningMenuPreview(null);
   }, []);
@@ -187,7 +188,7 @@ export function usePlacesSelection({
         setActiveDiningMenu(loc.location);
         setActiveDiningDate(todayKey);
         setActiveDiningMealPeriod(
-          getDiningMealPeriodForLocation(loc.location, parseLocalDateString(todayKey)) as DiningMealPeriod,
+          getDiningMealPeriodForLocation(loc.location, getDiningContextDate(todayKey)) as DiningMealPeriod,
         );
         setDiningMenuPreview(null);
       } catch (error) {

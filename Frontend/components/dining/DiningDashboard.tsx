@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import {
   ArrowLeft,
@@ -52,6 +53,7 @@ export default function DiningDashboard({ navigation }: any) {
     navigation.navigate('FullMenu', {
       location: hall,
       mealPeriod,
+      date: trackerDate,
       title: `${hall} Menu`,
       sourceHint: 'cached',
     });
@@ -76,9 +78,9 @@ export default function DiningDashboard({ navigation }: any) {
     }
   }, [user, trackerDate]);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     loadTrackerSummary();
-  }, [loadTrackerSummary]);
+  }, [loadTrackerSummary]));
 
   const selectedGlassFill = darkMode ? T.tamuGold + '18' : 'rgba(12,12,14,0.84)';
   const selectedGlassText = darkMode ? T.tamuGold : '#FFFFFF';
@@ -189,7 +191,7 @@ export default function DiningDashboard({ navigation }: any) {
                 { label: 'Carbs', val: totals.carbs || 0, goal: macros.carbs || 250, suffix: 'g', color: '#3B82F6' },
                 { label: 'Fat', val: totals.fat || 0, goal: macros.fat || 80, suffix: 'g', color: '#F59E0B' },
               ].map((stat) => (
-                <View key={stat.label} style={{ width: '48%', backgroundColor: darkMode ? 'rgba(255,255,255,0.04)' : '#FFF', borderRadius: 24, padding: 16, borderWidth: 1, borderColor: COLORS.border }}>
+                <View key={stat.label} style={{ width: '47%', flexGrow: 1, backgroundColor: darkMode ? 'rgba(255,255,255,0.04)' : '#FFF', borderRadius: 24, padding: 16, borderWidth: 1, borderColor: COLORS.border }}>
                   <Text style={{ fontSize: 10, fontWeight: '800', color: COLORS.textTertiary, textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 8 }}>{stat.label}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2 }}>
                     <Text style={{ fontSize: 24, fontWeight: '900', color: COLORS.textPrimary }}>{Math.round(stat.val)}</Text>

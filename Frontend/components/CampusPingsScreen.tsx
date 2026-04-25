@@ -7,6 +7,7 @@ import {
   Alert,
   FlatList,
   Image,
+  InteractionManager,
   Keyboard,
   KeyboardAvoidingView,
   Linking,
@@ -161,7 +162,7 @@ interface PingFeedPage {
   nextCursor: FeedCursor | null;
 }
 
-const PING_PAGE_SIZE = 25;
+const PING_PAGE_SIZE = 10;
 
 const PING_CATEGORIES: Array<{ id: PingCategory; accent: string; Icon: any }> = [
   { id: 'Free Food', accent: '#E48B3D', Icon: Pizza },
@@ -463,6 +464,7 @@ export function CampusPingsScreen() {
     setSelectedLocation(null);
     setComposerGeoLocation(null);
     setComposerImageUri(null);
+    setComposerImageAsset(null);
     setComposerAnonymous(false);
     setUseCurrentLocation(true);
   }, []);
@@ -539,6 +541,7 @@ export function CampusPingsScreen() {
   const [categoryFilter, setCategoryFilter] = useState<FeedFilter>('All');
   const [showScrollTop, setShowScrollTop] = useState(false);
   const pingsListRef = useRef<FlatList<PingCard> | null>(null);
+  const initialFeedPrefetchDoneRef = useRef(false);
 
   const campusPingsFeedKey = ['campus-pings-feed', API_URL, user?.id] as const;
 
@@ -553,6 +556,9 @@ export function CampusPingsScreen() {
     queryKey: campusPingsFeedKey,
     initialPageParam: null as FeedCursor | null,
     queryFn: async ({ pageParam }) => {
+      if (user) {
+        initializeFeedUser(user);
+      }
       const response = await getPingFeedPage({
         limit: PING_PAGE_SIZE,
         cursor: pageParam,
@@ -566,7 +572,7 @@ export function CampusPingsScreen() {
       if (!lastPage.hasMore || !lastPage.nextCursor) return undefined;
       return lastPage.nextCursor;
     },
-    enabled: !user?.id || feedConnected,
+    enabled: true,
     refetchInterval: 30000,
     staleTime: 1000 * 30,
   });
@@ -581,6 +587,7 @@ export function CampusPingsScreen() {
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [composerGeoLocation, setComposerGeoLocation] = useState<ComposerGeoLocation | null>(null);
   const [composerImageUri, setComposerImageUri] = useState<string | null>(null);
+  const [composerImageAsset, setComposerImageAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [composerAnonymous, setComposerAnonymous] = useState(false);
   const [useCurrentLocation, setUseCurrentLocation] = useState(true);
   const [isPosting, setIsPosting] = useState(false);
@@ -590,6 +597,7 @@ export function CampusPingsScreen() {
   const [activeCommentsPing, setActiveCommentsPing] = useState<PingCard | null>(null);
 
   const userPings = useMemo(() => flattenPingFeedPages(pagedUserPings), [pagedUserPings]);
+  const loadedPingPageCount = pagedUserPings?.pages?.length || 0;
 
   const { data: friends = [] } = useQuery({
     queryKey: ['campus-ping-friends', API_URL, user?.id],
@@ -667,7 +675,7 @@ export function CampusPingsScreen() {
         return true;
       }
       if (categoryFilter === 'Friends') {
-        if (!ping.userId || ping.source !== 'user') {
+        if (!ping.userId || ping.source !== 'user' || ping.isAnonymous) {
           return false;
         }
         return friendIds.has(String(ping.userId));
@@ -678,6 +686,86 @@ export function CampusPingsScreen() {
 
   const isInitialPingsLoading = loadingPings && userPings.length === 0;
   const isManuallyRefreshing = refreshing && !isInitialPingsLoading;
+
+  // Track friend post IDs we've already notified about to avoid duplicates
+  const notifiedFriendPostIdsRef = useRef(new Set<string>());
+
+  // Fire local push notifications for new friend posts
+  useEffect(() => {
+    if (!user?.id || friendIds.size === 0 || userPings.length === 0) return;
+
+    const { notificationsEnabled, pingNotifications } = useAppShellStore.getState();
+    if (!notificationsEnabled || !pingNotifications) return;
+
+    const newFriendPosts = userPings.filter((ping) => {
+      if (!ping.userId || ping.isAnonymous || ping.source !== 'user') return false;
+      if (ping.userId === user.id) return false;
+      if (!friendIds.has(String(ping.userId))) return false;
+      if (notifiedFriendPostIdsRef.current.has(ping.id)) return false;
+      // Only notify for posts created in the last 5 minutes
+      const age = Date.now() - new Date(ping.createdAt).getTime();
+      return age < 5 * 60 * 1000;
+    });
+
+    if (newFriendPosts.length === 0) return;
+
+    (async () => {
+      try {
+        const Notifications = await import('expo-notifications');
+        for (const post of newFriendPosts) {
+          notifiedFriendPostIdsRef.current.add(post.id);
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: `${post.userName} just posted`,
+              body: post.title || post.body || 'Check out their new post!',
+              data: { type: 'friend_post', postId: post.id, userId: post.userId },
+              sound: false,
+            },
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+              seconds: 1,
+            },
+          });
+        }
+      } catch (e) {
+        console.warn('[Pings] Failed to send friend post notification', e);
+      }
+    })();
+  }, [userPings, friendIds, user?.id]);
+
+  useEffect(() => {
+    if (userPings.length === 0 || loadedPingPageCount === 0) {
+      initialFeedPrefetchDoneRef.current = false;
+      return;
+    }
+    if (initialFeedPrefetchDoneRef.current) {
+      return;
+    }
+    if (loadedPingPageCount !== 1 || !hasNextPage || isFetchingNextPage) {
+      return;
+    }
+
+    initialFeedPrefetchDoneRef.current = true;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const interactionTask = InteractionManager.runAfterInteractions(() => {
+      timer = setTimeout(() => {
+        if (cancelled) return;
+        fetchNextPage().catch((error) => {
+          initialFeedPrefetchDoneRef.current = false;
+          console.warn('[Pings] background prefetch failed', error);
+        });
+      }, 180);
+    });
+
+    return () => {
+      cancelled = true;
+      if (timer) {
+        clearTimeout(timer);
+      }
+      interactionTask.cancel();
+    };
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage, loadedPingPageCount, userPings.length]);
 
   const loadAll = useCallback(async () => {
     setRefreshing(true);
@@ -811,6 +899,7 @@ export function CampusPingsScreen() {
         });
 
         if (!result.canceled && result.assets[0]) {
+          setComposerImageAsset(result.assets[0]);
           setComposerImageUri(result.assets[0].uri);
         }
       } catch (error) {
@@ -858,6 +947,7 @@ export function CampusPingsScreen() {
         });
 
         if (!result.canceled && result.assets[0]) {
+          setComposerImageAsset(result.assets[0]);
           setComposerImageUri(result.assets[0].uri);
         }
       } catch (error) {
@@ -879,9 +969,19 @@ export function CampusPingsScreen() {
   }, []);
 
   const handleCreatePing = useCallback(async () => {
-    if (!user || !feedConnected) {
-      Alert.alert('Live pings unavailable', 'Feed connection is required before posting a ping.');
+    if (!user) {
+      Alert.alert('Sign in required', 'Please sign in to post a ping.');
       return;
+    }
+
+    if (!feedConnected) {
+      try {
+        initializeFeedUser(user);
+        setFeedConnected(true);
+      } catch (_error) {
+        Alert.alert('Live pings unavailable', 'Feed connection is required before posting a ping.');
+        return;
+      }
     }
     if (!composerTitle.trim()) {
       Alert.alert('Missing details', 'Add a title so people know what is happening.');
@@ -939,7 +1039,7 @@ export function CampusPingsScreen() {
     try {
       let uploadedImageUrl: string | undefined;
       if (composerImageUri) {
-        uploadedImageUrl = await uploadMediaImage(composerImageUri);
+        uploadedImageUrl = await uploadMediaImage(composerImageAsset || composerImageUri);
       }
 
       const createdPing = await addPing({
@@ -991,6 +1091,7 @@ export function CampusPingsScreen() {
     composerTitle,
     composerDurationHours,
     composerTimePreset,
+    composerImageAsset,
     composerImageUri,
     composerAnonymous,
     composerGeoLocation,
@@ -1178,29 +1279,46 @@ export function CampusPingsScreen() {
 
   const handleAddPingAuthorAsFriend = useCallback((ping: PingCard) => {
     if (!user?.id || !ping.userId) {
-      Alert.alert('Sign in required', 'Please sign in to add a friend.');
+      Alert.alert('Sign in required', 'Please sign in to manage connections.');
       return;
     }
     if (ping.userId === user.id) {
-      Alert.alert('Your post', 'You cannot add yourself as a friend.');
+      Alert.alert('Your post', 'You cannot connect with yourself.');
+      return;
+    }
+    if (ping.isAnonymous) {
+      Alert.alert('Anonymous ping', 'Anonymous posts cannot expose connection actions.');
       return;
     }
 
     const displayName = ping.userName;
     Alert.alert(
-      'Add friend?',
-      `Add ${displayName} to your friends list?`,
+      'Send connection request?',
+      `Connect with ${displayName}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Add Friend',
+          text: 'Connect',
           onPress: async () => {
             try {
-              await addFriend(ping.userId!, user.id);
-              Alert.alert('Friend added', `${displayName} has been added to your friends.`);
+              const result = await addFriend(ping.userId!, user.id);
+              const action = result?.friendship?.action;
+              if (action === 'accepted') {
+                Alert.alert('Connection accepted', `${displayName} is now connected with you.`);
+                return;
+              }
+              if (action === 'already_connected') {
+                Alert.alert('Already connected', `You are already connected with ${displayName}.`);
+                return;
+              }
+              if (action === 'request_pending') {
+                Alert.alert('Request already sent', `Your connection request to ${displayName} is still pending.`);
+                return;
+              }
+              Alert.alert('Request sent', `${displayName} can accept your connection request from their profile.`);
             } catch (error) {
-              console.warn('[Pings] add friend failed', error);
-              Alert.alert('Unable to add friend', 'We could not add this user right now.');
+              console.warn('[Pings] add connection failed', error);
+              Alert.alert('Unable to connect', 'We could not send that connection request right now.');
             }
           },
         },
@@ -1211,8 +1329,8 @@ export function CampusPingsScreen() {
   const handleOpenPingMenu = useCallback((ping: PingCard) => {
     const displayName = ping.userName;
     const actions: Array<{ text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }> = [];
-    if (ping.userId && ping.userId !== user?.id) {
-      actions.push({ text: 'Add Friend', onPress: () => handleAddPingAuthorAsFriend(ping) });
+    if (ping.userId && ping.userId !== user?.id && !ping.isAnonymous) {
+      actions.push({ text: 'Connect', onPress: () => handleAddPingAuthorAsFriend(ping) });
     }
     actions.push({ text: 'Report', onPress: () => handleReportPing(ping) });
     actions.push({ text: 'Block User', style: 'destructive', onPress: () => handleBlockPingAuthor(ping) });
@@ -1833,7 +1951,13 @@ export function CampusPingsScreen() {
                           <Pressable style={styles.composerMediaStageOverlay} onPress={handlePickPingImage}>
                             <Text style={styles.composerMediaStageOverlayText}>Tap to replace</Text>
                           </Pressable>
-                          <Pressable style={styles.composerMediaRemoveButton} onPress={() => setComposerImageUri(null)}>
+                          <Pressable
+                            style={styles.composerMediaRemoveButton}
+                            onPress={() => {
+                              setComposerImageUri(null);
+                              setComposerImageAsset(null);
+                            }}
+                          >
                             <X size={14} color="#FFFFFF" />
                           </Pressable>
                         </View>
